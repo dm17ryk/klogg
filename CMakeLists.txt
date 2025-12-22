@@ -188,6 +188,7 @@ find_package(
              Widgets
              Concurrent
              Network
+             SerialPort
              Xml
   REQUIRED
 )
@@ -197,6 +198,7 @@ find_package(
              Widgets
              Concurrent
              Network
+             SerialPort
              Xml
   REQUIRED
 )

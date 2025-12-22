@@ -59,6 +59,8 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -95,6 +97,7 @@
 #include "klogg_version.h"
 #include "logger.h"
 #include "mainwindowtext.h"
+#include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
 #include "predefinedfiltersdialog.h"
@@ -103,6 +106,7 @@
 #include "recentfiles.h"
 #include "sessioninfo.h"
 #include "shortcuts.h"
+#include "streamsession.h"
 #include "styles.h"
 #include "tabbedcrawlerwidget.h"
 
@@ -317,6 +321,9 @@ void MainWindow::reTranslateUI()
     openAction->setText( transAction( action::openText ) );
     openAction->setStatusTip( transAction( action::openStatusTip ) );
 
+    openComPortAction->setText( transAction( action::openComPortText ) );
+    openComPortAction->setStatusTip( transAction( action::openComPortStatusTip ) );
+
     recentFilesCleanup->setText( transAction( action::recentFilesCleanupText ) );
 
     closeAction->setText( transAction( action::closeText ) );
@@ -469,6 +476,10 @@ void MainWindow::createActions()
     openAction = new QAction( tr( action::openText ), this );
     openAction->setStatusTip( tr( action::openStatusTip ) );
     connect( openAction, &QAction::triggered, [ this ]( auto ) { this->open(); } );
+
+    openComPortAction = new QAction( tr( action::openComPortText ), this );
+    openComPortAction->setStatusTip( tr( action::openComPortStatusTip ) );
+    connect( openComPortAction, &QAction::triggered, this, [ this ]( auto ) { this->openComPort(); } );
 
     recentFilesCleanup = new QAction( tr( action::recentFilesCleanupText ), this );
     connect( recentFilesCleanup, &QAction::triggered, this,
@@ -746,6 +757,7 @@ void MainWindow::createMenus()
     fileMenu->setToolTipsVisible( true );
     fileMenu->addAction( newWindowAction );
     fileMenu->addAction( openAction );
+    fileMenu->addAction( openComPortAction );
     fileMenu->addAction( openClipboardAction );
     fileMenu->addAction( openUrlAction );
     recentFilesMenu = fileMenu->addMenu( tr( "Open Recent" ) );
@@ -952,6 +964,71 @@ void MainWindow::open()
 
     for ( const auto& remoteFile : remoteFiles ) {
         openRemoteFile( remoteFile );
+    }
+}
+
+void MainWindow::openComPort()
+{
+    OpenComPortDialog dialog( this );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return;
+    }
+
+    auto settings = dialog.settings();
+    if ( settings.portName.isEmpty() || settings.filePath.isEmpty() ) {
+        return;
+    }
+
+    const QFileInfo info( settings.filePath );
+    const auto absolutePath = info.absoluteFilePath();
+    if ( absolutePath.isEmpty() ) {
+        QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
+        return;
+    }
+
+    const QDir dir( info.absolutePath() );
+    if ( !dir.exists() ) {
+        QMessageBox::warning( this, tr( "Open COM Port" ),
+                              tr( "Capture directory does not exist." ) );
+        return;
+    }
+
+    settings.filePath = absolutePath;
+
+    QFile ensureFile( settings.filePath );
+    if ( !ensureFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        QMessageBox::warning(
+            this, tr( "Open COM Port" ),
+            tr( "Failed to open capture file: %1" ).arg( ensureFile.errorString() ) );
+        return;
+    }
+    ensureFile.close();
+
+    if ( auto it = streamSessions_.find( settings.filePath ); it != streamSessions_.end() ) {
+        it->second->stop();
+        streamSessions_.erase( it );
+    }
+
+    auto session = std::make_shared<StreamSession>( settings, this );
+    const auto filePath = settings.filePath;
+    connect( session.get(), &StreamSession::errorOccurred, this,
+             [ this, filePath ]( const QString& message ) {
+                 QMessageBox::warning(
+                     this, tr( "COM port capture error" ),
+                     tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
+                 if ( auto it = streamSessions_.find( filePath ); it != streamSessions_.end() ) {
+                     it->second->stop();
+                     streamSessions_.erase( it );
+                 }
+             } );
+    session->start();
+    streamSessions_.emplace( settings.filePath, session );
+
+    if ( !loadFile( settings.filePath, true ) ) {
+        session->stop();
+        streamSessions_.erase( settings.filePath );
+        QMessageBox::warning( this, tr( "Open COM Port" ),
+                              tr( "Failed to open capture file in klogg." ) );
     }
 }
 
@@ -1440,6 +1517,12 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     auto widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
 
     assert( widget );
+
+    const auto fileName = session_.getFilename( widget );
+    if ( auto it = streamSessions_.find( fileName ); it != streamSessions_.end() ) {
+        it->second->stop();
+        streamSessions_.erase( it );
+    }
 
     widget->stopLoading();
     mainTabWidget_.removeCrawler( index );
