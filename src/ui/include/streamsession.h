@@ -13,7 +13,7 @@ class StreamSession : public QObject {
     ~StreamSession() override;
 
     void start();
-    void stop();
+    void stop( bool waitForCompletion = true );
     bool isConnectionOpen() const;
     QString sourceDisplayName() const;
     QString filePath() const;
@@ -33,5 +33,6 @@ class StreamSession : public QObject {
     QThread thread_;
     SerialCaptureWorker* worker_ = nullptr;
     bool started_ = false;
+    bool stopping_ = false;
     bool connectionOpen_ = false;
 };

@@ -88,7 +88,12 @@ void SerialCaptureWorker::onReadyRead()
         return;
     }
 
-    file_.write( data );
+    const auto written = file_.write( data );
+    if ( written != data.size() ) {
+        Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+        stop();
+        return;
+    }
     if ( ++flushCounter_ >= 8 ) {
         file_.flush();
         flushCounter_ = 0;

@@ -1005,14 +1005,22 @@ void MainWindow::openComPort()
     }
     ensureFile.close();
 
-    if ( auto existingSession = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
-        existingSession->closeConnection();
-        mainTabWidget_.clearStreamSessionForPath( settings.filePath );
+    const auto filePath = settings.filePath;
+    if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+        if ( existingSession->isConnectionOpen() ) {
+            existingSession->closeConnection();
+            QMessageBox::information(
+                this, tr( "Open COM Port" ),
+                tr( "The existing capture is still closing. Please try again in a moment." ) );
+            return;
+        }
+        mainTabWidget_.clearStreamSessionForPath( filePath );
     }
 
     auto session = std::make_shared<StreamSession>( settings, this );
-    const auto filePath = settings.filePath;
     QPointer<StreamSession> safeSession = session.get();
+    connect( session.get(), &StreamSession::connectionClosed, this,
+             [ this, filePath ] { mainTabWidget_.clearStreamSessionForPath( filePath ); } );
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession ]( const QString& message ) {
                  QMessageBox::warning(
@@ -1029,7 +1037,6 @@ void MainWindow::openComPort()
         session->closeConnection();
         QMessageBox::warning( this, tr( "Open COM Port" ),
                               tr( "Failed to open capture file in klogg." ) );
-        mainTabWidget_.clearStreamSessionForPath( settings.filePath );
         return;
     }
 }
@@ -1522,9 +1529,13 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
     const auto fileName = session_.getFilename( widget );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
-        session->closeConnection();
+        if ( session->isConnectionOpen() ) {
+            session->closeConnection();
+        }
+        else {
+            mainTabWidget_.clearStreamSessionForPath( fileName );
+        }
     }
-    mainTabWidget_.clearStreamSessionForPath( fileName );
 
     widget->stopLoading();
     mainTabWidget_.removeCrawler( index );
