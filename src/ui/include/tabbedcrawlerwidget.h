@@ -20,13 +20,17 @@
 #ifndef TABBEDCRAWLERWIDGET_H
 #define TABBEDCRAWLERWIDGET_H
 
+#include <QPointer>
 #include <QTabBar>
 #include <QTabWidget>
+#include <map>
 #include <qobjectdefs.h>
 #include <qtabbar.h>
 #include <qwidget.h>
 
 #include "loadingstatus.h"
+
+class StreamSession;
 
 // This class represents glogg's main widget, a tabbed
 // group of CrawlerWidgets.
@@ -70,6 +74,8 @@ class TabbedCrawlerWidget : public QTabWidget {
     }
 
     void removeCrawler( int index );
+    void setStreamSessionForPath( const QString& fileName, StreamSession* session );
+    void clearStreamSessionForPath( const QString& fileName );
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;
@@ -79,6 +85,7 @@ class TabbedCrawlerWidget : public QTabWidget {
   private:
     void addTabBarItem( int index, const QString& fileName );
     QString tabPathAt( int index ) const;
+    StreamSession* streamSessionForTab( int tab ) const;
 
     // Set the data status (icon) for the tab number 'index'
     void setTabDataStatus( int index, DataStatus status );
@@ -95,6 +102,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     QIcon newfiltered_icon_;
 
     CrawlerTabBar myTabBar_;
+    std::map<QString, QPointer<StreamSession>> streamSessions_;
 };
 
 #endif

@@ -29,6 +29,7 @@ class OpenComPortDialog : public QDialog {
     void populateParity();
     void populateStopBits();
     void populateFlowControl();
+    bool isPortItemEnabled( int index ) const;
     QString suggestedFileName() const;
 
     QComboBox* portCombo_ = nullptr;

@@ -34,6 +34,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/sessioninfo.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/signalmux.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/serialcaptureworker.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsourceregistry.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tabbedcrawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewinterface.h
@@ -86,6 +87,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/sessioninfo.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/signalmux.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tabbedcrawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/viewtools.cpp

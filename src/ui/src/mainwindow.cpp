@@ -1007,10 +1007,12 @@ void MainWindow::openComPort()
     if ( auto it = streamSessions_.find( settings.filePath ); it != streamSessions_.end() ) {
         it->second->stop();
         streamSessions_.erase( it );
+        mainTabWidget_.clearStreamSessionForPath( settings.filePath );
     }
 
     auto session = std::make_shared<StreamSession>( settings, this );
     const auto filePath = settings.filePath;
+    streamSessions_[ filePath ] = session;
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath ]( const QString& message ) {
                  QMessageBox::warning(
@@ -1018,18 +1020,19 @@ void MainWindow::openComPort()
                      tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
                  if ( auto it = streamSessions_.find( filePath ); it != streamSessions_.end() ) {
                      it->second->stop();
-                     streamSessions_.erase( it );
                  }
              } );
     session->start();
-    streamSessions_.emplace( settings.filePath, session );
 
     if ( !loadFile( settings.filePath, true ) ) {
         session->stop();
         streamSessions_.erase( settings.filePath );
         QMessageBox::warning( this, tr( "Open COM Port" ),
                               tr( "Failed to open capture file in klogg." ) );
+        return;
     }
+
+    mainTabWidget_.setStreamSessionForPath( settings.filePath, session.get() );
 }
 
 void MainWindow::openRemoteFile( const QUrl& url )
@@ -1523,6 +1526,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
         it->second->stop();
         streamSessions_.erase( it );
     }
+    mainTabWidget_.clearStreamSessionForPath( fileName );
 
     widget->stopLoading();
     mainTabWidget_.removeCrawler( index );

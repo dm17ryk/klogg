@@ -12,7 +12,10 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSerialPortInfo>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
+
+#include "streamsourceregistry.h"
 
 OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     : QDialog( parent )
@@ -142,8 +145,10 @@ void OpenComPortDialog::validateInputs()
         validPath = dir.exists();
     }
 
+    const auto currentIndex = portCombo_->currentIndex();
     const bool hasPort = !portCombo_->currentData().toString().isEmpty();
-    openButton_->setEnabled( validPath && hasPort );
+    const bool portEnabled = isPortItemEnabled( currentIndex );
+    openButton_->setEnabled( validPath && hasPort && portEnabled );
 }
 
 void OpenComPortDialog::markFilePathEdited()
@@ -153,17 +158,44 @@ void OpenComPortDialog::markFilePathEdited()
 
 void OpenComPortDialog::populatePorts()
 {
+    portCombo_->clear();
+    portCombo_->setEnabled( true );
+
     const auto ports = QSerialPortInfo::availablePorts();
-    for ( const auto& port : ports ) {
-        const auto label = port.description().isEmpty()
-                               ? port.portName()
-                               : QString( "%1 (%2)" ).arg( port.portName(), port.description() );
-        portCombo_->addItem( label, port.portName() );
+    if ( ports.isEmpty() ) {
+        portCombo_->addItem( tr( "none" ), QString() );
+        portCombo_->setEnabled( false );
+        return;
     }
 
-    if ( portCombo_->count() == 0 ) {
-        portCombo_->addItem( tr( "No ports detected" ), QString() );
-        portCombo_->setEnabled( false );
+    auto* model = qobject_cast<QStandardItemModel*>( portCombo_->model() );
+    int firstEnabled = -1;
+
+    for ( const auto& port : ports ) {
+        const auto portName = port.portName();
+        const bool inUse = StreamSourceRegistry::get().isSerialPortActive( portName );
+        auto label = port.description().isEmpty()
+                         ? portName
+                         : QString( "%1 (%2)" ).arg( portName, port.description() );
+        if ( inUse ) {
+            label = QString( "%1 (%2)" ).arg( label, tr( "in use" ) );
+        }
+        portCombo_->addItem( label, portName );
+
+        const auto index = portCombo_->count() - 1;
+        if ( model ) {
+            if ( auto* item = model->item( index ) ) {
+                item->setEnabled( !inUse );
+            }
+        }
+
+        if ( !inUse && firstEnabled < 0 ) {
+            firstEnabled = index;
+        }
+    }
+
+    if ( firstEnabled >= 0 ) {
+        portCombo_->setCurrentIndex( firstEnabled );
     }
 }
 
@@ -218,8 +250,28 @@ void OpenComPortDialog::populateFlowControl()
 
 QString OpenComPortDialog::suggestedFileName() const
 {
-    const auto portName = portCombo_->currentData().toString().toLower();
+    const auto portNameValue = portCombo_->currentData().toString();
+    const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
     const auto baudRate = baudCombo_->currentData().toString();
     const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
     return QString( "c:\\logs\\%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+}
+
+bool OpenComPortDialog::isPortItemEnabled( int index ) const
+{
+    if ( !portCombo_->isEnabled() ) {
+        return false;
+    }
+
+    if ( index < 0 ) {
+        return false;
+    }
+
+    auto* model = qobject_cast<QStandardItemModel*>( portCombo_->model() );
+    if ( !model ) {
+        return true;
+    }
+
+    auto* item = model->item( index );
+    return item ? item->isEnabled() : true;
 }

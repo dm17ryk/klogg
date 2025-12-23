@@ -14,14 +14,23 @@ class StreamSession : public QObject {
 
     void start();
     void stop();
+    bool isConnectionOpen() const;
+    QString sourceDisplayName() const;
     QString filePath() const;
+
+  public Q_SLOTS:
+    void closeConnection();
 
   Q_SIGNALS:
     void errorOccurred( const QString& message );
+    void connectionClosed();
 
   private:
+    void setConnectionClosed();
+
     SerialCaptureSettings settings_;
     QThread thread_;
     SerialCaptureWorker* worker_ = nullptr;
     bool started_ = false;
+    bool connectionOpen_ = false;
 };

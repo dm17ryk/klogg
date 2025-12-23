@@ -1,0 +1,131 @@
+{
+  "meta": {
+    "task_id": "klogg-com-port-updates-v2",
+    "title": "COM port UX improvements + tab context menu Close Connection",
+    "branch": "features",
+    "language": "C++",
+    "framework": "Qt6",
+    "notes": [
+      "Klogg supports tabbed interface; multiple log files and multiple streaming sessions can exist simultaneously.",
+      "Follow existing Klogg formatting style (spaces inside parentheses, etc.)."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir_env": "KLOGG_WORKSPACE",
+    "workspace_dir": "C:\\Essence_SC\\lsrc\\klogg",
+    "build_root_env": "KLOGG_BUILD_ROOT",
+    "build_root_dir": "build_root",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "implementation_plan": {
+    "A_disable_in_use_ports_in_dialog": {
+      "goal": "If a COM port is already opened by Klogg in another tab/session, it must appear disabled (grayed) in the port combobox.",
+      "steps": [
+        "Locate the existing COM port dialog class (e.g., OpenComPortDialog) and where portCombo is populated using QSerialPortInfo::availablePorts().",
+        "Introduce a small registry/manager that tracks currently opened serial ports by name (e.g., \"COM3\").",
+        "When building the port combo list, for each port name, check registry->isPortInUse(name). If true: disable that item in QComboBox.",
+        "Optionally append a suffix in the displayed text like \"COM3 (in use)\"; do not change the actual stored port identifier in itemData."
+      ],
+      "implementation_details": [
+        "Preferred UI technique: use QStandardItemModel behind QComboBox; disable per-item with item->setEnabled(false) or item->setFlags(item->flags() & ~Qt::ItemIsEnabled).",
+        "Keep portCombo enabled (unless there are zero ports). Disabled items remain selectable only by programmatic index changes; guard Open button state anyway.",
+        "On dialog init, select the first enabled port item automatically; if none are enabled, keep selection at index 0 and disable Open."
+      ],
+      "acceptance_criteria": [
+        "Open COM3 -> open dialog again -> COM3 shows disabled in combobox.",
+        "If COM3 is disabled and currently selected, the Open button is disabled.",
+        "If another port is enabled, user can select it and Open becomes enabled."
+      ]
+    },
+    "B_handle_no_ports_available": {
+      "goal": "If no COM ports are available, show a single item 'none' and disable Open button.",
+      "steps": [
+        "During populatePorts(), if QSerialPortInfo::availablePorts() is empty:",
+        "Clear combobox items, addItem(\"none\"), disable the combobox (optional), and disable Open/OK button.",
+        "Make sure the dialog still allows Cancel/Close."
+      ],
+      "acceptance_criteria": [
+        "On machine with no serial ports, dialog shows only 'none' and Open is disabled."
+      ]
+    },
+    "C_add_tab_context_menu_close_connection": {
+      "goal": "On right-click tab context menu, if the tab corresponds to a streaming source session (COM now, socket later), show 'Close Connection'. If connection already closed, action is disabled.",
+      "steps": [
+        "Locate existing tab right-click context menu code (likely around TabbedCrawlerWidget / tab bar customContextMenuRequested handler / similar).",
+        "Identify how tabs map to 'documents'/'sessions'. Add a generic attachment point for an optional StreamSession object per tab (COM session now).",
+        "Extend the tab context menu builder: if current tab has a StreamSession, add QAction(\"Close Connection\").",
+        "Enable action only if StreamSession->isConnectionOpen() (or !StreamSession->isStopped()). If closed/stopped already, setEnabled(false).",
+        "On triggered: call StreamSession->closeConnection() (must stop worker thread, close QSerialPort, close output file handle). Do NOT close the tab itself; the file remains open for review.",
+        "After closing connection, ensure port registry is updated so that port becomes available in the COM open dialog again."
+      ],
+      "implementation_details": [
+        "Prefer a generic base class/iface for streaming sessions so we can reuse for TCP/UDP later: e.g., IStreamSession / StreamSession QObject with virtual closeConnection(), isConnectionOpen(), sourceDisplayName().",
+        "If you already created a StreamSession for COM capture, extend it with isConnectionOpen() state and a closeConnection() slot that is safe to call multiple times.",
+        "If session stops asynchronously (thread), emit a signal connectionClosed() to update UI state and disable menu item next time."
+      ],
+      "acceptance_criteria": [
+        "Right-click tab opened from COM capture -> menu contains 'Close Connection'.",
+        "After clicking 'Close Connection', capture stops, no new bytes appended to file, and the action becomes disabled on subsequent menu opens.",
+        "After closing connection, opening COM dialog again shows that COM port is no longer disabled."
+      ]
+    }
+  },
+  "code_change_guidance": {
+    "1_find_existing_classes": [
+      "Search for the COM port dialog class name you implemented (e.g., OpenComPortDialog).",
+      "Search for capture/session classes (e.g., SerialCaptureWorker, StreamSession, SerialStreamSession).",
+      "Search for tab context menu handler (keywords: customContextMenuRequested, tabContextMenu, QTabBar::contextMenuEvent)."
+    ],
+    "2_add_or_update_registry": {
+      "preferred_design": {
+        "name": "StreamSourceRegistry",
+        "location_hint": "src/ui/include + src/ui/src (or wherever you placed COM capture code)",
+        "responsibilities": [
+          "Track active serial ports: QSet<QString> activeSerialPorts",
+          "API: bool isSerialPortActive(const QString& port) const",
+          "API: void registerSerialPort(const QString& port)",
+          "API: void unregisterSerialPort(const QString& port)"
+        ],
+        "threading": [
+          "Registry access should be on UI thread; if worker thread needs to signal closure, use Qt queued signal to UI to unregister.",
+          "If unsure, protect with QMutex."
+        ]
+      }
+    },
+    "3_dialog_button_state_rules": [
+      "Open/OK enabled only if: file path valid AND selected port item enabled AND selected port is not 'none'.",
+      "When the user changes selection, recompute Open enabled state."
+    ]
+  },
+  "validation_plan": {
+    "build": [
+      "cd %KLOGG_WORKSPACE%\\%KLOGG_BUILD_ROOT%",
+      "cmake --build . --config RelWithDebInfo"
+    ],
+    "manual_tests": [
+      "Case 1: No COM ports available -> dialog shows 'none' and Open disabled.",
+      "Case 2: COM3 available -> open COM3 capture -> open dialog again -> COM3 disabled.",
+      "Case 3: If COM3 disabled and COM4 enabled -> selecting COM4 enables Open.",
+      "Case 4: Right-click COM capture tab -> Close Connection present & enabled -> click -> capture stops -> menu shows Close Connection disabled next time.",
+      "Case 5: After Close Connection, open COM dialog -> COM3 becomes enabled again."
+    ]
+  },
+  "deliverables": [
+    "Updated COM port dialog population logic (disable in-use ports, handle none).",
+    "StreamSourceRegistry (or equivalent) tracking open serial ports.",
+    "Tab context menu updated with Close Connection for stream-backed tabs.",
+    "StreamSession updated with isConnectionOpen()/closeConnection() and registry unregister on close."
+  ]
+}
