@@ -8,27 +8,7 @@ StreamSession::StreamSession( SerialCaptureSettings settings, QObject* parent )
     : QObject( parent )
     , settings_( std::move( settings ) )
 {
-    worker_ = new SerialCaptureWorker( settings_ );
-    worker_->moveToThread( &thread_ );
-
-    connect( &thread_, &QThread::started, worker_, &SerialCaptureWorker::start );
-    connect( worker_, &SerialCaptureWorker::finished, &thread_, &QThread::quit );
-    connect( worker_, &SerialCaptureWorker::finished, this, [ this ] {
-        setConnectionClosed();
-        StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );
-    } );
-    connect( &thread_, &QThread::finished, this, [ this ]() {
-        started_ = false;
-        if ( worker_ ) {
-            delete worker_;
-            worker_ = nullptr;
-        }
-    } );
-    connect( worker_, &SerialCaptureWorker::errorOccurred, this, [ this ]( const QString& message ) {
-        setConnectionClosed();
-        StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );
-        Q_EMIT errorOccurred( message );
-    } );
+    connect( &thread_, &QThread::finished, this, [ this ]() { started_ = false; } );
 }
 
 StreamSession::~StreamSession()
@@ -41,6 +21,8 @@ void StreamSession::start()
     if ( started_ ) {
         return;
     }
+
+    setupWorker();
 
     started_ = true;
     connectionOpen_ = true;
@@ -58,11 +40,6 @@ void StreamSession::stop()
         QMetaObject::invokeMethod( worker_, "stop", Qt::QueuedConnection );
         thread_.quit();
         thread_.wait( 2000 );
-    }
-
-    if ( !thread_.isRunning() && worker_ ) {
-        delete worker_;
-        worker_ = nullptr;
     }
 
     setConnectionClosed();
@@ -88,6 +65,30 @@ QString StreamSession::sourceDisplayName() const
 QString StreamSession::filePath() const
 {
     return settings_.filePath;
+}
+
+void StreamSession::setupWorker()
+{
+    if ( worker_ ) {
+        return;
+    }
+
+    worker_ = new SerialCaptureWorker( settings_ );
+    worker_->moveToThread( &thread_ );
+
+    connect( &thread_, &QThread::started, worker_, &SerialCaptureWorker::start );
+    connect( worker_, &SerialCaptureWorker::finished, &thread_, &QThread::quit );
+    connect( worker_, &SerialCaptureWorker::finished, worker_, &QObject::deleteLater );
+    connect( worker_, &QObject::destroyed, this, [ this ] { worker_ = nullptr; } );
+    connect( worker_, &SerialCaptureWorker::finished, this, [ this ] {
+        setConnectionClosed();
+        StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );
+    } );
+    connect( worker_, &SerialCaptureWorker::errorOccurred, this, [ this ]( const QString& message ) {
+        setConnectionClosed();
+        StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );
+        Q_EMIT errorOccurred( message );
+    } );
 }
 
 void StreamSession::setConnectionClosed()

@@ -26,6 +26,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPointer>
 #include <qobjectdefs.h>
 #include <qpoint.h>
 
@@ -157,17 +158,15 @@ void TabbedCrawlerWidget::removeCrawler( int index )
         myTabBar_.hide();
 }
 
-void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName, StreamSession* session )
+void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
+                                                   const std::shared_ptr<StreamSession>& session )
 {
     if ( fileName.isEmpty() ) {
         return;
     }
 
     if ( session ) {
-        streamSessions_[ fileName ] = QPointer<StreamSession>( session );
-        connect( session, &QObject::destroyed, this, [ this, fileName ] {
-            clearStreamSessionForPath( fileName );
-        } );
+        streamSessions_[ fileName ] = session;
     }
     else {
         clearStreamSessionForPath( fileName );
@@ -215,7 +214,17 @@ StreamSession* TabbedCrawlerWidget::streamSessionForTab( int tab ) const
         return nullptr;
     }
 
-    return it->second.data();
+    return it->second.get();
+}
+
+StreamSession* TabbedCrawlerWidget::streamSessionForPath( const QString& fileName ) const
+{
+    const auto it = streamSessions_.find( fileName );
+    if ( it == streamSessions_.end() ) {
+        return nullptr;
+    }
+
+    return it->second.get();
 }
 
 void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
@@ -245,9 +254,12 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
     if ( auto session = streamSessionForTab( tab ) ) {
         menu.addSeparator();
         auto closeConnection = menu.addAction( tr( "Close Connection" ) );
-        closeConnection->setEnabled( session->isConnectionOpen() );
-        connect( closeConnection, &QAction::triggered, this, [ session ] {
-            session->closeConnection();
+        QPointer<StreamSession> safeSession = session;
+        closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
+        connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
+            if ( safeSession ) {
+                safeSession->closeConnection();
+            }
         } );
     }
     menu.addSeparator();

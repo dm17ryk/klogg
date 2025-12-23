@@ -26,6 +26,7 @@ class StreamSession : public QObject {
     void connectionClosed();
 
   private:
+    void setupWorker();
     void setConnectionClosed();
 
     SerialCaptureSettings settings_;

@@ -20,10 +20,10 @@
 #ifndef TABBEDCRAWLERWIDGET_H
 #define TABBEDCRAWLERWIDGET_H
 
-#include <QPointer>
 #include <QTabBar>
 #include <QTabWidget>
 #include <map>
+#include <memory>
 #include <qobjectdefs.h>
 #include <qtabbar.h>
 #include <qwidget.h>
@@ -74,8 +74,10 @@ class TabbedCrawlerWidget : public QTabWidget {
     }
 
     void removeCrawler( int index );
-    void setStreamSessionForPath( const QString& fileName, StreamSession* session );
+    void setStreamSessionForPath( const QString& fileName,
+                                  const std::shared_ptr<StreamSession>& session );
     void clearStreamSessionForPath( const QString& fileName );
+    StreamSession* streamSessionForPath( const QString& fileName ) const;
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;
@@ -102,7 +104,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     QIcon newfiltered_icon_;
 
     CrawlerTabBar myTabBar_;
-    std::map<QString, QPointer<StreamSession>> streamSessions_;
+    std::map<QString, std::shared_ptr<StreamSession>> streamSessions_;
 };
 
 #endif

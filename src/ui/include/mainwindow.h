@@ -67,7 +67,6 @@ class QActionGroup;
 class Session;
 class RecentFiles;
 class HighlightersMenu;
-class StreamSession;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
@@ -293,7 +292,6 @@ class MainWindow : public QMainWindow {
     QActionGroup* highlightersActionGroup = nullptr;
 
     std::map<QString, QShortcut*> shortcuts_;
-    std::map<QString, std::shared_ptr<StreamSession>> streamSessions_;
 
     QSystemTrayIcon* trayIcon_;
 

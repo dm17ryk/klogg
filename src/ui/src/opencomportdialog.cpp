@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSerialPortInfo>
+#include <QStandardPaths>
 #include <QStandardItemModel>
 #include <QVBoxLayout>
 
@@ -254,7 +255,18 @@ QString OpenComPortDialog::suggestedFileName() const
     const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
     const auto baudRate = baudCombo_->currentData().toString();
     const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
-    return QString( "c:\\logs\\%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+
+    const auto basePath = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
+    const auto logsDirPath = basePath.isEmpty()
+                                 ? QDir::home().filePath( "logs" )
+                                 : QDir( basePath ).filePath( "logs" );
+    QDir logsDir( logsDirPath );
+    if ( !logsDir.exists() ) {
+        logsDir.mkpath( "." );
+    }
+
+    const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+    return logsDir.filePath( fileName );
 }
 
 bool OpenComPortDialog::isPortItemEnabled( int index ) const
