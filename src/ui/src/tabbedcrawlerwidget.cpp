@@ -26,6 +26,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPointer>
 #include <qobjectdefs.h>
 #include <qpoint.h>
 
@@ -39,6 +40,7 @@
 #include "openfilehelper.h"
 #include "styles.h"
 #include "tabnamemapping.h"
+#include "streamsession.h"
 
 namespace {
 constexpr QLatin1String PathKey = QLatin1String( "path", 4 );
@@ -156,6 +158,30 @@ void TabbedCrawlerWidget::removeCrawler( int index )
         myTabBar_.hide();
 }
 
+void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
+                                                   const std::shared_ptr<StreamSession>& session )
+{
+    if ( fileName.isEmpty() ) {
+        return;
+    }
+
+    if ( session ) {
+        streamSessions_[ fileName ] = session;
+    }
+    else {
+        clearStreamSessionForPath( fileName );
+    }
+}
+
+void TabbedCrawlerWidget::clearStreamSessionForPath( const QString& fileName )
+{
+    if ( fileName.isEmpty() ) {
+        return;
+    }
+
+    streamSessions_.erase( fileName );
+}
+
 void TabbedCrawlerWidget::mouseReleaseEvent( QMouseEvent* event )
 {
     LOG_DEBUG << "TabbedCrawlerWidget::mouseReleaseEvent";
@@ -176,6 +202,31 @@ QString TabbedCrawlerWidget::tabPathAt( int index ) const
     return myTabBar_.tabData( index ).toMap()[ PathKey ].toString();
 }
 
+StreamSession* TabbedCrawlerWidget::streamSessionForTab( int tab ) const
+{
+    if ( tab < 0 || tab >= count() ) {
+        return nullptr;
+    }
+
+    const auto fileName = tabPathAt( tab );
+    const auto it = streamSessions_.find( fileName );
+    if ( it == streamSessions_.end() ) {
+        return nullptr;
+    }
+
+    return it->second.get();
+}
+
+StreamSession* TabbedCrawlerWidget::streamSessionForPath( const QString& fileName ) const
+{
+    const auto it = streamSessions_.find( fileName );
+    if ( it == streamSessions_.end() ) {
+        return nullptr;
+    }
+
+    return it->second.get();
+}
+
 void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
 {
     if ( mouseEvent->button() == Qt::RightButton ) {
@@ -189,7 +240,7 @@ void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
     mouseEvent->ignore();
 }
 
-void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
+void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )        
 {
     QMenu menu( this );
     auto closeThis = menu.addAction( tr( "Close this" ) );
@@ -200,6 +251,17 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
     menu.addSeparator();
     auto copyFullPath = menu.addAction( tr( "Copy full path" ) );
     auto openContainingFolder = menu.addAction( tr( "Open containing folder" ) );
+    if ( auto session = streamSessionForTab( tab ) ) {
+        menu.addSeparator();
+        auto closeConnection = menu.addAction( tr( "Close Connection" ) );
+        QPointer<StreamSession> safeSession = session;
+        closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
+        connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
+            if ( safeSession ) {
+                safeSession->closeConnection();
+            }
+        } );
+    }
     menu.addSeparator();
     auto renameTab = menu.addAction( tr( "Rename tab" ) );
     auto resetTabName = menu.addAction( tr( "Reset tab name" ) );

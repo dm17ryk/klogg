@@ -46,6 +46,7 @@
 
 #include <QTranslator>
 #include <array>
+#include <map>
 #include <memory>
 #include <mutex>
 
@@ -107,6 +108,7 @@ class MainWindow : public QMainWindow {
 
   private Q_SLOTS:
     void open();
+    void openComPort();
     void openFileFromRecent( QAction* action );
     void openFileFromFavorites( QAction* action );
     void switchToOpenedFile( QAction* action );
@@ -247,6 +249,7 @@ class MainWindow : public QMainWindow {
 
     QAction* newWindowAction;
     QAction* openAction;
+    QAction* openComPortAction;
     QAction* closeAction;
     QAction* closeAllAction;
     QAction* exitAction;

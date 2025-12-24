@@ -18,6 +18,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindowtext.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/menu.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/opencomportdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/overview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/overviewwidget.h
@@ -32,6 +33,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/session.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/sessioninfo.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/signalmux.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/serialcaptureworker.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsourceregistry.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tabbedcrawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewinterface.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewtools.h
@@ -68,6 +72,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowtext.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/menu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/opencomportdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/optionsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/overview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/overviewwidget.cpp
@@ -81,6 +86,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/session.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/sessioninfo.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/signalmux.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tabbedcrawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/viewtools.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scratchpad.cpp
@@ -116,6 +124,7 @@ target_link_libraries(
          klogg_versioncheck
          klogg_karchive
          Qt${QT_VERSION_MAJOR}::Widgets
+         Qt${QT_VERSION_MAJOR}::SerialPort
          Qt${QT_VERSION_MAJOR}::Xml
 )
 

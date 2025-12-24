@@ -1,0 +1,129 @@
+{
+  "task": "Implement Open COM Port stream source",
+  "repo_root": "C:\\Essence_SC\\lsrc\\klogg",
+  "build_root": "build_root",
+  "shell": "x64 Native Tools Command Prompt for VS 2022",
+  "env": {
+    "QTDIR": "C:\\qt6",
+    "CMAKE_PREFIX_PATH": "C:\\qt6",
+    "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+    "KLOGG_BUILD_ROOT": "build_root",
+    "platform": "x64",
+    "KLOGG_QT": "Qt6",
+    "KLOGG_QT_DIR": "C:\\qt6",
+    "PATH_prepend": ["C:\\qt6\\bin"]
+  },
+  "configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+  "build_command": "cmake --build . --config RelWithDebInfo",
+  "preferences": {
+    "minimize_diff": true,
+    "keep_existing_architecture": true,
+    "no_refactor_unrelated": true,
+    "always_use_build_root": true
+  },
+  "implementation_requirements": [
+    "Add File menu item: 'Open COM port…'",
+    "Create a Qt dialog to configure serial parameters and output file path (required)",
+    "When user clicks Open: create log file (append) and start background reader that writes received bytes to the file",
+    "Immediately open the same file in Klogg as a new tab and enable follow mode",
+    "Dialog defaults: Baud=115200, DataBits=8, Parity=None, StopBits=1, Flow=None, Port=first available",
+    "TCP/UDP are NOT part of this step"
+  ],
+  "implementation_plan": {
+    "A_add_menu_item": {
+      "goal": "Add 'Open COM port…' to File menu",
+      "steps": [
+        "Locate where the File menu is created (usually MainWindow / MainWindow::createMenus() / similar).",
+        "Add QAction with text: 'Open COM port...'",
+        "Connect QAction to slot: MainWindow::openComPort()."
+      ]
+    },
+    "B_create_dialog": {
+      "goal": "Create OpenComPortDialog (QDialog) matching screenshots",
+      "class_name": "OpenComPortDialog",
+      "controls": [
+        "QComboBox portCombo (enumerate QSerialPortInfo::availablePorts())",
+        "QComboBox baudCombo (values 300..921600; default 115200)",
+        "QComboBox dataBitsCombo (5,6,7,8; default 8)",
+        "QComboBox parityCombo (None, Even, Odd, Mark, Space)",
+        "QComboBox stopBitsCombo (1, 1.5 if supported, 2; default 1)",
+        "QComboBox flowCombo (None, RTS/CTS, XON/XOFF)",
+        "QComboBox fileCombo OR QLineEdit fileEdit + Browse... button",
+        "Buttons: Open, Cancel"
+      ],
+      "behavior": [
+        "When port or baud changes, auto-suggest filename: c:\\logs\\{port}_{baud}_{yyyy-MM-dd_HH-mm-ss}.log",
+        "Validate file path: Open button disabled if empty / invalid directory (or show validation error on click).",
+        "Qt SerialPort Terminal example uses these parameter sets (match UI options)."
+      ]
+    },
+    "C_stream_reader_thread": {
+      "goal": "Background reader that writes received bytes to file",
+      "option": "Worker QObject moved to QThread",
+      "class_name": "SerialCaptureWorker",
+      "design": [
+        "SerialCaptureWorker : public QObject",
+        "Owns QSerialPort and QFile",
+        "Has slot start() that opens port + file",
+        "Connect QSerialPort::readyRead -> onReadyRead",
+        "onReadyRead reads port->readAll(), appends to file, flush occasionally (or after each chunk initially).",
+        "IMPORTANT: do not do heavy I/O on the UI thread."
+      ]
+    },
+    "D_open_log_file_tab": {
+      "goal": "Open the capture file as a normal Klogg tab and tail it",
+      "steps": [
+        "After starting capture, call the existing code path used by File -> Open (e.g., MainWindow::openFile(path)).",
+        "Ensure follow/tail is enabled for that tab; set it right after opening if needed."
+      ]
+    },
+    "E_lifecycle": {
+      "goal": "Stop capture cleanly when user closes that tab",
+      "steps": [
+        "When the user closes the tab representing this stream: stop capture worker thread, close serial port, close file handle.",
+        "Create a StreamSession object attached to the tab/document object.",
+        "Hook tab close signal -> StreamSession::stop().",
+        "If no formal document object exists, store std::shared_ptr<StreamSession> in a map keyed by tab id or by the file path."
+      ]
+    }
+  },
+  "dialog_spec": {
+    "dialog_title": "Open COM Port",
+    "layout": {
+      "type": "two_column_grid",
+      "details": [
+        "Labels left, combos right",
+        "File path row at bottom spans: label + editor + Browse button (like screenshot)"
+      ]
+    },
+    "baud_list": {
+      "values": [
+        300, 600, 1200, 1800, 2400, 4800, 7200, 9600,
+        14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600
+      ],
+      "default": 115200
+    },
+    "file_path_row": {
+      "editable_default_example": "c:\\logs\\com1_115200_2025-12-22_15-26-33.log",
+      "browse_behavior": "Browse opens a Save File dialog"
+    }
+  },
+  "notes": [
+    "Don’t try to feed Klogg directly from memory yet. The file proxy approach preserves normal search/highlight pipeline.",
+    "Don’t over-normalize newlines here — just write bytes as-is in step 1. Newline normalization can be added later once capture is stable."
+  ],
+  "acceptance_criteria": [
+    "Menu item exists in File menu and opens the dialog",
+    "If no file path is provided, Open is disabled or shows validation error",
+    "On Open: COM port opens successfully; incoming data is appended to chosen file continuously",
+    "Klogg opens the file in a new tab and updates live while data arrives",
+    "Closing the tab or closing the stream stops the serial reader and closes the port cleanly",
+    "Build succeeds with RelWithDebInfo using the provided commands"
+  ],
+  "suggested_code_search_hints": [
+    "Search for main window menu creation (QMenuBar / File menu)",
+    "Search for existing 'Open file' action to reuse tab-opening logic",
+    "Search for scratchpad window creation patterns (non-modal tool window style)",
+    "Search for any existing QSerialPort usage and follow established patterns"
+  ]
+}

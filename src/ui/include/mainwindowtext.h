@@ -31,6 +31,8 @@ extern const char* newWindowText;
 extern const char* newWindowStatusTip;
 extern const char* openText;
 extern const char* openStatusTip;
+extern const char* openComPortText;
+extern const char* openComPortStatusTip;
 extern const char* recentFilesCleanupText;
 extern const char* closeText;
 extern const char* closeStatusTip;

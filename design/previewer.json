@@ -1,0 +1,76 @@
+[
+  {
+    "name": "ExampleFormat",
+    "regex": "^MSG\\[(\\d+)\\]: ([0-9A-F]{8}), Status=(\\w+)$",
+    "offset": 9, // default offset 0
+    "type": "hexString", // meaning need to convert from hex string can be base64 to string before parsing default type string, type is alway a type of dfata we get in message buffer it can be hexString, base64, string, binary
+    "format": "fields",
+    "fields": [
+      { "name": "MessageID", "width": 2, "type": "string", "endianness": "little", "format": "dig" }, // with in characters, byte is 2 characters, int 8 characters
+      { "name": "Code", "width": 4, "type": "string", "endianness": "big", "format": "hex" }, // with 4 is short int, can also be width 1,2,3,4 and so on
+      { "name": "Status", "width": 2, "offset": 1, "type": "string" },
+      { "name": "size", "width": 4, "type": "string", "endianness": "little", "format": "bin" }, // format is how we need to preview field dig,hex,bin is format of number
+      {
+        "name": "value",
+        "width": "{size}", // variable taken from previously parced size field, nested variables is possible
+        "type": "base64", // need to decode from base64 before parsing
+        "format": "fields",
+        "fields": [
+            { "name": "subValue1", "width": 2, "type": "string", "endianness": "little", "format": "dec" },
+            { "name": "subValue2", "width": 2, "type": "string", "endianness": "little", "format": "dec" },
+            { "name": "url", "type": "string" } // if no width it is till the end
+        ]
+      },
+      { "name": "checksum", "width": 4, "offset": 1, "type": "string", "endianness": "big", "format": "hex" } // offset is from previous field
+    ]
+  },
+  {
+    "name": "FlagsEnumExample",
+    "regex": "^Flag (\\d): Value=(\\d+)$",
+    "offset": 10,
+    "format": "fields",
+    "fields": [
+      { "name": "FlagIndex", "type": "int" },
+      {
+        "name": "ValueType",
+        "type": "string",
+        "format": "enum",
+        "enumMap": {
+          "0": "OFF",
+          "1": "ON",
+          "2": "UNKNOWN"
+        }
+      },
+      {
+        "name": "Permissions",
+        "format": "flags",
+        "flagMap": {
+            "0x1": "READ",
+            "0x2": "WRITE",
+            "0x4": "EXECUTE",
+            "0x8": "DELETE"
+        }
+      },
+      {
+        "name": "Description",
+        "width": 8,
+        "format": "bitfield",
+        "bitfieldMap": [
+            { "name": "isActive", "width": 1, "type": "string" },
+            { "name": "isVerified", "width": 1, "type": "string" },
+            { "name": "isAdmin", "width": 1, "type": "string" },
+            {
+                "name": "status",
+                "width": 4,
+                "format": "enum",
+                "enumMap": {
+                    "0": "OFF",
+                    "1": "ON",
+                    "2": "UNKNOWN"
+                }
+            }
+        ]
+      }
+    ]
+  }
+]
