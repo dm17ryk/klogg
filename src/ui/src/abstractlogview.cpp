@@ -90,6 +90,7 @@
 #include "highlightersmenu.h"
 #include "log.h"
 #include "overview.h"
+#include "previewmanager.h"
 #include "quickfind.h"
 #include "quickfindpattern.h"
 #include "regularexpressionpattern.h"
@@ -2098,6 +2099,9 @@ void AbstractLogView::createMenu()
     popupMenu_->addAction( copyWithLineNumbersAction_ );
     popupMenu_->addAction( sendToScratchpadAction_ );
     popupMenu_->addAction( replaceInScratchpadAction_ );
+    sendToPreviewMenu_ = popupMenu_->addMenu( tr( "Send to Preview" ) );
+    connect( sendToPreviewMenu_, &QMenu::aboutToShow, this,
+             &AbstractLogView::updatePreviewMenu );
     popupMenu_->addSeparator();
     popupMenu_->addAction( findNextAction_ );
     popupMenu_->addAction( findPreviousAction_ );
@@ -2116,6 +2120,28 @@ void AbstractLogView::createMenu()
     popupMenu_->addAction( saveDefaultSplitterSizesAction_ );
     popupMenu_->addAction( saveToFileAction_ );
     popupMenu_->addAction( saveSelectedToFileAction_ );
+}
+
+void AbstractLogView::updatePreviewMenu()
+{
+    if ( !sendToPreviewMenu_ ) {
+        return;
+    }
+
+    sendToPreviewMenu_->clear();
+
+    auto* autoAction = sendToPreviewMenu_->addAction( tr( "Auto" ) );
+    connect( autoAction, &QAction::triggered, this,
+             [ this ]( auto ) { Q_EMIT sendSelectionToPreview( QString() ); } );
+
+    const auto previews = PreviewManager::instance().enabled();
+    for ( const auto& preview : previews ) {
+        auto* action = sendToPreviewMenu_->addAction( preview.name );
+        connect( action, &QAction::triggered, this,
+                 [ this, name = preview.name ]( auto ) {
+                     Q_EMIT sendSelectionToPreview( name );
+                 } );
+    }
 }
 
 void AbstractLogView::considerMouseHovering( int xPos, int yPos )

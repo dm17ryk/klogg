@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "klogg-previews.schema.json",
+  "title": "Klogg Structured Previewer Config",
+  "type": "object",
+  "required": ["previews"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "previews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PreviewDefinition"
+      }
+    }
+  },
+  "$defs": {
+    "ExprOrInt": {
+      "description": "Integer literal or an expression string (e.g. \"{size}\", \"{header.len}\").",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "CaptureRef": {
+      "description": "Regex capture reference: either numeric index (1-based) or named capture.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "BufferType": {
+      "type": "string",
+      "enum": ["string", "hexString", "base64", "bin", "bytes"]
+    },
+    "Endianness": {
+      "type": "string",
+      "enum": ["little", "big"]
+    },
+    "FieldFormat": {
+      "type": "string",
+      "enum": [
+        "string",
+        "fields",
+        "dig",
+        "dec",
+        "hex",
+        "bin",
+        "enum",
+        "flags",
+        "bitfield"
+      ]
+    },
+    "PreviewDefinition": {
+      "type": "object",
+      "required": ["name", "regex", "format", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "bufferCapture": {
+          "$ref": "#/$defs/CaptureRef"
+        },
+        "offset": {
+          "$ref": "#/$defs/ExprOrInt"
+        },
+        "type": {
+          "$ref": "#/$defs/BufferType",
+          "default": "string"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["fields"],
+          "default": "fields"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldSpec"
+          }
+        }
+      }
+    },
+    "EnumMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "FlagMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "FieldSource": {
+      "type": "string",
+      "enum": ["buffer", "capture"]
+    },
+    "FieldSpec": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/FieldSource",
+          "default": "buffer"
+        },
+        "capture": {
+          "$ref": "#/$defs/CaptureRef"
+        },
+        "offset": {
+          "$ref": "#/$defs/ExprOrInt"
+        },
+        "width": {
+          "$ref": "#/$defs/ExprOrInt"
+        },
+        "type": {
+          "description": "How the extracted slice is interpreted before applying format.",
+          "$ref": "#/$defs/BufferType",
+          "default": "bytes"
+        },
+        "endianness": {
+          "$ref": "#/$defs/Endianness"
+        },
+        "format": {
+          "$ref": "#/$defs/FieldFormat"
+        },
+        "enumMap": {
+          "$ref": "#/$defs/EnumMap"
+        },
+        "flagMap": {
+          "$ref": "#/$defs/FlagMap"
+        },
+        "fields": {
+          "description": "Nested fields when format == 'fields'.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldSpec"
+          }
+        },
+        "bitfieldMap": {
+          "description": "Subfields (bit-level) when format == 'bitfield'. Widths are bits.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldSpec"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source"],
+            "properties": {
+              "source": {
+                "const": "capture"
+              }
+            }
+          },
+          "then": {
+            "required": ["capture"]
+          }
+        },
+        {
+          "if": {
+            "required": ["format"],
+            "properties": {
+              "format": {
+                "const": "enum"
+              }
+            }
+          },
+          "then": {
+            "required": ["enumMap"]
+          }
+        },
+        {
+          "if": {
+            "required": ["format"],
+            "properties": {
+              "format": {
+                "const": "flags"
+              }
+            }
+          },
+          "then": {
+            "required": ["flagMap"]
+          }
+        },
+        {
+          "if": {
+            "required": ["format"],
+            "properties": {
+              "format": {
+                "const": "fields"
+              }
+            }
+          },
+          "then": {
+            "required": ["fields"]
+          }
+        },
+        {
+          "if": {
+            "required": ["format"],
+            "properties": {
+              "format": {
+                "const": "bitfield"
+              }
+            }
+          },
+          "then": {
+            "required": ["width", "bitfieldMap"]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -171,6 +171,7 @@ class CrawlerWidget : public QSplitter,
 
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
+    void sendToPreview( QString rawLine, QString previewNameOrAuto );
 
     // "auto-refresh" check has been changed
     void searchRefreshChanged( bool isRefreshing );

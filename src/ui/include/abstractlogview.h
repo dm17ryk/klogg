@@ -235,6 +235,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     void saveDefaultSplitterSizes();
     void sendSelectionToScratchpad();
     void replaceScratchpadWithSelection();
+    void sendSelectionToPreview( const QString& previewNameOrAuto );
     void changeFontSize( bool increase );
 
     void addColorLabel( size_t label );
@@ -392,6 +393,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     QAction* markAction_;
     QAction* sendToScratchpadAction_;
     QAction* replaceInScratchpadAction_;
+    QMenu* sendToPreviewMenu_ = nullptr;
     QAction* saveToFileAction_;
     QAction* saveSelectedToFileAction_;
     QAction* findNextAction_;
@@ -461,6 +463,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     void updateSearchLimits();
 
     void createMenu();
+    void updatePreviewMenu();
 
     void considerMouseHovering( int xPos, int yPos );
 

@@ -22,6 +22,14 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/overview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/overviewwidget.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewconfig.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewconfigparser.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmanager.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmessagetab.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewstablemodel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/importpreviewsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/qfnotifications.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfind.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfindmux.h
@@ -76,6 +84,14 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/optionsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/overview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/overviewwidget.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewconfig.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewconfigparser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmanager.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmessagetab.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/importpreviewsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfind.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindmux.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindpattern.cpp

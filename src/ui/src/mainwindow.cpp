@@ -94,10 +94,12 @@
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
 #include "highlightersmenu.h"
+#include "importpreviewsdialog.h"
 #include "issuereporter.h"
 #include "klogg_version.h"
 #include "logger.h"
 #include "mainwindowtext.h"
+#include "previewmanager.h"
 #include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
@@ -180,6 +182,9 @@ MainWindow::MainWindow( WindowSession session )
     signalMux_.connect( SIGNAL( replaceDataInScratchpad( QString ) ), this,
                         SLOT( replaceDataInScratchpad( QString ) ) );
 
+    signalMux_.connect( SIGNAL( sendToPreview( QString, QString ) ), this,
+                        SLOT( sendToPreview( QString, QString ) ) );
+
     // Register for progress status bar
     signalMux_.connect( SIGNAL( loadingProgressed( int ) ), this,
                         SLOT( updateLoadingProgress( int ) ) );
@@ -197,6 +202,12 @@ MainWindow::MainWindow( WindowSession session )
 
     scratchPad_.setWindowIcon( mainIcon_ );
     scratchPad_.setWindowTitle( tr( "klogg - scratchpad" ) );
+
+    previewWindow_.setWindowIcon( mainIcon_ );
+    previewWindow_.setWindowTitle( tr( "klogg - previewer" ) );
+    previewWindow_.setWindowFlags( previewWindow_.windowFlags() | Qt::Tool );
+
+    PreviewManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
@@ -421,6 +432,9 @@ void MainWindow::reTranslateUI()
     predefinedFiltersDialogAction->setText( transAction( action::predefinedFiltersDialogText ) );
     predefinedFiltersDialogAction->setStatusTip(
         transAction( action::predefinedFiltersDialogStatusTip ) );
+
+    importPreviewsAction->setText( transAction( action::importPreviewsDialogText ) );
+    importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -676,6 +690,11 @@ void MainWindow::createActions()
     connect( predefinedFiltersDialogAction, &QAction::triggered, this,
              [ this ]( auto ) { this->editPredefinedFilters(); } );
 
+    importPreviewsAction = new QAction( tr( action::importPreviewsDialogText ), this );
+    importPreviewsAction->setStatusTip( tr( action::importPreviewsDialogStatusTip ) );
+    connect( importPreviewsAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openImportPreviewsDialog(); } );
+
     updateShortcuts();
 }
 
@@ -821,6 +840,7 @@ void MainWindow::createMenus()
     } );
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
+    toolsMenu->addAction( importPreviewsAction );
 
     toolsMenu->addSeparator();
     toolsMenu->addAction( showScratchPadAction );
@@ -1275,6 +1295,12 @@ void MainWindow::editPredefinedFilters( const QString& newFilter )
     signalMux_.disconnect( &dialog, SIGNAL( optionsChanged() ), SLOT( applyConfiguration() ) );
 }
 
+void MainWindow::openImportPreviewsDialog()
+{
+    ImportPreviewsDialog dialog( this );
+    dialog.exec();
+}
+
 // Opens the 'Options' modal dialog box
 void MainWindow::options()
 {
@@ -1358,6 +1384,20 @@ void MainWindow::replaceDataInScratchpad( QString newData )
 {
     scratchPad_.replaceData( newData );
     showScratchPad();
+}
+
+void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
+{
+    if ( rawLine.isEmpty() ) {
+        return;
+    }
+    previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
+
+    auto state = previewWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    previewWindow_.setWindowState( state );
+    previewWindow_.show();
+    previewWindow_.activateWindow();
 }
 
 void MainWindow::encodingChanged( QAction* action )

@@ -92,6 +92,8 @@ extern const char* removeFromFavoritesText;
 extern const char* selectOpenFileText;
 extern const char* predefinedFiltersDialogText;
 extern const char* predefinedFiltersDialogStatusTip;
+extern const char* importPreviewsDialogText;
+extern const char* importPreviewsDialogStatusTip;
 extern const char* autoEncodingText;
 extern const char* autoEncodingStatusTip;
 } // namespace action

@@ -1,0 +1,42 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "EHCP - 7",
+      "regex": "(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})",
+      "enabled": true,
+
+      "type": "string",
+      "bufferCapture": "payload",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "header",
+          "type": "string",
+          "format": "string"
+        },
+        {
+          "name": "size",
+          "width": 3,
+          "type": "hexString",
+          "format": "dig"
+        },
+        {
+          "name": "data",
+          "width": "{size}-5",
+          "format": "string"
+        },
+        {
+          "name": "checksum",
+          "source": "capture",
+          "capture": "checksum",
+          "type": "hexString",
+          "format": "hex"
+        }
+      ]
+    }
+  ]
+}
