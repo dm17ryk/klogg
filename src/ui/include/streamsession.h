@@ -9,7 +9,7 @@ class StreamSession : public QObject {
     Q_OBJECT
 
   public:
-    explicit StreamSession( SerialCaptureSettings settings, QObject* parent = nullptr );
+    explicit StreamSession( SerialCaptureSettings settings );
     ~StreamSession() override;
 
     void start();

@@ -6,8 +6,8 @@
 
 #include "log.h"
 
-StreamSession::StreamSession( SerialCaptureSettings settings, QObject* parent )
-    : QObject( parent )
+StreamSession::StreamSession( SerialCaptureSettings settings )
+    : QObject( nullptr )
     , settings_( std::move( settings ) )
 {
     connect( &thread_, &QThread::finished, this, [ this ]() {
@@ -62,11 +62,12 @@ void StreamSession::stop( bool waitForCompletion )
         if ( !waitForCompletion ) {
             return;
         }
-        const auto stopped = thread_.wait( 5000 );
-        if ( !stopped ) {
+        thread_.quit();
+        if ( !thread_.wait( 5000 ) ) {
             LOG_ERROR << "Timeout stopping serial capture for "
-                      << settings_.portName.toStdString();
-            return;
+                      << settings_.portName.toStdString()
+                      << ", waiting for thread to exit.";
+            thread_.wait();
         }
     }
 

@@ -1017,7 +1017,7 @@ void MainWindow::openComPort()
         mainTabWidget_.clearStreamSessionForPath( filePath );
     }
 
-    auto session = std::make_shared<StreamSession>( settings, this );
+    auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
              [ this, filePath ] { mainTabWidget_.clearStreamSessionForPath( filePath ); } );
