@@ -2,6 +2,7 @@
 add_executable(klogg_tests
     linepositionarray_test.cpp
     patternmatcher_test.cpp
+    previewdecodeutils_test.cpp
     tests_main.cpp
 )
 

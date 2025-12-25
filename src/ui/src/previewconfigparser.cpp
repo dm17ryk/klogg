@@ -210,24 +210,21 @@ bool parseFieldSpec( const QJsonObject& object,
     }
 
     if ( out->source == PreviewFieldSource::Capture && !out->capture.isSet ) {
-        if ( errors ) {
-            errors->push_back( QString( "Missing capture for field %1." ).arg( context ) );
+        if ( warnings ) {
+            warnings->push_back( QString( "Missing capture for field %1." ).arg( context ) );
         }
-        return false;
     }
 
     if ( out->format == PreviewFormat::Enum && out->enumMap.isEmpty() ) {
-        if ( errors ) {
-            errors->push_back( QString( "Missing enumMap for field %1." ).arg( context ) );
+        if ( warnings ) {
+            warnings->push_back( QString( "Missing enumMap for field %1." ).arg( context ) );
         }
-        return false;
     }
 
     if ( out->format == PreviewFormat::Flags && out->flagMap.isEmpty() ) {
-        if ( errors ) {
-            errors->push_back( QString( "Missing flagMap for field %1." ).arg( context ) );
+        if ( warnings ) {
+            warnings->push_back( QString( "Missing flagMap for field %1." ).arg( context ) );
         }
-        return false;
     }
 
     if ( out->format == PreviewFormat::Fields ) {
@@ -243,15 +240,16 @@ bool parseFieldSpec( const QJsonObject& object,
 
     if ( out->format == PreviewFormat::Bitfield ) {
         if ( !object.contains( "bitfieldMap" ) ) {
-            if ( errors ) {
-                errors->push_back(
+            if ( warnings ) {
+                warnings->push_back(
                     QString( "Missing bitfieldMap for %1." ).arg( context ) );
             }
-            return false;
         }
-        out->bitfieldMap = parseFieldArray( object.value( "bitfieldMap" ), errors,
-                                            warnings,
-                                            contextPrefix( context, "bitfieldMap" ) );
+        else {
+            out->bitfieldMap = parseFieldArray( object.value( "bitfieldMap" ), errors,
+                                                warnings,
+                                                contextPrefix( context, "bitfieldMap" ) );
+        }
     }
 
     return true;

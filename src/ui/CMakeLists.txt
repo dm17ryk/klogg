@@ -24,6 +24,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/overviewwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewconfig.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewconfigparser.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodeutils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmanager.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmessagetab.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
@@ -86,6 +87,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/overviewwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewconfig.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewconfigparser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodeutils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmanager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmessagetab.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp

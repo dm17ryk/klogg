@@ -14,7 +14,10 @@
 #include <QTreeWidget>
 #include <QtGlobal>
 #include <QVBoxLayout>
+#include <limits>
 
+#include "log.h"
+#include "previewdecodeutils.h"
 #include "previewmanager.h"
 
 namespace {
@@ -31,51 +34,108 @@ QString captureValue( const PreviewCaptureRef& capture, const QRegularExpression
     return match.captured( capture.name );
 }
 
-QByteArray cleanHexInput( const QByteArray& input )
+struct DecodeErrorInfo {
+    QString previewName;
+    QString fieldPath;
+    QString source;
+    int offset = -1;
+    int width = -1;
+    QString rawSlice;
+    QString reason;
+};
+
+QString describeCaptureRef( const PreviewCaptureRef& capture, const QString& prefix )
 {
-    QByteArray cleaned;
-    cleaned.reserve( input.size() );
-    for ( const auto ch : input ) {
-        if ( ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t' ) {
-            cleaned.push_back( ch );
-        }
+    if ( !capture.isSet ) {
+        return prefix;
     }
-    return cleaned;
+    if ( capture.isIndex ) {
+        return QString( "%1 #%2" ).arg( prefix ).arg( capture.index );
+    }
+    if ( capture.name.isEmpty() ) {
+        return prefix;
+    }
+    return QString( "%1 %2" ).arg( prefix, capture.name );
 }
 
-QByteArray decodeBuffer( const QByteArray& input, PreviewBufferType type, bool* ok )
+QString truncateText( const QString& text, int limit )
 {
-    if ( ok ) {
-        *ok = true;
+    if ( text.size() <= limit ) {
+        return text;
     }
-    switch ( type ) {
-    case PreviewBufferType::HexString: {
-        const auto cleaned = cleanHexInput( input );
-        if ( cleaned.size() % 2 != 0 ) {
-            if ( ok ) {
-                *ok = false;
-            }
-            return {};
+    return text.left( limit ) + "...";
+}
+
+QString sliceToLogText( const QByteArray& slice )
+{
+    if ( slice.isEmpty() ) {
+        return {};
+    }
+    bool printable = true;
+    for ( const auto ch : slice ) {
+        const unsigned char byte = static_cast<unsigned char>( ch );
+        if ( byte < 0x20 || byte > 0x7e ) {
+            printable = false;
+            break;
         }
-        auto output = QByteArray::fromHex( cleaned );
-        if ( output.isEmpty() && !cleaned.isEmpty() && ok ) {
-            *ok = false;
-        }
-        return output;
     }
-    case PreviewBufferType::Base64: {
-        auto output = QByteArray::fromBase64( input );
-        if ( output.isEmpty() && !input.isEmpty() && ok ) {
-            *ok = false;
-        }
-        return output;
+    const QString text = printable ? QString::fromLatin1( slice )
+                                   : QString::fromLatin1( slice.toHex() );
+    return truncateText( text, 64 );
+}
+
+QString decodeTooltip( const DecodeErrorInfo& info )
+{
+    QStringList lines;
+    if ( !info.previewName.isEmpty() ) {
+        lines << QObject::tr( "Preview: %1" ).arg( info.previewName );
     }
-    case PreviewBufferType::Bin:
-    case PreviewBufferType::Bytes:
-    case PreviewBufferType::String:
-        return input;
+    if ( !info.fieldPath.isEmpty() ) {
+        lines << QObject::tr( "Field: %1" ).arg( info.fieldPath );
     }
-    return input;
+    if ( !info.source.isEmpty() ) {
+        lines << QObject::tr( "Source: %1" ).arg( info.source );
+    }
+    if ( info.offset >= 0 ) {
+        lines << QObject::tr( "Offset: %1" ).arg( info.offset );
+    }
+    if ( info.width >= 0 ) {
+        lines << QObject::tr( "Width: %1" ).arg( info.width );
+    }
+    if ( !info.rawSlice.isEmpty() ) {
+        lines << QObject::tr( "Raw: %1" ).arg( info.rawSlice );
+    }
+    if ( !info.reason.isEmpty() ) {
+        lines << QObject::tr( "Reason: %1" ).arg( info.reason );
+    }
+    return lines.join( "\n" );
+}
+
+void logDecodeError( const DecodeErrorInfo& info )
+{
+    LOG_WARNING << "[Previewer] Decode error for '" << info.previewName.toStdString() << "'"
+                << " field '" << info.fieldPath.toStdString() << "': "
+                << info.reason.toStdString() << " (source=" << info.source.toStdString()
+                << ", offset=" << info.offset << ", width=" << info.width
+                << ", raw=" << info.rawSlice.toStdString() << ")";
+}
+
+void setItemStatus( QTreeWidgetItem* item, const QString& text, const QString& tooltip )
+{
+    if ( !item ) {
+        return;
+    }
+    item->setText( 1, text );
+    if ( !tooltip.isEmpty() ) {
+        item->setToolTip( 1, tooltip );
+    }
+}
+
+void setItemDecodeError( QTreeWidgetItem* item, const DecodeErrorInfo& info )
+{
+    const auto shortText = QObject::tr( "Decode error: %1" ).arg( info.reason );
+    setItemStatus( item, shortText, decodeTooltip( info ) );
+    logDecodeError( info );
 }
 
 bool isBinaryString( const QString& value )
@@ -187,37 +247,162 @@ QString formatNumber( quint64 value, PreviewFormat format, const PreviewFieldSpe
     }
 }
 
-int resolveExpr( const PreviewValueExpr& expr, const QMap<QString, qint64>& values, bool* ok )
+struct ExprResult {
+    bool ok = false;
+    int value = 0;
+    QString error;
+    QString missingVariable;
+};
+
+ExprResult resolveExprValue( const PreviewValueExpr& expr, const QMap<QString, qint64>& values )
 {
-    if ( ok ) {
-        *ok = false;
-    }
+    ExprResult result;
     if ( !expr.isSet ) {
-        return 0;
+        result.ok = true;
+        result.value = 0;
+        return result;
     }
-    if ( expr.isLiteral ) {
-        if ( ok ) {
-            *ok = true;
+    auto eval = evaluatePreviewExpression( expr, values );
+    if ( !eval.ok ) {
+        result.error = eval.error;
+        result.missingVariable = eval.missingVariable;
+        return result;
+    }
+    if ( eval.value < std::numeric_limits<int>::min()
+         || eval.value > std::numeric_limits<int>::max() ) {
+        result.error = QObject::tr( "Expression value is out of range." );
+        return result;
+    }
+    result.ok = true;
+    result.value = static_cast<int>( eval.value );
+    return result;
+}
+
+struct DecodeBytesResult {
+    bool ok = false;
+    QByteArray bytes;
+    int digitCount = 0;
+    QString error;
+};
+
+DecodeBytesResult decodeBytesFromText( const QString& text, PreviewBufferType type )
+{
+    DecodeBytesResult result;
+    if ( type == PreviewBufferType::HexString ) {
+        const auto decoded = decodeHexStringToBytes( text );
+        result.ok = decoded.ok;
+        result.bytes = decoded.bytes;
+        result.digitCount = decoded.digitCount;
+        result.error = decoded.error;
+        return result;
+    }
+    if ( type == PreviewBufferType::Base64 ) {
+        result.bytes = QByteArray::fromBase64( text.toUtf8() );
+        result.ok = !result.bytes.isEmpty() || text.isEmpty();
+        if ( !result.ok ) {
+            result.error = QObject::tr( "Failed to decode base64 data." );
         }
-        return expr.literalValue;
+        return result;
     }
-    const auto trimmed = expr.expression.trimmed();
-    if ( trimmed.startsWith( "{" ) && trimmed.endsWith( "}" ) ) {
-        const auto key = trimmed.mid( 1, trimmed.size() - 2 );
-        if ( values.contains( key ) ) {
-            if ( ok ) {
-                *ok = true;
+    result.ok = true;
+    result.bytes = text.toUtf8();
+    return result;
+}
+
+DecodeBytesResult decodeBytesFromSlice( const QByteArray& slice, PreviewBufferType type )
+{
+    if ( type == PreviewBufferType::HexString || type == PreviewBufferType::Base64 ) {
+        return decodeBytesFromText( QString::fromUtf8( slice ), type );
+    }
+    DecodeBytesResult result;
+    result.ok = true;
+    result.bytes = slice;
+    return result;
+}
+
+QString decodeStringValue( const QString& rawText,
+                           const QByteArray& rawBytes,
+                           PreviewBufferType type,
+                           QString* error )
+{
+    if ( type == PreviewBufferType::HexString || type == PreviewBufferType::Base64 ) {
+        const auto decoded = decodeBytesFromText( rawText, type );
+        if ( !decoded.ok ) {
+            if ( error ) {
+                *error = decoded.error;
             }
-            return static_cast<int>( values.value( key ) );
+            return {};
         }
-        return 0;
+        return QString::fromUtf8( decoded.bytes );
     }
-    bool parsed = false;
-    const auto value = trimmed.toInt( &parsed, 0 );
-    if ( ok ) {
-        *ok = parsed;
+    return rawText.isEmpty() ? QString::fromUtf8( rawBytes ) : rawText;
+}
+
+bool parseNumericValue( const QString& rawText,
+                        const QByteArray& rawBytes,
+                        const PreviewFieldSpec& field,
+                        quint64* numeric,
+                        QString* error )
+{
+    if ( !numeric ) {
+        return false;
     }
-    return parsed ? value : 0;
+
+    if ( field.type == PreviewBufferType::HexString ) {
+        const auto parsed = parseHexToU64AllowOddDigits( rawText );
+        if ( !parsed.ok ) {
+            if ( error ) {
+                *error = parsed.error;
+            }
+            return false;
+        }
+        if ( field.endianness.compare( "little", Qt::CaseInsensitive ) == 0
+             && parsed.digitCount % 2 == 0 ) {
+            const auto decoded = decodeBytesFromText( rawText, field.type );
+            if ( decoded.ok ) {
+                bool ok = false;
+                *numeric = parseInteger( decoded.bytes, field.endianness, &ok );
+                if ( ok ) {
+                    return true;
+                }
+            }
+        }
+        *numeric = parsed.value;
+        return true;
+    }
+
+    if ( field.type == PreviewBufferType::Base64 ) {
+        const auto decoded = decodeBytesFromText( rawText, field.type );
+        if ( !decoded.ok ) {
+            if ( error ) {
+                *error = decoded.error;
+            }
+            return false;
+        }
+        bool ok = false;
+        *numeric = parseInteger( decoded.bytes, field.endianness, &ok );
+        if ( !ok && error ) {
+            *error = QObject::tr( "Failed to parse base64 bytes." );
+        }
+        return ok;
+    }
+
+    if ( field.type == PreviewBufferType::String || field.type == PreviewBufferType::Bin ) {
+        if ( !parseNumericString( rawText, numeric ) ) {
+            if ( error ) {
+                *error = QObject::tr( "Failed to parse numeric value." );
+            }
+            return false;
+        }
+        return true;
+    }
+
+    bool ok = false;
+    *numeric = parseInteger( rawBytes, field.endianness, &ok );
+    if ( !ok && error ) {
+        *error = QObject::tr( "Failed to parse bytes." );
+    }
+    return ok;
 }
 
 struct ParseContext {
@@ -225,6 +410,8 @@ struct ParseContext {
     int cursor = 0;
     QMap<QString, qint64>* values = nullptr;
     const QRegularExpressionMatch* match = nullptr;
+    QString previewName;
+    QString bufferSource;
 };
 
 void addFieldItems( QTreeWidgetItem* parent,
@@ -241,9 +428,9 @@ void addBitfieldItems( QTreeWidgetItem* parent,
 {
     int remaining = totalBits;
     for ( const auto& bitField : field.bitfieldMap ) {
-        bool ok = false;
-        int width = resolveExpr( bitField.width, *context.values, &ok );
-        if ( !ok || width <= 0 ) {
+        const auto widthExpr = resolveExprValue( bitField.width, *context.values );
+        int width = widthExpr.ok ? widthExpr.value : 1;
+        if ( width <= 0 ) {
             width = 1;
         }
         remaining -= width;
@@ -262,17 +449,16 @@ void addBitfieldItems( QTreeWidgetItem* parent,
 
 int resolveBitfieldWidth( const PreviewFieldSpec& field, ParseContext& context )
 {
-    bool totalOk = false;
-    int totalBits = resolveExpr( field.width, *context.values, &totalOk );
-    if ( totalOk && totalBits > 0 ) {
+    const auto totalExpr = resolveExprValue( field.width, *context.values );
+    int totalBits = totalExpr.ok ? totalExpr.value : 0;
+    if ( totalBits > 0 ) {
         return totalBits;
     }
 
     totalBits = 0;
     for ( const auto& sub : field.bitfieldMap ) {
-        bool subOk = false;
-        const auto width = resolveExpr( sub.width, *context.values, &subOk );
-        totalBits += subOk ? width : 1;
+        const auto widthExpr = resolveExprValue( sub.width, *context.values );
+        totalBits += widthExpr.ok ? widthExpr.value : 1;
     }
     return totalBits;
 }
@@ -289,99 +475,197 @@ void addFieldItems( QTreeWidgetItem* parent,
 
     if ( field.source == PreviewFieldSource::Capture ) {
         const auto captured = context.match ? captureValue( field.capture, *context.match ) : QString();
-        QByteArray data = captured.toUtf8();
-        bool decodeOk = true;
-        data = decodeBuffer( data, field.type, &decodeOk );
+        const auto source = describeCaptureRef( field.capture, "capture" );
+        if ( !field.capture.isSet ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                                       truncateText( captured, 64 ),
+                                       QObject::tr( "Capture is not set." ) };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
+        const auto rawText = captured;
+        const auto rawBytes = captured.toUtf8();
 
-        quint64 numeric = 0;
-        bool numericOk = false;
+        if ( field.format == PreviewFormat::Fields ) {
+            const auto decoded = decodeBytesFromText( rawText, field.type );
+            if ( !decoded.ok ) {
+                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                                           truncateText( rawText, 64 ), decoded.error };
+                setItemDecodeError( item, errorInfo );
+                return;
+            }
+            item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
+            ParseContext childContext{
+                decoded.bytes, 0, context.values, context.match, context.previewName, source };
+            for ( const auto& child : field.fields ) {
+                addFieldItems( item, child, childContext, fullName );
+            }
+            return;
+        }
+
         if ( field.format == PreviewFormat::String ) {
-            if ( decodeOk
-                 && ( field.type == PreviewBufferType::HexString
-                      || field.type == PreviewBufferType::Base64 ) ) {
-                item->setText( 1, QString::fromUtf8( data ) );
+            QString error;
+            const auto value = decodeStringValue( rawText, rawBytes, field.type, &error );
+            if ( !error.isEmpty() ) {
+                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                                           truncateText( rawText, 64 ), error };
+                setItemDecodeError( item, errorInfo );
+                return;
             }
-            else {
-                item->setText( 1, captured );
-            }
+            item->setText( 1, value );
         }
         else {
-            if ( decodeOk && !data.isEmpty() ) {
-                numeric = parseInteger( data, field.endianness, &numericOk );
+            quint64 numeric = 0;
+            QString error;
+            if ( !parseNumericValue( rawText, rawBytes, field, &numeric, &error ) ) {
+                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                                           truncateText( rawText, 64 ), error };
+                setItemDecodeError( item, errorInfo );
+                return;
             }
-            if ( !numericOk ) {
-                numericOk = parseNumericString( captured, &numeric );
+            item->setText( 1, formatNumber( numeric, field.format, field ) );
+            if ( context.values ) {
+                context.values->insert( fullName, static_cast<qint64>( numeric ) );
             }
-            item->setText( 1, numericOk ? formatNumber( numeric, field.format, field ) : captured );
-        }
-
-        if ( context.values && numericOk ) {
-            context.values->insert( fullName, static_cast<qint64>( numeric ) );
-        }
-        if ( field.format == PreviewFormat::Bitfield ) {
-            addBitfieldItems( item, field, numericOk ? numeric : 0,
-                              resolveBitfieldWidth( field, context ), context, fullName );
+            if ( field.format == PreviewFormat::Bitfield ) {
+                addBitfieldItems( item, field, numeric,
+                                  resolveBitfieldWidth( field, context ), context, fullName );
+            }
         }
         return;
     }
 
-    bool offsetOk = false;
-    const int offset = resolveExpr( field.offset, *context.values, &offsetOk );
-    if ( offsetOk && offset > 0 ) {
+    auto reportExpressionIssue = [ &context, &fullName, &item ]( const ExprResult& expr,
+                                                                const QString& source,
+                                                                int offset,
+                                                                int width ) {
+        DecodeErrorInfo errorInfo{ context.previewName,
+                                   fullName,
+                                   source,
+                                   offset,
+                                   width,
+                                   QString(),
+                                   expr.error.isEmpty() ? QObject::tr( "Expression error." )
+                                                        : expr.error };
+        if ( !expr.missingVariable.isEmpty() ) {
+            const auto shortText
+                = QObject::tr( "Skipped: missing %1" ).arg( expr.missingVariable );
+            setItemStatus( item, shortText, decodeTooltip( errorInfo ) );
+            logDecodeError( errorInfo );
+            return false;
+        }
+        setItemDecodeError( item, errorInfo );
+        return false;
+    };
+
+    const auto source = context.bufferSource.isEmpty()
+                            ? QObject::tr( "buffer" )
+                            : context.bufferSource;
+
+    int offset = 0;
+    if ( field.offset.isSet ) {
+        const auto offsetExpr = resolveExprValue( field.offset, *context.values );
+        if ( !offsetExpr.ok ) {
+            reportExpressionIssue( offsetExpr, source, context.cursor, -1 );
+            return;
+        }
+        offset = offsetExpr.value;
+        if ( offset < 0 ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, offset, -1,
+                                       QString(), QObject::tr( "Offset is negative." ) };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
         context.cursor += offset;
     }
 
-    bool widthOk = false;
-    int width = resolveExpr( field.width, *context.values, &widthOk );
-    if ( !widthOk || width <= 0 ) {
-        width = context.buffer.size() - context.cursor;
-    }
-    if ( width < 0 ) {
-        width = 0;
-    }
-
-    const auto slice = context.buffer.mid( context.cursor, width );
-    context.cursor += width;
-
-    bool decodeOk = true;
-    auto decoded = decodeBuffer( slice, field.type, &decodeOk );
-    if ( !decodeOk ) {
-        item->setText( 1, "Decode error" );
+    const int remaining = context.buffer.size() - context.cursor;
+    if ( remaining < 0 ) {
+        DecodeErrorInfo errorInfo{ context.previewName, fullName, source, context.cursor, -1,
+                                   QString(), QObject::tr( "Offset exceeds buffer size." ) };
+        setItemDecodeError( item, errorInfo );
         return;
     }
 
+    int width = remaining;
+    if ( field.width.isSet ) {
+        const auto widthExpr = resolveExprValue( field.width, *context.values );
+        if ( !widthExpr.ok ) {
+            reportExpressionIssue( widthExpr, source, context.cursor, -1 );
+            return;
+        }
+        width = widthExpr.value;
+        if ( width < 0 ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, context.cursor,
+                                       width, QString(),
+                                       QObject::tr( "Width is negative." ) };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
+        if ( width > remaining ) {
+            DecodeErrorInfo errorInfo{
+                context.previewName,
+                fullName,
+                source,
+                context.cursor,
+                width,
+                QString(),
+                QObject::tr( "Width exceeds remaining buffer (%1 bytes)." ).arg( remaining ) };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
+    }
+
+    const int sliceOffset = context.cursor;
+    const auto slice = context.buffer.mid( sliceOffset, width );
+    context.cursor += width;
+    const auto rawText = QString::fromUtf8( slice );
+
     if ( field.format == PreviewFormat::Fields ) {
-        item->setText( 1, QString( "%1 bytes" ).arg( decoded.size() ) );
-        ParseContext childContext{ decoded, 0, context.values, context.match };
+        const auto decoded = decodeBytesFromSlice( slice, field.type );
+        if ( !decoded.ok ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset,
+                                       width, sliceToLogText( slice ), decoded.error };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
+        item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
+        ParseContext childContext{
+            decoded.bytes, 0, context.values, context.match, context.previewName, source };
         for ( const auto& child : field.fields ) {
             addFieldItems( item, child, childContext, fullName );
         }
         return;
     }
 
-    quint64 numeric = 0;
-    bool numericOk = false;
     if ( field.format == PreviewFormat::String ) {
-        item->setText( 1, QString::fromUtf8( decoded ) );
+        QString error;
+        const auto value = decodeStringValue( rawText, slice, field.type, &error );
+        if ( !error.isEmpty() ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset, width,
+                                       sliceToLogText( slice ), error };
+            setItemDecodeError( item, errorInfo );
+            return;
+        }
+        item->setText( 1, value );
     }
     else {
-        if ( field.type == PreviewBufferType::Bin ) {
-            numericOk = parseNumericString( QString::fromUtf8( decoded ), &numeric );
+        quint64 numeric = 0;
+        QString error;
+        if ( !parseNumericValue( rawText, slice, field, &numeric, &error ) ) {
+            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset, width,
+                                       sliceToLogText( slice ), error };
+            setItemDecodeError( item, errorInfo );
+            return;
         }
-        if ( !numericOk ) {
-            numeric = parseInteger( decoded, field.endianness, &numericOk );
+        item->setText( 1, formatNumber( numeric, field.format, field ) );
+        if ( context.values ) {
+            context.values->insert( fullName, static_cast<qint64>( numeric ) );
         }
-        item->setText( 1, numericOk ? formatNumber( numeric, field.format, field )
-                                    : QString::fromUtf8( decoded ) );
-    }
-
-    if ( context.values && numericOk ) {
-        context.values->insert( fullName, static_cast<qint64>( numeric ) );
-    }
-
-    if ( field.format == PreviewFormat::Bitfield ) {
-        addBitfieldItems( item, field, numericOk ? numeric : 0,
-                          resolveBitfieldWidth( field, context ), context, fullName );
+        if ( field.format == PreviewFormat::Bitfield ) {
+            addBitfieldItems( item, field, numeric,
+                              resolveBitfieldWidth( field, context ), context, fullName );
+        }
     }
 }
 } // namespace
@@ -577,22 +861,70 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
         bufferText = rawLine_;
     }
 
-    bool decodeOk = true;
-    auto buffer = decodeBuffer( bufferText.toUtf8(), definition->type, &decodeOk );
-    if ( !decodeOk ) {
-        showMessage( tr( "Decode error." ) );
+    const auto bufferSource = definition->bufferCapture.isSet
+                                  ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
+                                  : tr( "raw line" );
+    const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
+    if ( !decodedBuffer.ok ) {
+        DecodeErrorInfo errorInfo{ previewName,
+                                   QObject::tr( "buffer" ),
+                                   bufferSource,
+                                   0,
+                                   -1,
+                                   truncateText( bufferText, 64 ),
+                                   decodedBuffer.error };
+        logDecodeError( errorInfo );
+        showMessage( tr( "Decode error: %1" ).arg( decodedBuffer.error ) );
         updateTitle( previewName );
         return;
     }
 
     QMap<QString, qint64> values;
-    ParseContext context{ buffer, 0, &values, &match };
+    ParseContext context{ decodedBuffer.bytes, 0, &values, &match, previewName, bufferSource };
 
     if ( definition->offset.isSet ) {
-        bool ok = false;
-        const auto offset = resolveExpr( definition->offset, values, &ok );
-        if ( ok && offset > 0 ) {
-            context.cursor += offset;
+        const auto offsetExpr = resolveExprValue( definition->offset, values );
+        if ( !offsetExpr.ok ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       0,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       offsetExpr.error.isEmpty()
+                                           ? tr( "Invalid preview offset." )
+                                           : offsetExpr.error };
+            logDecodeError( errorInfo );
+            showMessage( tr( "Decode error: %1" ).arg( errorInfo.reason ) );
+            updateTitle( previewName );
+            return;
+        }
+        if ( offsetExpr.value < 0 ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       offsetExpr.value,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       tr( "Preview offset is negative." ) };
+            logDecodeError( errorInfo );
+            showMessage( tr( "Decode error: preview offset is negative." ) );
+            updateTitle( previewName );
+            return;
+        }
+        context.cursor += offsetExpr.value;
+        if ( context.cursor > decodedBuffer.bytes.size() ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       offsetExpr.value,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       tr( "Preview offset exceeds buffer size." ) };
+            logDecodeError( errorInfo );
+            showMessage( tr( "Decode error: preview offset exceeds buffer size." ) );
+            updateTitle( previewName );
+            return;
         }
     }
 
