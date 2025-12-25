@@ -445,6 +445,7 @@ struct ParseContext {
     QString previewName;
     QString bufferSource;
     int baseOffset = 0;
+    int matchStart = 0;
 };
 
 void addFieldItems( QTreeWidgetItem* parent,
@@ -509,8 +510,13 @@ void addFieldItems( QTreeWidgetItem* parent,
     if ( field.source == PreviewFieldSource::Capture ) {
         const auto captured = context.match ? captureValue( field.capture, *context.match ) : QString();
         const auto source = describeCaptureRef( field.capture, "capture" );
-        const int captureOffset
-            = context.match ? captureStart( field.capture, *context.match ) : -1;
+        int captureOffset = -1;
+        if ( context.match ) {
+            const auto absoluteStart = captureStart( field.capture, *context.match );
+            if ( absoluteStart >= 0 ) {
+                captureOffset = absoluteStart - context.matchStart;
+            }
+        }
         const int captureWidth
             = context.match ? captureLength( field.capture, *context.match ) : -1;
         setItemOffsetWidth( item, captureOffset, captureWidth );
@@ -527,7 +533,11 @@ void addFieldItems( QTreeWidgetItem* parent,
         if ( field.format == PreviewFormat::Fields ) {
             const auto decoded = decodeBytesFromText( rawText, field.type );
             if ( !decoded.ok ) {
-                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                DecodeErrorInfo errorInfo{ context.previewName,
+                                           fullName,
+                                           source,
+                                           captureOffset,
+                                           captureWidth,
                                            truncateText( rawText, 64 ), decoded.error };
                 setItemDecodeError( item, errorInfo );
                 return;
@@ -541,7 +551,8 @@ void addFieldItems( QTreeWidgetItem* parent,
                 context.match,
                 context.previewName,
                 source,
-                captureOffset >= 0 ? captureOffset : context.baseOffset };
+                captureOffset >= 0 ? captureOffset : context.baseOffset,
+                context.matchStart };
             for ( const auto& child : field.fields ) {
                 addFieldItems( item, child, childContext, fullName );
             }
@@ -552,7 +563,11 @@ void addFieldItems( QTreeWidgetItem* parent,
             QString error;
             const auto value = decodeStringValue( rawText, rawBytes, field.type, &error );
             if ( !error.isEmpty() ) {
-                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                DecodeErrorInfo errorInfo{ context.previewName,
+                                           fullName,
+                                           source,
+                                           captureOffset,
+                                           captureWidth,
                                            truncateText( rawText, 64 ), error };
                 setItemDecodeError( item, errorInfo );
                 return;
@@ -563,7 +578,11 @@ void addFieldItems( QTreeWidgetItem* parent,
             quint64 numeric = 0;
             QString error;
             if ( !parseNumericValue( rawText, rawBytes, field, &numeric, &error ) ) {
-                DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+                DecodeErrorInfo errorInfo{ context.previewName,
+                                           fullName,
+                                           source,
+                                           captureOffset,
+                                           captureWidth,
                                            truncateText( rawText, 64 ), error };
                 setItemDecodeError( item, errorInfo );
                 return;
@@ -689,7 +708,8 @@ void addFieldItems( QTreeWidgetItem* parent,
             context.match,
             context.previewName,
             source,
-            context.baseOffset + sliceOffset };
+            context.baseOffset + sliceOffset,
+            context.matchStart };
         for ( const auto& child : field.fields ) {
             addFieldItems( item, child, childContext, fullName );
         }
@@ -772,7 +792,7 @@ void PreviewMessageTab::buildUi()
     previewTree_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->header()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
-    previewTree_->header()->setSectionResizeMode( 1, QHeaderView::Stretch );
+    previewTree_->header()->setSectionResizeMode( 1, QHeaderView::ResizeToContents );
     previewTree_->header()->setSectionResizeMode( 2, QHeaderView::ResizeToContents );
     previewTree_->header()->setSectionResizeMode( 3, QHeaderView::ResizeToContents );
     previewTree_->header()->setStretchLastSection( false );
@@ -948,10 +968,14 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
                                   ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
                                   : tr( "raw line" );
     int bufferBaseOffset = 0;
+    const int matchStart = match.capturedStart( 0 );
     if ( definition->bufferCapture.isSet ) {
-        bufferBaseOffset = captureStart( definition->bufferCapture, match );
-        if ( bufferBaseOffset < 0 ) {
-            bufferBaseOffset = 0;
+        const auto captureStartOffset = captureStart( definition->bufferCapture, match );
+        if ( captureStartOffset >= 0 && matchStart >= 0 ) {
+            bufferBaseOffset = captureStartOffset - matchStart;
+            if ( bufferBaseOffset < 0 ) {
+                bufferBaseOffset = 0;
+            }
         }
     }
     const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
@@ -970,8 +994,14 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     }
 
     QMap<QString, qint64> values;
-    ParseContext context{
-        decodedBuffer.bytes, 0, &values, &match, previewName, bufferSource, bufferBaseOffset };
+    ParseContext context{ decodedBuffer.bytes,
+                          0,
+                          &values,
+                          &match,
+                          previewName,
+                          bufferSource,
+                          bufferBaseOffset,
+                          matchStart >= 0 ? matchStart : 0 };
 
     if ( definition->offset.isSet ) {
         const auto offsetExpr = resolveExprValue( definition->offset, values );
@@ -1025,6 +1055,9 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     }
 
     previewTree_->expandAll();
+    for ( int column = 0; column < previewTree_->columnCount(); ++column ) {
+        previewTree_->resizeColumnToContents( column );
+    }
     updateTitle( previewName );
 }
 
