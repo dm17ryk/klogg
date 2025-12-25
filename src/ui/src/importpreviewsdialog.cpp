@@ -45,11 +45,20 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
         removeButton_->setIcon( iconLoader.load( "icons8-minus-16" ) );
     }
 
+    clearButton_ = new QToolButton( this );
+    clearButton_->setToolTip( tr( "Clear all previews" ) );
+    clearButton_->setEnabled( false );
+    {
+        IconLoader iconLoader( this );
+        clearButton_->setIcon( iconLoader.load( "icons8-delete-16" ) );
+    }
+
     buttonBox_ = new QDialogButtonBox( QDialogButtonBox::Close, this );
     auto* importButton = buttonBox_->addButton( tr( "Import" ), QDialogButtonBox::ActionRole );
 
     connect( importButton, &QPushButton::clicked, this, &ImportPreviewsDialog::importPreviews );
     connect( removeButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::removeSelectedPreview );
+    connect( clearButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::clearAllPreviews );
     connect( buttonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject );
     connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
              &ImportPreviewsDialog::refreshTable );
@@ -59,6 +68,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     auto* layout = new QVBoxLayout();
     auto* headerLayout = new QHBoxLayout();
     headerLayout->addWidget( removeButton_ );
+    headerLayout->addWidget( clearButton_ );
     headerLayout->addStretch();
     layout->addLayout( headerLayout );
     layout->addWidget( tableView_ );
@@ -101,9 +111,21 @@ void ImportPreviewsDialog::removeSelectedPreview()
     if ( index.row() < 0 || index.row() >= previews.size() ) {
         return;
     }
-    const auto name = previews.at( index.row() ).name;
+    const auto row = index.row();
+    const auto name = previews.at( row ).name;
+    const int nextRow = ( row >= previews.size() - 1 ) ? row - 1 : row;
+    pendingSelectionRow_ = nextRow;
     if ( !PreviewManager::instance().removeByName( name ) ) {
         QMessageBox::warning( this, tr( "Remove preview" ), tr( "Failed to remove preview." ) );
+        pendingSelectionRow_ = -1;
+    }
+}
+
+void ImportPreviewsDialog::clearAllPreviews()
+{
+    pendingSelectionRow_ = -1;
+    if ( !PreviewManager::instance().clearAll() ) {
+        QMessageBox::warning( this, tr( "Clear previews" ), tr( "Failed to clear previews." ) );
     }
 }
 
@@ -114,6 +136,14 @@ void ImportPreviewsDialog::refreshTable()
     tableView_->resizeColumnToContents( 2 );
     updateDialogWidth();
     updateButtons();
+
+    const int rowCount = model_->rowCount();
+    if ( pendingSelectionRow_ >= 0 && rowCount > 0 ) {
+        const int row = qMin( pendingSelectionRow_, rowCount - 1 );
+        tableView_->selectRow( row );
+        tableView_->setCurrentIndex( model_->index( row, 0 ) );
+    }
+    pendingSelectionRow_ = -1;
 }
 
 void ImportPreviewsDialog::updateButtons()
@@ -121,6 +151,7 @@ void ImportPreviewsDialog::updateButtons()
     const bool hasSelection = tableView_->selectionModel()
                               && tableView_->selectionModel()->hasSelection();
     removeButton_->setEnabled( hasSelection );
+    clearButton_->setEnabled( model_->rowCount() > 0 );
 }
 
 void ImportPreviewsDialog::updateDialogWidth()

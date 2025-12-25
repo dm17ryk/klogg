@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QTextOption>
@@ -32,6 +33,24 @@ QString captureValue( const PreviewCaptureRef& capture, const QRegularExpression
         return match.captured( capture.index );
     }
     return match.captured( capture.name );
+}
+
+int captureStart( const PreviewCaptureRef& capture, const QRegularExpressionMatch& match )
+{
+    if ( !capture.isSet ) {
+        return -1;
+    }
+    return capture.isIndex ? match.capturedStart( capture.index )
+                           : match.capturedStart( capture.name );
+}
+
+int captureLength( const PreviewCaptureRef& capture, const QRegularExpressionMatch& match )
+{
+    if ( !capture.isSet ) {
+        return -1;
+    }
+    return capture.isIndex ? match.capturedLength( capture.index )
+                           : match.capturedLength( capture.name );
 }
 
 struct DecodeErrorInfo {
@@ -128,6 +147,19 @@ void setItemStatus( QTreeWidgetItem* item, const QString& text, const QString& t
     item->setText( 1, text );
     if ( !tooltip.isEmpty() ) {
         item->setToolTip( 1, tooltip );
+    }
+}
+
+void setItemOffsetWidth( QTreeWidgetItem* item, int offset, int width )
+{
+    if ( !item ) {
+        return;
+    }
+    if ( offset >= 0 ) {
+        item->setText( 2, QString::number( offset ) );
+    }
+    if ( width >= 0 ) {
+        item->setText( 3, QString::number( width ) );
     }
 }
 
@@ -412,6 +444,7 @@ struct ParseContext {
     const QRegularExpressionMatch* match = nullptr;
     QString previewName;
     QString bufferSource;
+    int baseOffset = 0;
 };
 
 void addFieldItems( QTreeWidgetItem* parent,
@@ -476,6 +509,11 @@ void addFieldItems( QTreeWidgetItem* parent,
     if ( field.source == PreviewFieldSource::Capture ) {
         const auto captured = context.match ? captureValue( field.capture, *context.match ) : QString();
         const auto source = describeCaptureRef( field.capture, "capture" );
+        const int captureOffset
+            = context.match ? captureStart( field.capture, *context.match ) : -1;
+        const int captureWidth
+            = context.match ? captureLength( field.capture, *context.match ) : -1;
+        setItemOffsetWidth( item, captureOffset, captureWidth );
         if ( !field.capture.isSet ) {
             DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
                                        truncateText( captured, 64 ),
@@ -495,8 +533,15 @@ void addFieldItems( QTreeWidgetItem* parent,
                 return;
             }
             item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
+            setItemOffsetWidth( item, captureOffset, decoded.bytes.size() );
             ParseContext childContext{
-                decoded.bytes, 0, context.values, context.match, context.previewName, source };
+                decoded.bytes,
+                0,
+                context.values,
+                context.match,
+                context.previewName,
+                source,
+                captureOffset >= 0 ? captureOffset : context.baseOffset };
             for ( const auto& child : field.fields ) {
                 addFieldItems( item, child, childContext, fullName );
             }
@@ -566,7 +611,7 @@ void addFieldItems( QTreeWidgetItem* parent,
     if ( field.offset.isSet ) {
         const auto offsetExpr = resolveExprValue( field.offset, *context.values );
         if ( !offsetExpr.ok ) {
-            reportExpressionIssue( offsetExpr, source, context.cursor, -1 );
+            reportExpressionIssue( offsetExpr, source, context.baseOffset + context.cursor, -1 );
             return;
         }
         offset = offsetExpr.value;
@@ -581,7 +626,8 @@ void addFieldItems( QTreeWidgetItem* parent,
 
     const int remaining = context.buffer.size() - context.cursor;
     if ( remaining < 0 ) {
-        DecodeErrorInfo errorInfo{ context.previewName, fullName, source, context.cursor, -1,
+        DecodeErrorInfo errorInfo{ context.previewName, fullName, source,
+                                   context.baseOffset + context.cursor, -1,
                                    QString(), QObject::tr( "Offset exceeds buffer size." ) };
         setItemDecodeError( item, errorInfo );
         return;
@@ -591,7 +637,7 @@ void addFieldItems( QTreeWidgetItem* parent,
     if ( field.width.isSet ) {
         const auto widthExpr = resolveExprValue( field.width, *context.values );
         if ( !widthExpr.ok ) {
-            reportExpressionIssue( widthExpr, source, context.cursor, -1 );
+            reportExpressionIssue( widthExpr, source, context.baseOffset + context.cursor, -1 );
             return;
         }
         width = widthExpr.value;
@@ -607,7 +653,7 @@ void addFieldItems( QTreeWidgetItem* parent,
                 context.previewName,
                 fullName,
                 source,
-                context.cursor,
+                context.baseOffset + context.cursor,
                 width,
                 QString(),
                 QObject::tr( "Width exceeds remaining buffer (%1 bytes)." ).arg( remaining ) };
@@ -620,18 +666,30 @@ void addFieldItems( QTreeWidgetItem* parent,
     const auto slice = context.buffer.mid( sliceOffset, width );
     context.cursor += width;
     const auto rawText = QString::fromUtf8( slice );
+    setItemOffsetWidth( item, context.baseOffset + sliceOffset, width );
 
     if ( field.format == PreviewFormat::Fields ) {
         const auto decoded = decodeBytesFromSlice( slice, field.type );
         if ( !decoded.ok ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset,
-                                       width, sliceToLogText( slice ), decoded.error };
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       context.baseOffset + sliceOffset,
+                                       width,
+                                       sliceToLogText( slice ),
+                                       decoded.error };
             setItemDecodeError( item, errorInfo );
             return;
         }
         item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
         ParseContext childContext{
-            decoded.bytes, 0, context.values, context.match, context.previewName, source };
+            decoded.bytes,
+            0,
+            context.values,
+            context.match,
+            context.previewName,
+            source,
+            context.baseOffset + sliceOffset };
         for ( const auto& child : field.fields ) {
             addFieldItems( item, child, childContext, fullName );
         }
@@ -642,8 +700,13 @@ void addFieldItems( QTreeWidgetItem* parent,
         QString error;
         const auto value = decodeStringValue( rawText, slice, field.type, &error );
         if ( !error.isEmpty() ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset, width,
-                                       sliceToLogText( slice ), error };
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       context.baseOffset + sliceOffset,
+                                       width,
+                                       sliceToLogText( slice ),
+                                       error };
             setItemDecodeError( item, errorInfo );
             return;
         }
@@ -653,8 +716,13 @@ void addFieldItems( QTreeWidgetItem* parent,
         quint64 numeric = 0;
         QString error;
         if ( !parseNumericValue( rawText, slice, field, &numeric, &error ) ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, sliceOffset, width,
-                                       sliceToLogText( slice ), error };
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       context.baseOffset + sliceOffset,
+                                       width,
+                                       sliceToLogText( slice ),
+                                       error };
             setItemDecodeError( item, errorInfo );
             return;
         }
@@ -697,13 +765,16 @@ void PreviewMessageTab::buildUi()
     headerLayout->addWidget( previewTypeCombo_, 1 );
 
     previewTree_ = new QTreeWidget( this );
-    previewTree_->setColumnCount( 2 );
-    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Value" ) );
+    previewTree_->setColumnCount( 4 );
+    previewTree_->setHeaderLabels(
+        QStringList() << tr( "Field" ) << tr( "Value" ) << tr( "Offset" ) << tr( "Width" ) );
     previewTree_->setRootIsDecorated( true );
     previewTree_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->header()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
-    previewTree_->header()->setSectionResizeMode( 1, QHeaderView::ResizeToContents );
+    previewTree_->header()->setSectionResizeMode( 1, QHeaderView::Stretch );
+    previewTree_->header()->setSectionResizeMode( 2, QHeaderView::ResizeToContents );
+    previewTree_->header()->setSectionResizeMode( 3, QHeaderView::ResizeToContents );
     previewTree_->header()->setStretchLastSection( false );
 
     rawGroup_ = new QGroupBox( tr( "Raw line" ), this );
@@ -715,6 +786,10 @@ void PreviewMessageTab::buildUi()
     rawLineEdit_->setWordWrapMode( QTextOption::NoWrap );
     rawLineEdit_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     rawLineEdit_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
+    if ( auto* bar = rawLineEdit_->horizontalScrollBar() ) {
+        connect( bar, &QScrollBar::rangeChanged, this,
+                 [ this ]( int, int ) { updateRawLineHeight(); } );
+    }
 
     auto* rawLayout = new QVBoxLayout();
     rawLayout->addWidget( rawLineEdit_ );
@@ -723,6 +798,7 @@ void PreviewMessageTab::buildUi()
     rawLineEdit_->setVisible( false );
 
     connect( rawGroup_, &QGroupBox::toggled, rawLineEdit_, &QWidget::setVisible );
+    connect( rawGroup_, &QGroupBox::toggled, this, [ this ]( bool ) { updateRawLineHeight(); } );
     connect( previewTypeCombo_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &PreviewMessageTab::handlePreviewSelectionChanged );
 
@@ -743,7 +819,14 @@ void PreviewMessageTab::updateRawLineHeight()
     const int lineHeight = metrics.lineSpacing();
     const qreal margin = rawLineEdit_->document()->documentMargin();
     const int frame = rawLineEdit_->frameWidth();
-    const int height = static_cast<int>( lineCount * lineHeight + margin * 2 ) + frame * 2;
+    int scrollHeight = 0;
+    if ( auto* bar = rawLineEdit_->horizontalScrollBar() ) {
+        if ( bar->isVisible() || bar->maximum() > 0 ) {
+            scrollHeight = bar->sizeHint().height();
+        }
+    }
+    const int height
+        = static_cast<int>( lineCount * lineHeight + margin * 2 ) + frame * 2 + scrollHeight;
     rawLineEdit_->setFixedHeight( height );
 }
 
@@ -864,6 +947,13 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     const auto bufferSource = definition->bufferCapture.isSet
                                   ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
                                   : tr( "raw line" );
+    int bufferBaseOffset = 0;
+    if ( definition->bufferCapture.isSet ) {
+        bufferBaseOffset = captureStart( definition->bufferCapture, match );
+        if ( bufferBaseOffset < 0 ) {
+            bufferBaseOffset = 0;
+        }
+    }
     const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
     if ( !decodedBuffer.ok ) {
         DecodeErrorInfo errorInfo{ previewName,
@@ -880,7 +970,8 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     }
 
     QMap<QString, qint64> values;
-    ParseContext context{ decodedBuffer.bytes, 0, &values, &match, previewName, bufferSource };
+    ParseContext context{
+        decodedBuffer.bytes, 0, &values, &match, previewName, bufferSource, bufferBaseOffset };
 
     if ( definition->offset.isSet ) {
         const auto offsetExpr = resolveExprValue( definition->offset, values );

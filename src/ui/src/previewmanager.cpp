@@ -96,6 +96,23 @@ bool PreviewManager::removeByName( const QString& name )
     return true;
 }
 
+bool PreviewManager::clearAll()
+{
+    if ( previews_.isEmpty() ) {
+        return true;
+    }
+
+    const auto previous = previews_;
+    previews_.clear();
+    if ( !repository_.save( previews_ ) ) {
+        previews_ = previous;
+        return false;
+    }
+
+    Q_EMIT previewsChanged();
+    return true;
+}
+
 const QVector<PreviewDefinition>& PreviewManager::all() const
 {
     return previews_;

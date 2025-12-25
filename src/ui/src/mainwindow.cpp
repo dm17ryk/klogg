@@ -418,6 +418,8 @@ void MainWindow::reTranslateUI()
 
     showScratchPadAction->setText( transAction( action::showScratchPadText ) );
     showScratchPadAction->setStatusTip( transAction( action::showScratchPadStatusTip ) );
+    showPreviewerAction->setText( transAction( action::showPreviewerText ) );
+    showPreviewerAction->setStatusTip( transAction( action::showPreviewerStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -659,6 +661,11 @@ void MainWindow::createActions()
     connect( showScratchPadAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScratchPad(); } );
 
+    showPreviewerAction = new QAction( tr( action::showPreviewerText ), this );
+    showPreviewerAction->setStatusTip( tr( action::showPreviewerStatusTip ) );
+    connect( showPreviewerAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showPreviewer(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -765,6 +772,7 @@ void MainWindow::loadIcons()
     reloadAction->setIcon( iconLoader_.load( "icons8-restore-page" ) );
     followAction->setIcon( iconLoader_.load( "icons8-fast-forward" ) );
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
+    showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -841,6 +849,7 @@ void MainWindow::createMenus()
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
+    toolsMenu->addAction( showPreviewerAction );
 
     toolsMenu->addSeparator();
     toolsMenu->addAction( showScratchPadAction );
@@ -907,6 +916,7 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
+    toolBar->addAction( showPreviewerAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1374,6 +1384,15 @@ void MainWindow::showScratchPad()
     scratchPad_.activateWindow();
 }
 
+void MainWindow::showPreviewer()
+{
+    auto state = previewWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    previewWindow_.setWindowState( state );
+
+    previewWindow_.show();
+    previewWindow_.activateWindow();
+}
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );
@@ -1392,14 +1411,8 @@ void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
         return;
     }
     previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
-
-    auto state = previewWindow_.windowState();
-    state.setFlag( Qt::WindowMinimized, false );
-    previewWindow_.setWindowState( state );
-    previewWindow_.show();
-    previewWindow_.activateWindow();
+    showPreviewer();
 }
-
 void MainWindow::encodingChanged( QAction* action )
 {
     const auto mibData = action->data();

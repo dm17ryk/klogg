@@ -132,6 +132,7 @@ class MainWindow : public QMainWindow {
     void aboutQt();
     void documentation();
     void showScratchPad();
+    void showPreviewer();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
@@ -276,6 +277,7 @@ class MainWindow : public QMainWindow {
     QAction* editHighlightersAction;
     QAction* optionsAction;
     QAction* showScratchPadAction;
+    QAction* showPreviewerAction;
     QAction* importPreviewsAction;
     QAction* showDocumentationAction;
     QAction* aboutAction;

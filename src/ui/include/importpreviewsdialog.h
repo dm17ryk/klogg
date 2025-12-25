@@ -16,6 +16,7 @@ class ImportPreviewsDialog : public QDialog {
   private Q_SLOTS:
     void importPreviews();
     void removeSelectedPreview();
+    void clearAllPreviews();
     void refreshTable();
 
   private:
@@ -26,4 +27,6 @@ class ImportPreviewsDialog : public QDialog {
     PreviewsTableModel* model_ = nullptr;
     QDialogButtonBox* buttonBox_ = nullptr;
     QToolButton* removeButton_ = nullptr;
+    QToolButton* clearButton_ = nullptr;
+    int pendingSelectionRow_ = -1;
 };

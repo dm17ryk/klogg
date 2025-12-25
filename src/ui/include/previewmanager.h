@@ -21,6 +21,7 @@ class PreviewManager : public QObject {
     void loadFromRepository();
     PreviewImportResult importFromFile( const QString& path );
     bool removeByName( const QString& name );
+    bool clearAll();
 
     const QVector<PreviewDefinition>& all() const;
     QVector<PreviewDefinition> enabled() const;

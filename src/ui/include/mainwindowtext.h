@@ -87,6 +87,8 @@ extern const char* generateDumpText;
 extern const char* generateDumpStatusTip;
 extern const char* showScratchPadText;
 extern const char* showScratchPadStatusTip;
+extern const char* showPreviewerText;
+extern const char* showPreviewerStatusTip;
 extern const char* addToFavoritesText;
 extern const char* removeFromFavoritesText;
 extern const char* selectOpenFileText;
