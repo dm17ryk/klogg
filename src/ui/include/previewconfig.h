@@ -6,7 +6,7 @@
 #include <QVector>
 
 enum class PreviewBufferType { String, HexString, Base64, Bin, Bytes };
-enum class PreviewFormat { Fields, String, Dig, Dec, Hex, Bin, Enum, Flags, Bitfield };
+enum class PreviewFormat { Fields, Match, String, Dig, Dec, Hex, Bin, Enum, Flags, Bitfield };
 enum class PreviewFieldSource { Buffer, Capture };
 
 struct PreviewValueExpr {
@@ -31,6 +31,9 @@ struct PreviewFieldSpec {
     PreviewValueExpr width;
     PreviewBufferType type = PreviewBufferType::Bytes;
     PreviewFormat format = PreviewFormat::String;
+    QString regex;
+    QRegularExpression compiledRegex;
+    PreviewCaptureRef bufferCapture;
     QString endianness;
     QMap<QString, QString> enumMap;
     QMap<QString, QString> flagMap;

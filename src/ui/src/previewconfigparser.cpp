@@ -144,9 +144,20 @@ bool parseFieldSpec( const QJsonObject& object,
 
     out->name = nameValue.toString();
 
-    const QSet<QString> knownKeys = { "name",    "source",     "capture",   "offset",
-                                      "width",   "type",       "endianness","format",
-                                      "enumMap", "flagMap",    "fields",    "bitfieldMap" };
+    const QSet<QString> knownKeys = { "name",
+                                      "source",
+                                      "capture",
+                                      "offset",
+                                      "width",
+                                      "type",
+                                      "endianness",
+                                      "format",
+                                      "enumMap",
+                                      "flagMap",
+                                      "fields",
+                                      "bitfieldMap",
+                                      "regex",
+                                      "bufferCapture" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -166,6 +177,9 @@ bool parseFieldSpec( const QJsonObject& object,
 
     out->capture = parseCaptureRef( object.value( "capture" ), warnings,
                                     contextPrefix( context, "capture" ) );
+    out->bufferCapture
+        = parseCaptureRef( object.value( "bufferCapture" ), warnings,
+                           contextPrefix( context, "bufferCapture" ) );
 
     out->offset = parseValueExpr( object.value( "offset" ), warnings,
                                   contextPrefix( context, "offset" ) );
@@ -227,7 +241,26 @@ bool parseFieldSpec( const QJsonObject& object,
         }
     }
 
-    if ( out->format == PreviewFormat::Fields ) {
+    if ( out->format == PreviewFormat::Match ) {
+        const auto regexValue = object.value( "regex" );
+        if ( !regexValue.isString() || regexValue.toString().trimmed().isEmpty() ) {
+            if ( errors ) {
+                errors->push_back( QString( "Missing match regex for %1." ).arg( context ) );
+            }
+            return false;
+        }
+        out->regex = regexValue.toString();
+        out->compiledRegex = QRegularExpression( out->regex );
+        if ( !out->compiledRegex.isValid() ) {
+            if ( errors ) {
+                errors->push_back( QString( "Invalid match regex for %1: %2" )
+                                       .arg( context, out->compiledRegex.errorString() ) );
+            }
+            return false;
+        }
+    }
+
+    if ( out->format == PreviewFormat::Fields || out->format == PreviewFormat::Match ) {
         if ( !object.contains( "fields" ) ) {
             if ( errors ) {
                 errors->push_back( QString( "Missing fields for %1." ).arg( context ) );
@@ -411,3 +444,4 @@ PreviewParseResult PreviewConfigParser::parseJson( const QByteArray& jsonBytes )
 
     return result;
 }
+

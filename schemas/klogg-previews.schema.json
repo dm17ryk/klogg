@@ -6,243 +6,194 @@
   "required": ["previews"],
   "additionalProperties": false,
   "properties": {
-    "$schema": {
-      "type": "string"
-    },
-    "version": {
-      "type": "integer",
-      "minimum": 1
-    },
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1, "default": 1 },
     "previews": {
       "type": "array",
-      "items": {
-        "$ref": "#/$defs/PreviewDefinition"
-      }
+      "items": { "$ref": "#/$defs/PreviewDefinition" }
     }
   },
   "$defs": {
     "ExprOrInt": {
-      "description": "Integer literal or an expression string (e.g. \"{size}\", \"{header.len}\").",
+      "description": "Integer literal or expression string (e.g. \"{size}\", \"{size}-5\").",
       "oneOf": [
-        {
-          "type": "integer",
-          "minimum": 0
-        },
-        {
-          "type": "string",
-          "minLength": 1
-        }
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "minLength": 1 }
       ]
     },
+
     "CaptureRef": {
-      "description": "Regex capture reference: either numeric index (1-based) or named capture.",
+      "description": "Regex capture reference: numeric index (0..N) or named capture.",
       "oneOf": [
-        {
-          "type": "integer",
-          "minimum": 0
-        },
-        {
-          "type": "string",
-          "minLength": 1
-        }
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "minLength": 1 }
       ]
     },
+
     "BufferType": {
+      "description": "Encoding/type of data inside the buffer or slice.",
       "type": "string",
-      "enum": ["string", "hexString", "base64", "bin", "bytes"]
+      "enum": ["string", "hexString", "base64", "bin", "binary", "bytes"]
     },
+
     "Endianness": {
       "type": "string",
       "enum": ["little", "big"]
     },
+
+    "FieldSource": {
+      "description": "Where field input comes from. 'buffer' = current buffer slice, 'capture' = regex capture value, 'literal' = constant.",
+      "type": "string",
+      "enum": ["buffer", "capture", "literal"]
+    },
+
     "FieldFormat": {
+      "description": "How to interpret/render the field. 'match' is a decode->regex->nested-fields stage.",
       "type": "string",
       "enum": [
         "string",
         "fields",
+        "match",
         "dig",
         "dec",
         "hex",
         "bin",
         "enum",
         "flags",
-        "bitfield"
+        "bitfield",
+        "strlen"
       ]
     },
+
+    "EnumMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+
+    "FlagMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+
     "PreviewDefinition": {
       "type": "object",
       "required": ["name", "regex", "format", "fields"],
       "additionalProperties": false,
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "regex": {
-          "type": "string",
-          "minLength": 1
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "bufferCapture": {
-          "$ref": "#/$defs/CaptureRef"
-        },
-        "offset": {
-          "$ref": "#/$defs/ExprOrInt"
-        },
-        "type": {
-          "$ref": "#/$defs/BufferType",
-          "default": "string"
-        },
+        "name": { "type": "string", "minLength": 1 },
+
+        "regex": { "type": "string", "minLength": 1 },
+        "pattern": { "type": "string", "minLength": 1 },
+
+        "enabled": { "type": "boolean", "default": true },
+        "priority": { "type": "integer", "minimum": 0 },
+
+        "bufferCapture": { "$ref": "#/$defs/CaptureRef" },
+        "offset": { "$ref": "#/$defs/ExprOrInt", "default": 0 },
+
+        "type": { "$ref": "#/$defs/BufferType", "default": "string" },
+
         "format": {
           "type": "string",
           "enum": ["fields"],
           "default": "fields"
         },
+
         "fields": {
           "type": "array",
-          "items": {
-            "$ref": "#/$defs/FieldSpec"
-          }
+          "items": { "$ref": "#/$defs/FieldSpec" }
         }
       }
     },
-    "EnumMap": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "FlagMap": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "FieldSource": {
-      "type": "string",
-      "enum": ["buffer", "capture"]
-    },
+
     "FieldSpec": {
       "type": "object",
       "required": ["name"],
       "additionalProperties": false,
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "source": {
-          "$ref": "#/$defs/FieldSource",
-          "default": "buffer"
-        },
-        "capture": {
-          "$ref": "#/$defs/CaptureRef"
-        },
-        "offset": {
-          "$ref": "#/$defs/ExprOrInt"
-        },
-        "width": {
-          "$ref": "#/$defs/ExprOrInt"
-        },
-        "type": {
-          "description": "How the extracted slice is interpreted before applying format.",
-          "$ref": "#/$defs/BufferType",
-          "default": "bytes"
-        },
-        "endianness": {
-          "$ref": "#/$defs/Endianness"
-        },
-        "format": {
-          "$ref": "#/$defs/FieldFormat"
-        },
-        "enumMap": {
-          "$ref": "#/$defs/EnumMap"
-        },
-        "flagMap": {
-          "$ref": "#/$defs/FlagMap"
-        },
+        "name": { "type": "string", "minLength": 1 },
+
+        "source": { "$ref": "#/$defs/FieldSource", "default": "buffer" },
+        "capture": { "$ref": "#/$defs/CaptureRef" },
+        "value": { "type": "string" },
+
+        "offset": { "$ref": "#/$defs/ExprOrInt" },
+        "width": { "$ref": "#/$defs/ExprOrInt" },
+
+        "type": { "$ref": "#/$defs/BufferType", "default": "bytes" },
+        "endianness": { "$ref": "#/$defs/Endianness" },
+
+        "format": { "$ref": "#/$defs/FieldFormat", "default": "string" },
+
+        "enumMap": { "$ref": "#/$defs/EnumMap" },
+        "flagMap": { "$ref": "#/$defs/FlagMap" },
+
+        "regex": { "type": "string", "minLength": 1 },
+        "bufferCapture": { "$ref": "#/$defs/CaptureRef" },
+
         "fields": {
-          "description": "Nested fields when format == 'fields'.",
+          "description": "Nested fields. Used by format=='fields' and format=='match'.",
           "type": "array",
-          "items": {
-            "$ref": "#/$defs/FieldSpec"
-          }
+          "items": { "$ref": "#/$defs/FieldSpec" }
         },
+
         "bitfieldMap": {
-          "description": "Subfields (bit-level) when format == 'bitfield'. Widths are bits.",
+          "description": "Nested bitfields when format=='bitfield'. 'width' for bitfield is bits.",
           "type": "array",
-          "items": {
-            "$ref": "#/$defs/FieldSpec"
-          }
+          "items": { "$ref": "#/$defs/FieldSpec" }
         }
       },
       "allOf": [
         {
           "if": {
             "required": ["source"],
-            "properties": {
-              "source": {
-                "const": "capture"
-              }
-            }
+            "properties": { "source": { "const": "capture" } }
           },
-          "then": {
-            "required": ["capture"]
-          }
+          "then": { "required": ["capture"] }
+        },
+        {
+          "if": {
+            "required": ["source"],
+            "properties": { "source": { "const": "literal" } }
+          },
+          "then": { "required": ["value"] }
+        },
+
+        {
+          "if": {
+            "required": ["format"],
+            "properties": { "format": { "const": "enum" } }
+          },
+          "then": { "required": ["enumMap"] }
         },
         {
           "if": {
             "required": ["format"],
-            "properties": {
-              "format": {
-                "const": "enum"
-              }
-            }
+            "properties": { "format": { "const": "flags" } }
           },
-          "then": {
-            "required": ["enumMap"]
-          }
+          "then": { "required": ["flagMap"] }
         },
         {
           "if": {
             "required": ["format"],
-            "properties": {
-              "format": {
-                "const": "flags"
-              }
-            }
+            "properties": { "format": { "const": "fields" } }
           },
-          "then": {
-            "required": ["flagMap"]
-          }
+          "then": { "required": ["fields"] }
         },
         {
           "if": {
             "required": ["format"],
-            "properties": {
-              "format": {
-                "const": "fields"
-              }
-            }
+            "properties": { "format": { "const": "bitfield" } }
           },
-          "then": {
-            "required": ["fields"]
-          }
+          "then": { "required": ["width", "bitfieldMap"] }
         },
+
         {
           "if": {
             "required": ["format"],
-            "properties": {
-              "format": {
-                "const": "bitfield"
-              }
-            }
+            "properties": { "format": { "const": "match" } }
           },
-          "then": {
-            "required": ["width", "bitfieldMap"]
-          }
+          "then": { "required": ["regex", "fields"] }
         }
       ]
     }

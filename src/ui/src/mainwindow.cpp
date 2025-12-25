@@ -849,9 +849,8 @@ void MainWindow::createMenus()
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
-    toolsMenu->addAction( showPreviewerAction );
-
     toolsMenu->addSeparator();
+    toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );

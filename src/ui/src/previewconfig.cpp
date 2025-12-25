@@ -29,6 +29,8 @@ QString previewFormatToString( PreviewFormat format )
     switch ( format ) {
     case PreviewFormat::Fields:
         return "fields";
+    case PreviewFormat::Match:
+        return "match";
     case PreviewFormat::String:
         return "string";
     case PreviewFormat::Dig:
@@ -107,6 +109,12 @@ PreviewFormat previewFormatFromString( const QString& value, bool* ok )
             *ok = true;
         }
         return PreviewFormat::Fields;
+    }
+    if ( key == "match" ) {
+        if ( ok ) {
+            *ok = true;
+        }
+        return PreviewFormat::Match;
     }
     if ( key == "string" ) {
         if ( ok ) {

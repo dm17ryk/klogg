@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "task_id": "klogg-previewer-add-match-stage",
+    "title": "Previewer: add field-level format 'match' (decode -> regex -> nested fields), update schema, add tests",
+    "branch": "features",
+    "language": "C++",
+    "framework": "Qt6",
+    "priority": "P0",
+    "motivation": [
+      "Need config-driven staged parsing: SRING wrapper lines contain hex-encoded EHCP message.",
+      "User must be able to extract hex payload with regex, decode it to ASCII, then apply another regex and parse fields."
+    ],
+    "success_definition": [
+      "Given SRING line: SRING: 1,48,45484350... and preview config using format:'match', preview renders EHCP header, size=0x029 -> 41, checksum=0xC40D, etc.",
+      "Given direct quoted EHCP line, preview renders same EHCP fields."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir_env": "KLOGG_WORKSPACE",
+    "build_root_env": "KLOGG_BUILD_ROOT",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "implementation_plan": {
+    "A_extend_schema_for_match_format": {
+      "goal": "Enable autocomplete/validation for field-level 'match' stage.",
+      "steps": [
+        "Open schemas/klogg-previews.schema.json.",
+        "Add 'match' to FieldFormat enum.",
+        "Add to FieldSpec properties (if not present yet):",
+        "  - regex: string",
+        "  - bufferCapture: CaptureRef",
+        "  - type: BufferType (already exists in many versions; ensure present)",
+        "Update FieldSpec allOf conditions:",
+        "  - If format == 'match' then require ['regex','fields'] (fields are nested fields to parse within match context).",
+        "  - bufferCapture optional; if absent, nested buffer defaults to full match (capture 0).",
+        "Keep existing conditional fixes: capture required only if source=='capture' and source is present."
+      ],
+      "acceptance_criteria": [
+        "VS Code validator accepts match fields without requiring 'capture'.",
+        "match fields require regex + fields."
+      ]
+    },
+
+    "B_extend_preview_field_spec_model": {
+      "goal": "Add model support for match format.",
+      "steps": [
+        "Locate PreviewFormat enum / field spec structure.",
+        "Add PreviewFormat::Match.",
+        "In PreviewFieldSpec (or equivalent), add optional properties for match stage:",
+        "  - QString regex;",
+        "  - QRegularExpression compiledRegex;",
+        "  - optional bufferCapture (capture ref: name or index).",
+        "Ensure nested fields are already supported (vector<PreviewFieldSpec>)."
+      ],
+      "acceptance_criteria": [
+        "Code compiles and field specs can represent match stages."
+      ]
+    },
+
+    "C_parse_match_fields_from_json": {
+      "goal": "JSON parser loads match fields properly.",
+      "steps": [
+        "Locate PreviewConfigParser that parses FieldSpec objects.",
+        "When format == 'match':",
+        "  - read 'regex' (required)",
+        "  - compile it (QRegularExpression) and validate",
+        "  - read optional 'bufferCapture' (name or integer)",
+        "  - read optional 'type' (decode of the input to this match field before applying regex)",
+        "  - recursively parse nested 'fields' (required)",
+        "If regex compilation fails -> parser error for that preview and skip that preview (or mark it invalid)."
+      ],
+      "acceptance_criteria": [
+        "Config file containing format:'match' loads without runtime crash."
+      ]
+    },
+
+    "D_runtime_decode_support_for_match_container": {
+      "goal": "Implement decoding logic for field format 'match': decode input -> apply regex -> create new context -> parse nested fields.",
+      "engine_rules": [
+        "Match field takes current input text (slice from current buffer) OR capture source if source='capture'.",
+        "Apply field-level type decoding BEFORE regex:",
+        "  - string: keep as string",
+        "  - hexString: decode hex to bytes, then interpret as text (UTF-8/Latin1; default UTF-8 is OK for EHCP ASCII)",
+        "  - base64: decode base64 to bytes, then interpret as text",
+        "Then apply match field regex on decoded text.",
+        "Match context exposes captures to nested fields (source='capture' must read from this match).",
+        "Nested buffer for positional fields is chosen by matchField.bufferCapture (capture name/index). If absent use full match.",
+        "Nested fields parse relative to that nested buffer, using existing width/offset + expressions."
+      ],
+      "steps": [
+        "Locate the function that renders/decodes one PreviewFieldSpec.",
+        "Add a new branch for PreviewFormat::Match.",
+        "Implement a helper 'applyMatchStage(...)' that returns:",
+        "  - success flag",
+        "  - decodedText (for error display / debugging)",
+        "  - QRegularExpressionMatch match",
+        "  - QString nestedBufferText (from bufferCapture or match.captured(0))",
+        "Also pass down a 'DecodeContext' object containing:",
+        "  - current buffer text",
+        "  - current match capture map",
+        "  - variable map for expressions",
+        "When parsing nested fields, create a child context with:",
+        "  - buffer = nestedBufferText",
+        "  - captures = match's captures (must be accessible by name)",
+        "  - variables: either new local scope that inherits parent, or same map but with scoping prefix; must allow '{size}-5' inside the child.",
+        "Ensure existing hexString odd-length numeric parsing is reused in nested fields."
+      ],
+      "acceptance_criteria": [
+        "SRING->EHCP config produces parsed EHCP fields.",
+        "Direct EHCP config produces parsed EHCP fields.",
+        "If match regex fails, UI shows a clear error for that field."
+      ]
+    },
+
+    "E_logging_and_error_reporting_for_match": {
+      "goal": "When match stage fails (decode fail or regex mismatch), show actionable errors instead of generic Decode error.",
+      "steps": [
+        "When decode fails (hexString/base64 invalid): produce message including field path, preview name, and first 64 chars of the input slice.",
+        "When regex does not match: produce message including the match regex, and a snippet of decoded text.",
+        "Log via qWarning() or project logger with prefix '[Previewer]'.",
+        "UI: show 'Match failed: <reason>' at the match container node."
+      ],
+      "acceptance_criteria": [
+        "A bad SRING payload displays the exact reason (invalid hex, regex mismatch)."
+      ]
+    },
+
+    "F_add_tests_or_self_test": {
+      "goal": "Prevent regressions: prove match-stage works for SRING->EHCP and direct EHCP.",
+      "steps": [
+        "Find existing test framework in repo (QtTest / Catch2 / gtest). Follow existing conventions.",
+        "Add at least one test that:",
+        "  - loads a small previews JSON with match fields (use the config below or inline JSON string),",
+        "  - runs decode on SRING line and asserts field results contain header='EHCP' and checksum='C40D' (numeric 0xC40D or string, depending on current renderer),",
+        "  - runs decode on direct EHCP line and asserts header='EHCP' and checksum='D774'.",
+        "If no test infra exists, add a minimal internal self-test function behind a compile-time flag and run it in a small console test target."
+      ],
+      "test_vectors": {
+        "sring_line": "SRING: 1,48,454843503032393030303030303030343130343130383030313030303235313231303130353734365A23302143343044",
+        "expected_decoded_ascii": "EHCP029000000004104108001000251210105746Z#0!C40D",
+        "direct_line": "12/10/2025 12:57:45.945 [RX] - #4 \"EHCP042020901004104108001078251210105737E#INN000000NNNSCE0Y8D6FDIPR1!D774\""
+      },
+      "acceptance_criteria": [
+        "Automated test passes (or self-test prints success) and demonstrates match stage correctness."
+      ]
+    }
+  },
+  "validation_plan": {
+    "build": [
+      "cd %KLOGG_WORKSPACE%\\%KLOGG_BUILD_ROOT%",
+      "cmake --build . --config RelWithDebInfo"
+    ],
+    "manual_tests": [
+      "Import previews.example.match.json",
+      "Right-click SRING line -> Send to Preview -> Auto (or pick 'SRING -> EHCP') -> verify EHCP header/size/checksum parsed.",
+      "Right-click direct EHCP line -> Send to Preview -> Auto (or pick 'EHCP (direct quoted)') -> verify parsed fields.",
+      "Change preview type combobox in tab to other preview -> verify re-render works and errors shown clearly if mismatch."
+    ]
+  },
+  "deliverables": [
+    "Schema updated to include field format 'match'.",
+    "JSON parser supports match fields (regex + optional bufferCapture + nested fields).",
+    "Runtime engine supports match stage: decode -> regex -> nested parse context.",
+    "Improved logging for match failures.",
+    "At least one automated test or self-test covering SRING->EHCP + direct EHCP."
+  ]
+}

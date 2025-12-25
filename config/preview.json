@@ -3,73 +3,89 @@
   "version": 1,
   "previews": [
     {
-      "name": "EHCP - 8",
-      "regex": "(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})",
+      "name": "EHCP (direct quoted)",
       "enabled": true,
-
+      "regex": "^.*\"(?<ehcp>EHCP[^\"]*)\".*$",
+      "bufferCapture": "ehcp",
       "type": "string",
-      "bufferCapture": "payload",
       "format": "fields",
       "fields": [
         {
-          "name": "header",
-          "source": "capture",
-          "capture": "header",
+          "name": "ehcp",
+          "format": "match",
           "type": "string",
-          "format": "string"
-        },
-        {
-          "name": "size",
-          "width": 3,
-          "type": "hexString",
-          "format": "dig"
-        },
-        {
-          "name": "data",
-          "width": "{size}-5",
-          "format": "string"
-        },
-        {
-          "name": "checksum",
-          "source": "capture",
-          "capture": "checksum",
-          "type": "hexString",
-          "format": "hex"
+          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "header",
+              "source": "capture",
+              "capture": "header",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "width": "{size}-5",
+              "format": "string"
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
         }
       ]
     },
+
     {
-      "name": "EHCP - 9",
-      "regex": "(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})",
+      "name": "SRING -> EHCP",
       "enabled": true,
-      "type": "hexString",
-      "bufferCapture": "payload",
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexPayload>[0-9A-Fa-f]+)$",
+      "bufferCapture": "hexPayload",
+      "type": "string",
       "format": "fields",
       "fields": [
         {
-          "name": "header",
-          "source": "capture",
-          "capture": "header",
-          "type": "string",
-          "format": "string"
-        },
-        {
-          "name": "size",
-          "width": 3,
+          "name": "ehcp",
+          "format": "match",
           "type": "hexString",
-          "format": "dig"
-        },
-        {
-          "name": "data",
-          "width": "{size}-5",
-          "format": "string"
-        },
-        {
-          "name": "checksum",
-          "source": "capture",
-          "capture": "checksum",
-          "type": "hexString",
-          "format": "hex"
+          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "header",
+              "source": "capture",
+              "capture": "header",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "width": "{size}-5",
+              "format": "string"
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
         }
       ]
     }
