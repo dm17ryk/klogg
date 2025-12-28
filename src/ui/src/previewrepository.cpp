@@ -68,6 +68,15 @@ QJsonObject fieldToJson( const PreviewFieldSpec& field )
         obj.insert( "format", previewFormatToString( field.format ) );
     }
 
+    if ( !field.regex.isEmpty() ) {
+        obj.insert( "regex", field.regex );
+    }
+
+    const auto bufferCaptureValue = toJsonValue( field.bufferCapture );
+    if ( !bufferCaptureValue.isUndefined() ) {
+        obj.insert( "bufferCapture", bufferCaptureValue );
+    }
+
     if ( !field.enumMap.isEmpty() ) {
         QJsonObject enumObj;
         for ( auto it = field.enumMap.begin(); it != field.enumMap.end(); ++it ) {
