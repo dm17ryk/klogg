@@ -14,13 +14,13 @@
           "name": "ehcp",
           "format": "match",
           "type": "string",
-          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
           "bufferCapture": "payload",
           "fields": [
             {
-              "name": "header",
+              "name": "protocol",
               "source": "capture",
-              "capture": "header",
+              "capture": "protocol",
               "format": "string"
             },
             {
@@ -31,8 +31,23 @@
             },
             {
               "name": "data",
+              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
               "width": "{size}-5",
-              "format": "string"
+              "format": "match",
+              "fields": [
+                {
+                  "name": "header",
+                  "source": "capture",
+                  "capture": "header",
+                  "format": "string"
+                },
+                {
+                  "name": "ev_cmd",
+                  "source": "capture",
+                  "capture": "ev_cmd",
+                  "format": "string"
+                }
+              ]
             },
             {
               "name": "checksum",
@@ -58,13 +73,13 @@
           "name": "ehcp",
           "format": "match",
           "type": "hexString",
-          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
           "bufferCapture": "payload",
           "fields": [
             {
-              "name": "header",
+              "name": "protocol",
               "source": "capture",
-              "capture": "header",
+              "capture": "protocol",
               "format": "string"
             },
             {
@@ -75,8 +90,23 @@
             },
             {
               "name": "data",
+              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
               "width": "{size}-5",
-              "format": "string"
+              "format": "match",
+              "fields": [
+                {
+                  "name": "header",
+                  "source": "capture",
+                  "capture": "header",
+                  "format": "string"
+                },
+                {
+                  "name": "ev_cmd",
+                  "source": "capture",
+                  "capture": "ev_cmd",
+                  "format": "string"
+                }
+              ]
             },
             {
               "name": "checksum",
