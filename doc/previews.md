@@ -1,729 +1,536 @@
-# Klogg Structured Previewer config guide
+# Structured Previews
 
-This guide explains how to create a `previews.json` file for Klogg’s **Structured Previewer**.
+Structured Previews let Klogg **decode and parse a single log line** into a **tree of named fields** using a JSON configuration file. This is useful for logs that contain embedded protocols, hex/base64 blobs, bitmasks, CRCs, etc.
 
-The goal: take a **log line**, match it with a **regex**, extract a **payload** (often hex or base64), decode it into bytes, then parse those bytes into **named fields** (including nested structures, enums, flags, and bitfields).
+Previews are **on-demand** (they do not modify your log file) and are shown in a **non‑modal Preview window** that supports **tabs**:
+
+- Each **Send to Preview** action opens a **new tab** (one message per tab, until user closes it).
+- Each tab includes:
+  - a **Preview Type** combo (Auto + all preview definitions)
+  - a structured preview output area (tree/table)
+- Preview type is **auto-selected** by regex match, but can be overridden manually.
+
+---
+
+## Table of contents
+
+- [Structured Previews](#structured-previews)
+  - [Table of contents](#table-of-contents)
+  - [Quick start](#quick-start)
+  - [Preview configuration file](#preview-configuration-file)
+    - [Schema \& editor autocomplete](#schema--editor-autocomplete)
+  - [Top-level config structure](#top-level-config-structure)
+    - [Top-level keys](#top-level-keys)
+  - [Preview definition](#preview-definition)
+    - [Keys](#keys)
+  - [Field definition](#field-definition)
+    - [Keys](#keys-1)
+  - [Types](#types)
+    - [Hex odd-length notes](#hex-odd-length-notes)
+  - [Formats](#formats)
+  - [Expressions and variables](#expressions-and-variables)
+    - [Variable rules](#variable-rules)
+  - [Capture sources](#capture-sources)
+    - [`source: "capture"`](#source-capture)
+    - [`source: "literal"`](#source-literal)
+  - [Match stage](#match-stage)
+  - [Examples](#examples)
+    - [Example 1: Minimal preview](#example-1-minimal-preview)
+    - [Example 2: EHCP (direct)](#example-2-ehcp-direct)
+    - [Example 3: SRING → hex decode → EHCP (two-stage)](#example-3-sring--hex-decode--ehcp-two-stage)
+    - [Example 4: Enum, flags, bitfield](#example-4-enum-flags-bitfield)
+    - [Example 5: Nested base64 field](#example-5-nested-base64-field)
+  - [Importing previews in the UI](#importing-previews-in-the-ui)
+  - [Troubleshooting](#troubleshooting)
+    - [“Missing property capture” in editor](#missing-property-capture-in-editor)
+    - [Decode errors](#decode-errors)
+    - [Regex mismatch inside match stage](#regex-mismatch-inside-match-stage)
+    - [Expression errors](#expression-errors)
+  - [Notes](#notes)
 
 ---
 
 ## Quick start
 
-### Minimal working example
+1. Create a JSON file (e.g. `previews.json`) using the schema:
 
-Save as `previews.json`:
+   ```json
+   {
+     "$schema": "../schemas/klogg-previews.schema.json",
+     "version": 1,
+     "previews": []
+   }
+   ```
+
+2. Add one or more preview definitions in `previews[]`.
+
+3. In Klogg:
+   - **Tools → Import previews…**
+   - Select your JSON file
+
+4. Right-click a log line:
+   - **Send to Preview → Auto** (or pick a specific preview)
+   - A Preview window opens (non-modal)
+   - The parsed output appears in a new tab
+
+---
+
+## Preview configuration file
+
+### Schema & editor autocomplete
+
+Klogg ships a JSON schema at:
+
+- `schemas/klogg-previews.schema.json`
+
+To enable validation/autocomplete in editors (VS Code / JetBrains etc.), add at the root:
+
+```json
+"$schema": "../schemas/klogg-previews.schema.json"
+```
+
+If your editor cannot resolve relative schema paths, replace it with an absolute path on your machine.
+
+---
+
+## Top-level config structure
 
 ```json
 {
+  "$schema": "../schemas/klogg-previews.schema.json",
   "version": 1,
   "previews": [
     {
-      "name": "MyPayload",
-      "regex": "^PAYLOAD=(?<payload>[0-9A-F]+)$",
+      "name": "Example",
+      "enabled": true,
+      "regex": "^(?<payload>.*)$",
       "bufferCapture": "payload",
-      "type": "hexString",
+      "type": "string",
+      "format": "fields",
+      "fields": []
+    }
+  ]
+}
+```
+
+### Top-level keys
+
+| Key | Type | Required | Meaning |
+|---|---:|:---:|---|
+| `$schema` | string | no | Path/URL to JSON schema (autocomplete/validation) |
+| `version` | int | no | Config version (currently `1`) |
+| `previews` | array | **yes** | List of preview definitions |
+
+---
+
+## Preview definition
+
+A preview definition matches a log line (regex), optionally selects a capture as the parsing buffer, optionally decodes it (type), then parses it using `fields`.
+
+### Keys
+
+| Key | Type | Required | Meaning |
+|---|---:|:---:|---|
+| `name` | string | **yes** | Preview name shown in UI |
+| `regex` | string | **yes** | Regex applied to the original log line |
+| `enabled` | bool | no | Include in Auto/members list; default `true` |
+| `priority` | int | no | If multiple previews match, higher priority can win (if supported) |
+| `bufferCapture` | string/int | no | Capture (name or index) used as “buffer” for buffer-based parsing; default capture `0` (full match) |
+| `offset` | int/string | no | Initial skip into buffer before parsing fields (default `0`) |
+| `type` | string | no | Buffer encoding/type (see [Types](#types)); default `"string"` |
+| `format` | string | yes | Currently `"fields"` at preview-level |
+| `fields` | array | **yes** | Field definitions |
+
+---
+
+## Field definition
+
+Fields are parsed in order (like a cursor walking through a buffer), unless a field’s `source` is `"capture"` or `"literal"`.
+
+### Keys
+
+| Key | Type | Required | Meaning |
+|---|---:|:---:|---|
+| `name` | string | **yes** | Field name; also used for `{var}` expressions |
+| `source` | string | no | `"buffer"` (default), `"capture"`, or `"literal"` |
+| `capture` | string/int | conditional | Required if `source == "capture"`. Capture name/index in current match context |
+| `value` | string | conditional | Required if `source == "literal"`. Constant value |
+| `offset` | int/string | no | Skip relative to current cursor before taking field value |
+| `width` | int/string | no | Length of field slice |
+| `type` | string | no | Encoding/type of the slice before formatting (see [Types](#types)) |
+| `endianness` | string | no | `"little"` or `"big"` for numeric interpretation of multi-byte values |
+| `format` | string | no | Rendering/parsing mode (see [Formats](#formats)) |
+| `enumMap` | object | conditional | Required when `format == "enum"` |
+| `flagMap` | object | conditional | Required when `format == "flags"` |
+| `bitfieldMap` | array | conditional | Required when `format == "bitfield"` |
+| `regex` | string | conditional | Required when `format == "match"` |
+| `bufferCapture` | string/int | no | For `format == "match"`: which capture becomes the nested buffer for child parsing |
+| `fields` | array | conditional | Required when `format == "fields"` or `format == "match"` |
+
+---
+
+## Types
+
+`type` describes how the buffer/slice is **represented** and/or how it must be **decoded** before formatting.
+
+Supported types:
+
+| Type | Meaning |
+|---|---|
+| `string` | Text buffer (no decoding) |
+| `hexString` | A string of hex digits (e.g. `D774`, `042`, `4A4B4C`) |
+| `base64` | Base64 encoded string; decode to bytes before parsing/formatting |
+| `bin` / `binary` / `bytes` | Raw binary data (byte buffer) |
+
+### Hex odd-length notes
+
+For **numeric** formats (`dig`/`dec`/`hex`/`bin`/`enum`/`flags`/`bitfield`), `hexString` supports **odd digit counts**. Example:
+
+- `"042"` is valid and means `0x042 = 66`
+
+For **byte-decoding** use cases (turning hexString into bytes), odd-length strings may be left-padded with `0` to decode consistently.
+
+---
+
+## Formats
+
+`format` describes how to **render** or **parse** the (decoded) slice.
+
+Supported formats:
+
+| Format | Meaning |
+|---|---|
+| `string` | Display as text |
+| `dig` / `dec` | Display numeric value in decimal |
+| `hex` | Display numeric value in hex |
+| `bin` | Display numeric value in binary |
+| `strlen` | Display string length |
+| `enum` | Map value using `enumMap` |
+| `flags` | Interpret numeric value as bitmask using `flagMap` |
+| `bitfield` | Split numeric value into subfields described by `bitfieldMap` |
+| `fields` | Treat slice as a **buffer** and parse nested fields sequentially |
+| `match` | **Decode → apply regex → create new capture/buffer context → parse nested fields** |
+
+---
+
+## Expressions and variables
+
+`width` and `offset` support:
+
+- integer literals: `3`, `12`
+- expressions: `"{size}-5"`, `"{len}+1"`
+
+### Variable rules
+
+- Variables refer to **previously parsed fields by name** in the current parsing scope.
+- Variables resolve to the **numeric value** of a field.
+- If a variable is missing or non-numeric, the dependent field should show an error (and logs should explain).
+
+Supported expression grammar is intentionally small and safe:
+
+- `{var}`
+- `{var} + int`, `{var} - int`
+- `{var1} + {var2}`, `{var1} - {var2}`
+
+---
+
+## Capture sources
+
+By default, fields parse from the **current buffer** (`source: "buffer"`). You can also pull values from regex captures or constant literals.
+
+### `source: "capture"`
+
+Use this when you want to display a value captured by regex rather than slicing the buffer.
+
+```json
+{
+  "name": "checksum",
+  "source": "capture",
+  "capture": "checksum",
+  "type": "hexString",
+  "format": "hex"
+}
+```
+
+> `capture` is required only when `source` is `"capture"`.
+
+### `source: "literal"`
+
+```json
+{
+  "name": "Protocol",
+  "source": "literal",
+  "value": "EHCP",
+  "format": "string"
+}
+```
+
+---
+
+## Match stage
+
+`format: "match"` is the recommended way to implement **multi-stage parsing**:
+
+1. Take the field input (buffer slice or capture)
+2. Decode it using `type` (optional)
+3. Apply `regex` to the decoded text
+4. Create a new “match context”:
+   - captures from this regex are available to child fields using `source: "capture"`
+   - the nested parsing buffer is:
+     - `bufferCapture` capture from this match, if specified, OR
+     - capture `0` (full match) by default
+5. Parse child fields from that nested buffer (positional parsing) or from captures
+
+This supports wrapper formats like:
+
+- SRING wrapper → extract payload → hex decode → parse EHCP inside
+
+---
+
+## Examples
+
+### Example 1: Minimal preview
+
+Parses the whole line as a single `text` field.
+
+```json
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "Raw line",
+      "enabled": true,
+      "regex": "^(?<line>.*)$",
+      "bufferCapture": "line",
+      "type": "string",
       "format": "fields",
       "fields": [
-        { "name": "msgType", "width": 1, "format": "hex" },
-        { "name": "size", "width": 2, "endianness": "little", "format": "dig" },
-        { "name": "data", "width": "{size}", "format": "hex" }
+        { "name": "text", "format": "string" }
       ]
     }
   ]
 }
 ```
 
-What it does:
-
-* Matches lines like: `PAYLOAD=0A1000DEADBEEF`
-* Captures the `payload` hex text
-* Decodes hex → bytes
-* Parses:
-
-  * `msgType` = 1 byte
-  * `size` = 2 bytes little-endian integer
-  * `data` = `size` bytes
-
 ---
 
-## Important rules
+### Example 2: EHCP (direct)
 
-### JSON must be strict JSON
+Log line (example):
 
-No comments, no trailing commas.
-
-✅ Valid:
-
-```json
-{ "name": "X", "enabled": true }
+```
+12/10/2025 12:57:45.945 [RX] - #4 "EHCP042020901004104108001078251210105737E#INN...!D774"
 ```
 
-❌ Invalid:
-
-```json
-{ "name": "X", // comment
-  "enabled": true,
-}
-```
-
----
-
-## File structure
-
-### Recommended (schema-friendly) layout
+Config:
 
 ```json
 {
-  "$schema": "./schemas/klogg-previews.schema.json",
-  "version": 1,
-  "previews": [ ... ]
-}
-```
-
-* `version`: schema/config version (start with `1`)
-* `previews`: array of preview definitions
-
-### Legacy layout (also acceptable if supported)
-
-Some loaders allow a root array:
-
-```json
-[
-  { "name": "...", "regex": "...", "fields": [ ... ] }
-]
-```
-
----
-
-## What happens at runtime
-
-For each preview definition:
-
-1. Klogg tries to match the log line with `regex`.
-2. If it matches, Klogg extracts the **payload** string (usually from a regex capture group).
-3. Klogg decodes that payload based on `type` into a **byte buffer**.
-4. Klogg parses `fields` sequentially from that byte buffer.
-5. The result is shown in the Preview tab (Field → Value), including nested children.
-
----
-
-## Preview definition reference
-
-Each object inside `previews[]` is a **Preview Definition**.
-
-### `name` (required)
-
-Friendly name shown in UI (menus, combobox).
-
-```json
-{ "name": "EHCP Frame", ... }
-```
-
-Rules:
-
-* Must be unique (recommended)
-* Keep it short and stable (users will see it often)
-
----
-
-### `enabled` (optional, default: true)
-
-Allows enabling/disabling previews in the Import Previews window.
-
-```json
-{ "enabled": false }
-```
-
-Effect:
-
-* Disabled previews won’t be used for **Auto detection**
-* Disabled previews won’t appear (or appear grayed) in “Send to Preview” menus
-
----
-
-### `regex` (required)
-
-Regex used to decide if this preview applies to a log line.
-
-```json
-{ "regex": "^MSG\\[(\\d+)\\]: Payload=([0-9A-F]+)$" }
-```
-
-Recommended: use **named capture groups** so configs are easier to maintain:
-
-```json
-{
-  "regex": "^MSG\\[(?<id>\\d+)\\]: Payload=(?<payload>[0-9A-F]+)$"
-}
-```
-
-Notes:
-
-* Regex is evaluated against the full log line text.
-* Use `^` and `$` where possible to avoid accidental matches.
-
----
-
-### `bufferCapture` (recommended)
-
-Tells Klogg **which regex capture group is the payload**.
-
-Why you need it:
-
-* Many log lines capture multiple things: id, status, payload, etc.
-* Without `bufferCapture`, Klogg would have to guess.
-
-Examples:
-
-Using named capture:
-
-```json
-{
-  "regex": "^ID=(?<id>\\d+) PAYLOAD=(?<payload>[0-9A-F]+)$",
-  "bufferCapture": "payload"
-}
-```
-
-Using capture index (1-based):
-
-```json
-{
-  "regex": "^ID=(\\d+) PAYLOAD=([0-9A-F]+)$",
-  "bufferCapture": 2
-}
-```
-
-If omitted:
-
-* You should assume Klogg will use **capture group 1** if present, otherwise the entire match.
-  (If you rely on this, configs become fragile; `bufferCapture` is strongly recommended.)
-
----
-
-### `type` (optional, default: `"string"`)
-
-Defines how the extracted payload text is converted into bytes for parsing.
-
-Supported values:
-
-| `type`      | Meaning (input)                          | Output buffer     |
-| ----------- | ---------------------------------------- | ----------------- |
-| `string`    | Plain text                               | UTF‑8 bytes       |
-| `hexString` | ASCII hex like `"0A1BFF"`                | decoded bytes     |
-| `base64`    | Base64 text                              | decoded bytes     |
-| `bin`       | Bit string like `"01010101..."`          | packed bits/bytes |
-| `bytes`     | Already bytes (rare in logs; future use) | unchanged         |
-
-Example:
-
-```json
-{ "type": "hexString" }
-```
-
-**Units reminder**
-Once the payload is decoded, **offset/width are in bytes** (except bitfields, which use bits — see below).
-
----
-
-### `offset` (optional, default: 0)
-
-Skips initial bytes at the beginning of the decoded payload before parsing fields.
-
-```json
-{ "offset": 9 }
-```
-
-Typical uses:
-
-* Ignore protocol header bytes you don’t care about
-* Start parsing at a magic marker inside a long payload
-
-**Example**
-If payload is hex and you want to skip 4 bytes (8 hex chars):
-
-```json
-{
-  "type": "hexString",
-  "offset": 4,
-  "fields": [
-    { "name": "afterHeader", "width": 2, "format": "hex" }
-  ]
-}
-```
-
----
-
-### `format` (required)
-
-Preview-level `format` is typically `"fields"`.
-
-```json
-{ "format": "fields" }
-```
-
-Meaning:
-
-* Parse the decoded payload using the `fields` array.
-
----
-
-### `fields` (required when `format: "fields"`)
-
-Array of field definitions that describe how to slice and interpret the payload bytes.
-
-```json
-{
-  "fields": [
-    { "name": "msgType", "width": 1, "format": "hex" }
-  ]
-}
-```
-
----
-
-## Field definition reference
-
-Each entry in a `fields[]` array is a **FieldSpec**.
-
-### Field parsing model
-
-Fields are parsed sequentially using a **cursor**:
-
-* Start cursor = `preview.offset` bytes into payload
-* For each field:
-
-  * cursor += `field.offset` (default 0)
-  * read `field.width` bytes (or “rest” if missing)
-  * cursor advances past what was read
-
-This is why offsets are usually **relative** (as you requested).
-
----
-
-### `name` (required)
-
-Field label shown in preview output.
-
-```json
-{ "name": "checksum", ... }
-```
-
-Also: fields can become variables for later expressions (width/offset), e.g. `{size}`.
-
----
-
-### `offset` (optional, default: 0)
-
-Relative bytes to skip from the current cursor before reading this field.
-
-```json
-{ "name": "checksum", "offset": 1, "width": 2, "format": "hex" }
-```
-
-Meaning: skip 1 byte, then read 2 bytes for checksum.
-
----
-
-### `width` (optional)
-
-Number of bytes to read for this field.
-
-```json
-{ "name": "Code", "width": 4, "format": "hex" }
-```
-
-If `width` is omitted:
-
-* the field consumes “the rest” of the current buffer (very useful for trailing strings)
-
-Example:
-
-```json
-{ "name": "url", "format": "string" }
-```
-
----
-
-### `width` can reference variables
-
-If earlier fields contain sizes, you can use them:
-
-```json
-{ "name": "payload", "width": "{size}", "format": "hex" }
-```
-
-#### Nested variable paths
-
-If you support nested scope, you can allow dotted names:
-
-```json
-{ "width": "{header.size}" }
-```
-
-Best practice:
-
-* Make sure the referenced field is parsed **before** it’s used.
-
----
-
-### Expressions in `{...}`
-
-To keep configs readable, treat expressions as strings:
-
-```json
-{ "width": "{size}" }
-```
-
-If your build supports arithmetic, you can also do:
-
-```json
-{ "width": "{size} - 2" }
-```
-
-If arithmetic is **not** supported yet:
-
-* add another field that computes the value you need, or
-* structure fields so you don’t need math
-
----
-
-### `type` (optional, default: inherit/bytes)
-
-Field-level `type` defines how the extracted slice is decoded **before** formatting.
-
-Common use: nested base64 inside a hex payload.
-
-Example:
-
-```json
-{
-  "name": "value",
-  "width": "{size}",
-  "type": "base64",
-  "format": "fields",
-  "fields": [
-    { "name": "sub1", "width": 2, "format": "dig" }
-  ]
-}
-```
-
-Pipeline:
-
-1. slice `{size}` bytes (these bytes are base64 text)
-2. decode base64 → raw bytes
-3. parse nested fields from those raw bytes
-
----
-
-### `endianness` (optional)
-
-Controls byte order when interpreting an integer.
-
-```json
-{ "name": "size", "width": 2, "endianness": "little", "format": "dig" }
-```
-
-Supported:
-
-* `little`
-* `big`
-
-Used by:
-
-* `format: dig/dec`
-* `format: hex` (when shown as integer value; for pure hex bytes display you can ignore endianness)
-
----
-
-### `format` (optional, default: `"string"` or inferred)
-
-Defines how Klogg displays/interprets the field.
-
-Supported formats and examples:
-
----
-
-## Formats
-
-### 1) `string`
-
-Shows bytes as UTF‑8 text.
-
-```json
-{ "name": "statusText", "width": 8, "format": "string" }
-```
-
-Use when:
-
-* payload contains text fragments
-* you want to show a URL, name, etc.
-
----
-
-### 2) `dig` / `dec`
-
-Shows an integer in decimal.
-
-```json
-{ "name": "size", "width": 2, "endianness": "little", "format": "dig" }
-```
-
-Recommended:
-
-* Use `dig` for numeric fields that will later be referenced as variables (`{size}`).
-
----
-
-### 3) `hex`
-
-Shows bytes/number in hex.
-
-```json
-{ "name": "crc", "width": 2, "format": "hex" }
-```
-
-Useful for:
-
-* IDs
-* checksums
-* opaque codes
-
----
-
-### 4) `bin`
-
-Shows bits in binary.
-
-```json
-{ "name": "rawFlagsByte", "width": 1, "format": "bin" }
-```
-
----
-
-### 5) `enum`
-
-Maps a numeric field to a label via `enumMap`.
-
-```json
-{
-  "name": "state",
-  "width": 1,
-  "format": "enum",
-  "enumMap": {
-    "0": "OFF",
-    "1": "ON",
-    "2": "UNKNOWN"
-  }
-}
-```
-
-Notes:
-
-* Keys are strings in JSON. Use `"0"`, `"1"`, etc.
-* If a value is missing, Klogg should show fallback (e.g., `"Unknown(5)"`).
-
-**Hex enum keys**
-If your field is naturally hex-coded, you can also use:
-
-```json
-"enumMap": { "0x10": "HELLO" }
-```
-
-(Implementations typically normalize the numeric value then compare against parsed key values.)
-
----
-
-### 6) `flags`
-
-Decodes a numeric field into a set of flags using `flagMap`.
-
-```json
-{
-  "name": "permissions",
-  "width": 1,
-  "format": "flags",
-  "flagMap": {
-    "0x1": "READ",
-    "0x2": "WRITE",
-    "0x4": "EXECUTE",
-    "0x8": "DELETE"
-  }
-}
-```
-
-Meaning:
-
-* Field value is treated as a bitmask
-* Output is a list like: `READ | EXECUTE`
-
----
-
-### 7) `fields` (nested structure)
-
-Treats this field as a container and parses subfields from it.
-
-```json
-{
-  "name": "header",
-  "width": 6,
-  "format": "fields",
-  "fields": [
-    { "name": "ver", "width": 1, "format": "dig" },
-    { "name": "len", "width": 2, "endianness": "little", "format": "dig" }
-  ]
-}
-```
-
----
-
-### 8) `bitfield`
-
-Treats the field as a sequence of bits and parses subfields from `bitfieldMap`.
-
-```json
-{
-  "name": "desc",
-  "width": 8,
-  "format": "bitfield",
-  "bitfieldMap": [
-    { "name": "isActive", "width": 1, "format": "dig" },
-    { "name": "isVerified", "width": 1, "format": "dig" },
-    { "name": "status", "width": 4, "format": "enum",
-      "enumMap": { "0": "OFF", "1": "ON", "2": "UNKNOWN" }
-    },
-    { "name": "reserved", "width": 2, "format": "bin" }
-  ]
-}
-```
-
-**Important: width units**
-
-* For `bitfield`, `width` is **bits**, not bytes.
-* `bitfieldMap[].width` is also **bits**.
-
-So `width: 8` means “1 byte of bits”.
-
----
-
-## Advanced: show regex captures as fields
-
-This is extremely handy when the log line already contains useful values outside of the binary payload (IDs, statuses, timestamps).
-
-### `source: "capture"` + `capture`
-
-A field can come from a regex capture group instead of the decoded buffer.
-
-```json
-{
-  "name": "msgId",
-  "source": "capture",
-  "capture": "id",
-  "format": "dig"
-}
-```
-
-* `capture` can be:
-
-  * a named group (like `"id"`)
-  * or a numeric index (like `1`)
-
-**Rules**
-
-* Capture fields do **not** advance the buffer cursor.
-* They are “metadata fields” displayed in the preview.
-
----
-
-## Step-by-step: building a preview definition
-
-### Step 1 — collect a real log sample
-
-Example:
-
-```
-12/7/2025 10:06:11.116 [RX] - #4 "EHCP091020801005104108004078251207080605E#INN000000NNNICE0Y8D8FNIVS00001061912310100400000000!4303"
-```
-
-### Step 2 — write a regex that isolates the payload
-
-You usually want to capture only the relevant part. Example:
-
-```json
-{
-  "regex": "EHCP(?<payload>[0-9A-F]+)!"
-}
-```
-
-### Step 3 — tell Klogg which capture is the payload
-
-```json
-{ "bufferCapture": "payload" }
-```
-
-### Step 4 — set payload type (`hexString` here)
-
-```json
-{ "type": "hexString" }
-```
-
-### Step 5 — define fields from the decoded bytes
-
-Decide the protocol layout and write sequential fields.
-
-```json
-{
-  "format": "fields",
-  "fields": [
-    { "name": "magic", "width": 2, "format": "hex" },
-    { "name": "msgType", "width": 1, "format": "hex" },
-    { "name": "size", "width": 2, "endianness": "little", "format": "dig" },
-    { "name": "payload", "width": "{size}", "format": "hex" },
-    { "name": "crc", "width": 2, "format": "hex" }
-  ]
-}
-```
-
-### Step 6 — import, test, iterate
-
-* Tools → **Import previews…**
-* Enable preview
-* Right-click a matching line → Send to Preview → Auto
-* Switch preview type in the tab if needed
-
----
-
-## Full example: hex payload + nested base64 + trailing checksum
-
-```json
-{
+  "$schema": "../schemas/klogg-previews.schema.json",
   "version": 1,
   "previews": [
     {
-      "name": "ExampleFormat",
+      "name": "EHCP (quoted)",
       "enabled": true,
-      "regex": "^MSG\\[(?<msgId>\\d+)\\]: Payload=(?<payload>[0-9A-F]+) Status=(?<status>\\w+)$",
-      "bufferCapture": "payload",
-      "type": "hexString",
+      "regex": "^.*\\\"(?<ehcp>EHCP[^\\\"]*)\\\".*$",
+      "bufferCapture": "ehcp",
+      "type": "string",
       "format": "fields",
       "fields": [
-        { "name": "msgId", "source": "capture", "capture": "msgId", "format": "dig" },
-        { "name": "status", "source": "capture", "capture": "status", "format": "string" },
+        {
+          "name": "ehcp",
+          "format": "match",
+          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "header",
+              "source": "capture",
+              "capture": "header",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "width": "{size}-5",
+              "format": "string"
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
 
-        { "name": "Code", "width": 4, "format": "hex" },
-        { "name": "size", "width": 2, "endianness": "little", "format": "dig" },
+---
 
+### Example 3: SRING → hex decode → EHCP (two-stage)
+
+SRING line:
+
+```
+SRING: 1,48,4548435030323930303030...
+```
+
+Decoded payload becomes:
+
+```
+EHCP029000000004104108001000251210105746Z#0!C40D
+```
+
+Config:
+
+```json
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "SRING → EHCP",
+      "enabled": true,
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexPayload>[0-9A-Fa-f]+)$",
+      "bufferCapture": "hexPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp",
+          "format": "match",
+          "type": "hexString",
+          "regex": "^(?<header>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "header",
+              "source": "capture",
+              "capture": "header",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "width": "{size}-5",
+              "format": "string"
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Example 4: Enum, flags, bitfield
+
+```json
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "FlagsEnumExample",
+      "enabled": true,
+      "regex": "^Flag (?<idx>\\d): Value=(?<val>\\d+)$",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "FlagIndex",
+          "source": "capture",
+          "capture": "idx",
+          "format": "dig"
+        },
+        {
+          "name": "ValueType",
+          "source": "capture",
+          "capture": "val",
+          "format": "enum",
+          "enumMap": {
+            "0": "OFF",
+            "1": "ON",
+            "2": "UNKNOWN"
+          }
+        },
+        {
+          "name": "Permissions",
+          "source": "capture",
+          "capture": "val",
+          "format": "flags",
+          "flagMap": {
+            "0x1": "READ",
+            "0x2": "WRITE",
+            "0x4": "EXECUTE",
+            "0x8": "DELETE"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Example 5: Nested base64 field
+
+```json
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "Nested base64 payload",
+      "enabled": true,
+      "regex": "^(?<payload>[A-Za-z0-9+/=]+)$",
+      "bufferCapture": "payload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "size",
+          "width": 4,
+          "type": "hexString",
+          "format": "dig"
+        },
         {
           "name": "value",
           "width": "{size}",
           "type": "base64",
           "format": "fields",
           "fields": [
-            { "name": "subValue1", "width": 2, "endianness": "little", "format": "dig" },
-            { "name": "subValue2", "width": 2, "endianness": "little", "format": "dig" },
-            { "name": "url", "format": "string" }
+            { "name": "subValue1", "width": 2, "type": "bytes", "endianness": "little", "format": "dig" },
+            { "name": "subValue2", "width": 2, "type": "bytes", "endianness": "little", "format": "dig" },
+            { "name": "url", "type": "string", "format": "string" }
           ]
-        },
-
-        { "name": "checksum", "width": 2, "format": "hex" }
+        }
       ]
     }
   ]
@@ -732,73 +539,70 @@ Decide the protocol layout and write sequential fields.
 
 ---
 
-## Best practices
+## Importing previews in the UI
 
-* Prefer **named captures** in regex (`(?<payload>...)`) + `bufferCapture`.
-* Keep parsing **sequential**; use `offset` only when you truly need to skip bytes.
-* For dynamic widths, make sure the size field is parsed with a numeric format (`dig`/`hex`) so it can be used as `{size}`.
-* Start with a minimal parser (a few fields), then extend once you verify decoding is correct.
-* Add a `bitfield` only after you confirm the underlying bytes are correct (hex view first, then bit breakdown).
+1. Open **Tools → Import previews…**
+2. Select your JSON file
+3. Import dialog shows a table with:
+   - Name (read-only)
+   - Pattern/Regex (read-only)
+   - Enabled (checkbox)
+4. Click **Import**
 
----
+After import, previews appear in:
 
-## Troubleshooting checklist
-
-### “Auto” doesn’t pick my preview
-
-* Your `regex` doesn’t match the line exactly.
-* Use a quick simplified regex first, then make it stricter.
-* Ensure `enabled: true`.
-
-### Preview shows “decode error”
-
-* `type: hexString` but payload contains non-hex characters (spaces, `#`, etc.).
-
-  * Fix regex to capture only hex digits
-  * Or (future enhancement) add `stripSpaces: true`
-
-### Fields “shift” / incorrect values
-
-* Wrong `endianness` on numeric fields
-* Incorrect `width` sizes
-* Missing `offset` skip between fields
-
-### Variable width doesn’t work
-
-* Ensure referenced field appears earlier
-* Ensure referenced field resolves to a numeric value (use `format: dig` or `hex`)
-* If your expression system doesn’t support arithmetic, don’t use `{size}-2`
+- Preview Type dropdown (Auto + enabled previews)
+- Right-click **Send to Preview** menu (Auto + enabled preview list)
 
 ---
 
-## Autocomplete and “intelligence” for authors (recommended)
+## Troubleshooting
 
-To get autocomplete / validation:
+### “Missing property capture” in editor
 
-1. ship a JSON Schema: `schemas/klogg-previews.schema.json`
-2. add `$schema` to the file as shown above
-
-In VS Code, you can also map schema to file names:
-
-`.vscode/settings.json`:
+`capture` is required **only** when you use:
 
 ```json
-{
-  "json.schemas": [
-    {
-      "fileMatch": ["previews.json", "previews.*.json"],
-      "url": "./schemas/klogg-previews.schema.json"
-    }
-  ]
-}
+"source": "capture"
 ```
 
-This will:
+Otherwise it should be optional.
 
-* autocomplete `type`, `format`, `endianness`
-* warn if `enum` is missing `enumMap`, etc.
-* validate nested `fields` and `bitfieldMap`
+### Decode errors
+
+Common causes:
+
+- hexString contains non-hex chars (quotes, separators)
+- base64 contains invalid chars or padding
+- wrong capture group: you captured too much (like `"...!D774"` including `!`)
+
+Fixes:
+
+- tighten the regex group for payload
+- use `offset` to skip delimiters (e.g. skip `!`)
+- validate the extracted string by printing it in preview output first
+
+### Regex mismatch inside match stage
+
+If `format: "match"` doesn’t match decoded text:
+
+- verify anchors `^...$`
+- verify decoded buffer is ASCII/UTF‑8
+- check logs for the decoded snippet and regex used
+
+### Expression errors
+
+If `{size}` is missing:
+
+- ensure `size` is parsed earlier in the same scope
+- ensure `size` is numeric (`format: "dig"/"hex"/"bin"/etc.`)
 
 ---
 
-If you want, paste one of your real payload log lines and the byte layout (even rough), and I’ll write a complete preview definition for it using this format (including a regex that extracts the exact payload range).
+## Notes
+
+- Previews are designed to parse **fields of any length** as long as you can express it with:
+  - fixed `width`/`offset`
+  - `{vars}` expressions
+  - nested `match` stages for multi-step decode+regex parsing
+- Previews work alongside filters/highlighters/live tailing (no special restrictions).
