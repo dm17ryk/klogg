@@ -12,19 +12,36 @@
       "format": "string"
     },
     {
-      "name": "ehcp_message_ev_cmd_P_block",
-      "source": "capture",
-      "capture": "ev_cmd",
+      "name": "ehcp_message_command_PX_block",
       "format": "fields",
       "fields": [
         {
-          "name": "command_prefix",
-          "width": 1,
-          "format": "string"
+          "name": "file_type",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "F0": "configurations file",
+            "FB": "BLE CPU software",
+            "F1": "voice file"
+          }
         },
+        {
+          "name": "file_path",
+          "width": 70,
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_ev_cmd_P_block",
+      "source": "capture",
+      "capture": "cmd",
+      "format": "fields",
+      "fields": [
         {
           "name": "command_code",
           "width": 4,
+          "offset": 1,
           "format": "string"
         },
         {
@@ -35,7 +52,10 @@
             "CM": "Call Me",
             "V3": "Take Photo",
             "CO": "Connect to Server",
-            "AO": "Configure Out of Home Alert Timer"
+            "AO": "Configure Out of Home Alert Timer",
+            "CL": "Control Lock Status",
+            "PF": "Configure FTP Server Settings",
+            "PX": "Get File by FTP"
           }
         },
         {
@@ -52,12 +72,13 @@
     {
       "name": "ehcp_message_ev_cmd_E_block",
       "source": "capture",
-      "capture": "ev_cmd",
+      "capture": "event",
       "format": "fields",
       "fields": [
         {
           "name": "dual_com_status",
           "width": 1,
+          "offset": 1,
           "format": "enum",
           "enumMap": {
             "X": "Unused",
@@ -164,7 +185,7 @@
     },
     {
       "name": "ehcp_message_data_block",
-      "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
+      "regex": "(?<header>[^#!*\\/]*)(?<cmd>\\*[^#!*\\/]*)?(?<event>\\#[^#!*\\/]*)?",
       "width": "{size}-5",
       "format": "match",
       "fields": [
@@ -323,6 +344,21 @@
       "name": "EHCP (direct quoted)",
       "enabled": true,
       "regex": "^.*\"(?<ehcpPayload>EHCP[^\"]*)\".*$",
+      "bufferCapture": "ehcpPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_message_block"
+        }
+      ]
+    },
+    {
+      "name": "EHCP (direct not quoted)",
+      "enabled": true,
+      "regex": "^(?<ehcpPayload>EHCP[^\"]*)$",
       "bufferCapture": "ehcpPayload",
       "type": "string",
       "format": "fields",
