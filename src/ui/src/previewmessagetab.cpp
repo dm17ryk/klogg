@@ -23,6 +23,11 @@
 
 namespace {
 constexpr int SnippetLimit = 60;
+constexpr int ColumnField = 0;
+constexpr int ColumnRaw = 1;
+constexpr int ColumnValue = 2;
+constexpr int ColumnOffset = 3;
+constexpr int ColumnWidth = 4;
 
 QString captureValue( const PreviewCaptureRef& capture, const QRegularExpressionMatch& match )
 {
@@ -144,9 +149,9 @@ void setItemStatus( QTreeWidgetItem* item, const QString& text, const QString& t
     if ( !item ) {
         return;
     }
-    item->setText( 1, text );
+    item->setText( ColumnValue, text );
     if ( !tooltip.isEmpty() ) {
-        item->setToolTip( 1, tooltip );
+        item->setToolTip( ColumnValue, tooltip );
     }
 }
 
@@ -156,10 +161,10 @@ void setItemOffsetWidth( QTreeWidgetItem* item, int offset, int width )
         return;
     }
     if ( offset >= 0 ) {
-        item->setText( 2, QString::number( offset ) );
+        item->setText( ColumnOffset, QString::number( offset ) );
     }
     if ( width >= 0 ) {
-        item->setText( 3, QString::number( width ) );
+        item->setText( ColumnWidth, QString::number( width ) );
     }
 }
 
@@ -529,8 +534,22 @@ void addBlockErrorItem( QTreeWidgetItem* item, const QString& message )
         return;
     }
     auto* errorItem = new QTreeWidgetItem( item );
-    errorItem->setText( 0, QObject::tr( "Error" ) );
-    errorItem->setText( 1, message );
+    errorItem->setText( ColumnField, QObject::tr( "Error" ) );
+    errorItem->setText( ColumnValue, message );
+}
+
+void setItemRaw( QTreeWidgetItem* item, const QString& rawText, const QByteArray& rawBytes )
+{
+    if ( !item ) {
+        return;
+    }
+    if ( !rawText.isEmpty() ) {
+        item->setText( ColumnRaw, rawText );
+        return;
+    }
+    if ( !rawBytes.isEmpty() ) {
+        item->setText( ColumnRaw, sliceToLogText( rawBytes ) );
+    }
 }
 
 struct BlockResolution {
@@ -617,6 +636,7 @@ bool applyMatchStage( QTreeWidgetItem* item,
                       int inputOffset,
                       int inputWidth )
 {
+    setItemRaw( item, rawText, rawBytes );
     QString decodeError;
     const auto decodedText = decodeStringValue( rawText, rawBytes, field.type, &decodeError );
     if ( !decodeError.isEmpty() ) {
@@ -663,10 +683,10 @@ bool applyMatchStage( QTreeWidgetItem* item,
         = ( inputOffset >= 0 && matchOffset >= 0 ) ? ( inputOffset + matchOffset ) : -1;
     setItemOffsetWidth( item, adjustedOffset, matchWidth );
     if ( matchWidth >= 0 ) {
-        item->setText( 1, QObject::tr( "%1 chars" ).arg( matchWidth ) );
+        item->setText( ColumnValue, QObject::tr( "%1 chars" ).arg( matchWidth ) );
     }
     else {
-        item->setText( 1, QObject::tr( "match" ) );
+        item->setText( ColumnValue, QObject::tr( "match" ) );
     }
 
     const QString bufferText
@@ -727,8 +747,8 @@ void addBitfieldItems( QTreeWidgetItem* parent,
 
         auto* item = new QTreeWidgetItem( parent );
         const auto fullName = prefix.isEmpty() ? bitField.name : prefix + "." + bitField.name;
-        item->setText( 0, bitField.name );
-        item->setText( 1, formatNumber( bitValue, bitField.format, bitField ) );
+        item->setText( ColumnField, bitField.name );
+        item->setText( ColumnValue, formatNumber( bitValue, bitField.format, bitField ) );
         insertValue( context,
                      fullName,
                      bitField.name,
@@ -762,7 +782,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
     if ( !item ) {
         return;
     }
-    item->setText( 0, displayName );
+    item->setText( ColumnField, displayName );
 
     const auto fullName = prefix.isEmpty() ? displayName : prefix + "." + displayName;
 
@@ -798,6 +818,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
         }
         const auto rawText = captured;
         const auto rawBytes = captured.toUtf8();
+        setItemRaw( item, rawText, rawBytes );
 
         if ( field.format == PreviewFormat::Match ) {
             applyMatchStage( item, field, context, fullName, rawText, rawBytes, source,
@@ -818,7 +839,8 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 setItemDecodeError( item, errorInfo );
                 return;
             }
-            item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
+            item->setText( ColumnValue,
+                           QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
             setItemOffsetWidth( item, captureOffset, decoded.bytes.size() );
             ParseContext childContext{
                 decoded.bytes,
@@ -853,8 +875,38 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 setItemDecodeError( item, errorInfo );
                 return;
             }
-            item->setText( 1, value );
+            item->setText( ColumnValue, value );
             insertRawValue( context, fullName, displayName, rawText );
+            if ( !field.fields.isEmpty() ) {
+                const auto decoded = decodeBytesFromSlice( rawBytes, field.type );
+                if ( !decoded.ok ) {
+                    DecodeErrorInfo errorInfo{ context.previewName,
+                                               fullName,
+                                               source,
+                                               captureOffset,
+                                               captureWidth,
+                                               truncateText( rawText, 64 ),
+                                               decoded.error };
+                    setItemDecodeError( item, errorInfo );
+                    return;
+                }
+                ParseContext childContext{
+                    decoded.bytes,
+                    0,
+                    context.values,
+                    context.rawValues,
+                    context.match,
+                    context.blocks,
+                    context.blockStack,
+                    context.previewName,
+                    source,
+                    captureOffset >= 0 ? captureOffset : context.baseOffset,
+                    context.matchStart,
+                    context.allowUnqualified };
+                for ( const auto& child : field.fields ) {
+                    addFieldItems( item, child, childContext, fullName );
+                }
+            }
         }
         else {
             quint64 numeric = 0;
@@ -870,8 +922,8 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 setItemDecodeError( item, errorInfo );
                 return;
             }
-            item->setText( 1,
-                           formatNumberWithRaw( rawText, numeric, field.format, field ) );
+            item->setText(
+                ColumnValue, formatNumberWithRaw( rawText, numeric, field.format, field ) );
             insertValue( context,
                          fullName,
                          displayName,
@@ -988,6 +1040,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
     context.cursor += width;
     const auto rawText = QString::fromUtf8( slice );
     const int inputOffset = context.baseOffset + sliceOffset;
+    setItemRaw( item, rawText, slice );
 
     if ( field.format == PreviewFormat::Match ) {
         applyMatchStage( item, field, context, fullName, rawText, slice, source, inputOffset,
@@ -1010,7 +1063,8 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
             setItemDecodeError( item, errorInfo );
             return;
         }
-        item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
+        item->setText( ColumnValue,
+                       QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
         ParseContext childContext{
             decoded.bytes,
             0,
@@ -1044,8 +1098,38 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
             setItemDecodeError( item, errorInfo );
             return;
         }
-        item->setText( 1, value );
+        item->setText( ColumnValue, value );
         insertRawValue( context, fullName, displayName, rawText );
+        if ( !field.fields.isEmpty() ) {
+            const auto decoded = decodeBytesFromSlice( slice, field.type );
+            if ( !decoded.ok ) {
+                DecodeErrorInfo errorInfo{ context.previewName,
+                                           fullName,
+                                           source,
+                                           context.baseOffset + sliceOffset,
+                                           width,
+                                           truncateText( rawText, 64 ),
+                                           decoded.error };
+                setItemDecodeError( item, errorInfo );
+                return;
+            }
+            ParseContext childContext{
+                decoded.bytes,
+                0,
+                context.values,
+                context.rawValues,
+                context.match,
+                context.blocks,
+                context.blockStack,
+                context.previewName,
+                source,
+                context.baseOffset + sliceOffset,
+                context.matchStart,
+                context.allowUnqualified };
+            for ( const auto& child : field.fields ) {
+                addFieldItems( item, child, childContext, fullName );
+            }
+        }
     }
     else {
         quint64 numeric = 0;
@@ -1061,8 +1145,8 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
             setItemDecodeError( item, errorInfo );
             return;
         }
-        item->setText( 1,
-                       formatNumberWithRaw( rawText, numeric, field.format, field ) );
+        item->setText(
+            ColumnValue, formatNumberWithRaw( rawText, numeric, field.format, field ) );
         insertValue( context,
                      fullName,
                      displayName,
@@ -1116,16 +1200,14 @@ void PreviewMessageTab::buildUi()
     headerLayout->addWidget( previewTypeCombo_, 1 );
 
     previewTree_ = new QTreeWidget( this );
-    previewTree_->setColumnCount( 4 );
-    previewTree_->setHeaderLabels(
-        QStringList() << tr( "Field" ) << tr( "Value" ) << tr( "Offset" ) << tr( "Width" ) );
+    previewTree_->setColumnCount( 5 );
+    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Raw" )
+                                                 << tr( "Value" ) << tr( "Offset" )
+                                                 << tr( "Width" ) );
     previewTree_->setRootIsDecorated( true );
     previewTree_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
-    previewTree_->header()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
-    previewTree_->header()->setSectionResizeMode( 1, QHeaderView::ResizeToContents );
-    previewTree_->header()->setSectionResizeMode( 2, QHeaderView::ResizeToContents );
-    previewTree_->header()->setSectionResizeMode( 3, QHeaderView::ResizeToContents );
+    previewTree_->header()->setSectionResizeMode( QHeaderView::Interactive );
     previewTree_->header()->setStretchLastSection( false );
 
     rawGroup_ = new QGroupBox( tr( "Raw line" ), this );

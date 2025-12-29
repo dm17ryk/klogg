@@ -345,6 +345,10 @@ bool parseFieldSpec( const QJsonObject& object,
         out->fields = parseFieldArray( object.value( "fields" ), errors, warnings,
                                        contextPrefix( context, "fields" ) );
     }
+    else if ( object.contains( "fields" ) ) {
+        out->fields = parseFieldArray( object.value( "fields" ), errors, warnings,
+                                       contextPrefix( context, "fields" ) );
+    }
 
     if ( out->format == PreviewFormat::Bitfield ) {
         if ( !object.contains( "bitfieldMap" ) ) {

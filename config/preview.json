@@ -46,6 +46,123 @@
       ]
     },
     {
+      "name": "ehcp_message_ev_cmd_Z_block",
+      "width": 0
+    },
+    {
+      "name": "ehcp_message_ev_cmd_E_block",
+      "source": "capture",
+      "capture": "ev_cmd",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "dual_com_status",
+          "width": 1,
+          "format": "enum",
+          "enumMap": {
+            "X": "Unused",
+            "I": "Irrelevant",
+            "N": "No Acknowledgment",
+            "A": "Acknowledgment Received "
+          }
+        },
+        {
+          "name": "status_fields",
+          "width": 11,
+          "format": "fields",
+          "fields": [
+            {
+              "name": "arm_type",
+              "width": 1,
+              "format": "string"
+            },
+            {
+              "name": "arm_forced",
+              "width": 1,
+              "format": "string"
+            },
+            {
+              "name": "time_status",
+              "width": 6,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "panel_zone_status",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "N": "No",
+                "S": "Yes"
+              }
+            },
+            {
+              "name": "panel_pending_cancell",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "N": "No",
+                "S": "Yes"
+              }
+            },
+            {
+              "name": "panel_fault_status",
+              "width": 1,
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "name": "event_type",
+          "width": 1,
+          "format": "enum",
+          "enumMap": {
+            "A": "Activity of Daily Living",
+            "C": "Comfort (not in use)",
+            "I": "Information",
+            "S": "Safety & SOS",
+            "T": "Technical"
+          }
+        },
+        {
+          "name": "event_device_type",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "VR": "Wireless Motion Detector (radio), aka PIR",
+            "MC": "Wired Magnetic (cable) Contact (door/bed sensor)",
+            "MR": "Wireless Magnetic (radio) Contact (door sensor)",
+            "XR": "Wireless (radio) Photo Sensor, aka IPD (camera)",
+            "FR": "Wireless (radio) Smoke Sensor"
+          }
+        },
+        {
+          "name": "event_device_version",
+          "width": 6,
+          "format": "string"
+        },
+        {
+          "name": "event_tstate",
+          "width": 1,
+          "format": "enum",
+          "enumMap": {
+            "N": "Not relevant (no event state for this event code)",
+            "A": "Active/Open (e.g.: tamper opened, supervision lost, smoke alarm, etc.)",
+            "D": "Deactivated/Closed (e.g.: tamper closed, supervision restored, smoke not detected anymore, etc.)"
+          }
+        },
+        {
+          "name": "event_code",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "event_args",
+          "format": "string"
+        }
+      ]
+    },
+    {
       "name": "ehcp_message_data_block",
       "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
       "width": "{size}-5",
@@ -144,7 +261,7 @@
       ]
     },
     {
-      "name": "ehcp_message_block",
+      "name": "ehcp_message_fields_block",
       "format": "match",
       "type": "string",
       "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
@@ -175,6 +292,30 @@
           "format": "hex"
         }
       ]
+    },
+    {
+      "name": "ehcp_message_block",
+      "format": "string",
+      "type": "string",
+      "fields": [
+        {
+          "name": "ehcp_message_fields",
+          "format": "block",
+          "block": "ehcp_message_fields_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_hex_message_block",
+      "format": "string",
+      "type": "hexString",
+      "fields": [
+        {
+          "name": "ehcp_message_fields",
+          "format": "block",
+          "block": "ehcp_message_fields_block"
+        }
+      ]
     }
   ],
   "previews": [
@@ -193,7 +334,6 @@
         }
       ]
     },
-
     {
       "name": "SRING -> EHCP",
       "enabled": true,
@@ -205,7 +345,7 @@
         {
           "name": "ehcp_message",
           "format": "block",
-          "block": "ehcp_message_block"
+          "block": "ehcp_hex_message_block"
         }
       ]
     }
