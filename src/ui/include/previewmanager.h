@@ -26,6 +26,8 @@ class PreviewManager : public QObject {
     const QVector<PreviewDefinition>& all() const;
     QVector<PreviewDefinition> enabled() const;
     const PreviewDefinition* findByName( const QString& name ) const;
+    const QMap<QString, PreviewFieldSpec>& blocks() const;
+    const PreviewFieldSpec* findBlock( const QString& name ) const;
     void setEnabled( const QString& name, bool enabled );
     QString findFirstMatchingEnabledPreview( const QString& rawLine ) const;
 
@@ -38,4 +40,5 @@ class PreviewManager : public QObject {
 
     PreviewRepository repository_;
     QVector<PreviewDefinition> previews_;
+    QMap<QString, PreviewFieldSpec> blocks_;
 };

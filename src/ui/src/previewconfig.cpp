@@ -31,6 +31,8 @@ QString previewFormatToString( PreviewFormat format )
         return "fields";
     case PreviewFormat::Match:
         return "match";
+    case PreviewFormat::Block:
+        return "block";
     case PreviewFormat::String:
         return "string";
     case PreviewFormat::Dig:
@@ -58,6 +60,8 @@ QString previewFieldSourceToString( PreviewFieldSource source )
         return "buffer";
     case PreviewFieldSource::Capture:
         return "capture";
+    case PreviewFieldSource::Block:
+        return "block";
     }
     return "buffer";
 }
@@ -115,6 +119,12 @@ PreviewFormat previewFormatFromString( const QString& value, bool* ok )
             *ok = true;
         }
         return PreviewFormat::Match;
+    }
+    if ( key == "block" ) {
+        if ( ok ) {
+            *ok = true;
+        }
+        return PreviewFormat::Block;
     }
     if ( key == "string" ) {
         if ( ok ) {
@@ -184,6 +194,12 @@ PreviewFieldSource previewFieldSourceFromString( const QString& value, bool* ok 
             *ok = true;
         }
         return PreviewFieldSource::Capture;
+    }
+    if ( key == "block" ) {
+        if ( ok ) {
+            *ok = true;
+        }
+        return PreviewFieldSource::Block;
     }
     if ( ok ) {
         *ok = false;

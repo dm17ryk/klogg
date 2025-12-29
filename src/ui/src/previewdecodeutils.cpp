@@ -272,3 +272,49 @@ PreviewExpressionResult evaluatePreviewExpression( const PreviewValueExpr& expr,
     result.value = total;
     return result;
 }
+
+QString resolveTemplateString( const QString& templateText,
+                               const QMap<QString, QString>& values,
+                               QStringList* missing )
+{
+    QString resolved;
+    resolved.reserve( templateText.size() );
+
+    int pos = 0;
+    while ( pos < templateText.size() ) {
+        const auto ch = templateText.at( pos );
+        if ( ch != '{' ) {
+            resolved.append( ch );
+            ++pos;
+            continue;
+        }
+
+        const int start = pos + 1;
+        const int end = templateText.indexOf( '}', start );
+        if ( end < 0 ) {
+            resolved.append( templateText.mid( pos ) );
+            break;
+        }
+
+        const auto key = templateText.mid( start, end - start ).trimmed();
+        if ( key.isEmpty() ) {
+            resolved.append( templateText.mid( pos, end - pos + 1 ) );
+            pos = end + 1;
+            continue;
+        }
+
+        const auto it = values.find( key );
+        if ( it == values.end() ) {
+            resolved.append( templateText.mid( pos, end - pos + 1 ) );
+            if ( missing && !missing->contains( key ) ) {
+                missing->push_back( key );
+            }
+        }
+        else {
+            resolved.append( it.value() );
+        }
+        pos = end + 1;
+    }
+
+    return resolved;
+}

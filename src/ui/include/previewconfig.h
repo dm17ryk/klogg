@@ -6,8 +6,20 @@
 #include <QVector>
 
 enum class PreviewBufferType { String, HexString, Base64, Bin, Bytes };
-enum class PreviewFormat { Fields, Match, String, Dig, Dec, Hex, Bin, Enum, Flags, Bitfield };
-enum class PreviewFieldSource { Buffer, Capture };
+enum class PreviewFormat {
+    Fields,
+    Match,
+    Block,
+    String,
+    Dig,
+    Dec,
+    Hex,
+    Bin,
+    Enum,
+    Flags,
+    Bitfield
+};
+enum class PreviewFieldSource { Buffer, Capture, Block };
 
 struct PreviewValueExpr {
     bool isSet = false;
@@ -34,6 +46,7 @@ struct PreviewFieldSpec {
     QString regex;
     QRegularExpression compiledRegex;
     PreviewCaptureRef bufferCapture;
+    QString blockTemplate;
     QString endianness;
     QMap<QString, QString> enumMap;
     QMap<QString, QString> flagMap;

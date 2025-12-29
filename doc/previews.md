@@ -25,6 +25,7 @@ Previews are **on-demand** (they do not modify your log file) and are shown in a
     - [Keys](#keys)
   - [Field definition](#field-definition)
     - [Keys](#keys-1)
+  - [Reusable blocks](#reusable-blocks)
   - [Types](#types)
     - [Hex odd-length notes](#hex-odd-length-notes)
   - [Formats](#formats)
@@ -166,6 +167,48 @@ Fields are parsed in order (like a cursor walking through a buffer), unless a fi
 | `regex` | string | conditional | Required when `format == "match"` |
 | `bufferCapture` | string/int | no | For `format == "match"`: which capture becomes the nested buffer for child parsing |
 | `fields` | array | conditional | Required when `format == "fields"` or `format == "match"` |
+
+---
+
+## Reusable blocks
+
+Reusable blocks let you define field groups once and invoke them by name.
+
+- Define blocks in top-level `blocks[]` (each entry is a field definition with a required `name`).
+- Invoke a block by setting `format: "block"` (or `source: "block"`) and a `block` string.
+- `block` supports `{var}` placeholders, resolved from raw parsed values (not enum labels).
+
+Example:
+
+```json
+{
+  "blocks": [
+    {
+      "name": "payload_P_CM",
+      "format": "fields",
+      "fields": [
+        { "name": "payload", "width": 3, "type": "string", "format": "string" }
+      ]
+    }
+  ],
+  "previews": [
+    {
+      "name": "Block dynamic",
+      "regex": "^(?<payload>.*)$",
+      "bufferCapture": "payload",
+      "format": "fields",
+      "fields": [
+        { "name": "protocol_type", "width": 1, "format": "string" },
+        { "name": "command_id", "width": 2, "format": "string" },
+        { "name": "payload_block", "format": "block",
+          "block": "payload_{protocol_type}_{command_id}" }
+      ]
+    }
+  ]
+}
+```
+
+If a block is missing or a cycle is detected, the preview shows an error node and continues.
 
 ---
 

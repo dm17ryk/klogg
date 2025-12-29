@@ -24,6 +24,7 @@ void PreviewManager::loadFromRepository()
         }
     }
     previews_ = std::move( result.previews );
+    blocks_ = std::move( result.blocks );
     for ( auto& preview : previews_ ) {
         preview.hasEnabled = true;
     }
@@ -64,7 +65,11 @@ PreviewImportResult PreviewManager::importFromFile( const QString& path )
         }
     }
 
-    result.ok = repository_.save( previews_ );
+    for ( auto it = parsed.blocks.begin(); it != parsed.blocks.end(); ++it ) {
+        blocks_.insert( it.key(), it.value() );
+    }
+
+    result.ok = repository_.save( previews_, blocks_ );
     if ( !result.ok ) {
         result.errors.push_back( "Failed to save previews configuration." );
         return result;
@@ -87,7 +92,7 @@ bool PreviewManager::removeByName( const QString& name )
     const auto index = std::distance( previews_.begin(), it );
     const auto removed = *it;
     previews_.erase( it );
-    if ( !repository_.save( previews_ ) ) {
+    if ( !repository_.save( previews_, blocks_ ) ) {
         previews_.insert( previews_.begin() + index, removed );
         return false;
     }
@@ -103,9 +108,12 @@ bool PreviewManager::clearAll()
     }
 
     const auto previous = previews_;
+    const auto previousBlocks = blocks_;
     previews_.clear();
-    if ( !repository_.save( previews_ ) ) {
+    blocks_.clear();
+    if ( !repository_.save( previews_, blocks_ ) ) {
         previews_ = previous;
+        blocks_ = previousBlocks;
         return false;
     }
 
@@ -141,6 +149,20 @@ const PreviewDefinition* PreviewManager::findByName( const QString& name ) const
     return &*it;
 }
 
+const QMap<QString, PreviewFieldSpec>& PreviewManager::blocks() const
+{
+    return blocks_;
+}
+
+const PreviewFieldSpec* PreviewManager::findBlock( const QString& name ) const
+{
+    const auto it = blocks_.find( name );
+    if ( it == blocks_.end() ) {
+        return nullptr;
+    }
+    return &it.value();
+}
+
 void PreviewManager::setEnabled( const QString& name, bool enabled )
 {
     auto it = std::find_if( previews_.begin(), previews_.end(),
@@ -155,7 +177,7 @@ void PreviewManager::setEnabled( const QString& name, bool enabled )
     }
     it->enabled = enabled;
     it->hasEnabled = true;
-    repository_.save( previews_ );
+    repository_.save( previews_, blocks_ );
     Q_EMIT previewEnabledChanged( name, enabled );
     Q_EMIT previewsChanged();
 }

@@ -8,6 +8,7 @@
 
 struct PreviewParseResult {
     QVector<PreviewDefinition> previews;
+    QMap<QString, PreviewFieldSpec> blocks;
     QStringList errors;
     QStringList warnings;
 };

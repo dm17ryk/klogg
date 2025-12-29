@@ -1,0 +1,406 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "EHCP (direct quoted)",
+      "enabled": true,
+      "regex": "^.*\"(?<ehcp>EHCP[^\"]*)\".*$",
+      "bufferCapture": "ehcp",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "protocol",
+              "source": "capture",
+              "capture": "protocol",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
+              "width": "{size}-5",
+              "format": "match",
+              "fields": [
+                {
+                  "name": "header",
+                  "source": "capture",
+                  "capture": "header",
+                  "format": "fields",
+                  "fields": [
+                    {
+                      "name": "InstallationID",
+                      "width": 8,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "MessageID",
+                      "width": 2,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "PanelID",
+                      "width": 11,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Date",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Time",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Type",
+                      "format": "match",
+                      "regex": "^(?<msgType>[A-Z])(?:\\\\*(?<paramID>[0-9A-F]{4}))?$",
+                      "fields": [
+                        {
+                          "name": "MessageType",
+                          "source": "capture",
+                          "capture": "msgType",
+                          "format": "enum",
+                          "enumMap": {
+                            "E": "Event",
+                            "Z": "NoEvent",
+                            "P": "Parameter"
+                          }
+                        },
+                        {
+                          "name": "ParamBlockID",
+                          "source": "capture",
+                          "capture": "paramID",
+                          "type": "hexString",
+                          "format": "hex"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "ev_cmd",
+                  "source": "capture",
+                  "capture": "ev_cmd",
+                  "format": "fields",
+                  "fields": [
+                    {
+                      "name": "Category",
+                      "width": 3,
+                      "type": "string",
+                      "format": "enum",
+                      "enumMap": {
+                        "INN": "Intrusion",
+                        "SCE": "Safety",
+                        "TCE": "Technical",
+                        "NTF": "Notification"
+                      }
+                    },
+                    {
+                      "name": "ZoneNumber",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Qualifier",
+                      "width": 3,
+                      "type": "string",
+                      "format": "enum",
+                      "enumMap": {
+                        "NNN": "NewEvent"
+                      }
+                    },
+                    {
+                      "name": "Device",
+                      "format": "match",
+                      "regex": "^(?<type>[A-Z]{3,4})(?<index>[0-9])(?<id>[A-Za-z0-9]{5})(?=[A-Z])",
+                      "fields": [
+                        {
+                          "name": "DeviceType",
+                          "source": "capture",
+                          "capture": "type",
+                          "format": "enum",
+                          "enumMap": {
+                            "ICE": "IntrusionDevice",
+                            "SCE": "SafetyDevice",
+                            "TCE": "TechnicalDevice"
+                          }
+                        },
+                        {
+                          "name": "DeviceIndex",
+                          "source": "capture",
+                          "capture": "index",
+                          "type": "string",
+                          "format": "dig"
+                        },
+                        {
+                          "name": "DeviceID",
+                          "source": "capture",
+                          "capture": "id",
+                          "type": "string",
+                          "format": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Event",
+                      "format": "match",
+                      "regex": "^(?<code>[A-Z]+)(?<params>.*)$",
+                      "fields": [
+                        {
+                          "name": "Code",
+                          "source": "capture",
+                          "capture": "code",
+                          "format": "enum",
+                          "enumMap": {
+                            "DIPR": "DeviceInitParamRequest",
+                            "NIPR": "NetworkInitParamRequest"
+                          }
+                        },
+                        {
+                          "name": "Parameters",
+                          "source": "capture",
+                          "capture": "params",
+                          "type": "string",
+                          "format": "string"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SRING -> EHCP",
+      "enabled": true,
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexPayload>[0-9A-Fa-f]+)$",
+      "bufferCapture": "hexPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp",
+          "format": "match",
+          "type": "hexString",
+          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "protocol",
+              "source": "capture",
+              "capture": "protocol",
+              "format": "string"
+            },
+            {
+              "name": "size",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "data",
+              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
+              "width": "{size}-5",
+              "format": "match",
+              "fields": [
+                {
+                  "name": "header",
+                  "source": "capture",
+                  "capture": "header",
+                  "format": "fields",
+                  "fields": [
+                    {
+                      "name": "InstallationID",
+                      "width": 8,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "MessageID",
+                      "width": 2,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "PanelID",
+                      "width": 11,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Date",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Time",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Type",
+                      "format": "match",
+                      "regex": "^(?<msgType>[A-Z])(?:\\\\*(?<paramID>[0-9A-F]{4}))?$",
+                      "fields": [
+                        {
+                          "name": "MessageType",
+                          "source": "capture",
+                          "capture": "msgType",
+                          "format": "enum",
+                          "enumMap": {
+                            "E": "Event",
+                            "Z": "NoEvent",
+                            "P": "Parameter"
+                          }
+                        },
+                        {
+                          "name": "ParamBlockID",
+                          "source": "capture",
+                          "capture": "paramID",
+                          "type": "hexString",
+                          "format": "hex"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "ev_cmd",
+                  "source": "capture",
+                  "capture": "ev_cmd",
+                  "format": "fields",
+                  "fields": [
+                    {
+                      "name": "Category",
+                      "width": 3,
+                      "type": "string",
+                      "format": "enum",
+                      "enumMap": {
+                        "INN": "Intrusion",
+                        "SCE": "Safety",
+                        "TCE": "Technical",
+                        "NTF": "Notification"
+                      }
+                    },
+                    {
+                      "name": "ZoneNumber",
+                      "width": 6,
+                      "type": "string",
+                      "format": "string"
+                    },
+                    {
+                      "name": "Qualifier",
+                      "width": 3,
+                      "type": "string",
+                      "format": "enum",
+                      "enumMap": {
+                        "NNN": "NewEvent"
+                      }
+                    },
+                    {
+                      "name": "Device",
+                      "format": "match",
+                      "regex": "^(?<type>[A-Z]{3,4})(?<index>[0-9])(?<id>[A-Za-z0-9]{5})(?=[A-Z])",
+                      "fields": [
+                        {
+                          "name": "DeviceType",
+                          "source": "capture",
+                          "capture": "type",
+                          "format": "enum",
+                          "enumMap": {
+                            "ICE": "IntrusionDevice",
+                            "SCE": "SafetyDevice",
+                            "TCE": "TechnicalDevice"
+                          }
+                        },
+                        {
+                          "name": "DeviceIndex",
+                          "source": "capture",
+                          "capture": "index",
+                          "type": "string",
+                          "format": "dig"
+                        },
+                        {
+                          "name": "DeviceID",
+                          "source": "capture",
+                          "capture": "id",
+                          "type": "string",
+                          "format": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Event",
+                      "format": "match",
+                      "regex": "^(?<code>[A-Z]+)(?<params>.*)$",
+                      "fields": [
+                        {
+                          "name": "Code",
+                          "source": "capture",
+                          "capture": "code",
+                          "format": "enum",
+                          "enumMap": {
+                            "DIPR": "DeviceInitParamRequest",
+                            "NIPR": "NetworkInitParamRequest"
+                          }
+                        },
+                        {
+                          "name": "Parameters",
+                          "source": "capture",
+                          "capture": "params",
+                          "type": "string",
+                          "format": "string"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "checksum",
+              "source": "capture",
+              "capture": "checksum",
+              "type": "hexString",
+              "format": "hex"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

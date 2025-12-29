@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QMap>
 #include <QString>
+#include <QStringList>
 
 #include "previewconfig.h"
 
@@ -31,3 +32,6 @@ HexParseResult parseHexToU64AllowOddDigits( const QString& input );
 HexDecodeResult decodeHexStringToBytes( const QString& input );
 PreviewExpressionResult evaluatePreviewExpression( const PreviewValueExpr& expr,
                                                    const QMap<QString, qint64>& values );
+QString resolveTemplateString( const QString& templateText,
+                               const QMap<QString, QString>& values,
+                               QStringList* missing = nullptr );

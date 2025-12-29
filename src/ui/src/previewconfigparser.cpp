@@ -124,6 +124,53 @@ QVector<PreviewFieldSpec> parseFieldArray( const QJsonValue& value,
     return fields;
 }
 
+QMap<QString, PreviewFieldSpec> parseBlockArray( const QJsonValue& value,
+                                                 QStringList* errors,
+                                                 QStringList* warnings,
+                                                 const QString& context )
+{
+    QMap<QString, PreviewFieldSpec> blocks;
+    if ( value.isUndefined() || value.isNull() ) {
+        return blocks;
+    }
+    if ( !value.isArray() ) {
+        if ( errors ) {
+            errors->push_back( QString( "Expected array at %1." ).arg( context ) );
+        }
+        return blocks;
+    }
+
+    const auto array = value.toArray();
+    int index = 0;
+    for ( const auto& item : array ) {
+        if ( !item.isObject() ) {
+            if ( errors ) {
+                errors->push_back(
+                    QString( "Expected object at %1[%2]." ).arg( context ).arg( index ) );
+            }
+            ++index;
+            continue;
+        }
+
+        PreviewFieldSpec spec;
+        if ( parseFieldSpec( item.toObject(), &spec, errors, warnings,
+                             QString( "%1[%2]" ).arg( context ).arg( index ) ) ) {
+            if ( blocks.contains( spec.name ) ) {
+                if ( errors ) {
+                    errors->push_back(
+                        QString( "Duplicate block name '%1' at %2." )
+                            .arg( spec.name, context ) );
+                }
+            }
+            else {
+                blocks.insert( spec.name, std::move( spec ) );
+            }
+        }
+        ++index;
+    }
+    return blocks;
+}
+
 bool parseFieldSpec( const QJsonObject& object,
                      PreviewFieldSpec* out,
                      QStringList* errors,
@@ -157,7 +204,8 @@ bool parseFieldSpec( const QJsonObject& object,
                                       "fields",
                                       "bitfieldMap",
                                       "regex",
-                                      "bufferCapture" };
+                                      "bufferCapture",
+                                      "block" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -180,6 +228,16 @@ bool parseFieldSpec( const QJsonObject& object,
     out->bufferCapture
         = parseCaptureRef( object.value( "bufferCapture" ), warnings,
                            contextPrefix( context, "bufferCapture" ) );
+    if ( object.contains( "block" ) ) {
+        const auto blockValue = object.value( "block" );
+        if ( blockValue.isString() ) {
+            out->blockTemplate = blockValue.toString();
+        }
+        else if ( warnings ) {
+            warnings->push_back(
+                QString( "Invalid block reference at %1." ).arg( context ) );
+        }
+    }
 
     out->offset = parseValueExpr( object.value( "offset" ), warnings,
                                   contextPrefix( context, "offset" ) );
@@ -228,6 +286,14 @@ bool parseFieldSpec( const QJsonObject& object,
             warnings->push_back( QString( "Missing capture for field %1." ).arg( context ) );
         }
     }
+    if ( out->source == PreviewFieldSource::Block
+         && out->blockTemplate.trimmed().isEmpty() ) {
+        if ( errors ) {
+            errors->push_back(
+                QString( "Missing block reference for field %1." ).arg( context ) );
+        }
+        return false;
+    }
 
     if ( out->format == PreviewFormat::Enum && out->enumMap.isEmpty() ) {
         if ( warnings ) {
@@ -258,6 +324,15 @@ bool parseFieldSpec( const QJsonObject& object,
             }
             return false;
         }
+    }
+
+    if ( out->format == PreviewFormat::Block
+         && out->blockTemplate.trimmed().isEmpty() ) {
+        if ( errors ) {
+            errors->push_back(
+                QString( "Missing block reference for %1." ).arg( context ) );
+        }
+        return false;
     }
 
     if ( out->format == PreviewFormat::Fields || out->format == PreviewFormat::Match ) {
@@ -411,6 +486,10 @@ PreviewParseResult PreviewConfigParser::parseJson( const QByteArray& jsonBytes )
     }
     else if ( document.isObject() ) {
         const auto rootObj = document.object();
+        if ( rootObj.contains( "blocks" ) ) {
+            result.blocks = parseBlockArray( rootObj.value( "blocks" ), &result.errors,
+                                             &result.warnings, "blocks" );
+        }
         if ( rootObj.contains( "previews" ) && rootObj.value( "previews" ).isArray() ) {
             previewArray = rootObj.value( "previews" ).toArray();
         }

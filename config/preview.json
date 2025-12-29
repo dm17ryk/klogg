@@ -1,62 +1,195 @@
 {
   "$schema": "../schemas/klogg-previews.schema.json",
   "version": 1,
-  "previews": [
+  "blocks": [
     {
-      "name": "EHCP (direct quoted)",
-      "enabled": true,
-      "regex": "^.*\"(?<ehcp>EHCP[^\"]*)\".*$",
-      "bufferCapture": "ehcp",
-      "type": "string",
+      "name": "ehcp_message_command_CM_block",
+      "width": 0
+    },
+    {
+      "name": "ehcp_message_command_V3_block",
+      "width": 3,
+      "format": "string"
+    },
+    {
+      "name": "ehcp_message_ev_cmd_P_block",
+      "source": "capture",
+      "capture": "ev_cmd",
       "format": "fields",
       "fields": [
         {
-          "name": "ehcp",
-          "format": "match",
-          "type": "string",
-          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
-          "bufferCapture": "payload",
+          "name": "command_prefix",
+          "width": 1,
+          "format": "string"
+        },
+        {
+          "name": "command_code",
+          "width": 4,
+          "format": "string"
+        },
+        {
+          "name": "command_id",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "CM": "Call Me",
+            "V3": "Take Photo",
+            "CO": "Connect to Server",
+            "AO": "Configure Out of Home Alert Timer"
+          }
+        },
+        {
+          "name": "command",
+          "source": "block",
+          "block": "ehcp_message_command_{command_id}_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_data_block",
+      "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
+      "width": "{size}-5",
+      "format": "match",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "header",
+          "format": "fields",
           "fields": [
             {
-              "name": "protocol",
-              "source": "capture",
-              "capture": "protocol",
-              "format": "string"
-            },
-            {
-              "name": "size",
-              "width": 3,
-              "type": "hexString",
-              "format": "dig"
-            },
-            {
-              "name": "data",
-              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
-              "width": "{size}-5",
-              "format": "match",
+              "name": "panel_info",
+              "width": 6,
+              "format": "fields",
               "fields": [
                 {
-                  "name": "header",
-                  "source": "capture",
-                  "capture": "header",
-                  "format": "string"
+                  "name": "device_type",
+                  "width": 2,
+                  "format": "enum",
+                  "enumMap": {
+                    "01": "CP",
+                    "02": "C7000",
+                    "04": "C8000"
+                  }
                 },
                 {
-                  "name": "ev_cmd",
-                  "source": "capture",
-                  "capture": "ev_cmd",
+                  "name": "model_options",
+                  "width": 2,
+                  "format": "enum",
+                  "enumMap": {
+                    "07": "Care@Home Pro",
+                    "08": "Care@Home Family",
+                    "09": "Care@Home PERS-E"
+                  }
+                },
+                {
+                  "name": "protocol_version",
+                  "width": 2,
                   "format": "string"
                 }
               ]
             },
             {
-              "name": "checksum",
-              "source": "capture",
-              "capture": "checksum",
+              "name": "message_counter",
+              "width": 3,
               "type": "hexString",
               "format": "hex"
+            },
+            {
+              "name": "ack",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "0": "NACK",
+                "1": "ACK"
+              }
+            },
+            {
+              "name": "account_number",
+              "width": 8,
+              "type": "hexString",
+              "format": "hex"
+            },
+            {
+              "name": "utc_offset",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "date_time",
+              "width": 12,
+              "type": "string",
+              "format": "string"
+            },
+            {
+              "name": "protocol_type",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "E": "Event",
+                "R": "Event",
+                "Z": "Message ACK",
+                "M": "Message mixed ACK",
+                "P": "Command"
+              }
             }
           ]
+        },
+        {
+          "name": "ev_cmd",
+          "source": "block",
+          "block": "ehcp_message_ev_cmd_{protocol_type}_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "protocol",
+          "source": "capture",
+          "capture": "protocol",
+          "format": "string"
+        },
+        {
+          "name": "size",
+          "width": 3,
+          "type": "hexString",
+          "format": "dig"
+        },
+        {
+          "name": "ehcp_data",
+          "format": "block",
+          "block": "ehcp_message_data_block"
+        },
+        {
+          "name": "checksum",
+          "source": "capture",
+          "capture": "checksum",
+          "type": "hexString",
+          "format": "hex"
+        }
+      ]
+    }
+  ],
+  "previews": [
+    {
+      "name": "EHCP (direct quoted)",
+      "enabled": true,
+      "regex": "^.*\"(?<ehcpPayload>EHCP[^\"]*)\".*$",
+      "bufferCapture": "ehcpPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_message_block"
         }
       ]
     },
@@ -64,58 +197,15 @@
     {
       "name": "SRING -> EHCP",
       "enabled": true,
-      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexPayload>[0-9A-Fa-f]+)$",
-      "bufferCapture": "hexPayload",
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)$",
+      "bufferCapture": "hexEhcpPayload",
       "type": "string",
       "format": "fields",
       "fields": [
         {
-          "name": "ehcp",
-          "format": "match",
-          "type": "hexString",
-          "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
-          "bufferCapture": "payload",
-          "fields": [
-            {
-              "name": "protocol",
-              "source": "capture",
-              "capture": "protocol",
-              "format": "string"
-            },
-            {
-              "name": "size",
-              "width": 3,
-              "type": "hexString",
-              "format": "dig"
-            },
-            {
-              "name": "data",
-              "regex": "(?<header>[^#!\\/]*)\\#(?<ev_cmd>[^#!\\/]*)",
-              "width": "{size}-5",
-              "format": "match",
-              "fields": [
-                {
-                  "name": "header",
-                  "source": "capture",
-                  "capture": "header",
-                  "format": "string"
-                },
-                {
-                  "name": "ev_cmd",
-                  "source": "capture",
-                  "capture": "ev_cmd",
-                  "format": "string"
-                }
-              ]
-            },
-            {
-              "name": "checksum",
-              "source": "capture",
-              "capture": "checksum",
-              "type": "hexString",
-              "format": "hex"
-            }
-          ]
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_message_block"
         }
       ]
     }

@@ -252,6 +252,20 @@ QString formatEnum( quint64 value, const QMap<QString, QString>& enumMap )
     return QString::number( value );
 }
 
+QString formatEnumWithRaw( const QString& rawText,
+                           quint64 value,
+                           const QMap<QString, QString>& enumMap )
+{
+    const auto trimmed = rawText.trimmed();
+    if ( !trimmed.isEmpty() ) {
+        const auto it = enumMap.constFind( trimmed );
+        if ( it != enumMap.constEnd() ) {
+            return it.value();
+        }
+    }
+    return formatEnum( value, enumMap );
+}
+
 QString formatFlags( quint64 value, const QMap<QString, QString>& flagMap )
 {
     QStringList names;
@@ -284,6 +298,17 @@ QString formatNumber( quint64 value, PreviewFormat format, const PreviewFieldSpe
     default:
         return QString::number( value );
     }
+}
+
+QString formatNumberWithRaw( const QString& rawText,
+                             quint64 value,
+                             PreviewFormat format,
+                             const PreviewFieldSpec& field )
+{
+    if ( format == PreviewFormat::Enum ) {
+        return formatEnumWithRaw( rawText, value, field.enumMap );
+    }
+    return formatNumber( value, format, field );
 }
 
 struct ExprResult {
@@ -448,7 +473,10 @@ struct ParseContext {
     QByteArray buffer;
     int cursor = 0;
     QMap<QString, qint64>* values = nullptr;
+    QMap<QString, QString>* rawValues = nullptr;
     const QRegularExpressionMatch* match = nullptr;
+    const QMap<QString, PreviewFieldSpec>* blocks = nullptr;
+    QStringList* blockStack = nullptr;
     QString previewName;
     QString bufferSource;
     int baseOffset = 0;
@@ -456,19 +484,126 @@ struct ParseContext {
     bool allowUnqualified = false;
 };
 
+void parseFieldIntoItem( QTreeWidgetItem* item,
+                         const PreviewFieldSpec& field,
+                         ParseContext& context,
+                         const QString& prefix,
+                         const QString& displayName );
 void addFieldItems( QTreeWidgetItem* parent,
                     const PreviewFieldSpec& field,
                     ParseContext& context,
                     const QString& prefix );
 
-void insertValue( ParseContext& context, const QString& fullName, const QString& shortName, qint64 value )
+void insertRawValue( ParseContext& context,
+                     const QString& fullName,
+                     const QString& shortName,
+                     const QString& rawValue )
 {
-    if ( !context.values ) {
+    if ( !context.rawValues ) {
         return;
     }
-    context.values->insert( fullName, value );
+    context.rawValues->insert( fullName, rawValue );
     if ( context.allowUnqualified && shortName != fullName ) {
-        context.values->insert( shortName, value );
+        context.rawValues->insert( shortName, rawValue );
+    }
+}
+
+void insertValue( ParseContext& context,
+                  const QString& fullName,
+                  const QString& shortName,
+                  qint64 value,
+                  const QString& rawValue )
+{
+    if ( context.values ) {
+        context.values->insert( fullName, value );
+        if ( context.allowUnqualified && shortName != fullName ) {
+            context.values->insert( shortName, value );
+        }
+    }
+    insertRawValue( context, fullName, shortName, rawValue );
+}
+
+void addBlockErrorItem( QTreeWidgetItem* item, const QString& message )
+{
+    if ( !item ) {
+        return;
+    }
+    auto* errorItem = new QTreeWidgetItem( item );
+    errorItem->setText( 0, QObject::tr( "Error" ) );
+    errorItem->setText( 1, message );
+}
+
+struct BlockResolution {
+    const PreviewFieldSpec* block = nullptr;
+    QString resolvedName;
+    QString error;
+};
+
+BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseContext& context )
+{
+    BlockResolution result;
+    if ( !context.blocks ) {
+        result.error = QObject::tr( "No blocks are available." );
+        return result;
+    }
+
+    const QString templateName = field.blockTemplate.trimmed();
+    if ( templateName.isEmpty() ) {
+        result.error = QObject::tr( "Missing block reference." );
+        return result;
+    }
+
+    const QMap<QString, QString> emptyValues;
+    const auto& values = context.rawValues ? *context.rawValues : emptyValues;
+    QStringList missing;
+    result.resolvedName = resolveTemplateString( templateName, values, &missing );
+
+    const auto it = context.blocks->find( result.resolvedName );
+    if ( it == context.blocks->end() ) {
+        if ( missing.isEmpty() ) {
+            result.error = QObject::tr( "Missing block: %1" ).arg( result.resolvedName );
+        }
+        else {
+            result.error = QObject::tr( "Missing block: %1 (missing values: %2)" )
+                               .arg( result.resolvedName, missing.join( ", " ) );
+        }
+        return result;
+    }
+
+    if ( !missing.isEmpty() ) {
+        result.error = QObject::tr( "Missing template values: %1" ).arg( missing.join( ", " ) );
+        return result;
+    }
+
+    if ( context.blockStack && context.blockStack->contains( result.resolvedName ) ) {
+        const auto chain = context.blockStack->join( " -> " );
+        result.error = QObject::tr( "Block cycle detected: %1 -> %2" )
+                           .arg( chain, result.resolvedName );
+        return result;
+    }
+
+    result.block = &it.value();
+    return result;
+}
+
+void applyBlockReference( QTreeWidgetItem* item,
+                          const PreviewFieldSpec& field,
+                          ParseContext& context,
+                          const QString& prefix,
+                          const QString& displayName )
+{
+    auto resolution = resolveBlockReference( field, context );
+    if ( !resolution.error.isEmpty() ) {
+        addBlockErrorItem( item, resolution.error );
+        return;
+    }
+
+    if ( context.blockStack ) {
+        context.blockStack->push_back( resolution.resolvedName );
+    }
+    parseFieldIntoItem( item, *resolution.block, context, prefix, displayName );
+    if ( context.blockStack ) {
+        context.blockStack->removeLast();
     }
 }
 
@@ -556,7 +691,10 @@ bool applyMatchStage( QTreeWidgetItem* item,
         bufferText.toUtf8(),
         0,
         context.values,
+        context.rawValues,
         &match,
+        context.blocks,
+        context.blockStack,
         context.previewName,
         bufferSource,
         bufferBaseOffset,
@@ -591,7 +729,11 @@ void addBitfieldItems( QTreeWidgetItem* parent,
         const auto fullName = prefix.isEmpty() ? bitField.name : prefix + "." + bitField.name;
         item->setText( 0, bitField.name );
         item->setText( 1, formatNumber( bitValue, bitField.format, bitField ) );
-        insertValue( context, fullName, bitField.name, static_cast<qint64>( bitValue ) );
+        insertValue( context,
+                     fullName,
+                     bitField.name,
+                     static_cast<qint64>( bitValue ),
+                     QString::number( bitValue ) );
     }
 }
 
@@ -611,18 +753,27 @@ int resolveBitfieldWidth( const PreviewFieldSpec& field, ParseContext& context )
     return totalBits;
 }
 
-void addFieldItems( QTreeWidgetItem* parent,
-                    const PreviewFieldSpec& field,
-                    ParseContext& context,
-                    const QString& prefix )
+void parseFieldIntoItem( QTreeWidgetItem* item,
+                         const PreviewFieldSpec& field,
+                         ParseContext& context,
+                         const QString& prefix,
+                         const QString& displayName )
 {
-    auto* item = new QTreeWidgetItem( parent );
-    item->setText( 0, field.name );
+    if ( !item ) {
+        return;
+    }
+    item->setText( 0, displayName );
 
-    const auto fullName = prefix.isEmpty() ? field.name : prefix + "." + field.name;
+    const auto fullName = prefix.isEmpty() ? displayName : prefix + "." + displayName;
+
+    if ( field.format == PreviewFormat::Block || field.source == PreviewFieldSource::Block ) {
+        applyBlockReference( item, field, context, prefix, displayName );
+        return;
+    }
 
     if ( field.source == PreviewFieldSource::Capture ) {
-        const auto captured = context.match ? captureValue( field.capture, *context.match ) : QString();
+        const auto captured = context.match ? captureValue( field.capture, *context.match )
+                                            : QString();
         const auto source = describeCaptureRef( field.capture, "capture" );
         int captureOffset = -1;
         if ( context.match ) {
@@ -635,7 +786,11 @@ void addFieldItems( QTreeWidgetItem* parent,
             = context.match ? captureLength( field.capture, *context.match ) : -1;
         setItemOffsetWidth( item, captureOffset, captureWidth );
         if ( !field.capture.isSet ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, -1, -1,
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       -1,
+                                       -1,
                                        truncateText( captured, 64 ),
                                        QObject::tr( "Capture is not set." ) };
             setItemDecodeError( item, errorInfo );
@@ -658,22 +813,26 @@ void addFieldItems( QTreeWidgetItem* parent,
                                            source,
                                            captureOffset,
                                            captureWidth,
-                                           truncateText( rawText, 64 ), decoded.error };
+                                           truncateText( rawText, 64 ),
+                                           decoded.error };
                 setItemDecodeError( item, errorInfo );
                 return;
             }
             item->setText( 1, QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
             setItemOffsetWidth( item, captureOffset, decoded.bytes.size() );
-    ParseContext childContext{
-        decoded.bytes,
-        0,
-        context.values,
-        context.match,
-        context.previewName,
-        source,
-        captureOffset >= 0 ? captureOffset : context.baseOffset,
-        context.matchStart,
-        context.allowUnqualified };
+            ParseContext childContext{
+                decoded.bytes,
+                0,
+                context.values,
+                context.rawValues,
+                context.match,
+                context.blocks,
+                context.blockStack,
+                context.previewName,
+                source,
+                captureOffset >= 0 ? captureOffset : context.baseOffset,
+                context.matchStart,
+                context.allowUnqualified };
             for ( const auto& child : field.fields ) {
                 addFieldItems( item, child, childContext, fullName );
             }
@@ -689,11 +848,13 @@ void addFieldItems( QTreeWidgetItem* parent,
                                            source,
                                            captureOffset,
                                            captureWidth,
-                                           truncateText( rawText, 64 ), error };
+                                           truncateText( rawText, 64 ),
+                                           error };
                 setItemDecodeError( item, errorInfo );
                 return;
             }
             item->setText( 1, value );
+            insertRawValue( context, fullName, displayName, rawText );
         }
         else {
             quint64 numeric = 0;
@@ -704,15 +865,25 @@ void addFieldItems( QTreeWidgetItem* parent,
                                            source,
                                            captureOffset,
                                            captureWidth,
-                                           truncateText( rawText, 64 ), error };
+                                           truncateText( rawText, 64 ),
+                                           error };
                 setItemDecodeError( item, errorInfo );
                 return;
             }
-            item->setText( 1, formatNumber( numeric, field.format, field ) );
-            insertValue( context, fullName, field.name, static_cast<qint64>( numeric ) );
+            item->setText( 1,
+                           formatNumberWithRaw( rawText, numeric, field.format, field ) );
+            insertValue( context,
+                         fullName,
+                         displayName,
+                         static_cast<qint64>( numeric ),
+                         rawText );
             if ( field.format == PreviewFormat::Bitfield ) {
-                addBitfieldItems( item, field, numeric,
-                                  resolveBitfieldWidth( field, context ), context, fullName );
+                addBitfieldItems( item,
+                                  field,
+                                  numeric,
+                                  resolveBitfieldWidth( field, context ),
+                                  context,
+                                  fullName );
             }
         }
         return;
@@ -741,9 +912,8 @@ void addFieldItems( QTreeWidgetItem* parent,
         return false;
     };
 
-    const auto source = context.bufferSource.isEmpty()
-                            ? QObject::tr( "buffer" )
-                            : context.bufferSource;
+    const auto source = context.bufferSource.isEmpty() ? QObject::tr( "buffer" )
+                                                       : context.bufferSource;
 
     int offset = 0;
     if ( field.offset.isSet ) {
@@ -754,8 +924,13 @@ void addFieldItems( QTreeWidgetItem* parent,
         }
         offset = offsetExpr.value;
         if ( offset < 0 ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, offset, -1,
-                                       QString(), QObject::tr( "Offset is negative." ) };
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       offset,
+                                       -1,
+                                       QString(),
+                                       QObject::tr( "Offset is negative." ) };
             setItemDecodeError( item, errorInfo );
             return;
         }
@@ -764,9 +939,13 @@ void addFieldItems( QTreeWidgetItem* parent,
 
     const int remaining = context.buffer.size() - context.cursor;
     if ( remaining < 0 ) {
-        DecodeErrorInfo errorInfo{ context.previewName, fullName, source,
-                                   context.baseOffset + context.cursor, -1,
-                                   QString(), QObject::tr( "Offset exceeds buffer size." ) };
+        DecodeErrorInfo errorInfo{ context.previewName,
+                                   fullName,
+                                   source,
+                                   context.baseOffset + context.cursor,
+                                   -1,
+                                   QString(),
+                                   QObject::tr( "Offset exceeds buffer size." ) };
         setItemDecodeError( item, errorInfo );
         return;
     }
@@ -780,21 +959,25 @@ void addFieldItems( QTreeWidgetItem* parent,
         }
         width = widthExpr.value;
         if ( width < 0 ) {
-            DecodeErrorInfo errorInfo{ context.previewName, fullName, source, context.cursor,
-                                       width, QString(),
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       context.cursor,
+                                       width,
+                                       QString(),
                                        QObject::tr( "Width is negative." ) };
             setItemDecodeError( item, errorInfo );
             return;
         }
         if ( width > remaining ) {
-            DecodeErrorInfo errorInfo{
-                context.previewName,
-                fullName,
-                source,
-                context.baseOffset + context.cursor,
-                width,
-                QString(),
-                QObject::tr( "Width exceeds remaining buffer (%1 bytes)." ).arg( remaining ) };
+            DecodeErrorInfo errorInfo{ context.previewName,
+                                       fullName,
+                                       source,
+                                       context.baseOffset + context.cursor,
+                                       width,
+                                       QString(),
+                                       QObject::tr( "Width exceeds remaining buffer (%1 bytes)." )
+                                           .arg( remaining ) };
             setItemDecodeError( item, errorInfo );
             return;
         }
@@ -807,7 +990,8 @@ void addFieldItems( QTreeWidgetItem* parent,
     const int inputOffset = context.baseOffset + sliceOffset;
 
     if ( field.format == PreviewFormat::Match ) {
-        applyMatchStage( item, field, context, fullName, rawText, slice, source, inputOffset, width );
+        applyMatchStage( item, field, context, fullName, rawText, slice, source, inputOffset,
+                         width );
         return;
     }
 
@@ -831,7 +1015,10 @@ void addFieldItems( QTreeWidgetItem* parent,
             decoded.bytes,
             0,
             context.values,
+            context.rawValues,
             context.match,
+            context.blocks,
+            context.blockStack,
             context.previewName,
             source,
             context.baseOffset + sliceOffset,
@@ -858,6 +1045,7 @@ void addFieldItems( QTreeWidgetItem* parent,
             return;
         }
         item->setText( 1, value );
+        insertRawValue( context, fullName, displayName, rawText );
     }
     else {
         quint64 numeric = 0;
@@ -873,13 +1061,31 @@ void addFieldItems( QTreeWidgetItem* parent,
             setItemDecodeError( item, errorInfo );
             return;
         }
-        item->setText( 1, formatNumber( numeric, field.format, field ) );
-        insertValue( context, fullName, field.name, static_cast<qint64>( numeric ) );
+        item->setText( 1,
+                       formatNumberWithRaw( rawText, numeric, field.format, field ) );
+        insertValue( context,
+                     fullName,
+                     displayName,
+                     static_cast<qint64>( numeric ),
+                     rawText );
         if ( field.format == PreviewFormat::Bitfield ) {
-            addBitfieldItems( item, field, numeric,
-                              resolveBitfieldWidth( field, context ), context, fullName );
+            addBitfieldItems( item,
+                              field,
+                              numeric,
+                              resolveBitfieldWidth( field, context ),
+                              context,
+                              fullName );
         }
     }
+}
+
+void addFieldItems( QTreeWidgetItem* parent,
+                    const PreviewFieldSpec& field,
+                    ParseContext& context,
+                    const QString& prefix )
+{
+    auto* item = new QTreeWidgetItem( parent );
+    parseFieldIntoItem( item, field, context, prefix, field.name );
 }
 } // namespace
 
@@ -1119,10 +1325,15 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     }
 
     QMap<QString, qint64> values;
+    QMap<QString, QString> rawValues;
+    QStringList blockStack;
     ParseContext context{ decodedBuffer.bytes,
                           0,
                           &values,
+                          &rawValues,
                           &match,
+                          &manager.blocks(),
+                          &blockStack,
                           previewName,
                           bufferSource,
                           bufferBaseOffset,

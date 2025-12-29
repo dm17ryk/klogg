@@ -77,6 +77,10 @@ QJsonObject fieldToJson( const PreviewFieldSpec& field )
         obj.insert( "bufferCapture", bufferCaptureValue );
     }
 
+    if ( !field.blockTemplate.isEmpty() ) {
+        obj.insert( "block", field.blockTemplate );
+    }
+
     if ( !field.enumMap.isEmpty() ) {
         QJsonObject enumObj;
         for ( auto it = field.enumMap.begin(); it != field.enumMap.end(); ++it ) {
@@ -154,7 +158,8 @@ PreviewParseResult PreviewRepository::load() const
     return parser.parseFile( path );
 }
 
-bool PreviewRepository::save( const QVector<PreviewDefinition>& previews ) const
+bool PreviewRepository::save( const QVector<PreviewDefinition>& previews,
+                              const QMap<QString, PreviewFieldSpec>& blocks ) const
 {
     QJsonArray previewArray;
     for ( const auto& preview : previews ) {
@@ -164,6 +169,13 @@ bool PreviewRepository::save( const QVector<PreviewDefinition>& previews ) const
     QJsonObject root;
     root.insert( "version", 1 );
     root.insert( "previews", previewArray );
+    if ( !blocks.isEmpty() ) {
+        QJsonArray blockArray;
+        for ( auto it = blocks.begin(); it != blocks.end(); ++it ) {
+            blockArray.append( fieldToJson( it.value() ) );
+        }
+        root.insert( "blocks", blockArray );
+    }
 
     const QJsonDocument doc( root );
     QSaveFile file( storagePath() );

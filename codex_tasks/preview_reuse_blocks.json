@@ -1,0 +1,137 @@
+{
+  "title": "Previewer: reusable blocks with dynamic block identifiers",
+  "branch": "features",
+  "language": "C++",
+  "framework": "Qt6",
+  "priority": "P0",
+  "context": {
+    "goal": "Add support for reusable preview blocks in config/preview.json, with dynamic block name templates like \"ehcp_message_ev_cmd_{protocol_type}_block\" resolved from parsed variables.",
+    "constraints": [
+      "Keep existing preview configs working (backward compatible).",
+      "Do not change EHCP parsing logic semantics except by enabling blocks.",
+      "Blocks must work for nested parsing (match/fields) and for SRING->EHCP and direct EHCP formats."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir_env": "KLOGG_WORKSPACE",
+    "build_root_env": "KLOGG_BUILD_ROOT",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "acceptance_criteria": [
+    "schemas/klogg-previews.schema.json validates configs with top-level \"blocks\" and fields using format/source \"block\" + \"block\" property.",
+    "Previewer loads config with \"blocks\" and can resolve both static and dynamic block references.",
+    "Dynamic block reference replaces {var} placeholders with raw parsed values (not enum labels).",
+    "Block references can be nested; cycles are detected and reported as preview errors (no crash).",
+    "If a block is missing, preview shows a clear error node but does not fail entire preview.",
+    "Docs (config/preview.json and/or previews.md) updated with a minimal blocks example."
+  ],
+  "work_items": [
+    {
+      "id": "schema-update",
+      "type": "modify_file",
+      "path": "schemas/klogg-previews.schema.json",
+      "instructions": [
+        "Add optional top-level property \"blocks\": array of block definitions.",
+        "Define \"block\" objects as field-like definitions with required \"name\".",
+        "Allow fields and blocks to reference other blocks via either format:\"block\" OR source:\"block\" plus required property \"block\" (string).",
+        "Allow dynamic block names (schema cannot validate placeholders; just accept string).",
+        "Keep existing conditional: require \"capture\" only when source==\"capture\".",
+        "Keep existing validation for match/fields/enum/flags/bitfield maps."
+      ]
+    },
+    {
+      "id": "config-model",
+      "type": "code_change",
+      "area": "preview config model",
+      "instructions": [
+        "Add in-memory storage for blocks: map<string, FieldDefinitionLike> blocksByName.",
+        "Ensure block names are unique; on duplicates log an error and keep the first (or last) deterministically.",
+        "Expose blocks map to the runtime parser."
+      ]
+    },
+    {
+      "id": "config-parser",
+      "type": "code_change",
+      "area": "preview config JSON loading",
+      "instructions": [
+        "Parse optional top-level \"blocks\" array before previews.",
+        "Each block entry uses the same parsing logic as a field definition (except name is required and used as key).",
+        "Keep backward compatibility: configs without blocks must still load."
+      ]
+    },
+    {
+      "id": "runtime-block-invocation",
+      "type": "code_change",
+      "area": "preview runtime parser",
+      "instructions": [
+        "Implement block invocation for fields where format==\"block\" OR source==\"block\".",
+        "Add property to FieldDefinition: optional blockTemplate string.",
+        "When parsing such a field: resolve block name template by substituting {var} using the current parse context variable table.",
+        "Substitution MUST use RAW values captured/extracted (pre-enum label).",
+        "Then lookup resolved name in blocks map; if missing, emit an error node under that field and continue parsing safely.",
+        "Parse the resolved block as if it were inlined at the current parse point (but keep the invoking field's name in the output tree).",
+        "Support blocks that themselves use source:capture, bufferCapture, match, nested fields, etc.",
+        "Implement recursion guard / cycle detection: maintain a stack of resolved block names; if a block appears twice in stack, emit error and stop that branch."
+      ]
+    },
+    {
+      "id": "template-resolution-helper",
+      "type": "code_change",
+      "area": "utility",
+      "instructions": [
+        "Add helper: resolveTemplateString(\"ehcp_message_command_{command_id}_block\", vars) -> string.",
+        "Replace all occurrences of {identifier} with vars[identifier] converted to string.",
+        "If identifier missing, leave placeholder unchanged and let lookup fail (but include a clear error).",
+        "Do not evaluate arithmetic in block templates (only substitution)."
+      ]
+    },
+    {
+      "id": "variables-raw-vs-display",
+      "type": "code_change",
+      "area": "parse context",
+      "instructions": [
+        "Ensure parse context stores both rawValue and displayValue (or at least rawValue) per field name.",
+        "Width expressions continue using numeric value where needed (existing behavior).",
+        "Block template substitution uses rawValue as string for identifiers like protocol_type, command_id."
+      ]
+    },
+    {
+      "id": "docs-update",
+      "type": "modify_file",
+      "path_candidates": ["previews.md", "config/preview.json"],
+      "instructions": [
+        "Add documentation section: \"Reusable blocks\"",
+        "Explain blocks array, invoking via format:\"block\" or source:\"block\" and property \"block\".",
+        "Explain dynamic block names with placeholders {var}.",
+        "Include a minimal working example similar to EHCP protocol_type dispatch."
+      ]
+    },
+    {
+      "id": "tests-or-sanity-check",
+      "type": "code_change",
+      "area": "tests",
+      "instructions": [
+        "Add a small unit/integration test (where existing preview tests live) that loads a config containing blocks and dynamic block references.",
+        "Feed a sample input that sets protocol_type=P and command_id=CM and verify it resolves the correct block and produces expected tree nodes.",
+        "Add a test for missing block and for cyclic block reference."
+      ]
+    }
+  ],
+  "notes": [
+    "Your provided EHCP blocks config should become valid and runnable after these changes.",
+    "No UI changes are strictly required; blocks are transparent to the UI tree.",
+    "If desired, later we can add UI hints like showing which block was resolved in a tooltip/debug string."
+  ]
+}
