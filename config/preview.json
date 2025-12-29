@@ -3,6 +3,48 @@
   "version": 1,
   "blocks": [
     {
+      "name": "ehcp_message_event_TLB_block",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "device_number",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level_rf",
+          "width": 3,
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_event_TEB_block",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "device_number",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level_rf",
+          "width": 3,
+          "format": "string"
+        }
+      ]
+    },
+    {
       "name": "ehcp_message_command_CM_block",
       "width": 0
     },
@@ -175,11 +217,16 @@
         {
           "name": "event_code",
           "width": 3,
-          "format": "string"
+          "format": "enum",
+          "enumMap": {
+            "TLB": "Low Battery",
+            "TEB": "Empty Battery"
+          }
         },
         {
           "name": "event_args",
-          "format": "string"
+          "format": "block",
+          "block": "ehcp_message_event_{event_code}_block"
         }
       ]
     },
