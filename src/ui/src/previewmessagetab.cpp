@@ -24,8 +24,8 @@
 namespace {
 constexpr int SnippetLimit = 60;
 constexpr int ColumnField = 0;
-constexpr int ColumnRaw = 1;
-constexpr int ColumnValue = 2;
+constexpr int ColumnValue = 1;
+constexpr int ColumnRaw = 2;
 constexpr int ColumnOffset = 3;
 constexpr int ColumnWidth = 4;
 
@@ -246,6 +246,12 @@ quint64 parseInteger( const QByteArray& data, const QString& endianness, bool* o
     return value;
 }
 
+bool parseNumericValue( const QString& rawText,
+                        const QByteArray& rawBytes,
+                        const PreviewFieldSpec& field,
+                        quint64* numeric,
+                        QString* error );
+
 QString formatEnum( quint64 value, const QMap<QString, QString>& enumMap )
 {
     for ( auto it = enumMap.begin(); it != enumMap.end(); ++it ) {
@@ -269,6 +275,60 @@ QString formatEnumWithRaw( const QString& rawText,
         }
     }
     return formatEnum( value, enumMap );
+}
+
+struct EnumLookupResult {
+    bool ok = false;
+    QString text;
+    QString error;
+    bool hasNumeric = false;
+    quint64 numeric = 0;
+};
+
+EnumLookupResult resolveEnumValue( const QString& rawText,
+                                   const QByteArray& rawBytes,
+                                   const PreviewFieldSpec& field )
+{
+    EnumLookupResult result;
+    result.hasNumeric = parseNumericValue( rawText, rawBytes, field, &result.numeric, nullptr );
+
+    const auto trimmed = rawText.trimmed();
+    if ( !trimmed.isEmpty() ) {
+        const auto it = field.enumMap.constFind( trimmed );
+        if ( it != field.enumMap.constEnd() ) {
+            result.ok = true;
+            result.text = it.value();
+            return result;
+        }
+    }
+
+    if ( result.hasNumeric ) {
+        for ( auto it = field.enumMap.begin(); it != field.enumMap.end(); ++it ) {
+            quint64 key = 0;
+            if ( parseNumericString( it.key(), &key ) && key == result.numeric ) {
+                result.ok = true;
+                result.text = it.value();
+                return result;
+            }
+        }
+    }
+
+    QString displayRaw = trimmed;
+    if ( displayRaw.isEmpty() ) {
+        displayRaw = sliceToLogText( rawBytes );
+    }
+    if ( displayRaw.isEmpty() ) {
+        displayRaw = QObject::tr( "<empty>" );
+    }
+    if ( result.hasNumeric ) {
+        result.error = QObject::tr( "Unknown enum value '%1' (numeric %2)." )
+                           .arg( displayRaw )
+                           .arg( result.numeric );
+    }
+    else {
+        result.error = QObject::tr( "Unknown enum value '%1'." ).arg( displayRaw );
+    }
+    return result;
 }
 
 QString formatFlags( quint64 value, const QMap<QString, QString>& flagMap )
@@ -909,6 +969,33 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
             }
         }
         else {
+            if ( field.format == PreviewFormat::Enum ) {
+                const auto enumResult = resolveEnumValue( rawText, rawBytes, field );
+                if ( !enumResult.ok ) {
+                    DecodeErrorInfo errorInfo{ context.previewName,
+                                               fullName,
+                                               source,
+                                               captureOffset,
+                                               captureWidth,
+                                               truncateText( rawText, 64 ),
+                                               enumResult.error };
+                    setItemDecodeError( item, errorInfo );
+                    return;
+                }
+                item->setText( ColumnValue, enumResult.text );
+                if ( enumResult.hasNumeric ) {
+                    insertValue( context,
+                                 fullName,
+                                 displayName,
+                                 static_cast<qint64>( enumResult.numeric ),
+                                 rawText );
+                }
+                else {
+                    insertRawValue( context, fullName, displayName, rawText );
+                }
+                return;
+            }
+
             quint64 numeric = 0;
             QString error;
             if ( !parseNumericValue( rawText, rawBytes, field, &numeric, &error ) ) {
@@ -1132,6 +1219,33 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
         }
     }
     else {
+        if ( field.format == PreviewFormat::Enum ) {
+            const auto enumResult = resolveEnumValue( rawText, slice, field );
+            if ( !enumResult.ok ) {
+                DecodeErrorInfo errorInfo{ context.previewName,
+                                           fullName,
+                                           source,
+                                           context.baseOffset + sliceOffset,
+                                           width,
+                                           sliceToLogText( slice ),
+                                           enumResult.error };
+                setItemDecodeError( item, errorInfo );
+                return;
+            }
+            item->setText( ColumnValue, enumResult.text );
+            if ( enumResult.hasNumeric ) {
+                insertValue( context,
+                             fullName,
+                             displayName,
+                             static_cast<qint64>( enumResult.numeric ),
+                             rawText );
+            }
+            else {
+                insertRawValue( context, fullName, displayName, rawText );
+            }
+            return;
+        }
+
         quint64 numeric = 0;
         QString error;
         if ( !parseNumericValue( rawText, slice, field, &numeric, &error ) ) {
@@ -1201,8 +1315,8 @@ void PreviewMessageTab::buildUi()
 
     previewTree_ = new QTreeWidget( this );
     previewTree_->setColumnCount( 5 );
-    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Raw" )
-                                                 << tr( "Value" ) << tr( "Offset" )
+    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Value" )
+                                                 << tr( "Raw" ) << tr( "Offset" )
                                                  << tr( "Width" ) );
     previewTree_->setRootIsDecorated( true );
     previewTree_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
@@ -1218,7 +1332,7 @@ void PreviewMessageTab::buildUi()
     rawLineEdit_->setReadOnly( true );
     rawLineEdit_->setWordWrapMode( QTextOption::NoWrap );
     rawLineEdit_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
-    rawLineEdit_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
+    rawLineEdit_->setVerticalScrollBarPolicy( Qt::ScrollBarAlwaysOff );
     if ( auto* bar = rawLineEdit_->horizontalScrollBar() ) {
         connect( bar, &QScrollBar::rangeChanged, this,
                  [ this ]( int, int ) { updateRawLineHeight(); } );

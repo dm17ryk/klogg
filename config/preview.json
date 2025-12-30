@@ -313,7 +313,7 @@
               "format": "enum",
               "enumMap": {
                 "E": "Event",
-                "R": "Event",
+                "R": "Event Retry",
                 "Z": "Message ACK",
                 "M": "Message mixed ACK",
                 "P": "Command"

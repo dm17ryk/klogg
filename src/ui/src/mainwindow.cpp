@@ -205,7 +205,9 @@ MainWindow::MainWindow( WindowSession session )
 
     previewWindow_.setWindowIcon( mainIcon_ );
     previewWindow_.setWindowTitle( tr( "klogg - previewer" ) );
-    previewWindow_.setWindowFlags( previewWindow_.windowFlags() | Qt::Tool );
+    if ( const auto scratchSize = scratchPad_.sizeHint(); scratchSize.isValid() ) {
+        previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
+    }
 
     PreviewManager::instance().loadFromRepository();
 
