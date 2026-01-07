@@ -14,10 +14,10 @@ runs:
     #  if: ${{ github.event_name != 'pull_request' }}
     #  shell: sh
     #  run: |
-    #    echo "CS_CLIENT_S3_KEY_ID=${{ inputs.s3-key-id }}" >> $GITHUB_ENV 
-    #    echo "CS_CLIENT_S3_SECRET=${{ inputs.s3-secret }}" >> $GITHUB_ENV 
-    #    echo "CS_CLIENT_S3_BUCKET=${{ inputs.s3-bucket }}" >> $GITHUB_ENV 
-    
+    #    echo "CS_CLIENT_S3_KEY_ID=${{ inputs.s3-key-id }}" >> $GITHUB_ENV
+    #    echo "CS_CLIENT_S3_SECRET=${{ inputs.s3-secret }}" >> $GITHUB_ENV
+    #    echo "CS_CLIENT_S3_BUCKET=${{ inputs.s3-bucket }}" >> $GITHUB_ENV
+
     #- name: Win codesign executables
     #  if: ${{ github.event_name != 'pull_request' }}
     #  shell: cmd
@@ -29,7 +29,7 @@ runs:
     #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbb12.dll
     #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbbmalloc.dll
     #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbbmalloc_proxy.dll
-    
+
     - name: Win portable
       shell: cmd
       run: |
@@ -39,8 +39,8 @@ runs:
       uses: joncloud/makensis-action@v3.3
       with:
         script-file: klogg.nsi
-        arguments: "-DVERSION=%KLOGG_VERSION% -DPLATFORM=%KLOGG_ARCH% -DQT_MAJOR=%KLOGG_QT%" 
-    
+        arguments: "-DVERSION=%KLOGG_VERSION% -DPLATFORM=%KLOGG_ARCH% -DQT_MAJOR=%KLOGG_QT%"
+
     - name: Win package
       shell: cmd
       run: |
@@ -54,4 +54,3 @@ runs:
     #  shell: cmd
     #  run: |
     #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\packages\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-setup.exe
-      

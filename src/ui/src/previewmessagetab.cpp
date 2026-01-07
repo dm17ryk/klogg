@@ -40,13 +40,25 @@ QString captureValue( const PreviewCaptureRef& capture, const QRegularExpression
     return match.captured( capture.name );
 }
 
+int clampToInt( qsizetype value )
+{
+    if ( value > std::numeric_limits<int>::max() ) {
+        return std::numeric_limits<int>::max();
+    }
+    if ( value < std::numeric_limits<int>::min() ) {
+        return std::numeric_limits<int>::min();
+    }
+    return static_cast<int>( value );
+}
+
 int captureStart( const PreviewCaptureRef& capture, const QRegularExpressionMatch& match )
 {
     if ( !capture.isSet ) {
         return -1;
     }
-    return capture.isIndex ? match.capturedStart( capture.index )
-                           : match.capturedStart( capture.name );
+    const auto value = capture.isIndex ? match.capturedStart( capture.index )
+                                       : match.capturedStart( capture.name );
+    return clampToInt( value );
 }
 
 int captureLength( const PreviewCaptureRef& capture, const QRegularExpressionMatch& match )
@@ -54,8 +66,9 @@ int captureLength( const PreviewCaptureRef& capture, const QRegularExpressionMat
     if ( !capture.isSet ) {
         return -1;
     }
-    return capture.isIndex ? match.capturedLength( capture.index )
-                           : match.capturedLength( capture.name );
+    const auto value = capture.isIndex ? match.capturedLength( capture.index )
+                                       : match.capturedLength( capture.name );
+    return clampToInt( value );
 }
 
 struct DecodeErrorInfo {
@@ -737,8 +750,8 @@ bool applyMatchStage( QTreeWidgetItem* item,
         return true;
     }
 
-    const int matchOffset = match.capturedStart( 0 );
-    const int matchWidth = match.capturedLength( 0 );
+    const int matchOffset = clampToInt( match.capturedStart( 0 ) );
+    const int matchWidth = clampToInt( match.capturedLength( 0 ) );
     const int adjustedOffset
         = ( inputOffset >= 0 && matchOffset >= 0 ) ? ( inputOffset + matchOffset ) : -1;
     setItemOffsetWidth( item, adjustedOffset, matchWidth );
@@ -899,9 +912,10 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 setItemDecodeError( item, errorInfo );
                 return;
             }
+            const int decodedSize = clampToInt( decoded.bytes.size() );
             item->setText( ColumnValue,
-                           QObject::tr( "%1 bytes" ).arg( decoded.bytes.size() ) );
-            setItemOffsetWidth( item, captureOffset, decoded.bytes.size() );
+                           QObject::tr( "%1 bytes" ).arg( decodedSize ) );
+            setItemOffsetWidth( item, captureOffset, decodedSize );
             ParseContext childContext{
                 decoded.bytes,
                 0,
@@ -1076,7 +1090,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
         context.cursor += offset;
     }
 
-    const int remaining = context.buffer.size() - context.cursor;
+    const int remaining = clampToInt( context.buffer.size() ) - context.cursor;
     if ( remaining < 0 ) {
         DecodeErrorInfo errorInfo{ context.previewName,
                                    fullName,
@@ -1495,7 +1509,7 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
                                   ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
                                   : tr( "raw line" );
     int bufferBaseOffset = 0;
-    const int matchStart = match.capturedStart( 0 );
+    const int matchStart = clampToInt( match.capturedStart( 0 ) );
     if ( definition->bufferCapture.isSet ) {
         const auto captureStartOffset = captureStart( definition->bufferCapture, match );
         if ( captureStartOffset >= 0 && matchStart >= 0 ) {

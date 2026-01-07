@@ -15,8 +15,8 @@ runs:
       shell: sh
       run: |
         docker run --rm -v "$KLOGG_WORKSPACE/$KLOGG_BUILD_ROOT/packages":/usr/local ${{ matrix.config.check_container }} /bin/bash -c "${{ matrix.config.check_command }}"
-    
-    - name: Linux AppImage 
+
+    - name: Linux AppImage
       if: ${{ matrix.config.os == 'ubuntu_appimage' }}
       shell: sh
       run: |
