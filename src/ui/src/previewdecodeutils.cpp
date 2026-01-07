@@ -1,6 +1,7 @@
 #include "previewdecodeutils.h"
 
 #include <QtGlobal>
+#include <limits>
 
 namespace {
 struct HexNormalized {
@@ -9,6 +10,17 @@ struct HexNormalized {
     int digitCount = 0;
     QString error;
 };
+
+int clampToInt( qsizetype value )
+{
+    if ( value > std::numeric_limits<int>::max() ) {
+        return std::numeric_limits<int>::max();
+    }
+    if ( value < std::numeric_limits<int>::min() ) {
+        return std::numeric_limits<int>::min();
+    }
+    return static_cast<int>( value );
+}
 
 bool isWhitespaceOrSeparator( const QChar ch )
 {
@@ -48,7 +60,7 @@ HexNormalized normalizeHexInput( const QString& input )
 
     normalized.ok = true;
     normalized.digits = digits;
-    normalized.digitCount = digits.size();
+    normalized.digitCount = clampToInt( digits.size() );
     return normalized;
 }
 
@@ -182,7 +194,7 @@ PreviewExpressionResult evaluatePreviewExpression( const PreviewValueExpr& expr,
 
         if ( expression.at( pos ) == '{' ) {
             const int start = pos + 1;
-            const int end = expression.indexOf( '}', start );
+            const int end = clampToInt( expression.indexOf( '}', start ) );
             if ( end < 0 ) {
                 result.error = "Missing '}' in expression.";
                 return false;
@@ -290,7 +302,7 @@ QString resolveTemplateString( const QString& templateText,
         }
 
         const int start = pos + 1;
-        const int end = templateText.indexOf( '}', start );
+        const int end = clampToInt( templateText.indexOf( '}', start ) );
         if ( end < 0 ) {
             resolved.append( templateText.mid( pos ) );
             break;
