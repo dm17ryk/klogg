@@ -21,6 +21,14 @@ option(KLOGG_USE_SENTRY "Use Sentry" OFF)
 option(KLOGG_GENERIC_CPU "Build for generic CPU" OFF)
 option(KLOGG_OSX_DEPLOYMENT_TARGET "Override target MacOS version" "")
 
+if(KLOGG_USE_LTO
+   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10
+   AND KLOGG_BUILD_TESTS)
+  message(WARNING "Disabling LTO for GCC < 10 when tests are enabled to avoid LTO ICE.")
+  set(KLOGG_USE_LTO OFF)
+endif()
+
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   set(KLOGG_ARCH 32)
 else()
