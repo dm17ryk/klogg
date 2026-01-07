@@ -6,6 +6,7 @@ RUN apt-get update -y && \
     apt-get install --no-install-recommends build-essential python3 python-is-python3 \
                     qt6-base-dev qt6-5compat-dev qt6-translations-l10n \
                     qt6-tools-dev-tools qt6-base-dev-tools qt6-tools-dev \
+                    libqt6serialport6 libqt6serialport6-dev \
                     libboost-dev libicu-dev libssl-dev libcurl4-openssl-dev \
                     ragel ninja-build zlib1g-dev git pkg-config \
                     wget ca-certificates fuse file -y && \

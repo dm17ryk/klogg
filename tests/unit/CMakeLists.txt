@@ -13,4 +13,6 @@ set_target_properties(klogg_tests PROPERTIES AUTOMOC ON)
 add_test(
     NAME klogg_tests
     COMMAND klogg_tests -platform offscreen
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
+# set_tests_properties(klogg_tests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_tests>")

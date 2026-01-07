@@ -53,7 +53,7 @@ constexpr auto kPreviewConfig = R"json(
     },
     {
       "name": "EHCP direct",
-      "regex": "^.*\\\"(?<payload>EHCP[0-9A-F]+)\\\"$",
+      "regex": "^.*\\\"(?<payload>EHCP[^\\\"]*)\\\".*$",
       "format": "fields",
       "fields": [
         {

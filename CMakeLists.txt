@@ -226,7 +226,10 @@ add_subdirectory(src)
 add_subdirectory(website)
 
 enable_testing()
-add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v)
+add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+)
+# set_tests_properties(klogg_smoke PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>")
 
 if(${KLOGG_BUILD_TESTS})
   add_subdirectory(tests)

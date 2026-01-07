@@ -19,4 +19,6 @@ add_backward(klogg_itests)
 add_test(
     NAME klogg_itests
     COMMAND klogg_itests -platform offscreen
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
+# set_tests_properties(klogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_itests>")
