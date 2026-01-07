@@ -115,6 +115,11 @@ cpmaddpackage(
   https://gitlab.freedesktop.org/uchardet/uchardet
   VERSION
   0.0.8
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_uchardet_min_cmake.cmake
   EXCLUDE_FROM_ALL
   YES
   OPTIONS
