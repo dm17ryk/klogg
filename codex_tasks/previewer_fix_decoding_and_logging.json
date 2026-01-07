@@ -1,0 +1,217 @@
+{
+  "meta": {
+    "task_id": "klogg-previewer-fix-decoding-and-logging",
+    "title": "Fix Previewer JSON parsing + hexString odd-length decoding + expression widths + improved logging",
+    "branch": "features",
+    "reference_commit": "bd4cd3e08415ba9d481f74e65745a51cb72ef6bf",
+    "language": "C++",
+    "framework": "Qt6",
+    "priority": "P0",
+    "symptoms": [
+      "EHCP example: size field shows 'Decode error' when size is 3 hex chars (e.g. '042').",
+      "Data appears correct but width expressions like '{size}-5' may not be evaluated properly or depend on size parsing.",
+      "Errors are too generic ('Decode error') with no detail."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir_env": "KLOGG_WORKSPACE",
+    "build_root_env": "KLOGG_BUILD_ROOT",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "implementation_plan": {
+    "A_audit_json_parsing_and_storage": {
+      "goal": "Verify preview JSON parsing + stored model matches desired behavior (field type/format, bufferCapture, capture-source fields, expressions stored as strings).",
+      "steps": [
+        "Locate preview config parsing code (search for: 'previews', 'Preview', 'Import previews', 'bufferCapture', 'Decode error', 'hexString').",
+        "Confirm parser supports root object { version, previews: [...] } and/or root array. Keep both if already supported.",
+        "Confirm preview-level properties parsed and stored:",
+        "  - name, regex/pattern, enabled",
+        "  - bufferCapture (named or index capture group)",
+        "  - preview type (string/hexString/base64/bin/bytes)",
+        "  - preview offset (default 0)",
+        "Confirm field-level properties parsed and stored:",
+        "  - name",
+        "  - source ('buffer' default, or 'capture')",
+        "  - capture (only required if source == capture)",
+        "  - offset and width: MUST allow integer OR string expression (store expression verbatim; do not force atoi).",
+        "  - type override at field level",
+        "  - format",
+        "  - enumMap/flagMap/bitfieldMap/fields (nested)",
+        "Ensure storage model preserves expressions and does NOT pre-evaluate at load time.",
+        "Add validation warnings at load time (not hard errors) for common mistakes, e.g.:",
+        "  - format enum without enumMap",
+        "  - source capture without capture name",
+        "  - bitfield without bitfieldMap"
+      ],
+      "acceptance_criteria": [
+        "A config with width like \"{size}-5\" loads without being rejected/forced to 0.",
+        "bufferCapture and capture fields are stored correctly and accessible at decode time."
+      ]
+    },
+
+    "B_fix_hexString_decoding_for_odd_lengths": {
+      "goal": "Support hexString inputs with ANY length (2,3,4,5,6,7...), especially 3-hex-digit length fields like '042'.",
+      "required_behavior": [
+        "hexString decode must not fail on odd digit count.",
+        "For odd hex digit count, decoding must behave predictably and yield correct numeric value for dig/hex/bin/enum/flags.",
+        "Example: \"042\" -> 0x042 -> 66 (dig)."
+      ],
+      "steps": [
+        "Locate the hexString decode function (likely uses QByteArray::fromHex or manual nibble decode).",
+        "Implement tolerant hex normalization for decoding:",
+        "  - Trim whitespace",
+        "  - Optional: allow '0x' prefix (strip if present)",
+        "  - Optional: allow spaces/underscores inside hex (remove) (keep minimal if you want strict)",
+        "If hex digit count is odd:",
+        "  - For numeric formats (dig/hex/bin/enum/flags/bitfield): interpret as BIG-ENDIAN nibble integer directly (base16), without requiring even count.",
+        "    *Implement a safe hex-to-quint64 parser that accepts up to 16 hex digits (64-bit). If >16 digits, still keep raw string and display as hex string, but expression math must cap or fail with clear error.*",
+        "  - For byte-oriented decoding cases (format string or nested fields expecting bytes): pad-left '0' to make even and then decode to bytes.",
+        "Add a unit helper: parseHexToU64AllowOddDigits(QString hex, bool* ok).",
+        "If invalid character exists, return ok=false and provide index + character for error message."
+      ],
+      "acceptance_criteria": [
+        "Field slice '042' with type hexString + format dig displays 66 (not decode error).",
+        "Field slice 'D774' with type hexString + format hex displays 0xD774 (or D774 depending on renderer, but numeric must be 0xD774).",
+        "Invalid hex like '04Z' produces a detailed decode error message."
+      ]
+    },
+
+    "C_expression_evaluator_for_offset_and_width": {
+      "goal": "Support width/offset expressions like '{size}-5' reliably; handle strange lengths and nested variable names.",
+      "minimum_supported_syntax": [
+        "{var}",
+        "{var} + <int>",
+        "{var} - <int>",
+        "{var1} + {var2}",
+        "{var1} - {var2}",
+        "Optional whitespace anywhere"
+      ],
+      "steps": [
+        "Locate where field offset/width is resolved at decode time.",
+        "If width/offset is an integer -> use it directly.",
+        "If width/offset is a string -> evaluate expression:",
+        "  - Replace '{name}' tokens with numeric values from the current decode context.",
+        "  - Decode context must store numeric values for parsed numeric fields (dig/hex/bin/enum/flags/bitfield).",
+        "  - Support nested names (dot paths) by storing keys like 'value.size' or by flattening with a separator.",
+        "Implement a small safe evaluator (no JS engine):",
+        "  - Tokenize numbers and + / - operators",
+        "  - Evaluate left-to-right (or implement precedence if you want; left-to-right is enough for now)",
+        "If unknown variable -> return error with field name and missing var.",
+        "If expression result < 0 -> error.",
+        "If expression result > remaining buffer -> error (or clamp with warning; prefer error for correctness)."
+      ],
+      "acceptance_criteria": [
+        "Given size=66, expression '{size}-5' evaluates to 61.",
+        "If size decode fails, dependent expression produces a clear error like: 'cannot evaluate width for field data: variable size missing'."
+      ]
+    },
+
+    "D_make_decode_pipeline_type_format_consistent": {
+      "goal": "Ensure field-level 'type' is applied correctly and independently from 'format', and capture/buffer sources behave correctly.",
+      "rules_to_enforce": [
+        "Source resolution step: determine input text/bytes for field (capture or buffer slice).",
+        "Slice step uses offset/width in the parent buffer's unit (for current implementation this is string char count for string-based buffers; keep consistent with existing behavior).",
+        "Type step decodes the slice according to 'type' (string/hexString/base64/bin/bytes).",
+        "Format step renders or interprets the decoded result (string/dig/hex/bin/enum/flags/bitfield/fields).",
+        "Field-level type overrides preview-level type; if missing, inherit from preview-level or default to string/bytes as currently implemented."
+      ],
+      "steps": [
+        "Inspect current decode function and split it into explicit steps (source->slice->type decode->format render).",
+        "Fix any current coupling where format 'dig' assumes decimal parsing of raw string without respecting type.",
+        "For capture fields with type hexString: ensure numeric renderer uses hex digits correctly (avoid ASCII byte hex output).",
+        "For base64: ensure you decode base64 to bytes before interpreting numeric/string as needed.",
+        "Ensure nested fields (format=fields) parse against the correct sub-buffer (not full payload)."
+      ],
+      "acceptance_criteria": [
+        "EHCP: header from capture OK, size parsed numeric OK, data extracted OK, checksum numeric OK.",
+        "No regression for existing simple previews (e.g. raw/group/strlen examples)."
+      ]
+    },
+
+    "E_improve_logging_and_ui_error_display": {
+      "goal": "Replace generic 'Decode error' with detailed errors and make them visible in logs and UI.",
+      "steps": [
+        "Introduce a DecodeError structure with:",
+        "  - previewName",
+        "  - fieldPath (e.g. 'size' or 'value.subValue1')",
+        "  - source info (capture name / bufferCapture / tail)",
+        "  - slice offset/width (resolved values)",
+        "  - rawSlice (possibly truncated to 64 chars for logging)",
+        "  - reason string",
+        "When decode fails, log with qWarning() or project logging facility using a single consistent prefix like '[Previewer]'.",
+        "In the UI table, for that field show 'Decode error: <short reason>' (not just 'Decode error').",
+        "Optionally: add tooltip with the full error context.",
+        "If a field fails, decide behavior:",
+        "  - Continue decoding other independent fields if possible, but mark failed field(s).",
+        "  - If dependent fields require failed values (expressions), mark them as 'Skipped: missing <var>'."
+      ],
+      "acceptance_criteria": [
+        "For '042' odd hex, no error; if invalid hex is provided, UI shows the real reason.",
+        "Logs contain enough context to reproduce (preview name, field, raw slice)."
+      ]
+    },
+
+    "F_add_minimal_unit_tests_or_self_test_harness": {
+      "goal": "Prevent regressions: tests for hex odd digits and expression evaluation.",
+      "steps": [
+        "Locate existing test infrastructure (tests/). If none, add a minimal test file compiled in tests target or a small self-test utility.",
+        "Add tests:",
+        "  1) parseHexToU64AllowOddDigits('042') -> 66 ok",
+        "  2) parseHexToU64AllowOddDigits('D774') -> 0xD774 ok",
+        "  3) expression eval with context {size:66} for '{size}-5' -> 61",
+        "  4) expression eval unknown var -> error",
+        "  5) invalid hex -> error"
+      ],
+      "acceptance_criteria": [
+        "Tests run and pass in RelWithDebInfo build.",
+        "At least the EHCP failure mode is covered by automated check."
+      ]
+    }
+  },
+  "manual_repro_case": {
+    "log_line": "12/10/2025 12:57:45.945 [RX] - #4 \"EHCP042020901004104108001078251210105737E#INN000000NNNSCE0Y8D6FDIPR1!D774\"",
+    "expected_semantics": [
+      "Header always 'EHCP'.",
+      "Payload begins with 3 hex digits length, range 000-FFF (12-bit).",
+      "CRC is ! + 4 hex digits at end.",
+      "data length = size - 5"
+    ],
+    "expected_preview_values": [
+      "header = EHCP",
+      "size = 66 (0x042)",
+      "data begins with '0209...' and does not include '!D774'",
+      "checksum = 0xD774"
+    ]
+  },
+  "validation_plan": {
+    "build": [
+      "cd %KLOGG_WORKSPACE%\\%KLOGG_BUILD_ROOT%",
+      "cmake --build . --config RelWithDebInfo"
+    ],
+    "manual_tests": [
+      "Import previews config containing EHCP preview.",
+      "Send the example line to Previewer -> select EHCP preview.",
+      "Verify size shows 66, checksum shows 0xD774, no decode error.",
+      "Try a malformed line where size is '04Z' and verify UI shows detailed error and logs show reason + fieldPath."
+    ]
+  },
+  "deliverables": [
+    "Fix hexString decoding to support odd digit lengths for numeric formats.",
+    "Add runtime expression evaluation for width/offset (supports '{size}-5').",
+    "Improve error reporting: detailed messages in UI and logs.",
+    "Add minimal tests or harness for core decode utilities.",
+    "No regressions to current previewer features."
+  ]
+}

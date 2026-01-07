@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "task_id": "klogg-previewer-tabs-type-combo-ux-v2",
+    "title": "Structured Previewer: per-message tabs + per-tab preview-type combobox + tab title snippet + collapsible raw line",
+    "branch": "features",
+    "language": "C++",
+    "framework": "Qt6",
+    "assumptions": [
+      "Preview definitions are loaded into a PreviewManager (or equivalent) from JSON.",
+      "A context menu action 'Send to Preview' exists or will exist.",
+      "PreviewWindow is a non-modal tool window (Scratchpad-like)."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir": "C:\\Essence_SC\\lsrc\\klogg",
+    "build_root_dir": "build_root",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "implementation_plan": {
+    "A_preview_window_tab_behavior": {
+      "goal": "PreviewWindow is non-modal and contains QTabWidget. Each previewed message is opened in its own tab (one tab per Send-to-Preview invocation), tab persists until user closes it.",
+      "steps": [
+        "Locate or create PreviewWindow (Scratchpad-like behavior).",
+        "Ensure PreviewWindow owns a QTabWidget with setTabsClosable(true).",
+        "Handle tabCloseRequested(int) to delete the tab widget and remove the tab.",
+        "Implement PreviewWindow::openMessageTab(const QString& rawLine, const QString& initialPreviewNameOrAuto).",
+        "Each call to openMessageTab MUST create a new tab, never reuse an existing one."
+      ],
+      "acceptance_criteria": [
+        "Sending 3 different log lines to preview creates 3 tabs.",
+        "Closing a tab removes only that tab; other preview tabs remain.",
+        "PreviewWindow stays open and non-modal."
+      ]
+    },
+
+    "B_per_tab_ui_combo_preview_area_and_raw_line": {
+      "goal": "Each tab contains: (1) preview type combobox (auto-detect + manual), (2) preview rendering area, (3) collapsible Raw line section showing the original line.",
+      "steps": [
+        "Create PreviewMessageTab : public QWidget.",
+        "Layout (top-to-bottom):",
+        "  1) Horizontal row: QLabel('Preview type:') + QComboBox previewTypeCombo",
+        "  2) Preview area: QTreeWidget (columns: Field, Value) OR similar structured view",
+        "  3) Collapsible 'Raw line' section (collapsed by default) containing read-only QPlainTextEdit with the raw line text.",
+        "Populate previewTypeCombo with: 'Auto' plus all preview definition names from PreviewManager.",
+        "PreviewMessageTab stores rawLine QString for this message and never changes it.",
+        "Connect previewTypeCombo::currentIndexChanged to re-render preview area for the same rawLine.",
+        "If Auto is chosen in combo: run auto-detection and switch combo to detected preview name (see C_auto_detection_rules)."
+      ],
+      "raw_line_collapsible_ui_details": [
+        "Implement collapsible section using either:",
+        "  Option 1: QToolButton (checkable) with arrow indicator + a QWidget container below it that you show/hide.",
+        "  Option 2: QGroupBox titled 'Raw line' setCheckable(true) and toggling visibility of its internal layout.",
+        "Use QPlainTextEdit for raw line display, setReadOnly(true), setWordWrapMode(QTextOption::NoWrap) or wrap if preferred.",
+        "Collapsed by default; user can expand to view/copy raw line.",
+        "This section is always present, even if regex match fails."
+      ],
+      "preview_area_details": [
+        "Preview area uses QTreeWidget with [Field, Value].",
+        "Nested 'fields' render as child nodes; primitive fields are leaf nodes.",
+        "If selected preview regex does not match rawLine: show one top-level row like 'No match for selected preview'.",
+        "If no preview definitions loaded: show 'No preview definitions loaded'."
+      ],
+      "acceptance_criteria": [
+        "Each preview tab shows a combobox, preview area, and a collapsible Raw line section.",
+        "Raw line section displays exactly the original raw line (including any CR/LF in stored text).",
+        "Changing combobox selection re-renders preview area for that same message."
+      ]
+    },
+
+    "C_auto_detection_rules": {
+      "goal": "Auto detection is regex-based. On new tab creation (or when 'Auto' selected), preview type is chosen automatically by matching the raw line against preview definitions' regex, but user can override manually.",
+      "steps": [
+        "In PreviewManager (or helper), implement: QString PreviewManager::findFirstMatchingPreviewName(const QString& rawLine).",
+        "When a tab is created with initialPreviewNameOrAuto == 'Auto': run auto-detection.",
+        "If match found: set previewTypeCombo to that preview name (use QSignalBlocker to avoid recursion) and render it.",
+        "If no match: keep combo on 'Auto' and render 'No preview matched'.",
+        "If user manually selects a specific preview type: do NOT force auto-detection again unless user selects 'Auto' explicitly."
+      ],
+      "acceptance_criteria": [
+        "If rawLine matches ExampleFormat regex, Auto picks ExampleFormat.",
+        "If no regex matches, tab shows 'No preview matched' and user can manually pick a preview."
+      ]
+    },
+
+    "D_context_menu_integration": {
+      "goal": "Right-click log line -> Send to Preview -> auto / preview1 / preview2... creates a new PreviewMessageTab each time.",
+      "steps": [
+        "Locate log view context menu builder.",
+        "Ensure submenu 'Send to Preview' contains 'Auto' and all preview names from PreviewManager.",
+        "On click: call one entry point: MainWindow::sendLineToPreview(rawLine, previewNameOrAuto).",
+        "Implementation: PreviewWindow::openMessageTab(rawLine, previewNameOrAuto).",
+        "Even if user selects a specific preview from context menu, the tab's combobox still allows switching types."
+      ],
+      "acceptance_criteria": [
+        "Selecting Send to Preview -> Auto creates a new tab and auto-selects preview type if possible.",
+        "Selecting Send to Preview -> preview_1 creates a new tab with combo set to preview_1.",
+        "User can switch combo to preview_2 and preview re-renders."
+      ]
+    },
+
+    "E_tab_title_includes_preview_type_and_snippet": {
+      "goal": "Each tab title includes: a sequential number, selected preview type, and a short snippet of the raw line. Title updates when preview type changes.",
+      "steps": [
+        "Define a title format, for example: 'Preview #N - <Type> - <Snippet>'.",
+        "On tab creation: assign N from a monotonically increasing counter in PreviewWindow.",
+        "Snippet rules:",
+        "  - Build snippet from rawLine with newlines replaced by spaces (or a visible marker), trimmed.",
+        "  - Limit length to e.g. 60 characters; append '…' if truncated.",
+        "  - Avoid heavy normalization; just replace '\\r' and '\\n'.",
+        "When preview type changes (combo changes), update the tab title accordingly.",
+        "Implement this cleanly by having PreviewMessageTab emit a signal titleChanged(QString) whenever combo selection changes or auto-detection sets a type; PreviewWindow connects to that signal and updates QTabWidget::setTabText(tabIndex, title).",
+        "Make sure to avoid index mismatches: store the tabIndex in PreviewMessageTab or have PreviewWindow look it up via QWidget*."
+      ],
+      "acceptance_criteria": [
+        "New tabs show titles like 'Preview #3 - ExampleFormat - MSG[12]: ...'.",
+        "Changing combo to another type updates title type segment immediately.",
+        "If Auto has no match, title shows 'Auto' (or 'No match') and still includes snippet."
+      ]
+    }
+  },
+
+  "implementation_notes": {
+    "recommended_classes": [
+      {
+        "name": "PreviewWindow",
+        "type": "QMainWindow or QWidget",
+        "responsibilities": [
+          "Own QTabWidget",
+          "Create a new PreviewMessageTab per message",
+          "Manage tab close behavior",
+          "Maintain preview tab counter for numbering",
+          "Update tab titles on PreviewMessageTab::titleChanged"
+        ]
+      },
+      {
+        "name": "PreviewMessageTab",
+        "type": "QWidget",
+        "responsibilities": [
+          "Store rawLine per message",
+          "Own QComboBox for preview type",
+          "Own preview area widget (QTreeWidget)",
+          "Own collapsible Raw line UI (toggle + QPlainTextEdit)",
+          "Render parsed output based on selected preview definition",
+          "Emit titleChanged(QString) when selected type changes"
+        ]
+      }
+    ],
+    "signals_and_slots_suggestion": [
+      "PreviewMessageTab signals:",
+      "  - void titleChanged(const QString& title);",
+      "PreviewWindow connects tab widget to update title by tab index:",
+      "  - find index by tabWidget->indexOf(tabWidgetPageWidget) or store the index at creation."
+    ],
+    "threading": [
+      "Preview parsing is user-driven and can run on UI thread initially."
+    ],
+    "error_handling": [
+      "Bad JSON / missing preview defs: combobox has only Auto; preview area displays 'No preview definitions loaded'.",
+      "Regex no match: preview area displays 'No match for selected preview'.",
+      "Decoding failure: show 'Decode error' message; still keep raw line visible in collapsible section."
+    ]
+  },
+
+  "validation_plan": {
+    "build": [
+      "cd %KLOGG_WORKSPACE%\\%KLOGG_BUILD_ROOT%",
+      "cmake --build . --config RelWithDebInfo"
+    ],
+    "manual_tests": [
+      "Send 2 lines to preview -> 2 tabs created, each has combo + preview area + Raw line section.",
+      "Expand Raw line section -> raw line text shown, selectable & copyable.",
+      "Auto tab: for a matching line, combo ends up set to matching preview name.",
+      "Change combo -> preview re-renders and tab title updates (type + snippet).",
+      "Close one tab -> only that one removed; others remain."
+    ]
+  },
+
+  "deliverables": [
+    "PreviewWindow with tabsClosable and per-message tab creation.",
+    "PreviewMessageTab with preview type combo, preview area, collapsible raw line panel.",
+    "Auto-detection wiring with safe signal blocking.",
+    "Tab title update mechanism (type + snippet) via signals and PreviewWindow tab text updates.",
+    "Context menu wiring that always creates a new tab for each send."
+  ]
+}

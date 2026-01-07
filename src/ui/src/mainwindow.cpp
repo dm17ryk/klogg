@@ -94,10 +94,12 @@
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
 #include "highlightersmenu.h"
+#include "importpreviewsdialog.h"
 #include "issuereporter.h"
 #include "klogg_version.h"
 #include "logger.h"
 #include "mainwindowtext.h"
+#include "previewmanager.h"
 #include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
@@ -180,6 +182,9 @@ MainWindow::MainWindow( WindowSession session )
     signalMux_.connect( SIGNAL( replaceDataInScratchpad( QString ) ), this,
                         SLOT( replaceDataInScratchpad( QString ) ) );
 
+    signalMux_.connect( SIGNAL( sendToPreview( QString, QString ) ), this,
+                        SLOT( sendToPreview( QString, QString ) ) );
+
     // Register for progress status bar
     signalMux_.connect( SIGNAL( loadingProgressed( int ) ), this,
                         SLOT( updateLoadingProgress( int ) ) );
@@ -197,6 +202,14 @@ MainWindow::MainWindow( WindowSession session )
 
     scratchPad_.setWindowIcon( mainIcon_ );
     scratchPad_.setWindowTitle( tr( "klogg - scratchpad" ) );
+
+    previewWindow_.setWindowIcon( mainIcon_ );
+    previewWindow_.setWindowTitle( tr( "klogg - previewer" ) );
+    if ( const auto scratchSize = scratchPad_.sizeHint(); scratchSize.isValid() ) {
+        previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
+    }
+
+    PreviewManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
@@ -407,6 +420,8 @@ void MainWindow::reTranslateUI()
 
     showScratchPadAction->setText( transAction( action::showScratchPadText ) );
     showScratchPadAction->setStatusTip( transAction( action::showScratchPadStatusTip ) );
+    showPreviewerAction->setText( transAction( action::showPreviewerText ) );
+    showPreviewerAction->setStatusTip( transAction( action::showPreviewerStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -421,6 +436,9 @@ void MainWindow::reTranslateUI()
     predefinedFiltersDialogAction->setText( transAction( action::predefinedFiltersDialogText ) );
     predefinedFiltersDialogAction->setStatusTip(
         transAction( action::predefinedFiltersDialogStatusTip ) );
+
+    importPreviewsAction->setText( transAction( action::importPreviewsDialogText ) );
+    importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -645,6 +663,11 @@ void MainWindow::createActions()
     connect( showScratchPadAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScratchPad(); } );
 
+    showPreviewerAction = new QAction( tr( action::showPreviewerText ), this );
+    showPreviewerAction->setStatusTip( tr( action::showPreviewerStatusTip ) );
+    connect( showPreviewerAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showPreviewer(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -675,6 +698,11 @@ void MainWindow::createActions()
     predefinedFiltersDialogAction->setStatusTip( tr( action::predefinedFiltersDialogStatusTip ) );
     connect( predefinedFiltersDialogAction, &QAction::triggered, this,
              [ this ]( auto ) { this->editPredefinedFilters(); } );
+
+    importPreviewsAction = new QAction( tr( action::importPreviewsDialogText ), this );
+    importPreviewsAction->setStatusTip( tr( action::importPreviewsDialogStatusTip ) );
+    connect( importPreviewsAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openImportPreviewsDialog(); } );
 
     updateShortcuts();
 }
@@ -746,6 +774,7 @@ void MainWindow::loadIcons()
     reloadAction->setIcon( iconLoader_.load( "icons8-restore-page" ) );
     followAction->setIcon( iconLoader_.load( "icons8-fast-forward" ) );
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
+    showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -821,8 +850,9 @@ void MainWindow::createMenus()
     } );
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
-
+    toolsMenu->addAction( importPreviewsAction );
     toolsMenu->addSeparator();
+    toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -887,6 +917,7 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
+    toolBar->addAction( showPreviewerAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1275,6 +1306,12 @@ void MainWindow::editPredefinedFilters( const QString& newFilter )
     signalMux_.disconnect( &dialog, SIGNAL( optionsChanged() ), SLOT( applyConfiguration() ) );
 }
 
+void MainWindow::openImportPreviewsDialog()
+{
+    ImportPreviewsDialog dialog( this );
+    dialog.exec();
+}
+
 // Opens the 'Options' modal dialog box
 void MainWindow::options()
 {
@@ -1348,6 +1385,15 @@ void MainWindow::showScratchPad()
     scratchPad_.activateWindow();
 }
 
+void MainWindow::showPreviewer()
+{
+    auto state = previewWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    previewWindow_.setWindowState( state );
+
+    previewWindow_.show();
+    previewWindow_.activateWindow();
+}
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );
@@ -1360,6 +1406,14 @@ void MainWindow::replaceDataInScratchpad( QString newData )
     showScratchPad();
 }
 
+void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
+{
+    if ( rawLine.isEmpty() ) {
+        return;
+    }
+    previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
+    showPreviewer();
+}
 void MainWindow::encodingChanged( QAction* action )
 {
     const auto mibData = action->data();

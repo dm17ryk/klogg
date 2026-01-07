@@ -1,0 +1,436 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "blocks": [
+    {
+      "name": "ehcp_message_event_TLB_block",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "device_number",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level_rf",
+          "width": 3,
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_event_TEB_block",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "device_number",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level",
+          "width": 3,
+          "format": "string"
+        },
+        {
+          "name": "battery_level_rf",
+          "width": 3,
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_command_CM_block",
+      "width": 0
+    },
+    {
+      "name": "ehcp_message_command_V3_block",
+      "width": 3,
+      "format": "string"
+    },
+    {
+      "name": "ehcp_message_command_PX_block",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "file_type",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "F0": "configurations file",
+            "FB": "BLE CPU software",
+            "F1": "voice file"
+          }
+        },
+        {
+          "name": "file_path",
+          "width": 70,
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_ev_cmd_P_block",
+      "source": "capture",
+      "capture": "cmd",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "command_code",
+          "width": 4,
+          "offset": 1,
+          "format": "string"
+        },
+        {
+          "name": "command_id",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "CM": "Call Me",
+            "V3": "Take Photo",
+            "CO": "Connect to Server",
+            "AO": "Configure Out of Home Alert Timer",
+            "CL": "Control Lock Status",
+            "PF": "Configure FTP Server Settings",
+            "PX": "Get File by FTP"
+          }
+        },
+        {
+          "name": "command",
+          "source": "block",
+          "block": "ehcp_message_command_{command_id}_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_ev_cmd_Z_block",
+      "width": 0
+    },
+    {
+      "name": "ehcp_message_ev_cmd_E_block",
+      "source": "capture",
+      "capture": "event",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "dual_com_status",
+          "width": 1,
+          "offset": 1,
+          "format": "enum",
+          "enumMap": {
+            "X": "Unused",
+            "I": "Irrelevant",
+            "N": "No Acknowledgment",
+            "A": "Acknowledgment Received "
+          }
+        },
+        {
+          "name": "status_fields",
+          "width": 11,
+          "format": "fields",
+          "fields": [
+            {
+              "name": "arm_type",
+              "width": 1,
+              "format": "string"
+            },
+            {
+              "name": "arm_forced",
+              "width": 1,
+              "format": "string"
+            },
+            {
+              "name": "time_status",
+              "width": 6,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "panel_zone_status",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "N": "No",
+                "S": "Yes"
+              }
+            },
+            {
+              "name": "panel_pending_cancell",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "N": "No",
+                "S": "Yes"
+              }
+            },
+            {
+              "name": "panel_fault_status",
+              "width": 1,
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "name": "event_type",
+          "width": 1,
+          "format": "enum",
+          "enumMap": {
+            "A": "Activity of Daily Living",
+            "C": "Comfort (not in use)",
+            "I": "Information",
+            "S": "Safety & SOS",
+            "T": "Technical"
+          }
+        },
+        {
+          "name": "event_device_type",
+          "width": 2,
+          "format": "enum",
+          "enumMap": {
+            "VR": "Wireless Motion Detector (radio), aka PIR",
+            "MC": "Wired Magnetic (cable) Contact (door/bed sensor)",
+            "MR": "Wireless Magnetic (radio) Contact (door sensor)",
+            "XR": "Wireless (radio) Photo Sensor, aka IPD (camera)",
+            "FR": "Wireless (radio) Smoke Sensor"
+          }
+        },
+        {
+          "name": "event_device_version",
+          "width": 6,
+          "format": "string"
+        },
+        {
+          "name": "event_tstate",
+          "width": 1,
+          "format": "enum",
+          "enumMap": {
+            "N": "Not relevant (no event state for this event code)",
+            "A": "Active/Open (e.g.: tamper opened, supervision lost, smoke alarm, etc.)",
+            "D": "Deactivated/Closed (e.g.: tamper closed, supervision restored, smoke not detected anymore, etc.)"
+          }
+        },
+        {
+          "name": "event_code",
+          "width": 3,
+          "format": "enum",
+          "enumMap": {
+            "TLB": "Low Battery",
+            "TEB": "Empty Battery"
+          }
+        },
+        {
+          "name": "event_args",
+          "format": "block",
+          "block": "ehcp_message_event_{event_code}_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_data_block",
+      "regex": "(?<header>[^#!*\\/]*)(?<cmd>\\*[^#!*\\/]*)?(?<event>\\#[^#!*\\/]*)?",
+      "width": "{size}-5",
+      "format": "match",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "header",
+          "format": "fields",
+          "fields": [
+            {
+              "name": "panel_info",
+              "width": 6,
+              "format": "fields",
+              "fields": [
+                {
+                  "name": "device_type",
+                  "width": 2,
+                  "format": "enum",
+                  "enumMap": {
+                    "01": "CP",
+                    "02": "C7000",
+                    "04": "C8000"
+                  }
+                },
+                {
+                  "name": "model_options",
+                  "width": 2,
+                  "format": "enum",
+                  "enumMap": {
+                    "07": "Care@Home Pro",
+                    "08": "Care@Home Family",
+                    "09": "Care@Home PERS-E"
+                  }
+                },
+                {
+                  "name": "protocol_version",
+                  "width": 2,
+                  "format": "string"
+                }
+              ]
+            },
+            {
+              "name": "message_counter",
+              "width": 3,
+              "type": "hexString",
+              "format": "hex"
+            },
+            {
+              "name": "ack",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "0": "NACK",
+                "1": "ACK"
+              }
+            },
+            {
+              "name": "account_number",
+              "width": 8,
+              "type": "hexString",
+              "format": "hex"
+            },
+            {
+              "name": "utc_offset",
+              "width": 3,
+              "type": "hexString",
+              "format": "dig"
+            },
+            {
+              "name": "date_time",
+              "width": 12,
+              "type": "string",
+              "format": "string"
+            },
+            {
+              "name": "protocol_type",
+              "width": 1,
+              "format": "enum",
+              "enumMap": {
+                "E": "Event",
+                "R": "Event Retry",
+                "Z": "Message ACK",
+                "M": "Message mixed ACK",
+                "P": "Command"
+              }
+            }
+          ]
+        },
+        {
+          "name": "ev_cmd",
+          "source": "block",
+          "block": "ehcp_message_ev_cmd_{protocol_type}_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_fields_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<protocol>EHCP)(?<payload>[^!]*)!(?<checksum>[[:xdigit:]]{4})$",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "protocol",
+          "source": "capture",
+          "capture": "protocol",
+          "format": "string"
+        },
+        {
+          "name": "size",
+          "width": 3,
+          "type": "hexString",
+          "format": "dig"
+        },
+        {
+          "name": "ehcp_data",
+          "format": "block",
+          "block": "ehcp_message_data_block"
+        },
+        {
+          "name": "checksum",
+          "source": "capture",
+          "capture": "checksum",
+          "type": "hexString",
+          "format": "hex"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_message_block",
+      "format": "string",
+      "type": "string",
+      "fields": [
+        {
+          "name": "ehcp_message_fields",
+          "format": "block",
+          "block": "ehcp_message_fields_block"
+        }
+      ]
+    },
+    {
+      "name": "ehcp_hex_message_block",
+      "format": "string",
+      "type": "hexString",
+      "fields": [
+        {
+          "name": "ehcp_message_fields",
+          "format": "block",
+          "block": "ehcp_message_fields_block"
+        }
+      ]
+    }
+  ],
+  "previews": [
+    {
+      "name": "EHCP (direct quoted)",
+      "enabled": true,
+      "regex": "^.*\"(?<ehcpPayload>EHCP[^\"]*)\".*$",
+      "bufferCapture": "ehcpPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_message_block"
+        }
+      ]
+    },
+    {
+      "name": "EHCP (direct not quoted)",
+      "enabled": true,
+      "regex": "^(?<ehcpPayload>EHCP[^\"]*)$",
+      "bufferCapture": "ehcpPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_message_block"
+        }
+      ]
+    },
+    {
+      "name": "SRING -> EHCP",
+      "enabled": true,
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)$",
+      "bufferCapture": "hexEhcpPayload",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "ehcp_message",
+          "format": "block",
+          "block": "ehcp_hex_message_block"
+        }
+      ]
+    }
+  ]
+}

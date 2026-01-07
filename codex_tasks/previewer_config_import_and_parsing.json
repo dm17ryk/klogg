@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "task_id": "klogg-previewer-config-import-and-parsing",
+    "title": "Previewer config parsing + Tools->Import previews + enable/disable previews",
+    "branch": "features",
+    "language": "C++",
+    "framework": "Qt6",
+    "notes": [
+      "Klogg supports multiple tabs (multiple logs and future multiple stream sources).",
+      "Previewer window is a separate non-modal window with tabs (already planned).",
+      "Import Previews UI should mimic existing 'Predefined Filters' window style."
+    ]
+  },
+  "codex_cli_preferences": {
+    "shell": "Visual Studio 2022 Developer Command Prompt",
+    "workspace_dir": "C:\\Essence_SC\\lsrc\\klogg",
+    "build_root_dir": "build_root",
+    "env": {
+      "QTDIR": "C:\\qt6",
+      "PATH": "%QTDIR%\\bin;%PATH%",
+      "CMAKE_PREFIX_PATH": "%QTDIR%",
+      "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+      "KLOGG_BUILD_ROOT": "build_root",
+      "platform": "x64",
+      "KLOGG_QT": "Qt6",
+      "KLOGG_QT_DIR": "C:\\qt6"
+    },
+    "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
+    "cmake_build_command": "cmake --build . --config RelWithDebInfo"
+  },
+  "implementation_plan": {
+    "A_add_preview_config_domain_types": {
+      "goal": "Introduce internal C++ types to represent preview definitions and fields (recursive).",
+      "steps": [
+        "Create data structures (header + cpp) for preview configs, consistent with code style of existing filters/highlights config types.",
+        "Recommended types:",
+        "  - enum class PreviewBufferType { String, HexString, Base64, Bin, Binary, Bytes };",
+        "  - enum class PreviewFormat { Fields, String, Dig, Dec, Hex, Bin, Enum, Flags, Bitfield };",
+        "  - struct PreviewFieldSpec { QString name; optional offsetExpr; optional widthExpr; PreviewBufferType type; PreviewFormat format; QString endianness; QMap<QString, QString> enumMap; QMap<QString, QString> flagMap; QVector<PreviewFieldSpec> fields; QVector<PreviewFieldSpec> bitfieldMap; /* optional: source/capture support */ };",
+        "  - struct PreviewDefinition { QString name; QString regex; QRegularExpression compiled; bool enabled; int offset; PreviewBufferType type; PreviewFormat format; QVector<PreviewFieldSpec> fields; /* optional: bufferCapture/source/capture */ };"
+      ],
+      "notes": [
+        "Even if some fields in JSON omit type/format, provide sane defaults: type=Bytes, format=String (or Fields if fields[] exists).",
+        "Keep enabled default true if missing."
+      ],
+      "acceptance_criteria": [
+        "Project compiles with new types, no UI wired yet.",
+        "PreviewDefinition can be constructed from parsed JSON and holds compiled QRegularExpression."
+      ]
+    },
+    "B_parse_preview_config_json": {
+      "goal": "Implement robust JSON parsing of preview configs (import and load at startup).",
+      "steps": [
+        "Create PreviewConfigParser with API:",
+        "  - ParseResult parseFile(const QString& path);",
+        "  - ParseResult parseJson(const QByteArray& jsonBytes);",
+        "ParseResult contains: QVector<PreviewDefinition> previews; QStringList errors; QStringList warnings;",
+        "Support root JSON formats:",
+        "  1) root is array => treat as previews list (legacy/simple)",
+        "  2) root is object with 'previews' array => treat as previews list (schema-friendly)",
+        "Parse each preview object:",
+        "  - name (required)",
+        "  - regex (required) (aka 'pattern' alias supported for convenience)",
+        "  - enabled (optional, default true)",
+        "  - offset (optional, default 0)",
+        "  - type (optional, default 'string')",
+        "  - format (optional, default 'fields')",
+        "  - fields (required if format=='fields', otherwise optional)",
+        "Parse fields recursively, including nested 'fields' and 'bitfieldMap'.",
+        "Keep unknown properties as warnings (don’t hard-fail), but do fail on missing required properties (name/regex).",
+        "Compile regex (QRegularExpression) once; if invalid regex => error and skip that preview entry."
+      ],
+      "notes": [
+        "Add small helpers: parseBufferType(string), parseFormat(string), parseEndianness(string).",
+        "No JSON comments support for now (strict JSON)."
+      ],
+      "acceptance_criteria": [
+        "Given a valid previews JSON file, parser returns non-empty previews and no errors.",
+        "Invalid JSON returns errors without crash.",
+        "Invalid regex yields error and that preview is not loaded."
+      ]
+    },
+    "C_store_previews_in_app_config": {
+      "goal": "Persist imported previews into Klogg’s config storage (like filters/highlights).",
+      "steps": [
+        "Locate how Klogg stores 'Predefined filters' and/or highlights (there is likely a config folder + JSON/XML).",
+        "Create analogous storage for previews, e.g.: <config>/previews.json (or reuse existing config system).",
+        "Implement PreviewRepository with APIs:",
+        "  - QVector<PreviewDefinition> load();",
+        "  - bool save(const QVector<PreviewDefinition>&);",
+        "Store includes at least: name, regex, enabled, and the full parsing structure needed by preview engine (type/offset/format/fields...).",
+        "On startup, PreviewManager loads from PreviewRepository."
+      ],
+      "acceptance_criteria": [
+        "After importing previews, close and reopen Klogg => previews persist (still listed)."
+      ]
+    },
+    "D_preview_manager_api_for_ui_and_engine": {
+      "goal": "Central manager for previews: list, enable/disable, auto-match, notify UI.",
+      "steps": [
+        "Create PreviewManager (singleton or MainWindow-owned service) with:",
+        "  - loadFromRepository()",
+        "  - importFromFile(path) => parse + merge + save",
+        "  - const QVector<PreviewDefinition>& all() const",
+        "  - QVector<PreviewDefinition> enabled() const",
+        "  - void setEnabled(const QString& name, bool enabled)",
+        "  - QString findFirstMatchingEnabledPreview(const QString& rawLine) const",
+        "Signals:",
+        "  - void previewsChanged() (emitted after import or enable toggle)",
+        "  - void previewEnabledChanged(const QString& name, bool enabled) (optional)"
+      ],
+      "merge_rules": [
+        "When importing:",
+        "  - If name does not exist => add with enabled=true (or from file if provided).",
+        "  - If name exists => update regex/type/fields/etc. Keep current enabled state unless imported entry explicitly contains enabled.",
+        "This mirrors typical 'import definitions' UX and avoids accidental disabling/enabling."
+      ],
+      "acceptance_criteria": [
+        "UI can query enabled previews; auto match uses only enabled; toggling enabled updates menus."
+      ]
+    },
+    "E_tools_menu_add_import_previews": {
+      "goal": "Add 'Import previews...' under Tools menu.",
+      "steps": [
+        "Locate where Tools menu is created (MainWindow::createMenus or similar).",
+        "Add QAction:",
+        "  text: 'Import previews...'",
+        "  slot: MainWindow::openImportPreviewsDialog()",
+        "Ensure action is always enabled."
+      ],
+      "acceptance_criteria": [
+        "Tools menu contains 'Import previews...' and opens a dialog."
+      ]
+    },
+    "F_import_previews_dialog_like_predefined_filters": {
+      "goal": "Implement ImportPreviewsDialog (similar look/behavior to Predefined Filters window).",
+      "ui_spec": {
+        "controls": [
+          "QTableView or QTableWidget showing columns: Name (read-only), Pattern (read-only), Enabled (checkbox)",
+          "Only one button: 'Import' (plus standard Close/OK depending on existing window style)",
+          "No export, no delete, no edit"
+        ],
+        "behavior": [
+          "Click Import => open QFileDialog to select JSON file => PreviewManager.importFromFile(filePath).",
+          "After import, refresh table to show new/updated previews.",
+          "Enabled checkbox toggles PreviewManager.setEnabled(name, enabled) and persists immediately.",
+          "If import fails, show QMessageBox with parser errors."
+        ]
+      },
+      "steps": [
+        "Locate existing 'Predefined Filters' window code and copy/derive from it (keep styling and sizing).",
+        "Implement a model-based approach (recommended): PreviewsTableModel : QAbstractTableModel with 3 columns.",
+        "Name & Pattern columns flags: Qt::ItemIsSelectable | Qt::ItemIsEnabled (read-only).",
+        "Enabled column flags include Qt::ItemIsUserCheckable; implement data/setData for CheckStateRole.",
+        "Dialog listens to PreviewManager::previewsChanged and refreshes model."
+      ],
+      "acceptance_criteria": [
+        "Dialog shows previews table with correct columns.",
+        "Name and Pattern not editable.",
+        "Enabled toggles checkbox persists and affects menus.",
+        "Import button loads JSON file and updates table."
+      ]
+    },
+    "G_wire_enabled_previews_into_context_menu_and_preview_tabs": {
+      "goal": "Only enabled previews appear in Send to Preview menu and are used by auto-detection. Disabled previews are excluded (or shown disabled) consistently across UI.",
+      "steps": [
+        "Update log view context menu 'Send to Preview' builder to use PreviewManager.enabled() list.",
+        "Auto action uses PreviewManager.findFirstMatchingEnabledPreview(rawLine).",
+        "Preview window per-tab combobox should list all previews but disable (gray) the ones disabled in manager:",
+        "  - Use QStandardItemModel for combobox items and clear ItemIsEnabled flag for disabled previews.",
+        "If a tab currently uses a preview that later becomes disabled, keep selection but show it as disabled item (still displayed).",
+        "Connect PreviewManager::previewsChanged to open PreviewWindow tabs to refresh their combobox lists (do not change current selection unless it becomes invalid)."
+      ],
+      "acceptance_criteria": [
+        "Disabled previews do not show up in Send to Preview menu.",
+        "Auto detection ignores disabled previews.",
+        "Combobox shows disabled previews as grayed; enabled ones selectable."
+      ]
+    },
+    "H_add_example_preview_config_and_schema_files": {
+      "goal": "Ship a sample previews json + optional schema file to enable autocomplete in editors.",
+      "steps": [
+        "Add a sample file: config/previews.example.json (valid strict JSON, no comments).",
+        "Add schema: schemas/klogg-previews.schema.json (optional but recommended).",
+        "If schema exists, put $schema reference in example file.",
+        "Fix schema conditional rules so that 'capture' is only required when 'source' is explicitly present and equals 'capture'."
+      ],
+      "acceptance_criteria": [
+        "Example file validates against schema in VS Code and does not show false 'missing capture' warnings.",
+        "Developers can use schema for autocomplete."
+      ]
+    }
+  },
+  "validation_plan": {
+    "build": [
+      "cd %KLOGG_WORKSPACE%\\%KLOGG_BUILD_ROOT%",
+      "cmake --build . --config RelWithDebInfo"
+    ],
+    "manual_tests": [
+      "Tools -> Import previews... opens dialog and shows table columns Name/Pattern/Enabled.",
+      "Import a JSON file with 2 previews => table shows both, enabled checked by default.",
+      "Uncheck Enabled for one preview => it disappears from log view context menu 'Send to Preview'.",
+      "Send a line to preview => new preview tab created; combobox shows enabled previews; disabled previews appear grayed.",
+      "Restart Klogg => imported previews and enabled states persisted."
+    ]
+  },
+  "deliverables": [
+    "PreviewConfigParser (robust JSON parsing, recursion support).",
+    "PreviewRepository for persistence.",
+    "PreviewManager service with signals and enable/disable.",
+    "Tools menu action 'Import previews...'.",
+    "ImportPreviewsDialog with table (Name/Pattern/Enabled) and Import button.",
+    "Sample config file + schema (optional but recommended).",
+    "Context menu and preview combobox wired to enabled state."
+  ]
+}

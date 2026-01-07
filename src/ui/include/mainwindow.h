@@ -55,6 +55,7 @@
 #include "downloader.h"
 #include "iconloader.h"
 #include "pathline.h"
+#include "previewwindow.h"
 #include "quickfindmux.h"
 #include "quickfindwidget.h"
 #include "session.h"
@@ -125,13 +126,16 @@ class MainWindow : public QMainWindow {
     void openUrl();
     void editHighlighters();
     void editPredefinedFilters( const QString& newFilter = {} );
+    void openImportPreviewsDialog();
     void options();
     void about();
     void aboutQt();
     void documentation();
     void showScratchPad();
+    void showPreviewer();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
+    void sendToPreview( QString rawLine, QString previewNameOrAuto );
     void encodingChanged( QAction* action );
     void addToFavorites();
     void removeFromFavorites();
@@ -273,6 +277,8 @@ class MainWindow : public QMainWindow {
     QAction* editHighlightersAction;
     QAction* optionsAction;
     QAction* showScratchPadAction;
+    QAction* showPreviewerAction;
+    QAction* importPreviewsAction;
     QAction* showDocumentationAction;
     QAction* aboutAction;
     QAction* aboutQtAction;
@@ -315,6 +321,7 @@ class MainWindow : public QMainWindow {
     TabbedCrawlerWidget mainTabWidget_;
 
     TabbedScratchPad scratchPad_;
+    PreviewWindow previewWindow_;
 
     QTemporaryDir tempDir_;
 

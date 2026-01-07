@@ -1,0 +1,130 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "previews": [
+    {
+      "name": "ExampleFormat",
+      "regex": "^MSG\\[(?<msgId>\\d+)\\]: Payload=(?<payload>[0-9A-F]+) Status=(?<status>\\w+)$",
+      "bufferCapture": "payload",
+      "type": "hexString",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "msgId",
+          "source": "capture",
+          "capture": "msgId",
+          "type": "string",
+          "format": "dig"
+        },
+        {
+          "name": "status",
+          "source": "capture",
+          "capture": "status",
+          "type": "string",
+          "format": "string"
+        },
+        {
+          "name": "Code",
+          "width": 4,
+          "endianness": "big",
+          "format": "hex"
+        },
+        {
+          "name": "size",
+          "width": 4,
+          "endianness": "little",
+          "format": "dig"
+        },
+        {
+          "name": "value",
+          "width": "{size}",
+          "type": "base64",
+          "format": "fields",
+          "fields": [
+            {
+              "name": "subValue1",
+              "width": 2,
+              "endianness": "little",
+              "format": "dig"
+            },
+            {
+              "name": "subValue2",
+              "width": 2,
+              "endianness": "little",
+              "format": "dig"
+            },
+            {
+              "name": "url",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "name": "checksum",
+          "width": 4,
+          "endianness": "big",
+          "format": "hex"
+        }
+      ]
+    },
+    {
+      "name": "FlagsEnumExample",
+      "regex": "^Flag (?<idx>\\d+): Value=(?<val>\\d+) Perm=(?<perm>0x[0-9A-Fa-f]+) Desc=(?<desc>[0-9A-Fa-f]{2})$",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "FlagIndex",
+          "source": "capture",
+          "capture": "idx",
+          "type": "string",
+          "format": "dig"
+        },
+        {
+          "name": "ValueType",
+          "source": "capture",
+          "capture": "val",
+          "type": "string",
+          "format": "enum",
+          "enumMap": {
+            "0": "OFF",
+            "1": "ON",
+            "2": "UNKNOWN"
+          }
+        },
+        {
+          "name": "Permissions",
+          "source": "capture",
+          "capture": "perm",
+          "type": "string",
+          "format": "flags",
+          "flagMap": {
+            "0x1": "READ",
+            "0x2": "WRITE",
+            "0x4": "EXECUTE",
+            "0x8": "DELETE"
+          }
+        },
+        {
+          "name": "Description",
+          "source": "capture",
+          "capture": "desc",
+          "type": "hexString",
+          "format": "bitfield",
+          "width": 8,
+          "bitfieldMap": [
+            { "name": "isActive", "width": 1, "format": "dig" },
+            { "name": "isVerified", "width": 1, "format": "dig" },
+            { "name": "isAdmin", "width": 1, "format": "dig" },
+            {
+              "name": "status",
+              "width": 4,
+              "format": "enum",
+              "enumMap": { "0": "OFF", "1": "ON", "2": "UNKNOWN" }
+            },
+            { "name": "reserved", "width": 1, "format": "bin" }
+          ]
+        }
+      ]
+    }
+  ]
+}

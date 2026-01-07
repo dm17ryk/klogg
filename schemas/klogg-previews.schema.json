@@ -1,0 +1,343 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "klogg previews configuration schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+
+    "blocks": {
+      "type": "array",
+      "description": "Reusable named blocks that can be referenced from fields via format/source=block.",
+      "items": {
+        "$ref": "#/definitions/block"
+      }
+    },
+
+    "previews": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/preview"
+      }
+    }
+  },
+  "required": ["version", "previews"],
+
+  "definitions": {
+    "expr": {
+      "description": "Either a literal integer or an expression string like \"{size}-5\".",
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "minLength": 1 }
+      ]
+    },
+
+    "endianness": {
+      "type": "string",
+      "enum": ["little", "big"]
+    },
+
+    "typeName": {
+      "type": "string",
+      "enum": ["string", "hexString", "base64", "bin", "bytes"]
+    },
+
+    "fieldFormat": {
+      "type": "string",
+      "enum": [
+        "string",
+        "dig",
+        "hex",
+        "enum",
+        "flags",
+        "bitfield",
+        "fields",
+        "match",
+        "block"
+      ]
+    },
+
+    "fieldSource": {
+      "type": "string",
+      "enum": ["buffer", "capture", "block"]
+    },
+
+    "enumMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+
+    "flagsMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+
+    "bitfieldItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mask": {
+          "description": "Bit mask. Usually integer, but allow hex string too.",
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "string", "pattern": "^0x[0-9a-fA-F]+$" }
+          ]
+        },
+        "name": { "type": "string" }
+      },
+      "required": ["mask", "name"]
+    },
+
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+
+        "enabled": { "type": "boolean" },
+
+        "source": { "$ref": "#/definitions/fieldSource" },
+        "capture": { "type": "string" },
+
+        "block": {
+          "type": "string",
+          "description": "Block reference. May include placeholders like \"ehcp_message_ev_cmd_{protocol_type}_block\"."
+        },
+
+        "width": { "$ref": "#/definitions/expr" },
+        "offset": { "$ref": "#/definitions/expr" },
+
+        "endianness": { "$ref": "#/definitions/endianness" },
+
+        "type": { "$ref": "#/definitions/typeName" },
+        "format": { "$ref": "#/definitions/fieldFormat" },
+
+        "regex": { "type": "string" },
+        "bufferCapture": { "type": "string" },
+
+        "enumMap": { "$ref": "#/definitions/enumMap" },
+        "flagsMap": { "$ref": "#/definitions/flagsMap" },
+        "bitfieldMap": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/bitfieldItem" }
+        },
+
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/field" }
+        }
+      },
+      "required": ["name"],
+
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "capture" } },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["capture"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "source": { "const": "block" } },
+            "required": ["source"]
+          },
+          "then": {
+            "required": ["block"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "block" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["block"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "match" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["regex", "fields"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "fields" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["fields"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "enum" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["enumMap"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "flags" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["flagsMap"]
+          }
+        },
+
+        {
+          "if": {
+            "properties": { "format": { "const": "bitfield" } },
+            "required": ["format"]
+          },
+          "then": {
+            "required": ["bitfieldMap"]
+          }
+        }
+      ]
+    },
+
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+
+        "source": { "$ref": "#/definitions/fieldSource" },
+        "capture": { "type": "string" },
+
+        "block": { "type": "string" },
+
+        "width": { "$ref": "#/definitions/expr" },
+        "offset": { "$ref": "#/definitions/expr" },
+        "endianness": { "$ref": "#/definitions/endianness" },
+
+        "type": { "$ref": "#/definitions/typeName" },
+        "format": { "$ref": "#/definitions/fieldFormat" },
+
+        "regex": { "type": "string" },
+        "bufferCapture": { "type": "string" },
+
+        "enumMap": { "$ref": "#/definitions/enumMap" },
+        "flagsMap": { "$ref": "#/definitions/flagsMap" },
+        "bitfieldMap": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/bitfieldItem" }
+        },
+
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/field" }
+        }
+      },
+      "required": ["name"],
+
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "capture" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["capture"] }
+        },
+        {
+          "if": {
+            "properties": { "source": { "const": "block" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["block"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "block" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["block"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "match" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["regex", "fields"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "fields" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["fields"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "enum" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["enumMap"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "flags" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["flagsMap"] }
+        },
+        {
+          "if": {
+            "properties": { "format": { "const": "bitfield" } },
+            "required": ["format"]
+          },
+          "then": { "required": ["bitfieldMap"] }
+        }
+      ]
+    },
+
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "enabled": { "type": "boolean" },
+
+        "regex": { "type": "string" },
+        "bufferCapture": { "type": "string" },
+
+        "type": { "$ref": "#/definitions/typeName" },
+        "format": { "$ref": "#/definitions/fieldFormat" },
+
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/field" }
+        }
+      },
+      "required": ["name", "enabled", "regex", "fields"]
+    }
+  }
+}

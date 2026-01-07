@@ -1291,6 +1291,11 @@ void CrawlerWidget::setup()
     connect( logMainView_, &AbstractLogView::replaceScratchpadWithSelection, this,
              [ this ]() { Q_EMIT replaceDataInScratchpad( logMainView_->getSelectedText() ); } );
 
+    connect( logMainView_, &AbstractLogView::sendSelectionToPreview, this,
+             [ this ]( const QString& previewName ) {
+                 Q_EMIT sendToPreview( logMainView_->getSelectedText(), previewName );
+             } );
+
     connectAllFilteredViewSlots( filteredView_ );
 
     const auto defaultEncodingMib = config.defaultEncodingMib();
@@ -1412,6 +1417,11 @@ void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 
     connect( view, &AbstractLogView::replaceScratchpadWithSelection, this,
              [ view, this ]() { Q_EMIT replaceDataInScratchpad( view->getSelectedText() ); } );
+
+    connect( view, &AbstractLogView::sendSelectionToPreview, this,
+             [ view, this ]( const QString& previewName ) {
+                 Q_EMIT sendToPreview( view->getSelectedText(), previewName );
+             } );
 
     connect( view, &FilteredView::exitView, logMainView_,
              QOverload<>::of( &LogMainView::setFocus ) );
