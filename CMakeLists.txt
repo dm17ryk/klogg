@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 project(
   klogg
-  VERSION 24.11.0
+  VERSION 24.11.1
   DESCRIPTION "klogg log viewer"
   LANGUAGES C CXX ASM
 )
