@@ -9,8 +9,9 @@ endif()
 
 file(READ "${patch_file}" content)
 string(
-  REGEX REPLACE "cmake_minimum_required\\([^\\)]*\\)[\\r\\n]*"
-  "" stripped
+  REGEX REPLACE "cmake_minimum_required[ \t]*\\([^\\)]*\\)[ \t]*[\\r\\n]*"
+  ""
+  stripped
   "${content}"
 )
 file(WRITE "${patch_file}" "cmake_minimum_required(VERSION 3.10)\n\n${stripped}")
