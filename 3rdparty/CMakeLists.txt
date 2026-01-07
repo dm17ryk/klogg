@@ -244,6 +244,11 @@ cpmaddpackage(
   Cyan4973/xxHash
   VERSION
   0.8.1
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_xxhash_min_cmake.cmake
   DOWNLOAD_ONLY
   YES
 )
