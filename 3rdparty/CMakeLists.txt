@@ -168,6 +168,11 @@ cpmaddpackage(
   martinus/robin-hood-hashing
   GIT_TAG
   3.11.2
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_robin_hood_min_cmake.cmake
   EXCLUDE_FROM_ALL
   YES
 )
@@ -178,7 +183,19 @@ if(NOT TARGET robin_hood)
 endif(NOT TARGET robin_hood)
 
 if(KLOGG_BUILD_TESTS)
-  cpmaddpackage("gh:bombela/backward-cpp@1.6")
+  cpmaddpackage(
+    NAME
+    backward-cpp
+    GITHUB_REPOSITORY
+    bombela/backward-cpp
+    VERSION
+    1.6
+    PATCH_COMMAND
+    ${CMAKE_COMMAND}
+    -DPATCH_ROOT=.
+    -P
+    ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_backward_cpp_min_cmake.cmake
+  )
   cpmaddpackage(
     NAME
     Catch2
