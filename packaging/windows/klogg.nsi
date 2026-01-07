@@ -117,7 +117,6 @@ Section "Qt Runtime libraries" qtlibs
     File release\${QT_MAJOR}Concurrent.dll
     File release\${QT_MAJOR}Xml.dll
     File release\${QT_MAJOR}SerialPort.dll
-    File release\${QT_MAJOR}Pdf.dll
     File release\${QT_MAJOR}Svg.dll
 !if ${QT_MAJOR} == "Qt6"
     File release\${QT_MAJOR}Core5Compat.dll
@@ -202,7 +201,6 @@ Section "Uninstall"
     Delete "$INSTDIR\Qt6Xml.dll"
     Delete "$INSTDIR\Qt6Core5Compat.dll"
     Delete "$INSTDIR\Qt6SerialPort.dll"
-    Delete "$INSTDIR\Qt6Pdf.dll"
     Delete "$INSTDIR\Qt6Svg.dll"
     Delete "$INSTDIR\platforms\qwindows.dll"
     Delete "$INSTDIR\platforms\qminimal.dll"
