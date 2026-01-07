@@ -1,0 +1,201 @@
+Prepare all required actions
+Run ./.github/actions/agent-build
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.7.3/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.7.3/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.730
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
+Run echo "CC=" >> $GITHUB_ENV
+  echo "CC=" >> $GITHUB_ENV
+  echo "CXX=" >> $GITHUB_ENV
+  shell: /bin/sh -e {0}
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.7.3/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.7.3/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.730
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
+Run mkdir $KLOGG_BUILD_ROOT
+  mkdir $KLOGG_BUILD_ROOT
+  cd $KLOGG_BUILD_ROOT
+  cmake $KLOGG_CMAKE_OPTS -DCPM_SOURCE_CACHE=$KLOGG_WORKSPACE/cpm_cache -DKLOGG_OVERRIDE_MALLOC=OFF $KLOGG_WORKSPACE
+  shell: /bin/sh -e {0}
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.7.3/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.7.3/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.730
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
+    CC: 
+    CXX: 
+-- The C compiler identification is AppleClang 15.0.0.15000100
+-- The CXX compiler identification is AppleClang 15.0.0.15000100
+-- The ASM compiler identification is AppleClang
+-- Found assembler: /usr/bin/cc
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+Version override 24.11.1.730
+Build 
+Project version is 24.11.1
+Project version tweak is 730
+-- Found PkgConfig: /opt/homebrew/bin/pkg-config (found version "2.5.1")
+Dump symbols tools path /Users/runner/work/klogg/klogg/3rdparty/dump_syms/mac
+Flags set for 'AppleClang' compiler:-ffast-math;-stdlib=libc++
+Defines set for 'AppleClang' compiler:
+
+CMAKE_C_FLAGS:  -march=native -mtune=generic
+CMAKE_CXX_FLAGS:  -fno-sized-deallocation -fno-omit-frame-pointer -march=native -mtune=generic
+CMAKE_EXE_LINKER_FLAGS: 
+CMAKE_MODULE_LINKER_FLAGS: 
+CMAKE_SHARED_LINKER_FLAGS: 
+CMAKE_STATIC_LINKER_FLAGS: 
+CMAKE_C_FLAGS_RELWITHDEBINFO: -O2 -g -DNDEBUG
+CMAKE_CXX_FLAGS_RELWITHDEBINFO: -O2 -g -DNDEBUG
+CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO: 
+CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO: 
+CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO: 
+CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO: 
+
+Adding missing Threads workaround
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Performing Test HAVE_STDATOMIC
+-- Performing Test HAVE_STDATOMIC - Success
+-- Found WrapAtomic: TRUE
+-- Found OpenGL: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework
+-- Found WrapOpenGL: TRUE
+Qt version 6.7.3
+LTO ON
+OSX target 14.0
+-- CPM: Adding package simdutf@5.6.2 (v5.6.2 to /Users/runner/work/klogg/klogg/cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+  Calling FetchContent_Populate(simdutf) is deprecated, call
+  FetchContent_MakeAvailable(simdutf) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(simdutf) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  cmake/CPM.cmake:1005 (FetchContent_Populate)
+  cmake/CPM.cmake:799 (cpm_fetch_package)
+  3rdparty/CMakeLists.txt:7 (cpmaddpackage)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found Python3: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/bin/python3.11 (found version "3.11.9") found components: Interpreter
+-- Python found, we are going to amalgamate.py.
+-- The tests are enabled.
+CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
+  The following keywords are not supported when using
+  add_custom_command(TARGET): DEPENDS.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
+  Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
+  POST_BUILD to preserve backward compatibility.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+-- Performing Test Iconv_IS_BUILT_IN
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Performing Test Iconv_IS_BUILT_IN - Failed
+-- Found Iconv: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd
+-- Iconv was found!
+-- Iconv is a separate library, headers at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include, binary at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd
+-- The tools require C++17. If your system does not support C++17, please set SIMDUTF_TOOLS to OFF.
+-- The benchmarks can be enabled by setting SIMDUTF_BENCHMARKS, e.g., -D SIMDUTF_BENCHMARKS=ON.
+-- Compiling using the C++ standard:11
+-- CPM: Adding package type_safe@0.2.4 (v0.2.4 to /Users/runner/work/klogg/klogg/cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+  Calling FetchContent_Populate(type_safe) is deprecated, call
+  FetchContent_MakeAvailable(type_safe) instead.  Policy CMP0169 can be set
+  to OLD to allow FetchContent_Populate(type_safe) to be called directly for
+  now, but the ability to call it with declared details will be removed
+  completely in a future version.
+Call Stack (most recent call first):
+  cmake/CPM.cmake:1005 (FetchContent_Populate)
+  cmake/CPM.cmake:799 (cpm_fetch_package)
+  3rdparty/CMakeLists.txt:8 (cpmaddpackage)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Deprecation Warning at cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981/CMakeLists.txt:5 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- Using vendored debug_assert
+CMake Error at cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981/external/debug_assert/CMakeLists.txt:5 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+
+-- Configuring incomplete, errors occurred!
+Error: Process completed with exit code 1.

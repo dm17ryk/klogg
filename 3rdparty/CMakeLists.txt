@@ -5,7 +5,19 @@ include(CPM)
 set(_TMP_CPM_USE_LOCAL_PACKAGES ${CPM_USE_LOCAL_PACKAGES})
 
 cpmaddpackage("gh:simdutf/simdutf@5.6.2")
-cpmaddpackage("gh:foonathan/type_safe@0.2.4")
+cpmaddpackage(
+  NAME
+  type_safe
+  GITHUB_REPOSITORY
+  foonathan/type_safe
+  VERSION
+  0.2.4
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_type_safe_debug_assert.cmake
+)
 cpmaddpackage("gh:RoaringBitmap/CRoaring@4.2.1")
 cpmaddpackage("gh:lemire/streamvbyte@1.0.0")
 
