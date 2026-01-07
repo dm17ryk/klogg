@@ -14,7 +14,7 @@ Run ./.github/actions/agent-build
     QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
     BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
     BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
-    KLOGG_VERSION: 24.11.1.730
+    KLOGG_VERSION: 24.11.1.731
     KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
     KLOGG_BUILD_ROOT: build_root
     KLOGG_ARCH: arm64
@@ -39,13 +39,14 @@ Run echo "CC=" >> $GITHUB_ENV
     QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
     BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
     BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
-    KLOGG_VERSION: 24.11.1.730
+    KLOGG_VERSION: 24.11.1.731
     KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
     KLOGG_BUILD_ROOT: build_root
     KLOGG_ARCH: arm64
     KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0
     KLOGG_QT: Qt6
     KLOGG_QT_DIR: 
+  
 Run mkdir $KLOGG_BUILD_ROOT
   mkdir $KLOGG_BUILD_ROOT
   cd $KLOGG_BUILD_ROOT
@@ -65,7 +66,7 @@ Run mkdir $KLOGG_BUILD_ROOT
     QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.7.3/macos/qml
     BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
     BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
-    KLOGG_VERSION: 24.11.1.730
+    KLOGG_VERSION: 24.11.1.731
     KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
     KLOGG_BUILD_ROOT: build_root
     KLOGG_ARCH: arm64
@@ -74,6 +75,7 @@ Run mkdir $KLOGG_BUILD_ROOT
     KLOGG_QT_DIR: 
     CC: 
     CXX: 
+  
 -- The C compiler identification is AppleClang 15.0.0.15000100
 -- The CXX compiler identification is AppleClang 15.0.0.15000100
 -- The ASM compiler identification is AppleClang
@@ -88,15 +90,14 @@ Run mkdir $KLOGG_BUILD_ROOT
 -- Check for working CXX compiler: /usr/bin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
-Version override 24.11.1.730
+Version override 24.11.1.731
 Build 
 Project version is 24.11.1
-Project version tweak is 730
+Project version tweak is 731
 -- Found PkgConfig: /opt/homebrew/bin/pkg-config (found version "2.5.1")
 Dump symbols tools path /Users/runner/work/klogg/klogg/3rdparty/dump_syms/mac
 Flags set for 'AppleClang' compiler:-ffast-math;-stdlib=libc++
 Defines set for 'AppleClang' compiler:
-
 CMAKE_C_FLAGS:  -march=native -mtune=generic
 CMAKE_CXX_FLAGS:  -fno-sized-deallocation -fno-omit-frame-pointer -march=native -mtune=generic
 CMAKE_EXE_LINKER_FLAGS: 
@@ -109,7 +110,6 @@ CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO:
 CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO: 
 CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO: 
 CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO: 
-
 Adding missing Threads workaround
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
@@ -134,29 +134,24 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:7 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
-
 -- Found Python3: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/bin/python3.11 (found version "3.11.9") found components: Interpreter
 -- Python found, we are going to amalgamate.py.
 -- The tests are enabled.
 CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
   The following keywords are not supported when using
+-- Performing Test Iconv_IS_BUILT_IN
   add_custom_command(TARGET): DEPENDS.
-
   Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
   Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
   command to set the policy and suppress this warning.
 This warning is for project developers.  Use -Wno-dev to suppress it.
-
 CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
   Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
   POST_BUILD to preserve backward compatibility.
-
   Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
   Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
--- Performing Test Iconv_IS_BUILT_IN
   command to set the policy and suppress this warning.
 This warning is for project developers.  Use -Wno-dev to suppress it.
-
 -- Performing Test Iconv_IS_BUILT_IN - Failed
 -- Found Iconv: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd
 -- Iconv was found!
@@ -164,7 +159,7 @@ This warning is for project developers.  Use -Wno-dev to suppress it.
 -- The tools require C++17. If your system does not support C++17, please set SIMDUTF_TOOLS to OFF.
 -- The benchmarks can be enabled by setting SIMDUTF_BENCHMARKS, e.g., -D SIMDUTF_BENCHMARKS=ON.
 -- Compiling using the C++ standard:11
--- CPM: Adding package type_safe@0.2.4 (v0.2.4 to /Users/runner/work/klogg/klogg/cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981)
+-- CPM: Adding package type_safe@0.2.4 (v0.2.4 to /Users/runner/work/klogg/klogg/cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(type_safe) is deprecated, call
   FetchContent_MakeAvailable(type_safe) instead.  Policy CMP0169 can be set
@@ -176,26 +171,226 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:8 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
-
-CMake Deprecation Warning at cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981/CMakeLists.txt:5 (cmake_minimum_required):
+CMake Deprecation Warning at cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/CMakeLists.txt:5 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
-
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
-
-
 -- Using vendored debug_assert
-CMake Error at cpm_cache/type_safe/71a1f33a7b982527e268b7782e28521750f87981/external/debug_assert/CMakeLists.txt:5 (cmake_minimum_required):
-  Compatibility with CMake < 3.5 has been removed from CMake.
-
+CMake Deprecation Warning at cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/external/debug_assert/CMakeLists.txt:5 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
-
+-- arithmetic_policy_default is undefined_behavior_arithmetic
+-- CPM: Adding package CRoaring@4.2.1 (v4.2.1 to /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+  Calling FetchContent_Populate(CRoaring) is deprecated, call
+  FetchContent_MakeAvailable(CRoaring) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(CRoaring) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  cmake/CPM.cmake:1005 (FetchContent_Populate)
+  cmake/CPM.cmake:799 (cpm_fetch_package)
+  3rdparty/CMakeLists.txt:21 (cpmaddpackage)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+CMake Warning (dev) at cpm_cache/cpm/CPM_0.38.6.cmake:51 (message):
+  CPM: CRoaring: A dependency is using a more recent CPM version (0.38.6)
+  than the current project (0.38.1).  It is recommended to upgrade CPM to the
+  most recent version.  See https://github.com/cpm-cmake/CPM.cmake for more
+  information.
+Call Stack (most recent call first):
+  cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/cmake/CPM.cmake:24 (include)
+  cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/CMakeLists.txt:62 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+-- CPM: CRoaring: Adding package cmocka@ (f5e2cd7 to /Users/runner/work/klogg/klogg/cpm_cache/cmocka/9fd9a04c246ce02ff9b932ca5c4d6aced1340849)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+  Calling FetchContent_Populate(cmocka) is deprecated, call
+  FetchContent_MakeAvailable(cmocka) instead.  Policy CMP0169 can be set to
+  OLD to allow FetchContent_Populate(cmocka) to be called directly for now,
+  but the ability to call it with declared details will be removed completely
+  in a future version.
+Call Stack (most recent call first):
+  cmake/CPM.cmake:1005 (FetchContent_Populate)
+  cmake/CPM.cmake:799 (cpm_fetch_package)
+  cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/tools/cmake/FindCTargets.cmake:5 (CPMAddPackage)
+  cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/CMakeLists.txt:64 (find_package)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+CMake Deprecation Warning at cpm_cache/cmocka/9fd9a04c246ce02ff9b932ca5c4d6aced1340849/CMakeLists.txt:2 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+-- Performing Test REQUIRED_FLAGS_WERROR
+-- Performing Test REQUIRED_FLAGS_WERROR - Success
+-- Performing Test WITH_STD_GNU99_FLAG
+-- Performing Test WITH_STD_GNU99_FLAG - Success
+-- Performing Test WITH_WPEDANTIC_FLAG
+-- Performing Test WITH_WPEDANTIC_FLAG - Success
+-- Performing Test WITH_WALL_FLAG
+-- Performing Test WITH_WALL_FLAG - Success
+-- Performing Test WITH_WSHADOW_FLAG
+-- Performing Test WITH_WSHADOW_FLAG - Success
+-- Performing Test WITH_WMISSING_PROTOTYPES_FLAG
+-- Performing Test WITH_WMISSING_PROTOTYPES_FLAG - Success
+-- Performing Test WITH_WCAST_ALIGN_FLAG
+-- Performing Test WITH_WCAST_ALIGN_FLAG - Success
+-- Performing Test WITH_WERROR_ADDRESS_FLAG
+-- Performing Test WITH_WERROR_ADDRESS_FLAG - Success
+-- Performing Test WITH_WSTRICT_PROTOTYPES_FLAG
+-- Performing Test WITH_WSTRICT_PROTOTYPES_FLAG - Success
+-- Performing Test WITH_WERROR_STRICT_PROTOTYPES_FLAG
+-- Performing Test WITH_WERROR_STRICT_PROTOTYPES_FLAG - Success
+-- Performing Test WITH_WWRITE_STRINGS_FLAG
+-- Performing Test WITH_WWRITE_STRINGS_FLAG - Success
+-- Performing Test WITH_WERROR_WRITE_STRINGS_FLAG
+-- Performing Test WITH_WERROR_WRITE_STRINGS_FLAG - Success
+-- Performing Test WITH_WERROR_IMPLICIT_FUNCTION_DECLARATION_FLAG
+-- Performing Test WITH_WERROR_IMPLICIT_FUNCTION_DECLARATION_FLAG - Success
+-- Performing Test WITH_WPOINTER_ARITH_FLAG
+-- Performing Test WITH_WPOINTER_ARITH_FLAG - Success
+-- Performing Test WITH_WERROR_POINTER_ARITH_FLAG
+-- Performing Test WITH_WERROR_POINTER_ARITH_FLAG - Success
+-- Performing Test WITH_WDECLARATION_AFTER_STATEMENT_FLAG
+-- Performing Test WITH_WDECLARATION_AFTER_STATEMENT_FLAG - Success
+-- Performing Test WITH_WERROR_DECLARATION_AFTER_STATEMENT_FLAG
+-- Performing Test WITH_WERROR_DECLARATION_AFTER_STATEMENT_FLAG - Success
+-- Performing Test WITH_WRETURN_TYPE_FLAG
+-- Performing Test WITH_WRETURN_TYPE_FLAG - Success
+-- Performing Test WITH_WERROR_RETURN_TYPE_FLAG
+-- Performing Test WITH_WERROR_RETURN_TYPE_FLAG - Success
+-- Performing Test WITH_WUNINITIALIZED_FLAG
+-- Performing Test WITH_WUNINITIALIZED_FLAG - Success
+-- Performing Test WITH_WERROR_UNINITIALIZED_FLAG
+-- Performing Test WITH_WERROR_UNINITIALIZED_FLAG - Success
+-- Performing Test WITH_WIMPLICIT_FALLTHROUGH_FLAG
+-- Performing Test WITH_WIMPLICIT_FALLTHROUGH_FLAG - Success
+-- Performing Test WITH_WERROR_STRICT_OVERFLOW_FLAG
+-- Performing Test WITH_WERROR_STRICT_OVERFLOW_FLAG - Success
+-- Performing Test WITH_WSTRICT_OVERFLOW_2_FLAG
+-- Performing Test WITH_WSTRICT_OVERFLOW_2_FLAG - Success
+-- Performing Test WITH_WNO_FORMAT_ZERO_LENGTH_FLAG
+-- Performing Test WITH_WNO_FORMAT_ZERO_LENGTH_FLAG - Success
+-- Performing Test WITH_WMISSING_FIELD_INITIALIZERS_FLAG
+-- Performing Test WITH_WMISSING_FIELD_INITIALIZERS_FLAG - Success
+-- Performing Test REQUIRED_FLAGS_WFORMAT
+-- Performing Test REQUIRED_FLAGS_WFORMAT - Success
+-- Performing Test WITH_WFORMAT_SECURITY_FLAG
+-- Performing Test WITH_WFORMAT_SECURITY_FLAG - Success
+-- Performing Test WITH_WERROR_FORMAT_SECURITY_FLAG
+-- Performing Test WITH_WERROR_FORMAT_SECURITY_FLAG - Success
+-- Performing Test WITH_FNO_COMMON_FLAG
+-- Performing Test WITH_FNO_COMMON_FLAG - Success
+-- Performing Test WITH_STACK_PROTECTOR_STRONG
+-- Performing Test WITH_STACK_PROTECTOR_STRONG - Success
+-- Performing Test WITH_STACK_CLASH_PROTECTION
+-- Performing Test WITH_STACK_CLASH_PROTECTION - Success
+-- Looking for assert.h
+-- Looking for assert.h - found
+-- Looking for inttypes.h
+-- Looking for inttypes.h - found
+-- Looking for io.h
+-- Looking for io.h - not found
+-- Looking for malloc.h
+-- Looking for malloc.h - not found
+-- Looking for memory.h
+-- Looking for memory.h - found
+-- Looking for setjmp.h
+-- Looking for setjmp.h - found
+-- Looking for signal.h
+-- Looking for signal.h - found
+-- Looking for stdarg.h
+-- Looking for stdarg.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stdio.h
+-- Looking for stdio.h - found
+-- Looking for stdlib.h
+-- Looking for stdlib.h - found
+-- Looking for string.h
+-- Looking for string.h - found
+-- Looking for strings.h
+-- Looking for strings.h - found
+-- Looking for sys/stat.h
+-- Looking for sys/stat.h - found
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for time.h
+-- Looking for time.h - found
+-- Looking for unistd.h
+-- Looking for unistd.h - found
+-- Performing Test HAVE_STRUCT_TIMESPEC
+-- Performing Test HAVE_STRUCT_TIMESPEC - Success
+-- Looking for calloc
+-- Looking for calloc - found
+-- Looking for exit
+-- Looking for exit - found
+-- Looking for fprintf
+-- Looking for fprintf - found
+-- Looking for free
+-- Looking for free - found
+-- Looking for longjmp
+-- Looking for longjmp - found
+-- Looking for siglongjmp
+-- Looking for siglongjmp - found
+-- Looking for malloc
+-- Looking for malloc - found
+-- Looking for memcpy
+-- Looking for memcpy - found
+-- Looking for memset
+-- Looking for memset - found
+-- Looking for printf
+-- Looking for printf - found
+-- Looking for setjmp
+-- Looking for setjmp - found
+-- Looking for signal
+-- Looking for signal - found
+-- Looking for strsignal
+-- Looking for strsignal - found
+-- Looking for strcmp
+-- Looking for strcmp - found
+-- Looking for clock_gettime
+-- Looking for clock_gettime - found
+-- Looking for sprintf
+-- Looking for sprintf - found
+-- Looking for vsnprintf
+-- Looking for vsnprintf - found
+-- Performing Test HAVE_GCC_THREAD_LOCAL_STORAGE
+-- Performing Test HAVE_GCC_THREAD_LOCAL_STORAGE - Success
+-- Performing Test HAVE_CLOCK_REALTIME
+-- Performing Test HAVE_CLOCK_REALTIME - Success
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- BENCHMARK_DATA_DIR: /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/benchmarks/realdata/
+-- TEST_DATA_DIR: /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/tests/testdata/
+-- Building a static library.
+-- ROARING_LIB_TYPE: STATIC
+-- Library output directory (does not apply to Visual Studio): /Users/runner/work/klogg/klogg/build_root
+-- Your system supports threads.
+-- Amalgamation tests enabled
+-- You may enable microbenchmarks by setting ENABLE_ROARING_MICROBENCHMARKS to ON 
+-- CPM: Adding package streamvbyte@1.0.0 (v1.0.0 to /Users/runner/work/klogg/klogg/cpm_cache/streamvbyte/ee7bbbd1eaab991076ab06f151125aaac325a32c)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+  Calling FetchContent_Populate(streamvbyte) is deprecated, call
+  FetchContent_MakeAvailable(streamvbyte) instead.  Policy CMP0169 can be set
+  to OLD to allow FetchContent_Populate(streamvbyte) to be called directly
+  for now, but the ability to call it with declared details will be removed
+  completely in a future version.
+Call Stack (most recent call first):
+  cmake/CPM.cmake:1005 (FetchContent_Populate)
+  cmake/CPM.cmake:799 (cpm_fetch_package)
+  3rdparty/CMakeLists.txt:22 (cpmaddpackage)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+CMake Error at cpm_cache/streamvbyte/ee7bbbd1eaab991076ab06f151125aaac325a32c/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
   Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
-
-
 -- Configuring incomplete, errors occurred!
 Error: Process completed with exit code 1.

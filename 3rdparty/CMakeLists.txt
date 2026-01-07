@@ -19,7 +19,19 @@ cpmaddpackage(
   ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_type_safe_debug_assert.cmake
 )
 cpmaddpackage("gh:RoaringBitmap/CRoaring@4.2.1")
-cpmaddpackage("gh:lemire/streamvbyte@1.0.0")
+cpmaddpackage(
+  NAME
+  streamvbyte
+  GITHUB_REPOSITORY
+  lemire/streamvbyte
+  VERSION
+  1.0.0
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_streamvbyte_min_cmake.cmake
+)
 
 if(APPLE)
   cpmaddpackage(
