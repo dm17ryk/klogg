@@ -41,6 +41,17 @@ runs:
       run: |
         python3 $KLOGG_BUILD_ROOT/macdeployqtfix.py $KLOGG_BUILD_ROOT/output/klogg.app/Contents/MacOS/klogg $Qt6_DIR
     
+    - name: Mac deploy Qt SerialPort
+      shell: sh
+      run: |
+        APP_FRAMEWORKS="$KLOGG_BUILD_ROOT/output/klogg.app/Contents/Frameworks"
+        QT_DIR="${Qt6_DIR:-$Qt5_DIR}"
+        if [ -n "$QT_DIR" ] && [ -d "$QT_DIR/lib/QtSerialPort.framework" ]; then
+          if [ ! -d "$APP_FRAMEWORKS/QtSerialPort.framework" ]; then
+            cp -R "$QT_DIR/lib/QtSerialPort.framework" "$APP_FRAMEWORKS/"
+          fi
+        fi
+    
     - name: Set packaging env
       shell: sh
       run: |

@@ -4,7 +4,7 @@ COPY epel.repo /etc/yum.repos.d
 
 RUN yum update -y && \
     yum install -y ragel make wget rpm-build git \
-    qt5-qtbase-devel openssl-devel boost-devel zlib-devel \
+    qt5-qtbase-devel qt5-qtserialport-devel openssl-devel boost-devel zlib-devel \
     devtoolset-7-gcc devtoolset-7-gcc-c++ ninja-build && \
     yum clean all
 

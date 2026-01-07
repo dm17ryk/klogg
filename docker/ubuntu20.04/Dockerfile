@@ -4,7 +4,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -y && \
     apt-get install --no-install-recommends build-essential python3 python-is-python3 \
-                    qtbase5-dev qt5-qmake qtbase5-dev-tools qttools5-dev qttranslations5-l10n\
+                    qtbase5-dev qt5-qmake qtbase5-dev-tools qttools5-dev qttranslations5-l10n \
+                    libqt5serialport5 libqt5serialport5-dev \
                     libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
                     ragel ninja-build zlib1g-dev git pkg-config \
                     wget ca-certificates fuse file -y && \

@@ -20,8 +20,8 @@ runs:
         version: ${{ matrix.config.qt_version }}
         arch: ${{ matrix.config.qt_arch }}
         cached: ${{ steps.cache-qt.outputs.cache-hit }}
-        modules: ${{ matrix.config.qt_modules }}
-        archives: qtbase qtimageformats qtsvg qttools qttranslations icu
+        modules: ${{ matrix.config.qt_modules }} qtserialport
+        archives: qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport
 
     - name: Set boost env vars
       shell: sh

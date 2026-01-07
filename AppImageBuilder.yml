@@ -26,6 +26,7 @@ AppDir:
       
     include:
       - curl
+      - libqt5serialport5
 
   files:
     exclude:

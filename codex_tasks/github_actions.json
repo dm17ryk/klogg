@@ -1,0 +1,52 @@
+[
+  {
+    "file": ".github/actions/agent-setup/action.yml",
+    "action": "modify",
+    "details": "Include QtSerialPort in the Qt installation step. Add the QtSerialPort archive/module to the list of Qt components to download and install for Windows and macOS runners."
+  },
+  {
+    "file": "docker/Dockerfile.ubuntu18.04",
+    "action": "modify",
+    "details": "Install Qt SerialPort development package in Ubuntu 18.04 Docker image. Update the apt-get install line to include 'libqt5serialport5-dev' and ensure 'libqt5serialport5' is present for runtime."
+  },
+  {
+    "file": "docker/Dockerfile.ubuntu20.04",
+    "action": "modify",
+    "details": "Install Qt SerialPort development package in Ubuntu 20.04 Docker image (add 'libqt5serialport5-dev' and runtime lib as needed)."
+  },
+  {
+    "file": "docker/Dockerfile.ubuntu22.04",
+    "action": "modify",
+    "details": "Install Qt SerialPort development package in Ubuntu 22.04 Docker image (add 'libqt5serialport5-dev')."
+  },
+  {
+    "file": "docker/Dockerfile.oracle7",
+    "action": "modify",
+    "details": "Install Qt SerialPort dev package in Oracle Linux 7 image. For example, add 'qt5-qtserialport-devel' via yum/dnf."
+  },
+  {
+    "file": "docker/Dockerfile.oracle8",
+    "action": "modify",
+    "details": "Install Qt SerialPort dev package in Oracle Linux 8 image (e.g., 'qt5-qtserialport-devel')."
+  },
+  {
+    "file": "packaging/windows/add_qt_dlls.ps1",
+    "action": "modify",
+    "details": "Include QtSerialPort DLL in Windows package. Copy Qt5SerialPort.dll (or Qt6SerialPort.dll) into the build output or installer. If using windeployqt, ensure it’s executed so that QtSerialPort is pulled in."
+  },
+  {
+    "file": "packaging/linux/deb_control",
+    "action": "modify",
+    "details": "Add libqt5serialport5 as a dependency in the Debian package control file (or equivalent packaging script). Ensure the built .deb declares this dependency."
+  },
+  {
+    "file": "packaging/linux/AppImageBuilder.yml",
+    "action": "modify",
+    "details": "Include libQt5SerialPort.so in the AppImage. Add the QtSerialPort library to the AppImage bundle configuration so it’s packaged inside the AppImage."
+  },
+  {
+    "file": "packaging/mac/package_dmg.sh",
+    "action": "modify",
+    "details": "Ensure QtSerialPort.framework is included in the macOS app bundle. Run macdeployqt on the .app or manually copy QtSerialPort.framework into Contents/Frameworks before creating the .dmg."
+  }
+]

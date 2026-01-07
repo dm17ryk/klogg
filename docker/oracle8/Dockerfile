@@ -4,7 +4,7 @@ COPY epel.repo /etc/yum.repos.d
 
 RUN yum update -y && \
     yum install -y ragel make wget python38 rpm-build git \
-    qt5-qtbase-devel qt5-linguist qt5-qttranslations \
+    qt5-qtbase-devel qt5-qtserialport-devel qt5-linguist qt5-qttranslations \
     openssl-devel boost-devel zlib-devel libcurl-devel \
     gcc gcc-c++ elfutils-devel && \
     yum clean all
