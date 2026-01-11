@@ -228,8 +228,8 @@ jobs:
 
           - os: windows
             os_version: 2022
-            qt_version: 5.15.2
-            qt_arch: win32_msvc2019
+            qt_version: 5.15.0
+            qt_arch: win32_msvc2017
             arch: x86
             cmake_opts:
             artifacts_id: windows-x86-qt5
