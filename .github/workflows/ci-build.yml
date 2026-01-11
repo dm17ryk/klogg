@@ -159,6 +159,8 @@ jobs:
           #   artifacts_id: macos-intel-qt6
           #   cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0
           - os: macos
+            env:
+              CXXFLAGS: "-Wno-error=deprecated-declarations"
             os_version: 14
             qt_version: 6.10.1
             qt_arch: clang_64
