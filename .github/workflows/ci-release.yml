@@ -38,7 +38,7 @@ jobs:
         ACTIONS_ALLOW_UNSECURE_COMMANDS: 'true'
       with:
         token: ${{ secrets.SENTRY_TOKEN }}
-        organization: anton-filimonov
+        organization: dmitry-kokotov
         project: klogg
 
     - name: Create Sentry release
@@ -143,7 +143,7 @@ jobs:
     - name: Discord notification
       env:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
-        DISCORD_EMBEDS: '[{"title": "Windows", "url": "https://github.com/variar/klogg/releases/tag/continuous-win"}, {"title": "Linux", "url": "https://github.com/variar/klogg/releases/tag/continuous-linux"}, {"title": "Mac", "url": "https://github.com/variar/klogg/releases/tag/continuous-osx"}]'
+        DISCORD_EMBEDS: '[{"title": "Windows", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-win"}, {"title": "Linux", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-linux"}, {"title": "Mac", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-osx"}]'
       uses: Ilshidur/action-discord@master
       with:
         args: 'New CI build {{KLOGG_VERSION}} has been released!'
