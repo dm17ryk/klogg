@@ -7,14 +7,14 @@ We run from: Windows `x64 Native Tools Command Prompt for VS 2022`.
 Before any CMake/build steps, ensure these env vars are set:
 
 ```bash
-set QTDIR=C:\qt6
+set QTDIR=C:\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
 set KLOGG_WORKSPACE=C:\Essence_SC\lsrc\klogg
 set KLOGG_BUILD_ROOT=build_root
 set platform=x64
 set KLOGG_QT=Qt6
-set KLOGG_QT_DIR=C:\qt6
+set KLOGG_QT_DIR=%QTDIR%
 ```
 
 ## Project Structure & Module Organization
@@ -70,7 +70,7 @@ ctest --build-config RelWithDebInfo --verbose
 Before you can run klogg.exe, need to deploy Qt dlls to same directory.
 
 ```bash
-C:\qt6\bin\windeployqt.exe output\RelWithDebInfo\klogg.exe
+%QTDIR%\bin\windeployqt.exe output\RelWithDebInfo\klogg.exe
 ```
 
 ## Coding Style & Naming Conventions

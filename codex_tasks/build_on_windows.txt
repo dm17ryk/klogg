@@ -1,0 +1,27 @@
+set QTDIR=C:\qt6.10.1
+set PATH=%QTDIR%\bin;%PATH%
+set CMAKE_PREFIX_PATH=%QTDIR%
+set KLOGG_WORKSPACE=C:\Essence_SC\lsrc\klogg
+set KLOGG_BUILD_ROOT=build_root
+set platform=x64
+set KLOGG_QT=Qt6
+set KLOGG_QT_DIR=%QTDIR%
+set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
+
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+
+msbuild klogg.sln /m /p:Configuration=Release /p:Platform=x64
+msbuild klogg.sln /m /p:Configuration=RelWithDebInfo /p:Platform=x64
+msbuild klogg.sln /m /p:Configuration=Debug /p:Platform=x64
+
+cmake --build . --config Release
+cmake --build . --config RelWithDebInfo
+
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+
+cmake --install . --config Release --prefix "%CD%\_stage"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\_stage\bin\klogg.exe"
+
+ctest --build-config RelWithDebInfo --verbose
+ctest --build-config Release --verbose
