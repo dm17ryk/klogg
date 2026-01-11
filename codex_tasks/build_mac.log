@@ -1,8 +1,82 @@
 Prepare all required actions
 Run ./.github/actions/agent-build
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.10.1/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.10.1/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.741
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_SYSROOT=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    SDKROOT: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
 Run echo "CC=" >> $GITHUB_ENV
+  echo "CC=" >> $GITHUB_ENV
+  echo "CXX=" >> $GITHUB_ENV
+  shell: /bin/sh -e {0}
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.10.1/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.10.1/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.741
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_SYSROOT=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    SDKROOT: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
 Run mkdir $KLOGG_BUILD_ROOT
-  
+  mkdir $KLOGG_BUILD_ROOT
+  cd $KLOGG_BUILD_ROOT
+  cmake $KLOGG_CMAKE_OPTS -DCPM_SOURCE_CACHE=$KLOGG_WORKSPACE/cpm_cache -DKLOGG_OVERRIDE_MALLOC=OFF $KLOGG_WORKSPACE
+  shell: /bin/sh -e {0}
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.10.1/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.10.1/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.741
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_SYSROOT=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    SDKROOT: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
+    CC: 
+    CXX: 
 -- The C compiler identification is AppleClang 15.0.0.15000100
 -- The CXX compiler identification is AppleClang 15.0.0.15000100
 -- The ASM compiler identification is AppleClang
@@ -17,14 +91,15 @@ Run mkdir $KLOGG_BUILD_ROOT
 -- Check for working CXX compiler: /usr/bin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
-Version override 24.11.1.738
+Version override 24.11.1.741
 Build 
 Project version is 24.11.1
-Project version tweak is 738
+Project version tweak is 741
 -- Found PkgConfig: /opt/homebrew/bin/pkg-config (found version "2.5.1")
 Dump symbols tools path /Users/runner/work/klogg/klogg/3rdparty/dump_syms/mac
 Flags set for 'AppleClang' compiler:-ffast-math;-stdlib=libc++
 Defines set for 'AppleClang' compiler:
+
 CMAKE_C_FLAGS:  -march=native -mtune=generic
 CMAKE_CXX_FLAGS:  -fno-sized-deallocation -fno-omit-frame-pointer -march=native -mtune=generic
 CMAKE_EXE_LINKER_FLAGS: 
@@ -37,6 +112,7 @@ CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO:
 CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO: 
 CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO: 
 CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO: 
+
 Adding missing Threads workaround
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
@@ -44,9 +120,9 @@ Adding missing Threads workaround
 -- Performing Test HAVE_STDATOMIC
 -- Performing Test HAVE_STDATOMIC - Success
 -- Found WrapAtomic: TRUE
--- Found OpenGL: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework
+-- Found OpenGL: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/System/Library/Frameworks/OpenGL.framework
 -- Found WrapOpenGL: TRUE
-Qt version 6.7.3
+Qt version 6.10.1
 LTO ON
 OSX target 14.0
 -- CPM: Adding package simdutf@5.6.2 (v5.6.2 to /Users/runner/work/klogg/klogg/cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05)
@@ -61,28 +137,33 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:7 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- Found Python3: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/bin/python3.11 (found version "3.11.9") found components: Interpreter
 -- Python found, we are going to amalgamate.py.
 -- The tests are enabled.
 CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
   The following keywords are not supported when using
--- Performing Test Iconv_IS_BUILT_IN
   add_custom_command(TARGET): DEPENDS.
+
   Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
   Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
   command to set the policy and suppress this warning.
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Warning (dev) at cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/tests/CMakeLists.txt:111 (add_custom_command):
   Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
   POST_BUILD to preserve backward compatibility.
+
   Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
   Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
   command to set the policy and suppress this warning.
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Performing Test Iconv_IS_BUILT_IN
 -- Performing Test Iconv_IS_BUILT_IN - Failed
--- Found Iconv: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd
+-- Found Iconv: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib/libiconv.tbd
 -- Iconv was found!
--- Iconv is a separate library, headers at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include, binary at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libiconv.tbd
+-- Iconv is a separate library, headers at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/include, binary at /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib/libiconv.tbd
 -- The tools require C++17. If your system does not support C++17, please set SIMDUTF_TOOLS to OFF.
 -- The benchmarks can be enabled by setting SIMDUTF_BENCHMARKS, e.g., -D SIMDUTF_BENCHMARKS=ON.
 -- Compiling using the C++ standard:11
@@ -98,19 +179,26 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:8 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/CMakeLists.txt:5 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 -- Using vendored debug_assert
 CMake Deprecation Warning at cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/external/debug_assert/CMakeLists.txt:5 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 -- arithmetic_policy_default is undefined_behavior_arithmetic
 -- CPM: Adding package CRoaring@4.2.1 (v4.2.1 to /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
@@ -124,6 +212,7 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:21 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Warning (dev) at cpm_cache/cpm/CPM_0.38.6.cmake:51 (message):
   CPM: CRoaring: A dependency is using a more recent CPM version (0.38.6)
 -- CPM: CRoaring: Adding package cmocka@ (f5e2cd7 to /Users/runner/work/klogg/klogg/cpm_cache/cmocka/9fd9a04c246ce02ff9b932ca5c4d6aced1340849)
@@ -134,6 +223,7 @@ Call Stack (most recent call first):
   cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/cmake/CPM.cmake:24 (include)
   cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/CMakeLists.txt:62 (include)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(cmocka) is deprecated, call
   FetchContent_MakeAvailable(cmocka) instead.  Policy CMP0169 can be set to
@@ -146,12 +236,16 @@ Call Stack (most recent call first):
   cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/tools/cmake/FindCTargets.cmake:5 (CPMAddPackage)
   cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/CMakeLists.txt:64 (find_package)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/cmocka/9fd9a04c246ce02ff9b932ca5c4d6aced1340849/CMakeLists.txt:2 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 -- Performing Test REQUIRED_FLAGS_WERROR
 -- Performing Test REQUIRED_FLAGS_WERROR - Success
 -- Performing Test WITH_STD_GNU99_FLAG
@@ -313,12 +407,16 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:22 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/streamvbyte/961029b45fa088a983f595680470413a23037d1c/CMakeLists.txt:1 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 -- Performing Test WALL_GNU_SUPPORTED
 -- Performing Test WALL_GNU_SUPPORTED - Success
 -- CMAKE_SYSTEM_PROCESSOR: arm64
@@ -339,6 +437,7 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:37 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package maddy@0 (602e26613e624535e2de883b3f2c98a16729d1d4 to /Users/runner/work/klogg/klogg/cpm_cache/maddy/1edcbb70f4367af71e62001d9f8190129cf9b558)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(maddy) is deprecated, call
@@ -351,6 +450,7 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:52 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package vectorscan@0 (d29730e1cb9daaa66bda63426cdce83505d2c809 to /Users/runner/work/klogg/klogg/cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(vectorscan) is deprecated, call
@@ -363,7 +463,8 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:79 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
--- Build date: 2026-01-07
+
+-- Build date: 2026-01-11
 -- Performing Test ARCH_X86_64
 -- Performing Test ARCH_X86_64 - Failed
 -- Performing Test ARCH_IA32
@@ -378,20 +479,26 @@ CMake Warning (dev) at cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57
   Policy CMP0144 is not set: find_package uses upper-case <PACKAGENAME>_ROOT
   variables.  Run "cmake --help-policy CMP0144" for policy details.  Use the
   cmake_policy command to set the policy and suppress this warning.
+
   Environment variable BOOST_ROOT is set to:
+
     /Users/runner/work/klogg/klogg/3rdparty/boost
+
   For compatibility, find_package is ignoring the variable, but code in a
   .cmake module might still use it.
 Call Stack (most recent call first):
   cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7/CMakeLists.txt:27 (include)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Warning (dev) at cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7/cmake/boost.cmake:17 (find_package):
   Policy CMP0167 is not set: The FindBoost module is removed.  Run "cmake
   --help-policy CMP0167" for policy details.  Use the cmake_policy command to
   set the policy and suppress this warning.
+
 Call Stack (most recent call first):
   cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7/CMakeLists.txt:27 (include)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- Boost version: 1.86.0
 -- Build type RELWITHDEBINFO
 -- using release build
@@ -477,19 +584,23 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:111 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/uchardet/07796f5a7ae497f21326412ce164e883f5fd5b0f/CMakeLists.txt:2 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 -- Skipping test da:iso-8859-1 (known broken)
 -- Skipping test es:iso-8859-15 (known broken)
 -- Skipping test he:iso-8859-8 (known broken)
 -- Skipping test ja:utf-16be (known broken)
 -- Skipping test ja:utf-16le (known broken)
 Adding alias for uchardet
--- CPM: Adding package KF5Archive@0 (f546bf6ae66a8d34b43da5a41afcfbf4e1a47906 to /Users/runner/work/klogg/klogg/cpm_cache/kf5archive/f926a1cfa904f2f6a7daa51a36d1846188cee886)
+-- CPM: Adding package KF5Archive@0 (f546bf6ae66a8d34b43da5a41afcfbf4e1a47906 to /Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(KF5Archive) is deprecated, call
   FetchContent_MakeAvailable(KF5Archive) instead.  Policy CMP0169 can be set
@@ -501,6 +612,7 @@ Call Stack (most recent call first):
   cmake/CPM.cmake:799 (cpm_fetch_package)
   3rdparty/CMakeLists.txt:143 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- Looking for byteswap.h
 -- Looking for byteswap.h - not found
 -- Looking for limits.h
@@ -568,8 +680,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:164 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:171 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package backward-cpp@1.6 (v1.6 to /Users/runner/work/klogg/klogg/cpm_cache/backward-cpp/0bc8f4b770e3250656945425587cbdecab9935a3)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(backward-cpp) is deprecated, call
@@ -580,15 +693,16 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:186 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:193 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- Could NOT find libdw (missing: LIBDW_LIBRARY LIBDW_INCLUDE_DIR) 
 -- Could NOT find libbfd (missing: LIBBFD_LIBRARY LIBBFD_INCLUDE_DIR) 
 -- Could NOT find libdwarf (missing: LIBDWARF_LIBRARY LIBDWARF_INCLUDE_DIR LIBELF_LIBRARY LIBELF_INCLUDE_DIR) 
--- Found Backward: /Users/runner/work/klogg/klogg/cpm_cache/backward-cpp/0bc8f4b770e3250656945425587cbdecab9935a3
--- CPM: Adding package Catch2@2.13.8 (v2.13.8 to /Users/runner/work/klogg/klogg/cpm_cache/catch2/2ef2376e9327075ccbf48093845542913c06a841)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+-- Found Backward: /Users/runner/work/klogg/klogg/cpm_cache/backward-cpp/0bc8f4b770e3250656945425587cbdecab9935a3
   Calling FetchContent_Populate(Catch2) is deprecated, call
+-- CPM: Adding package Catch2@2.13.8 (v2.13.8 to /Users/runner/work/klogg/klogg/cpm_cache/catch2/2ef2376e9327075ccbf48093845542913c06a841)
   FetchContent_MakeAvailable(Catch2) instead.  Policy CMP0169 can be set to
   OLD to allow FetchContent_Populate(Catch2) to be called directly for now,
   but the ability to call it with declared details will be removed completely
@@ -596,16 +710,20 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:199 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:206 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/catch2/2ef2376e9327075ccbf48093845542913c06a841/CMakeLists.txt:1 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
-CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
+
+
 -- CPM: Adding package KDSingleApplication@0 (5b30db30266f92bc01f1439777803ce8dbf16c79 to /Users/runner/work/klogg/klogg/cpm_cache/kdsingleapplication/54c3ad47dfdabb6f654daeb1281d11cd6ce3b326)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(KDSingleApplication) is deprecated, call
   FetchContent_MakeAvailable(KDSingleApplication) instead.  Policy CMP0169
   can be set to OLD to allow FetchContent_Populate(KDSingleApplication) to be
@@ -614,8 +732,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:216 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:223 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package xxHash@0.8.1 (v0.8.1 to /Users/runner/work/klogg/klogg/cpm_cache/xxhash/346c2fd2ec1c59889d077cce9498821bf4f3a693)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(xxHash) is deprecated, call
@@ -626,11 +745,12 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:240 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:247 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- xxHash build type: RelWithDebInfo
-CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
 -- CPM: Adding package whereami@0 (dcb52a058dc14530ba9ae05e4339bd3ddfae0e0e to /Users/runner/work/klogg/klogg/cpm_cache/whereami/3493cc5ebf66839eb1b655c7a15485a6bec8da0b)
+CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(whereami) is deprecated, call
   FetchContent_MakeAvailable(whereami) instead.  Policy CMP0169 can be set to
   OLD to allow FetchContent_Populate(whereami) to be called directly for now,
@@ -639,8 +759,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:261 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:268 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package exprtk@0 (1f9f4cd7d2620b7b24232de9ea22908d63913459 to /Users/runner/work/klogg/klogg/cpm_cache/exprtk/17be605a2fb439d5361d50b80f449c51cd094951)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(exprtk) is deprecated, call
@@ -651,8 +772,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:276 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:283 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package KDToolBox@0 (6468867d1a46eabe1bcb2cd342f338fe66f06675 to /Users/runner/work/klogg/klogg/cpm_cache/kdtoolbox/f089c6a6095c1a28ddfe98af5b8fbfebc08d9abc)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(KDToolBox) is deprecated, call
@@ -663,8 +785,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:303 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:310 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package efsw@1.4.1 (1.4.1 to /Users/runner/work/klogg/klogg/cpm_cache/efsw/9a6f9531370e39d45ad07f0d11fbc757c78db9b2)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(efsw) is deprecated, call
@@ -675,8 +798,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:324 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:331 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- CPM: Adding package tbb@0 (c9be1ac2930f02dea523003ed801b4489f3e6b6e to /Users/runner/work/klogg/klogg/cpm_cache/tbb/539ebec929a4f249bd476ee5438d99a2f6d143b6)
 CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963 (message):
   Calling FetchContent_Populate(tbb) is deprecated, call
@@ -687,18 +811,24 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:343 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:350 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 CMake Deprecation Warning at cpm_cache/tbb/539ebec929a4f249bd476ee5438d99a2f6d143b6/CMakeLists.txt:15 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.
+
   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
   to tell CMake that the project requires at least <min> but has been updated
   to work with policies introduced by <max> or earlier.
+
+
 CMake Warning at cpm_cache/tbb/539ebec929a4f249bd476ee5438d99a2f6d143b6/CMakeLists.txt:122 (message):
   You are building oneTBB as a static library.  This is highly discouraged
   and such configuration is not supported.  Consider building a dynamic
   library to avoid unforeseen issues.
+
+
 -- Checking for one of the modules 'hwloc'
 -- Looking for getcontext
 -- Looking for getcontext - found
@@ -713,8 +843,9 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:363 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:370 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- 
 -- Performing Test mi_has_libpthread
 -- Performing Test mi_has_libpthread - Success
@@ -743,16 +874,1474 @@ CMake Warning (dev) at /opt/homebrew/share/cmake/Modules/FetchContent.cmake:1963
 Call Stack (most recent call first):
   cmake/CPM.cmake:1005 (FetchContent_Populate)
   cmake/CPM.cmake:799 (cpm_fetch_package)
-  3rdparty/CMakeLists.txt:415 (cpmaddpackage)
+  3rdparty/CMakeLists.txt:422 (cpmaddpackage)
 This warning is for project developers.  Use -Wno-dev to suppress it.
+
 -- SENTRY_TRANSPORT=none
 -- SENTRY_BACKEND=crashpad
 -- SENTRY_LIBRARY_TYPE=STATIC
 -- SENTRY_SDK_NAME=
 -- Check size of long
 -- Check size of long - done
--- Found ZLIB: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libz.tbd (found version "1.2.12")
-CMake Error at cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/util/CMakeLists.txt:417 (message):
-  File not found: /usr/include/mach/exc.defs
--- Configuring incomplete, errors occurred!
+-- Found ZLIB: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib/libz.tbd (found version "1.2.12")
+-- Found Python: /opt/homebrew/Frameworks/Python.framework/Versions/3.14/bin/python3.14 (found version "3.14.2") found components: Interpreter
+Using Qt translations from: '/Users/runner/work/klogg/Qt/6.10.1/macos/translations'
+Found Qt translations /Users/runner/work/klogg/Qt/6.10.1/macos/translations/qt_help_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtbase_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtconnectivity_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtdeclarative_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtlocation_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtmultimedia_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtserialport_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtwebengine_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qtwebsockets_zh_CN.qm;/Users/runner/work/klogg/Qt/6.10.1/macos/translations/qt_zh_CN.qm
+Including Qt translation: 'qt_zh_CN.qm'
+-- Configuring done (71.8s)
+CMake Warning:
+-- Generating done (1.1s)
+  Manually-specified variables were not used by the project:
+
+    KLOGG_OVERRIDE_MALLOC
+
+
+-- Build files have been written to: /Users/runner/work/klogg/klogg/build_root
+Run cmake --build $KLOGG_BUILD_ROOT -t ci_build
+  cmake --build $KLOGG_BUILD_ROOT -t ci_build
+  shell: /bin/sh -e {0}
+  env:
+    HOMEBREW_NO_ANALYTICS: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    pythonLocation: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.11.9/arm64/lib/pkgconfig:/Users/runner/work/klogg/Qt/6.10.1/macos/lib/pkgconfig
+    Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.11.9/arm64
+    Qt6_DIR: /Users/runner/work/klogg/Qt/6.10.1/macos
+    QT_PLUGIN_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/plugins
+    QML2_IMPORT_PATH: /Users/runner/work/klogg/Qt/6.10.1/macos/qml
+    BOOST_ROOT: /Users/runner/work/klogg/klogg/3rdparty/boost
+    BOOST_URL: https://sourceforge.net/projects/boost/files/boost/1.86.0/boost_1_86_0.tar.bz2/download
+    KLOGG_VERSION: 24.11.1.741
+    KLOGG_WORKSPACE: /Users/runner/work/klogg/klogg
+    KLOGG_BUILD_ROOT: build_root
+    KLOGG_ARCH: arm64
+    KLOGG_CMAKE_OPTS: -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_SYSROOT=/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    SDKROOT: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk
+    KLOGG_QT: Qt6
+    KLOGG_QT_DIR: 
+    CC: 
+    CXX: 
+[1/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/debug/alias.cc.o
+[2/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/process/memory.cc.o
+[3/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/files/scoped_file.cc.o
+[4/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/pattern.cc.o
+[5/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/rand_util.cc.o
+[6/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/files/file_path.cc.o
+[7/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/logging.cc.o
+[8/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/third_party/icu/icu_utf.cc.o
+[9/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/utf_string_conversions.cc.o
+[10/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/stringprintf.cc.o
+[11/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/mac/close_nocancel.cc.o
+[12/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/synchronization/lock.cc.o
+[13/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/string_number_conversions.cc.o
+[14/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/threading/thread_local_storage.cc.o
+[15/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/utf_string_conversion_utils.cc.o
+[16/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/apple/mach_logging.cc.o
+[17/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/apple/scoped_mach_port.cc.o
+[18/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/apple/scoped_mach_vm.cc.o
+[19/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/files/file_util_posix.cc.o
+[20/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/memory/page_size_posix.cc.o
+[21/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/apple/scoped_nsautorelease_pool.mm.o
+[22/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/apple/foundation_util.mm.o
+/Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium/base/apple/foundation_util.mm:55:1: warning: 'SecACLGetTypeID' is deprecated: first deprecated in macOS 10.10 - SecKeychain is deprecated [-Wdeprecated-declarations]
+CF_CAST_DEFN(SecACL)
+^
+/Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium/base/apple/foundation_util.mm:23:32: note: expanded from macro 'CF_CAST_DEFN'
+    if (CFGetTypeID(cf_val) == TypeCF##GetTypeID()) {              \
+                               ^
+<scratch space>:135:1: note: expanded from here
+SecACLGetTypeID
+^
+/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/System/Library/Frameworks/Security.framework/Headers/SecACL.h:64:11: note: 'SecACLGetTypeID' has been explicitly marked deprecated here
+        CFTypeID SecACLGetTypeID(void)
+                 ^
+/Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium/base/apple/foundation_util.mm:56:1: warning: 'SecTrustedApplicationGetTypeID' is deprecated: first deprecated in macOS 10.10 - SecKeychain is deprecated [-Wdeprecated-declarations]
+CF_CAST_DEFN(SecTrustedApplication)
+^
+/Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium/base/apple/foundation_util.mm:23:32: note: expanded from macro 'CF_CAST_DEFN'
+    if (CFGetTypeID(cf_val) == TypeCF##GetTypeID()) {              \
+                               ^
+<scratch space>:3:1: note: expanded from here
+SecTrustedApplicationGetTypeID
+^
+/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/System/Library/Frameworks/Security.framework/Headers/SecTrustedApplication.h:48:10: note: 'SecTrustedApplicationGetTypeID' has been explicitly marked deprecated here
+CFTypeID SecTrustedApplicationGetTypeID(void)
+         ^
+2 warnings generated.
+[23/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/posix/safe_strerror.cc.o
+[24/885] cd /Users/runner/work/klogg/klogg/build_root && /opt/homebrew/bin/cmake -DBUILD_VERSION=24.11.1.741 -P /Users/runner/work/klogg/klogg/cmake/generate_version_h.cmake
+Git branch: HEAD
+Git commit: 2696d39
+Git describe: 2696d39
+[25/885] Building C object 3rdparty/CMakeFiles/whereami.dir/__/cpm_cache/whereami/3493cc5ebf66839eb1b655c7a15485a6bec8da0b/src/whereami.c.o
+[26/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/synchronization/condition_variable_posix.cc.o
+[27/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/synchronization/lock_impl_posix.cc.o
+[28/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/threading/thread_local_storage_posix.cc.o
+[29/885] Building CXX object _deps/sentry-build/crashpad_build/third_party/mini_chromium/CMakeFiles/mini_chromium.dir/mini_chromium/base/strings/sys_string_conversions_mac.mm.o
+[30/885] Building CXX object src/klogg_version/CMakeFiles/klogg_version.dir/src/klogg_version.cpp.o
+[31/885] Building CXX object _deps/sentry-build/crashpad_build/tools/CMakeFiles/crashpad_tools.dir/tool_support.cc.o
+[32/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/alloc.c.o
+[33/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/alloc-aligned.c.o
+[34/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/alloc-posix.c.o
+[35/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/arena.c.o
+[36/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/bitmap.c.o
+[37/885] Linking C static library output/libwhereami.a
+[38/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/heap.c.o
+[39/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/init.c.o
+[40/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/libc.c.o
+[41/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/options.c.o
+[42/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/os.c.o
+[43/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/page.c.o
+[44/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/random.c.o
+[45/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/segment-map.c.o
+[46/885] Building CXX object src/logging/CMakeFiles/klogg_logging.dir/src/logger.cpp.o
+[47/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/stats.c.o
+[48/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/segment.c.o
+[49/885] Building C object _deps/mimalloc-build/CMakeFiles/mimalloc-static.dir/src/prim/prim.c.o
+[50/885] Linking CXX static library output/libmini_chromium.a
+[51/885] Linking CXX static library output/libklogg_version.a
+[52/885] Automatic MOC for target kdtoolbox
+[53/885] Linking CXX static library output/libklogg_logging.a
+[54/885] Linking CXX static library output/libcrashpad_tools.a
+[55/885] Automatic MOC for target klogg_utils
+[56/885] Linking C static library output/libmimalloc.a
+[57/885] Building CXX object src/utils/CMakeFiles/klogg_utils.dir/klogg_utils_autogen/mocs_compilation.cpp.o
+[58/885] Building CXX object src/utils/CMakeFiles/klogg_utils.dir/src/cpu_info.cpp.o
+[59/885] Generating util/mach/excUser.c, util/mach/excServer.c, util/mach/exc.h, util/mach/excServer.h
+[60/885] Generating util/mach/child_portUser.c, util/mach/child_portServer.c, util/mach/child_port.h, util/mach/child_portServer.h
+[61/885] Generating util/mach/mach_excUser.c, util/mach/mach_excServer.c, util/mach/mach_exc.h, util/mach/mach_excServer.h
+[62/885] Generating util/mach/notifyUser.c, util/mach/notifyServer.c, util/mach/notify.h, util/mach/notifyServer.h
+[63/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/Debug.cpp.o
+[64/885] Building CXX object 3rdparty/CMakeFiles/kdtoolbox.dir/kdtoolbox_autogen/mocs_compilation.cpp.o
+[65/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_helper.cc.o
+[66/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/delimited_file_reader.cc.o
+[67/885] Building CXX object 3rdparty/CMakeFiles/kdtoolbox.dir/__/cpm_cache/kdtoolbox/f089c6a6095c1a28ddfe98af5b8fbfebc08d9abc/qt/KDSignalThrottler/src/KDSignalThrottler.cpp.o
+[68/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/DirectorySnapshot.cpp.o
+[69/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_reader.cc.o
+[70/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_io.cc.o
+[71/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_seeker.cc.o
+[72/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/scoped_remove_file.cc.o
+[73/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/output_stream_file_writer.cc.o
+[74/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_writer.cc.o
+[75/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/initialization_state_dcheck.cc.o
+[76/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/string_file.cc.o
+[77/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/pdb_structures.cc.o
+[78/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/lexing.cc.o
+[79/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/metrics.cc.o
+[80/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/random_string.cc.o
+[81/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/range_set.cc.o
+[82/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/reinterpret_bytes.cc.o
+[83/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/time.cc.o
+[84/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/scoped_forbid_return.cc.o
+[85/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/uuid.cc.o
+[86/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/zlib.cc.o
+[87/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/http_body.cc.o
+[88/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/http_body_gzip.cc.o
+[89/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/http_transport.cc.o
+[90/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/url.cc.o
+[91/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/http_multipart_builder.cc.o
+[92/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/numeric/checked_address_range.cc.o
+[93/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/process/process_memory.cc.o
+[94/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stdlib/strnlen.cc.o
+[95/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stdlib/aligned_allocator.cc.o
+[96/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/process/process_memory_range.cc.o
+[97/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stdlib/strlcpy.cc.o
+[98/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stdlib/string_number_conversion.cc.o
+[99/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stream/file_encoder.cc.o
+[100/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stream/file_output_stream.cc.o
+[101/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stream/base94_output_stream.cc.o
+[102/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stream/log_output_stream.cc.o
+[103/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/string/split_string.cc.o
+[104/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/stream/zlib_output_stream.cc.o
+[105/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/thread/thread.cc.o
+[106/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/thread/thread_log_messages.cc.o
+[107/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/thread/worker_thread.cc.o
+[108/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/directory_reader_posix.cc.o
+[109/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/file_io_posix.cc.o
+[110/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/file/filesystem_posix.cc.o
+[111/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/clock_posix.cc.o
+[112/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/close_stdio.cc.o
+[113/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/scoped_dir.cc.o
+[114/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/scoped_mmap.cc.o
+[115/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/synchronization/semaphore_posix.cc.o
+[116/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/signals.cc.o
+[117/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/thread/thread_posix.cc.o
+[118/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/close_multiple.cc.o
+[119/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/drop_privileges.cc.o
+[120/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/symbolic_constants_posix.cc.o
+[121/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/spawn_subprocess.cc.o
+[122/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/exception_behaviors.cc.o
+[123/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mac/xattr.cc.o
+[124/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/exc_client_variants.cc.o
+[125/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/composite_mach_message_server.cc.o
+[126/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/mach_extensions.cc.o
+[127/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/exc_server_variants.cc.o
+[128/885] Building ASM object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/capture_context_mac.S.o
+[129/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/exception_ports.cc.o
+[130/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/mach_message.cc.o
+[131/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/mach_message_server.cc.o
+[132/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/clock_mac.cc.o
+[133/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/misc/paths_mac.cc.o
+[134/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/symbolic_constants_mach.cc.o
+[135/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/synchronization/semaphore_mac.cc.o
+[136/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mac/service_management.cc.o
+[137/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mac/sysctl.cc.o
+[138/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mac/mac_util.cc.o
+/Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/util/mac/mac_util.cc:313:35: warning: 'kIOMasterPortDefault' is deprecated: first deprecated in macOS 12.0 [-Wdeprecated-declarations]
+      IOServiceGetMatchingService(kIOMasterPortDefault,
+                                  ^~~~~~~~~~~~~~~~~~~~
+                                  kIOMainPortDefault
+/Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/System/Library/Frameworks/IOKit.framework/Headers/IOKitLib.h:133:19: note: 'kIOMasterPortDefault' has been explicitly marked deprecated here
+const mach_port_t kIOMasterPortDefault
+                  ^
+1 warning generated.
+[139/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/bootstrap.cc.o
+[140/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mac/launchd.mm.o
+[141/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/net/http_transport_mac.mm.o
+[142/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/child_port_server.cc.o
+[143/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/child_port_handshake.cc.o
+[144/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/notify_server.cc.o
+[145/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/exception_types.cc.o
+[146/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/child_portUser.c.o
+[147/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/scoped_task_suspend.cc.o
+[148/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/child_portServer.c.o
+[149/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/excUser.c.o
+[150/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/excServer.c.o
+[151/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/mach_excUser.c.o
+[152/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/mach_excServer.c.o
+[153/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/notifyUser.c.o
+[154/885] Building C object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/util/mach/notifyServer.c.o
+[155/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/mach/task_for_pid.cc.o
+[156/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/process/process_memory_mac.cc.o
+[157/885] Building CXX object _deps/sentry-build/crashpad_build/util/CMakeFiles/crashpad_util.dir/posix/process_info_mac.cc.o
+[158/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/annotation.cc.o
+[159/885] Linking CXX static library output/libcrashpad_util.a
+[160/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/annotation_list.cc.o
+[161/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/crashpad_info.cc.o
+[162/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/settings.cc.o
+[163/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/crash_report_database.cc.o
+[164/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/prune_crash_reports.cc.o
+[165/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/annotation_snapshot.cc.o
+[166/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/simulate_crash_mac.cc.o
+[167/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/cpu_context.cc.o
+[168/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/crashpad_client_mac.cc.o
+[169/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/capture_memory.cc.o
+[170/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/crashpad_info_client_options.cc.o
+[171/885] Building CXX object _deps/sentry-build/crashpad_build/client/CMakeFiles/crashpad_client.dir/crash_report_database_mac.mm.o
+[172/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/handle_snapshot.cc.o
+[173/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/memory_snapshot.cc.o
+[174/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/exception_snapshot_minidump.cc.o
+[175/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/memory_snapshot_minidump.cc.o
+[176/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/minidump_annotation_reader.cc.o
+[177/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/minidump_context_converter.cc.o
+[178/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/minidump_simple_string_dictionary_reader.cc.o
+[179/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/minidump_string_list_reader.cc.o
+[180/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/minidump_string_reader.cc.o
+[181/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/unloaded_module_snapshot.cc.o
+[182/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/system_snapshot_minidump.cc.o
+[183/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/module_snapshot_minidump.cc.o
+[184/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/thread_snapshot_minidump.cc.o
+[185/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/posix/timezone.cc.o
+[186/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/cpu_context_mac.cc.o
+[187/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/exception_snapshot_mac.cc.o
+[188/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/mach_o_image_annotations_reader.cc.o
+[189/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/minidump/process_snapshot_minidump.cc.o
+[190/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/mach_o_image_segment_reader.cc.o
+[191/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/mach_o_image_reader.cc.o
+[192/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/mach_o_image_symbol_table_reader.cc.o
+[193/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/module_snapshot_mac.cc.o
+[194/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/process_reader_mac.cc.o
+[195/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/process_types/custom.cc.o
+[196/885] Linking CXX static library output/libcrashpad_client.a
+[197/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/process_snapshot_mac.cc.o
+[198/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/process_types.cc.o
+[199/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/system_snapshot_mac.cc.o
+[200/885] Building CXX object _deps/sentry-build/crashpad_build/snapshot/CMakeFiles/crashpad_snapshot.dir/mac/thread_snapshot_mac.cc.o
+[201/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_byte_array_writer.cc.o
+[202/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_annotation_writer.cc.o
+[203/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_crashpad_info_writer.cc.o
+[204/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_context_writer.cc.o
+[205/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_extensions.cc.o
+[206/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_exception_writer.cc.o
+[207/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_memory_info_writer.cc.o
+[208/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_handle_writer.cc.o
+[209/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_misc_info_writer.cc.o
+[210/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_file_writer.cc.o
+[211/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_memory_writer.cc.o
+[212/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_module_crashpad_info_writer.cc.o
+[213/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_rva_list_writer.cc.o
+[214/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_stream_writer.cc.o
+[215/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_simple_string_dictionary_writer.cc.o
+[216/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_module_writer.cc.o
+[217/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_system_info_writer.cc.o
+[218/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_string_writer.cc.o
+[219/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_thread_id_map.cc.o
+[220/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_user_extension_stream_data_source.cc.o
+[221/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_thread_name_list_writer.cc.o
+[222/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_thread_writer.cc.o
+[223/885] Linking CXX static library output/libcrashpad_snapshot.a
+[224/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_user_stream_writer.cc.o
+[225/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_unloaded_module_writer.cc.o
+[226/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_writer_util.cc.o
+[227/885] Building CXX object _deps/sentry-build/crashpad_build/minidump/CMakeFiles/crashpad_minidump.dir/minidump_writable.cc.o
+[228/885] Linking CXX static library output/libcrashpad_minidump.a
+[229/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/prune_crash_reports_thread.cc.o
+[230/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/minidump_to_upload_parameters.cc.o
+[231/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/crash_report_upload_thread.cc.o
+[232/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/handler_main.cc.o
+[233/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/user_stream_data_source.cc.o
+[234/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/mac/file_limit_annotation.cc.o
+[235/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/mac/exception_handler_server.cc.o
+[236/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/DirectorySnapshotDiff.cpp.o
+[237/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler.dir/main.cc.o
+[238/885] Building CXX object _deps/sentry-build/crashpad_build/handler/CMakeFiles/crashpad_handler_lib.dir/mac/crash_report_exception_handler.cc.o
+[239/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileSystem.cpp.o
+[240/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcher.cpp.o
+[241/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileInfo.cpp.o
+[242/885] Linking CXX static library output/libcrashpad_handler_lib.a
+[243/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/DirWatcherGeneric.cpp.o
+[244/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcherImpl.cpp.o
+[245/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcherCWrapper.cpp.o
+[246/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcherGeneric.cpp.o
+[247/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/Mutex.cpp.o
+[248/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/Log.cpp.o
+[249/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/System.cpp.o
+[250/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/Thread.cpp.o
+[251/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/Watcher.cpp.o
+[252/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/WatcherGeneric.cpp.o
+[253/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/platform/posix/MutexImpl.cpp.o
+[254/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/platform/posix/FileSystemImpl.cpp.o
+[255/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/platform/posix/SystemImpl.cpp.o
+[256/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/platform/posix/ThreadImpl.cpp.o
+[257/885] Linking CXX executable output/klogg_crashpad_handler
+ld: warning: ignoring duplicate libraries: 'output/libcrashpad_client.a', 'output/libcrashpad_util.a', 'output/libmini_chromium.a'
+[258/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcherFSEvents.cpp.o
+[259/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/String.cpp.o
+[260/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/WatcherFSEvents.cpp.o
+[261/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/allocator.cpp.o
+[262/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/FileWatcherKqueue.cpp.o
+[263/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/address_waiter.cpp.o
+[264/885] Building CXX object _deps/efsw-build/CMakeFiles/efsw.dir/src/efsw/WatcherKqueue.cpp.o
+[265/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/concurrent_bounded_queue.cpp.o
+[266/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/arena_slot.cpp.o
+[267/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/dynamic_link.cpp.o
+[268/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/itt_notify.cpp.o
+[269/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/exception.cpp.o
+[270/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/arena.cpp.o
+[271/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/main.cpp.o
+[272/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/governor.cpp.o
+[273/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/global_control.cpp.o
+[274/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/misc_ex.cpp.o
+[275/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/misc.cpp.o
+[276/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/market.cpp.o
+[277/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/tcm_adaptor.cpp.o
+[278/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/profiling.cpp.o
+[279/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/observer_proxy.cpp.o
+[280/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/parallel_pipeline.cpp.o
+[281/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/private_server.cpp.o
+[282/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/rml_tbb.cpp.o
+[283/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/rtm_mutex.cpp.o
+[284/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/rtm_rw_mutex.cpp.o
+[285/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/semaphore.cpp.o
+[286/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/small_object_pool.cpp.o
+[287/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/task.cpp.o
+[288/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/task_group_context.cpp.o
+[289/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/version.cpp.o
+[290/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/thread_dispatcher.cpp.o
+[291/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/thread_request_serializer.cpp.o
+[292/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_alloc.c.o
+[293/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_backend.c.o
+[294/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/queuing_rw_mutex.cpp.o
+[295/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/task_dispatcher.cpp.o
+[296/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_core.c.o
+[297/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_database.c.o
+[298/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_envelope.c.o
+[299/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_info.c.o
+[300/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_logger.c.o
+[301/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_options.c.o
+[302/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_os.c.o
+[303/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_random.c.o
+[304/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_json.c.o
+[305/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_ratelimiter.c.o
+[306/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_scope.c.o
+[307/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_session.c.o
+[308/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_slice.c.o
+[309/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_string.c.o
+[310/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_transport.c.o
+[311/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_sync.c.o
+[312/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_uuid.c.o
+[313/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_utils.c.o
+[314/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/path/sentry_path.c.o
+[315/885] Building CXX object _deps/tbb-build/src/tbb/CMakeFiles/tbb.dir/threading_control.cpp.o
+[316/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_tracing.c.o
+[317/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/transports/sentry_disk_transport.c.o
+[318/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/transports/sentry_function_transport.c.o
+[319/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/unwinder/sentry_unwinder.c.o
+[320/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_unix_pageallocator.c.o
+[321/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/symbolizer/sentry_symbolizer_unix.c.o
+[322/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/transports/sentry_transport_none.c.o
+[323/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/modulefinder/sentry_modulefinder_apple.c.o
+[324/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/path/sentry_path_unix.c.o
+[325/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/unwinder/sentry_unwinder_libbacktrace.c.o
+[326/885] Linking CXX static library output/libklogg_utils.a
+[327/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/src/sentry_value.c.o
+[328/885] Building C object _deps/sentry-build/CMakeFiles/sentry.dir/vendor/mpack.c.o
+[329/885] Building CXX object _deps/sentry-build/CMakeFiles/sentry.dir/src/backends/sentry_backend_crashpad.cpp.o
+[330/885] Linking CXX static library output/libkdtoolbox.a
+[331/885] Generating src/parser/Parser.cpp
+[332/885] Generating src/parser/control_verbs.cpp
+[333/885] Linking CXX static library output/libefsw.a
+[334/885] Linking CXX static library appleclang_15.0_cxx17_64_relwithdebinfo/libtbb.a
+[335/885] Linking CXX static library output/libsentry.a
+[336/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/crc32.c.o
+[337/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/runtime.c.o
+[338/885] Building CXX object src/settings/CMakeFiles/klogg_settings.dir/src/persistentinfo.cpp.o
+[339/885] Building CXX object src/settings/CMakeFiles/klogg_settings.dir/src/configuration.cpp.o
+[340/885] Building CXX object src/settings/CMakeFiles/klogg_settings.dir/src/styles.cpp.o
+[341/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/fdr/fdr.c.o
+[342/885] Building CXX object src/settings/CMakeFiles/klogg_settings.dir/src/shortcuts.cpp.o
+[343/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/hwlm/hwlm.c.o
+[344/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/accel.c.o
+[345/885] Linking CXX static library output/libklogg_settings.a
+[346/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/hwlm/noodle_engine.cpp.o
+[347/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/stream_compress.c.o
+[348/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_accel.c.o
+[349/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/gough.c.o
+[350/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_native.c.o
+[351/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_64.c.o
+[352/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/lbr.c.o
+[353/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/castle.c.o
+[354/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_simd128.c.o
+[355/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_simd256.c.o
+[356/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/fdr/teddy.c.o
+[357/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/mcsheng_data.c.o
+[358/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_simd384.c.o
+[359/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/nfa_api_dispatch.c.o
+[360/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/mcsheng.c.o
+[361/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/mcclellan.c.o
+[362/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/repeat.c.o
+[363/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/mpv.c.o
+[364/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/tamarama.c.o
+[365/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/limex_simd512.c.o
+[366/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/sheng.c.o
+[367/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/truffle.cpp.o
+[368/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/som/som_stream.c.o
+[369/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/init.c.o
+[370/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/shufti.cpp.o
+[371/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/block.c.o
+[372/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/som/som_runtime.c.o
+[373/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/util/multibit.c.o
+[374/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/match.c.o
+[375/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/util/state_compress.c.o
+[376/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/database.c.o
+[377/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/stream.c.o
+[378/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/catchup.c.o
+[379/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/alloc.c.o
+[380/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/util/supervector/arch/arm/impl.cpp.o
+[381/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/util/arch/arm/cpuid_flags.c.o
+[382/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/scratch.c.o
+[383/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/nfa/vermicelli_simd.cpp.o
+[384/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/grey.cpp.o
+[385/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/compiler/error.cpp.o
+[386/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/engine_description.cpp.o
+[387/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/hs.cpp.o
+[388/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/compiler/compiler.cpp.o
+[389/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/compiler/asserts.cpp.o
+[390/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/fdr_compile_util.cpp.o
+[391/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/fdr_engine_description.cpp.o
+[392/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/fdr_confirm_compile.cpp.o
+[393/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/flood_compile.cpp.o
+[394/885] Building C object _deps/vectorscan-build/CMakeFiles/hs_exec.dir/src/rose/program_runtime.c.o
+[395/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/teddy_engine_description.cpp.o
+[396/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/fdr_compile.cpp.o
+[397/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/hwlm/hwlm_literal.cpp.o
+[398/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/hwlm/noodle_build.cpp.o
+[399/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/hwlm/hwlm_build.cpp.o
+[400/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/fdr/teddy_compile.cpp.o
+[401/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/dfa_build_strat.cpp.o
+[402/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/accelcompile.cpp.o
+[403/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/dfa_min.cpp.o
+[404/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/accel_dfa_build_strat.cpp.o
+[405/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/goughcompile_accel.cpp.o
+[406/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/castlecompile.cpp.o
+[407/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/mcclellancompile_util.cpp.o
+[408/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/goughcompile_reg.cpp.o
+[409/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/mcclellancompile.cpp.o
+[410/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/goughcompile.cpp.o
+[411/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/nfa_build_util.cpp.o
+[412/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/rdfa.cpp.o
+[413/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/mpvcompile.cpp.o
+[414/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/rdfa_graph.cpp.o
+[415/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/repeatcompile.cpp.o
+[416/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/mcsheng_compile.cpp.o
+[417/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/tamaramacompile.cpp.o
+[418/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/shufticompile.cpp.o
+[419/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/rdfa_merge.cpp.o
+[420/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/trufflecompile.cpp.o
+[421/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/vermicellicompile.cpp.o
+[422/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/shengcompile.cpp.o
+[423/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_anchored_acyclic.cpp.o
+[424/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng.cpp.o
+[425/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_asserts.cpp.o
+[426/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_anchored_dots.cpp.o
+[427/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_builder.cpp.o
+[428/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_cyclic_redundancy.cpp.o
+[429/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_dominators.cpp.o
+[430/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_calc_components.cpp.o
+[431/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfa/limex_compile.cpp.o
+[432/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_depth.cpp.o
+[433/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_edge_redundancy.cpp.o
+[434/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_expr_info.cpp.o
+[435/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_execute.cpp.o
+[436/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_equivalence.cpp.o
+[437/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_fixed_width.cpp.o
+[438/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_extparam.cpp.o
+[439/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_holder.cpp.o
+[440/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_fuzzy.cpp.o
+[441/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_lbr.cpp.o
+[442/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_is_equal.cpp.o
+[443/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_literal_component.cpp.o
+[444/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_literal_decorated.cpp.o
+[445/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_haig.cpp.o
+[446/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_literal_analysis.cpp.o
+[447/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_mcclellan.cpp.o
+[448/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_limex.cpp.o
+[449/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_limex_accel.cpp.o
+[450/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_netflow.cpp.o
+[451/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_misc_opt.cpp.o
+[452/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_puff.cpp.o
+[453/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_prefilter.cpp.o
+[454/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_prune.cpp.o
+[455/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_redundancy.cpp.o
+[456/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_reports.cpp.o
+[457/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_region_redundancy.cpp.o
+[458/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_region.cpp.o
+[459/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_revacc.cpp.o
+[460/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_sep.cpp.o
+[461/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_restructuring.cpp.o
+[462/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_small_literal_set.cpp.o
+[463/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_som_add_redundancy.cpp.o
+[464/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_som_util.cpp.o
+[465/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_split.cpp.o
+[466/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_stop.cpp.o
+[467/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_squash.cpp.o
+[468/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_uncalc_components.cpp.o
+[469/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_repeat.cpp.o
+[470/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_utf8.cpp.o
+[471/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_som.cpp.o
+[472/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_vacuous.cpp.o
+[473/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/Component.cpp.o
+[474/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/AsciiComponentClass.cpp.o
+[475/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentAlternation.cpp.o
+[476/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentAssertion.cpp.o
+[477/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentAtomicGroup.cpp.o
+[478/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_width.cpp.o
+[479/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentBackReference.cpp.o
+[480/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentBoundary.cpp.o
+[481/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_util.cpp.o
+[482/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentByte.cpp.o
+[483/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentCondReference.cpp.o
+[484/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentEmpty.cpp.o
+[485/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentClass.cpp.o
+[486/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentEUS.cpp.o
+[487/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentWordBoundary.cpp.o
+[488/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentRepeat.cpp.o
+[489/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentVisitor.cpp.o
+[490/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ComponentSequence.cpp.o
+[491/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ConstComponentVisitor.cpp.o
+[492/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/check_refs.cpp.o
+[493/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/buildstate.cpp.o
+[494/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/Utf8ComponentClass.cpp.o
+[495/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/control_verbs.cpp.o
+[496/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/parser_util.cpp.o
+[497/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/parse_error.cpp.o
+[498/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/logical_combination.cpp.o
+[499/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/prefilter.cpp.o
+[500/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/unsupported.cpp.o
+[501/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/utf8_validate.cpp.o
+[502/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/ucp_table.cpp.o
+[503/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/shortcut_literal.cpp.o
+[504/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/som/slot_manager.cpp.o
+[505/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/nfagraph/ng_violet.cpp.o
+[506/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/smallwrite/smallwrite_build.cpp.o
+[507/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_add_mask.cpp.o
+[508/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_anchored.cpp.o
+[509/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_add.cpp.o
+[510/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_castle.cpp.o
+[511/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_convert.cpp.o
+[512/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_dedupe.cpp.o
+[513/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_engine_blob.cpp.o
+[514/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_compile.cpp.o
+[515/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_bytecode.cpp.o
+[516/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_groups.cpp.o
+[517/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_exclusive.cpp.o
+[518/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_lit_accel.cpp.o
+[519/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_infix.cpp.o
+[520/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_instructions.cpp.o
+[521/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_long_lit.cpp.o
+[522/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_lookaround.cpp.o
+[523/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_matchers.cpp.o
+[524/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_misc.cpp.o
+[525/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_scatter.cpp.o
+[526/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_width.cpp.o
+[527/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_program.cpp.o
+[528/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/alloc.cpp.o
+[529/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/charreach.cpp.o
+[530/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_role_aliasing.cpp.o
+[531/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_build_merge.cpp.o
+[532/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/compile_context.cpp.o
+[533/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/compile_error.cpp.o
+[534/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/dump_mask.cpp.o
+[535/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/depth.cpp.o
+[536/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/clique.cpp.o
+[537/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/fatbit_build.cpp.o
+[538/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/target_info.cpp.o
+[539/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/rose/rose_in_util.cpp.o
+[540/885] Building C object _deps/vectorscan-build/CMakeFiles/hs.dir/src/hs_version.c.o
+[541/885] Building C object _deps/vectorscan-build/CMakeFiles/hs.dir/src/hs_valid_platform.c.o
+[542/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/parser/Parser.cpp.o
+[543/885] Automatic MOC for target klogg_crash_handler
+[544/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/multibit_build.cpp.o
+[545/885] Automatic MOC for target klogg_filewatch
+[546/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/isadetection.c.o
+[547/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/array_util.c.o
+[548/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/bitset_util.c.o
+[549/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/bitset.c.o
+[550/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/ue2string.cpp.o
+[551/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/art/art.c.o
+[552/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/array.c.o
+[553/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/bitset.c.o
+[554/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/containers.c.o
+[555/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/convert.c.o
+[556/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_union.c.o
+[557/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_equal.c.o
+[558/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_intersection.c.o
+[559/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_subset.c.o
+[560/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_xor.c.o
+[561/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_negation.c.o
+[562/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/memory.c.o
+[563/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/mixed_andnot.c.o
+[564/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/containers/run.c.o
+[565/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/roaring_priority_queue.c.o
+[566/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/roaring_array.c.o
+[567/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbyte_encode.c.o
+[568/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbyte_decode.c.o
+[569/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/roaring64.c.o
+[570/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbyte_zigzag.c.o
+[571/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbytedelta_encode.c.o
+[572/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbytedelta_decode.c.o
+[573/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbyte_0124_encode.c.o
+[574/885] Building C object _deps/streamvbyte-build/CMakeFiles/streamvbyte.dir/src/streamvbyte_0124_decode.c.o
+[575/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/compress.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/compress.c:22:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT zcompress2 (dest, destLen, source, sourceLen, level)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:27:20: note: expanded from macro 'zcompress2'
+#define zcompress2 cm_zlib_compress2
+                   ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/compress.c:62:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT zcompress (dest, destLen, source, sourceLen)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:26:19: note: expanded from macro 'zcompress'
+#define zcompress cm_zlib_compress
+                  ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/compress.c:75:15: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+uLong ZEXPORT compressBound (sourceLen)
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:28:23: note: expanded from macro 'compressBound'
+#define compressBound cm_zlib_compressBound
+                      ^
+3 warnings generated.
+[576/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/adler32.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/adler32.c:57:15: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+uLong ZEXPORT adler32(adler, buf, len)
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:24:17: note: expanded from macro 'adler32'
+#define adler32 cm_zlib_adler32
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/adler32.c:128:15: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+uLong ZEXPORT adler32_combine(adler1, adler2, len2)
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:25:25: note: expanded from macro 'adler32_combine'
+#define adler32_combine cm_zlib_adler32_combine
+                        ^
+2 warnings generated.
+[577/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/crc32.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:219:23: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+unsigned long ZEXPORT zcrc32(crc, buf, len)
+                      ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:29:16: note: expanded from macro 'zcrc32'
+#define zcrc32 cm_zlib_crc32
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:262:21: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local unsigned long crc32_little(crc, buf, len)
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:302:21: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local unsigned long crc32_big(crc, buf, len)
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:342:21: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local unsigned long gf2_matrix_times(mat, vec)
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:359:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void gf2_matrix_square(square, mat)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/crc32.c:370:15: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+uLong ZEXPORT zcrc32_combine(crc1, crc2, len2)
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:30:24: note: expanded from macro 'zcrc32_combine'
+#define zcrc32_combine cm_zlib_crc32_combine
+                       ^
+6 warnings generated.
+[578/885] Building CXX object _deps/vectorscan-build/CMakeFiles/hs_compile.dir/src/util/report_manager.cpp.o
+[579/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/gzio.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:93:14: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local gzFile gz_open (path, mode, fd)
+             ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:208:16: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+gzFile ZEXPORT gzopen (path, mode)
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:54:16: note: expanded from macro 'gzopen'
+#define gzopen cm_zlib_gzopen
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:219:16: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+gzFile ZEXPORT gzdopen (fd, mode)
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:48:17: note: expanded from macro 'gzdopen'
+#define gzdopen cm_zlib_gzdopen
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:234:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzsetparams (file, level, strategy)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:61:21: note: expanded from macro 'gzsetparams'
+#define gzsetparams cm_zlib_gzsetparams
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:261:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int get_byte(s)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:288:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void check_header(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:355:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int destroy (s)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:394:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzread (file, buf, len)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:58:16: note: expanded from macro 'gzread'
+#define gzread cm_zlib_gzread
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:503:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzgetc(file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:52:16: note: expanded from macro 'gzgetc'
+#define gzgetc cm_zlib_gzgetc
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:515:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzungetc(c, file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:63:18: note: expanded from macro 'gzungetc'
+#define gzungetc cm_zlib_gzungetc
+                 ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:540:16: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+char * ZEXPORT gzgets(file, buf, len)
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:53:16: note: expanded from macro 'gzgets'
+#define gzgets cm_zlib_gzgets
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:559:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzwrite (file, buf, len)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:64:17: note: expanded from macro 'gzwrite'
+#define gzwrite cm_zlib_gzwrite
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:678:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzputc(file, c)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:56:16: note: expanded from macro 'gzputc'
+#define gzputc cm_zlib_gzputc
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:693:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzputs(file, s)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:57:16: note: expanded from macro 'gzputs'
+#define gzputs cm_zlib_gzputs
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:705:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int do_flush (file, flush)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:746:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzflush (file, flush)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:51:17: note: expanded from macro 'gzflush'
+#define gzflush cm_zlib_gzflush
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:767:17: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+z_off_t ZEXPORT gzseek (file, offset, whence)
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:60:16: note: expanded from macro 'gzseek'
+#define gzseek cm_zlib_gzseek
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:857:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzrewind (file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:59:18: note: expanded from macro 'gzrewind'
+#define gzrewind cm_zlib_gzrewind
+                 ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:881:17: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+z_off_t ZEXPORT gztell (file)
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:62:16: note: expanded from macro 'gztell'
+#define gztell cm_zlib_gztell
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:891:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzeof (file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:49:15: note: expanded from macro 'gzeof'
+#define gzeof cm_zlib_gzeof
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:908:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzdirect (file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:47:18: note: expanded from macro 'gzdirect'
+#define gzdirect cm_zlib_gzdirect
+                 ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:920:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void putLong (file, x)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:935:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local uLong getLong (s)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:953:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT gzclose (file)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:46:17: note: expanded from macro 'gzclose'
+#define gzclose cm_zlib_gzclose
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:987:22: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+const char * ZEXPORT gzerror (file, errnum)
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:50:17: note: expanded from macro 'gzerror'
+#define gzerror cm_zlib_gzerror
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/gzio.c:1017:14: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void ZEXPORT gzclearerr (file)
+             ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:45:20: note: expanded from macro 'gzclearerr'
+#define gzclearerr cm_zlib_gzclearerr
+                   ^
+26 warnings generated.
+[580/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/deflate.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:204:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateInit_(strm, level, version, stream_size)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:37:22: note: expanded from macro 'deflateInit_'
+#define deflateInit_ cm_zlib_deflateInit_
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:216:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateInit2_(strm, level, method, windowBits, memLevel, strategy,
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:36:23: note: expanded from macro 'deflateInit2_'
+#define deflateInit2_ cm_zlib_deflateInit2_
+                      ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:322:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateSetDictionary (strm, dictionary, dictLength)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:41:30: note: expanded from macro 'deflateSetDictionary'
+#define deflateSetDictionary cm_zlib_deflateSetDictionary
+                             ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:364:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateReset (strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:40:22: note: expanded from macro 'deflateReset'
+#define deflateReset cm_zlib_deflateReset
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:400:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateSetHeader (strm, head)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:42:26: note: expanded from macro 'deflateSetHeader'
+#define deflateSetHeader cm_zlib_deflateSetHeader
+                         ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:411:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflatePrime (strm, bits, value)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:39:22: note: expanded from macro 'deflatePrime'
+#define deflatePrime cm_zlib_deflatePrime
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:423:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateParams(strm, level, strategy)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:38:23: note: expanded from macro 'deflateParams'
+#define deflateParams cm_zlib_deflateParams
+                      ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:461:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateTune(strm, good_length, max_lazy, nice_length, max_chain)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:43:21: note: expanded from macro 'deflateTune'
+#define deflateTune cm_zlib_deflateTune
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:496:15: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+uLong ZEXPORT deflateBound(strm, sourceLen)
+              ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:33:22: note: expanded from macro 'deflateBound'
+#define deflateBound cm_zlib_deflateBound
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:525:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void putShortMSB (s, b)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:539:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void flush_pending(strm)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:559:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflate (strm, flush)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:32:17: note: expanded from macro 'deflate'
+#define deflate cm_zlib_deflate
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:866:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateEnd (strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:35:20: note: expanded from macro 'deflateEnd'
+#define deflateEnd cm_zlib_deflateEnd
+                   ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:901:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT deflateCopy (dest, source)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:34:21: note: expanded from macro 'deflateCopy'
+#define deflateCopy cm_zlib_deflateCopy
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:963:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int read_buf(strm, buf, size)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:993:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void lm_init (s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1034:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local uInt longest_match(s, cur_match)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1182:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local uInt longest_match_fast(s, cur_match)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1273:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void fill_window(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1397:19: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local block_state deflate_stored(s, flush)
+                  ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1455:19: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local block_state deflate_fast(s, flush)
+                  ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/deflate.c:1561:19: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local block_state deflate_slow(s, flush)
+                  ^
+22 warnings generated.
+[581/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/inffast.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inffast.c:67:6: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void inflate_fast(strm, start)
+     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:65:22: note: expanded from macro 'inflate_fast'
+#define inflate_fast cm_zlib_inflate_fast
+                     ^
+1 warning generated.
+[582/885] Building C object _deps/croaring-build/src/CMakeFiles/roaring.dir/roaring.c.o
+[583/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/inftrees.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inftrees.c:32:5: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int inflate_table(type, lens, codes, table, bits, work)
+    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:78:23: note: expanded from macro 'inflate_table'
+#define inflate_table cm_zlib_inflate_table
+                      ^
+1 warning generated.
+[584/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/uncompr.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/uncompr.c:26:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT zuncompress (dest, destLen, source, sourceLen)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:86:21: note: expanded from macro 'zuncompress'
+#define zuncompress cm_zlib_uncompress
+                    ^
+1 warning generated.
+[585/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/zutil.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/zutil.c:133:22: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+const char * ZEXPORT zError(err)
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:87:16: note: expanded from macro 'zError'
+#define zError cm_zlib_zError
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/zutil.c:300:8: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+voidpf zcalloc (opaque, items, size)
+       ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:89:17: note: expanded from macro 'zcalloc'
+#define zcalloc cm_zlib_zcalloc
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/zutil.c:310:7: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void  zcfree (opaque, ptr)
+      ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:90:16: note: expanded from macro 'zcfree'
+#define zcfree cm_zlib_zcfree
+               ^
+3 warnings generated.
+[586/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/inflate.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:103:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateReset(strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:73:22: note: expanded from macro 'inflateReset'
+#define inflateReset cm_zlib_inflateReset
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:128:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflatePrime(strm, bits, value)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:72:22: note: expanded from macro 'inflatePrime'
+#define inflatePrime cm_zlib_inflatePrime
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:144:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateInit2_(strm, windowBits, version, stream_size)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:70:23: note: expanded from macro 'inflateInit2_'
+#define inflateInit2_ cm_zlib_inflateInit2_
+                      ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:187:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateInit_(strm, version, stream_size)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:71:22: note: expanded from macro 'inflateInit_'
+#define inflateInit_ cm_zlib_inflateInit_
+                     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:205:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void fixedtables(state)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:323:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int updatewindow(strm, out)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:554:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflate(strm, flush)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:66:17: note: expanded from macro 'inflate'
+#define inflate cm_zlib_inflate
+                ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1155:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateEnd(strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:68:20: note: expanded from macro 'inflateEnd'
+#define inflateEnd cm_zlib_inflateEnd
+                   ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1169:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateSetDictionary(strm, dictionary, dictLength)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:74:30: note: expanded from macro 'inflateSetDictionary'
+#define inflateSetDictionary cm_zlib_inflateSetDictionary
+                             ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1211:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateGetHeader(strm, head)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:69:26: note: expanded from macro 'inflateGetHeader'
+#define inflateGetHeader cm_zlib_inflateGetHeader
+                         ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1239:16: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local unsigned syncsearch(have, buf, len)
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1262:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateSync(strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:75:21: note: expanded from macro 'inflateSync'
+#define inflateSync cm_zlib_inflateSync
+                    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1313:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateSyncPoint(strm)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:76:26: note: expanded from macro 'inflateSyncPoint'
+#define inflateSyncPoint cm_zlib_inflateSyncPoint
+                         ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/inflate.c:1323:13: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int ZEXPORT inflateCopy(dest, source)
+            ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:67:21: note: expanded from macro 'inflateCopy'
+#define inflateCopy cm_zlib_inflateCopy
+                    ^
+14 warnings generated.
+[587/885] Building C object _deps/kf5archive-build/cmzlib/CMakeFiles/cmzlib.dir/trees.c.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:382:6: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void _tr_init(s)
+     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:83:18: note: expanded from macro '_tr_init'
+#define _tr_init cm_zlib__tr_init
+                 ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:411:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void init_block(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:455:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void pqdownheap(s, tree, k)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:490:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void gen_bitlen(s, desc)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:577:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void gen_codes (tree, max_code, bl_count)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:619:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void build_tree(s, desc)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:707:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void scan_tree (s, tree, max_code)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:752:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void send_tree (s, tree, max_code)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:803:11: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local int build_bl_tree(s)
+          ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:838:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void send_all_trees(s, lcodes, dcodes, blcodes)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:867:6: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void _tr_stored_block(s, buf, stored_len, eof)
+     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:84:26: note: expanded from macro '_tr_stored_block'
+#define _tr_stored_block cm_zlib__tr_stored_block
+                         ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:892:6: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void _tr_align(s)
+     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:81:19: note: expanded from macro '_tr_align'
+#define _tr_align cm_zlib__tr_align
+                  ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:921:6: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+void _tr_flush_block(s, buf, stored_len, eof)
+     ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:82:25: note: expanded from macro '_tr_flush_block'
+#define _tr_flush_block cm_zlib__tr_flush_block
+                        ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1022:5: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+int _tr_tally (s, dist, lc)
+    ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/cm_zlib_mangle.h:85:19: note: expanded from macro '_tr_tally'
+#define _tr_tally cm_zlib__tr_tally
+                  ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1072:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void compress_block(s, ltree, dtree)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1126:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void set_data_type(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1146:16: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local unsigned bi_reverse(code, len)
+               ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1161:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void bi_flush(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1178:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void bi_windup(s)
+           ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/trees.c:1197:12: warning: a function definition without a prototype is deprecated in all versions of C and is not supported in C2x [-Wdeprecated-non-prototype]
+local void copy_block(s, buf, len, header)
+           ^
+20 warnings generated.
+[588/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/crctable.c.o
+[589/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/huffman.c.o
+[590/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/randtable.c.o
+[591/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/blocksort.c.o
+[592/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/decompress.c.o
+[593/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/compress.c.o
+[594/885] Building C object _deps/kf5archive-build/cmbzip2/CMakeFiles/cmbzip2.dir/bzlib.c.o
+[595/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/check.c.o
+[596/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/crc32_table.c.o
+[597/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/crc32_fast.c.o
+[598/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/crc64_fast.c.o
+[599/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/crc64_table.c.o
+[600/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/alone_decoder.c.o
+[601/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/alone_encoder.c.o
+[602/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_buffer_decoder.c.o
+[603/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/auto_decoder.c.o
+[604/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_buffer_encoder.c.o
+[605/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_decoder.c.o
+[606/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_encoder.c.o
+[607/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_header_decoder.c.o
+[608/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_util.c.o
+[609/885] Linking CXX static library _deps/vectorscan-build/lib/libhs.a
+[610/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/block_header_encoder.c.o
+[611/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/easy_decoder_memusage.c.o
+[612/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/easy_buffer_encoder.c.o
+[613/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/common.c.o
+[614/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/easy_encoder.c.o
+[615/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/easy_encoder_memusage.c.o
+[616/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/easy_preset.c.o
+[617/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_buffer_decoder.c.o
+[618/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_buffer_encoder.c.o
+[619/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_common.c.o
+[620/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_decoder.c.o
+[621/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_encoder.c.o
+[622/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_flags_decoder.c.o
+[623/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/filter_flags_encoder.c.o
+[624/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/check/sha256.c.o
+[625/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/index_decoder.c.o
+[626/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/index_encoder.c.o
+[627/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_buffer_decoder.c.o
+[628/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/index_hash.c.o
+[629/885] Building CXX object _deps/simdutf-build/src/CMakeFiles/simdutf.dir/simdutf.cpp.o
+[630/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_buffer_encoder.c.o
+[631/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_flags_common.c.o
+[632/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_decoder.c.o
+[633/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_encoder.c.o
+[634/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_flags_decoder.c.o
+[635/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/stream_flags_encoder.c.o
+[636/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/vli_encoder.c.o
+[637/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/vli_decoder.c.o
+[638/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/vli_size.c.o
+[639/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/delta/delta_common.c.o
+[640/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/delta/delta_encoder.c.o
+[641/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/common/index.c.o
+[642/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/delta/delta_decoder.c.o
+[643/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/fastpos_table.c.o
+[644/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma2_decoder.c.o
+[645/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lz/lz_decoder.c.o
+[646/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lz/lz_encoder.c.o
+[647/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma2_encoder.c.o
+[648/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma_encoder_optimum_fast.c.o
+[649/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma_encoder_presets.c.o
+[650/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/rangecoder/price_table.c.o
+[651/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma_encoder.c.o
+[652/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/arm.c.o
+[653/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lz/lz_encoder_mf.c.o
+[654/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/armthumb.c.o
+[655/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/powerpc.c.o
+[656/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/ia64.c.o
+[657/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma_encoder_optimum_normal.c.o
+[658/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/simple_coder.c.o
+[659/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/simple_encoder.c.o
+[660/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/simple_decoder.c.o
+[661/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/sparc.c.o
+[662/885] Building CXX object src/crash_handler/CMakeFiles/klogg_crash_handler.dir/klogg_crash_handler_autogen/mocs_compilation.cpp.o
+[663/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/simple/x86.c.o
+[664/885] Building C object _deps/kf5archive-build/cmliblzma/CMakeFiles/cmliblzma.dir/liblzma/lzma/lzma_decoder.c.o
+[665/885] Building CXX object src/crash_handler/CMakeFiles/klogg_crash_handler.dir/src/memory_info.cpp.o
+[666/885] Building C object xxhash/CMakeFiles/xxhash.dir/__/xxhash.c.o
+[667/885] Building CXX object src/crash_handler/CMakeFiles/klogg_crash_handler.dir/src/issuereporter.cpp.o
+[668/885] Building CXX object src/regex/CMakeFiles/klogg_regex.dir/src/hsregularexpression.cpp.o
+[669/885] Building CXX object src/crash_handler/CMakeFiles/klogg_crash_handler.dir/src/crashhandler.cpp.o
+[670/885] Linking CXX static library output/libsimdutf.a
+[671/885] Linking C static library output/libroaring.a
+[672/885] Linking C static library output/libstreamvbyte.a
+[673/885] Building CXX object src/filewatch/CMakeFiles/klogg_filewatch.dir/klogg_filewatch_autogen/mocs_compilation.cpp.o
+[674/885] Linking C static library output/libcmzlib.a
+[675/885] Linking C static library output/libcmbzip2.a
+[676/885] Linking C static library output/libcmliblzma.a
+[677/885] Linking C static library output/libxxhash.a
+[678/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/CharDistribution.cpp.o
+[679/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/JpCntx.cpp.o
+[680/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangArabicModel.cpp.o
+[681/885] Linking CXX static library output/libklogg_crash_handler.a
+[682/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangCroatianModel.cpp.o
+[683/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangBulgarianModel.cpp.o
+[684/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangCzechModel.cpp.o
+[685/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangEsperantoModel.cpp.o
+[686/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangEstonianModel.cpp.o
+[687/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangFinnishModel.cpp.o
+[688/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangDanishModel.cpp.o
+[689/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangFrenchModel.cpp.o
+[690/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangGermanModel.cpp.o
+[691/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangGreekModel.cpp.o
+[692/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangHungarianModel.cpp.o
+[693/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangHebrewModel.cpp.o
+[694/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangIrishModel.cpp.o
+[695/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangItalianModel.cpp.o
+[696/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangLithuanianModel.cpp.o
+[697/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangLatvianModel.cpp.o
+[698/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangMalteseModel.cpp.o
+[699/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangPolishModel.cpp.o
+[700/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangPortugueseModel.cpp.o
+[701/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangRomanianModel.cpp.o
+[702/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangSlovakModel.cpp.o
+[703/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangRussianModel.cpp.o
+[704/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangSloveneModel.cpp.o
+[705/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangSwedishModel.cpp.o
+[706/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangSpanishModel.cpp.o
+[707/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangThaiModel.cpp.o
+[708/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangTurkishModel.cpp.o
+[709/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangVietnameseModel.cpp.o
+[710/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/LangModels/LangNorwegianModel.cpp.o
+[711/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsHebrewProber.cpp.o
+[712/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsBig5Prober.cpp.o
+[713/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsCharSetProber.cpp.o
+[714/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsEUCKRProber.cpp.o
+[715/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsEUCJPProber.cpp.o
+[716/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsEUCTWProber.cpp.o
+[717/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsEscCharsetProber.cpp.o
+[718/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsEscSM.cpp.o
+[719/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsGB2312Prober.cpp.o
+[720/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsMBCSSM.cpp.o
+[721/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsMBCSGroupProber.cpp.o
+[722/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsSBCharSetProber.cpp.o
+[723/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsSJISProber.cpp.o
+[724/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsSBCSGroupProber.cpp.o
+[725/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsUTF8Prober.cpp.o
+[726/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsLatin1Prober.cpp.o
+[727/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/nsUniversalDetector.cpp.o
+[728/885] Building CXX object _deps/uchardet-build/src/CMakeFiles/libuchardet.dir/uchardet.cpp.o
+[729/885] Automatic MOC for target klogg_karchive
+[730/885] Linking CXX static library output/libuchardet.a
+[731/885] Automatic MOC for target klogg_versioncheck
+[732/885] Building CXX object src/filewatch/CMakeFiles/klogg_filewatch.dir/src/filewatcher.cpp.o
+[733/885] Linking CXX static library output/libklogg_filewatch.a
+[734/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/klogg_karchive_autogen/mocs_compilation.cpp.o
+[735/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/loggingcategory.cpp.o
+[736/885] Building CXX object src/regex/CMakeFiles/klogg_regex.dir/src/regularexpression.cpp.o
+[737/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kfilterbase.cpp.o
+[738/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kar.cpp.o
+[739/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kcompressiondevice.cpp.o
+[740/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kfilterdev.cpp.o
+[741/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kgzipfilter.cpp.o
+[742/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/karchive.cpp.o
+[743/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/klimitediodevice.cpp.o
+[744/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/knonefilter.cpp.o
+[745/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/krcc.cpp.o
+[746/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/ktar.cpp.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/karchive/src/ktar.cpp:157:9: warning: ignoring return value of function declared with 'nodiscard' attribute [-Wunused-result]
+        d->tmpFile->open();
+        ^~~~~~~~~~~~~~~~
+1 warning generated.
+[747/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kzip.cpp.o
+[748/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kbzip2filter.cpp.o
+[749/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/kxzfilter.cpp.o
+[750/885] Automatic MOC for target kdsingleapp
+[751/885] Building CXX object 3rdparty/CMakeFiles/kdsingleapp.dir/kdsingleapp_autogen/mocs_compilation.cpp.o
+[752/885] Building CXX object _deps/kf5archive-build/karchive/CMakeFiles/klogg_karchive.dir/src/k7zip.cpp.o
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/karchive/src/k7zip.cpp:1117:7: warning: 'setTimeSpec' is deprecated: Use setTimeZone() instead [-Wdeprecated-declarations]
+    t.setTimeSpec(Qt::UTC);
+      ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qdatetime.h:406:5: note: 'setTimeSpec' has been explicitly marked deprecated here
+    QT_DEPRECATED_VERSION_X_6_9("Use setTimeZone() instead")
+    ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:213:44: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_9'
+# define QT_DEPRECATED_VERSION_X_6_9(text) QT_DEPRECATED_X(text)
+                                           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/karchive/src/k7zip.cpp:1689:39: warning: 'qAsConst<QList<QByteArray>>' is deprecated: Use std::as_const() instead. [-Wdeprecated-declarations]
+        for (const QByteArray& data : qAsConst(inflatedDatas)) {
+                                      ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qttypetraits.h:39:1: note: 'qAsConst<QList<QByteArray>>' has been explicitly marked deprecated here
+QT_DEPRECATED_VERSION_X_6_6("Use std::as_const() instead.")
+^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:189:44: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_6'
+# define QT_DEPRECATED_VERSION_X_6_6(text) QT_DEPRECATED_X(text)
+                                           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+2 warnings generated.
+[753/885] Linking CXX static library output/libklogg_karchive.a
+[754/885] Building CXX object src/versioncheck/CMakeFiles/klogg_versioncheck.dir/klogg_versioncheck_autogen/mocs_compilation.cpp.o
+[755/885] Building CXX object 3rdparty/CMakeFiles/kdsingleapp.dir/__/cpm_cache/kdsingleapplication/54c3ad47dfdabb6f654daeb1281d11cd6ce3b326/src/kdsingleapplication.cpp.o
+[756/885] Building CXX object src/versioncheck/CMakeFiles/klogg_versioncheck.dir/src/versionchecker.cpp.o
+[757/885] Linking CXX static library output/libklogg_versioncheck.a
+[758/885] Copying OS X Content output/klogg.app/Contents/Resources/klogg.icns
+[759/885] Building CXX object 3rdparty/CMakeFiles/kdsingleapp.dir/__/cpm_cache/kdsingleapplication/54c3ad47dfdabb6f654daeb1281d11cd6ce3b326/src/kdsingleapplication_localsocket.cpp.o
+[760/885] Linking CXX static library output/libkdsingleapp.a
+[761/885] Building CXX object tests/helpers/CMakeFiles/file_write_helper.dir/file_write_helper.cpp.o
+[762/885] Building CXX object _deps/backward-cpp-build/CMakeFiles/backward_object.dir/backward.cpp.o
+[763/885] Linking CXX executable output/file_write_helper
+[764/885] Building CXX object _deps/maddy-build/CMakeFiles/maddy.dir/main.cpp.o
+[765/885] Linking CXX executable output/maddy
+[766/885] Building CXX object src/regex/CMakeFiles/klogg_regex.dir/src/booleanevaluator.cpp.o
+[767/885] Linking CXX static library output/libklogg_regex.a
+[768/885] Automatic MOC for target klogg_logdata
+[769/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/encodingdetector.cpp.o
+[770/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/abstractlogdata.cpp.o
+[771/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/compressedlinestorage.cpp.o
+[772/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/klogg_logdata_autogen/mocs_compilation.cpp.o
+[773/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/logdataoperation.cpp.o
+[774/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/logdata.cpp.o
+[775/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/filedigest.cpp.o
+[776/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/fileholder.cpp.o
+[777/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/logfiltereddata.cpp.o
+[778/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/readablesize.cpp.o
+[779/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/logdataworker.cpp.o
+[780/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/src/logfiltereddataworker.cpp.o
+[781/885] Building CXX object src/logdata/CMakeFiles/klogg_logdata.dir/__/crash_handler/src/crashhandler.cpp.o
+[782/885] Linking CXX static library output/libklogg_logdata.a
+[783/885] Automatic MOC for target klogg_grep
+[784/885] Generating en.qm
+Updating '/Users/runner/work/klogg/klogg/build_root/src/app/en.qm'...
+    Generated 384 translation(s) (384 finished and 0 unfinished)
+    Ignored 11 untranslated source text(s)
+[785/885] Generating zh_CN.qm
+Updating '/Users/runner/work/klogg/klogg/build_root/src/app/zh_CN.qm'...
+    Generated 392 translation(s) (194 finished and 198 unfinished)
+    Ignored 3 untranslated source text(s)
+[786/885] Generating qt_zh_CN.qm
+[787/885] Automatic RCC for app_translations.qrc
+[788/885] Automatic RCC for klogg.qrc
+[789/885] Automatic RCC for qt_translations.qrc
+[790/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/klogg_grep_autogen/mocs_compilation.cpp.o
+[791/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/klogg_grep_autogen/EJRQKI7XPS/qrc_app_translations.cpp.o
+[792/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/klogg_grep_autogen/EJRQKI7XPS/qrc_qt_translations.cpp.o
+[793/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/klogg_grep_autogen/EWIEGA46WW/qrc_klogg.cpp.o
+[794/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/__/crash_handler/src/crashhandler.cpp.o
+[795/885] Building CXX object src/app/CMakeFiles/klogg_grep.dir/klogg_grep.cpp.o
+[796/885] Automatic MOC and UIC for target klogg_ui
+[797/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/filteredview.cpp.o
+[798/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/highlightersdialog.cpp.o
+[799/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/klogg_ui_autogen/mocs_compilation.cpp.o
+[800/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/crawlerwidget.cpp.o
+[801/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/highlighteredit.cpp.o
+[802/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/abstractlogview.cpp.o
+[803/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/highlightersmenu.cpp.o
+[804/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/highlightersetedit.cpp.o
+[805/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/predefinedfilters.cpp.o
+[806/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/highlighterset.cpp.o
+[807/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/infoline.cpp.o
+[808/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/predefinedfilterscombobox.cpp.o
+[809/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/predefinedfiltersdialog.cpp.o
+[810/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/mainwindowtext.cpp.o
+[811/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/pathline.cpp.o
+[812/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/menu.cpp.o
+[813/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/logmainview.cpp.o
+[814/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/opencomportdialog.cpp.o
+[815/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/overview.cpp.o
+[816/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/overviewwidget.cpp.o
+[817/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewconfig.cpp.o
+[818/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewdecodeutils.cpp.o
+[819/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/mainwindow.cpp.o
+[820/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewconfigparser.cpp.o
+[821/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/optionsdialog.cpp.o
+[822/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewmanager.cpp.o
+[823/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewstablemodel.cpp.o
+[824/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewrepository.cpp.o
+[825/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewmessagetab.cpp.o
+[826/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/previewwindow.cpp.o
+[827/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/importpreviewsdialog.cpp.o
+[828/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/quickfindmux.cpp.o
+[829/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/quickfindpattern.cpp.o
+[830/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/quickfind.cpp.o
+[831/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/quickfindwidget.cpp.o
+FAILED: src/ui/CMakeFiles/klogg_ui.dir/src/quickfindwidget.cpp.o 
+/usr/bin/c++ -DCRASHPAD_ZLIB_SOURCE_SYSTEM -DKLOGG_HAS_HS -DKLOGG_KARCHIVE -DKLOGG_USE_SENTRY -DLZMA_API_STATIC -DQT_CONCURRENT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MESSAGELOGCONTEXT -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_NO_KEYWORDS -DQT_SERIALPORT_LIB -DQT_WIDGETS_LIB -DQT_XML_LIB -DSENTRY_BUILD_STATIC -DTYPE_SAFE_ARITHMETIC_POLICY=1 -DTYPE_SAFE_ENABLE_ASSERTIONS=0 -DTYPE_SAFE_ENABLE_PRECONDITION_CHECKS=1 -DTYPE_SAFE_ENABLE_WRAPPER=1 -DZLIB_CONST -Dexprtk_disable_break_continue -Dexprtk_disable_caseinsensitivity -Dexprtk_disable_comments -Dexprtk_disable_return_statement -Dexprtk_disable_rtl_io_file -Dexprtk_disable_rtl_vecops -Dexprtk_disable_string_capabilities -Dexprtk_disable_superscalar_unroll -I/Users/runner/work/klogg/klogg/build_root/src/ui/klogg_ui_autogen/include -I/Users/runner/work/klogg/klogg/build_root/generated -I/Users/runner/work/klogg/klogg/src/ui/include -I/Users/runner/work/klogg/klogg/src/logdata/include -I/Users/runner/work/klogg/klogg/src/crash_handler/include -I/Users/runner/work/klogg/klogg/src/klogg_version/include -I/Users/runner/work/klogg/klogg/src/utils/include -I/Users/runner/work/klogg/klogg/src/logging/include -I/Users/runner/work/klogg/klogg/cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/external/debug_assert -I/Users/runner/work/klogg/klogg/src/settings/include -I/Users/runner/work/klogg/klogg/src/regex/include -I/Users/runner/work/klogg/klogg/cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7/src -I/Users/runner/work/klogg/klogg/build_root/_deps/vectorscan-build -I/Users/runner/work/klogg/klogg/src/filewatch/include -I/Users/runner/work/klogg/klogg/cpm_cache/kdtoolbox/f089c6a6095c1a28ddfe98af5b8fbfebc08d9abc/qt/KDSignalThrottler/src -I/Users/runner/work/klogg/klogg/src/versioncheck/include -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/karchive/src -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmzlib/.. -I/Users/runner/work/klogg/klogg/build_root/_deps/kf5archive-build/cmzlib/.. -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmbzip2 -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/common -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/api -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/check -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/common -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/delta -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/lz -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/lzma -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/rangecoder -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/1481736687b3069a7a2507dab4a685a24b7e115d/cmliblzma/liblzma/simple -I/Users/runner/work/klogg/klogg/build_root/_deps/kf5archive-build/cmliblzma -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers -iframework /Users/runner/work/klogg/Qt/6.10.1/macos/lib -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/mkspecs/macx-clang -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/include -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtGui.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtWidgets.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtNetwork.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtConcurrent.framework/Headers -isystem /Users/runner/work/klogg/klogg/cpm_cache/whereami/3493cc5ebf66839eb1b655c7a15485a6bec8da0b/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/mimalloc/72f0d2cb40cc97ffde9214409da7eaed994d09ec/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/tbb/539ebec929a4f249bd476ee5438d99a2f6d143b6/src/tbb/../../include -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/compat/non_win -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/compat/mac -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium -isystem /Users/runner/work/klogg/klogg/cpm_cache/robin_hood/3021654263182c9fd735c07f03515f733d8cabf3/src/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/exprtk/17be605a2fb439d5361d50b80f449c51cd094951 -isystem /Users/runner/work/klogg/klogg/cpm_cache/efsw/9a6f9531370e39d45ad07f0d11fbc757c78db9b2/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/efsw/9a6f9531370e39d45ad07f0d11fbc757c78db9b2/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/cpp -isystem /Users/runner/work/klogg/klogg/cpm_cache/uchardet/07796f5a7ae497f21326412ce164e883f5fd5b0f/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/streamvbyte/961029b45fa088a983f595680470413a23037d1c/include -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore5Compat.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtSerialPort.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtXml.framework/Headers -fno-sized-deallocation -fno-omit-frame-pointer -march=native -mtune=generic -O2 -g -DNDEBUG -std=gnu++17 -flto=thin -arch arm64 -isysroot /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -mmacosx-version-min=14.0 -ffast-math -stdlib=libc++ -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion -Wno-null-dereference -Wdouble-promotion -Wformat=2 -Werror -fobjc-arc -fno-objc-arc-exceptions -fPIC -MD -MT src/ui/CMakeFiles/klogg_ui.dir/src/quickfindwidget.cpp.o -MF src/ui/CMakeFiles/klogg_ui.dir/src/quickfindwidget.cpp.o.d -o src/ui/CMakeFiles/klogg_ui.dir/src/quickfindwidget.cpp.o -c /Users/runner/work/klogg/klogg/src/ui/src/quickfindwidget.cpp
+/Users/runner/work/klogg/klogg/src/ui/src/quickfindwidget.cpp:107:44: error: 'stateChanged' is deprecated: Use checkStateChanged() instead [-Werror,-Wdeprecated-declarations]
+    connect( ignoreCaseCheck_, &QCheckBox::stateChanged, this, [ this ] {
+                                           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtWidgets.framework/Headers/qcheckbox.h:41:19: note: 'stateChanged' has been explicitly marked deprecated here
+    QT_MOC_COMPAT QT_DEPRECATED_VERSION_X_6_9("Use checkStateChanged() instead")
+                  ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:213:44: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_9'
+# define QT_DEPRECATED_VERSION_X_6_9(text) QT_DEPRECATED_X(text)
+                                           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+1 error generated.
+[832/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/savedsearches.cpp.o
+[833/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/recentfiles.cpp.o
+[834/885] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/selection.cpp.o
+[835/885] Linking CXX executable output/klogg_grep
+ninja: build stopped: subcommand failed.
 Error: Process completed with exit code 1.
