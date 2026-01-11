@@ -147,6 +147,13 @@ cpmaddpackage(
   variar/klogg_karchive
   GIT_TAG
   f546bf6ae66a8d34b43da5a41afcfbf4e1a47906
+  UPDATE_COMMAND
+  ""
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_karchive_qt6_arg.cmake
   EXCLUDE_FROM_ALL
   YES
 )

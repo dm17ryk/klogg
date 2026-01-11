@@ -47,7 +47,7 @@ Adding missing Threads workaround
 -- Found WrapAtomic: TRUE
 -- Found OpenGL: /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/OpenGL.framework
 -- Found WrapOpenGL: TRUE
-Qt version 6.7.3
+Qt version 6.10.1
 LTO ON
 OSX target 14.0
 -- CPM: Adding package simdutf@5.6.2 (v5.6.2 to /Users/runner/work/klogg/klogg/cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05)
