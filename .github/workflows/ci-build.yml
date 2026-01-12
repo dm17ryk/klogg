@@ -46,17 +46,17 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - os: oraclelinux
-            os_version: 7
-            arch: x64
-            check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
-            cpack_gen: RPM
-            artifacts_id: oracle7
-            package_suffix: rpm
-            check_container: oraclelinux:7
-            container_root: docker/oracle7
-            container: variar/klogg_oracle7
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_USE_HYPERSCAN=OFF
+          # - os: oraclelinux
+          #   os_version: 7
+          #   arch: x64
+          #   check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
+          #   cpack_gen: RPM
+          #   artifacts_id: oracle7
+          #   package_suffix: rpm
+          #   check_container: oraclelinux:7
+          #   container_root: docker/oracle7
+          #   container: variar/klogg_oracle7
+          #   cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_USE_HYPERSCAN=OFF
 
           - os: oraclelinux
             os_version: 8
@@ -228,11 +228,13 @@ jobs:
 
           - os: windows
             os_version: 2022
-            qt_version: 5.15.0
-            qt_arch: win32_msvc2017
-            arch: x86
+            qt_version: 6.10.1
+            qt_modules: qt5compat
+            qt_arch: win64_msvc2022_arm64_cross_compiled
+            arch: arm64
+            ssl_arch: -arm64
             cmake_opts:
-            artifacts_id: windows-x86-qt5
+            artifacts_id: windows-arm64-qt6
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     steps:
