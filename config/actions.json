@@ -1,0 +1,91 @@
+{
+    "actions": [
+        {
+            "id": 0,
+            "enabled": true,
+            "name": "Free Text",
+            "description": "Sends Free Text",
+            "sequence": {
+                "type": "string",
+                "value": "Trace:;\r\n"
+            },
+            "parameters": {
+                "repeat": false,
+                "delay": 5
+            }
+        },
+        {
+            "id": 1,
+            "enabled": true,
+            "name": "<9.29> Write Rtc",
+            "description": "<9.29> Write Rtc [Time YY, MM, DOM, HH, MIN, SS]",
+            "sequence": {
+                "type": "hexString",
+                "value": "57 52 49 54 45 20 52 54 43 3A 32 35 2C 30 38 2C 32 35 2C 30 31 2C 31 35 2C 33 30 3B 0D 0A"
+            },
+            "parameters": {
+                "repeat": true,
+                "delay": 5
+            }
+        }
+    ],
+    "responses": [
+        {
+            "id": 0,
+            "enabled": true,
+            "name": "Start PG56 after PG90",
+            "description": "Start PG56 after PG90",
+            "match": {
+                "type": "string",
+                "value": "Welcome To"
+            },
+            "response": {
+                "action_id": 1, // send action with id 1
+                "comment": "Start PG56 after PG90", // insert comment into log
+                "linebreak": true, // insert additional linebreak into log
+                "timestamp": true, // do not insert timestamp into log
+                "snapshot": false, // take snapshot
+                "stop_communication": false // stop communication - disconnect from com port
+            }
+        },
+        {
+            "id": 1,
+            "enabled": true,
+            "name": "Start PG90 on \"Panel Ready\"",
+            "description": "Start PG90 on \"Panel Ready\"",
+            "match": {
+                "type": "hexString",
+                "value": "50 61 6E 65 6C 20 52 65 61 64 79"
+            },
+            "response": {
+                "action_id": 2, // do not send any action
+                "comment": "", // do not insert comment into log
+                "linebreak": false, // do not insert additional linebreak into log
+                "timestamp": false, // do not insert timestamp into log
+                "snapshot": false, // do not take snapshot
+                "stop_communication": false // do not stop communication
+            }
+        },
+        {
+            "id": 2,
+            "enabled": true,
+            "name": "Stop on \"Trace:\"",
+            "description": "Stop on \"Trace:\"",
+            "match": {
+                "type": "regex",
+                "value": "^Trace:(?<value>.*)$"
+            },
+            "response": {
+                "action": {
+                    "type": "string",
+                    "value": "Send {value}\r\n"
+                }, // do not send any action
+                "comment": "Trace received, stopping communication", // insert comment into log
+                "linebreak": true, // insert additional linebreak into log
+                "timestamp": true, // insert timestamp into log
+                "snapshot": true, // take snapshot
+                "stop_communication": true // stop communication - disconnect from com port
+            }
+        }
+    ]
+}
