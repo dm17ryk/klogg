@@ -48,7 +48,7 @@ void SerialCaptureWorker::start()
     connect( port_, &QSerialPort::readyRead, this, &SerialCaptureWorker::onReadyRead );
     connect( port_, &QSerialPort::errorOccurred, this, &SerialCaptureWorker::onError );
 
-    if ( !port_->open( QIODevice::ReadOnly ) ) {
+    if ( !port_->open( QIODevice::ReadWrite ) ) {
         stopping_ = true;
         Q_EMIT errorOccurred( tr( "Failed to open %1: %2" ).arg( settings_.portName, port_->errorString() ) );
         file_.close();
@@ -77,6 +77,34 @@ void SerialCaptureWorker::stop()
     Q_EMIT finished();
 }
 
+void SerialCaptureWorker::sendData( QByteArray data )
+{
+    if ( stopping_ || data.isEmpty() || !port_ || !port_->isOpen() ) {
+        return;
+    }
+
+    const auto written = port_->write( data );
+    if ( written < 0 ) {
+        Q_EMIT errorOccurred(
+            tr( "Failed to write to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
+    }
+}
+
+void SerialCaptureWorker::appendToFile( QByteArray data )
+{
+    if ( stopping_ || data.isEmpty() || !file_.isOpen() ) {
+        return;
+    }
+
+    const auto written = file_.write( data );
+    if ( written != data.size() ) {
+        Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+        stop();
+        return;
+    }
+    file_.flush();
+}
+
 void SerialCaptureWorker::onReadyRead()
 {
     if ( stopping_ || !port_ ) {
@@ -98,6 +126,8 @@ void SerialCaptureWorker::onReadyRead()
         file_.flush();
         flushCounter_ = 0;
     }
+
+    Q_EMIT dataReceived( data );
 }
 
 void SerialCaptureWorker::onError( QSerialPort::SerialPortError error )

@@ -144,7 +144,7 @@ cpmaddpackage(
   NAME
   KF5Archive
   GITHUB_REPOSITORY
-  variar/klogg_karchive
+  dm17ryk/klogg_karchive
   GIT_TAG
   f546bf6ae66a8d34b43da5a41afcfbf4e1a47906
   UPDATE_COMMAND
@@ -284,7 +284,7 @@ cpmaddpackage(
   NAME
   exprtk
   GITHUB_REPOSITORY
-  variar/klogg_exprtk
+  dm17ryk/klogg_exprtk
   GIT_TAG
   1f9f4cd7d2620b7b24232de9ea22908d63913459
   DOWNLOAD_ONLY

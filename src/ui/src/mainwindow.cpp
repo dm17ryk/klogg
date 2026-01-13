@@ -90,6 +90,7 @@
 #include "decompressor.h"
 #include "dispatch_to.h"
 #include "downloader.h"
+#include "actionsmanager.h"
 #include "encodings.h"
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
@@ -209,7 +210,13 @@ MainWindow::MainWindow( WindowSession session )
         previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
     }
 
+    actionsResponsesWindow_.setWindowIcon( mainIcon_ );
+    actionsResponsesWindow_.setWindowTitle( tr( "klogg - actions/responses" ) );
+    connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
+             &MainWindow::sendActionById );
+
     PreviewManager::instance().loadFromRepository();
+    ActionsManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
@@ -422,6 +429,9 @@ void MainWindow::reTranslateUI()
     showScratchPadAction->setStatusTip( transAction( action::showScratchPadStatusTip ) );
     showPreviewerAction->setText( transAction( action::showPreviewerText ) );
     showPreviewerAction->setStatusTip( transAction( action::showPreviewerStatusTip ) );
+    showActionsResponsesAction->setText( transAction( action::showActionsResponsesText ) );
+    showActionsResponsesAction->setStatusTip(
+        transAction( action::showActionsResponsesStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -439,6 +449,8 @@ void MainWindow::reTranslateUI()
 
     importPreviewsAction->setText( transAction( action::importPreviewsDialogText ) );
     importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
+    importActionsAction->setText( transAction( action::importActionsDialogText ) );
+    importActionsAction->setStatusTip( transAction( action::importActionsDialogStatusTip ) );
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -668,6 +680,11 @@ void MainWindow::createActions()
     connect( showPreviewerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showPreviewer(); } );
 
+    showActionsResponsesAction = new QAction( tr( action::showActionsResponsesText ), this );
+    showActionsResponsesAction->setStatusTip( tr( action::showActionsResponsesStatusTip ) );
+    connect( showActionsResponsesAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showActionsResponses(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -703,6 +720,11 @@ void MainWindow::createActions()
     importPreviewsAction->setStatusTip( tr( action::importPreviewsDialogStatusTip ) );
     connect( importPreviewsAction, &QAction::triggered, this,
              [ this ]( auto ) { this->openImportPreviewsDialog(); } );
+
+    importActionsAction = new QAction( tr( action::importActionsDialogText ), this );
+    importActionsAction->setStatusTip( tr( action::importActionsDialogStatusTip ) );
+    connect( importActionsAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openImportActionsDialog(); } );
 
     updateShortcuts();
 }
@@ -775,6 +797,7 @@ void MainWindow::loadIcons()
     followAction->setIcon( iconLoader_.load( "icons8-fast-forward" ) );
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
     showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
+    showActionsResponsesAction->setIcon( iconLoader_.load( "icons8-venn-diagram" ) );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -851,8 +874,10 @@ void MainWindow::createMenus()
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
+    toolsMenu->addAction( importActionsAction );
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
+    toolsMenu->addAction( showActionsResponsesAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -918,6 +943,7 @@ void MainWindow::createToolBars()
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
+    toolBar->addAction( showActionsResponsesAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1051,7 +1077,10 @@ void MainWindow::openComPort()
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath ] { mainTabWidget_.clearStreamSessionForPath( filePath ); } );
+             [ this, filePath ] {
+                 mainTabWidget_.clearStreamSessionForPath( filePath );
+                 updateActionsSendState();
+             } );
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession ]( const QString& message ) {
                  QMessageBox::warning(
@@ -1070,6 +1099,8 @@ void MainWindow::openComPort()
                               tr( "Failed to open capture file in klogg." ) );
         return;
     }
+
+    updateActionsSendState();
 }
 
 void MainWindow::openRemoteFile( const QUrl& url )
@@ -1312,6 +1343,23 @@ void MainWindow::openImportPreviewsDialog()
     dialog.exec();
 }
 
+void MainWindow::openImportActionsDialog()
+{
+    const auto file = QFileDialog::getOpenFileName( this, tr( "Select actions JSON" ), "",
+                                                    tr( "Actions (*.json);;All files (*)" ) );
+    if ( file.isEmpty() ) {
+        return;
+    }
+    const auto result = ActionsManager::instance().importFromFile( file );
+    if ( !result.errors.isEmpty() ) {
+        QMessageBox::warning( this, tr( "Import actions" ), result.errors.join( "\n" ) );
+        return;
+    }
+    if ( !result.warnings.isEmpty() ) {
+        QMessageBox::information( this, tr( "Import actions" ), result.warnings.join( "\n" ) );
+    }
+}
+
 // Opens the 'Options' modal dialog box
 void MainWindow::options()
 {
@@ -1341,7 +1389,7 @@ void MainWindow::about()
         tr( "<h2>klogg %1</h2>"
             "<p>A fast, advanced log explorer.</p>"
             "<p>Built %2 from %3</p>"
-            "<p><a href=\"https://github.com/variar/klogg\">https://github.com/variar/klogg</a></p>"
+            "<p><a href=\"https://github.com/dm17ryk/klogg\">https://github.com/dm17ryk/klogg</a></p>"
             "<p>This is fork of glogg</p>"
             "<p><a href=\"http://glogg.bonnefon.org/\">http://glogg.bonnefon.org/</a></p>"
             "<p>Using icons from <a href=\"https://icons8.com\">icons8.com</a> project</p>"
@@ -1394,6 +1442,17 @@ void MainWindow::showPreviewer()
     previewWindow_.show();
     previewWindow_.activateWindow();
 }
+
+void MainWindow::showActionsResponses()
+{
+    auto state = actionsResponsesWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    actionsResponsesWindow_.setWindowState( state );
+
+    updateActionsSendState();
+    actionsResponsesWindow_.show();
+    actionsResponsesWindow_.activateWindow();
+}
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );
@@ -1406,13 +1465,37 @@ void MainWindow::replaceDataInScratchpad( QString newData )
     showScratchPad();
 }
 
-void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
+void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )    
 {
     if ( rawLine.isEmpty() ) {
         return;
     }
     previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
     showPreviewer();
+}
+
+void MainWindow::sendActionById( int actionId )
+{
+    const auto* action = ActionsManager::instance().findActionById( actionId );
+    if ( !action ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "Unknown action id." ) );
+        return;
+    }
+
+    auto* streamSession = currentStreamSession();
+    if ( !streamSession || !streamSession->isConnectionOpen() ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
+        return;
+    }
+
+    const auto result = actionSequenceToBytes( action->sequence );
+    if ( !result.ok ) {
+        QMessageBox::warning( this, tr( "Send action" ),
+                              tr( "Failed to encode action: %1" ).arg( result.error ) );
+        return;
+    }
+
+    streamSession->sendBytes( result.bytes );
 }
 void MainWindow::encodingChanged( QAction* action )
 {
@@ -1638,6 +1721,8 @@ void MainWindow::currentTabChanged( int index )
         addToFavoritesAction->setEnabled( false );
         addToFavoritesMenuAction->setEnabled( false );
     }
+
+    updateActionsSendState();
 }
 
 void MainWindow::changeQFPattern( const QString& newPattern )
@@ -1967,6 +2052,26 @@ CrawlerWidget* MainWindow::currentCrawlerWidget() const
     auto current = qobject_cast<CrawlerWidget*>( mainTabWidget_.currentWidget() );
 
     return current;
+}
+
+StreamSession* MainWindow::currentStreamSession() const
+{
+    const auto* crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return nullptr;
+    }
+    const auto fileName = session_.getFilename( crawler );
+    if ( fileName.isEmpty() ) {
+        return nullptr;
+    }
+    return mainTabWidget_.streamSessionForPath( fileName );
+}
+
+void MainWindow::updateActionsSendState()
+{
+    const auto* streamSession = currentStreamSession();
+    const bool available = streamSession && streamSession->isConnectionOpen();
+    actionsResponsesWindow_.setSendAvailable( available );
 }
 
 // Update the title bar.

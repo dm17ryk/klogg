@@ -1,4 +1,6 @@
 {
+    "$schema": "../schemas/actions.schema.json",
+    "version": 1,
     "actions": [
         {
             "id": 0,
@@ -40,12 +42,12 @@
                 "value": "Welcome To"
             },
             "response": {
-                "action_id": 1, // send action with id 1
-                "comment": "Start PG56 after PG90", // insert comment into log
-                "linebreak": true, // insert additional linebreak into log
-                "timestamp": true, // do not insert timestamp into log
-                "snapshot": false, // take snapshot
-                "stop_communication": false // stop communication - disconnect from com port
+                "action_id": 1,
+                "comment": "Start PG56 after PG90",
+                "linebreak": true,
+                "timestamp": true,
+                "snapshot": false,
+                "stop_communication": false
             }
         },
         {
@@ -58,12 +60,12 @@
                 "value": "50 61 6E 65 6C 20 52 65 61 64 79"
             },
             "response": {
-                "action_id": 2, // do not send any action
-                "comment": "", // do not insert comment into log
-                "linebreak": false, // do not insert additional linebreak into log
-                "timestamp": false, // do not insert timestamp into log
-                "snapshot": false, // do not take snapshot
-                "stop_communication": false // do not stop communication
+                "action_id": 2,
+                "comment": "",
+                "linebreak": false,
+                "timestamp": false,
+                "snapshot": false,
+                "stop_communication": false
             }
         },
         {
@@ -79,12 +81,12 @@
                 "action": {
                     "type": "string",
                     "value": "Send {value}\r\n"
-                }, // do not send any action
-                "comment": "Trace received, stopping communication", // insert comment into log
-                "linebreak": true, // insert additional linebreak into log
-                "timestamp": true, // insert timestamp into log
-                "snapshot": true, // take snapshot
-                "stop_communication": true // stop communication - disconnect from com port
+                },
+                "comment": "Trace received, stopping communication",
+                "linebreak": true,
+                "timestamp": true,
+                "snapshot": true,
+                "stop_communication": true
             }
         }
     ]

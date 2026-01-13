@@ -46,7 +46,7 @@ runs:
       run: |
         md %KLOGG_BUILD_ROOT%\packages
         xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip %KLOGG_BUILD_ROOT%\packages /y
-        xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip %KLOGG_BUILD_ROOT%\packages /y
+        # xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip %KLOGG_BUILD_ROOT%\packages /y
         xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-setup.exe %KLOGG_BUILD_ROOT%\packages /y
 
     #- name: Win codesign installer

@@ -1,5 +1,5 @@
 [klogg]
-Copyright (c) 2016 -- 2021 Anton Filimonov
+Copyright (c) 2025 -- 2026 Dmitry Kokotov
 
 klogg is free software; you can redistribute it and/or modify it under
 the terms of the GNU General PubLic License as published by the Free
@@ -174,7 +174,7 @@ under the terms of the BSD License
 ===
 This product includes software developed by Jean-loup Gailly and Mark Adler
 zlib (http://www.zlib.net)  with modifications by Kitware (CMake support, name mangling) 
-and by Anton Filimonov (name mangling for static linking with KArchive)
+and by Dmitry Kokotov (name mangling for static linking with KArchive)
 licensed under the terms of zlib license
 
 > 'zlib' general purpose compression library

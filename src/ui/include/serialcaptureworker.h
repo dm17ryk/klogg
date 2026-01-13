@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QFile>
 #include <QObject>
 #include <QSerialPort>
@@ -23,10 +24,13 @@ class SerialCaptureWorker : public QObject {
   public Q_SLOTS:
     void start();
     void stop();
+    void sendData( QByteArray data );
+    void appendToFile( QByteArray data );
 
   Q_SIGNALS:
     void errorOccurred( const QString& message );
     void finished();
+    void dataReceived( const QByteArray& data );
 
   private Q_SLOTS:
     void onReadyRead();

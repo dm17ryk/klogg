@@ -7,12 +7,12 @@ project(
   LANGUAGES C CXX ASM
 )
 
-set(PROJECT_HOMEPAGE_URL "https://github.com/variar/klogg")
+set(PROJECT_HOMEPAGE_URL "https://github.com/dm17ryk/klogg")
 
 string(TIMESTAMP PRODUCT_CURRENT_YEAR "%Y")
-set(COMPANY "Anton Filimonov")
-set(COPYRIGHT "Copyright (c) ${PRODUCT_CURRENT_YEAR} Nicolas Bonnefon, Anton Filimonov and other contributors.")
-set(IDENTIFIER "com.github.variar.klogg")
+set(COMPANY "Dmitry Kokotov")
+set(COPYRIGHT "Copyright (c) ${PRODUCT_CURRENT_YEAR} Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors.")
+set(IDENTIFIER "com.github.dm17ryk.klogg")
 set(PROJECT_DESCRIPTION "${PROJECT_NAME} log viewer")
 
 option(KLOGG_BUILD_TESTS "Build tests" ON)
@@ -250,7 +250,7 @@ set(CPACK_SOURCE_IGNORE_FILES "build_root;.git")
 set(CPACK_OUTPUT_FILE_PREFIX "packages")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
 set(CPACK_PACKAGE_VENDOR ${COMPANY})
-set(CPACK_PACKAGE_CONTACT "anton.filimonov@gmail.com")
+set(CPACK_PACKAGE_CONTACT "dm17ryk@gmail.com")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/description.txt")
 set(CPACK_RESOURCE_FILE_LICENSE "${COPYING_FILE}")
 set(CPACK_PACKAGE_VERSION
@@ -304,8 +304,8 @@ if(UNIX)
     #deb
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
     set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://github.com/variar/klogg")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Anton Filimonov <${CPACK_PACKAGE_CONTACT}>")
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://github.com/dm17ryk/klogg")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dmitry Kokotov <${CPACK_PACKAGE_CONTACT}>")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS YES)
 
     #RPM
@@ -313,7 +313,7 @@ if(UNIX)
     set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
     set(CPACK_RPM_PACKAGE_AUTOREQ YES)
     #set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= ${KLOGG_QT_VERSION}")
-    set(CPACK_RPM_PACKAGE_URL "http://github.com/variar/klogg")
+    set(CPACK_RPM_PACKAGE_URL "http://github.com/dm17ryk/klogg")
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
         /usr/share/applications
         /usr/share/icons

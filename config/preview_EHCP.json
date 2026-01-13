@@ -6662,7 +6662,7 @@
     {
       "name": "EHCP (direct quoted)",
       "enabled": true,
-      "regex": "^.*\"(?<ehcpPayload>EHCP[^\"]*)\".*$",
+      "regex": "^.*\"(?<ehcpPayload>EHCP[^\"]*)\".*(<CR>)?(<LF>)?$",
       "bufferCapture": "ehcpPayload",
       "type": "string",
       "format": "fields",
@@ -6677,7 +6677,7 @@
     {
       "name": "EHCP (direct not quoted)",
       "enabled": true,
-      "regex": "^(?<ehcpPayload>EHCP[^\"]*)$",
+      "regex": "^(?<ehcpPayload>EHCP[^\"]*)(<CR>)?(<LF>)?$",
       "bufferCapture": "ehcpPayload",
       "type": "string",
       "format": "fields",
@@ -6692,7 +6692,7 @@
     {
       "name": "SRING -> EHCP",
       "enabled": true,
-      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)$",
+      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)(<CR>)?(<LF>)?$",
       "bufferCapture": "hexEhcpPayload",
       "type": "string",
       "format": "fields",

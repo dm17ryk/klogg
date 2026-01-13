@@ -87,4 +87,4 @@ for key in months_keys:
             continue
         print(f'## {header}:')
         for c in commits_in_g:
-            print(f' - [{c.sha}](https://github.com/variar/klogg/commit/{c.sha}): {c.message}')
+            print(f' - [{c.sha}](https://github.com/dm17ryk/klogg/commit/{c.sha}): {c.message}')

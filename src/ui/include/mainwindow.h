@@ -54,6 +54,7 @@
 #include "crawlerwidget.h"
 #include "downloader.h"
 #include "iconloader.h"
+#include "actionsresponseswindow.h"
 #include "pathline.h"
 #include "previewwindow.h"
 #include "quickfindmux.h"
@@ -68,6 +69,7 @@ class QActionGroup;
 class Session;
 class RecentFiles;
 class HighlightersMenu;
+class StreamSession;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
@@ -127,15 +129,18 @@ class MainWindow : public QMainWindow {
     void editHighlighters();
     void editPredefinedFilters( const QString& newFilter = {} );
     void openImportPreviewsDialog();
+    void openImportActionsDialog();
     void options();
     void about();
     void aboutQt();
     void documentation();
     void showScratchPad();
     void showPreviewer();
+    void showActionsResponses();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
+    void sendActionById( int actionId );
     void encodingChanged( QAction* action );
     void addToFavorites();
     void removeFromFavorites();
@@ -214,8 +219,10 @@ class MainWindow : public QMainWindow {
     void updateFavoritesMenu();
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
+    void updateActionsSendState();
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
+    StreamSession* currentStreamSession() const;
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
     void updateInfoLine();
@@ -278,7 +285,9 @@ class MainWindow : public QMainWindow {
     QAction* optionsAction;
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
+    QAction* showActionsResponsesAction;
     QAction* importPreviewsAction;
+    QAction* importActionsAction;
     QAction* showDocumentationAction;
     QAction* aboutAction;
     QAction* aboutQtAction;
@@ -322,6 +331,7 @@ class MainWindow : public QMainWindow {
 
     TabbedScratchPad scratchPad_;
     PreviewWindow previewWindow_;
+    ActionsResponsesWindow actionsResponsesWindow_;
 
     QTemporaryDir tempDir_;
 

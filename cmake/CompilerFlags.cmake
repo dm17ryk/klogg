@@ -1,6 +1,6 @@
 function(set_project_compile_flags project_name)
 
-  set(MSVC_FLAGS /fp:fast)
+  set(MSVC_FLAGS /fp:fast /arch:AVX2 /GL /O2)
   set(MSVC_DEFINITIONS -DNOMINMAX)
 
   set(CLANG_FLAGS -ffast-math)
@@ -16,6 +16,7 @@ function(set_project_compile_flags project_name)
   if(MSVC)
     set(PROJECT_FLAGS ${MSVC_FLAGS})
     set(PROJECT_DEFINITIONS ${MSVC_DEFINITIONS})
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LTCG")
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
     set(PROJECT_FLAGS ${APPLE_CLANG_FLAGS})
     set(PROJECT_DEFINITIONS ${APPLE_CLANG_DEFINITIONS})

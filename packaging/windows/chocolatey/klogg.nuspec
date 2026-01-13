@@ -3,15 +3,15 @@
   <metadata>
     <id>klogg</id>
     <version>1.0.0</version>
-    <owners>Anton Filimonov</owners>
+    <owners>dm17ryk</owners>
     <title>klogg - the fast, smart log explorer</title>
-    <authors>Nicolas Bonnefon, Anton Filimonov</authors>
+    <authors>Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov</authors>
     <projectUrl>https://klogg.filimonov.dev</projectUrl>
     <iconUrl>https://klogg.filimonov.dev/klogg.png</iconUrl>
-    <docsUrl>https://github.com/variar/klogg/blob/v22.06/README.md</docsUrl>
-    <bugTrackerUrl>https://github.com/variar/klogg/issues</bugTrackerUrl>
-    <copyright>Copyright © 2022 Nicolas Bonnefon, Anton Filimonov</copyright>
-    <licenseUrl>https://github.com/variar/klogg/blob/v22.06/COPYING</licenseUrl>
+    <docsUrl>https://github.com/dm17ryk/klogg/blob/v22.06/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/dm17ryk/klogg/issues</bugTrackerUrl>
+    <copyright>Copyright © 2022 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov</copyright>
+    <licenseUrl>https://github.com/dm17ryk/klogg/blob/v22.06/COPYING</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <tags>log tail grep glogg klogg admin</tags>
     <summary>The fast, smart log explorer</summary>
@@ -19,8 +19,8 @@
       through long and complex log files. It is designed with programmers and
       system administrators in mind and can be seen as a graphical, interactive
       combination of grep, less, and tail.</description>
-    <releaseNotes>https://github.com/variar/klogg/releases/tag/v22.06</releaseNotes>
-    <packageSourceUrl>https://github.com/variar/klogg/blob/master/packaging/windows</packageSourceUrl>
+    <releaseNotes>https://github.com/dm17ryk/klogg/releases/tag/v22.06</releaseNotes>
+    <packageSourceUrl>https://github.com/dm17ryk/klogg/blob/master/packaging/windows</packageSourceUrl>
   </metadata>
   <files>
     <file src="tools/**" target="tools" />
