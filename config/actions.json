@@ -5,6 +5,7 @@
         {
             "id": 0,
             "enabled": true,
+            "hidden": false,
             "name": "Free Text",
             "description": "Sends Free Text",
             "sequence": {
@@ -19,6 +20,7 @@
         {
             "id": 1,
             "enabled": true,
+            "hidden": false,
             "name": "<9.29> Write Rtc",
             "description": "<9.29> Write Rtc [Time YY, MM, DOM, HH, MIN, SS]",
             "sequence": {
@@ -35,6 +37,7 @@
         {
             "id": 0,
             "enabled": true,
+            "hidden": false,
             "name": "Start PG56 after PG90",
             "description": "Start PG56 after PG90",
             "match": {
@@ -53,6 +56,7 @@
         {
             "id": 1,
             "enabled": true,
+            "hidden": false,
             "name": "Start PG90 on \"Panel Ready\"",
             "description": "Start PG90 on \"Panel Ready\"",
             "match": {
@@ -71,6 +75,7 @@
         {
             "id": 2,
             "enabled": true,
+            "hidden": false,
             "name": "Stop on \"Trace:\"",
             "description": "Stop on \"Trace:\"",
             "match": {

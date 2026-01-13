@@ -165,7 +165,7 @@ struct CliParameters {
                   << kloggGitVersion().data() << ")\n";
 
         std::cout
-            << "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov and other contributors\n";
+            << "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\n";
         std::cout
             << "This is free software.  You may redistribute copies of it under the terms of\n";
         std::cout << "the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n";
