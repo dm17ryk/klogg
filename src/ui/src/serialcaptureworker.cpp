@@ -1,6 +1,21 @@
 #include "serialcaptureworker.h"
 
 #include <QIODevice>
+#include <QStringView>
+
+#include "log.h"
+
+namespace {
+QString previewHex( const QByteArray& data, int maxBytes = 128 )
+{
+    const auto slice = data.left( maxBytes );
+    auto hex = QString::fromLatin1( slice.toHex( ' ' ) );
+    if ( data.size() > maxBytes ) {
+        hex.append( QStringLiteral( " ... (%1 bytes total)" ).arg( data.size() ) );
+    }
+    return hex;
+}
+} // namespace
 
 SerialCaptureWorker::SerialCaptureWorker( SerialCaptureSettings settings, QObject* parent )
     : QObject( parent )
@@ -83,10 +98,23 @@ void SerialCaptureWorker::sendData( QByteArray data )
         return;
     }
 
+    LOG_INFO << "COM write to " << settings_.portName.toStdString() << ", bytes: "
+             << data.size() << ", hex: " << previewHex( data ).toStdString();
+
     const auto written = port_->write( data );
     if ( written < 0 ) {
         Q_EMIT errorOccurred(
             tr( "Failed to write to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
+        return;
+    }
+    if ( written != data.size() ) {
+        Q_EMIT errorOccurred(
+            tr( "Partial write to %1: %2/%3 bytes." ).arg( settings_.portName ).arg( written ).arg( data.size() ) );
+    }
+
+    if ( !port_->waitForBytesWritten( 1000 ) ) {
+        Q_EMIT errorOccurred(
+            tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
 }
 
