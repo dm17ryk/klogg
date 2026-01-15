@@ -114,8 +114,9 @@ bool parseAction( const QJsonObject& object,
         return false;
     }
 
-    const QSet<QString> knownKeys = { "id", "enabled", "name", "description", "sequence",
-                                      "parameters" };
+    const QSet<QString> knownKeys = { "id",       "enabled", "hidden", "hiden",
+                                      "name",     "description",
+                                      "sequence", "parameters" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -146,6 +147,16 @@ bool parseAction( const QJsonObject& object,
 
     if ( object.contains( "enabled" ) ) {
         out->enabled = object.value( "enabled" ).toBool( true );
+    }
+    if ( object.contains( "hidden" ) ) {
+        const auto hiddenValue = object.value( "hidden" );
+        if ( hiddenValue.isBool() ) {
+            out->hidden = hiddenValue.toBool();
+        }
+        else if ( warnings ) {
+            warnings->push_back(
+                QString( "Invalid action hidden flag for '%1'." ).arg( out->name ) );
+        }
     }
 
     if ( object.contains( "description" ) ) {
@@ -188,8 +199,9 @@ bool parseResponse( const QJsonObject& object,
         return false;
     }
 
-    const QSet<QString> knownKeys = { "id", "enabled", "name", "description", "match",
-                                      "response" };
+    const QSet<QString> knownKeys = { "id",       "enabled", "hidden", "hiden",
+                                      "name",     "description",
+                                      "match",    "response" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -221,6 +233,16 @@ bool parseResponse( const QJsonObject& object,
 
     if ( object.contains( "enabled" ) ) {
         out->enabled = object.value( "enabled" ).toBool( true );
+    }
+    if ( object.contains( "hidden" ) ) {
+        const auto hiddenValue = object.value( "hidden" );
+        if ( hiddenValue.isBool() ) {
+            out->hidden = hiddenValue.toBool();
+        }
+        else if ( warnings ) {
+            warnings->push_back(
+                QString( "Invalid response hidden flag for '%1'." ).arg( out->name ) );
+        }
     }
 
     if ( object.contains( "description" ) ) {

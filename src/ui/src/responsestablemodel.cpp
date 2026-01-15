@@ -138,7 +138,14 @@ bool ResponsesTableModel::setData( const QModelIndex& index, const QVariant& val
 void ResponsesTableModel::refresh()
 {
     beginResetModel();
-    responses_ = ActionsManager::instance().responses();
+    responses_.clear();
+    const auto& responses = ActionsManager::instance().responses();
+    responses_.reserve( responses.size() );
+    for ( const auto& response : responses ) {
+        if ( !response.hidden ) {
+            responses_.push_back( response );
+        }
+    }
     endResetModel();
 }
 

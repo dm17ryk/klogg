@@ -24,6 +24,7 @@ QJsonObject actionToJson( const ActionDefinition& action )
     QJsonObject obj;
     obj.insert( "id", action.id );
     obj.insert( "enabled", action.enabled );
+    obj.insert( "hidden", action.hidden );
     obj.insert( "name", action.name );
     obj.insert( "description", action.description );
     obj.insert( "sequence", sequenceToJson( action.sequence ) );
@@ -57,6 +58,7 @@ QJsonObject responseToJson( const ResponseDefinition& response )
     QJsonObject obj;
     obj.insert( "id", response.id );
     obj.insert( "enabled", response.enabled );
+    obj.insert( "hidden", response.hidden );
     obj.insert( "name", response.name );
     obj.insert( "description", response.description );
     obj.insert( "match", matchObj );

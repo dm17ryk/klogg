@@ -36,6 +36,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewstablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/importactionsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/importpreviewsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/qfnotifications.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfind.h
@@ -106,6 +107,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/importactionsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/importpreviewsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfind.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindmux.cpp

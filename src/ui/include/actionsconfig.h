@@ -34,6 +34,7 @@ struct ActionParameters {
 struct ActionDefinition {
     int id = -1;
     bool enabled = true;
+    bool hidden = false;
     QString name;
     QString description;
     ActionSequence sequence;
@@ -61,6 +62,7 @@ struct ResponseActionDefinition {
 struct ResponseDefinition {
     int id = -1;
     bool enabled = true;
+    bool hidden = false;
     QString name;
     QString description;
     ResponseMatchDefinition match;

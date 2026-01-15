@@ -111,7 +111,14 @@ Qt::ItemFlags ActionsTableModel::flags( const QModelIndex& index ) const
 void ActionsTableModel::refresh()
 {
     beginResetModel();
-    actions_ = ActionsManager::instance().actions();
+    actions_.clear();
+    const auto& actions = ActionsManager::instance().actions();
+    actions_.reserve( actions.size() );
+    for ( const auto& action : actions ) {
+        if ( !action.hidden ) {
+            actions_.push_back( action );
+        }
+    }
     endResetModel();
 }
 
