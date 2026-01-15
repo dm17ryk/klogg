@@ -30,7 +30,7 @@ int ResponsesTableModel::columnCount( const QModelIndex& parent ) const
     if ( parent.isValid() ) {
         return 0;
     }
-    return 3;
+    return 4;
 }
 
 QVariant ResponsesTableModel::data( const QModelIndex& index, int role ) const
@@ -57,6 +57,14 @@ QVariant ResponsesTableModel::data( const QModelIndex& index, int role ) const
 
     switch ( index.column() ) {
     case 0:
+        if ( role == Qt::DisplayRole ) {
+            return response.id;
+        }
+        if ( role == Qt::TextAlignmentRole ) {
+            return Qt::AlignCenter;
+        }
+        break;
+    case 1:
         if ( role == Qt::CheckStateRole ) {
             return response.enabled ? Qt::Checked : Qt::Unchecked;
         }
@@ -64,12 +72,12 @@ QVariant ResponsesTableModel::data( const QModelIndex& index, int role ) const
             return Qt::AlignCenter;
         }
         break;
-    case 1:
+    case 2:
         if ( role == Qt::DisplayRole ) {
             return response.name;
         }
         break;
-    case 2:
+    case 3:
         if ( role == Qt::DisplayRole ) {
             return previewMatch( response.match );
         }
@@ -90,10 +98,12 @@ QVariant ResponsesTableModel::headerData( int section,
     }
     switch ( section ) {
     case 0:
-        return tr( "Enabled" );
+        return tr( "Id" );
     case 1:
-        return tr( "Response" );
+        return tr( "Enabled" );
     case 2:
+        return tr( "Response" );
+    case 3:
         return tr( "Match" );
     default:
         return {};
@@ -105,7 +115,7 @@ Qt::ItemFlags ResponsesTableModel::flags( const QModelIndex& index ) const
     if ( !index.isValid() ) {
         return Qt::NoItemFlags;
     }
-    if ( index.column() == 0 ) {
+    if ( index.column() == 1 ) {
         return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable;
     }
     return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
@@ -118,7 +128,7 @@ bool ResponsesTableModel::setData( const QModelIndex& index, const QVariant& val
     if ( !index.isValid() || row < 0 || row >= rowCount ) {
         return false;
     }
-    if ( index.column() != 0 || role != Qt::CheckStateRole ) {
+    if ( index.column() != 1 || role != Qt::CheckStateRole ) {
         return false;
     }
 

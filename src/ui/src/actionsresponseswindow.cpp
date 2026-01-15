@@ -41,8 +41,8 @@ class ActionsFilterProxyModel : public QSortFilterProxyModel {
         if ( filterText_.isEmpty() ) {
             return true;
         }
-        const auto nameIndex = sourceModel()->index( sourceRow, 1, sourceParent );
-        const auto seqIndex = sourceModel()->index( sourceRow, 2, sourceParent );
+        const auto nameIndex = sourceModel()->index( sourceRow, 2, sourceParent );
+        const auto seqIndex = sourceModel()->index( sourceRow, 3, sourceParent );
         const auto name = sourceModel()->data( nameIndex, Qt::DisplayRole ).toString();
         const auto sequence = sourceModel()->data( seqIndex, Qt::DisplayRole ).toString();
         return name.contains( filterText_, Qt::CaseInsensitive )
@@ -135,7 +135,7 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
             return false;
         }
 
-        const auto valueIndex = sourceModel()->index( sourceRow, 2, sourceParent );
+        const auto valueIndex = sourceModel()->index( sourceRow, 3, sourceParent );
         const auto matchValue
             = sourceModel()->data( valueIndex, ResponsesTableModel::MatchValueRole )
                   .toString();
@@ -354,9 +354,10 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsHeader->setSectionResizeMode( QHeaderView::Interactive );
     actionsHeader->setStretchLastSection( false );
     actionsTable_->resizeColumnsToContents();
-    actionsTable_->setColumnWidth( 0, actionsTable_->columnWidth( 0 ) + 5 );
-    capColumnWidth( actionsTable_, 1, 350 );
-    capColumnWidth( actionsTable_, 2, 600 );
+    actionsTable_->setColumnWidth( 1, actionsTable_->columnWidth( 1 ) + 5 );
+    actionsTable_->setColumnWidth( 0, qMin( actionsTable_->columnWidth( 0 ), 70 ) );
+    capColumnWidth( actionsTable_, 2, 350 );
+    capColumnWidth( actionsTable_, 3, 600 );
 
     auto* sendDelegate = new ActionSendDelegate(
         [ this, actionsProxy ]( const QModelIndex& proxyIndex ) {
@@ -367,7 +368,7 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
             }
         },
         actionsTable_ );
-    actionsTable_->setItemDelegateForColumn( 0, sendDelegate );
+    actionsTable_->setItemDelegateForColumn( 1, sendDelegate );
 
     responsesTable_ = new QTableView( this );
     responsesTable_->setModel( responsesProxy );
@@ -381,8 +382,9 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesHeader->setSectionResizeMode( QHeaderView::Interactive );
     responsesHeader->setStretchLastSection( false );
     responsesTable_->resizeColumnsToContents();
-    capColumnWidth( responsesTable_, 1, 350 );
-    capColumnWidth( responsesTable_, 2, 600 );
+    responsesTable_->setColumnWidth( 0, qMin( responsesTable_->columnWidth( 0 ), 70 ) );
+    capColumnWidth( responsesTable_, 2, 350 );
+    capColumnWidth( responsesTable_, 3, 600 );
 
     auto* actionsPanel = new QWidget( this );
     auto* actionsLayout = new QVBoxLayout( actionsPanel );
@@ -442,9 +444,10 @@ void ActionsResponsesWindow::refreshActions()
     }
     if ( actionsTable_ ) {
         actionsTable_->resizeColumnsToContents();
-        actionsTable_->setColumnWidth( 0, actionsTable_->columnWidth( 0 ) + 5 );
-        capColumnWidth( actionsTable_, 1, 350 );
-        capColumnWidth( actionsTable_, 2, 600 );
+        actionsTable_->setColumnWidth( 1, actionsTable_->columnWidth( 1 ) + 5 );
+        actionsTable_->setColumnWidth( 0, qMin( actionsTable_->columnWidth( 0 ), 70 ) );
+        capColumnWidth( actionsTable_, 2, 350 );
+        capColumnWidth( actionsTable_, 3, 600 );
     }
 }
 
@@ -455,8 +458,9 @@ void ActionsResponsesWindow::refreshResponses()
     }
     if ( responsesTable_ ) {
         responsesTable_->resizeColumnsToContents();
-        capColumnWidth( responsesTable_, 1, 350 );
-        capColumnWidth( responsesTable_, 2, 600 );
+        responsesTable_->setColumnWidth( 0, qMin( responsesTable_->columnWidth( 0 ), 70 ) );
+        capColumnWidth( responsesTable_, 2, 350 );
+        capColumnWidth( responsesTable_, 3, 600 );
     }
 }
 
@@ -478,8 +482,8 @@ void ActionsResponsesWindow::updateWindowSize()
 
     const int widthHint = qMax( tableWidthHint( actionsTable_ ),
                                 tableWidthHint( responsesTable_ ) );
-    const int desiredWidth
-        = qMax( clampToScreenWidth( this, widthHint ), minimumSizeHint().width() );
+    const int desiredWidth = qMax(
+        clampToScreenWidth( this, qMax( widthHint, 925 ) ), minimumSizeHint().width() );
     const int desiredHeight = qMax( hint.height(), minimumSizeHint().height() );
     if ( !sizeInitialized_ ) {
         resize( desiredWidth, desiredHeight );

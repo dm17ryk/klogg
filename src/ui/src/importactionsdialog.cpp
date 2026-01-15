@@ -688,7 +688,8 @@ void ImportActionsDialog::updateDialogSize()
     const int widthHint = qMax( tableWidthHint( actionsTable_ ),
                                 tableWidthHint( responsesTable_ ) );
     const int desiredWidth
-        = qMax( clampToScreenWidth( this, widthHint ), minimumSizeHint().width() );
+        = qMax( clampToScreenWidth( this, qMax( widthHint, 925 ) ),
+                minimumSizeHint().width() );
     const int desiredHeight = qMax( hint.height(), minimumSizeHint().height() );
     if ( !sizeInitialized_ ) {
         resize( desiredWidth, desiredHeight );

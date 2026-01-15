@@ -30,7 +30,7 @@ int ActionsTableModel::columnCount( const QModelIndex& parent ) const
     if ( parent.isValid() ) {
         return 0;
     }
-    return 3;
+    return 4;
 }
 
 QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
@@ -55,6 +55,14 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
     switch ( index.column() ) {
     case 0:
         if ( role == Qt::DisplayRole ) {
+            return action.id;
+        }
+        if ( role == Qt::TextAlignmentRole ) {
+            return Qt::AlignCenter;
+        }
+        break;
+    case 1:
+        if ( role == Qt::DisplayRole ) {
             return tr( "Send" );
         }
         if ( role == Qt::TextAlignmentRole ) {
@@ -64,12 +72,12 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
             return sendAvailable_;
         }
         break;
-    case 1:
+    case 2:
         if ( role == Qt::DisplayRole ) {
             return action.name;
         }
         break;
-    case 2:
+    case 3:
         if ( role == Qt::DisplayRole ) {
             return previewSequence( action.sequence );
         }
@@ -90,10 +98,12 @@ QVariant ActionsTableModel::headerData( int section,
     }
     switch ( section ) {
     case 0:
-        return tr( "Send" );
+        return tr( "Id" );
     case 1:
-        return tr( "Action" );
+        return tr( "Send" );
     case 2:
+        return tr( "Action" );
+    case 3:
         return tr( "Sequence" );
     default:
         return {};
