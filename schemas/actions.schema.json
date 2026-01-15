@@ -5,16 +5,19 @@
     "type": "object",
     "additionalProperties": false,
     "required": [
+        "version",
         "actions",
         "responses"
     ],
     "properties": {
         "$schema": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional schema reference stored in the config file (commonly a relative path)."
         },
-            "version": {
+        "version": {
             "type": "integer",
-            "minimum": 1
+            "const": 1,
+            "description": "Config format version."
         },
         "actions": {
             "type": "array",
@@ -122,7 +125,7 @@
                         },
                         "value": {
                             "type": "string",
-                            "description": "Regex pattern as string (validation of regex syntax is runtime-specific)."
+                            "description": "Regex pattern (syntax validated at runtime by the app)."
                         }
                     }
                 }
@@ -134,14 +137,12 @@
             "properties": {
                 "repeat": {
                     "type": "boolean",
-                    "default": false,
-                    "description": "If true, action may repeat according to app logic."
+                    "default": false
                 },
                 "delay": {
                     "type": "integer",
                     "minimum": 0,
-                    "default": 0,
-                    "description": "Delay value (units defined by app; example uses small integers)."
+                    "default": 0
                 }
             }
         },
@@ -151,6 +152,7 @@
             "required": [
                 "id",
                 "enabled",
+                "hidden",
                 "name",
                 "sequence"
             ],
@@ -160,7 +162,12 @@
                     "minimum": 0
                 },
                 "enabled": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "Stored from JSON; currently not used by app logic."
+                },
+                "hidden": {
+                    "type": "boolean",
+                    "description": "If true, action is hidden from the main Actions/Responses window."
                 },
                 "name": {
                     "type": "string",
@@ -185,8 +192,8 @@
             "properties": {
                 "action_id": {
                     "type": "integer",
-                    "minimum": 0,
-                    "description": "ID of an Action to send."
+                    "minimum": -1,
+                    "description": "ID of an Action to send (meaning of special values is app-defined)."
                 },
                 "action": {
                     "$ref": "#/$defs/sequence",
@@ -231,6 +238,7 @@
             "required": [
                 "id",
                 "enabled",
+                "hidden",
                 "name",
                 "match",
                 "response"
@@ -241,7 +249,12 @@
                     "minimum": 0
                 },
                 "enabled": {
-                    "type": "boolean"
+                    "type": "boolean",
+                    "description": "If true, auto-response is active."
+                },
+                "hidden": {
+                    "type": "boolean",
+                    "description": "If true, response rule is hidden from the main Actions/Responses window."
                 },
                 "name": {
                     "type": "string",
