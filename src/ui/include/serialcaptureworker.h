@@ -13,6 +13,9 @@ struct SerialCaptureSettings {
     QSerialPort::StopBits stopBits = QSerialPort::OneStop;
     QSerialPort::FlowControl flowControl = QSerialPort::NoFlowControl;
     QString filePath;
+    bool addTimestamps = false;
+    QString timestampFormat = QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" );
+    bool logTransmits = false;
 };
 
 class SerialCaptureWorker : public QObject {
@@ -42,4 +45,5 @@ class SerialCaptureWorker : public QObject {
     QFile file_;
     int flushCounter_ = 0;
     bool stopping_ = false;
+    bool atLineStart_ = true;
 };
