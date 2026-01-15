@@ -227,6 +227,26 @@ StreamSession* TabbedCrawlerWidget::streamSessionForPath( const QString& fileNam
     return it->second.get();
 }
 
+bool TabbedCrawlerWidget::hasOpenStreamSession() const
+{
+    for ( const auto& entry : streamSessions_ ) {
+        if ( entry.second && entry.second->isConnectionOpen() ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+StreamSession* TabbedCrawlerWidget::firstOpenStreamSession() const
+{
+    for ( const auto& entry : streamSessions_ ) {
+        if ( entry.second && entry.second->isConnectionOpen() ) {
+            return entry.second.get();
+        }
+    }
+    return nullptr;
+}
+
 void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
 {
     if ( mouseEvent->button() == Qt::RightButton ) {

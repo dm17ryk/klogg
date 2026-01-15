@@ -17,6 +17,8 @@ class ActionsManager : public QObject {
     static ActionsManager& instance();
 
     void loadFromRepository();
+    ActionsImportResult importFromDefinitions( QVector<ActionDefinition> actions,
+                                               QVector<ResponseDefinition> responses );
     ActionsImportResult importFromFile( const QString& path );
 
     const QVector<ActionDefinition>& actions() const;
@@ -24,10 +26,13 @@ class ActionsManager : public QObject {
 
     const ActionDefinition* findActionById( int id ) const;
     bool setResponseEnabled( int id, bool enabled );
+    bool autoResponsesEnabled() const;
+    void setAutoResponsesEnabled( bool enabled );
 
   Q_SIGNALS:
     void actionsChanged();
     void responsesChanged();
+    void autoResponsesEnabledChanged( bool enabled );
 
   private:
     ActionsManager() = default;
@@ -35,4 +40,5 @@ class ActionsManager : public QObject {
     ActionsRepository repository_;
     QVector<ActionDefinition> actions_;
     QVector<ResponseDefinition> responses_;
+    bool autoResponsesEnabled_ = true;
 };

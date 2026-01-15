@@ -4,6 +4,7 @@
 
 class ActionsTableModel;
 class ResponsesTableModel;
+class QCheckBox;
 class QLineEdit;
 class QSortFilterProxyModel;
 class QTableView;
@@ -31,4 +32,8 @@ class ActionsResponsesWindow : public QWidget {
     QLineEdit* responsesFilter_ = nullptr;
     QTableView* actionsTable_ = nullptr;
     QTableView* responsesTable_ = nullptr;
+    QCheckBox* autoResponsesCheck_ = nullptr;
+
+    void updateWindowSize();
+    bool sizeInitialized_ = false;
 };

@@ -78,6 +78,8 @@ class TabbedCrawlerWidget : public QTabWidget {
                                   const std::shared_ptr<StreamSession>& session );
     void clearStreamSessionForPath( const QString& fileName );
     StreamSession* streamSessionForPath( const QString& fileName ) const;
+    bool hasOpenStreamSession() const;
+    StreamSession* firstOpenStreamSession() const;
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;

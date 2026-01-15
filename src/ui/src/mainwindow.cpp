@@ -95,6 +95,7 @@
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
 #include "highlightersmenu.h"
+#include "importactionsdialog.h"
 #include "importpreviewsdialog.h"
 #include "issuereporter.h"
 #include "klogg_version.h"
@@ -1345,19 +1346,8 @@ void MainWindow::openImportPreviewsDialog()
 
 void MainWindow::openImportActionsDialog()
 {
-    const auto file = QFileDialog::getOpenFileName( this, tr( "Select actions JSON" ), "",
-                                                    tr( "Actions (*.json);;All files (*)" ) );
-    if ( file.isEmpty() ) {
-        return;
-    }
-    const auto result = ActionsManager::instance().importFromFile( file );
-    if ( !result.errors.isEmpty() ) {
-        QMessageBox::warning( this, tr( "Import actions" ), result.errors.join( "\n" ) );
-        return;
-    }
-    if ( !result.warnings.isEmpty() ) {
-        QMessageBox::information( this, tr( "Import actions" ), result.warnings.join( "\n" ) );
-    }
+    ImportActionsDialog dialog( this );
+    dialog.exec();
 }
 
 // Opens the 'Options' modal dialog box
@@ -1484,6 +1474,9 @@ void MainWindow::sendActionById( int actionId )
 
     auto* streamSession = currentStreamSession();
     if ( !streamSession || !streamSession->isConnectionOpen() ) {
+        streamSession = mainTabWidget_.firstOpenStreamSession();
+    }
+    if ( !streamSession ) {
         QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
         return;
     }
@@ -2070,7 +2063,10 @@ StreamSession* MainWindow::currentStreamSession() const
 void MainWindow::updateActionsSendState()
 {
     const auto* streamSession = currentStreamSession();
-    const bool available = streamSession && streamSession->isConnectionOpen();
+    bool available = streamSession && streamSession->isConnectionOpen();
+    if ( !available ) {
+        available = mainTabWidget_.hasOpenStreamSession();
+    }
     actionsResponsesWindow_.setSendAvailable( available );
 }
 

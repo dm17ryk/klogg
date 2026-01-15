@@ -1,9 +1,15 @@
 #include "actionsresponseswindow.h"
 
+#include <QAbstractItemView>
+#include <QCheckBox>
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPersistentModelIndex>
+#include <QScrollBar>
+#include <QScreen>
+#include <QSignalBlocker>
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStyledItemDelegate>
@@ -164,6 +170,64 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
     QRegularExpression regex_;
 };
 
+int tableWidthHint( QTableView* table )
+{
+    if ( !table || !table->model() ) {
+        return 0;
+    }
+    int width = table->frameWidth() * 2;
+    if ( table->verticalHeader()->isVisible() ) {
+        width += table->verticalHeader()->width();
+    }
+    for ( int column = 0; column < table->model()->columnCount(); ++column ) {
+        width += table->columnWidth( column );
+    }
+    if ( table->verticalScrollBar() ) {
+        width += table->verticalScrollBar()->sizeHint().width();
+    }
+    return width;
+}
+
+void capColumnWidth( QTableView* table, int column, int maxWidth )
+{
+    if ( !table || !table->model() ) {
+        return;
+    }
+    if ( column < 0 || column >= table->model()->columnCount() ) {
+        return;
+    }
+    if ( table->columnWidth( column ) > maxWidth ) {
+        table->setColumnWidth( column, maxWidth );
+    }
+}
+
+int clampToScreenWidth( const QWidget* widget, int width )
+{
+    const auto* screen = widget ? widget->screen() : nullptr;
+    if ( !screen ) {
+        return width;
+    }
+    const int maxWidth = static_cast<int>( screen->availableGeometry().width() * 0.7 );
+    if ( maxWidth <= 0 ) {
+        return width;
+    }
+    return qMin( width, maxWidth );
+}
+
+int tableHeightForRows( QTableView* table, int rows )
+{
+    if ( !table ) {
+        return 0;
+    }
+    const int rowHeight = table->verticalHeader()->defaultSectionSize();
+    int height = table->frameWidth() * 2 + table->horizontalHeader()->height();
+    height += rowHeight * rows;
+    if ( table->horizontalScrollBar() ) {
+        height += table->horizontalScrollBar()->sizeHint().height();
+    }
+    return height;
+}
+
 class ActionSendDelegate : public QStyledItemDelegate {
   public:
     explicit ActionSendDelegate( std::function<void( const QModelIndex& )> callback,
@@ -192,6 +256,9 @@ class ActionSendDelegate : public QStyledItemDelegate {
         if ( option.state & QStyle::State_Selected ) {
             buttonOption.state |= QStyle::State_HasFocus;
         }
+        if ( pressedIndex_ == index ) {
+            buttonOption.state |= QStyle::State_Sunken;
+        }
 
         if ( const auto* style = option.widget ? option.widget->style() : nullptr ) {
             style->drawControl( QStyle::CE_PushButton, &buttonOption, painter );
@@ -206,22 +273,48 @@ class ActionSendDelegate : public QStyledItemDelegate {
                       const QStyleOptionViewItem& option,
                       const QModelIndex& index ) override
     {
-        if ( event->type() == QEvent::MouseButtonRelease ) {
+        if ( !index.data( ActionsTableModel::SendEnabledRole ).toBool() ) {
+            return false;
+        }
+
+        if ( event->type() == QEvent::MouseButtonPress ) {
             const auto* mouseEvent = static_cast<QMouseEvent*>( event );
             if ( mouseEvent->button() == Qt::LeftButton
-                 && option.rect.contains( mouseEvent->pos() )
-                 && index.data( ActionsTableModel::SendEnabledRole ).toBool() ) {
-                if ( callback_ ) {
-                    callback_( index );
+                 && option.rect.contains( mouseEvent->pos() ) ) {
+                pressedIndex_ = index;
+                if ( auto* view = qobject_cast<QAbstractItemView*>(
+                         const_cast<QWidget*>( option.widget ) ) ) {
+                    view->viewport()->update( option.rect );
                 }
                 return true;
             }
         }
+
+        if ( event->type() == QEvent::MouseButtonRelease ) {
+            const auto* mouseEvent = static_cast<QMouseEvent*>( event );
+            const bool wasPressed = ( pressedIndex_ == index );
+            const bool shouldTrigger
+                = wasPressed && mouseEvent->button() == Qt::LeftButton
+                  && option.rect.contains( mouseEvent->pos() );
+            if ( wasPressed ) {
+                pressedIndex_ = {};
+                if ( auto* view = qobject_cast<QAbstractItemView*>(
+                         const_cast<QWidget*>( option.widget ) ) ) {
+                    view->viewport()->update( option.rect );
+                }
+            }
+            if ( shouldTrigger && callback_ ) {
+                callback_( index );
+            }
+            return wasPressed;
+        }
+
         return false;
     }
 
   private:
     std::function<void( const QModelIndex& )> callback_;
+    QPersistentModelIndex pressedIndex_;
 };
 } // namespace
 
@@ -257,9 +350,13 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsTable_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     actionsTable_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     actionsTable_->setWordWrap( false );
-    actionsTable_->horizontalHeader()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
-    actionsTable_->horizontalHeader()->setSectionResizeMode( 1, QHeaderView::Stretch );
-    actionsTable_->horizontalHeader()->setSectionResizeMode( 2, QHeaderView::Stretch );
+    auto* actionsHeader = actionsTable_->horizontalHeader();
+    actionsHeader->setSectionResizeMode( QHeaderView::Interactive );
+    actionsHeader->setStretchLastSection( false );
+    actionsTable_->resizeColumnsToContents();
+    actionsTable_->setColumnWidth( 0, actionsTable_->columnWidth( 0 ) + 5 );
+    capColumnWidth( actionsTable_, 1, 350 );
+    capColumnWidth( actionsTable_, 2, 600 );
 
     auto* sendDelegate = new ActionSendDelegate(
         [ this, actionsProxy ]( const QModelIndex& proxyIndex ) {
@@ -280,9 +377,12 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesTable_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     responsesTable_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     responsesTable_->setWordWrap( false );
-    responsesTable_->horizontalHeader()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
-    responsesTable_->horizontalHeader()->setSectionResizeMode( 1, QHeaderView::Stretch );
-    responsesTable_->horizontalHeader()->setSectionResizeMode( 2, QHeaderView::Stretch );
+    auto* responsesHeader = responsesTable_->horizontalHeader();
+    responsesHeader->setSectionResizeMode( QHeaderView::Interactive );
+    responsesHeader->setStretchLastSection( false );
+    responsesTable_->resizeColumnsToContents();
+    capColumnWidth( responsesTable_, 1, 350 );
+    capColumnWidth( responsesTable_, 2, 600 );
 
     auto* actionsPanel = new QWidget( this );
     auto* actionsLayout = new QVBoxLayout( actionsPanel );
@@ -295,6 +395,9 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesLayout->setContentsMargins( 0, 0, 0, 0 );
     responsesLayout->addWidget( responsesFilter_ );
     responsesLayout->addWidget( responsesTable_ );
+    autoResponsesCheck_ = new QCheckBox( tr( "Auto response enabled" ), this );
+    autoResponsesCheck_->setChecked( ActionsManager::instance().autoResponsesEnabled() );
+    responsesLayout->addWidget( autoResponsesCheck_ );
 
     auto* splitter = new QSplitter( Qt::Vertical, this );
     splitter->addWidget( actionsPanel );
@@ -308,11 +411,21 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
 
     refreshActions();
     refreshResponses();
+    updateWindowSize();
 
     connect( &ActionsManager::instance(), &ActionsManager::actionsChanged, this,
              &ActionsResponsesWindow::refreshActions );
     connect( &ActionsManager::instance(), &ActionsManager::responsesChanged, this,
              &ActionsResponsesWindow::refreshResponses );
+    connect( autoResponsesCheck_, &QCheckBox::toggled, this,
+             []( bool enabled ) { ActionsManager::instance().setAutoResponsesEnabled( enabled ); } );
+    connect( &ActionsManager::instance(), &ActionsManager::autoResponsesEnabledChanged,
+             this, [ this ]( bool enabled ) {
+                 if ( autoResponsesCheck_ && autoResponsesCheck_->isChecked() != enabled ) {
+                     const QSignalBlocker blocker( autoResponsesCheck_ );
+                     autoResponsesCheck_->setChecked( enabled );
+                 }
+             } );
 }
 
 void ActionsResponsesWindow::setSendAvailable( bool available )
@@ -327,11 +440,49 @@ void ActionsResponsesWindow::refreshActions()
     if ( actionsModel_ ) {
         actionsModel_->refresh();
     }
+    if ( actionsTable_ ) {
+        actionsTable_->resizeColumnsToContents();
+        actionsTable_->setColumnWidth( 0, actionsTable_->columnWidth( 0 ) + 5 );
+        capColumnWidth( actionsTable_, 1, 350 );
+        capColumnWidth( actionsTable_, 2, 600 );
+    }
 }
 
 void ActionsResponsesWindow::refreshResponses()
 {
     if ( responsesModel_ ) {
         responsesModel_->refresh();
+    }
+    if ( responsesTable_ ) {
+        responsesTable_->resizeColumnsToContents();
+        capColumnWidth( responsesTable_, 1, 350 );
+        capColumnWidth( responsesTable_, 2, 600 );
+    }
+}
+
+void ActionsResponsesWindow::updateWindowSize()
+{
+    if ( !actionsTable_ || !responsesTable_ ) {
+        return;
+    }
+    const int previousActionsMin = actionsTable_->minimumHeight();
+    const int previousResponsesMin = responsesTable_->minimumHeight();
+    actionsTable_->setMinimumHeight( tableHeightForRows( actionsTable_, 10 ) );
+    responsesTable_->setMinimumHeight( tableHeightForRows( responsesTable_, 10 ) );
+    if ( layout() ) {
+        layout()->activate();
+    }
+    const QSize hint = sizeHint();
+    actionsTable_->setMinimumHeight( previousActionsMin );
+    responsesTable_->setMinimumHeight( previousResponsesMin );
+
+    const int widthHint = qMax( tableWidthHint( actionsTable_ ),
+                                tableWidthHint( responsesTable_ ) );
+    const int desiredWidth
+        = qMax( clampToScreenWidth( this, widthHint ), minimumSizeHint().width() );
+    const int desiredHeight = qMax( hint.height(), minimumSizeHint().height() );
+    if ( !sizeInitialized_ ) {
+        resize( desiredWidth, desiredHeight );
+        sizeInitialized_ = true;
     }
 }

@@ -1,9 +1,11 @@
 #include "actionsmanager.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "actionsconfigparser.h"
 #include "log.h"
+#include "persistentinfo.h"
 
 ActionsManager& ActionsManager::instance()
 {
@@ -19,8 +21,31 @@ void ActionsManager::loadFromRepository()
     }
     actions_ = result.actions;
     responses_ = result.responses;
+    autoResponsesEnabled_
+        = PersistentInfo::getSettings( app_settings{} )
+              .value( "Actions/autoResponsesEnabled", true )
+              .toBool();
     Q_EMIT actionsChanged();
     Q_EMIT responsesChanged();
+    Q_EMIT autoResponsesEnabledChanged( autoResponsesEnabled_ );
+}
+
+ActionsImportResult ActionsManager::importFromDefinitions(
+    QVector<ActionDefinition> actions,
+    QVector<ResponseDefinition> responses )
+{
+    ActionsImportResult result;
+    if ( !repository_.save( actions, responses ) ) {
+        result.errors.push_back( tr( "Failed to save actions to settings." ) );
+        return result;
+    }
+
+    actions_ = std::move( actions );
+    responses_ = std::move( responses );
+    result.ok = true;
+    Q_EMIT actionsChanged();
+    Q_EMIT responsesChanged();
+    return result;
 }
 
 ActionsImportResult ActionsManager::importFromFile( const QString& path )
@@ -34,17 +59,10 @@ ActionsImportResult ActionsManager::importFromFile( const QString& path )
         return result;
     }
 
-    actions_ = parsed.actions;
-    responses_ = parsed.responses;
-    result.ok = repository_.save( actions_, responses_ );
-    if ( !result.ok ) {
-        result.errors.push_back( tr( "Failed to save actions to settings." ) );
-        return result;
-    }
-
-    Q_EMIT actionsChanged();
-    Q_EMIT responsesChanged();
-    return result;
+    auto imported = importFromDefinitions( std::move( parsed.actions ),
+                                           std::move( parsed.responses ) );
+    imported.warnings = result.warnings;
+    return imported;
 }
 
 const QVector<ActionDefinition>& ActionsManager::actions() const
@@ -88,4 +106,20 @@ bool ActionsManager::setResponseEnabled( int id, bool enabled )
     }
     Q_EMIT responsesChanged();
     return true;
+}
+
+bool ActionsManager::autoResponsesEnabled() const
+{
+    return autoResponsesEnabled_;
+}
+
+void ActionsManager::setAutoResponsesEnabled( bool enabled )
+{
+    if ( autoResponsesEnabled_ == enabled ) {
+        return;
+    }
+    autoResponsesEnabled_ = enabled;
+    auto& settings = PersistentInfo::getSettings( app_settings{} );
+    settings.setValue( "Actions/autoResponsesEnabled", enabled );
+    Q_EMIT autoResponsesEnabledChanged( enabled );
 }

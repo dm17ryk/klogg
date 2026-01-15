@@ -180,6 +180,10 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         return;
     }
 
+    if ( !ActionsManager::instance().autoResponsesEnabled() ) {
+        return;
+    }
+
     const auto& responses = ActionsManager::instance().responses();
     if ( responses.isEmpty() ) {
         return;
