@@ -135,6 +135,7 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
             return false;
         }
 
+        const auto nameIndex = sourceModel()->index( sourceRow, 2, sourceParent );
         const auto valueIndex = sourceModel()->index( sourceRow, 3, sourceParent );
         const auto matchValue
             = sourceModel()->data( valueIndex, ResponsesTableModel::MatchValueRole )
@@ -143,6 +144,7 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
             = sourceModel()->data( valueIndex, ResponsesTableModel::MatchTypeRole )
                   .toInt();
         const auto matchType = static_cast<ResponseMatchType>( matchTypeValue );
+        const auto responseName = sourceModel()->data( nameIndex, Qt::DisplayRole ).toString();
 
         if ( filterType_ == ResponseFilterType::Hex ) {
             if ( matchType != ResponseMatchType::HexString ) {
@@ -159,7 +161,8 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
             return regex_.match( matchValue ).hasMatch();
         }
 
-        return matchValue.contains( filterText_, Qt::CaseInsensitive );
+        return matchValue.contains( filterText_, Qt::CaseInsensitive )
+               || responseName.contains( filterText_, Qt::CaseInsensitive );
     }
 
   private:

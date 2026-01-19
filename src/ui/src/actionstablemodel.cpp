@@ -161,7 +161,11 @@ QString ActionsTableModel::previewSequence( const ActionSequence& sequence ) con
 
 QString ActionsTableModel::tooltipForAction( const ActionDefinition& action ) const
 {
-    QString tooltip = action.description;
+    QString tooltip = tr( "Id: %1" ).arg( action.id );
+    if ( !action.description.isEmpty() ) {
+        tooltip.append( '\n' );
+        tooltip.append( action.description );
+    }
     if ( !tooltip.isEmpty() ) {
         tooltip.append( '\n' );
     }
