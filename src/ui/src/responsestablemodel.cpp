@@ -166,7 +166,11 @@ QString ResponsesTableModel::previewMatch( const ResponseMatchDefinition& match 
 
 QString ResponsesTableModel::tooltipForResponse( const ResponseDefinition& response ) const
 {
-    QString tooltip = response.description;
+    QString tooltip = tr( "Id: %1" ).arg( response.id );
+    if ( !response.description.isEmpty() ) {
+        tooltip.append( '\n' );
+        tooltip.append( response.description );
+    }
     if ( !tooltip.isEmpty() ) {
         tooltip.append( '\n' );
     }
@@ -200,4 +204,3 @@ QString ResponsesTableModel::tooltipForResponse( const ResponseDefinition& respo
                                                                   : tr( "no" ) ) );
     return tooltip;
 }
-//tmp

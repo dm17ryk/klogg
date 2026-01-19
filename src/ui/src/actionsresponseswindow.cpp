@@ -300,7 +300,7 @@ class ActionSendDelegate : public QStyledItemDelegate {
                 = wasPressed && mouseEvent->button() == Qt::LeftButton
                   && option.rect.contains( mouseEvent->pos() );
             if ( wasPressed ) {
-                pressedIndex_ = {};
+                pressedIndex_ = QPersistentModelIndex();
                 if ( auto* view = qobject_cast<QAbstractItemView*>(
                          const_cast<QWidget*>( option.widget ) ) ) {
                     view->viewport()->update( option.rect );
@@ -312,6 +312,7 @@ class ActionSendDelegate : public QStyledItemDelegate {
             return wasPressed;
         }
 
+        pressedIndex_ = QPersistentModelIndex();
         return false;
     }
 

@@ -1,0 +1,70 @@
+[801/893] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/actionsresponseswindow.cpp.o
+FAILED: src/ui/CMakeFiles/klogg_ui.dir/src/actionsresponseswindow.cpp.o 
+/usr/bin/c++ -DCRASHPAD_ZLIB_SOURCE_SYSTEM -DKLOGG_HAS_HS -DKLOGG_KARCHIVE -DKLOGG_USE_SENTRY -DLZMA_API_STATIC -DQT_CONCURRENT_LIB -DQT_CORE5COMPAT_LIB -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MESSAGELOGCONTEXT -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_NO_KEYWORDS -DQT_SERIALPORT_LIB -DQT_WIDGETS_LIB -DQT_XML_LIB -DSENTRY_BUILD_STATIC -DTYPE_SAFE_ARITHMETIC_POLICY=1 -DTYPE_SAFE_ENABLE_ASSERTIONS=0 -DTYPE_SAFE_ENABLE_PRECONDITION_CHECKS=1 -DTYPE_SAFE_ENABLE_WRAPPER=1 -DZLIB_CONST -Dexprtk_disable_break_continue -Dexprtk_disable_caseinsensitivity -Dexprtk_disable_comments -Dexprtk_disable_return_statement -Dexprtk_disable_rtl_io_file -Dexprtk_disable_rtl_vecops -Dexprtk_disable_string_capabilities -Dexprtk_disable_superscalar_unroll -I/Users/runner/work/klogg/klogg/build_root/src/ui/klogg_ui_autogen/include -I/Users/runner/work/klogg/klogg/build_root/generated -I/Users/runner/work/klogg/klogg/src/ui/include -I/Users/runner/work/klogg/klogg/src/logdata/include -I/Users/runner/work/klogg/klogg/src/crash_handler/include -I/Users/runner/work/klogg/klogg/src/klogg_version/include -I/Users/runner/work/klogg/klogg/src/utils/include -I/Users/runner/work/klogg/klogg/src/logging/include -I/Users/runner/work/klogg/klogg/cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/external/debug_assert -I/Users/runner/work/klogg/klogg/src/settings/include -I/Users/runner/work/klogg/klogg/src/regex/include -I/Users/runner/work/klogg/klogg/cpm_cache/vectorscan/629fa91284114b50c3dea817d57736b55f57d1f7/src -I/Users/runner/work/klogg/klogg/build_root/_deps/vectorscan-build -I/Users/runner/work/klogg/klogg/src/filewatch/include -I/Users/runner/work/klogg/klogg/cpm_cache/kdtoolbox/f089c6a6095c1a28ddfe98af5b8fbfebc08d9abc/qt/KDSignalThrottler/src -I/Users/runner/work/klogg/klogg/src/versioncheck/include -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/karchive/src -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmzlib -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmzlib/.. -I/Users/runner/work/klogg/klogg/build_root/_deps/kf5archive-build/cmzlib/.. -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmbzip2 -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/common -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/api -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/check -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/common -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/delta -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/lz -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/lzma -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/rangecoder -I/Users/runner/work/klogg/klogg/cpm_cache/kf5archive/3e2edfcb15644a6b8e12fa573fb63d6c789b87f8/cmliblzma/liblzma/simple -I/Users/runner/work/klogg/klogg/build_root/_deps/kf5archive-build/cmliblzma -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers -iframework /Users/runner/work/klogg/Qt/6.10.1/macos/lib -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/mkspecs/macx-clang -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/include -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtGui.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtWidgets.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtNetwork.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtConcurrent.framework/Headers -isystem /Users/runner/work/klogg/klogg/cpm_cache/whereami/3493cc5ebf66839eb1b655c7a15485a6bec8da0b/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/type_safe/522778c40defa787135a69f97c91474f32b806d8/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/mimalloc/72f0d2cb40cc97ffde9214409da7eaed994d09ec/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/tbb/539ebec929a4f249bd476ee5438d99a2f6d143b6/src/tbb/../../include -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/compat/non_win -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/compat/mac -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium/mini_chromium -isystem /Users/runner/work/klogg/klogg/cpm_cache/sentry/90f2f1fe37906683c0d2915bb2092f00d8230cfa/external/crashpad/third_party/mini_chromium -isystem /Users/runner/work/klogg/klogg/cpm_cache/robin_hood/3021654263182c9fd735c07f03515f733d8cabf3/src/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/exprtk/2cb684fb7cce0533009dbb079d5dce2d10d12b4f -isystem /Users/runner/work/klogg/klogg/cpm_cache/efsw/9a6f9531370e39d45ad07f0d11fbc757c78db9b2/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/efsw/9a6f9531370e39d45ad07f0d11fbc757c78db9b2/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/croaring/ba5bf40909b6935a298d4d2231f2072e6de80041/cpp -isystem /Users/runner/work/klogg/klogg/cpm_cache/uchardet/07796f5a7ae497f21326412ce164e883f5fd5b0f/src -isystem /Users/runner/work/klogg/klogg/cpm_cache/simdutf/53ef12b2e3fa82518fc58308f3f47ca0f38b1b05/include -isystem /Users/runner/work/klogg/klogg/cpm_cache/streamvbyte/961029b45fa088a983f595680470413a23037d1c/include -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore5Compat.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtSerialPort.framework/Headers -isystem /Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtXml.framework/Headers -Wno-error=deprecated-declarations -fno-sized-deallocation -fno-omit-frame-pointer -march=native -mtune=generic -O3 -DNDEBUG -std=gnu++17 -flto=thin -arch arm64 -isysroot /Applications/Xcode_15.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -mmacosx-version-min=14.0 -ffast-math -stdlib=libc++ -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion -Wno-null-dereference -Wdouble-promotion -Wformat=2 -Werror -fobjc-arc -fno-objc-arc-exceptions -fPIC -MD -MT src/ui/CMakeFiles/klogg_ui.dir/src/actionsresponseswindow.cpp.o -MF src/ui/CMakeFiles/klogg_ui.dir/src/actionsresponseswindow.cpp.o.d -o src/ui/CMakeFiles/klogg_ui.dir/src/actionsresponseswindow.cpp.o -c /Users/runner/work/klogg/klogg/src/ui/src/actionsresponseswindow.cpp
+/Users/runner/work/klogg/klogg/src/ui/src/actionsresponseswindow.cpp:35:9: warning: 'invalidateFilter' is deprecated: Use begin/endFilterChange() instead [-Wdeprecated-declarations]
+        invalidateFilter();
+        ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qsortfilterproxymodel.h:127:5: note: 'invalidateFilter' has been explicitly marked deprecated here
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange() instead")
+    ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:245:45: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_13'
+# define QT_DEPRECATED_VERSION_X_6_13(text) QT_DEPRECATED_X(text)
+                                            ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+/Users/runner/work/klogg/klogg/src/ui/src/actionsresponseswindow.cpp:103:13: warning: 'invalidateFilter' is deprecated: Use begin/endFilterChange() instead [-Wdeprecated-declarations]
+            invalidateFilter();
+            ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qsortfilterproxymodel.h:127:5: note: 'invalidateFilter' has been explicitly marked deprecated here
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange() instead")
+    ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:245:45: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_13'
+# define QT_DEPRECATED_VERSION_X_6_13(text) QT_DEPRECATED_X(text)
+                                            ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+/Users/runner/work/klogg/klogg/src/ui/src/actionsresponseswindow.cpp:125:9: warning: 'invalidateFilter' is deprecated: Use begin/endFilterChange() instead [-Wdeprecated-declarations]
+        invalidateFilter();
+        ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qsortfilterproxymodel.h:127:5: note: 'invalidateFilter' has been explicitly marked deprecated here
+    QT_DEPRECATED_VERSION_X_6_13("Use begin/endFilterChange() instead")
+    ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:245:45: note: expanded from macro 'QT_DEPRECATED_VERSION_X_6_13'
+# define QT_DEPRECATED_VERSION_X_6_13(text) QT_DEPRECATED_X(text)
+                                            ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtdeprecationmarkers.h:29:33: note: expanded from macro 'QT_DEPRECATED_X'
+#  define QT_DEPRECATED_X(text) Q_DECL_DEPRECATED_X(text)
+                                ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qcompilerdetection.h:1011:36: note: expanded from macro 'Q_DECL_DEPRECATED_X'
+#  define Q_DECL_DEPRECATED_X(x) [[deprecated(x)]]
+                                   ^
+/Users/runner/work/klogg/klogg/src/ui/src/actionsresponseswindow.cpp:303:31: error: use of overloaded operator '=' is ambiguous (with operand types 'QPersistentModelIndex' and 'void')
+                pressedIndex_ = {};
+                ~~~~~~~~~~~~~ ^ ~~
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qabstractitemmodel.h:200:5: note: candidate function
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QPersistentModelIndex)
+    ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qtclasshelpermacros.h:81:12: note: expanded from macro 'QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP'
+    Class &operator=(Class &&other) noexcept { \
+           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qabstractitemmodel.h:197:28: note: candidate function
+    QPersistentModelIndex &operator=(const QPersistentModelIndex &other);
+                           ^
+/Users/runner/work/klogg/Qt/6.10.1/macos/lib/QtCore.framework/Headers/qabstractitemmodel.h:206:28: note: candidate function
+    QPersistentModelIndex &operator=(const QModelIndex &other);
+                           ^
+3 warnings and 1 error generated.
+[802/893] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/actionstablemodel.cpp.o
+[803/893] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/klogg_ui_autogen/mocs_compilation.cpp.o
+[804/893] Building CXX object src/ui/CMakeFiles/klogg_ui.dir/src/abstractlogview.cpp.o
+[805/893] Linking CXX executable output/klogg_grep
+ninja: build stopped: subcommand failed.
+Error: Process completed with exit code 1.
