@@ -6,7 +6,7 @@
       "name": "ehci_tag_generic_match",
       "format": "match",
       "type": "string",
-      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+      "regex": "^(?<tag>[A-Z]{1,4})(?<args>.*)$",
       "bufferCapture": "args",
       "fields": [
         { "name": "tag_name", "format": "string", "width": 4 },
@@ -126,17 +126,11 @@
       "name": "ehci_info_map_kv",
       "format": "match",
       "type": "string",
-      "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)$",
+      "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)(?:#7\\s*)?$",
       "bufferCapture": "k",
       "fields": [
         { "name": "kv_key", "format": "string", "width": 4 },
-        {
-          "name": "kv_value",
-          "format": "string",
-          "width": 0,
-          "regex": "(?<val>.*)",
-          "bufferCapture": "val"
-        }
+        { "name": "kv_value", "format": "string", "width": 0 }
       ]
     },
 
@@ -214,7 +208,7 @@
     {
       "name": "EHCI (direct quoted)",
       "enabled": true,
-      "regex": "^.*\\\"(?<ehciPayload>EHCI[^\\\"]*)\\\".*$",
+      "regex": "^.*\"(?<ehciPayload>EHCI[^\"]*)\".*$",
       "bufferCapture": "ehciPayload",
       "type": "string",
       "format": "match",
@@ -230,14 +224,14 @@
               "name": "sections",
               "format": "match",
               "type": "string",
-              "regex": "(?<sec>(?:\\{[^}]*\\}|[A-Z]{2,4}[^A-Z#\\{]*))",
+              "regex": "(?<sec>(?:#\\d+\\s*)?(?:\\{[^}]*\\}|[A-Z]{1,4}[^A-Z#\\{]*))",
               "bufferCapture": "sec",
               "fields": [
                 {
                   "name": "section",
                   "format": "match",
                   "type": "string",
-                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{2,4})(?<args>.*))$",
+                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{1,4})(?<args>.*))$",
                   "bufferCapture": "0",
                   "fields": [
                     {
@@ -258,7 +252,7 @@
                       "name": "is_tag",
                       "format": "match",
                       "type": "string",
-                      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+                      "regex": "^(?<tag>[A-Z]{1,4})(?<args>.*)$",
                       "bufferCapture": "tag",
                       "fields": [
                         {
@@ -283,9 +277,9 @@
     },
 
     {
-      "name": "EHCI (direct not quoted)",
+      "name": "EHCI (direct anywhere in line)",
       "enabled": true,
-      "regex": "^(?<ehciPayload>EHCI.*)$",
+      "regex": ".*(?<ehciPayload>EHCI\\d{3}.*)",
       "bufferCapture": "ehciPayload",
       "type": "string",
       "format": "match",
@@ -301,14 +295,14 @@
               "name": "sections",
               "format": "match",
               "type": "string",
-              "regex": "(?<sec>(?:\\{[^}]*\\}|[A-Z]{2,4}[^A-Z#\\{]*))",
+              "regex": "(?<sec>(?:#\\d+\\s*)?(?:\\{[^}]*\\}|[A-Z]{1,4}[^A-Z#\\{]*))",
               "bufferCapture": "sec",
               "fields": [
                 {
                   "name": "section",
                   "format": "match",
                   "type": "string",
-                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{2,4})(?<args>.*))$",
+                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{1,4})(?<args>.*))$",
                   "bufferCapture": "0",
                   "fields": [
                     {
@@ -329,7 +323,7 @@
                       "name": "is_tag",
                       "format": "match",
                       "type": "string",
-                      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+                      "regex": "^(?<tag>[A-Z]{1,4})(?<args>.*)$",
                       "bufferCapture": "tag",
                       "fields": [
                         {
