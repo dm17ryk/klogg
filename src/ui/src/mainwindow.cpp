@@ -2095,7 +2095,7 @@ void MainWindow::updateComPortStatus()
     const auto* streamSession = currentStreamSession();
     if ( streamSession && streamSession->isConnectionOpen() ) {
         const auto settings = streamSession->captureSettings();
-        comPortField->setText( tr( "COM %1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
+        comPortField->setText( tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
         comPortField->setVisible( true );
     }
     else {

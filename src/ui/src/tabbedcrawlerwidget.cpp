@@ -117,6 +117,9 @@ void TabbedCrawlerWidget::loadIcons()
 {
     IconLoader iconLoader{ this };
     olddata_icon_ = iconLoader.load( "olddata_icon" );
+    if ( connectionIcon_.isNull() ) {
+        connectionIcon_ = iconLoader.load( "icons8-lock" );
+    }
     for ( int tab = 0; tab < count(); ++tab ) {
         updateIcon( tab );
     }
@@ -131,7 +134,9 @@ void TabbedCrawlerWidget::changeEvent( QEvent* event )
             const auto it = streamSessions_.find( path );
             const bool connected = it != streamSessions_.end() && it->second
                                    && it->second->isConnectionOpen();
-            setTabConnectionState( path, connected );
+            const SerialCaptureSettings* settings
+                = connected ? &it->second->captureSettings() : nullptr;
+            setTabConnectionState( path, connected, settings );
         }
         dispatchToMainThread( [ this ] { loadIcons(); } );
     }
@@ -157,6 +162,14 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
     setCurrentIndex( index );
 
     updateTabBarVisibility();
+
+    const auto sessionIt = streamSessions_.find( fileName );
+    if ( sessionIt != streamSessions_.end() && sessionIt->second ) {
+        const bool connected = sessionIt->second->isConnectionOpen();
+        const auto* settings
+            = connected ? &sessionIt->second->captureSettings() : nullptr;
+        setTabConnectionState( fileName, connected, settings );
+    }
 }
 
 void TabbedCrawlerWidget::removeCrawler( int index )
@@ -175,7 +188,7 @@ void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
 
     if ( session ) {
         streamSessions_[ fileName ] = session;
-        setTabConnectionState( fileName, session->isConnectionOpen() );
+        setTabConnectionState( fileName, session->isConnectionOpen(), &session->captureSettings() );
     }
     else {
         clearStreamSessionForPath( fileName );
@@ -444,11 +457,24 @@ void TabbedCrawlerWidget::updateTabBarVisibility()
     myTabBar_.setVisible( alwaysShowTabBar_ || count() > 1 );
 }
 
-void TabbedCrawlerWidget::setTabConnectionState( const QString& fileName, bool connected )
+void TabbedCrawlerWidget::setTabConnectionState( const QString& fileName, bool connected,
+                                                 const SerialCaptureSettings* settings )
 {
     const auto color = connected ? openStreamTabColor_ : defaultTabTextColor_;
     for ( int i = 0; i < count(); ++i ) {
         if ( tabPathAt( i ) == fileName ) {
+            const auto baseToolTip = QDir::toNativeSeparators( fileName );
+            if ( connected && settings ) {
+                myTabBar_.setTabToolTip(
+                    i, QStringLiteral( "%1 (%2 @ %3)" )
+                           .arg( baseToolTip, settings->portName )
+                           .arg( settings->baudRate ) );
+                myTabBar_.setTabIcon( i, connectionIcon_ );
+            }
+            else {
+                myTabBar_.setTabToolTip( i, baseToolTip );
+                updateIcon( i );
+            }
             myTabBar_.setTabTextColor( i, color );
             break;
         }
@@ -460,11 +486,6 @@ void TabbedCrawlerWidget::setAlwaysShowTabBar( bool alwaysShow )
     alwaysShowTabBar_ = alwaysShow;
     updateTabBarVisibility();
 }
-
-
-
-
-
 
 
 

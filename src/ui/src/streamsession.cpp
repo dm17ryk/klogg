@@ -96,7 +96,7 @@ QString StreamSession::filePath() const
     return settings_.filePath;
 }
 
-SerialCaptureSettings StreamSession::captureSettings() const
+const SerialCaptureSettings& StreamSession::captureSettings() const
 {
     return settings_;
 }

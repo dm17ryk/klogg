@@ -22,6 +22,8 @@
 
 #include <QTabBar>
 #include <QTabWidget>
+#include <QColor>
+#include <QIcon>
 #include <map>
 #include <memory>
 #include <qobjectdefs.h>
@@ -31,6 +33,7 @@
 #include "loadingstatus.h"
 
 class StreamSession;
+struct SerialCaptureSettings;
 
 // This class represents glogg's main widget, a tabbed
 // group of CrawlerWidgets.
@@ -88,7 +91,8 @@ class TabbedCrawlerWidget : public QTabWidget {
 
   private:
     void updateTabBarVisibility();
-    void setTabConnectionState( const QString& fileName, bool connected );
+    void setTabConnectionState( const QString& fileName, bool connected,
+                                const SerialCaptureSettings* settings = nullptr );
 
   public:
     void setAlwaysShowTabBar( bool alwaysShow );
@@ -121,6 +125,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     bool alwaysShowTabBar_ = false;
     QColor defaultTabTextColor_;
     const QColor openStreamTabColor_{ 0, 160, 0 };
+    QIcon connectionIcon_{ ":/images/icons8-lock-16.png" };
 };
 
 #endif
