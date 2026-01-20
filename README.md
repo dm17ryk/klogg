@@ -220,7 +220,8 @@ This project is licensed under the GPLv3 or later - see [COPYING](COPYING) file 
 ## Authors
 
 * **[Dmitry Kokotov](https://github.com/dm17ryk)**
-* *Initial work* - **[Nicolas Bonnefon](https://github.com/variar)**
+* *Initial work* - **[Anton Filimonov](https://github.com/variar)**
+* *Initial work* - **[Nicolas Bonnefon](https://github.com/nickbnf)**
 
 See also the list of [contributors](https://klogg.filimonov.dev/docs/getting_involved/#contributors) who participated in this project.
 

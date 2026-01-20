@@ -144,25 +144,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -258,25 +248,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -416,25 +396,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -530,25 +500,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -684,7 +644,8 @@
           "name": "batch_id_used_to_identify_all_records_which_have_been_read_from_a_device_in_a_single_session",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "device_model",
@@ -721,7 +682,8 @@
           "name": "batch_id_used_to_identify_all_records_which_have_been_read_from_a_device_in_a_single_session",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "reminder_id",
@@ -897,25 +859,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -1011,25 +963,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -1210,25 +1152,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -1324,25 +1256,15 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "00:00",
             "00": "00:00",
-            "1": "00:15",
             "01": "00:15",
-            "2": "00:30",
             "02": "00:30",
-            "3": "00:45",
             "03": "00:45",
-            "4": "01:00",
             "04": "01:00",
-            "5": "01:15",
             "05": "01:15",
-            "6": "01:30",
             "06": "01:30",
-            "7": "01:45",
             "07": "01:45",
-            "8": "02:00",
             "08": "02:00",
-            "9": "02:15",
             "09": "02:15",
             "10": "02:30",
             "11": "02:45",
@@ -1491,43 +1413,50 @@
           "name": "r0_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "r1_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "r2_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "r3_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "link_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "program_counter_register_value",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "task_id",
           "width": 3,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "command_executed",
@@ -1907,7 +1836,8 @@
           "name": "sim_icc_id",
           "width": 20,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "mcc_mnc",
@@ -1936,21 +1866,22 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "Less than 0.2% (best quality)",
-            "1": "0.2% to 0.4%",
-            "2": "0.4% to 0.8%",
-            "3": "0.8% to 1.6%",
-            "4": "1.6% to 3.2%",
-            "5": "3.2% to 6.4%",
-            "6": "6.4% to 12.8%",
-            "7": "more than 12.8% (worst quality)"
+            "00": "Less than 0.2% (best quality)",
+            "01": "0.2% to 0.4%",
+            "02": "0.4% to 0.8%",
+            "03": "0.8% to 1.6%",
+            "04": "1.6% to 3.2%",
+            "05": "3.2% to 6.4%",
+            "06": "6.4% to 12.8%",
+            "07": "more than 12.8% (worst quality)"
           }
         },
         {
           "name": "test_id",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "pstn_status",
@@ -2078,12 +2009,12 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "1": "cellular",
-            "2": "PSTN",
-            "4": "Ethernet",
-            "3": "Cellular & PSTN",
-            "5": "Cellular & Ethernet",
-            "6": "PSTN & Ethernet"
+            "01": "cellular",
+            "02": "PSTN",
+            "04": "Ethernet",
+            "03": "Cellular & PSTN",
+            "05": "Cellular & Ethernet",
+            "06": "PSTN & Ethernet"
           }
         },
         {
@@ -2372,7 +2303,8 @@
           "name": "sim_icc_id",
           "width": 20,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "mcc_mnc",
@@ -2401,14 +2333,14 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "Less than 0.2% (best quality)",
-            "1": "0.2% to 0.4%",
-            "2": "0.4% to 0.8%",
-            "3": "0.8% to 1.6%",
-            "4": "1.6% to 3.2%",
-            "5": "3.2% to 6.4%",
-            "6": "6.4% to 12.8%",
-            "7": "more than 12.8% (worst quality)"
+            "00": "Less than 0.2% (best quality)",
+            "01": "0.2% to 0.4%",
+            "02": "0.4% to 0.8%",
+            "03": "0.8% to 1.6%",
+            "04": "1.6% to 3.2%",
+            "05": "3.2% to 6.4%",
+            "06": "6.4% to 12.8%",
+            "07": "more than 12.8% (worst quality)"
           }
         },
         {
@@ -2456,7 +2388,8 @@
           "name": "test_id",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -2521,9 +2454,9 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "1": "Improved Audio Codec",
-            "2": "Supports New RF Power Amplifier",
-            "4": "Supports New BQ Power Supply"
+            "01": "Improved Audio Codec",
+            "02": "Supports New RF Power Amplifier",
+            "04": "Supports New BQ Power Supply"
           }
         },
         {
@@ -2710,7 +2643,8 @@
           "name": "batch_id_as_part_of_batch",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -3305,7 +3239,8 @@
           "name": "test_id",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -3877,7 +3812,8 @@
           "name": "tamper_sequence",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -4039,7 +3975,8 @@
           "name": "call_id",
           "width": 4,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "call_ending_reason_code",
@@ -4085,7 +4022,8 @@
           "name": "call_id",
           "width": 4,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         },
         {
           "name": "device_id",
@@ -4885,36 +4823,78 @@
           "name": "message_request_delay",
           "width": 2,
           "format": "enum",
-          "enumMap": {
-            "0": "default or N/A",
-            "20": "seconds",
-            "99": "No Change"
-          }
+	  "enumMap": {
+	    "00": "default or N/A",
+	    "05": "seconds",
+	    "06": "seconds",
+	    "07": "seconds",
+	    "08": "seconds",
+	    "09": "seconds",
+	    "10": "seconds",
+	    "11": "seconds",
+	    "12": "seconds",
+	    "13": "seconds",
+	    "14": "seconds",
+	    "15": "seconds",
+	    "16": "seconds",
+	    "17": "seconds",
+	    "18": "seconds",
+	    "19": "seconds",
+	    "20": "seconds",
+	    "99": "No Change"
+	  }
         },
         {
           "name": "message_request_duration",
           "width": 2,
           "format": "enum",
-          "enumMap": {
-            "0": "default or N/A",
-            "30": "minutes",
-            "99": "No Change"
-          }
+	  "enumMap": {
+	    "00": "default or N/A",
+	    "03": "minutes",
+	    "04": "minutes",
+	    "05": "minutes",
+	    "06": "minutes",
+	    "07": "minutes",
+	    "08": "minutes",
+	    "09": "minutes",
+	    "10": "minutes",
+	    "11": "minutes",
+	    "12": "minutes",
+	    "13": "minutes",
+	    "14": "minutes",
+	    "15": "minutes",
+	    "16": "minutes",
+	    "17": "minutes",
+	    "18": "minutes",
+	    "19": "minutes",
+	    "20": "minutes",
+	    "21": "minutes",
+	    "22": "minutes",
+	    "23": "minutes",
+	    "24": "minutes",
+	    "25": "minutes",
+	    "26": "minutes",
+	    "27": "minutes",
+	    "28": "minutes",
+	    "29": "minutes",
+	    "30": "minutes",
+	    "99": "No Change"
+	  }
         },
         {
           "name": "flavor",
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "Default (UMO in SCAIP) or N/A",
-            "1": "ENAI",
-            "2": "VITAL (previously known as Camanio)",
-            "3": "Answerlink with FreeSwitch Proxy",
-            "4": "NEAT",
-            "5": "Victrix (FFU)",
-            "6": "ESI F1",
-            "7": "PNC",
-            "8": "LMS",
+            "00": "Default (UMO in SCAIP) or N/A",
+            "01": "ENAI",
+            "02": "VITAL (previously known as Camanio)",
+            "03": "Answerlink with FreeSwitch Proxy",
+            "04": "NEAT",
+            "05": "Victrix (FFU)",
+            "06": "ESI F1",
+            "07": "PNC",
+            "08": "LMS",
             "FF": "No Change"
           }
         },
@@ -5001,7 +4981,8 @@
           "name": "batch_id_notes",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -5051,7 +5032,8 @@
           "name": "batch_id_notes",
           "width": 8,
           "type": "hexString",
-          "format": "hex"
+          "format": "hex",
+          "endianness": "little"
         }
       ]
     },
@@ -5981,7 +5963,8 @@
           "name": "test_id",
           "width": 8,
           "type": "hexString",
-          "format": "dig"
+          "format": "dig",
+          "endianness": "little"
         },
         {
           "name": "device_id",
@@ -6027,7 +6010,8 @@
           "name": "test_id",
           "width": 8,
           "type": "hexString",
-          "format": "dig"
+          "format": "dig",
+          "endianness": "little"
         },
         {
           "name": "number_of_samples_to_take",
@@ -6103,8 +6087,8 @@
           "width": 2,
           "format": "enum",
           "enumMap": {
-            "0": "Start DST",
-            "1": "End DST"
+            "00": "Start DST",
+            "01": "End DST"
           }
         },
         {
@@ -6677,7 +6661,7 @@
     {
       "name": "EHCP (direct not quoted)",
       "enabled": true,
-      "regex": "^(?<ehcpPayload>EHCP[^\"]*)(<CR>)?(<LF>)?$",
+      "regex": "^.*(?<ehcpPayload>EHCP[^\"]*)(<CR>)?(<LF>)?$",
       "bufferCapture": "ehcpPayload",
       "type": "string",
       "format": "fields",
@@ -6692,7 +6676,7 @@
     {
       "name": "SRING -> EHCP",
       "enabled": true,
-      "regex": "^SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)(<CR>)?(<LF>)?$",
+      "regex": "^.*SRING:\\s*\\d,\\d\\d,(?<hexEhcpPayload>[0-9A-Fa-f]+)(<CR>)?(<LF>)?$",
       "bufferCapture": "hexEhcpPayload",
       "type": "string",
       "format": "fields",

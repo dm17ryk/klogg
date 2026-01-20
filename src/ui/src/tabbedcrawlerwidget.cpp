@@ -296,7 +296,10 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
     auto openContainingFolder = menu.addAction( tr( "Open containing folder" ) );
     if ( auto session = streamSessionForTab( tab ) ) {
         menu.addSeparator();
-        auto closeConnection = menu.addAction( tr( "Close Connection" ) );
+        const auto& settings = session->captureSettings();
+        const auto closeText = tr( "Close %1 @ %2" ).arg( settings.portName,
+                                                          QString::number( settings.baudRate ) );
+        auto closeConnection = menu.addAction( closeText );
         QPointer<StreamSession> safeSession = session;
         closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
         connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
@@ -486,7 +489,6 @@ void TabbedCrawlerWidget::setAlwaysShowTabBar( bool alwaysShow )
     alwaysShowTabBar_ = alwaysShow;
     updateTabBarVisibility();
 }
-
 
 
 

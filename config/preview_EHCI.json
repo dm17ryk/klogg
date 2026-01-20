@@ -1,0 +1,356 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "blocks": [
+    {
+      "name": "ehci_tag_generic_match",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tag_name", "format": "string", "width": 4 },
+        { "name": "tag_args", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_VER_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>VER)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "ver_token", "format": "string", "width": 3 },
+        { "name": "ver_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_SEI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>SEI)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "sei_token", "format": "string", "width": 3 },
+        { "name": "sei_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_TZI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TZI)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tzi_token", "format": "string", "width": 3 },
+        { "name": "tzi_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_TZO_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TZO)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tzo_token", "format": "string", "width": 3 },
+        { "name": "tzo_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_TTR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TTR)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "ttr_token", "format": "string", "width": 3 },
+        { "name": "ttr_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_SFV_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>SFV)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "sfv_token", "format": "string", "width": 3 },
+        { "name": "sfv_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_CN_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>CN)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "cn_token", "format": "string", "width": 2 },
+        { "name": "cn_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_INF_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>INF)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "inf_token", "format": "string", "width": 3 },
+        { "name": "inf_payload", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_BID_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>BID)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "bid_token", "format": "string", "width": 3 },
+        { "name": "bid_value", "type": "hexString", "format": "hex", "width": 8 }
+      ]
+    },
+
+    {
+      "name": "ehci_info_map_kv",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)$",
+      "bufferCapture": "k",
+      "fields": [
+        { "name": "kv_key", "format": "string", "width": 4 },
+        {
+          "name": "kv_value",
+          "format": "string",
+          "width": 0,
+          "regex": "(?<val>.*)",
+          "bufferCapture": "val"
+        }
+      ]
+    },
+
+    {
+      "name": "ehci_info_map_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^\\{(?<map_body>[^}]*)\\}$",
+      "bufferCapture": "map_body",
+      "fields": [
+        {
+          "name": "map_body",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<maybe_header>[0-9A-Fa-f]{3}:)?(?<entries>.*)$",
+          "bufferCapture": "entries",
+          "fields": [
+            {
+              "name": "map_header",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<map_id>[0-9A-Fa-f]{3}):(?<entries_inner>.*)$",
+              "bufferCapture": "entries_inner",
+              "fields": [
+                { "name": "map_id", "format": "string", "width": 3 },
+                {
+                  "name": "entries",
+                  "format": "match",
+                  "type": "string",
+                  "regex": "(?<kv>[^,}]+)(?:,|$)",
+                  "bufferCapture": "kv",
+                  "fields": [
+                    {
+                      "name": "kv_raw",
+                      "format": "match",
+                      "type": "string",
+                      "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)(?:#7\\s*)?$",
+                      "bufferCapture": "k",
+                      "fields": [
+                        { "name": "kv_key", "format": "string", "width": 4 },
+                        { "name": "kv_value", "format": "string", "width": 0 }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "plain_entries",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<kv>[^,}]+)(?:,|$)",
+              "bufferCapture": "kv",
+              "fields": [
+                {
+                  "name": "kv_raw",
+                  "format": "match",
+                  "type": "string",
+                  "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)(?:#7\\s*)?$",
+                  "bufferCapture": "k",
+                  "fields": [
+                    { "name": "kv_key", "format": "string", "width": 4 },
+                    { "name": "kv_value", "format": "string", "width": 0 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "previews": [
+    {
+      "name": "EHCI (direct quoted)",
+      "enabled": true,
+      "regex": "^.*\\\"(?<ehciPayload>EHCI[^\\\"]*)\\\".*$",
+      "bufferCapture": "ehciPayload",
+      "type": "string",
+      "format": "match",
+      "fields": [
+        {
+          "name": "ehci",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<protocol>EHCI)(?<file_version>\\d{3})(?<payload>.*)$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "sections",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<sec>(?:\\{[^}]*\\}|[A-Z]{2,4}[^A-Z#\\{]*))",
+              "bufferCapture": "sec",
+              "fields": [
+                {
+                  "name": "section",
+                  "format": "match",
+                  "type": "string",
+                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{2,4})(?<args>.*))$",
+                  "bufferCapture": "0",
+                  "fields": [
+                    {
+                      "name": "is_map",
+                      "format": "match",
+                      "type": "string",
+                      "regex": "^\\{(?<map_body>[^}]*)\\}$",
+                      "bufferCapture": "map_body",
+                      "fields": [
+                        {
+                          "name": "map_block",
+                          "format": "block",
+                          "block": "ehci_info_map_block"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_tag",
+                      "format": "match",
+                      "type": "string",
+                      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+                      "bufferCapture": "tag",
+                      "fields": [
+                        {
+                          "name": "tag_name",
+                          "format": "string",
+                          "width": 4
+                        },
+                        {
+                          "name": "tag_args",
+                          "format": "string",
+                          "width": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "EHCI (direct not quoted)",
+      "enabled": true,
+      "regex": "^(?<ehciPayload>EHCI.*)$",
+      "bufferCapture": "ehciPayload",
+      "type": "string",
+      "format": "match",
+      "fields": [
+        {
+          "name": "ehci",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<protocol>EHCI)(?<file_version>\\d{3})(?<payload>.*)$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "sections",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<sec>(?:\\{[^}]*\\}|[A-Z]{2,4}[^A-Z#\\{]*))",
+              "bufferCapture": "sec",
+              "fields": [
+                {
+                  "name": "section",
+                  "format": "match",
+                  "type": "string",
+                  "regex": "^(?:\\{(?<map>[^}]*)\\}|(?<tag>[A-Z]{2,4})(?<args>.*))$",
+                  "bufferCapture": "0",
+                  "fields": [
+                    {
+                      "name": "is_map",
+                      "format": "match",
+                      "type": "string",
+                      "regex": "^\\{(?<map_body>[^}]*)\\}$",
+                      "bufferCapture": "map_body",
+                      "fields": [
+                        {
+                          "name": "map_block",
+                          "format": "block",
+                          "block": "ehci_info_map_block"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "is_tag",
+                      "format": "match",
+                      "type": "string",
+                      "regex": "^(?<tag>[A-Z]{2,4})(?<args>.*)$",
+                      "bufferCapture": "tag",
+                      "fields": [
+                        {
+                          "name": "tag_name",
+                          "format": "string",
+                          "width": 4
+                        },
+                        {
+                          "name": "tag_args",
+                          "format": "string",
+                          "width": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
