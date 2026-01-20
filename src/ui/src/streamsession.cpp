@@ -96,6 +96,11 @@ QString StreamSession::filePath() const
     return settings_.filePath;
 }
 
+SerialCaptureSettings StreamSession::captureSettings() const
+{
+    return settings_;
+}
+
 void StreamSession::sendBytes( const QByteArray& data )
 {
     if ( !worker_ || data.isEmpty() ) {
@@ -294,3 +299,4 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         }
     }
 }
+            

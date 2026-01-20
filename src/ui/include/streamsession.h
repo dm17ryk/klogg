@@ -20,6 +20,7 @@ class StreamSession : public QObject {
     bool isConnectionOpen() const;
     QString sourceDisplayName() const;
     QString filePath() const;
+    SerialCaptureSettings captureSettings() const;
     void sendBytes( const QByteArray& data );
 
   public Q_SLOTS:

@@ -68,6 +68,7 @@ const char* action::lineNumbersVisibleInFilteredText
     = QT_TR_NOOP( "Line &numbers in filtered view" );
 const char* action::followText = QT_TR_NOOP( "&Follow File" );
 const char* action::wrapText = QT_TR_NOOP( "&Wrap text" );
+const char* action::showTabsBarText = QT_TR_NOOP( "Show tabs bar" );
 const char* action::reloadText = QT_TR_NOOP( "&Reload" );
 const char* action::stopText = QT_TR_NOOP( "&Stop" );
 const char* action::optionsText = QT_TR_NOOP( "&Preferences..." );
@@ -112,3 +113,4 @@ const char* action::importActionsDialogStatusTip
 const char* action::autoEncodingText = QT_TR_NOOP( "Auto" );
 const char* action::autoEncodingStatusTip
     = QT_TR_NOOP( "Automatically detect the file's encoding" );
+                             

@@ -26,6 +26,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPalette>
 #include <QPointer>
 #include <qobjectdefs.h>
 #include <qpoint.h>
@@ -102,7 +103,8 @@ TabbedCrawlerWidget::TabbedCrawlerWidget()
     myTabBar_.setStyleSheet( tabStyle.append( tabCloseButtonStyle ) );
 
     setTabBar( &myTabBar_ );
-    myTabBar_.hide();
+    defaultTabTextColor_ = myTabBar_.palette().color( QPalette::WindowText );
+    updateTabBarVisibility();
 
     myTabBar_.setContextMenuPolicy( Qt::CustomContextMenu );
     connect( &myTabBar_, &CrawlerTabBar::showTabContextMenu, this,
@@ -123,6 +125,14 @@ void TabbedCrawlerWidget::loadIcons()
 void TabbedCrawlerWidget::changeEvent( QEvent* event )
 {
     if ( event->type() == QEvent::StyleChange ) {
+        defaultTabTextColor_ = myTabBar_.palette().color( QPalette::WindowText );
+        for ( int i = 0; i < count(); ++i ) {
+            const auto path = tabPathAt( i );
+            const auto it = streamSessions_.find( path );
+            const bool connected = it != streamSessions_.end() && it->second
+                                   && it->second->isConnectionOpen();
+            setTabConnectionState( path, connected );
+        }
         dispatchToMainThread( [ this ] { loadIcons(); } );
     }
 
@@ -146,16 +156,14 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
 
     setCurrentIndex( index );
 
-    if ( count() > 1 )
-        myTabBar_.show();
+    updateTabBarVisibility();
 }
 
 void TabbedCrawlerWidget::removeCrawler( int index )
 {
     QTabWidget::removeTab( index );
 
-    if ( count() <= 1 )
-        myTabBar_.hide();
+    updateTabBarVisibility();
 }
 
 void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
@@ -167,6 +175,7 @@ void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
 
     if ( session ) {
         streamSessions_[ fileName ] = session;
+        setTabConnectionState( fileName, session->isConnectionOpen() );
     }
     else {
         clearStreamSessionForPath( fileName );
@@ -179,6 +188,7 @@ void TabbedCrawlerWidget::clearStreamSessionForPath( const QString& fileName )
         return;
     }
 
+    setTabConnectionState( fileName, false );
     streamSessions_.erase( fileName );
 }
 
@@ -427,3 +437,38 @@ void TabbedCrawlerWidget::setTabDataStatus( int index, DataStatus status )
 
     updateIcon( index );
 }
+
+
+void TabbedCrawlerWidget::updateTabBarVisibility()
+{
+    myTabBar_.setVisible( alwaysShowTabBar_ || count() > 1 );
+}
+
+void TabbedCrawlerWidget::setTabConnectionState( const QString& fileName, bool connected )
+{
+    const auto color = connected ? openStreamTabColor_ : defaultTabTextColor_;
+    for ( int i = 0; i < count(); ++i ) {
+        if ( tabPathAt( i ) == fileName ) {
+            myTabBar_.setTabTextColor( i, color );
+            break;
+        }
+    }
+}
+
+void TabbedCrawlerWidget::setAlwaysShowTabBar( bool alwaysShow )
+{
+    alwaysShowTabBar_ = alwaysShow;
+    updateTabBarVisibility();
+}
+
+
+
+
+
+
+
+
+
+
+
+

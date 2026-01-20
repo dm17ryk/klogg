@@ -87,6 +87,17 @@ class TabbedCrawlerWidget : public QTabWidget {
     void changeEvent( QEvent* event ) override;
 
   private:
+    void updateTabBarVisibility();
+    void setTabConnectionState( const QString& fileName, bool connected );
+
+  public:
+    void setAlwaysShowTabBar( bool alwaysShow );
+    bool alwaysShowTabBar() const
+    {
+        return alwaysShowTabBar_;
+    }
+
+  private:
     void addTabBarItem( int index, const QString& fileName );
     QString tabPathAt( int index ) const;
     StreamSession* streamSessionForTab( int tab ) const;
@@ -107,6 +118,9 @@ class TabbedCrawlerWidget : public QTabWidget {
 
     CrawlerTabBar myTabBar_;
     std::map<QString, std::shared_ptr<StreamSession>> streamSessions_;
+    bool alwaysShowTabBar_ = false;
+    QColor defaultTabTextColor_;
+    const QColor openStreamTabColor_{ 0, 160, 0 };
 };
 
 #endif

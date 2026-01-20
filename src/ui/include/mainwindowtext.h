@@ -66,6 +66,7 @@ extern const char* lineNumbersVisibleInFilteredText;
 extern const char* followText;
 extern const char* reloadText;
 extern const char* wrapText;
+extern const char* showTabsBarText;
 extern const char* stopText;
 extern const char* optionsText;
 extern const char* optionsStatusTip;
@@ -107,3 +108,4 @@ extern const char* autoEncodingStatusTip;
 } // namespace mainwindow
 
 } // namespace klogg
+                                                             

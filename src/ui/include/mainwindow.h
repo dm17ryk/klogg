@@ -66,6 +66,7 @@
 
 class QAction;
 class QActionGroup;
+class QLabel;
 class Session;
 class RecentFiles;
 class HighlightersMenu;
@@ -226,6 +227,7 @@ class MainWindow : public QMainWindow {
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
     void updateInfoLine();
+    void updateComPortStatus();
     void showInfoLabels( bool show );
     void logScreenInfo( QScreen* screen );
     void removeFromFavorites( const QString& pathToRemove );
@@ -254,6 +256,7 @@ class MainWindow : public QMainWindow {
     QLabel* sizeField;
     QLabel* dateField;
     QLabel* encodingField;
+    QLabel* comPortField;
     std::vector<QAction*> infoToolbarSeparators;
 
     QToolBar* toolBar;
@@ -279,6 +282,7 @@ class MainWindow : public QMainWindow {
     QAction* lineNumbersVisibleInFilteredAction;
     QAction* followAction;
     QAction* textWrapAction;
+    QAction* showTabsBarAction;
     QAction* reloadAction;
     QAction* stopAction;
     QAction* editHighlightersAction;
@@ -342,3 +346,4 @@ class MainWindow : public QMainWindow {
 };
 
 #endif
+                                                                                                                                                                                                                                                 

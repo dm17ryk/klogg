@@ -396,6 +396,7 @@ void MainWindow::reTranslateUI()
 
     followAction->setText( transAction( action::followText ) );
     textWrapAction->setText( transAction( action::wrapText ) );
+    showTabsBarAction->setText( transAction( action::showTabsBarText ) );
     reloadAction->setText( transAction( action::reloadText ) );
     stopAction->setText( transAction( action::stopText ) );
 
@@ -615,6 +616,13 @@ void MainWindow::createActions()
     textWrapAction->setCheckable( true );
     textWrapAction->setEnabled( true );
     connect( textWrapAction, &QAction::toggled, this, &MainWindow::textWrapSet );
+
+    showTabsBarAction = new QAction( tr( action::showTabsBarText ), this );
+    showTabsBarAction->setCheckable( true );
+    showTabsBarAction->setEnabled( true );
+    connect( showTabsBarAction, &QAction::toggled, this,
+             [ this ]( bool checked ) { mainTabWidget_.setAlwaysShowTabBar( checked ); } );
+    mainTabWidget_.setAlwaysShowTabBar( showTabsBarAction->isChecked() );
 
     reloadAction = new QAction( tr( action::reloadText ), this );
     signalMux_.connect( reloadAction, SIGNAL( triggered() ), SLOT( reload() ) );
@@ -857,6 +865,7 @@ void MainWindow::createMenus()
     viewMenu->addAction( lineNumbersVisibleInFilteredAction );
     viewMenu->addSeparator();
     viewMenu->addAction( textWrapAction );
+    viewMenu->addAction( showTabsBarAction );
     viewMenu->addSeparator();
     viewMenu->addAction( followAction );
     viewMenu->addSeparator();
@@ -915,7 +924,10 @@ void MainWindow::createToolBars()
     dateField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     encodingField = new QLabel();
-    dateField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
+    encodingField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
+
+    comPortField = new QLabel();
+    comPortField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     lineNbField = new QLabel();
     lineNbField->setAlignment( Qt::AlignRight | Qt::AlignVCenter );
@@ -933,13 +945,16 @@ void MainWindow::createToolBars()
     toolBar->addWidget( infoLine );
     toolBar->addAction( stopAction );
 
-    infoToolbarSeparators.reserve( 5 );
+    infoToolbarSeparators.reserve( 6 );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( sizeField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( dateField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( encodingField );
+    infoToolbarSeparators.push_back( toolBar->addSeparator() );
+    toolBar->addWidget( comPortField );
+    comPortField->setVisible( false );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
@@ -2068,6 +2083,25 @@ void MainWindow::updateActionsSendState()
         available = mainTabWidget_.hasOpenStreamSession();
     }
     actionsResponsesWindow_.setSendAvailable( available );
+    updateComPortStatus();
+}
+
+void MainWindow::updateComPortStatus()
+{
+    if ( !comPortField ) {
+        return;
+    }
+
+    const auto* streamSession = currentStreamSession();
+    if ( streamSession && streamSession->isConnectionOpen() ) {
+        const auto settings = streamSession->captureSettings();
+        comPortField->setText( tr( "COM %1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
+        comPortField->setVisible( true );
+    }
+    else {
+        comPortField->clear();
+        comPortField->setVisible( false );
+    }
 }
 
 // Update the title bar.
@@ -2424,11 +2458,17 @@ void MainWindow::showInfoLabels( bool show )
     for ( auto separator : infoToolbarSeparators ) {
         separator->setVisible( show );
     }
+    if ( comPortField ) {
+        comPortField->setVisible( show && !comPortField->text().isEmpty() );
+    }
     if ( !show ) {
         sizeField->clear();
         dateField->clear();
         encodingField->clear();
         lineNbField->clear();
+        if ( comPortField ) {
+            comPortField->clear();
+        }
     }
 }
 
@@ -2513,3 +2553,4 @@ void MainWindow::generateDump()
         throw std::logic_error( "test dump" );
     }
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
