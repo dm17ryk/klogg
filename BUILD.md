@@ -28,6 +28,7 @@ To build Klogg:
   - QtNetwork
   - QtXml
   - QtTools
+  - QtSerialPort
 
 To build Hyperscan regular expressions backend (default):
 
