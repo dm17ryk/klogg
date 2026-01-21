@@ -15,7 +15,9 @@ RUN apt-get update -y && \
         ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir aqtinstall==3.2.1 && \
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN python3 -m pip install --no-cache-dir aqtinstall==3.2.1 && \
     python3 -m aqt install-qt linux desktop 6.10.1 gcc_64 -O /opt/Qt \
         --archives qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport qt5compat
 
