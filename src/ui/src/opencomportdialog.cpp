@@ -1,5 +1,6 @@
 #include "opencomportdialog.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDialogButtonBox>
@@ -35,6 +36,9 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     flowCombo_ = new QComboBox( this );
     fileEdit_ = new QLineEdit( this );
     browseButton_ = new QPushButton( tr( "Browse..." ), this );
+    timestampCheck_ = new QCheckBox( tr( "Add timestamp to log" ), this );
+    timestampFormatEdit_ = new QLineEdit( QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" ), this );
+    logTxCheck_ = new QCheckBox( tr( "Log transmitted data" ), this );
 
     grid->addWidget( new QLabel( tr( "Port" ), this ), row, 0 );
     grid->addWidget( portCombo_, row, 1 );
@@ -62,6 +66,14 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     fileLayout->addWidget( browseButton_ );
     grid->addWidget( new QLabel( tr( "File" ), this ), row, 0 );
     grid->addWidget( fileRow, row, 1 );
+    row++;
+
+    grid->addWidget( timestampCheck_, row, 0, 1, 2 );
+    row++;
+    grid->addWidget( new QLabel( tr( "Timestamp format" ), this ), row, 0 );
+    grid->addWidget( timestampFormatEdit_, row, 1 );
+    row++;
+    grid->addWidget( logTxCheck_, row, 0, 1, 2 );
 
     mainLayout->addLayout( grid );
 
@@ -87,6 +99,12 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( fileEdit_, &QLineEdit::textEdited, this, &OpenComPortDialog::markFilePathEdited );
     connect( fileEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
     connect( browseButton_, &QPushButton::clicked, this, &OpenComPortDialog::browseForFile );
+    timestampFormatEdit_->setEnabled( false );
+    connect( timestampCheck_, &QCheckBox::toggled, this, [ this ]( bool checked ) {
+        timestampFormatEdit_->setEnabled( checked );
+        validateInputs();
+    } );
+    connect( timestampFormatEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
 
     updateSuggestedFileName();
     validateInputs();
@@ -103,6 +121,9 @@ SerialCaptureSettings OpenComPortDialog::settings() const
     settings.flowControl
         = static_cast<QSerialPort::FlowControl>( flowCombo_->currentData().toInt() );
     settings.filePath = fileEdit_->text().trimmed();
+    settings.addTimestamps = timestampCheck_->isChecked();
+    settings.timestampFormat = timestampFormatEdit_->text().trimmed();
+    settings.logTransmits = logTxCheck_->isChecked();
     return settings;
 }
 
@@ -149,7 +170,9 @@ void OpenComPortDialog::validateInputs()
     const auto currentIndex = portCombo_->currentIndex();
     const bool hasPort = !portCombo_->currentData().toString().isEmpty();
     const bool portEnabled = isPortItemEnabled( currentIndex );
-    openButton_->setEnabled( validPath && hasPort && portEnabled );
+    const bool validFormat = !timestampCheck_->isChecked()
+                             || !timestampFormatEdit_->text().trimmed().isEmpty();
+    openButton_->setEnabled( validPath && hasPort && portEnabled && validFormat );
 }
 
 void OpenComPortDialog::markFilePathEdited()

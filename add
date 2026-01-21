@@ -1,0 +1,30 @@
+
+  src\ui\src\mainwindow.cpp:317:    viewMenu->setTitle( transMenu( 
+menu::viewTitle ) );
+  src\ui\src\mainwindow.cpp:318:    openedFilesMenu->setTitle( transMenu( 
+menu::openedFilesTitle ) );
+> src\ui\src\mainwindow.cpp:319:    toolsMenu->setTitle( transMenu( 
+menu::toolsTitle ) );
+  src\ui\src\mainwindow.cpp:320:    highlightersMenu->setTitle( transMenu( 
+menu::highlightersTitle ) );
+  src\ui\src\mainwindow.cpp:321:    favoritesMenu->setTitle( transMenu( 
+menu::favoritesTitle ) );
+  src\ui\src\mainwindow.cpp:322:    helpMenu->setTitle( transMenu( 
+menu::helpTitle ) );
+  src\ui\src\mainwindow.cpp:850:    } );
+  src\ui\src\mainwindow.cpp:851:
+> src\ui\src\mainwindow.cpp:852:    toolsMenu->addAction( 
+predefinedFiltersDialogAction );
+> src\ui\src\mainwindow.cpp:853:    toolsMenu->addAction( importPreviewsAction 
+);
+> src\ui\src\mainwindow.cpp:854:    toolsMenu->addSeparator();
+> src\ui\src\mainwindow.cpp:855:    toolsMenu->addAction( showPreviewerAction 
+);
+> src\ui\src\mainwindow.cpp:856:    toolsMenu->addAction( showScratchPadAction 
+);
+  src\ui\src\mainwindow.cpp:857:
+  src\ui\src\mainwindow.cpp:858:    menuBar()->addMenu( 
+EncodingMenu::generate( encodingGroup ) );
+  src\ui\src\mainwindow.cpp:859:    menuBar()->addSeparator();
+
+

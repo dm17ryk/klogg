@@ -1,0 +1,56 @@
+{
+    "tasks": [
+        {
+            "id": 1,
+            "title": "JSON Format and Hidden Flag",
+            "description": "Add a required 'hidden' boolean field for actions and responses in the JSON format, replacing any previous 'hiden' usage. Ensure the 'enabled' field on actions is preserved in JSON but not actively used in logic (always treated as true):contentReference[oaicite:0]{index=0}.",
+            "changes": [
+                "Update JSON parsing/writing logic to use the 'hidden' field and ignore any legacy 'hiden' field from older files.",
+                "If an older config is loaded without a 'hidden' field (or with 'hiden'), default to hidden=false (visible) for backward compatibility.",
+                "Verify that all action and response entries include the 'hidden' property (true or false) in saved JSON:contentReference[oaicite:1]{index=1}."
+            ]
+        },
+        {
+            "id": 2,
+            "title": "Import Actions Dialog UI",
+            "description": "Implement a new 'Import Actions' dialog similar to the existing import preview window. This dialog should display two tables (Actions and Responses) either side by side or stacked vertically, each showing entries with details and a final 'Enable' checkbox column. Checking 'Enable' means set that entry's 'hidden' to false (it will be visible in the main list), unchecking means 'hidden' true (the entry will be hidden from the main Actions/Responses window).",
+            "changes": [
+                "Create a new Import Actions dialog UI with two tables for actions and responses.",
+                "Populate these tables with the data from the imported JSON file (actions and responses lists).",
+                "Add a final column in each table with 'Enable' checkboxes for each entry; when checked, mark the entry's hidden=false (visible), when unchecked mark hidden=true (hidden).",
+                "Ensure the UI state (checked/unchecked) is initialized based on the entry's current 'hidden' value and that toggling the checkbox updates the underlying data model.",
+                "Menu 'Tools'->'Import Actions' should open Actions dialog UI"
+            ]
+        },
+        {
+            "id": 3,
+            "title": "Main Actions/Responses Window Filtering and Controls",
+            "description": "Update the main Actions/Responses management window to use the 'hidden' flags and to allow enabling/disabling response rules via checkboxes:",
+            "changes": [
+                "Filter the main Actions list and Responses list to only display entries where 'hidden' is false (do not show entries marked hidden).",
+                "In the Responses table, add a first column with an 'Enable' checkbox for each response entry. Bind this to the entry's 'enabled' field: if checked, the auto-response rule is active; if unchecked, the rule is disabled (though still present in the list as long as hidden=false).",
+                "Implement logic such that toggling a response's 'Enable' checkbox immediately updates that response's enabled state (so disabled rules won't trigger).",
+                "In the Actions table, do not add an 'Enable' checkbox (the 'enabled' field for actions is stored but not used, so all visible actions are effectively always enabled)."
+            ]
+        },
+        {
+            "id": 4,
+            "title": "Persistence of Import Selections",
+            "description": "Ensure that changes made in the Import Actions dialog (the 'Enable' checkbox selections which affect each entry's hidden status, and any enabled field changes for responses) are persisted when importing:",
+            "changes": [
+                "When the user confirms the import, save the imported actions and responses to the application's configuration (e.g., write to the actions/responses JSON storage) including the updated 'hidden' and 'enabled' values from the import dialog.",
+                "Use the same mechanism as the existing import preview saving logic to store these entries, so that the next time the app runs or the Actions/Responses window is opened, it reflects the newly imported entries with their correct hidden/visible status and enabled states."
+            ]
+        },
+        {
+            "id": 5,
+            "title": "JSON Schema Enforcement",
+            "description": "Update the JSON schema and validation to reflect the new requirements for actions and responses entries:",
+            "changes": [
+                "Modify the actions JSON schema (actions.schema.json) to require a boolean 'hidden' field in every action and response object.",
+                "Remove any mention of the old 'hiden' field in the schema or validation code (the schema should only accept 'hidden').",
+                "Adjust any schema versioning or validation logic to ensure that a missing 'hidden' field (or a wrong type) in an entry is treated as an error or automatically set to a default (false) if appropriate."
+            ]
+        }
+    ]
+}

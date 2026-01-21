@@ -53,14 +53,14 @@ _klogg_ improves and brings more
 
 Latest stable version:
 
-[ ![GitHub Release](https://img.shields.io/github/v/release/variar/klogg?label=GitHub%20Release&style=for-the-badge)](https://github.com/variar/klogg/releases/latest)
+[ ![GitHub Release](https://img.shields.io/github/v/release/dm17ryk/klogg?label=GitHub%20Release&style=for-the-badge)](https://github.com/dm17ryk/klogg/releases/latest)
 [ ![Chocolatey](https://img.shields.io/chocolatey/v/klogg?style=for-the-badge)](https://chocolatey.org/packages/klogg)
 [ ![Homebrew](https://img.shields.io/homebrew/cask/v/klogg?style=for-the-badge)](https://formulae.brew.sh/cask/klogg)
 
 
 Latest development builds can be downloaded from releases on Github: 
 
-{{< button href="https://github.com/variar/klogg/releases/tag/continuous-win" >}}Windows{{< /button >}}
-{{< button href="https://github.com/variar/klogg/releases/tag/continuous-linux" >}}Linux{{< /button >}}
-{{< button href="https://github.com/variar/klogg/releases/tag/continuous-osx" >}}Mac{{< /button >}}
+{{< button href="https://github.com/dm17ryk/klogg/releases/tag/continuous-win" >}}Windows{{< /button >}}
+{{< button href="https://github.com/dm17ryk/klogg/releases/tag/continuous-linux" >}}Linux{{< /button >}}
+{{< button href="https://github.com/dm17ryk/klogg/releases/tag/continuous-osx" >}}Mac{{< /button >}}
 

@@ -54,6 +54,7 @@
 #include "crawlerwidget.h"
 #include "downloader.h"
 #include "iconloader.h"
+#include "actionsresponseswindow.h"
 #include "pathline.h"
 #include "previewwindow.h"
 #include "quickfindmux.h"
@@ -65,9 +66,11 @@
 
 class QAction;
 class QActionGroup;
+class QLabel;
 class Session;
 class RecentFiles;
 class HighlightersMenu;
+class StreamSession;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
@@ -127,15 +130,18 @@ class MainWindow : public QMainWindow {
     void editHighlighters();
     void editPredefinedFilters( const QString& newFilter = {} );
     void openImportPreviewsDialog();
+    void openImportActionsDialog();
     void options();
     void about();
     void aboutQt();
     void documentation();
     void showScratchPad();
     void showPreviewer();
+    void showActionsResponses();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
+    void sendActionById( int actionId );
     void encodingChanged( QAction* action );
     void addToFavorites();
     void removeFromFavorites();
@@ -214,11 +220,14 @@ class MainWindow : public QMainWindow {
     void updateFavoritesMenu();
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
+    void updateActionsSendState();
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
+    StreamSession* currentStreamSession() const;
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
     void updateInfoLine();
+    void updateComPortStatus();
     void showInfoLabels( bool show );
     void logScreenInfo( QScreen* screen );
     void removeFromFavorites( const QString& pathToRemove );
@@ -247,6 +256,7 @@ class MainWindow : public QMainWindow {
     QLabel* sizeField;
     QLabel* dateField;
     QLabel* encodingField;
+    QLabel* comPortField;
     std::vector<QAction*> infoToolbarSeparators;
 
     QToolBar* toolBar;
@@ -272,13 +282,16 @@ class MainWindow : public QMainWindow {
     QAction* lineNumbersVisibleInFilteredAction;
     QAction* followAction;
     QAction* textWrapAction;
+    QAction* showTabsBarAction;
     QAction* reloadAction;
     QAction* stopAction;
     QAction* editHighlightersAction;
     QAction* optionsAction;
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
+    QAction* showActionsResponsesAction;
     QAction* importPreviewsAction;
+    QAction* importActionsAction;
     QAction* showDocumentationAction;
     QAction* aboutAction;
     QAction* aboutQtAction;
@@ -322,6 +335,7 @@ class MainWindow : public QMainWindow {
 
     TabbedScratchPad scratchPad_;
     PreviewWindow previewWindow_;
+    ActionsResponsesWindow actionsResponsesWindow_;
 
     QTemporaryDir tempDir_;
 
@@ -332,3 +346,4 @@ class MainWindow : public QMainWindow {
 };
 
 #endif
+                                                                                                                                                                                                                                                 

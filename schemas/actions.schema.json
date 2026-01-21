@@ -1,0 +1,276 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://klogg.dev/schemas/actions.schema.json",
+    "title": "KLogg Actions/Responses configuration",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "version",
+        "actions",
+        "responses"
+    ],
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "Optional schema reference stored in the config file (commonly a relative path)."
+        },
+        "version": {
+            "type": "integer",
+            "const": 1,
+            "description": "Config format version."
+        },
+        "actions": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/action"
+            }
+        },
+        "responses": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/responseRule"
+            }
+        }
+    },
+    "$defs": {
+        "hexString": {
+            "type": "string",
+            "description": "Space-separated bytes as hex pairs, e.g. \"50 61 6E\"",
+            "pattern": "^(?:[0-9A-Fa-f]{2})(?:\\s+[0-9A-Fa-f]{2})*$"
+        },
+        "sequence": {
+            "description": "A payload to send (string or hexString).",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "string"
+                        },
+                        "value": {
+                            "type": "string"
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "hexString"
+                        },
+                        "value": {
+                            "$ref": "#/$defs/hexString"
+                        }
+                    }
+                }
+            ]
+        },
+        "match": {
+            "description": "A match pattern (string, hexString, or regex).",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "string"
+                        },
+                        "value": {
+                            "type": "string"
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "hexString"
+                        },
+                        "value": {
+                            "$ref": "#/$defs/hexString"
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "regex"
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": "Regex pattern (syntax validated at runtime by the app)."
+                        }
+                    }
+                }
+            ]
+        },
+        "actionParameters": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "repeat": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "delay": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
+                }
+            }
+        },
+        "action": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "id",
+                "enabled",
+                "hidden",
+                "name",
+                "sequence"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Stored from JSON; currently not used by app logic."
+                },
+                "hidden": {
+                    "type": "boolean",
+                    "description": "If true, action is hidden from the main Actions/Responses window."
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "description": {
+                    "type": "string",
+                    "default": ""
+                },
+                "sequence": {
+                    "$ref": "#/$defs/sequence"
+                },
+                "parameters": {
+                    "$ref": "#/$defs/actionParameters"
+                }
+            }
+        },
+        "responseInstruction": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "What to do when a response rule matches.",
+            "properties": {
+                "action_id": {
+                    "type": "integer",
+                    "minimum": -1,
+                    "description": "ID of an Action to send (meaning of special values is app-defined)."
+                },
+                "action": {
+                    "$ref": "#/$defs/sequence",
+                    "description": "Inline action payload to send."
+                },
+                "comment": {
+                    "type": "string",
+                    "default": ""
+                },
+                "linebreak": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "timestamp": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "snapshot": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "stop_communication": {
+                    "type": "boolean",
+                    "default": false
+                }
+            },
+            "allOf": [
+                {
+                    "not": {
+                        "required": [
+                            "action_id",
+                            "action"
+                        ],
+                        "description": "Disallow specifying both action_id and inline action at the same time."
+                    }
+                }
+            ]
+        },
+        "responseRule": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "id",
+                "enabled",
+                "hidden",
+                "name",
+                "match",
+                "response"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "If true, auto-response is active."
+                },
+                "hidden": {
+                    "type": "boolean",
+                    "description": "If true, response rule is hidden from the main Actions/Responses window."
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "description": {
+                    "type": "string",
+                    "default": ""
+                },
+                "match": {
+                    "$ref": "#/$defs/match"
+                },
+                "response": {
+                    "$ref": "#/$defs/responseInstruction"
+                }
+            }
+        }
+    }
+}

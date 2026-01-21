@@ -1,0 +1,371 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "blocks": [
+    {
+      "name": "ehci_tag_VER_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>VER)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "ver_token", "format": "string", "width": 3 },
+        { "name": "ver_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_SEI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>SEI)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "sei_token", "format": "string", "width": 3 },
+        { "name": "sei_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_TZI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TZI)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tzi_token", "format": "string", "width": 3 },
+        { "name": "tzi_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_TZO_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TZO)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tzo_token", "format": "string", "width": 3 },
+        { "name": "tzo_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_TTR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>TTR)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "ttr_token", "format": "string", "width": 3 },
+        { "name": "ttr_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_SFV_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>SFV)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "sfv_token", "format": "string", "width": 3 },
+        { "name": "sfv_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_CN_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>CN)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "cn_token", "format": "string", "width": 2 },
+        { "name": "cn_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_INF_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>INF)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "inf_token", "format": "string", "width": 3 },
+        { "name": "inf_payload", "format": "string", "width": 0 }
+      ]
+    },
+    {
+      "name": "ehci_tag_BID_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>BID)(?<args>[^A-Z#\\{]*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "bid_token", "format": "string", "width": 3 },
+        { "name": "bid_value", "type": "hexString", "format": "hex", "width": 8, "endianness": "little" }
+      ]
+    },
+
+    {
+      "name": "ehci_info_map_kv_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<k>[0-9A-Fa-f]{1,4})=(?<v>.*?)(?:\\#7\\s*)?$",
+      "bufferCapture": "k",
+      "fields": [
+        { "name": "kv_key", "format": "string", "width": 4 },
+        { "name": "kv_value", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_info_map_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^\\{(?<map_body>[^}]*)\\}$",
+      "bufferCapture": "map_body",
+      "fields": [
+        {
+          "name": "map_body",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?:([0-9A-Fa-f]{3}):)?(?<entries>.*)$",
+          "bufferCapture": "entries",
+          "fields": [
+            {
+              "name": "map_header",
+              "format": "match",
+              "type": "string",
+              "regex": "^([0-9A-Fa-f]{3}):(.*)$",
+              "bufferCapture": "0",
+              "fields": [
+                { "name": "map_id", "format": "string", "width": 3 },
+                {
+                  "name": "entries",
+                  "format": "match",
+                  "type": "string",
+                  "regex": "(?<kv>[^,}]+)(?:,|$)",
+                  "bufferCapture": "kv",
+                  "fields": [
+                    {
+                      "name": "kv_parsed",
+                      "format": "block",
+                      "block": "ehci_info_map_kv_block"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "plain_entries",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<kv>[^,}]+)(?:,|$)",
+              "bufferCapture": "kv",
+              "fields": [
+                {
+                  "name": "kv_parsed",
+                  "format": "block",
+                  "block": "ehci_info_map_kv_block"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "ehci_tag_generic_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<tag>[A-Z]{1,4})(?<args>.*)$",
+      "bufferCapture": "args",
+      "fields": [
+        { "name": "tag_name", "format": "string", "width": 4 },
+        { "name": "tag_args", "format": "string", "width": 0 }
+      ]
+    },
+
+    {
+      "name": "ehci_section_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:\\#\\d+\\s*)?(?<body>\\{[^}]*\\}|[A-Z]{1,4}[^A-Z#\\{]*)$",
+      "bufferCapture": "body",
+      "fields": [
+        {
+          "name": "map_candidate",
+          "format": "match",
+          "type": "string",
+          "regex": "^\\{(?<map_body>[^}]*)\\}$",
+          "bufferCapture": "map_body",
+          "fields": [
+            { "name": "map_block", "format": "block", "block": "ehci_info_map_block" }
+          ]
+        },
+        {
+          "name": "tag_candidate",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<tag>[A-Z]{1,4})(?<args>.*)$",
+          "bufferCapture": "tag",
+          "fields": [
+            {
+              "name": "dispatch_tag",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>VER)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "ver", "format": "block", "block": "ehci_tag_VER_block" }
+              ]
+            },
+            {
+              "name": "dispatch_SEI",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>SEI)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "sei", "format": "block", "block": "ehci_tag_SEI_block" }
+              ]
+            },
+            {
+              "name": "dispatch_TZI",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>TZI)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "tzi", "format": "block", "block": "ehci_tag_TZI_block" }
+              ]
+            },
+            {
+              "name": "dispatch_TZO",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>TZO)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "tzo", "format": "block", "block": "ehci_tag_TZO_block" }
+              ]
+            },
+            {
+              "name": "dispatch_TTR",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>TTR)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "ttr", "format": "block", "block": "ehci_tag_TTR_block" }
+              ]
+            },
+            {
+              "name": "dispatch_SFV",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>SFV)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "sfv", "format": "block", "block": "ehci_tag_SFV_block" }
+              ]
+            },
+            {
+              "name": "dispatch_CN",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>CN)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "cn", "format": "block", "block": "ehci_tag_CN_block" }
+              ]
+            },
+            {
+              "name": "dispatch_INF",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>INF)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "inf", "format": "block", "block": "ehci_tag_INF_block" }
+              ]
+            },
+            {
+              "name": "dispatch_BID",
+              "format": "match",
+              "type": "string",
+              "regex": "^(?<t>BID)(?<a>.*)$",
+              "bufferCapture": "a",
+              "fields": [
+                { "name": "bid", "format": "block", "block": "ehci_tag_BID_block" }
+              ]
+            },
+            {
+              "name": "dispatch_generic",
+              "format": "block",
+              "block": "ehci_tag_generic_block"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "previews": [
+    {
+      "name": "EHCI (direct quoted)",
+      "enabled": true,
+      "regex": "^.*\"(?<ehciPayload>EHCI[^\"]*)\".*$",
+      "bufferCapture": "ehciPayload",
+      "type": "string",
+      "format": "match",
+      "fields": [
+        {
+          "name": "ehci",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<protocol>EHCI)(?<file_version>\\d{3})(?<payload>.*)$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "sections",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<sec>(?:\\#\\d+\\s*)?(?:\\{[^}]*\\}|[A-Z]{1,4}[^A-Z#\\{]*))",
+              "bufferCapture": "sec",
+              "fields": [
+                { "name": "section_block", "format": "block", "block": "ehci_section_block" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EHCI (direct anywhere in line)",
+      "enabled": true,
+      "regex": "^.*(?<ehciPayload>EHCI\\d{3}.*)$",
+      "bufferCapture": "ehciPayload",
+      "type": "string",
+      "format": "match",
+      "fields": [
+        {
+          "name": "ehci",
+          "format": "match",
+          "type": "string",
+          "regex": "^(?<protocol>EHCI)(?<file_version>\\d{3})(?<payload>.*)$",
+          "bufferCapture": "payload",
+          "fields": [
+            {
+              "name": "sections",
+              "format": "match",
+              "type": "string",
+              "regex": "(?<sec>(?:\\#\\d+\\s*)?(?:\\{[^}]*\\}|[A-Z]{1,4}[^A-Z#\\{]*))",
+              "bufferCapture": "sec",
+              "fields": [
+                { "name": "section_block", "format": "block", "block": "ehci_section_block" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

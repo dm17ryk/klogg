@@ -66,6 +66,7 @@ extern const char* lineNumbersVisibleInFilteredText;
 extern const char* followText;
 extern const char* reloadText;
 extern const char* wrapText;
+extern const char* showTabsBarText;
 extern const char* stopText;
 extern const char* optionsText;
 extern const char* optionsStatusTip;
@@ -89,6 +90,8 @@ extern const char* showScratchPadText;
 extern const char* showScratchPadStatusTip;
 extern const char* showPreviewerText;
 extern const char* showPreviewerStatusTip;
+extern const char* showActionsResponsesText;
+extern const char* showActionsResponsesStatusTip;
 extern const char* addToFavoritesText;
 extern const char* removeFromFavoritesText;
 extern const char* selectOpenFileText;
@@ -96,6 +99,8 @@ extern const char* predefinedFiltersDialogText;
 extern const char* predefinedFiltersDialogStatusTip;
 extern const char* importPreviewsDialogText;
 extern const char* importPreviewsDialogStatusTip;
+extern const char* importActionsDialogText;
+extern const char* importActionsDialogStatusTip;
 extern const char* autoEncodingText;
 extern const char* autoEncodingStatusTip;
 } // namespace action
@@ -103,3 +108,4 @@ extern const char* autoEncodingStatusTip;
 } // namespace mainwindow
 
 } // namespace klogg
+                                                             

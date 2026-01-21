@@ -90,10 +90,12 @@
 #include "decompressor.h"
 #include "dispatch_to.h"
 #include "downloader.h"
+#include "actionsmanager.h"
 #include "encodings.h"
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
 #include "highlightersmenu.h"
+#include "importactionsdialog.h"
 #include "importpreviewsdialog.h"
 #include "issuereporter.h"
 #include "klogg_version.h"
@@ -209,7 +211,13 @@ MainWindow::MainWindow( WindowSession session )
         previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
     }
 
+    actionsResponsesWindow_.setWindowIcon( mainIcon_ );
+    actionsResponsesWindow_.setWindowTitle( tr( "klogg - actions/responses" ) );
+    connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
+             &MainWindow::sendActionById );
+
     PreviewManager::instance().loadFromRepository();
+    ActionsManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
@@ -388,6 +396,7 @@ void MainWindow::reTranslateUI()
 
     followAction->setText( transAction( action::followText ) );
     textWrapAction->setText( transAction( action::wrapText ) );
+    showTabsBarAction->setText( transAction( action::showTabsBarText ) );
     reloadAction->setText( transAction( action::reloadText ) );
     stopAction->setText( transAction( action::stopText ) );
 
@@ -422,6 +431,9 @@ void MainWindow::reTranslateUI()
     showScratchPadAction->setStatusTip( transAction( action::showScratchPadStatusTip ) );
     showPreviewerAction->setText( transAction( action::showPreviewerText ) );
     showPreviewerAction->setStatusTip( transAction( action::showPreviewerStatusTip ) );
+    showActionsResponsesAction->setText( transAction( action::showActionsResponsesText ) );
+    showActionsResponsesAction->setStatusTip(
+        transAction( action::showActionsResponsesStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -439,6 +451,8 @@ void MainWindow::reTranslateUI()
 
     importPreviewsAction->setText( transAction( action::importPreviewsDialogText ) );
     importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
+    importActionsAction->setText( transAction( action::importActionsDialogText ) );
+    importActionsAction->setStatusTip( transAction( action::importActionsDialogStatusTip ) );
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -603,6 +617,13 @@ void MainWindow::createActions()
     textWrapAction->setEnabled( true );
     connect( textWrapAction, &QAction::toggled, this, &MainWindow::textWrapSet );
 
+    showTabsBarAction = new QAction( tr( action::showTabsBarText ), this );
+    showTabsBarAction->setCheckable( true );
+    showTabsBarAction->setEnabled( true );
+    connect( showTabsBarAction, &QAction::toggled, this,
+             [ this ]( bool checked ) { mainTabWidget_.setAlwaysShowTabBar( checked ); } );
+    mainTabWidget_.setAlwaysShowTabBar( showTabsBarAction->isChecked() );
+
     reloadAction = new QAction( tr( action::reloadText ), this );
     signalMux_.connect( reloadAction, SIGNAL( triggered() ), SLOT( reload() ) );
 
@@ -668,6 +689,11 @@ void MainWindow::createActions()
     connect( showPreviewerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showPreviewer(); } );
 
+    showActionsResponsesAction = new QAction( tr( action::showActionsResponsesText ), this );
+    showActionsResponsesAction->setStatusTip( tr( action::showActionsResponsesStatusTip ) );
+    connect( showActionsResponsesAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showActionsResponses(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -703,6 +729,11 @@ void MainWindow::createActions()
     importPreviewsAction->setStatusTip( tr( action::importPreviewsDialogStatusTip ) );
     connect( importPreviewsAction, &QAction::triggered, this,
              [ this ]( auto ) { this->openImportPreviewsDialog(); } );
+
+    importActionsAction = new QAction( tr( action::importActionsDialogText ), this );
+    importActionsAction->setStatusTip( tr( action::importActionsDialogStatusTip ) );
+    connect( importActionsAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openImportActionsDialog(); } );
 
     updateShortcuts();
 }
@@ -775,6 +806,7 @@ void MainWindow::loadIcons()
     followAction->setIcon( iconLoader_.load( "icons8-fast-forward" ) );
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
     showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
+    showActionsResponsesAction->setIcon( iconLoader_.load( "icons8-venn-diagram" ) );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -833,6 +865,7 @@ void MainWindow::createMenus()
     viewMenu->addAction( lineNumbersVisibleInFilteredAction );
     viewMenu->addSeparator();
     viewMenu->addAction( textWrapAction );
+    viewMenu->addAction( showTabsBarAction );
     viewMenu->addSeparator();
     viewMenu->addAction( followAction );
     viewMenu->addSeparator();
@@ -851,8 +884,10 @@ void MainWindow::createMenus()
 
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
+    toolsMenu->addAction( importActionsAction );
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
+    toolsMenu->addAction( showActionsResponsesAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -889,7 +924,10 @@ void MainWindow::createToolBars()
     dateField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     encodingField = new QLabel();
-    dateField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
+    encodingField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
+
+    comPortField = new QLabel();
+    comPortField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     lineNbField = new QLabel();
     lineNbField->setAlignment( Qt::AlignRight | Qt::AlignVCenter );
@@ -907,7 +945,7 @@ void MainWindow::createToolBars()
     toolBar->addWidget( infoLine );
     toolBar->addAction( stopAction );
 
-    infoToolbarSeparators.reserve( 5 );
+    infoToolbarSeparators.reserve( 6 );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( sizeField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
@@ -915,9 +953,13 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( encodingField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
+    toolBar->addWidget( comPortField );
+    comPortField->setVisible( false );
+    infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
+    toolBar->addAction( showActionsResponsesAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1051,7 +1093,10 @@ void MainWindow::openComPort()
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath ] { mainTabWidget_.clearStreamSessionForPath( filePath ); } );
+             [ this, filePath ] {
+                 mainTabWidget_.clearStreamSessionForPath( filePath );
+                 updateActionsSendState();
+             } );
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession ]( const QString& message ) {
                  QMessageBox::warning(
@@ -1070,6 +1115,8 @@ void MainWindow::openComPort()
                               tr( "Failed to open capture file in klogg." ) );
         return;
     }
+
+    updateActionsSendState();
 }
 
 void MainWindow::openRemoteFile( const QUrl& url )
@@ -1312,6 +1359,12 @@ void MainWindow::openImportPreviewsDialog()
     dialog.exec();
 }
 
+void MainWindow::openImportActionsDialog()
+{
+    ImportActionsDialog dialog( this );
+    dialog.exec();
+}
+
 // Opens the 'Options' modal dialog box
 void MainWindow::options()
 {
@@ -1341,11 +1394,11 @@ void MainWindow::about()
         tr( "<h2>klogg %1</h2>"
             "<p>A fast, advanced log explorer.</p>"
             "<p>Built %2 from %3</p>"
-            "<p><a href=\"https://github.com/variar/klogg\">https://github.com/variar/klogg</a></p>"
+            "<p><a href=\"https://github.com/dm17ryk/klogg\">https://github.com/dm17ryk/klogg</a></p>"
             "<p>This is fork of glogg</p>"
             "<p><a href=\"http://glogg.bonnefon.org/\">http://glogg.bonnefon.org/</a></p>"
             "<p>Using icons from <a href=\"https://icons8.com\">icons8.com</a> project</p>"
-            "<p>Copyright &copy; 2020 Nicolas Bonnefon, Anton Filimonov and other contributors</p>"
+            "<p>Copyright &copy; 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors</p>"
             "<p>You may modify and redistribute the program under the terms of the GPL (version 3 "
             "or later).</p>" )
             .arg( kloggVersion(), kloggBuildDate(), kloggCommit() ) );
@@ -1394,6 +1447,17 @@ void MainWindow::showPreviewer()
     previewWindow_.show();
     previewWindow_.activateWindow();
 }
+
+void MainWindow::showActionsResponses()
+{
+    auto state = actionsResponsesWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    actionsResponsesWindow_.setWindowState( state );
+
+    updateActionsSendState();
+    actionsResponsesWindow_.show();
+    actionsResponsesWindow_.activateWindow();
+}
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );
@@ -1406,13 +1470,40 @@ void MainWindow::replaceDataInScratchpad( QString newData )
     showScratchPad();
 }
 
-void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
+void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )    
 {
     if ( rawLine.isEmpty() ) {
         return;
     }
     previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
     showPreviewer();
+}
+
+void MainWindow::sendActionById( int actionId )
+{
+    const auto* action = ActionsManager::instance().findActionById( actionId );
+    if ( !action ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "Unknown action id." ) );
+        return;
+    }
+
+    auto* streamSession = currentStreamSession();
+    if ( !streamSession || !streamSession->isConnectionOpen() ) {
+        streamSession = mainTabWidget_.firstOpenStreamSession();
+    }
+    if ( !streamSession ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
+        return;
+    }
+
+    const auto result = actionSequenceToBytes( action->sequence );
+    if ( !result.ok ) {
+        QMessageBox::warning( this, tr( "Send action" ),
+                              tr( "Failed to encode action: %1" ).arg( result.error ) );
+        return;
+    }
+
+    streamSession->sendBytes( result.bytes );
 }
 void MainWindow::encodingChanged( QAction* action )
 {
@@ -1638,6 +1729,8 @@ void MainWindow::currentTabChanged( int index )
         addToFavoritesAction->setEnabled( false );
         addToFavoritesMenuAction->setEnabled( false );
     }
+
+    updateActionsSendState();
 }
 
 void MainWindow::changeQFPattern( const QString& newPattern )
@@ -1967,6 +2060,48 @@ CrawlerWidget* MainWindow::currentCrawlerWidget() const
     auto current = qobject_cast<CrawlerWidget*>( mainTabWidget_.currentWidget() );
 
     return current;
+}
+
+StreamSession* MainWindow::currentStreamSession() const
+{
+    const auto* crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return nullptr;
+    }
+    const auto fileName = session_.getFilename( crawler );
+    if ( fileName.isEmpty() ) {
+        return nullptr;
+    }
+    return mainTabWidget_.streamSessionForPath( fileName );
+}
+
+void MainWindow::updateActionsSendState()
+{
+    const auto* streamSession = currentStreamSession();
+    bool available = streamSession && streamSession->isConnectionOpen();
+    if ( !available ) {
+        available = mainTabWidget_.hasOpenStreamSession();
+    }
+    actionsResponsesWindow_.setSendAvailable( available );
+    updateComPortStatus();
+}
+
+void MainWindow::updateComPortStatus()
+{
+    if ( !comPortField ) {
+        return;
+    }
+
+    const auto* streamSession = currentStreamSession();
+    if ( streamSession && streamSession->isConnectionOpen() ) {
+        const auto settings = streamSession->captureSettings();
+        comPortField->setText( tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
+        comPortField->setVisible( true );
+    }
+    else {
+        comPortField->clear();
+        comPortField->setVisible( false );
+    }
 }
 
 // Update the title bar.
@@ -2323,11 +2458,17 @@ void MainWindow::showInfoLabels( bool show )
     for ( auto separator : infoToolbarSeparators ) {
         separator->setVisible( show );
     }
+    if ( comPortField ) {
+        comPortField->setVisible( show && !comPortField->text().isEmpty() );
+    }
     if ( !show ) {
         sizeField->clear();
         dateField->clear();
         encodingField->clear();
         lineNbField->clear();
+        if ( comPortField ) {
+            comPortField->clear();
+        }
     }
 }
 
@@ -2412,3 +2553,4 @@ void MainWindow::generateDump()
         throw std::logic_error( "test dump" );
     }
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

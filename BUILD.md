@@ -8,10 +8,10 @@ will be enabled if available on build machine.
 
 ## Getting the Source
 
-This project is [hosted on GitHub](https://github.com/variar/klogg). You can clone this project directly using this command:
+This project is [hosted on GitHub](https://github.com/dm17ryk/klogg). You can clone this project directly using this command:
 
 ```
-git clone https://github.com/variar/klogg
+git clone https://github.com/dm17ryk/klogg
 ```
 
 ## Dependencies
@@ -28,6 +28,7 @@ To build Klogg:
   - QtNetwork
   - QtXml
   - QtTools
+  - QtSerialPort
 
 To build Hyperscan regular expressions backend (default):
 

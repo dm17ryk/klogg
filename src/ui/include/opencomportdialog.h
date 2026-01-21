@@ -7,6 +7,7 @@
 class QComboBox;
 class QDialogButtonBox;
 class QLineEdit;
+class QCheckBox;
 class QPushButton;
 
 class OpenComPortDialog : public QDialog {
@@ -39,6 +40,9 @@ class OpenComPortDialog : public QDialog {
     QComboBox* stopBitsCombo_ = nullptr;
     QComboBox* flowCombo_ = nullptr;
     QLineEdit* fileEdit_ = nullptr;
+    QCheckBox* timestampCheck_ = nullptr;
+    QLineEdit* timestampFormatEdit_ = nullptr;
+    QCheckBox* logTxCheck_ = nullptr;
     QPushButton* browseButton_ = nullptr;
     QDialogButtonBox* buttonBox_ = nullptr;
     QPushButton* openButton_ = nullptr;

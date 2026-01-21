@@ -22,6 +22,8 @@
 
 #include <QTabBar>
 #include <QTabWidget>
+#include <QColor>
+#include <QIcon>
 #include <map>
 #include <memory>
 #include <qobjectdefs.h>
@@ -31,6 +33,7 @@
 #include "loadingstatus.h"
 
 class StreamSession;
+struct SerialCaptureSettings;
 
 // This class represents glogg's main widget, a tabbed
 // group of CrawlerWidgets.
@@ -78,11 +81,25 @@ class TabbedCrawlerWidget : public QTabWidget {
                                   const std::shared_ptr<StreamSession>& session );
     void clearStreamSessionForPath( const QString& fileName );
     StreamSession* streamSessionForPath( const QString& fileName ) const;
+    bool hasOpenStreamSession() const;
+    StreamSession* firstOpenStreamSession() const;
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;
     void mouseReleaseEvent( QMouseEvent* event ) override;
     void changeEvent( QEvent* event ) override;
+
+  private:
+    void updateTabBarVisibility();
+    void setTabConnectionState( const QString& fileName, bool connected,
+                                const SerialCaptureSettings* settings = nullptr );
+
+  public:
+    void setAlwaysShowTabBar( bool alwaysShow );
+    bool alwaysShowTabBar() const
+    {
+        return alwaysShowTabBar_;
+    }
 
   private:
     void addTabBarItem( int index, const QString& fileName );
@@ -105,6 +122,10 @@ class TabbedCrawlerWidget : public QTabWidget {
 
     CrawlerTabBar myTabBar_;
     std::map<QString, std::shared_ptr<StreamSession>> streamSessions_;
+    bool alwaysShowTabBar_ = false;
+    QColor defaultTabTextColor_;
+    const QColor openStreamTabColor_{ 0, 160, 0 };
+    QIcon connectionIcon_{ ":/images/icons8-lock-16.png" };
 };
 
 #endif

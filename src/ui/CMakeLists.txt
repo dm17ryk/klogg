@@ -1,6 +1,12 @@
 add_library(
   klogg_ui STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include/abstractlogview.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfig.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfigparser.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsmanager.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsrepository.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsresponseswindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionstablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filteredview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersdialog.h
@@ -30,6 +36,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewstablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/importactionsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/importpreviewsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/qfnotifications.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfind.h
@@ -37,6 +44,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfindpattern.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfindwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/recentfiles.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/responsestablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/savedsearches.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/selection.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/session.h
@@ -65,6 +73,12 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfiltersdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfig.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfigparser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsmanager.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsrepository.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsresponseswindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionstablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersdialog.cpp
@@ -93,12 +107,14 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/importactionsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/importpreviewsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfind.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindmux.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindpattern.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/recentfiles.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/responsestablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/savedsearches.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/session.cpp

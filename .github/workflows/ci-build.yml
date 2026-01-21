@@ -55,20 +55,20 @@ jobs:
           #  package_suffix: rpm
           #  check_container: oraclelinux:7
           #  container_root: docker/oracle7
-          #  container: variar/klogg_oracle7
+          #  container: dm17ryk/klogg_oracle7
           #  cmake_opts: -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_USE_HYPERSCAN=OFF
 
-          - os: oraclelinux
-            os_version: 8
-            arch: x64
-            check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
-            cpack_gen: RPM
-            artifacts_id: oracle
-            package_suffix: rpm
-            check_container: oraclelinux:8
-            container_root: docker/oracle8
-            container: variar/klogg_oracle8
-            cmake_opts: -DCMAKE_BUILD_WITH_INSTALL_RPATH=on -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_HYPERSCAN=ON
+          # - os: oraclelinux
+          #   os_version: 8
+          #   arch: x64
+          #   check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
+          #   cpack_gen: RPM
+          #   artifacts_id: oracle
+          #   package_suffix: rpm
+          #   check_container: oraclelinux:8
+          #   container_root: docker/oracle8
+          #   container: dm17ryk/klogg_oracle8
+          #   cmake_opts: -DCMAKE_BUILD_WITH_INSTALL_RPATH=on -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_HYPERSCAN=ON
 
           - os: ubuntu_focal
             os_version: 20.04
@@ -79,7 +79,7 @@ jobs:
             package_suffix: deb
             check_container: ubuntu:20.04
             container_root: docker/ubuntu20.04
-            container: variar/klogg_ubuntu20.04
+            container: dm17ryk/klogg_ubuntu20.04
             cmake_opts:
 
           - os: ubuntu_jammy
@@ -91,7 +91,7 @@ jobs:
             package_suffix: deb
             check_container: ubuntu:22.04
             container_root: docker/ubuntu22.04
-            container: variar/klogg_ubuntu22.04
+            container: dm17ryk/klogg_ubuntu22.04
             cmake_opts:
 
           - os: ubuntu_noble
@@ -103,7 +103,7 @@ jobs:
             package_suffix: deb
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
-            container: variar/klogg_ubuntu24.04
+            container: dm17ryk/klogg_ubuntu24.04
             cmake_opts:
 
           - os: ubuntu_appimage
@@ -112,7 +112,7 @@ jobs:
             artifacts_id: appimage
             package_suffix: AppImage
             container_root: docker/ubuntu20.04
-            container: variar/klogg_ubuntu20.04
+            container: dm17ryk/klogg_ubuntu20.04
             cmake_opts:
 
 

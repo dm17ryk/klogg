@@ -1,14 +1,16 @@
 set QTDIR=C:\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set KLOGG_WORKSPACE=C:\Essence_SC\lsrc\klogg
+set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
 set KLOGG_BUILD_ROOT=build_root
 set platform=x64
 set KLOGG_QT=Qt6
 set KLOGG_QT_DIR=%QTDIR%
 set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
+set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
 
 cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
 
 msbuild klogg.sln /m /p:Configuration=Release /p:Platform=x64
 msbuild klogg.sln /m /p:Configuration=RelWithDebInfo /p:Platform=x64

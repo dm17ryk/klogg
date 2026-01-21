@@ -47,31 +47,31 @@ jobs:
         sentry-cli releases new $KLOGG_VERSION
         sentry-cli releases set-commits --auto $KLOGG_VERSION
 
-    - name: Upload symbols linux
-      shell: sh
-      run: |
-        xz -d ./packages-focal/klogg_focal.debug.xz
-        xz -d ./packages-jammy/klogg_jammy.debug.xz
-        xz -d ./packages-noble/klogg_noble.debug.xz
-        xz -d ./packages-oracle/klogg_oracle.debug.xz
-        xz -d ./packages-appimage/klogg_appimage.debug.xz
-        sentry-cli upload-dif ./packages-focal/klogg_focal.debug ./packages-focal/klogg_focal
-        sentry-cli upload-dif ./packages-jammy/klogg_jammy.debug ./packages-jammy/klogg_jammy
-        sentry-cli upload-dif ./packages-noble/klogg_noble.debug  ./packages-noble/klogg_noble
-        sentry-cli upload-dif ./packages-oracle/klogg_oracle.debug ./packages-oracle/klogg_oracle
-        sentry-cli upload-dif ./packages-appimage/klogg_appimage.debug  ./packages-appimage/klogg_appimage
+    # - name: Upload symbols linux
+    #   shell: sh
+    #   run: |
+    #     xz -d ./packages-focal/klogg_focal.debug.xz
+    #     xz -d ./packages-jammy/klogg_jammy.debug.xz
+    #     xz -d ./packages-noble/klogg_noble.debug.xz
+    #     xz -d ./packages-appimage/klogg_appimage.debug.xz
+    #     sentry-cli upload-dif ./packages-focal/klogg_focal.debug ./packages-focal/klogg_focal
+    #     sentry-cli upload-dif ./packages-jammy/klogg_jammy.debug ./packages-jammy/klogg_jammy
+    #     sentry-cli upload-dif ./packages-noble/klogg_noble.debug  ./packages-noble/klogg_noble
+    #     sentry-cli upload-dif ./packages-appimage/klogg_appimage.debug  ./packages-appimage/klogg_appimage
+    #   # xz -d ./packages-oracle/klogg_oracle.debug.xz
+    #   # sentry-cli upload-dif ./packages-oracle/klogg_oracle.debug ./packages-oracle/klogg_oracle
 
-    - name: Upload symbols mac
-      shell: sh
-      run: |
-        sentry-cli upload-dif ./packages-macos-intel-qt6/klogg-x64.app/Contents/MacOS/klogg ./packages-macos-intel-qt6/klogg-x64.dSym
-        sentry-cli upload-dif ./packages-macos-arm-qt6/klogg-arm64.app/Contents/MacOS/klogg ./packages-macos-arm-qt6/klogg-arm64.dSym
+    # - name: Upload symbols mac
+    #   shell: sh
+    #   run: |
+    #     sentry-cli upload-dif ./packages-macos-arm-qt6/klogg-arm64.app/Contents/MacOS/klogg ./packages-macos-arm-qt6/klogg-arm64.dSym
+    #   # sentry-cli upload-dif ./packages-macos-intel-qt6/klogg-x64.app/Contents/MacOS/klogg ./packages-macos-intel-qt6/klogg-x64.dSym
 
-    - name: Upload symbols win
-      shell: sh
-      run: |
-        sentry-cli upload-dif ./packages-windows-x86-qt5/klogg-$KLOGG_VERSION-x86-Qt5-pdb.zip 
-        sentry-cli upload-dif ./packages-windows-x64-qt6/klogg-$KLOGG_VERSION-x64-Qt6-pdb.zip
+    # - name: Upload symbols win
+    #   shell: sh
+    #   run: |
+    #     sentry-cli upload-dif ./packages-windows-x64-qt6/klogg-$KLOGG_VERSION-x64-Qt6-pdb.zip
+    #   # sentry-cli upload-dif ./packages-windows-x86-qt5/klogg-$KLOGG_VERSION-x86-Qt5-pdb.zip 
 
     - name: Cleanup release artifacts
       shell: sh
@@ -79,7 +79,6 @@ jobs:
         rm -rf ./packages-focal/klogg_focal
         rm -rf ./packages-jammy/klogg_jammy
         rm -rf ./packages-noble/klogg_noble
-        rm -rf ./packages-oracle/klogg_oracle
         rm -rf ./packages-appimage/klogg_appimage
         rm -rf ./packages-macos-intel-qt6/klogg-x64.app
         rm -rf ./packages-macos-arm-qt6/klogg-arm64.app
@@ -87,10 +86,11 @@ jobs:
         mv ./packages-focal/klogg_focal.debug ./linux-debug
         mv ./packages-jammy/klogg_jammy.debug ./linux-debug
         mv ./packages-noble/klogg_noble.debug ./linux-debug
-        mv ./packages-oracle/klogg_oracle.debug ./linux-debug
         mv ./packages-appimage/klogg_appimage.debug ./linux-debug
         tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
         rm ./linux-debug/*.debug
+      # rm -rf ./packages-oracle/klogg_oracle
+      # mv ./packages-oracle/klogg_oracle.debug ./linux-debug
 
     - name: Prepare binary artifacts
       shell: sh
@@ -102,9 +102,10 @@ jobs:
 
     - name: Prepare checksums
       shell: sh
-      run: |
-        sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
-        
+      run:
+        sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt |
+      # sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
+
     - name: Release win
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
@@ -112,8 +113,8 @@ jobs:
         automatic_release_tag: continuous-win
         prerelease: true
         files: |
-          ./packages-windows-x86-qt5/*
           ./packages-windows-x64-qt6/*
+        # ./packages-windows-x86-qt5/*
 
     - name: Release linux
       uses: "marvinpinto/action-automatic-releases@latest"
@@ -125,10 +126,10 @@ jobs:
           ./packages-focal/*
           ./packages-jammy/*
           ./packages-noble/*
-          ./packages-oracle/*
           ./packages-appimage/*
           ./packages-bin/*
           ./linux-debug/*
+        # ./packages-oracle/*
 
     - name: Release mac
       uses: "marvinpinto/action-automatic-releases@latest"
@@ -137,18 +138,13 @@ jobs:
         automatic_release_tag: continuous-osx
         prerelease: true
         files: |
-          ./packages-macos-intel-qt6/*
           ./packages-macos-arm-qt6/*
+        # ./packages-macos-intel-qt6/*
 
     - name: Discord notification
       env:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
-        DISCORD_EMBEDS: '[{"title": "Windows", "url": "https://github.com/variar/klogg/releases/tag/continuous-win"}, {"title": "Linux", "url": "https://github.com/variar/klogg/releases/tag/continuous-linux"}, {"title": "Mac", "url": "https://github.com/variar/klogg/releases/tag/continuous-osx"}]'
+        DISCORD_EMBEDS: '[{"title": "Windows", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-win"}, {"title": "Linux", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-linux"}, {"title": "Mac", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-osx"}]'
       uses: Ilshidur/action-discord@master
       with:
         args: 'New CI build {{KLOGG_VERSION}} has been released!'
-
-
-
-
-   

@@ -47,6 +47,21 @@ xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_relwithdebinfo
 xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_relwithdebinfo\tbbmalloc_proxy.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_relwithdebinfo\tbbmalloc_proxy.pdb %KLOGG_WORKSPACE%\release\ /y
 
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbb12.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbb12.pdb %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbb12.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbb12.pdb %KLOGG_WORKSPACE%\release\ /y
+
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbbmalloc.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbbmalloc.pdb %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc.pdb %KLOGG_WORKSPACE%\release\ /y
+
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbbmalloc_proxy.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_64_md_release\tbbmalloc_proxy.pdb %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc_proxy.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\msvc_19.44_cxx17_32_md_release\tbbmalloc_proxy.pdb %KLOGG_WORKSPACE%\release\ /y
+
 xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\generated\documentation.html %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\COPYING %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\NOTICE %KLOGG_WORKSPACE%\release\ /y
@@ -96,6 +111,6 @@ xcopy %KLOGG_WORKSPACE%\packaging\windows\FileAssociation.nsh  /y
 
 echo "Making portable archive..."
 7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_klogg_listfile.txt
-7z a %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_pdb_listfile.txt
+@REM 7z a %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_pdb_listfile.txt
 
 echo "Done!"

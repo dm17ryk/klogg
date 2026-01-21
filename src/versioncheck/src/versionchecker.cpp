@@ -53,7 +53,7 @@ static constexpr QLatin1String OsSuffix = QLatin1String( "-linux", 6 );
 #endif
 
 static constexpr QLatin1String VERSION_URL
-    = QLatin1String( "https://raw.githubusercontent.com/variar/klogg/master/latest.json", 65 );
+    = QLatin1String( "https://raw.githubusercontent.com/dm17ryk/klogg/master/latest.json", 65 );
 static constexpr std::time_t CHECK_INTERVAL_S = 3600 * 24 * 7; /* 7 days */
 
 bool isVersionNewer( const QString& current_version, const QString& new_version )

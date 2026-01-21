@@ -68,6 +68,7 @@ const char* action::lineNumbersVisibleInFilteredText
     = QT_TR_NOOP( "Line &numbers in filtered view" );
 const char* action::followText = QT_TR_NOOP( "&Follow File" );
 const char* action::wrapText = QT_TR_NOOP( "&Wrap text" );
+const char* action::showTabsBarText = QT_TR_NOOP( "Show tabs bar" );
 const char* action::reloadText = QT_TR_NOOP( "&Reload" );
 const char* action::stopText = QT_TR_NOOP( "&Stop" );
 const char* action::optionsText = QT_TR_NOOP( "&Preferences..." );
@@ -94,6 +95,9 @@ const char* action::showScratchPadText = QT_TR_NOOP( "Scratchpad" );
 const char* action::showScratchPadStatusTip = QT_TR_NOOP( "Show the scratchpad" );
 const char* action::showPreviewerText = QT_TR_NOOP( "Previewer" );
 const char* action::showPreviewerStatusTip = QT_TR_NOOP( "Show the previewer" );
+const char* action::showActionsResponsesText = QT_TR_NOOP( "Actions/Responses" );
+const char* action::showActionsResponsesStatusTip
+    = QT_TR_NOOP( "Show actions and responses" );
 const char* action::addToFavoritesText = QT_TR_NOOP( "Add to favorites" );
 const char* action::removeFromFavoritesText = QT_TR_NOOP( "Remove from favorites..." );
 const char* action::selectOpenFileText = QT_TR_NOOP( "Switch to opened file..." );
@@ -103,6 +107,10 @@ const char* action::predefinedFiltersDialogStatusTip
 const char* action::importPreviewsDialogText = QT_TR_NOOP( "Import previews..." );
 const char* action::importPreviewsDialogStatusTip
     = QT_TR_NOOP( "Import structured preview definitions" );
+const char* action::importActionsDialogText = QT_TR_NOOP( "Import actions..." );
+const char* action::importActionsDialogStatusTip
+    = QT_TR_NOOP( "Import actions and responses definitions" );
 const char* action::autoEncodingText = QT_TR_NOOP( "Auto" );
 const char* action::autoEncodingStatusTip
     = QT_TR_NOOP( "Automatically detect the file's encoding" );
+                             

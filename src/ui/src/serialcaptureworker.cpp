@@ -1,6 +1,32 @@
 #include "serialcaptureworker.h"
 
 #include <QIODevice>
+#include <QStringView>
+#include <QDateTime>
+
+#include "log.h"
+
+namespace {
+QString previewHex( const QByteArray& data, int maxBytes = 128 )
+{
+    const auto slice = data.left( maxBytes );
+    auto hex = QString::fromLatin1( slice.toHex( ' ' ) );
+    if ( data.size() > maxBytes ) {
+        hex.append( QStringLiteral( " ... (%1 bytes total)" ).arg( data.size() ) );
+    }
+    return hex;
+}
+
+QByteArray timestampPrefix( const SerialCaptureSettings& settings, QStringView direction )
+{
+    const auto ts = QDateTime::currentDateTime().toString( settings.timestampFormat );
+    QString prefix = ts;
+    prefix.append( ' ' );
+    prefix.append( direction );
+    prefix.append( QStringLiteral( " - " ) );
+    return prefix.toUtf8();
+}
+} // namespace
 
 SerialCaptureWorker::SerialCaptureWorker( SerialCaptureSettings settings, QObject* parent )
     : QObject( parent )
@@ -44,11 +70,13 @@ void SerialCaptureWorker::start()
     port_->setParity( settings_.parity );
     port_->setStopBits( settings_.stopBits );
     port_->setFlowControl( settings_.flowControl );
+    atLineStart_ = true;
+    flushCounter_ = 0;
 
     connect( port_, &QSerialPort::readyRead, this, &SerialCaptureWorker::onReadyRead );
     connect( port_, &QSerialPort::errorOccurred, this, &SerialCaptureWorker::onError );
 
-    if ( !port_->open( QIODevice::ReadOnly ) ) {
+    if ( !port_->open( QIODevice::ReadWrite ) ) {
         stopping_ = true;
         Q_EMIT errorOccurred( tr( "Failed to open %1: %2" ).arg( settings_.portName, port_->errorString() ) );
         file_.close();
@@ -77,6 +105,70 @@ void SerialCaptureWorker::stop()
     Q_EMIT finished();
 }
 
+void SerialCaptureWorker::sendData( QByteArray data )
+{
+    if ( stopping_ || data.isEmpty() || !port_ || !port_->isOpen() ) {
+        return;
+    }
+
+    LOG_INFO << "COM write to " << settings_.portName.toStdString() << ", bytes: "
+             << data.size() << ", hex: " << previewHex( data ).toStdString();
+
+    const auto written = port_->write( data );
+    if ( written < 0 ) {
+        Q_EMIT errorOccurred(
+            tr( "Failed to write to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
+        return;
+    }
+    if ( written != data.size() ) {
+        Q_EMIT errorOccurred(
+            tr( "Partial write to %1: %2/%3 bytes." ).arg( settings_.portName ).arg( written ).arg( data.size() ) );
+    }
+
+    if ( !port_->waitForBytesWritten( 1000 ) ) {
+        Q_EMIT errorOccurred(
+            tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
+    }
+
+    if ( settings_.logTransmits && file_.isOpen() ) {
+        QByteArray toWrite;
+        toWrite.reserve( data.size() + 64 );
+        if ( settings_.addTimestamps ) {
+            toWrite.append(
+                timestampPrefix( settings_, QStringView( QStringLiteral( "[TX]" ) ) ) );
+        }
+        else {
+            toWrite.append( "[TX] - " );
+        }
+        toWrite.append( data );
+        if ( !data.endsWith( '\n' ) ) {
+            toWrite.append( '\n' );
+        }
+        const auto logged = file_.write( toWrite );
+        if ( logged != toWrite.size() ) {
+            Q_EMIT errorOccurred( tr( "Failed to log TX to file." ) );
+        }
+        else {
+            file_.flush();
+        }
+    }
+}
+
+void SerialCaptureWorker::appendToFile( QByteArray data )
+{
+    if ( stopping_ || data.isEmpty() || !file_.isOpen() ) {
+        return;
+    }
+
+    const auto written = file_.write( data );
+    if ( written != data.size() ) {
+        Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+        stop();
+        return;
+    }
+    file_.flush();
+}
+
 void SerialCaptureWorker::onReadyRead()
 {
     if ( stopping_ || !port_ ) {
@@ -88,16 +180,39 @@ void SerialCaptureWorker::onReadyRead()
         return;
     }
 
-    const auto written = file_.write( data );
-    if ( written != data.size() ) {
+    QByteArray toWrite;
+    toWrite.reserve( data.size() + 64 );
+
+    if ( settings_.addTimestamps ) {
+        for ( const auto byte : data ) {
+            if ( atLineStart_ ) {
+                toWrite.append(
+                    timestampPrefix( settings_, QStringView( QStringLiteral( "[RX]" ) ) ) );
+                atLineStart_ = false;
+            }
+            toWrite.append( byte );
+            if ( byte == '\n' ) {
+                atLineStart_ = true;
+            }
+        }
+    }
+    else {
+        toWrite.append( data );
+    }
+
+    const bool hasNewline = data.contains( '\n' );
+    const auto written = file_.write( toWrite );
+    if ( written != toWrite.size() ) {
         Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
         stop();
         return;
     }
-    if ( ++flushCounter_ >= 8 ) {
+    if ( hasNewline || ++flushCounter_ >= 8 ) {
         file_.flush();
         flushCounter_ = 0;
     }
+
+    Q_EMIT dataReceived( data );
 }
 
 void SerialCaptureWorker::onError( QSerialPort::SerialPortError error )

@@ -10,7 +10,7 @@ Before any CMake/build steps, ensure these env vars are set:
 set QTDIR=C:\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set KLOGG_WORKSPACE=C:\Essence_SC\lsrc\klogg
+set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
 set KLOGG_BUILD_ROOT=build_root
 set platform=x64
 set KLOGG_QT=Qt6

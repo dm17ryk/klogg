@@ -26,6 +26,7 @@
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QPalette>
 #include <QPointer>
 #include <qobjectdefs.h>
 #include <qpoint.h>
@@ -102,7 +103,8 @@ TabbedCrawlerWidget::TabbedCrawlerWidget()
     myTabBar_.setStyleSheet( tabStyle.append( tabCloseButtonStyle ) );
 
     setTabBar( &myTabBar_ );
-    myTabBar_.hide();
+    defaultTabTextColor_ = myTabBar_.palette().color( QPalette::WindowText );
+    updateTabBarVisibility();
 
     myTabBar_.setContextMenuPolicy( Qt::CustomContextMenu );
     connect( &myTabBar_, &CrawlerTabBar::showTabContextMenu, this,
@@ -115,6 +117,9 @@ void TabbedCrawlerWidget::loadIcons()
 {
     IconLoader iconLoader{ this };
     olddata_icon_ = iconLoader.load( "olddata_icon" );
+    if ( connectionIcon_.isNull() ) {
+        connectionIcon_ = iconLoader.load( "icons8-lock" );
+    }
     for ( int tab = 0; tab < count(); ++tab ) {
         updateIcon( tab );
     }
@@ -123,6 +128,16 @@ void TabbedCrawlerWidget::loadIcons()
 void TabbedCrawlerWidget::changeEvent( QEvent* event )
 {
     if ( event->type() == QEvent::StyleChange ) {
+        defaultTabTextColor_ = myTabBar_.palette().color( QPalette::WindowText );
+        for ( int i = 0; i < count(); ++i ) {
+            const auto path = tabPathAt( i );
+            const auto it = streamSessions_.find( path );
+            const bool connected = it != streamSessions_.end() && it->second
+                                   && it->second->isConnectionOpen();
+            const SerialCaptureSettings* settings
+                = connected ? &it->second->captureSettings() : nullptr;
+            setTabConnectionState( path, connected, settings );
+        }
         dispatchToMainThread( [ this ] { loadIcons(); } );
     }
 
@@ -146,16 +161,22 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
 
     setCurrentIndex( index );
 
-    if ( count() > 1 )
-        myTabBar_.show();
+    updateTabBarVisibility();
+
+    const auto sessionIt = streamSessions_.find( fileName );
+    if ( sessionIt != streamSessions_.end() && sessionIt->second ) {
+        const bool connected = sessionIt->second->isConnectionOpen();
+        const auto* settings
+            = connected ? &sessionIt->second->captureSettings() : nullptr;
+        setTabConnectionState( fileName, connected, settings );
+    }
 }
 
 void TabbedCrawlerWidget::removeCrawler( int index )
 {
     QTabWidget::removeTab( index );
 
-    if ( count() <= 1 )
-        myTabBar_.hide();
+    updateTabBarVisibility();
 }
 
 void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
@@ -167,6 +188,7 @@ void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
 
     if ( session ) {
         streamSessions_[ fileName ] = session;
+        setTabConnectionState( fileName, session->isConnectionOpen(), &session->captureSettings() );
     }
     else {
         clearStreamSessionForPath( fileName );
@@ -179,6 +201,7 @@ void TabbedCrawlerWidget::clearStreamSessionForPath( const QString& fileName )
         return;
     }
 
+    setTabConnectionState( fileName, false );
     streamSessions_.erase( fileName );
 }
 
@@ -227,6 +250,26 @@ StreamSession* TabbedCrawlerWidget::streamSessionForPath( const QString& fileNam
     return it->second.get();
 }
 
+bool TabbedCrawlerWidget::hasOpenStreamSession() const
+{
+    for ( const auto& entry : streamSessions_ ) {
+        if ( entry.second && entry.second->isConnectionOpen() ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+StreamSession* TabbedCrawlerWidget::firstOpenStreamSession() const
+{
+    for ( const auto& entry : streamSessions_ ) {
+        if ( entry.second && entry.second->isConnectionOpen() ) {
+            return entry.second.get();
+        }
+    }
+    return nullptr;
+}
+
 void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
 {
     if ( mouseEvent->button() == Qt::RightButton ) {
@@ -253,7 +296,10 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
     auto openContainingFolder = menu.addAction( tr( "Open containing folder" ) );
     if ( auto session = streamSessionForTab( tab ) ) {
         menu.addSeparator();
-        auto closeConnection = menu.addAction( tr( "Close Connection" ) );
+        const auto& settings = session->captureSettings();
+        const auto closeText = tr( "Close %1 @ %2" ).arg( settings.portName,
+                                                          QString::number( settings.baudRate ) );
+        auto closeConnection = menu.addAction( closeText );
         QPointer<StreamSession> safeSession = session;
         closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
         connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
@@ -407,3 +453,45 @@ void TabbedCrawlerWidget::setTabDataStatus( int index, DataStatus status )
 
     updateIcon( index );
 }
+
+
+void TabbedCrawlerWidget::updateTabBarVisibility()
+{
+    myTabBar_.setVisible( alwaysShowTabBar_ || count() > 1 );
+}
+
+void TabbedCrawlerWidget::setTabConnectionState( const QString& fileName, bool connected,
+                                                 const SerialCaptureSettings* settings )
+{
+    const auto color = connected ? openStreamTabColor_ : defaultTabTextColor_;
+    for ( int i = 0; i < count(); ++i ) {
+        if ( tabPathAt( i ) == fileName ) {
+            const auto baseToolTip = QDir::toNativeSeparators( fileName );
+            if ( connected && settings ) {
+                myTabBar_.setTabToolTip(
+                    i, QStringLiteral( "%1 (%2 @ %3)" )
+                           .arg( baseToolTip, settings->portName )
+                           .arg( settings->baudRate ) );
+                myTabBar_.setTabIcon( i, connectionIcon_ );
+            }
+            else {
+                myTabBar_.setTabToolTip( i, baseToolTip );
+                updateIcon( i );
+            }
+            myTabBar_.setTabTextColor( i, color );
+            break;
+        }
+    }
+}
+
+void TabbedCrawlerWidget::setAlwaysShowTabBar( bool alwaysShow )
+{
+    alwaysShowTabBar_ = alwaysShow;
+    updateTabBarVisibility();
+}
+
+
+
+
+
+
