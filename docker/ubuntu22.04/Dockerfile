@@ -15,7 +15,7 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN python3 -m pip install --no-cache-dir aqtinstall==3.2.1 && \
     python3 -m aqt install-qt linux desktop 6.10.1 gcc_64 -O /opt/Qt \
-        --archives qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport qt5compat
+        --modules qtimageformats qtsvg qttools qttranslations icu qtserialport qt5compat
 
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-linux-x86_64.sh && \
     chmod 755 cmake-3.20.2-linux-x86_64.sh && \
