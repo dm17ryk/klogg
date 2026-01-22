@@ -58,8 +58,7 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
                 SafeQSignalSpy& searchProgressSpy )
 {
 
-    QTimer::singleShot(
-        50, [ & ]() { filtered_data->runSearch( RegularExpressionPattern( regexp ) ); } );
+    filtered_data->runSearch( RegularExpressionPattern( regexp ) );
 
     int progress = 0;
     do {
@@ -67,6 +66,40 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
         QList<QVariant> progressArgs = searchProgressSpy.last();
         progress = progressArgs.at( 1 ).toInt();
     } while ( progress < 100 );
+}
+
+bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, LineNumber endLine,
+                      SafeQSignalSpy& searchProgressSpy )
+{
+    filtered_data->updateSearch( startLine, endLine );
+
+    int progress = 0;
+    int lastCount = searchProgressSpy.count();
+    while ( true ) {
+        if ( !searchProgressSpy.safeWait( 500 ) ) {
+            // No signal emitted (likely nothing to scan).
+            return false;
+        }
+        // Ignore signals that arrived before this run.
+        if ( searchProgressSpy.count() <= lastCount ) {
+            continue;
+        }
+
+        QList<QVariant> progressArgs = searchProgressSpy.last();
+        progress = progressArgs.at( 1 ).toInt();
+        if ( progress >= 100 ) {
+            return true;
+        }
+    }
+}
+
+QString formattedLine( int value )
+{
+    char newLine[ 90 ];
+    snprintf( newLine, 89,
+              "LOGDATA \t is a part of glogg, we are going to test it thoroughly, this is line %06d\n",
+              value );
+    return QString::fromLatin1( newLine );
 }
 
 } // namespace
@@ -208,6 +241,155 @@ SCENARIO( "marks in filtered log data", "[logdata]" )
                     REQUIRE( filtered_data->getNbMarks() == 0_lcount );
                 }
             }
+        }
+    }
+}
+
+SCENARIO( "filter change triggers full rescan and resets incremental state", "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+
+    GIVEN( "loaded log data and an initial search" )
+    {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+        SafeQSignalSpy firstSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        runSearch( filtered_data.get(), "line 000000", firstSearchSpy );
+
+        REQUIRE( filtered_data->fullScanCompleted() );
+        const auto firstGeneration = filtered_data->searchGeneration();
+
+        WHEN( "running search with a different pattern" )
+        {
+            SafeQSignalSpy secondSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+            runSearch( filtered_data.get(), "line 000001", secondSearchSpy );
+
+            THEN( "state is reset and search starts from the beginning" )
+            {
+                REQUIRE( filtered_data->searchGeneration() > firstGeneration );
+                REQUIRE( filtered_data->lastSearchStart() == 0_lnum );
+                REQUIRE_FALSE( filtered_data->lastSearchWasIncremental() );
+                REQUIRE( filtered_data->fullScanCompleted() );
+            }
+        }
+    }
+}
+
+SCENARIO( "auto refresh scans only appended lines", "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+
+    GIVEN( "an initial search and new data appended" )
+    {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+        SafeQSignalSpy initialSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        runSearch( filtered_data.get(), "line 000000", initialSearchSpy );
+
+        const auto initialMatches = filtered_data->getNbMatches();
+        const auto initialProcessed = filtered_data->lastProcessedLine();
+        REQUIRE( initialMatches == 1_lcount );
+        REQUIRE_FALSE( filtered_data->lastSearchWasIncremental() );
+
+        // Append two lines, only one matches the current filter.
+        logDataLoader.file.seek( logDataLoader.file.size() );
+        const auto nonMatching = formattedLine( 600 );
+        logDataLoader.file.write( nonMatching.toLatin1() );
+        const auto matching = formattedLine( 0 );
+        logDataLoader.file.write( matching.toLatin1() );
+        logDataLoader.file.flush();
+
+        SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+        logDataLoader.log_data.reload();
+        REQUIRE( reloadSpy.safeWait() );
+
+        SafeQSignalSpy updateSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                                  LineNumber( logDataLoader.log_data.getNbLine().get() ),
+                                  updateSearchSpy ) );
+
+        THEN( "only new matches are appended and search starts after previous scan" )
+        {
+            REQUIRE( filtered_data->lastSearchWasIncremental() );
+            REQUIRE( filtered_data->getNbMatches() == initialMatches + 1_lcount );
+            REQUIRE( filtered_data->lastProcessedLine()
+                     == LineNumber( logDataLoader.log_data.getNbLine().get() ) );
+            REQUIRE( filtered_data->lastSearchStart()
+                     >= LineNumber( initialProcessed.get() > 0 ? initialProcessed.get() - 1 : 0 ) );
+        }
+    }
+}
+
+SCENARIO( "manual scan then auto refresh avoids full rescan when no new data", "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+
+    GIVEN( "an initial full search with auto-refresh on" )
+    {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+        SafeQSignalSpy initialSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        runSearch( filtered_data.get(), "line 000123", initialSearchSpy );
+
+        const auto generationAfterFull = filtered_data->searchGeneration();
+        const auto processedAfterFull = filtered_data->lastProcessedLine();
+        REQUIRE( filtered_data->fullScanCompleted() );
+
+        // Trigger update without appending anything.
+        SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        const auto hadSignals = runUpdateSearch(
+            filtered_data.get(), 0_lnum, LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy );
+
+        THEN( "no incremental scan is launched and state is unchanged" )
+        {
+            REQUIRE_FALSE( hadSignals );
+            REQUIRE( filtered_data->searchGeneration() == generationAfterFull );
+            REQUIRE( filtered_data->lastProcessedLine() == processedAfterFull );
+            REQUIRE_FALSE( filtered_data->lastSearchWasIncremental() );
+        }
+    }
+}
+
+SCENARIO( "incremental scan appends new matches without duplicates", "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+
+    GIVEN( "a filter and multiple refresh cycles" )
+    {
+        auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+        SafeQSignalSpy initialSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        runSearch( filtered_data.get(), "line 000010", initialSearchSpy );
+
+        const auto baseMatches = filtered_data->getNbMatches();
+
+        // Append a matching line and a non-matching line.
+        logDataLoader.file.seek( logDataLoader.file.size() );
+        logDataLoader.file.write( formattedLine( 10 ).toLatin1() );
+        logDataLoader.file.write( formattedLine( 777 ).toLatin1() );
+        logDataLoader.file.flush();
+
+        SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+        logDataLoader.log_data.reload();
+        REQUIRE( reloadSpy.safeWait() );
+
+        SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                                  LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
+
+        const auto afterFirstRefreshMatches = filtered_data->getNbMatches();
+        REQUIRE( afterFirstRefreshMatches == baseMatches + 1_lcount );
+        REQUIRE( filtered_data->lastSearchWasIncremental() );
+
+        // Second refresh without new data should not add duplicates.
+        SafeQSignalSpy secondUpdateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+        const auto hadSecondRun = runUpdateSearch( filtered_data.get(), 0_lnum,
+                                                   LineNumber( logDataLoader.log_data.getNbLine().get() ),
+                                                   secondUpdateSpy );
+
+        THEN( "matches remain stable and no duplicate insertions occur" )
+        {
+            REQUIRE_FALSE( hadSecondRun );
+            REQUIRE( filtered_data->getNbMatches() == afterFirstRefreshMatches );
         }
     }
 }

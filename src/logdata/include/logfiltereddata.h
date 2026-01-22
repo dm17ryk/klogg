@@ -81,6 +81,12 @@ class LogFilteredData : public AbstractLogData {
     // Shortcut for runSearch on all file
     void runSearch( const RegularExpressionPattern& regExp );
 
+    // Incremental auto-refresh overview:
+    // - Full scans are launched via runSearch() or after filter changes.
+    // - updateSearch() reuses the compiled filter and scans only newly
+    //   appended lines starting from the last processed line.
+    // - lastSearchStart_/End_, fullScanCompleted_ and searchGeneration_
+    //   expose the incremental state for diagnostics and tests.
     // Add to the existing search, starting at the line when the search was
     // last stopped. Used when the file on disk has been added too.
     void updateSearch( LineNumber startLine, LineNumber endLine );
@@ -103,6 +109,44 @@ class LogFilteredData : public AbstractLogData {
     LinesCount getNbMatches() const;
     // Returns the number of marks (independently of the visibility)
     LinesCount getNbMarks() const;
+
+    // Whether there is a compiled/active search expression.
+    bool hasCurrentRegexp() const
+    {
+        return !currentRegExp_.pattern.isEmpty();
+    }
+
+    // Last processed line for the current search (for incremental scans).
+    LineNumber lastProcessedLine() const
+    {
+        return LineNumber( nbLinesProcessed_.get() );
+    }
+
+    // Diagnostics for incremental search pipeline (used in tests and debug).
+    LineNumber lastSearchStart() const
+    {
+        return lastSearchStart_;
+    }
+
+    LineNumber lastSearchEnd() const
+    {
+        return lastSearchEnd_;
+    }
+
+    uint64_t searchGeneration() const
+    {
+        return searchGeneration_;
+    }
+
+    bool lastSearchWasIncremental() const
+    {
+        return lastSearchIncremental_;
+    }
+
+    bool fullScanCompleted() const
+    {
+        return fullScanCompleted_;
+    }
 
     LineType lineTypeByIndex( LineNumber index ) const;
     LineType lineTypeByLine( LineNumber lineNumber ) const;
@@ -186,6 +230,13 @@ class LogFilteredData : public AbstractLogData {
     LineLength maxLengthMarks_;
     // Number of lines of the LogData that has been searched for:
     LinesCount nbLinesProcessed_;
+
+    // Incremental search tracking.
+    LineNumber lastSearchStart_{ 0_lnum };
+    LineNumber lastSearchEnd_{ 0_lnum };
+    bool lastSearchIncremental_{ false };
+    bool fullScanCompleted_{ false };
+    uint64_t searchGeneration_{ 0 };
 
     Visibility visibility_;
 

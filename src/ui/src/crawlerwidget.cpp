@@ -800,6 +800,17 @@ void CrawlerWidget::resetStateOnSearchPatternChanges()
 void CrawlerWidget::searchRefreshChangedHandler( bool isRefreshing )
 {
     searchState_.setAutorefresh( isRefreshing );
+
+    // If auto-refresh is enabled but no search has been run yet, kick off the
+    // initial search so subsequent refreshes can be incremental.
+    if ( isRefreshing && logFilteredData_ && !logFilteredData_->hasCurrentRegexp() ) {
+        const auto searchText = searchLineEdit_->currentText();
+        if ( !searchText.isEmpty() ) {
+            replaceCurrentSearch( searchText );
+            return;
+        }
+    }
+
     printSearchInfoMessage( logFilteredData_->getNbMatches() );
 }
 
@@ -1595,6 +1606,9 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
     logFilteredData_->clearSearch();
     filteredView_->updateData();
 
+    searchStartLine_ = 0_lnum;
+    searchEndLine_ = LineNumber( logData_->getNbLine().get() );
+
     // Update the match overview
     overview_.updateData( logData_->getNbLine() );
 
@@ -1607,8 +1621,11 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
 
         RegularExpression hsExpression{ regexpPattern };
         auto isValidExpression = hsExpression.isValid();
+        LOG_INFO << "Search pattern validation " << ( isValidExpression ? "ok" : "failed" );
 
         if ( isValidExpression ) {
+            LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
+                     << searchStartLine_ << ", " << searchEndLine_ << "]";
             // Activate the stop button
             stopButton_->setEnabled( true );
             stopButton_->show();
@@ -1623,6 +1640,8 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
             filteredView_->setSearchPattern( regexpPattern );
         }
         else {
+            LOG_WARNING << "Search pattern invalid: " << regexpPattern.pattern
+                        << " error: " << hsExpression.errorString();
             // The regexp is wrong
             logFilteredData_->clearSearch();
             filteredView_->updateData();

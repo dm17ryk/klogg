@@ -104,6 +104,14 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNum
     clearSearch();
     currentRegExp_ = regExp;
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
+    lastSearchStart_ = startLine;
+    lastSearchEnd_ = endLine;
+    lastSearchIncremental_ = false;
+    fullScanCompleted_ = false;
+    ++searchGeneration_;
+
+    LOG_DEBUG << "Starting full search gen " << searchGeneration_ << " range [" << startLine << ", "
+              << endLine << "]";
     LOG_INFO << "Search cache key: " << regExp.pattern << "_" << startLine.get() << "_"
              << endLine.get();
 
@@ -132,6 +140,38 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
 {
     LOG_DEBUG << "Entering updateSearch";
 
+    if ( currentRegExp_.pattern.isEmpty() ) {
+        LOG_INFO << "Skipping updateSearch: no active search pattern";
+        return;
+    }
+
+    auto previousProcessed = LineNumber( nbLinesProcessed_.get() );
+
+    if ( endLine <= previousProcessed ) {
+        LOG_DEBUG << "Skipping updateSearch: nothing new to scan. processed=" << previousProcessed
+                  << " endLine=" << endLine;
+        lastSearchStart_ = previousProcessed;
+        lastSearchEnd_ = endLine;
+        lastSearchIncremental_ = false;
+        return;
+    }
+
+    auto initialLine = qMax( previousProcessed, startLine );
+
+    if ( initialLine.get() >= 1 ) {
+        initialLine = LineNumber( initialLine.get() - 1 );
+    }
+
+    lastSearchStart_ = initialLine;
+    lastSearchEnd_ = endLine;
+    lastSearchIncremental_ = true;
+    fullScanCompleted_ = false;
+    ++searchGeneration_;
+
+    LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range [" << initialLine
+              << ", " << endLine << "]"
+              << " previous processed " << previousProcessed;
+
     currentSearchKey_ = {};
 
     attachReader();
@@ -155,6 +195,10 @@ void LogFilteredData::clearSearch( bool dropCache )
     marks_and_matches_ = marks_;
     maxLength_ = 0_length;
     nbLinesProcessed_ = 0_lcount;
+    lastSearchStart_ = 0_lnum;
+    lastSearchEnd_ = 0_lnum;
+    lastSearchIncremental_ = false;
+    fullScanCompleted_ = false;
 
     if ( dropCache ) {
         searchResultsCache_.clear();
@@ -406,6 +450,7 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 
     maxLength_ = searchResults.maxLength;
     nbLinesProcessed_ = searchResults.processedLines;
+    lastSearchEnd_ = LineNumber( nbLinesProcessed_.get() );
 
     if ( progress == 100
          && nbLinesProcessed_.get() == getExpectedSearchEnd( currentSearchKey_ ).get() ) {
@@ -415,6 +460,10 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
     {
         ScopedLock lock( searchProgressMutex_ );
         searchProgress_ = std::make_tuple( nbMatches, progress, initialLine );
+    }
+
+    if ( progress == 100 ) {
+        fullScanCompleted_ = true;
     }
 
     Q_EMIT searchProgressedThrottled();

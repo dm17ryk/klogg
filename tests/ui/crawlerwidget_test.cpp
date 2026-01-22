@@ -135,6 +135,14 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         }
     }
 
+    void disableBooleanCombinationMode()
+    {
+        if ( crawler->booleanButton_->isChecked() ) {
+            crawler->booleanButton_->setChecked( false );
+            QTest::qWait( 50 );
+        }
+    }
+
     void runSearch()
     {
         QTest::mouseClick( crawler->searchButton_, Qt::LeftButton );
@@ -170,6 +178,7 @@ SCENARIO( "Crawler widget search", "[ui]" )
     waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } );
 
     crawlerVisitor.render();
+    crawlerVisitor.disableBooleanCombinationMode();
 
     REQUIRE( crawlerVisitor.getLogNbLines().get() == SL_NB_LINES );
 
