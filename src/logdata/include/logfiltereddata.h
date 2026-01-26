@@ -115,6 +115,10 @@ class LogFilteredData : public AbstractLogData {
     {
         return !currentRegExp_.pattern.isEmpty();
     }
+    const RegularExpressionPattern& currentRegexp() const
+    {
+        return currentRegExp_;
+    }
 
     // Last processed line for the current search (for incremental scans).
     LineNumber lastProcessedLine() const

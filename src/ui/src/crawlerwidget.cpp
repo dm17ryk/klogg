@@ -1624,6 +1624,10 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
         LOG_INFO << "Search pattern validation " << ( isValidExpression ? "ok" : "failed" );
 
         if ( isValidExpression ) {
+            const bool samePatternAsCurrent
+                = logFilteredData_->hasCurrentRegexp() && logFilteredData_->fullScanCompleted()
+                  && logFilteredData_->currentRegexp() == regexpPattern;
+
             LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
                      << searchStartLine_ << ", " << searchEndLine_ << "]";
             // Activate the stop button
@@ -1632,7 +1636,13 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
             clearButton_->hide();
             searchButton_->hide();
             // Start a new asynchronous search
-            logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+            if ( samePatternAsCurrent ) {
+                LOG_INFO << "Skipping full search: pattern unchanged, issuing incremental refresh";
+                logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
+            }
+            else {
+                logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+            }
             // Accept auto-refresh of the search
             searchState_.startSearch();
             searchInfoLine_->hide();
