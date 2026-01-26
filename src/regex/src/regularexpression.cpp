@@ -268,11 +268,9 @@ RegularExpression::RegularExpression( const RegularExpressionPattern& pattern )
         isValid_ = hsExpression_.isValid();
         errorString_ = hsExpression_.errorString();
 
-        // Currently keep boolean evaluation via exprtk; disable HS combination until
-        // compilation reliability is improved.
-        hasHsCombination_ = false;
-        combinationIndex_ = 0;
-        if ( !hsCombination.empty() ) {
+        if ( hasHsCombination_ && !hsExpression_.isValid() ) {
+            hasHsCombination_ = false;
+            combinationIndex_ = 0;
             hsExpression_ = HsRegularExpression( subPatterns_ );
             isValid_ = hsExpression_.isValid();
             errorString_ = hsExpression_.errorString();
@@ -323,7 +321,13 @@ bool hasCombinedMatch( std::string_view line, const MatcherVariant& matcher,
                        BooleanExpressionEvaluator* evaluator )
 {
     auto result = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
-    return evaluator && evaluator->evaluate( result );
+    if ( evaluator ) {
+        if ( result.size() > evaluator->variableCount() ) {
+            result.resize( evaluator->variableCount() );
+        }
+        return evaluator->evaluate( result );
+    }
+    return false;
 }
 
 bool hasInverseSingleMatch( std::string_view line, const MatcherVariant& matcher,
@@ -359,25 +363,7 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
             expression.expression_.toStdString(), expression.subPatterns_ );
     }
 
-    if ( hasHsCombination_ ) {
-        hasMatchImpl_ = [this]( std::string_view line, const MatcherVariant& matcher,
-                                BooleanExpressionEvaluator* ) {
-            const auto result
-                = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
-            if ( result.empty() || combinationIndex_ >= result.size() ) {
-                return false;
-            }
-            return result[ combinationIndex_ ] > 0;
-        };
-        if ( isInverse_ ) {
-            const auto base = hasMatchImpl_;
-            hasMatchImpl_ = [base]( std::string_view line, const MatcherVariant& matcher,
-                                    BooleanExpressionEvaluator* evaluator ) {
-                return !base( line, matcher, evaluator );
-            };
-        }
-    }
-    else if ( !isBooleanCombination_ ) {
+    if ( !isBooleanCombination_ ) {
         hasMatchImpl_ = isInverse_ ? matching::hasInverseSingleMatch : matching::hasSingleMatch;
     }
     else {
