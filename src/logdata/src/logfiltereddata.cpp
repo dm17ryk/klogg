@@ -102,6 +102,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNum
     const auto& config = Configuration::get();
 
     clearSearch();
+    compiledRegExp_ = std::make_shared<RegularExpression>( regExp );
     currentRegExp_ = regExp;
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
     lastSearchStart_ = startLine;
@@ -132,7 +133,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNum
 
     if ( shouldRunSearch ) {
         attachReader();
-        workerThread_.search( currentRegExp_, startLine, endLine );
+        workerThread_.search( currentRegExp_, compiledRegExp_, startLine, endLine );
     }
 }
 
@@ -175,7 +176,7 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     currentSearchKey_ = {};
 
     attachReader();
-    workerThread_.updateSearch( currentRegExp_, startLine, endLine,
+    workerThread_.updateSearch( currentRegExp_, compiledRegExp_, startLine, endLine,
                                 LineNumber( nbLinesProcessed_.get() ) );
 }
 
@@ -191,6 +192,7 @@ void LogFilteredData::clearSearch( bool dropCache )
     interruptSearch();
 
     currentRegExp_ = {};
+    compiledRegExp_.reset();
     matching_lines_ = {};
     marks_and_matches_ = marks_;
     maxLength_ = 0_length;

@@ -65,9 +65,9 @@ if(KLOGG_USE_HYPERSCAN)
     NAME
     hyperscan
     GITHUB_REPOSITORY
-    variar/hyperscan
+    dm17ryk/hyperscan
     GIT_TAG
-    0931a40e0cf1d7f92189bc546c3491ed5c113f8b
+    d458377e75546f3eb081d13f1a9b8f04f4493cfa
     EXCLUDE_FROM_ALL
     YES
   )

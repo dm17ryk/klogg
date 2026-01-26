@@ -1,0 +1,267 @@
+{
+  "task_name": "klogg-hybrid-parallel-highlighting-hyperscan-qt",
+  "title": "Hybrid parallel highlighting: use Hyperscan where supported, QtRegex where not, run both in parallel",
+  "repository": {
+    "name": "klogg",
+    "url": "https://github.com/dm17ryk/klogg"
+  },
+  "branch": "feature/hybrid-parallel-highlighting",
+  "priority": "high",
+  "summary": {
+    "problem": "Highlighting currently relies primarily on Qt regex evaluation and can lag/freeze when many highlight rules are enabled, especially on large logs.",
+    "goal": "Implement a hybrid highlighting engine: classify highlight patterns into Hyperscan-compatible vs QtRegex-only; compile Hyperscan patterns into a multi-pattern database; execute Hyperscan scan and QtRegex fallback scans in parallel across multiple cores; cache results; support both background full-file highlighting and on-demand visible-line highlighting without blocking the UI."
+  },
+  "scope": [
+    "Highlighting rules evaluation (user-defined/highlighter rules).",
+    "Hybrid engine selection per pattern (Hyperscan vs QtRegex).",
+    "Parallel execution across CPU cores using thread pool / QtConcurrent / existing worker infra.",
+    "Highlight cache storage and retrieval for renderer.",
+    "Just-in-time highlighting for visible lines if not yet cached.",
+    "Maintain highlight precedence/override semantics identical to current behavior."
+  ],
+  "out_of_scope": [
+    "Search/filter engine behavior (manual/auto-refresh search).",
+    "UI/UX redesign of highlight rule editor.",
+    "New settings UI (optional debug flags ok).",
+    "Log rotation/truncation handling beyond current behavior."
+  ],
+  "assumptions": [
+    "Klogg already stores/loads highlight rule sets and applies them during rendering.",
+    "Highlight precedence is order-based (later rules override earlier rules).",
+    "Hyperscan is available on supported builds/CPUs; otherwise fallback to Qt-only.",
+    "Log lines are processed independently for highlighting (no multi-line highlight semantics required)."
+  ],
+  "acceptance_criteria": [
+    "Patterns that compile with Hyperscan are highlighted using Hyperscan; patterns that fail Hyperscan compilation use QtRegex.",
+    "Both engines can run concurrently without blocking the UI thread.",
+    "Background highlighting uses multicore chunking and populates a cache indexed by line.",
+    "On-demand (visible line) highlighting uses hybrid matching in a worker thread and updates cache/UI asynchronously.",
+    "Qt-only mode (Hyperscan unavailable) still uses multicore parallel chunking to improve performance vs current sequential behavior.",
+    "Visual output (highlight spans and precedence) is identical to the legacy implementation for the same rule set.",
+    "No data races: thread-safe use of Hyperscan scratch space per worker and safe cache updates.",
+    "No regressions: highlighting remains correct when rules are edited, enabled/disabled, or reordered."
+  ],
+  "deliverables": [
+    "Pattern classification + compilation pipeline (Hyperscan multi-compile + Qt compiled regex list).",
+    "Parallel highlight execution engine (Hyperscan scan + QtRegex scan in parallel).",
+    "Highlight cache keyed by (file-id, highlight-rule-set-version, line-number).",
+    "Renderer integration to use cache; non-blocking on-demand computation.",
+    "Instrumentation (debug logs/counters) for engine usage, timings, and cache hits.",
+    "Unit/integration tests verifying correctness and core performance properties."
+  ],
+  "implementation_plan": [
+    {
+      "step": 1,
+      "title": "Discovery: map current highlighting pipeline and data structures",
+      "actions": [
+        "Locate the highlighter/rules classes, the renderer hook that requests highlight spans, and the current regex evaluation path.",
+        "Identify where highlight rules are parsed/compiled (Qt QRegularExpression usage).",
+        "Find how line text is fetched (string encoding) and how highlight spans are represented (offset/length/style).",
+        "Find any existing caching mechanism for highlights; if none, confirm renderer recomputes on demand."
+      ],
+      "commands": [
+        "rg -n \"Highlighter|highlight(er)?\\b|HighlightRule|ColorRule|FilterSet\" -S .",
+        "rg -n \"QRegularExpression\" -S .",
+        "rg -n \"format.*span|highlight.*span|text.*format|QTextLayout\" -S ."
+      ],
+      "expected_output": [
+        "List of key files/classes to modify, and a call-chain diagram in PR description."
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Introduce engine-aware rule representation",
+      "actions": [
+        "Create a new internal struct to represent a highlight rule with metadata: id, priority/order, pattern text, options, style/color payload.",
+        "Add engine classification fields: engine = {Hyperscan, QtRegex}, compile status, error message if any.",
+        "Ensure rules are versioned by a rule-set generation id that increments on any rule change (add/remove/edit/reorder)."
+      ],
+      "schema_suggestion": {
+        "HighlightRuleCompiled": {
+          "fields": [
+            "uint32_t ruleId",
+            "int32_t priority",
+            "std::string pattern",
+            "HighlightOptions options",
+            "HighlightStyle style",
+            "Engine engine",
+            "bool enabled",
+            "std::optional<std::string> compileError"
+          ]
+        }
+      }
+    },
+    {
+      "step": 3,
+      "title": "Pattern compatibility check + compilation (classification stage)",
+      "actions": [
+        "Attempt Hyperscan compilation for each enabled rule in a batch using hs_compile_multi.",
+        "If a rule fails compilation, classify it as QtRegex-only and compile with QRegularExpression.",
+        "Store compiled artifacts: Hyperscan database + per-thread scratch alloc template; Qt compiled regex objects.",
+        "Cache compiled artifacts keyed by (file-view id, rule-set generation id) so recompilation only happens when rules change."
+      ],
+      "notes": [
+        "Prefer hs_compile_multi for all HS-compatible patterns in one database for single-pass matching.",
+        "Allocate Hyperscan scratch per worker thread (clone from a base scratch).",
+        "Compilation errors should be recorded but must not break highlighting; fallback to Qt."
+      ]
+    },
+    {
+      "step": 4,
+      "title": "Define highlight result model and cache",
+      "actions": [
+        "Define a canonical highlight span representation: {startColumn, length, styleId/ruleId}.",
+        "Create a cache structure indexed by lineNumber -> vector<Span>.",
+        "Cache must be scoped per (fileId, ruleSetGen) and invalidated on rule changes or file reload.",
+        "Cache supports partial population (some lines computed, others pending)."
+      ],
+      "cache_requirements": [
+        "Thread-safe incremental writes (batch insert).",
+        "Fast reads from UI thread.",
+        "Optional LRU behavior or memory cap is acceptable but not required for first iteration."
+      ]
+    },
+    {
+      "step": 5,
+      "title": "Hybrid matching for a line range (core engine API)",
+      "actions": [
+        "Implement a function HighlightRange(lineStart, lineEnd) that returns per-line spans for the range.",
+        "Inside HighlightRange: run Hyperscan scan for HS patterns and run QtRegex scan for Qt-only patterns in parallel.",
+        "Merge results per line, respecting rule priority (later rules override earlier rules).",
+        "Return batched results suitable for cache insertion."
+      ],
+      "parallelism_design": [
+        "Option A: Two parallel tasks: (1) HS scan whole range, (2) Qt scan whole range. Merge.",
+        "Option B: Chunk the range into N segments; each segment task runs HS + Qt (or HS only + Qt only tasks) to maximize core utilization.",
+        "Start with Option B for background scanning; Option A may be sufficient for small visible ranges."
+      ]
+    },
+    {
+      "step": 6,
+      "title": "Hyperscan scan implementation details",
+      "actions": [
+        "Create HS match callback capturing: patternId(ruleId), match end offset, and (if needed) derive start offset.",
+        "Map byte offsets back to (line, column). Use a precomputed mapping for the scanned buffer: newline offsets array or per-line start offsets.",
+        "Convert source text for HS scanning to a stable encoding (typically UTF-8) and ensure column mapping accounts for encoding differences (prefer ASCII logs; otherwise define policy).",
+        "Use one hs_scan per chunk; each worker has its own scratch."
+      ],
+      "notes": [
+        "If precise start offsets are not available from HS (depending on compile flags), you can compute start by re-running a minimal check on the matched line with Qt for that specific pattern, but this should be rare and optional.",
+        "If the current renderer expects character indices, ensure conversion is consistent."
+      ]
+    },
+    {
+      "step": 7,
+      "title": "QtRegex fallback scan implementation details (parallel)",
+      "actions": [
+        "Precompile QRegularExpression for each Qt-only rule.",
+        "Implement scanning per line for each regex; collect spans (start, length).",
+        "Parallelize using chunking by line range across thread pool (each task handles a block of lines and runs all Qt-only regex rules on those lines).",
+        "Avoid per-line allocations; reuse buffers and vectors."
+      ],
+      "notes": [
+        "Do not spawn one thread per regex; prefer chunk-by-lines to avoid oversubscription.",
+        "QRegularExpression matching is safe to call concurrently when each thread uses its own QRegularExpression instance or uses const shared instances depending on Qt guarantees; choose the safer approach if uncertain."
+      ]
+    },
+    {
+      "step": 8,
+      "title": "Merge and precedence resolution",
+      "actions": [
+        "Define deterministic merge rules: if multiple spans overlap, the higher priority (later rule) wins for the overlapping region.",
+        "Implement span normalization: sort spans by start, apply overrides by priority, produce final non-overlapping spans per line.",
+        "Ensure this matches existing behavior exactly."
+      ]
+    },
+    {
+      "step": 9,
+      "title": "Background full-file highlighting (pre-scan)",
+      "actions": [
+        "On file load or highlight rule-set change: schedule background highlight job(s) to compute highlights for entire file.",
+        "Split file into N line-range chunks; process with HighlightRange concurrently on the worker pool.",
+        "Insert results into cache incrementally; notify UI to repaint regions as chunks complete.",
+        "Support cancelation via generation id: if rules change mid-scan, discard results."
+      ]
+    },
+    {
+      "step": 10,
+      "title": "On-demand visible-range highlighting (just-in-time)",
+      "actions": [
+        "When renderer requests highlights for a line range: serve from cache if present.",
+        "If some lines are missing: enqueue a worker job to compute those lines via HighlightRange; immediately render without highlights or with partial highlights, then repaint once results arrive.",
+        "Coalesce requests during fast scrolling (debounce) and compute a slightly larger window around viewport to reduce churn."
+      ]
+    },
+    {
+      "step": 11,
+      "title": "Qt-only mode improvements (when Hyperscan unavailable)",
+      "actions": [
+        "If Hyperscan is not available/disabled, still use the same parallel chunk-by-lines approach for Qt regex matching.",
+        "Keep the same cache + background/on-demand structure to improve responsiveness relative to sequential evaluation."
+      ]
+    },
+    {
+      "step": 12,
+      "title": "Instrumentation and debugging hooks",
+      "actions": [
+        "Add debug logs/counters: number of HS rules, Qt rules, compile failures, scan time per chunk, cache hit rate, number of spans generated.",
+        "Optional: dev flag to annotate which engine produced spans (for validation)."
+      ]
+    },
+    {
+      "step": 13,
+      "title": "Tests: correctness and performance properties",
+      "actions": [
+        "Unit tests: span merge/precedence correctness (overlaps).",
+        "Unit tests: rule classification (HS compile success/failure routes to correct engine).",
+        "Integration test: compare legacy Qt-only highlighting output to hybrid output for a controlled log sample (must match).",
+        "Integration test: large rule-set performance sanity (ensure no UI-thread blocking by asserting work happens on worker threads / using timing hooks)."
+      ]
+    },
+    {
+      "step": 14,
+      "title": "Performance validation and regression guardrails",
+      "actions": [
+        "Add a local benchmark script or debug command that measures highlight computation time on a sample large file with many rules.",
+        "Verify scaling with CPU cores (N threads) for background scan.",
+        "Ensure memory usage of cache is acceptable; optionally add soft cap / LRU later if needed."
+      ]
+    }
+  ],
+  "risks_and_mitigations": [
+    {
+      "risk": "Mapping Hyperscan byte offsets to line/column may be non-trivial if text encoding is UTF-16/UTF-8 mixed.",
+      "mitigation": "Standardize HS scanning input to UTF-8 with explicit mapping arrays (newline offsets + per-line UTF-8 to column conversion policy); or restrict HS highlighting to ASCII lines initially."
+    },
+    {
+      "risk": "Highlight precedence might diverge from legacy behavior when merges are done concurrently.",
+      "mitigation": "Centralize merge logic in one deterministic function and validate against legacy output with tests."
+    },
+    {
+      "risk": "Thread contention or too many jobs causing overhead.",
+      "mitigation": "Use chunk-by-lines with bounded thread pool; coalesce visible-range requests; avoid per-regex threads."
+    },
+    {
+      "risk": "Hyperscan compile failures for many patterns could cause slow Qt path only.",
+      "mitigation": "Keep classification cached; provide debug visibility into which rules are HS vs Qt and why."
+    }
+  ],
+  "definition_of_done": [
+    "Hybrid highlighting engine is implemented and enabled by default when Hyperscan is available.",
+    "Qt-only mode uses multicore chunking and the same cache pipeline.",
+    "No UI blocking during scrolling; highlighting arrives asynchronously and is cached.",
+    "Tests pass and output matches legacy highlighting semantics."
+  ],
+  "notes_for_codex_cli": {
+    "guidance": [
+      "Prefer minimal invasive refactor: wrap existing highlighter rule evaluation behind a new hybrid engine facade and reuse existing renderer/span structures.",
+      "Do not change rule editor UI; keep rule semantics identical.",
+      "Keep code modular so future work can add Hyperscan support for more constructs or integrate with search engine improvements."
+    ],
+    "suggested_rg_commands": [
+      "rg -n \"Highlighter|Highlight|Color.*Filter|Rule\" -S .",
+      "rg -n \"QRegularExpression\" -S .",
+      "rg -n \"hyperscan|hs_compile|hs_scan\" -S ."
+    ]
+  }
+}

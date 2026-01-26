@@ -40,6 +40,7 @@
 #define LOGFILTEREDDATAWORKERTHREAD_H
 
 #include <QObject>
+#include <memory>
 
 #include <qthreadpool.h>
 
@@ -130,7 +131,8 @@ class SearchOperation : public QObject {
     Q_OBJECT
 public:
     SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                     const RegularExpressionPattern& regExp, LineNumber startLine,
+                     const RegularExpressionPattern& regExp,
+                     std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                      LineNumber endLine );
 
     // Run the search operation, returns true if it has been done
@@ -148,6 +150,7 @@ protected:
 
     AtomicFlag& interruptRequested_;
     const RegularExpressionPattern regexp_;
+    std::shared_ptr<RegularExpression> compiledRegexp_;
     const LogData& sourceLogData_;
     LineNumber startLine_;
     LineNumber endLine_;
@@ -157,9 +160,11 @@ class FullSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
     FullSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                         const RegularExpressionPattern& regExp, LineNumber startLine,
+                         const RegularExpressionPattern& regExp,
+                         std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                          LineNumber endLine )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, startLine, endLine )
+        : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
+                           startLine, endLine )
     {
     }
 
@@ -170,9 +175,11 @@ class UpdateSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
     UpdateSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                           const RegularExpressionPattern& regExp, LineNumber startLine,
+                           const RegularExpressionPattern& regExp,
+                           std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                            LineNumber endLine, LineNumber position )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, startLine, endLine )
+        : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
+                           startLine, endLine )
         , initialPosition_( position )
     {
     }
@@ -197,10 +204,13 @@ public:
     LogFilteredDataWorker& operator=( LogFilteredDataWorker&& ) = delete;
 
     // Start the search with the passed regexp
-    void search( const RegularExpressionPattern& regExp, LineNumber startLine, LineNumber endLine );
+    void search( const RegularExpressionPattern& regExp,
+                 std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
+                 LineNumber endLine );
     // Continue the previous search starting at the passed position
     // in the source file (line number)
-    void updateSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
+    void updateSearch( const RegularExpressionPattern& regExp,
+                       std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                        LineNumber endLine, LineNumber position );
 
     // Interrupts the search if one is in progress

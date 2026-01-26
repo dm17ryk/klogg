@@ -1,0 +1,64 @@
+        matcher_ = DefaultRegularExpressionMatcher( expression.subPatterns_ );
+    }
+
+    if ( expression.isBooleanCombination_ ) {
+        evaluator_ = std::make_unique<BooleanExpressionEvaluator>(
+            expression.expression_.toStdString(), expression.subPatterns_ );
+    }
+
+    if ( !isBooleanCombination_ ) {
+        hasMatchImpl_ = isInverse_ ? matching::hasInverseSingleMatch : matching::hasSingleMatch;
+    }
+    else {
+        hasMatchImpl_ = isInverse_ ? matching::hasInverseCombinedMatch : matching::hasCombinedMatch;
+    }
+}
+
+PatternMatcher::~PatternMatcher() = default;
+
+bool PatternMatcher::hasMatch( std::string_view line ) const
+{
+    return hasMatchImpl_( line, matcher_, evaluator_.get() );
+}
+
+MultiRegularExpression::MultiRegularExpression(
+    const klogg::vector<RegularExpressionPattern>& patterns )
+    : patterns_( patterns )
+{
+    try {
+        hsExpression_ = HsRegularExpression( patterns_ );
+        isValid_ = hsExpression_.isValid();
+        errorString_ = hsExpression_.errorString();
+
+    } catch ( std::exception& err ) {
+        isValid_ = false;
+        errorString_ = err.what();
+    }
+}
+
+std::unique_ptr<MultiPatternMatcher> MultiRegularExpression::createMatcher() const
+{
+    return std::make_unique<MultiPatternMatcher>( *this );
+}
+
+MultiPatternMatcher::MultiPatternMatcher( const MultiRegularExpression& expression )
+    : matcher_( expression.hsExpression_.createMatcher() )
+    , patterns_( expression.patterns_ )
+{
+}
+
+MultiPatternMatcher::~MultiPatternMatcher() = default;
+
+klogg::vector<std::pair<RegularExpressionPattern, bool>>
+MultiPatternMatcher::match( std::string_view line ) const
+{
+    const auto result
+        = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher_ );
+
+    klogg::vector<std::pair<RegularExpressionPattern, bool>> matchedPatterns;
+    for ( size_t i = 0u; i < result.size(); ++i ) {
+        matchedPatterns.emplace_back( patterns_[ i ], result[ i ] );
+    }
+
+    return matchedPatterns;
+}

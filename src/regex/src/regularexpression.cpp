@@ -23,6 +23,7 @@
 #include <qregularexpression.h>
 #include <string>
 #include <variant>
+#include <unordered_map>
 
 #include "configuration.h"
 #include "containers.h"
@@ -34,6 +35,100 @@
 #include "regularexpression.h"
 
 namespace {
+
+klogg::vector<QString> splitTopLevelOr( const QString& pattern )
+{
+    klogg::vector<QString> parts;
+    int parenDepth = 0;
+    int bracketDepth = 0;
+    bool escaped = false;
+    int lastSplit = 0;
+
+    const auto flushPart = [&]( int endIndex ) {
+        const auto part = pattern.mid( lastSplit, endIndex - lastSplit ).trimmed();
+        if ( !part.isEmpty() ) {
+            parts.push_back( part );
+        }
+    };
+
+    for ( int i = 0; i < pattern.size(); ++i ) {
+        const auto ch = pattern[ i ];
+
+        if ( escaped ) {
+            escaped = false;
+            continue;
+        }
+
+        if ( ch == '\\' ) {
+            escaped = true;
+            continue;
+        }
+
+        if ( ch == '[' ) {
+            ++bracketDepth;
+        }
+        else if ( ch == ']' && bracketDepth > 0 ) {
+            --bracketDepth;
+        }
+        else if ( bracketDepth == 0 ) {
+            if ( ch == '(' ) {
+                ++parenDepth;
+            }
+            else if ( ch == ')' && parenDepth > 0 ) {
+                --parenDepth;
+            }
+            else if ( ch == '|' && parenDepth == 0 ) {
+                flushPart( i );
+                lastSplit = i + 1;
+            }
+        }
+    }
+
+    flushPart( pattern.size() );
+
+    return parts;
+}
+
+QString normalizeExtendedBooleanOps( QString expression )
+{
+    // Convert xor/nand/nor/xnor into combinations of &, | and ! so they can be
+    // passed to Hyperscan combination expressions.
+    // The regex matches simple binary forms (token OP token) where token is
+    // either p_<n>, a number, or a parenthesized subexpression.
+    const QRegularExpression binaryOpRe(
+        R"((\([^()]+\)|p_\d+|\d+)\s*(xor|nand|nor|xnor)\s*(\([^()]+\)|p_\d+|\d+))" );
+
+    bool replaced = true;
+    while ( replaced ) {
+        replaced = false;
+        QRegularExpressionMatch match = binaryOpRe.match( expression );
+        if ( match.hasMatch() ) {
+            const auto a = match.captured( 1 );
+            const auto op = match.captured( 2 );
+            const auto b = match.captured( 3 );
+            QString replacement;
+            if ( op == "xor" ) {
+                replacement = QStringLiteral( "((%1)|(%2))&!((%1)&(%2))" ).arg( a, b );
+            }
+            else if ( op == "nand" ) {
+                replacement = QStringLiteral( "!( (%1)&(%2) )" ).arg( a, b );
+            }
+            else if ( op == "nor" ) {
+                replacement = QStringLiteral( "!( (%1)|(%2) )" ).arg( a, b );
+            }
+            else if ( op == "xnor" ) {
+                replacement
+                    = QStringLiteral( "!(((%1)|(%2))&!((%1)&(%2)))" ).arg( a, b );
+            }
+
+            expression.replace( match.capturedStart(), match.capturedLength(), replacement );
+            replaced = true;
+        }
+    }
+
+    return expression;
+}
+
 klogg::vector<RegularExpressionPattern>
 parseBooleanExpressions( QString& pattern, bool isCaseSensitive, bool isPlainText )
 {
@@ -119,7 +214,71 @@ RegularExpression::RegularExpression( const RegularExpressionPattern& pattern )
         if ( pattern.isBoolean ) {
             subPatterns_ = parseBooleanExpressions( expression_, pattern.isCaseSensitive,
                                                     pattern.isPlainText );
+        }
+        else {
+            const auto topLevelOrParts = splitTopLevelOr( expression_ );
+            if ( topLevelOrParts.size() > 1 ) {
+                for ( const auto& part : topLevelOrParts ) {
+                    subPatterns_.emplace_back( part, pattern.isCaseSensitive, pattern.isExclude,
+                                               /*boolean*/ false, pattern.isPlainText );
+                }
+            }
+            else {
+                subPatterns_.emplace_back( pattern );
+            }
+            expression_ = QString::fromStdString( subPatterns_.front().id() );
+        }
 
+        std::string hsCombination;
+        const bool combinationEligible = isBooleanCombination_ && subPatterns_.size() >= 2;
+        if ( combinationEligible ) {
+            // Try to build a Hyperscan combination expression for boolean logic.
+            QString combination = expression_;
+            combination.replace( "and", "&" );
+            combination.replace( "or", "|" );
+            combination.replace( "not", "!" );
+            combination.replace( " ", "" );
+            combination = normalizeExtendedBooleanOps( combination );
+
+            if ( combination.contains( '&' ) || combination.contains( '|' ) ) {
+
+            // Map p_<n> tokens to positional indices.
+            std::unordered_map<QString, size_t> idToIndex;
+            for ( size_t i = 0; i < subPatterns_.size(); ++i ) {
+                idToIndex.emplace( QString::fromStdString( subPatterns_[ i ].id() ), i );
+            }
+
+            static const QRegularExpression tokenRe( "p_\\d+" );
+            auto it = tokenRe.globalMatch( combination );
+            while ( it.hasNext() ) {
+                const auto m = it.next();
+                const auto token = m.captured();
+                if ( const auto found = idToIndex.find( token ); found != idToIndex.end() ) {
+                    combination.replace( token, QString::number( found->second ) );
+                }
+            }
+
+            hsCombination = combination.toStdString();
+            hasHsCombination_ = !hsCombination.empty();
+            combinationIndex_ = subPatterns_.size(); // last entry
+            }
+        }
+
+        hsExpression_ = HsRegularExpression( subPatterns_, hsCombination );
+        isValid_ = hsExpression_.isValid();
+        errorString_ = hsExpression_.errorString();
+
+        // Currently keep boolean evaluation via exprtk; disable HS combination until
+        // compilation reliability is improved.
+        hasHsCombination_ = false;
+        combinationIndex_ = 0;
+        if ( !hsCombination.empty() ) {
+            hsExpression_ = HsRegularExpression( subPatterns_ );
+            isValid_ = hsExpression_.isValid();
+            errorString_ = hsExpression_.errorString();
+        }
+
+        if ( isBooleanCombination_ && !hasHsCombination_ ) {
             BooleanExpressionEvaluator evaluator{ expression_.toStdString(), subPatterns_ };
             if ( !evaluator.isValid() ) {
                 isValid_ = false;
@@ -127,14 +286,6 @@ RegularExpression::RegularExpression( const RegularExpressionPattern& pattern )
                 return;
             }
         }
-        else {
-            subPatterns_.emplace_back( pattern );
-            expression_ = QString::fromStdString( subPatterns_.front().id() );
-        }
-
-        hsExpression_ = HsRegularExpression( subPatterns_ );
-        isValid_ = hsExpression_.isValid();
-        errorString_ = hsExpression_.errorString();
 
     } catch ( std::exception& err ) {
         isValid_ = false;
@@ -165,7 +316,7 @@ bool hasSingleMatch( std::string_view line, const MatcherVariant& matcher,
     const auto result
         = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
 
-    return !result.empty() && result[ 0 ] > 0;
+    return std::any_of( result.cbegin(), result.cend(), []( auto value ) { return value > 0; } );
 }
 
 bool hasCombinedMatch( std::string_view line, const MatcherVariant& matcher,
@@ -192,6 +343,8 @@ bool hasInverseCombinedMatch( std::string_view line, const MatcherVariant& match
 PatternMatcher::PatternMatcher( const RegularExpression& expression )
     : isInverse_( expression.isInverse_ )
     , isBooleanCombination_( expression.isBooleanCombination_ )
+    , hasHsCombination_( expression.hasHsCombination_ )
+    , combinationIndex_( expression.combinationIndex_ )
     , mainPatternId_( expression.subPatterns_.front().id() )
     , matcher_( expression.hsExpression_.createMatcher() )
 {
@@ -206,7 +359,25 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
             expression.expression_.toStdString(), expression.subPatterns_ );
     }
 
-    if ( !isBooleanCombination_ ) {
+    if ( hasHsCombination_ ) {
+        hasMatchImpl_ = [this]( std::string_view line, const MatcherVariant& matcher,
+                                BooleanExpressionEvaluator* ) {
+            const auto result
+                = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
+            if ( result.empty() || combinationIndex_ >= result.size() ) {
+                return false;
+            }
+            return result[ combinationIndex_ ] > 0;
+        };
+        if ( isInverse_ ) {
+            const auto base = hasMatchImpl_;
+            hasMatchImpl_ = [base]( std::string_view line, const MatcherVariant& matcher,
+                                    BooleanExpressionEvaluator* evaluator ) {
+                return !base( line, matcher, evaluator );
+            };
+        }
+    }
+    else if ( !isBooleanCombination_ ) {
         hasMatchImpl_ = isInverse_ ? matching::hasInverseSingleMatch : matching::hasSingleMatch;
     }
     else {

@@ -141,23 +141,30 @@ MatchedPatterns HsPrefilterMatcher::match( const std::string_view& utf8Data ) co
 }
 
 HsRegularExpression::HsRegularExpression( const RegularExpressionPattern& pattern )
-    : HsRegularExpression( klogg::vector<RegularExpressionPattern>{ pattern } )
+    : HsRegularExpression( klogg::vector<RegularExpressionPattern>{ pattern }, std::string{} )
 {
 }
 
-HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns )
+HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns,
+                                          const std::string& combination )
     : patterns_( patterns )
+    , combinationExpression_( combination )
+    , hasCombination_( !combination.empty() )
 {
     auto requiredInstructuins = CpuInstructions::SSE2;
     requiredInstructuins |= CpuInstructions::SSSE3;
 
     if ( hasRequiredInstructions( supportedCpuInstructions(), requiredInstructuins ) ) {
         auto compileHsDatabase = []( const klogg::vector<RegularExpressionPattern>& expressions,
+                                     const std::string& combinationExpression,
                                      QString& errorMessage, bool isPrefilter ) -> hs_database_t* {
             hs_database_t* db = nullptr;
             hs_compile_error_t* error = nullptr;
 
-            klogg::vector<unsigned> flags( expressions.size() );
+            const auto patternCount
+                = combinationExpression.empty() ? expressions.size() : expressions.size() + 1;
+
+            klogg::vector<unsigned> flags( patternCount );
             std::transform( expressions.cbegin(), expressions.cend(), flags.begin(),
                             [ isPrefilter ]( const auto& expression ) {
                                 auto expressionFlags
@@ -171,7 +178,7 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                                 return expressionFlags;
                             } );
 
-            klogg::vector<QByteArray> utf8Patterns( expressions.size() );
+            klogg::vector<QByteArray> utf8Patterns( patternCount );
             std::transform( expressions.cbegin(), expressions.cend(), utf8Patterns.begin(),
                             []( const auto& expression ) {
                                 auto p = expression.pattern;
@@ -181,16 +188,21 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                                 return p.toUtf8();
                             } );
 
+            if ( !combinationExpression.empty() ) {
+                utf8Patterns.back() = QByteArray::fromStdString( combinationExpression );
+                flags.back() = HS_FLAG_COMBINATION;
+            }
+
             klogg::vector<const char*> patternPointers( utf8Patterns.size() );
             std::transform( utf8Patterns.cbegin(), utf8Patterns.cend(), patternPointers.begin(),
                             []( const auto& utf8Pattern ) { return utf8Pattern.data(); } );
 
-            klogg::vector<unsigned> expressionIds( expressions.size() );
+            klogg::vector<unsigned> expressionIds( patternCount );
             std::iota( expressionIds.begin(), expressionIds.end(), 0u );
 
             const auto compileResult = hs_compile_multi(
                 patternPointers.data(), flags.data(), expressionIds.data(),
-                static_cast<unsigned>( expressions.size() ), HS_MODE_BLOCK, nullptr, &db, &error );
+                static_cast<unsigned>( patternCount ), HS_MODE_BLOCK, nullptr, &db, &error );
 
             if ( compileResult != HS_SUCCESS ) {
                 LOG_ERROR << "Failed to compile pattern " << error->message;
@@ -204,20 +216,23 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
 
         database_ = HsDatabase{ makeUniqueResource<hs_database_t, hs_free_database>(
             [ &compileHsDatabase ]( const klogg::vector<RegularExpressionPattern>& expressions,
+                                    const std::string& combinationExpression,
                                     QString& errorMessage ) -> hs_database_t* {
-                return compileHsDatabase( expressions, errorMessage, false );
+                return compileHsDatabase( expressions, combinationExpression, errorMessage, false );
             },
-            patterns, errorMessage_ ) };
+            patterns, combinationExpression_, errorMessage_ ) };
 
         if ( !database_ ) {
             QString preFilterErrorMessage;
             isPrefilter_ = true;
             database_ = HsDatabase{ makeUniqueResource<hs_database_t, hs_free_database>(
                 [ &compileHsDatabase ]( const klogg::vector<RegularExpressionPattern>& expressions,
+                                        const std::string& combinationExpression,
                                         QString& errorMessage ) -> hs_database_t* {
-                    return compileHsDatabase( expressions, errorMessage, true );
+                    return compileHsDatabase( expressions, combinationExpression, errorMessage,
+                                              true );
                 },
-                patterns, preFilterErrorMessage ) };
+                patterns, combinationExpression_, preFilterErrorMessage ) };
         }
     }
     else {
@@ -294,17 +309,20 @@ MatcherVariant HsRegularExpression::createMatcher() const
         },
         scratch_.get() );
 
+    const auto numberOfPatterns = hasCombination_ ? patterns_.size() + 1 : patterns_.size();
+
     if ( !isPrefilter_ ) {
-        if ( patterns_.size() == 1 ) {
+        if ( numberOfPatterns == 1 ) {
             return HsSingleMatcher{ database_, std::move( matcherScratch ) };
         }
         else {
-            return HsMultiMatcher{ database_, std::move( matcherScratch ), patterns_.size() };
+            return HsMultiMatcher{ database_, std::move( matcherScratch ), numberOfPatterns };
         }
     }
     else {
-        return HsPrefilterMatcher(
-            patterns_, HsMultiMatcher{ database_, std::move( matcherScratch ), patterns_.size() } );
+        return HsPrefilterMatcher( patterns_,
+                                   HsMultiMatcher{ database_, std::move( matcherScratch ),
+                                                   numberOfPatterns } );
     }
 }
 #endif

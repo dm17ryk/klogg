@@ -230,6 +230,7 @@ class LogFilteredData : public AbstractLogData {
     const LogData* sourceLogData_;
 
     RegularExpressionPattern currentRegExp_;
+    std::shared_ptr<RegularExpression> compiledRegExp_;
     LineLength maxLength_;
     LineLength maxLengthMarks_;
     // Number of lines of the LogData that has been searched for:
