@@ -200,8 +200,9 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
     operationRequested->disconnect( this );
 }
 
-void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, LineNumber startLine,
-                                    LineNumber endLine )
+void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
+                                    std::shared_ptr<RegularExpression> compiledRegexp,
+                                    LineNumber startLine, LineNumber endLine )
 {
     ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
@@ -209,17 +210,19 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, Line
 
     LOG_INFO << "Search requested";
     QSemaphore operationStarted;
-    operationsPool_.start( createRunnable( [ this, &operationStarted, regExp, startLine, endLine ] {
-        operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
-        auto operationRequested = std::make_unique<FullSearchOperation>(
-            sourceLogData_, interruptRequested_, regExp, startLine, endLine );
-        connectSignalsAndRun( operationRequested.get() );
-    } ) );
+    operationsPool_.start(
+        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine ] {
+            operationStarted.release();
+            ScopedLock operationLock( operationsMutex_ );
+            auto operationRequested = std::make_unique<FullSearchOperation>(
+                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine );
+            connectSignalsAndRun( operationRequested.get() );
+        } ) );
     operationStarted.acquire();
 }
 
 void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp,
+                                          std::shared_ptr<RegularExpression> compiledRegexp,
                                           LineNumber startLine, LineNumber endLine,
                                           LineNumber position )
 {
@@ -231,11 +234,13 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
 
     QSemaphore operationStarted;
     operationsPool_.start(
-        createRunnable( [ this, &operationStarted, regExp, startLine, endLine, position ] {
+        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
+                          position ] {
             operationStarted.release();
             ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, startLine, endLine, position );
+                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
+                position );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
 
@@ -259,11 +264,13 @@ SearchResults LogFilteredDataWorker::getSearchResults() const
 //
 
 SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                                  const RegularExpressionPattern& regExp, LineNumber startLine,
-                                  LineNumber endLine )
+                                  const RegularExpressionPattern& regExp,
+                                  std::shared_ptr<RegularExpression> compiledRegexp,
+                                  LineNumber startLine, LineNumber endLine )
 
     : interruptRequested_( interruptRequested )
     , regexp_( regExp )
+    , compiledRegexp_( std::move( compiledRegexp ) )
     , sourceLogData_( sourceLogData )
     , startLine_( startLine )
     , endLine_( endLine )
@@ -318,10 +325,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
     klogg::vector<MatcherContext> regexMatchers;
     regexMatchers.reserve( matchingThreadsCount );
-    RegularExpression regularExpression{ regexp_ };
     for ( auto index = 0u; index < matchingThreadsCount; ++index ) {
         regexMatchers.emplace_back(
-            regularExpression.createMatcher(), microseconds{ 0 },
+            compiledRegexp_->createMatcher(), microseconds{ 0 },
             RegexMatcherNode(
                 searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
                     if ( interruptRequested_ ) {
@@ -333,7 +339,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                         return blockData;
                     }
 
-                    const auto& matcher = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
+            const auto& matcher = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
                     const auto matchStartTime = high_resolution_clock::now();
 
                     blockData->searchResults

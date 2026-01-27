@@ -1,0 +1,258 @@
+{
+  "task_name": "klogg-incremental-filter-auto-refresh",
+  "title": "Redesign filter Auto-Refresh to be incremental (scan only newly appended lines after initial index build)",
+  "repository": {
+    "name": "klogg",
+    "url": "https://github.com/dm17ryk/klogg"
+  },
+  "branch": "feature/incremental-filter-auto-refresh",
+  "priority": "high",
+  "summary": {
+    "problem": "When filter Auto-refresh is enabled, UI freezes because the filter matching behaves like a full-file rescan on each refresh instead of matching only newly appended lines.",
+    "goal": "Implement an incremental matching pipeline for filter Auto-refresh: build a scan index once (manual scan or first auto-refresh) and then scan ONLY newly appended lines on subsequent auto-refresh cycles. Reuse compiled filter across refreshes. Reset index + recompile only when filter changes."
+  },
+  "assumptions": [
+    "Log files are append-only during the session (no truncation/rotation handling required for this task).",
+    "Hyperscan is supported and used when pattern is compatible; fallback engine is used otherwise.",
+    "There is an existing indexing mechanism for file lines and an existing search/filter pipeline for manual filtering.",
+    "Auto-refresh button refers to auto-updating filter results, not the main file follow mode (but it should integrate with live appends)."
+  ],
+  "scope": [
+    "Filter/search results auto-refresh behavior (incremental scanning after initial scan).",
+    "Manual filtering behavior must create/persist scan state (index + compiled filter) used by auto-refresh.",
+    "Compiled filter reuse across refresh cycles; rebuild only on filter change.",
+    "UI update should append new matches only; must not clear/rebuild full model each refresh.",
+    "Threading: ensure background scanning does not block UI; coalesce refresh triggers."
+  ],
+  "out_of_scope": [
+    "Handling log rotation/truncation/mid-file edits.",
+    "Introducing new user-facing settings (RAM cache, etc.).",
+    "Refactoring unrelated rendering/highlighting code except where needed to avoid full refresh.",
+    "Changing file indexing strategy beyond what is required to support incremental scanning."
+  ],
+  "deliverables": [
+    "Incremental scan state implementation (index + compiled filter + last scanned position).",
+    "Modified manual filter execution to populate scan state.",
+    "Modified auto-refresh behavior to scan only new lines after initial scan.",
+    "Model/UI update that appends new results without full reset.",
+    "Unit/integration tests for incremental scan behavior.",
+    "Lightweight instrumentation/logging to validate scan ranges during development (can be compiled out or behind debug flag)."
+  ],
+  "acceptance_criteria": [
+    "If user enables filter Auto-refresh without ever running manual filtering, the first auto-refresh performs a full scan (builds index) and subsequent refreshes scan only appended lines.",
+    "If user runs manual filtering first, enabling filter Auto-refresh MUST NOT trigger a full rescan; it must resume from the saved index and scan only appended lines.",
+    "If filter expression or filter options change (case sensitivity, regex mode, predefined filter selection, etc.), the compiled filter is rebuilt and the file scan index is reset; next scan is a full scan for the new filter.",
+    "While auto-refresh is enabled and file is being appended to, the UI remains responsive: background scanning + incremental model updates only. No full-model reset per refresh.",
+    "No duplicate matches are inserted into results; matches found before remain, and only new matches from appended lines are appended.",
+    "Works with Hyperscan engine and fallback regex engine with identical incremental behavior."
+  ],
+  "implementation_plan": [
+    {
+      "step": 1,
+      "title": "Discovery: map current code paths for manual filter and filter auto-refresh",
+      "actions": [
+        "Use ripgrep to locate UI action/slot for the filter Auto-refresh button and how it triggers refresh.",
+        "Locate manual filter execution path (the code that performs the initial search/filter scan).",
+        "Locate the model/view representing filtered matches and confirm whether refresh currently clears and repopulates.",
+        "Locate file-follow / file-change notification path that results in refresh triggers when data is appended.",
+        "Identify the abstraction that executes matching (Hyperscan vs fallback) and where compiled patterns are stored (if at all)."
+      ],
+      "commands": [
+        "rg -n \"Auto[- ]?refresh\" -S .",
+        "rg -n \"follow|tail|file.*changed|watcher|QFileSystemWatcher\" -S .",
+        "rg -n \"filter.*match|search.*match|applyFilter|runSearch|searchResults\" -S .",
+        "rg -n \"Hyperscan|hs_compile|hs_scan|QRegularExpression|regex\" -S ."
+      ],
+      "expected_output": [
+        "A short note (in PR description or a dev markdown file) describing the call chain for manual filtering and for auto-refresh refresh cycles.",
+        "List of files/classes to modify."
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Define persistent incremental scan state (index + compiled filter)",
+      "actions": [
+        "Introduce a new internal struct/class (example name: IncrementalFilterScanState) owned by the filter/search controller (per view/tab).",
+        "State must include: filter key (expression + options), compiled engine handle, last scanned position, and a monotonically increasing generation id.",
+        "Choose a robust last scanned position representation: prefer lastScannedLine (line index) if line indexing is already available, plus lastScannedByteOffset for cheap file-growth checks.",
+        "Ensure state is cleared when opening a new file, closing the view, or clearing the filter."
+      ],
+      "state_schema_suggestion": [
+        {
+          "name": "IncrementalFilterScanState",
+          "fields": [
+            "std::string filterText",
+            "FilterOptions options (regex/literal, case-sensitivity, etc.)",
+            "uint64_t filterKeyHash",
+            "CompiledPattern compiled (variant: HyperscanCompiled | QtRegexCompiled)",
+            "bool compiledValid",
+            "qint64 lastScannedByteOffset",
+            "LineNumber lastScannedLine (or int64)",
+            "uint64_t generationId",
+            "bool fullScanCompleted"
+          ]
+        }
+      ],
+      "expected_output": [
+        "New state type added and wired into the filter controller with clear ownership and lifecycle."
+      ]
+    },
+    {
+      "step": 3,
+      "title": "Implement filter keying + compiled filter caching (recompile only on change)",
+      "actions": [
+        "Create a stable 'filter key' computed from filter text + all relevant options that affect matching.",
+        "On manual apply or auto-refresh trigger: if filter key differs from cached state, cancel any running scan, reset scan index, clear match results, compile new pattern, and mark fullScanCompleted=false.",
+        "If filter key is unchanged and compiledValid=true, reuse compiled pattern; do NOT recompile on every refresh."
+      ],
+      "expected_output": [
+        "Compiled pattern is created once per filter change and reused across refreshes."
+      ]
+    },
+    {
+      "step": 4,
+      "title": "Full scan implementation that builds the initial scan index",
+      "actions": [
+        "Refactor current manual filtering code so the 'full scan' logic is callable from both manual apply and first auto-refresh.",
+        "After full scan completes successfully, set scan state: lastScannedLine=currentLastLine, lastScannedByteOffset=currentFileSize, fullScanCompleted=true.",
+        "Ensure results model is populated exactly once during full scan (existing behavior), but do not rebuild again unless filter changes."
+      ],
+      "expected_output": [
+        "A single shared code path for initial full scan used by manual apply and first auto-refresh."
+      ]
+    },
+    {
+      "step": 5,
+      "title": "Incremental scan implementation (scan ONLY newly appended lines)",
+      "actions": [
+        "On each auto-refresh cycle (or file appended event), compute the new scan range using scan state: startLine = lastScannedLine + 1; endLine = currentLastLine (or equivalent).",
+        "If startLine > endLine, there is nothing new to scan; return quickly.",
+        "Read only the text for [startLine..endLine] using existing file indexing/chunk APIs (avoid reading entire file).",
+        "Run the compiled matcher on just that new range and collect matches mapped to absolute line numbers.",
+        "Append newly found match line numbers (or match objects) to the results model without resetting existing items.",
+        "Update scan state lastScannedLine=endLine and lastScannedByteOffset=currentFileSize."
+      ],
+      "notes": [
+        "Prefer reusing existing search code by adding an overload that accepts a line range or byte range.",
+        "If existing code returns global offsets, add a base offset/line so results can be mapped correctly when scanning a partial segment."
+      ],
+      "expected_output": [
+        "Incremental scan executes proportional to newly appended data only."
+      ]
+    },
+    {
+      "step": 6,
+      "title": "Auto-refresh behavior rules (manual-first vs auto-first)",
+      "actions": [
+        "When auto-refresh is enabled:",
+        "- If scanState.fullScanCompleted is false (no index yet), run full scan once to build index, then switch to incremental mode for subsequent refreshes.",
+        "- If scanState.fullScanCompleted is true (manual scan already ran), DO NOT full scan; run incremental scan from lastScannedLine+1.",
+        "When auto-refresh is disabled, do not run incremental scans; keep scan state intact so re-enabling does not force a full scan."
+      ],
+      "expected_output": [
+        "Enabling auto-refresh after manual scan does not rescan whole file."
+      ]
+    },
+    {
+      "step": 7,
+      "title": "Threading + coalescing: keep UI responsive",
+      "actions": [
+        "Ensure both full scan and incremental scan run on a worker thread (existing search thread/QtConcurrent/task system).",
+        "Add a generationId to scan state. Increment it on filter change or file open. Each running job captures generationId; discard its result if generationId changed before completion.",
+        "Coalesce refresh triggers: if a scan is running and new data arrives, set a 'pendingRefresh' flag and run another incremental scan immediately after completion (starting from updated lastScannedLine).",
+        "Never block UI thread waiting for scan completion."
+      ],
+      "expected_output": [
+        "No UI freezes during auto-refresh; scan work happens off the UI thread and updates are lightweight."
+      ]
+    },
+    {
+      "step": 8,
+      "title": "Results model update: append only (no full reset per refresh)",
+      "actions": [
+        "Modify results model update API to support incremental insertion (beginInsertRows/endInsertRows) with just the delta matches.",
+        "Avoid calling modelReset / full clear on each refresh. Only clear when filter key changes or file changes.",
+        "Ensure match count label updates without forcing a full view repaint."
+      ],
+      "expected_output": [
+        "Filter results grow smoothly with appended matches; no flicker or full list rebuild."
+      ]
+    },
+    {
+      "step": 9,
+      "title": "Instrumentation for validation (dev-only)",
+      "actions": [
+        "Add debug logs (behind a debug flag or compile-time macro) that print: filterKeyHash, full vs incremental scan, startLine/endLine, bytesRead, matchesFound, timeTaken.",
+        "Use these logs to confirm incremental scans never start from line 0 unless fullScanCompleted=false or filter changed."
+      ],
+      "expected_output": [
+        "Clear evidence in logs that scanning is incremental after initial scan."
+      ]
+    },
+    {
+      "step": 10,
+      "title": "Tests: unit + integration for incremental scanning",
+      "actions": [
+        "Add a unit test for filter key change: ensure state resets + recompiles + full scan is triggered.",
+        "Add integration test with a temp file: write initial content, enable auto-refresh (expect full scan once), append lines, trigger refresh, ensure only new lines scanned and results appended.",
+        "Add integration test: manual filter first then enable auto-refresh; verify no full scan is performed when enabling auto-refresh (can assert using instrumentation hooks or counters)."
+      ],
+      "expected_output": [
+        "Automated coverage proving full scan occurs once and incremental scanning happens afterward."
+      ]
+    },
+    {
+      "step": 11,
+      "title": "Performance sanity checks",
+      "actions": [
+        "Create a local reproducible benchmark scenario: large file + active filter + continuous append.",
+        "Verify CPU usage per refresh scales with appended lines only, not total file size.",
+        "Confirm UI remains interactive during heavy appends."
+      ],
+      "expected_output": [
+        "Before/after notes in PR description showing improved behavior."
+      ]
+    },
+    {
+      "step": 12,
+      "title": "Documentation / UX notes",
+      "actions": [
+        "Update any developer docs/comments describing auto-refresh behavior to reflect the new incremental design.",
+        "Ensure tooltips/labels still match: Auto-refresh updates results with newly appended matching lines."
+      ],
+      "expected_output": [
+        "Behavior is understandable for maintainers and future contributors."
+      ]
+    }
+  ],
+  "testing_plan": {
+    "unit_tests": [
+      "FilterKeyChangeResetsStateAndTriggersFullScan",
+      "ReuseCompiledFilterAcrossRefreshCycles"
+    ],
+    "integration_tests": [
+      "AutoRefreshFirstRunFullScanThenIncremental",
+      "ManualScanThenAutoRefreshDoesNotFullRescan",
+      "IncrementalScanAppendsResultsWithoutDuplicates"
+    ],
+    "manual_smoke_tests": [
+      "Open a log, set a filter, run manual match, then enable auto-refresh; append lines externally; confirm results append without UI freeze.",
+      "Open a log, set a filter, enable auto-refresh without manual scan; confirm first scan finds existing matches, then only new lines are scanned.",
+      "Change filter while auto-refresh is enabled; confirm full rescan occurs once and results reflect new filter."
+    ]
+  },
+  "notes_for_codex_cli": {
+    "guidance": [
+      "Prefer minimal invasive changes: reuse existing search/indexing primitives; add incremental range scanning rather than rewriting the search engine.",
+      "Make incremental scanning the default path for auto-refresh after initial scan is completed.",
+      "Keep correctness under append-only assumption; do not add rotation logic in this task.",
+      "If mapping match offsets to line numbers is hard at the chunk level, consider a pragmatic line-by-line scan ONLY for the incremental range; but prefer existing optimized batch scan if already implemented."
+    ],
+    "definition_of_done": [
+      "Auto-refresh never triggers a full-file scan after the initial full scan (unless filter changes).",
+      "Compiled pattern is not recompiled each refresh.",
+      "UI remains responsive during append + auto-refresh.",
+      "All new/updated tests pass."
+    ]
+  }
+}

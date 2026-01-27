@@ -245,6 +245,15 @@ class Configuration final : public Persistable<Configuration> {
         return regexpEngine_;
     }
 
+    bool useHsCombinationBit() const
+    {
+        return useHsCombinationBit_;
+    }
+    void setUseHsCombinationBit( bool useIt )
+    {
+        useHsCombinationBit_ = useIt;
+    }
+
     void setRegexpEnging( RegexpEngine engine )
     {
         regexpEngine_ = engine;
@@ -597,6 +606,7 @@ class Configuration final : public Persistable<Configuration> {
     int scaleFactorRounding_ = 1;
 
     RegexpEngine regexpEngine_ = RegexpEngine::Hyperscan;
+    bool useHsCombinationBit_ = false;
 
     QColor qfBackColor_ = Qt::yellow;
     QColor mainSearchBackColor_ = Qt::lightGray;

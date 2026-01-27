@@ -39,6 +39,11 @@ class BooleanExpressionEvaluator {
         return errorString_;
     }
 
+    std::size_t variableCount() const
+    {
+        return variables_.size();
+    }
+
     bool evaluate( std::string_view variables );
 
   private:

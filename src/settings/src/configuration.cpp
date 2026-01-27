@@ -126,6 +126,10 @@ void Configuration::retrieveFromStorage( QSettings& settings )
         settings
             .value( "regexpType.engine", static_cast<int>( DefaultConfiguration.regexpEngine_ ) )
             .toInt() );
+    useHsCombinationBit_
+        = settings.value( "regexpType.useHsCombinationBit",
+                          DefaultConfiguration.useHsCombinationBit_ )
+              .toBool();
     quickfindIncremental_
         = settings.value( "quickfind.incremental", DefaultConfiguration.quickfindIncremental_ )
               .toBool();
@@ -362,6 +366,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "mainFont.bold", useBoldFont_ );
 
     settings.setValue( "regexpType.engine", static_cast<int>( regexpEngine_ ) );
+    settings.setValue( "regexpType.useHsCombinationBit", useHsCombinationBit_ );
 
     settings.setValue( "regexpType.main", static_cast<int>( mainRegexpType_ ) );
     settings.setValue( "regexpType.mainBackColor", mainSearchBackColor_.name( QColor::HexArgb ) );

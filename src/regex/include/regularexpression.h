@@ -20,6 +20,7 @@
 #ifndef KLOGG_PATTERN_MATHCHER_H
 #define KLOGG_PATTERN_MATHCHER_H
 
+#include <functional>
 #include <memory>
 #include <qchar.h>
 #include <string_view>
@@ -51,6 +52,8 @@ class RegularExpression {
     bool isBooleanCombination_ = false;
 
     QString expression_;
+    bool hasHsCombination_ = false;
+    size_t combinationIndex_ = 0;
     klogg::vector<RegularExpressionPattern> subPatterns_;
 
     bool isValid_ = false;
@@ -69,12 +72,15 @@ class PatternMatcher {
     bool hasMatch( std::string_view line ) const;
 
   private:
-    using MatchFunc = bool ( * )( std::string_view line, const MatcherVariant& matcher, BooleanExpressionEvaluator* evaluator );
+    using MatchFunc = std::function<bool( std::string_view line, const MatcherVariant& matcher,
+                                          BooleanExpressionEvaluator* evaluator )>;
     MatchFunc hasMatchImpl_;
 
   private:
     bool isInverse_ = false;
     bool isBooleanCombination_ = false;
+    bool hasHsCombination_ = false;
+    size_t combinationIndex_ = 0;
 
     std::string mainPatternId_;
 

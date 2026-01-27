@@ -65,3 +65,76 @@ SCENARIO( "Pattern matcher in boolean mode", "[patternmatcher]" )
         REQUIRE_FALSE( expression.isValid() );
     }
 }
+
+SCENARIO( "Boolean combinations still work with multi-pattern matching", "[patternmatcher]" )
+{
+    std::string_view lineMatchAnd = "foo ... bar";
+    std::string_view lineNoAnd = "foo only";
+    std::string_view lineNot = "keep this line";
+
+    GIVEN( "A boolean AND expression with two subpatterns" )
+    {
+        RegularExpression expression(
+            RegularExpressionPattern( "\"foo\" & \"bar\"", false, false, true, false ) );
+        REQUIRE( expression.isValid() );
+
+        const auto matcher = expression.createMatcher();
+        THEN( "Both tokens must be present" )
+        {
+            REQUIRE( matcher->hasMatch( lineMatchAnd ) );
+            REQUIRE_FALSE( matcher->hasMatch( lineNoAnd ) );
+        }
+    }
+
+    GIVEN( "A boolean OR expression" )
+    {
+        RegularExpression expression(
+            RegularExpressionPattern( "\"foo\" | \"bar\"", false, false, true, false ) );
+        REQUIRE( expression.isValid() );
+
+        const auto matcher = expression.createMatcher();
+        THEN( "Either token is sufficient" )
+        {
+            REQUIRE( matcher->hasMatch( lineMatchAnd ) );
+            REQUIRE( matcher->hasMatch( lineNoAnd ) );
+            REQUIRE_FALSE( matcher->hasMatch( lineNot ) );
+        }
+    }
+
+    GIVEN( "A boolean XOR expression" )
+    {
+        RegularExpression expression(
+            RegularExpressionPattern( "\"foo\" xor \"bar\"", false, false, true, false ) );
+        REQUIRE( expression.isValid() );
+
+        const auto matcher = expression.createMatcher();
+        THEN( "Exactly one token present matches" )
+        {
+            REQUIRE( matcher->hasMatch( lineNoAnd ) );          // only foo
+            REQUIRE_FALSE( matcher->hasMatch( lineMatchAnd ) ); // foo and bar
+            REQUIRE_FALSE( matcher->hasMatch( lineNot ) );      // none
+        }
+    }
+}
+
+SCENARIO( "Pattern matcher splits top level alternation", "[patternmatcher]" )
+{
+    std::string_view matchLine = "this line contains baz token";
+    std::string_view noMatchLine = "nothing interesting here";
+
+    RegularExpression expression(
+        RegularExpressionPattern( "foo|bar|baz", false, false, false, false ) );
+    REQUIRE( expression.isValid() );
+
+    WHEN( "Line matches one of the later alternatives" )
+    {
+        const auto matcher = expression.createMatcher();
+        REQUIRE( matcher->hasMatch( matchLine ) );
+    }
+
+    WHEN( "Line does not match any alternative" )
+    {
+        const auto matcher = expression.createMatcher();
+        REQUIRE_FALSE( matcher->hasMatch( noMatchLine ) );
+    }
+}

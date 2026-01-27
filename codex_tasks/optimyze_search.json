@@ -1,0 +1,21 @@
+{
+  "title": "Optimizing with Hyperscan's Multi-Pattern Search",
+  "steps": [
+    {
+      "step": 1,
+      "description": "Parse and Separate the Patterns: Use the query parser to extract each filter's regex string as a separate pattern. For example, from \"Erro\" or \"invali\" we get two patterns: Erro and invali. There is no need to manually insert '|' into one regex; we can maintain a list of patterns."
+    },
+    {
+      "step": 2,
+      "description": "Compile Multiple Patterns with Hyperscan: Hyperscan provides APIs to compile a set of patterns in one go (e.g. hs_compile_multi). It is explicitly designed for multi-pattern matching and can handle logical combinations natively. In fact, Hyperscan 5+ even supports logical combination operators (AND, OR, NOT) at compile time via combination expressions. We can take advantage of this by assigning IDs to each basic pattern and letting Hyperscan evaluate the OR logic. (For a pure OR, simply compiling all patterns separately is enough – Hyperscan will report a match if any pattern matches, which inherently achieves OR semantics.) By compiling multiple patterns, we let Hyperscan build an optimized finite automaton that matches any of the patterns in a single pass through the data. This is exactly what Hyperscan is best at, rather than feeding it one monstrous alternation."
+    },
+    {
+      "step": 3,
+      "description": "Leverage Multi-Core Processing: With separate patterns, we can still split the input (log file) across threads for parallel scanning. Each thread can run Hyperscan on a different chunk of the file with the same compiled multi-pattern database. Hyperscan is thread-safe for simultaneous scans, so multiple cores can be utilized to scan different portions of the file concurrently. If Hyperscan is disabled (using the Qt regex engine), we can fall back to running each pattern on separate threads or using QtConcurrent to parallelize searches per pattern or per file segment. For instance, 4 patterns and 4 cores could be searched roughly in parallel, or two cores could each handle half the file for all patterns, etc. The key is: by not tying everything into one regex, we have flexibility to distribute work. **Note:** This optimization should apply to both search filters (manual and auto-refresh), as well as highlight filters (though highlight filters currently work fine and can be revisited later if needed)."
+    },
+    {
+      "step": 4,
+      "description": "Maintain Logical Correctness: For OR logic, marking a line as a match if any pattern hits is straightforward with multi-pattern search – any Hyperscan match triggers that line's inclusion. For more complex logic (AND, NOT), we can still do better than a single regex. Hyperscan's combination feature could be used for AND/NOT (by specifying a logical combination expression that references patterns by ID). Alternatively, we could post-process pattern matches: e.g. for an AND, ensure each required pattern ID was found on that line. This post-processing is viable because Hyperscan can report which pattern IDs matched at what positions. The current implementation likely already does something like this via exprtk for general boolean expressions. We should integrate that with multiple pattern matching results, rather than flattening everything into regex syntax."
+    }
+  ]
+}

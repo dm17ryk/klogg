@@ -147,7 +147,8 @@ class HsRegularExpression {
   public:
     HsRegularExpression() = default;
     explicit HsRegularExpression( const RegularExpressionPattern& includePattern );
-    explicit HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns );
+    explicit HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns,
+                                  const std::string& combination = std::string{} );
 
     HsRegularExpression( const HsRegularExpression& ) = delete;
     HsRegularExpression& operator=( const HsRegularExpression& ) = delete;
@@ -168,6 +169,8 @@ class HsRegularExpression {
     HsScratch scratch_;
 
     klogg::vector<RegularExpressionPattern> patterns_;
+    std::string combinationExpression_;
+    bool hasCombination_ = false;
 
     bool isValid_ = true;
     QString errorMessage_;
