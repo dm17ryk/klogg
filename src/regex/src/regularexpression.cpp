@@ -363,11 +363,42 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
             expression.expression_.toStdString(), expression.subPatterns_ );
     }
 
-    if ( !isBooleanCombination_ ) {
-        hasMatchImpl_ = isInverse_ ? matching::hasInverseSingleMatch : matching::hasSingleMatch;
+    const bool useHsCombinationBit
+        = hasHsCombination_ && useHyperscanEngine && config.useHsCombinationBit();
+
+    if ( isBooleanCombination_ ) {
+        // Boolean path: prefer HS combination bit if enabled, otherwise fall back to evaluator.
+        hasMatchImpl_ = [this, useHsCombinationBit]( std::string_view line,
+                                                     const MatcherVariant& matcher,
+                                                     BooleanExpressionEvaluator* evaluator ) {
+            auto result
+                = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
+
+            if ( useHsCombinationBit && combinationIndex_ < result.size()
+                 && result[ combinationIndex_ ] > 0 ) {
+                return true;
+            }
+
+            if ( evaluator ) {
+                if ( result.size() > evaluator->variableCount() ) {
+                    result.resize( evaluator->variableCount() );
+                }
+                return evaluator->evaluate( result );
+            }
+
+            return false;
+        };
+
+        if ( isInverse_ ) {
+            const auto base = hasMatchImpl_;
+            hasMatchImpl_ = [base]( std::string_view line, const MatcherVariant& matcher,
+                                    BooleanExpressionEvaluator* evaluator ) {
+                return !base( line, matcher, evaluator );
+            };
+        }
     }
     else {
-        hasMatchImpl_ = isInverse_ ? matching::hasInverseCombinedMatch : matching::hasCombinedMatch;
+        hasMatchImpl_ = isInverse_ ? matching::hasInverseSingleMatch : matching::hasSingleMatch;
     }
 }
 

@@ -809,6 +809,16 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QCheckBox" name="hsCombinationBitCheckBox">
+              <property name="toolTip">
+               <string>Use Hyperscan combination bit result directly for boolean search expressions (requires Hyperscan engine)</string>
+              </property>
+              <property name="text">
+               <string>Use Hyperscan combination bit directly</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
          </layout>

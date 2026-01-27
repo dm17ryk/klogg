@@ -366,6 +366,7 @@ void OptionsDialog::updateDialogFromConfig()
     searchReadBufferSpinBox->setValue( config.searchReadBufferSizeLines() );
     keepFileClosedCheckBox->setChecked( config.keepFileClosed() );
     compressedIndexCheckBox->setChecked( config.useCompressedIndex() );
+    hsCombinationBitCheckBox->setChecked( config.useHsCombinationBit() );
     optimizeForNotLatinEncodingsCheckBox->setChecked( config.optimizeForNotLatinEncodings() );
 
     // version checking
@@ -538,6 +539,7 @@ void OptionsDialog::updateConfigFromDialog()
     config.setSearchReadBufferSizeLines( searchReadBufferSpinBox->value() );
     config.setKeepFileClosed( keepFileClosedCheckBox->isChecked() );
     config.setUseCompressedIndex( compressedIndexCheckBox->isChecked() );
+    config.setUseHsCombinationBit( hsCombinationBitCheckBox->isChecked() );
     config.setOptimizeForNotLatinEncodings( optimizeForNotLatinEncodingsCheckBox->isChecked() );
 
     // version checking
