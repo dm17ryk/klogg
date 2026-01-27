@@ -17,6 +17,7 @@
 #include <QStandardItemModel>
 #include <QVBoxLayout>
 
+#include "configuration.h"
 #include "streamsourceregistry.h"
 
 OpenComPortDialog::OpenComPortDialog( QWidget* parent )
@@ -91,6 +92,28 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     populateParity();
     populateStopBits();
     populateFlowControl();
+
+    const auto& config = Configuration::get();
+    auto selectByValue = []( QComboBox* combo, int value ) {
+        const auto idx = combo->findData( value );
+        if ( idx >= 0 ) {
+            combo->setCurrentIndex( idx );
+        }
+    };
+    selectByValue( baudCombo_, config.defaultComBaudRate() );
+    selectByValue( dataBitsCombo_, config.defaultComDataBits() );
+    selectByValue( parityCombo_, config.defaultComParity() );
+    selectByValue( stopBitsCombo_, config.defaultComStopBits() );
+    selectByValue( flowCombo_, config.defaultComFlowControl() );
+
+    if ( !config.defaultComLogPath().isEmpty() ) {
+        fileEdit_->setText( config.defaultComLogPath() );
+        userEditedPath_ = true;
+    }
+    timestampCheck_->setChecked( config.defaultComTimestampEnabled() );
+    timestampFormatEdit_->setText( config.defaultComTimestampFormat() );
+    timestampFormatEdit_->setEnabled( timestampCheck_->isChecked() );
+    logTxCheck_->setChecked( config.defaultComLogTransmits() );
 
     connect( portCombo_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &OpenComPortDialog::updateSuggestedFileName );
@@ -279,10 +302,13 @@ QString OpenComPortDialog::suggestedFileName() const
     const auto baudRate = baudCombo_->currentData().toString();
     const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
 
-    const auto basePath = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
+    const auto& config = Configuration::get();
+    const auto basePath = config.defaultComLogPath().isEmpty()
+                              ? QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation )
+                              : config.defaultComLogPath();
     const auto logsDirPath = basePath.isEmpty()
                                  ? QDir::home().filePath( "logs" )
-                                 : QDir( basePath ).filePath( "logs" );
+                                 : QDir( basePath ).filePath( "." );
     QDir logsDir( logsDirPath );
     if ( !logsDir.exists() ) {
         logsDir.mkpath( "." );

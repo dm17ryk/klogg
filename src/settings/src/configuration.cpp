@@ -112,6 +112,11 @@ void Configuration::retrieveFromStorage( QSettings& settings )
         = settings.value( "view.scaleFactorRounding", DefaultConfiguration.scaleFactorRounding_ )
               .toInt();
 
+    showTabsBarByDefault_ = settings
+                                .value( "view.showTabsBarByDefault",
+                                        DefaultConfiguration.showTabsBarByDefault_ )
+                                .toBool();
+
     // Regexp types
     mainRegexpType_ = static_cast<SearchRegexpType>(
         settings
@@ -285,6 +290,31 @@ void Configuration::retrieveFromStorage( QSettings& settings )
 
     useTextWrap_ = settings.value( "view.textWrap", DefaultConfiguration.useTextWrap() ).toBool();
 
+    comDefaultBaudRate_ = settings.value( "com.defaultBaudRate",
+                                          DefaultConfiguration.comDefaultBaudRate_ ).toInt();
+    comDefaultDataBits_ = settings.value( "com.defaultDataBits",
+                                          DefaultConfiguration.comDefaultDataBits_ ).toInt();
+    comDefaultParity_
+        = settings.value( "com.defaultParity", DefaultConfiguration.comDefaultParity_ ).toInt();
+    comDefaultStopBits_ = settings.value( "com.defaultStopBits",
+                                         DefaultConfiguration.comDefaultStopBits_ ).toInt();
+    comDefaultFlowControl_ = settings.value( "com.defaultFlowControl",
+                                             DefaultConfiguration.comDefaultFlowControl_ ).toInt();
+    comDefaultLogPath_
+        = settings.value( "com.defaultLogPath", DefaultConfiguration.comDefaultLogPath_ )
+              .toString();
+    comDefaultTimestampEnabled_ = settings.value(
+        "com.defaultTimestampEnabled", DefaultConfiguration.comDefaultTimestampEnabled_ )
+                                      .toBool();
+    comDefaultTimestampFormat_
+        = settings
+              .value( "com.defaultTimestampFormat",
+                      DefaultConfiguration.comDefaultTimestampFormat_ )
+              .toString();
+    comDefaultLogTransmits_ = settings.value(
+        "com.defaultLogTransmits", DefaultConfiguration.comDefaultLogTransmits_ )
+                                  .toBool();
+
     style_ = settings.value( "view.style", DefaultConfiguration.style_ ).toString();
 
     auto styles = StyleManager::availableStyles();
@@ -414,6 +444,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "view.lineNumbersVisibleInMain", lineNumbersVisibleInMain_ );
     settings.setValue( "view.lineNumbersVisibleInFiltered", lineNumbersVisibleInFiltered_ );
     settings.setValue( "view.minimizeToTray", minimizeToTray_ );
+    settings.setValue( "view.showTabsBarByDefault", showTabsBarByDefault_ );
     settings.setValue( "view.style", style_ );
     settings.setValue( "view.language", language_ );
     settings.setValue( "view.textWrap", useTextWrap_ );
@@ -422,6 +453,16 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "view.scaleFactorRounding", scaleFactorRounding_ );
 
     settings.setValue( "view.hideAnsiColorSequences", hideAnsiColorSequences_ );
+
+    settings.setValue( "com.defaultBaudRate", comDefaultBaudRate_ );
+    settings.setValue( "com.defaultDataBits", comDefaultDataBits_ );
+    settings.setValue( "com.defaultParity", comDefaultParity_ );
+    settings.setValue( "com.defaultStopBits", comDefaultStopBits_ );
+    settings.setValue( "com.defaultFlowControl", comDefaultFlowControl_ );
+    settings.setValue( "com.defaultLogPath", comDefaultLogPath_ );
+    settings.setValue( "com.defaultTimestampEnabled", comDefaultTimestampEnabled_ );
+    settings.setValue( "com.defaultTimestampFormat", comDefaultTimestampFormat_ );
+    settings.setValue( "com.defaultLogTransmits", comDefaultLogTransmits_ );
 
     settings.setValue( "defaultView.searchAutoRefresh", searchAutoRefresh_ );
     settings.setValue( "defaultView.searchIgnoreCase", searchIgnoreCase_ );

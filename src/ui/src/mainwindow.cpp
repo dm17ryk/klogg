@@ -620,6 +620,7 @@ void MainWindow::createActions()
     showTabsBarAction = new QAction( tr( action::showTabsBarText ), this );
     showTabsBarAction->setCheckable( true );
     showTabsBarAction->setEnabled( true );
+    showTabsBarAction->setChecked( config.showTabsBarByDefault() );
     connect( showTabsBarAction, &QAction::toggled, this,
              [ this ]( bool checked ) { mainTabWidget_.setAlwaysShowTabBar( checked ); } );
     mainTabWidget_.setAlwaysShowTabBar( showTabsBarAction->isChecked() );

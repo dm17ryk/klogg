@@ -41,6 +41,7 @@
 #include <QMessageBox>
 #include <QToolButton>
 #include <QtGui>
+#include <QSerialPort>
 
 #include "encodings.h"
 #include "fontutils.h"
@@ -69,6 +70,7 @@ OptionsDialog::OptionsDialog( QWidget* parent )
     setupStyles();
     setupEncodings();
     setupLanguageList();
+    setupComDefaults();
 
     // Validators
     QValidator* pollingIntervalValidator = new QIntValidator( PollIntervalMin, PollIntervalMax );
@@ -86,6 +88,8 @@ OptionsDialog::OptionsDialog( QWidget* parent )
 
     connect( mainSearchColorButton, &QPushButton::clicked, this, &OptionsDialog::changeMainColor );
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );
+    connect( comTimestampCheckBox, &QCheckBox::toggled, comTimestampFormatEdit,
+             &QWidget::setEnabled );
 
     connect( restoreShortcutsDefaults, &QPushButton::clicked, this, [ this ]() {
         auto ret = QMessageBox::question(
@@ -193,6 +197,34 @@ void OptionsDialog::setupLanguageList()
                                        attributes.value( "ietfCode" ).toString() );
         }
     }
+}
+
+void OptionsDialog::setupComDefaults()
+{
+    const QList<int> baudRates = { 300,   600,   1200,  1800,  2400,  4800,  7200,   9600,
+                                   14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
+    for ( const auto rate : baudRates ) {
+        comBaudComboBox->addItem( QString::number( rate ), rate );
+    }
+
+    comDataBitsComboBox->addItem( tr( "5" ), QSerialPort::Data5 );
+    comDataBitsComboBox->addItem( tr( "6" ), QSerialPort::Data6 );
+    comDataBitsComboBox->addItem( tr( "7" ), QSerialPort::Data7 );
+    comDataBitsComboBox->addItem( tr( "8" ), QSerialPort::Data8 );
+
+    comParityComboBox->addItem( tr( "None" ), QSerialPort::NoParity );
+    comParityComboBox->addItem( tr( "Even" ), QSerialPort::EvenParity );
+    comParityComboBox->addItem( tr( "Odd" ), QSerialPort::OddParity );
+    comParityComboBox->addItem( tr( "Mark" ), QSerialPort::MarkParity );
+    comParityComboBox->addItem( tr( "Space" ), QSerialPort::SpaceParity );
+
+    comStopBitsComboBox->addItem( tr( "1" ), QSerialPort::OneStop );
+    comStopBitsComboBox->addItem( tr( "1.5" ), QSerialPort::OneAndHalfStop );
+    comStopBitsComboBox->addItem( tr( "2" ), QSerialPort::TwoStop );
+
+    comFlowComboBox->addItem( tr( "None" ), QSerialPort::NoFlowControl );
+    comFlowComboBox->addItem( tr( "RTS/CTS" ), QSerialPort::HardwareControl );
+    comFlowComboBox->addItem( tr( "XON/XOFF" ), QSerialPort::SoftwareControl );
 }
 
 void OptionsDialog::setupPolling()
@@ -321,6 +353,7 @@ void OptionsDialog::updateDialogFromConfig()
     }
 
     hideAnsiColorsCheckBox->setChecked( config.hideAnsiColorSequences() );
+    showTabsBarByDefaultCheckBox->setChecked( config.showTabsBarByDefault() );
 
     // Regexp types
     mainSearchBox->setCurrentIndex( getRegexpTypeIndex( config.mainRegexpType() ) );
@@ -379,6 +412,24 @@ void OptionsDialog::updateDialogFromConfig()
     encodingComboBox->setCurrentIndex( encodingIndex < 0 ? 0 : encodingIndex );
 
     buildShortcutsTable( false );
+
+    // COM defaults
+    auto selectByData = []( QComboBox* combo, int value ) {
+        const auto idx = combo->findData( value );
+        if ( idx >= 0 ) {
+            combo->setCurrentIndex( idx );
+        }
+    };
+    selectByData( comBaudComboBox, config.defaultComBaudRate() );
+    selectByData( comDataBitsComboBox, config.defaultComDataBits() );
+    selectByData( comParityComboBox, config.defaultComParity() );
+    selectByData( comStopBitsComboBox, config.defaultComStopBits() );
+    selectByData( comFlowComboBox, config.defaultComFlowControl() );
+    comLogPathEdit->setText( config.defaultComLogPath() );
+    comTimestampCheckBox->setChecked( config.defaultComTimestampEnabled() );
+    comTimestampFormatEdit->setText( config.defaultComTimestampFormat() );
+    comTimestampFormatEdit->setEnabled( config.defaultComTimestampEnabled() );
+    comLogTxCheckBox->setChecked( config.defaultComLogTransmits() );
 
     const auto& savedSearches = SavedSearches::get();
     searchHistorySpinBox->setValue( savedSearches.historySize() );
@@ -551,8 +602,19 @@ void OptionsDialog::updateConfigFromDialog()
 
     config.setStyle( styleComboBox->currentText() );
     config.setHideAnsiColorSequences( hideAnsiColorsCheckBox->isChecked() );
+    config.setShowTabsBarByDefault( showTabsBarByDefaultCheckBox->isChecked() );
 
     config.setDefaultEncodingMib( encodingComboBox->currentData().toInt() );
+
+    config.setDefaultComBaudRate( comBaudComboBox->currentData().toInt() );
+    config.setDefaultComDataBits( comDataBitsComboBox->currentData().toInt() );
+    config.setDefaultComParity( comParityComboBox->currentData().toInt() );
+    config.setDefaultComStopBits( comStopBitsComboBox->currentData().toInt() );
+    config.setDefaultComFlowControl( comFlowComboBox->currentData().toInt() );
+    config.setDefaultComLogPath( comLogPathEdit->text().trimmed() );
+    config.setDefaultComTimestampEnabled( comTimestampCheckBox->isChecked() );
+    config.setDefaultComTimestampFormat( comTimestampFormatEdit->text().trimmed() );
+    config.setDefaultComLogTransmits( comLogTxCheckBox->isChecked() );
 
     auto shortcuts = config.shortcuts();
     for ( auto shortcutRow = 0; shortcutRow < shortcutsTable->rowCount(); ++shortcutRow ) {

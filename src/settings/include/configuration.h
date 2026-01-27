@@ -290,6 +290,10 @@ class Configuration final : public Persistable<Configuration> {
     {
         return minimizeToTray_;
     }
+    bool showTabsBarByDefault() const
+    {
+        return showTabsBarByDefault_;
+    }
     QString style() const
     {
         return style_;
@@ -305,6 +309,10 @@ class Configuration final : public Persistable<Configuration> {
     void setMinimizeToTray( bool minimizeToTray )
     {
         minimizeToTray_ = minimizeToTray;
+    }
+    void setShowTabsBarByDefault( bool showTabsBar )
+    {
+        showTabsBarByDefault_ = showTabsBar;
     }
     void setStyle( const QString& style )
     {
@@ -534,6 +542,88 @@ class Configuration final : public Persistable<Configuration> {
         defaultEncodingMib_ = mib;
     }
 
+    // Default COM port settings
+    int defaultComBaudRate() const
+    {
+        return comDefaultBaudRate_;
+    }
+    void setDefaultComBaudRate( int baud )
+    {
+        comDefaultBaudRate_ = baud;
+    }
+
+    int defaultComDataBits() const
+    {
+        return comDefaultDataBits_;
+    }
+    void setDefaultComDataBits( int bits )
+    {
+        comDefaultDataBits_ = bits;
+    }
+
+    int defaultComParity() const
+    {
+        return comDefaultParity_;
+    }
+    void setDefaultComParity( int parity )
+    {
+        comDefaultParity_ = parity;
+    }
+
+    int defaultComStopBits() const
+    {
+        return comDefaultStopBits_;
+    }
+    void setDefaultComStopBits( int stopBits )
+    {
+        comDefaultStopBits_ = stopBits;
+    }
+
+    int defaultComFlowControl() const
+    {
+        return comDefaultFlowControl_;
+    }
+    void setDefaultComFlowControl( int flowControl )
+    {
+        comDefaultFlowControl_ = flowControl;
+    }
+
+    QString defaultComLogPath() const
+    {
+        return comDefaultLogPath_;
+    }
+    void setDefaultComLogPath( const QString& path )
+    {
+        comDefaultLogPath_ = path;
+    }
+
+    bool defaultComTimestampEnabled() const
+    {
+        return comDefaultTimestampEnabled_;
+    }
+    void setDefaultComTimestampEnabled( bool enabled )
+    {
+        comDefaultTimestampEnabled_ = enabled;
+    }
+
+    QString defaultComTimestampFormat() const
+    {
+        return comDefaultTimestampFormat_;
+    }
+    void setDefaultComTimestampFormat( const QString& format )
+    {
+        comDefaultTimestampFormat_ = format;
+    }
+
+    bool defaultComLogTransmits() const
+    {
+        return comDefaultLogTransmits_;
+    }
+    void setDefaultComLogTransmits( bool enabled )
+    {
+        comDefaultLogTransmits_ = enabled;
+    }
+
     std::map<QString, QString> darkPalette() const {
         return darkPalette_;
     }
@@ -571,6 +661,7 @@ class Configuration final : public Persistable<Configuration> {
     bool lineNumbersVisibleInMain_ = false;
     bool lineNumbersVisibleInFiltered_ = true;
     bool minimizeToTray_ = false;
+    bool showTabsBarByDefault_ = false;
     QString style_;
 
     // Default settings for new views
@@ -621,6 +712,17 @@ class Configuration final : public Persistable<Configuration> {
     bool hideAnsiColorSequences_ = false;
 
     int defaultEncodingMib_ = -1;
+
+    // Default COM port settings
+    int comDefaultBaudRate_ = 115200;
+    int comDefaultDataBits_ = 8;
+    int comDefaultParity_ = 0; // QSerialPort::NoParity
+    int comDefaultStopBits_ = 1; // QSerialPort::OneStop
+    int comDefaultFlowControl_ = 0; // QSerialPort::NoFlowControl
+    QString comDefaultLogPath_{};
+    bool comDefaultTimestampEnabled_ = false;
+    QString comDefaultTimestampFormat_ = QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" );
+    bool comDefaultLogTransmits_ = false;
 
     bool qfIgnoreCase_ = false;
 
