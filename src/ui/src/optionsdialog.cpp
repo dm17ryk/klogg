@@ -41,6 +41,9 @@
 #include <QMessageBox>
 #include <QToolButton>
 #include <QtGui>
+#include <QDir>
+#include <QFileDialog>
+#include <QStandardPaths>
 #include <QSerialPort>
 
 #include "encodings.h"
@@ -90,6 +93,7 @@ OptionsDialog::OptionsDialog( QWidget* parent )
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );
     connect( comTimestampCheckBox, &QCheckBox::toggled, comTimestampFormatEdit,
              &QWidget::setEnabled );
+    connect( comLogBrowseButton, &QPushButton::clicked, this, &OptionsDialog::browseComLogPath );
 
     connect( restoreShortcutsDefaults, &QPushButton::clicked, this, [ this ]() {
         auto ret = QMessageBox::question(
@@ -225,6 +229,31 @@ void OptionsDialog::setupComDefaults()
     comFlowComboBox->addItem( tr( "None" ), QSerialPort::NoFlowControl );
     comFlowComboBox->addItem( tr( "RTS/CTS" ), QSerialPort::HardwareControl );
     comFlowComboBox->addItem( tr( "XON/XOFF" ), QSerialPort::SoftwareControl );
+}
+
+void OptionsDialog::browseComLogPath()
+{
+    auto current = comLogPathEdit->text().trimmed();
+    QString initialDir;
+    if ( !current.isEmpty() && QDir( current ).exists() ) {
+        initialDir = current;
+    }
+    else {
+        auto docs = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
+        if ( docs.isEmpty() ) {
+            docs = QDir::homePath();
+        }
+        initialDir = QDir( docs ).filePath( QStringLiteral( "kloggs" ) );
+        QDir initDir( initialDir );
+        if ( !initDir.exists() ) {
+            initDir.mkpath( "." );
+        }
+    }
+
+    const auto dir = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
+    if ( !dir.isEmpty() ) {
+        comLogPathEdit->setText( dir );
+    }
 }
 
 void OptionsDialog::setupPolling()

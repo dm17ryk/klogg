@@ -130,6 +130,15 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( timestampFormatEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
 
     updateSuggestedFileName();
+    // Ensure filename is present even if only a directory was loaded from config.
+    if ( QFileInfo( fileEdit_->text() ).isDir() ) {
+        const auto suggested = suggestedFileName();
+        fileEdit_->setText( suggested );
+        lastSuggestedPath_ = suggested;
+        userEditedPath_ = false;
+    }
+    // Keep timestamp format enabled in line with the checkbox default state.
+    timestampFormatEdit_->setEnabled( timestampCheck_->isChecked() );
     validateInputs();
 }
 
@@ -152,8 +161,48 @@ SerialCaptureSettings OpenComPortDialog::settings() const
 
 void OpenComPortDialog::updateSuggestedFileName()
 {
-    const auto suggested = suggestedFileName();
     const auto currentPath = fileEdit_->text().trimmed();
+
+    auto makeSuggested = [&]() {
+        const auto portNameValue = portCombo_->currentData().toString();
+        const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
+        const auto baudRate = baudCombo_->currentData().toString();
+        const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
+        const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+
+        const auto& config = Configuration::get();
+        auto fallbackDocs = []() {
+            auto docs = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
+            if ( docs.isEmpty() ) {
+                docs = QDir::homePath();
+            }
+            return QDir( docs ).filePath( QStringLiteral( "kloggs" ) );
+        };
+
+        QString baseDir = config.defaultComLogPath();
+
+        // If the current path points to a directory, prefer it.
+        const QFileInfo info( currentPath );
+        if ( info.isDir() && info.exists() ) {
+            baseDir = info.absoluteFilePath();
+        }
+
+        if ( baseDir.isEmpty() ) {
+            baseDir = fallbackDocs();
+        }
+
+        QDir dir( baseDir );
+        if ( !dir.exists() ) {
+            if ( !dir.mkpath( "." ) ) {
+                dir.setPath( fallbackDocs() );
+                dir.mkpath( "." );
+            }
+        }
+
+        return dir.filePath( fileName );
+    };
+
+    const auto suggested = makeSuggested();
     const bool canUpdate
         = !userEditedPath_ || currentPath.isEmpty() || currentPath == lastSuggestedPath_;
 
@@ -303,15 +352,24 @@ QString OpenComPortDialog::suggestedFileName() const
     const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
 
     const auto& config = Configuration::get();
-    const auto basePath = config.defaultComLogPath().isEmpty()
-                              ? QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation )
-                              : config.defaultComLogPath();
-    const auto logsDirPath = basePath.isEmpty()
-                                 ? QDir::home().filePath( "logs" )
-                                 : QDir( basePath ).filePath( "." );
+    auto fallbackDocs = []() {
+        auto docs = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
+        if ( docs.isEmpty() ) {
+            docs = QDir::homePath();
+        }
+        return QDir( docs ).filePath( QStringLiteral( "kloggs" ) );
+    };
+
+    QString logsDirPath = config.defaultComLogPath();
+    if ( logsDirPath.isEmpty() ) {
+        logsDirPath = fallbackDocs();
+    }
     QDir logsDir( logsDirPath );
     if ( !logsDir.exists() ) {
-        logsDir.mkpath( "." );
+        if ( !logsDir.mkpath( "." ) ) {
+            logsDir.setPath( fallbackDocs() );
+            logsDir.mkpath( "." );
+        }
     }
 
     const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );

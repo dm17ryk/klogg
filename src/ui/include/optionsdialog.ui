@@ -997,7 +997,18 @@
         </widget>
        </item>
        <item row="5" column="1">
-        <widget class="QLineEdit" name="comLogPathEdit"/>
+        <layout class="QHBoxLayout" name="horizontalLayout_comLogPath">
+         <item>
+          <widget class="QLineEdit" name="comLogPathEdit"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="comLogBrowseButton">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item row="6" column="0">
         <widget class="QCheckBox" name="comTimestampCheckBox">

@@ -105,6 +105,7 @@ class OptionsDialog : public QDialog, public Ui::OptionsDialog {
     void setupEncodings();
     void setupLanguageList();
     void setupComDefaults();
+    void browseComLogPath();
 
     int updateTranslate();
 
