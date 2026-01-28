@@ -1088,14 +1088,20 @@ void MainWindow::openComPort()
                 tr( "The existing capture is still closing. Please try again in a moment." ) );
             return;
         }
+        if ( actionsStreamSession_ == existingSession ) {
+            actionsStreamSession_.clear();
+        }
         mainTabWidget_.clearStreamSessionForPath( filePath );
     }
 
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath ] {
+             [ this, filePath, safeSession ] {
                  mainTabWidget_.clearStreamSessionForPath( filePath );
+                 if ( actionsStreamSession_ == safeSession ) {
+                     actionsStreamSession_.clear();
+                 }
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
@@ -1109,6 +1115,22 @@ void MainWindow::openComPort()
              } );
     session->start();
     mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
+
+    bool designateForActions = settings.useForActions;
+    if ( designateForActions && actionsStreamSession_ && actionsStreamSession_ != session.get()
+         && actionsStreamSession_->isConnectionOpen() ) {
+        const auto reply
+            = QMessageBox::question( this, tr( "Actions COM Port" ),
+                                     tr( "Are you sure you want to make %1 the actions COM port?" )
+                                         .arg( settings.portName ),
+                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
+        if ( reply != QMessageBox::Yes ) {
+            designateForActions = false;
+        }
+    }
+    if ( designateForActions ) {
+        actionsStreamSession_ = session.get();
+    }
 
     if ( !loadFile( settings.filePath, true ) ) {
         session->closeConnection();
@@ -1488,8 +1510,12 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
 
-    auto* streamSession = currentStreamSession();
+    auto* streamSession = actionsStreamSession_.data();
     if ( !streamSession || !streamSession->isConnectionOpen() ) {
+        streamSession = currentStreamSession();
+    }
+    if ( ( !streamSession || !streamSession->isConnectionOpen() )
+         && mainTabWidget_.hasOpenStreamSession() ) {
         streamSession = mainTabWidget_.firstOpenStreamSession();
     }
     if ( !streamSession ) {
@@ -2078,8 +2104,12 @@ StreamSession* MainWindow::currentStreamSession() const
 
 void MainWindow::updateActionsSendState()
 {
-    const auto* streamSession = currentStreamSession();
+    const auto* streamSession = actionsStreamSession_.data();
     bool available = streamSession && streamSession->isConnectionOpen();
+    if ( !available ) {
+        streamSession = currentStreamSession();
+        available = streamSession && streamSession->isConnectionOpen();
+    }
     if ( !available ) {
         available = mainTabWidget_.hasOpenStreamSession();
     }

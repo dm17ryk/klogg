@@ -43,6 +43,7 @@ class OpenComPortDialog : public QDialog {
     QCheckBox* timestampCheck_ = nullptr;
     QLineEdit* timestampFormatEdit_ = nullptr;
     QCheckBox* logTxCheck_ = nullptr;
+    QCheckBox* useForActionsCheck_ = nullptr;
     QPushButton* browseButton_ = nullptr;
     QDialogButtonBox* buttonBox_ = nullptr;
     QPushButton* openButton_ = nullptr;

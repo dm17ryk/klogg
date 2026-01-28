@@ -40,6 +40,7 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     timestampCheck_ = new QCheckBox( tr( "Add timestamp to log" ), this );
     timestampFormatEdit_ = new QLineEdit( QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" ), this );
     logTxCheck_ = new QCheckBox( tr( "Log transmitted data" ), this );
+    useForActionsCheck_ = new QCheckBox( tr( "Use this COM for actions" ), this );
 
     grid->addWidget( new QLabel( tr( "Port" ), this ), row, 0 );
     grid->addWidget( portCombo_, row, 1 );
@@ -58,6 +59,8 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     row++;
     grid->addWidget( new QLabel( tr( "Flow control" ), this ), row, 0 );
     grid->addWidget( flowCombo_, row, 1 );
+    row++;
+    grid->addWidget( useForActionsCheck_, row, 0, 1, 2 );
     row++;
 
     auto* fileRow = new QWidget( this );
@@ -108,7 +111,8 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
 
     if ( !config.defaultComLogPath().isEmpty() ) {
         fileEdit_->setText( config.defaultComLogPath() );
-        userEditedPath_ = true;
+        const QFileInfo info( config.defaultComLogPath() );
+        userEditedPath_ = !info.isDir();
     }
     timestampCheck_->setChecked( config.defaultComTimestampEnabled() );
     timestampFormatEdit_->setText( config.defaultComTimestampFormat() );
@@ -122,7 +126,6 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( fileEdit_, &QLineEdit::textEdited, this, &OpenComPortDialog::markFilePathEdited );
     connect( fileEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
     connect( browseButton_, &QPushButton::clicked, this, &OpenComPortDialog::browseForFile );
-    timestampFormatEdit_->setEnabled( false );
     connect( timestampCheck_, &QCheckBox::toggled, this, [ this ]( bool checked ) {
         timestampFormatEdit_->setEnabled( checked );
         validateInputs();
@@ -156,6 +159,7 @@ SerialCaptureSettings OpenComPortDialog::settings() const
     settings.addTimestamps = timestampCheck_->isChecked();
     settings.timestampFormat = timestampFormatEdit_->text().trimmed();
     settings.logTransmits = logTxCheck_->isChecked();
+    settings.useForActions = useForActionsCheck_->isChecked();
     return settings;
 }
 
