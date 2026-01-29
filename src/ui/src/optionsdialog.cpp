@@ -52,6 +52,7 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "recentfiles.h"
+#include "comportutils.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
 #include "styles.h"
@@ -205,30 +206,8 @@ void OptionsDialog::setupLanguageList()
 
 void OptionsDialog::setupComDefaults()
 {
-    const QList<int> baudRates = { 300,   600,   1200,  1800,  2400,  4800,  7200,   9600,
-                                   14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
-    for ( const auto rate : baudRates ) {
-        comBaudComboBox->addItem( QString::number( rate ), rate );
-    }
-
-    comDataBitsComboBox->addItem( tr( "5" ), QSerialPort::Data5 );
-    comDataBitsComboBox->addItem( tr( "6" ), QSerialPort::Data6 );
-    comDataBitsComboBox->addItem( tr( "7" ), QSerialPort::Data7 );
-    comDataBitsComboBox->addItem( tr( "8" ), QSerialPort::Data8 );
-
-    comParityComboBox->addItem( tr( "None" ), QSerialPort::NoParity );
-    comParityComboBox->addItem( tr( "Even" ), QSerialPort::EvenParity );
-    comParityComboBox->addItem( tr( "Odd" ), QSerialPort::OddParity );
-    comParityComboBox->addItem( tr( "Mark" ), QSerialPort::MarkParity );
-    comParityComboBox->addItem( tr( "Space" ), QSerialPort::SpaceParity );
-
-    comStopBitsComboBox->addItem( tr( "1" ), QSerialPort::OneStop );
-    comStopBitsComboBox->addItem( tr( "1.5" ), QSerialPort::OneAndHalfStop );
-    comStopBitsComboBox->addItem( tr( "2" ), QSerialPort::TwoStop );
-
-    comFlowComboBox->addItem( tr( "None" ), QSerialPort::NoFlowControl );
-    comFlowComboBox->addItem( tr( "RTS/CTS" ), QSerialPort::HardwareControl );
-    comFlowComboBox->addItem( tr( "XON/XOFF" ), QSerialPort::SoftwareControl );
+    populateSerialControls( comBaudComboBox, comDataBitsComboBox, comParityComboBox,
+                            comStopBitsComboBox, comFlowComboBox );
 }
 
 void OptionsDialog::browseComLogPath()
@@ -239,15 +218,7 @@ void OptionsDialog::browseComLogPath()
         initialDir = current;
     }
     else {
-        auto docs = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
-        if ( docs.isEmpty() ) {
-            docs = QDir::homePath();
-        }
-        initialDir = QDir( docs ).filePath( QStringLiteral( "kloggs" ) );
-        QDir initDir( initialDir );
-        if ( !initDir.exists() ) {
-            initDir.mkpath( "." );
-        }
+        initialDir = defaultComLogDirectory();
     }
 
     const auto dir = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
@@ -449,11 +420,11 @@ void OptionsDialog::updateDialogFromConfig()
             combo->setCurrentIndex( idx );
         }
     };
-    selectByData( comBaudComboBox, config.defaultComBaudRate() );
-    selectByData( comDataBitsComboBox, config.defaultComDataBits() );
-    selectByData( comParityComboBox, config.defaultComParity() );
-    selectByData( comStopBitsComboBox, config.defaultComStopBits() );
-    selectByData( comFlowComboBox, config.defaultComFlowControl() );
+    selectByData( comBaudComboBox, static_cast<int>( config.defaultComBaudRate() ) );
+    selectByData( comDataBitsComboBox, static_cast<int>( config.defaultComDataBits() ) );
+    selectByData( comParityComboBox, static_cast<int>( config.defaultComParity() ) );
+    selectByData( comStopBitsComboBox, static_cast<int>( config.defaultComStopBits() ) );
+    selectByData( comFlowComboBox, static_cast<int>( config.defaultComFlowControl() ) );
     comLogPathEdit->setText( config.defaultComLogPath() );
     comTimestampCheckBox->setChecked( config.defaultComTimestampEnabled() );
     comTimestampFormatEdit->setText( config.defaultComTimestampFormat() );
@@ -635,11 +606,16 @@ void OptionsDialog::updateConfigFromDialog()
 
     config.setDefaultEncodingMib( encodingComboBox->currentData().toInt() );
 
-    config.setDefaultComBaudRate( comBaudComboBox->currentData().toInt() );
-    config.setDefaultComDataBits( comDataBitsComboBox->currentData().toInt() );
-    config.setDefaultComParity( comParityComboBox->currentData().toInt() );
-    config.setDefaultComStopBits( comStopBitsComboBox->currentData().toInt() );
-    config.setDefaultComFlowControl( comFlowComboBox->currentData().toInt() );
+    config.setDefaultComBaudRate(
+        static_cast<QSerialPort::BaudRate>( comBaudComboBox->currentData().toInt() ) );
+    config.setDefaultComDataBits(
+        static_cast<QSerialPort::DataBits>( comDataBitsComboBox->currentData().toInt() ) );
+    config.setDefaultComParity(
+        static_cast<QSerialPort::Parity>( comParityComboBox->currentData().toInt() ) );
+    config.setDefaultComStopBits(
+        static_cast<QSerialPort::StopBits>( comStopBitsComboBox->currentData().toInt() ) );
+    config.setDefaultComFlowControl(
+        static_cast<QSerialPort::FlowControl>( comFlowComboBox->currentData().toInt() ) );
     config.setDefaultComLogPath( comLogPathEdit->text().trimmed() );
     config.setDefaultComTimestampEnabled( comTimestampCheckBox->isChecked() );
     config.setDefaultComTimestampFormat( comTimestampFormatEdit->text().trimmed() );

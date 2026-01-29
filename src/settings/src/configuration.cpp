@@ -290,16 +290,30 @@ void Configuration::retrieveFromStorage( QSettings& settings )
 
     useTextWrap_ = settings.value( "view.textWrap", DefaultConfiguration.useTextWrap() ).toBool();
 
-    comDefaultBaudRate_ = settings.value( "com.defaultBaudRate",
-                                          DefaultConfiguration.comDefaultBaudRate_ ).toInt();
-    comDefaultDataBits_ = settings.value( "com.defaultDataBits",
-                                          DefaultConfiguration.comDefaultDataBits_ ).toInt();
-    comDefaultParity_
-        = settings.value( "com.defaultParity", DefaultConfiguration.comDefaultParity_ ).toInt();
-    comDefaultStopBits_ = settings.value( "com.defaultStopBits",
-                                         DefaultConfiguration.comDefaultStopBits_ ).toInt();
-    comDefaultFlowControl_ = settings.value( "com.defaultFlowControl",
-                                             DefaultConfiguration.comDefaultFlowControl_ ).toInt();
+    comDefaultBaudRate_ = static_cast<QSerialPort::BaudRate>(
+        settings
+            .value( "com.defaultBaudRate",
+                    static_cast<int>( DefaultConfiguration.comDefaultBaudRate_ ) )
+            .toInt() );
+    comDefaultDataBits_ = static_cast<QSerialPort::DataBits>(
+        settings
+            .value( "com.defaultDataBits",
+                    static_cast<int>( DefaultConfiguration.comDefaultDataBits_ ) )
+            .toInt() );
+    comDefaultParity_ = static_cast<QSerialPort::Parity>(
+        settings.value( "com.defaultParity",
+                        static_cast<int>( DefaultConfiguration.comDefaultParity_ ) )
+            .toInt() );
+    comDefaultStopBits_ = static_cast<QSerialPort::StopBits>(
+        settings
+            .value( "com.defaultStopBits",
+                    static_cast<int>( DefaultConfiguration.comDefaultStopBits_ ) )
+            .toInt() );
+    comDefaultFlowControl_ = static_cast<QSerialPort::FlowControl>(
+        settings
+            .value( "com.defaultFlowControl",
+                    static_cast<int>( DefaultConfiguration.comDefaultFlowControl_ ) )
+            .toInt() );
     comDefaultLogPath_
         = settings.value( "com.defaultLogPath", DefaultConfiguration.comDefaultLogPath_ )
               .toString();
@@ -454,11 +468,11 @@ void Configuration::saveToStorage( QSettings& settings ) const
 
     settings.setValue( "view.hideAnsiColorSequences", hideAnsiColorSequences_ );
 
-    settings.setValue( "com.defaultBaudRate", comDefaultBaudRate_ );
-    settings.setValue( "com.defaultDataBits", comDefaultDataBits_ );
-    settings.setValue( "com.defaultParity", comDefaultParity_ );
-    settings.setValue( "com.defaultStopBits", comDefaultStopBits_ );
-    settings.setValue( "com.defaultFlowControl", comDefaultFlowControl_ );
+    settings.setValue( "com.defaultBaudRate", static_cast<int>( comDefaultBaudRate_ ) );
+    settings.setValue( "com.defaultDataBits", static_cast<int>( comDefaultDataBits_ ) );
+    settings.setValue( "com.defaultParity", static_cast<int>( comDefaultParity_ ) );
+    settings.setValue( "com.defaultStopBits", static_cast<int>( comDefaultStopBits_ ) );
+    settings.setValue( "com.defaultFlowControl", static_cast<int>( comDefaultFlowControl_ ) );
     settings.setValue( "com.defaultLogPath", comDefaultLogPath_ );
     settings.setValue( "com.defaultTimestampEnabled", comDefaultTimestampEnabled_ );
     settings.setValue( "com.defaultTimestampFormat", comDefaultTimestampFormat_ );

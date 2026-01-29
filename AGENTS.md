@@ -15,6 +15,8 @@ set KLOGG_BUILD_ROOT=build_root
 set platform=x64
 set KLOGG_QT=Qt6
 set KLOGG_QT_DIR=%QTDIR%
+set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
+set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
 ```
 
 ## Project Structure & Module Organization

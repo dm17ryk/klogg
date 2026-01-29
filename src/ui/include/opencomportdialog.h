@@ -25,11 +25,6 @@ class OpenComPortDialog : public QDialog {
 
   private:
     void populatePorts();
-    void populateBaudRates();
-    void populateDataBits();
-    void populateParity();
-    void populateStopBits();
-    void populateFlowControl();
     bool isPortItemEnabled( int index ) const;
     QString suggestedFileName() const;
 

@@ -43,6 +43,7 @@
 #include <QColor>
 #include <QFont>
 #include <QSettings>
+#include <QSerialPort>
 #include <qcolor.h>
 #include <string>
 #include <string_view>
@@ -543,47 +544,47 @@ class Configuration final : public Persistable<Configuration> {
     }
 
     // Default COM port settings
-    int defaultComBaudRate() const
+    QSerialPort::BaudRate defaultComBaudRate() const
     {
         return comDefaultBaudRate_;
     }
-    void setDefaultComBaudRate( int baud )
+    void setDefaultComBaudRate( QSerialPort::BaudRate baud )
     {
         comDefaultBaudRate_ = baud;
     }
 
-    int defaultComDataBits() const
+    QSerialPort::DataBits defaultComDataBits() const
     {
         return comDefaultDataBits_;
     }
-    void setDefaultComDataBits( int bits )
+    void setDefaultComDataBits( QSerialPort::DataBits bits )
     {
         comDefaultDataBits_ = bits;
     }
 
-    int defaultComParity() const
+    QSerialPort::Parity defaultComParity() const
     {
         return comDefaultParity_;
     }
-    void setDefaultComParity( int parity )
+    void setDefaultComParity( QSerialPort::Parity parity )
     {
         comDefaultParity_ = parity;
     }
 
-    int defaultComStopBits() const
+    QSerialPort::StopBits defaultComStopBits() const
     {
         return comDefaultStopBits_;
     }
-    void setDefaultComStopBits( int stopBits )
+    void setDefaultComStopBits( QSerialPort::StopBits stopBits )
     {
         comDefaultStopBits_ = stopBits;
     }
 
-    int defaultComFlowControl() const
+    QSerialPort::FlowControl defaultComFlowControl() const
     {
         return comDefaultFlowControl_;
     }
-    void setDefaultComFlowControl( int flowControl )
+    void setDefaultComFlowControl( QSerialPort::FlowControl flowControl )
     {
         comDefaultFlowControl_ = flowControl;
     }
@@ -714,11 +715,11 @@ class Configuration final : public Persistable<Configuration> {
     int defaultEncodingMib_ = -1;
 
     // Default COM port settings
-    int comDefaultBaudRate_ = 115200;
-    int comDefaultDataBits_ = 8;
-    int comDefaultParity_ = 0; // QSerialPort::NoParity
-    int comDefaultStopBits_ = 1; // QSerialPort::OneStop
-    int comDefaultFlowControl_ = 0; // QSerialPort::NoFlowControl
+    QSerialPort::BaudRate comDefaultBaudRate_ = QSerialPort::Baud115200;
+    QSerialPort::DataBits comDefaultDataBits_ = QSerialPort::Data8;
+    QSerialPort::Parity comDefaultParity_ = QSerialPort::NoParity;
+    QSerialPort::StopBits comDefaultStopBits_ = QSerialPort::OneStop;
+    QSerialPort::FlowControl comDefaultFlowControl_ = QSerialPort::NoFlowControl;
     QString comDefaultLogPath_{};
     bool comDefaultTimestampEnabled_ = false;
     QString comDefaultTimestampFormat_ = QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" );
