@@ -43,6 +43,7 @@
 #include <QMenu>
 #include <QSystemTrayIcon>
 #include <QTemporaryDir>
+#include <QPointer>
 
 #include <QTranslator>
 #include <array>
@@ -336,6 +337,7 @@ class MainWindow : public QMainWindow {
     TabbedScratchPad scratchPad_;
     PreviewWindow previewWindow_;
     ActionsResponsesWindow actionsResponsesWindow_;
+    QPointer<StreamSession> actionsStreamSession_;
 
     QTemporaryDir tempDir_;
 

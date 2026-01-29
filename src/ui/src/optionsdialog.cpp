@@ -41,6 +41,10 @@
 #include <QMessageBox>
 #include <QToolButton>
 #include <QtGui>
+#include <QDir>
+#include <QFileDialog>
+#include <QStandardPaths>
+#include <QSerialPort>
 
 #include "encodings.h"
 #include "fontutils.h"
@@ -48,6 +52,7 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "recentfiles.h"
+#include "comportutils.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
 #include "styles.h"
@@ -69,6 +74,7 @@ OptionsDialog::OptionsDialog( QWidget* parent )
     setupStyles();
     setupEncodings();
     setupLanguageList();
+    setupComDefaults();
 
     // Validators
     QValidator* pollingIntervalValidator = new QIntValidator( PollIntervalMin, PollIntervalMax );
@@ -86,6 +92,9 @@ OptionsDialog::OptionsDialog( QWidget* parent )
 
     connect( mainSearchColorButton, &QPushButton::clicked, this, &OptionsDialog::changeMainColor );
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );
+    connect( comTimestampCheckBox, &QCheckBox::toggled, comTimestampFormatEdit,
+             &QWidget::setEnabled );
+    connect( comLogBrowseButton, &QPushButton::clicked, this, &OptionsDialog::browseComLogPath );
 
     connect( restoreShortcutsDefaults, &QPushButton::clicked, this, [ this ]() {
         auto ret = QMessageBox::question(
@@ -192,6 +201,29 @@ void OptionsDialog::setupLanguageList()
             languageComboBox->addItem( attributes.value( "name" ).toString(),
                                        attributes.value( "ietfCode" ).toString() );
         }
+    }
+}
+
+void OptionsDialog::setupComDefaults()
+{
+    populateSerialControls( comBaudComboBox, comDataBitsComboBox, comParityComboBox,
+                            comStopBitsComboBox, comFlowComboBox );
+}
+
+void OptionsDialog::browseComLogPath()
+{
+    auto current = comLogPathEdit->text().trimmed();
+    QString initialDir;
+    if ( !current.isEmpty() && QDir( current ).exists() ) {
+        initialDir = current;
+    }
+    else {
+        initialDir = defaultComLogDirectory();
+    }
+
+    const auto dir = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
+    if ( !dir.isEmpty() ) {
+        comLogPathEdit->setText( dir );
     }
 }
 
@@ -321,6 +353,7 @@ void OptionsDialog::updateDialogFromConfig()
     }
 
     hideAnsiColorsCheckBox->setChecked( config.hideAnsiColorSequences() );
+    showTabsBarByDefaultCheckBox->setChecked( config.showTabsBarByDefault() );
 
     // Regexp types
     mainSearchBox->setCurrentIndex( getRegexpTypeIndex( config.mainRegexpType() ) );
@@ -379,6 +412,24 @@ void OptionsDialog::updateDialogFromConfig()
     encodingComboBox->setCurrentIndex( encodingIndex < 0 ? 0 : encodingIndex );
 
     buildShortcutsTable( false );
+
+    // COM defaults
+    auto selectByData = []( QComboBox* combo, int value ) {
+        const auto idx = combo->findData( value );
+        if ( idx >= 0 ) {
+            combo->setCurrentIndex( idx );
+        }
+    };
+    selectByData( comBaudComboBox, static_cast<int>( config.defaultComBaudRate() ) );
+    selectByData( comDataBitsComboBox, static_cast<int>( config.defaultComDataBits() ) );
+    selectByData( comParityComboBox, static_cast<int>( config.defaultComParity() ) );
+    selectByData( comStopBitsComboBox, static_cast<int>( config.defaultComStopBits() ) );
+    selectByData( comFlowComboBox, static_cast<int>( config.defaultComFlowControl() ) );
+    comLogPathEdit->setText( config.defaultComLogPath() );
+    comTimestampCheckBox->setChecked( config.defaultComTimestampEnabled() );
+    comTimestampFormatEdit->setText( config.defaultComTimestampFormat() );
+    comTimestampFormatEdit->setEnabled( config.defaultComTimestampEnabled() );
+    comLogTxCheckBox->setChecked( config.defaultComLogTransmits() );
 
     const auto& savedSearches = SavedSearches::get();
     searchHistorySpinBox->setValue( savedSearches.historySize() );
@@ -551,8 +602,24 @@ void OptionsDialog::updateConfigFromDialog()
 
     config.setStyle( styleComboBox->currentText() );
     config.setHideAnsiColorSequences( hideAnsiColorsCheckBox->isChecked() );
+    config.setShowTabsBarByDefault( showTabsBarByDefaultCheckBox->isChecked() );
 
     config.setDefaultEncodingMib( encodingComboBox->currentData().toInt() );
+
+    config.setDefaultComBaudRate(
+        static_cast<QSerialPort::BaudRate>( comBaudComboBox->currentData().toInt() ) );
+    config.setDefaultComDataBits(
+        static_cast<QSerialPort::DataBits>( comDataBitsComboBox->currentData().toInt() ) );
+    config.setDefaultComParity(
+        static_cast<QSerialPort::Parity>( comParityComboBox->currentData().toInt() ) );
+    config.setDefaultComStopBits(
+        static_cast<QSerialPort::StopBits>( comStopBitsComboBox->currentData().toInt() ) );
+    config.setDefaultComFlowControl(
+        static_cast<QSerialPort::FlowControl>( comFlowComboBox->currentData().toInt() ) );
+    config.setDefaultComLogPath( comLogPathEdit->text().trimmed() );
+    config.setDefaultComTimestampEnabled( comTimestampCheckBox->isChecked() );
+    config.setDefaultComTimestampFormat( comTimestampFormatEdit->text().trimmed() );
+    config.setDefaultComLogTransmits( comLogTxCheckBox->isChecked() );
 
     auto shortcuts = config.shortcuts();
     for ( auto shortcutRow = 0; shortcutRow < shortcutsTable->rowCount(); ++shortcutRow ) {

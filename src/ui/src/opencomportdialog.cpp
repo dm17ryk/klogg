@@ -13,11 +13,12 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSerialPortInfo>
-#include <QStandardPaths>
 #include <QStandardItemModel>
 #include <QVBoxLayout>
 
+#include "configuration.h"
 #include "streamsourceregistry.h"
+#include "comportutils.h"
 
 OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     : QDialog( parent )
@@ -39,6 +40,7 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     timestampCheck_ = new QCheckBox( tr( "Add timestamp to log" ), this );
     timestampFormatEdit_ = new QLineEdit( QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" ), this );
     logTxCheck_ = new QCheckBox( tr( "Log transmitted data" ), this );
+    useForActionsCheck_ = new QCheckBox( tr( "Use this COM for actions" ), this );
 
     grid->addWidget( new QLabel( tr( "Port" ), this ), row, 0 );
     grid->addWidget( portCombo_, row, 1 );
@@ -57,6 +59,8 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     row++;
     grid->addWidget( new QLabel( tr( "Flow control" ), this ), row, 0 );
     grid->addWidget( flowCombo_, row, 1 );
+    row++;
+    grid->addWidget( useForActionsCheck_, row, 0, 1, 2 );
     row++;
 
     auto* fileRow = new QWidget( this );
@@ -86,11 +90,30 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( buttonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject );
 
     populatePorts();
-    populateBaudRates();
-    populateDataBits();
-    populateParity();
-    populateStopBits();
-    populateFlowControl();
+    populateSerialControls( baudCombo_, dataBitsCombo_, parityCombo_, stopBitsCombo_, flowCombo_ );
+
+    const auto& config = Configuration::get();
+    auto selectByValue = []( QComboBox* combo, int value ) {
+        const auto idx = combo->findData( value );
+        if ( idx >= 0 ) {
+            combo->setCurrentIndex( idx );
+        }
+    };
+    selectByValue( baudCombo_, config.defaultComBaudRate() );
+    selectByValue( dataBitsCombo_, config.defaultComDataBits() );
+    selectByValue( parityCombo_, config.defaultComParity() );
+    selectByValue( stopBitsCombo_, config.defaultComStopBits() );
+    selectByValue( flowCombo_, config.defaultComFlowControl() );
+
+    if ( !config.defaultComLogPath().isEmpty() ) {
+        fileEdit_->setText( config.defaultComLogPath() );
+        const QFileInfo info( config.defaultComLogPath() );
+        userEditedPath_ = !info.isDir();
+    }
+    timestampCheck_->setChecked( config.defaultComTimestampEnabled() );
+    timestampFormatEdit_->setText( config.defaultComTimestampFormat() );
+    timestampFormatEdit_->setEnabled( timestampCheck_->isChecked() );
+    logTxCheck_->setChecked( config.defaultComLogTransmits() );
 
     connect( portCombo_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &OpenComPortDialog::updateSuggestedFileName );
@@ -99,7 +122,6 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( fileEdit_, &QLineEdit::textEdited, this, &OpenComPortDialog::markFilePathEdited );
     connect( fileEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
     connect( browseButton_, &QPushButton::clicked, this, &OpenComPortDialog::browseForFile );
-    timestampFormatEdit_->setEnabled( false );
     connect( timestampCheck_, &QCheckBox::toggled, this, [ this ]( bool checked ) {
         timestampFormatEdit_->setEnabled( checked );
         validateInputs();
@@ -107,6 +129,15 @@ OpenComPortDialog::OpenComPortDialog( QWidget* parent )
     connect( timestampFormatEdit_, &QLineEdit::textChanged, this, &OpenComPortDialog::validateInputs );
 
     updateSuggestedFileName();
+    // Ensure filename is present even if only a directory was loaded from config.
+    if ( QFileInfo( fileEdit_->text() ).isDir() ) {
+        const auto suggested = suggestedFileName();
+        fileEdit_->setText( suggested );
+        lastSuggestedPath_ = suggested;
+        userEditedPath_ = false;
+    }
+    // Keep timestamp format enabled in line with the checkbox default state.
+    timestampFormatEdit_->setEnabled( timestampCheck_->isChecked() );
     validateInputs();
 }
 
@@ -124,13 +155,46 @@ SerialCaptureSettings OpenComPortDialog::settings() const
     settings.addTimestamps = timestampCheck_->isChecked();
     settings.timestampFormat = timestampFormatEdit_->text().trimmed();
     settings.logTransmits = logTxCheck_->isChecked();
+    settings.useForActions = useForActionsCheck_->isChecked();
     return settings;
 }
 
 void OpenComPortDialog::updateSuggestedFileName()
 {
-    const auto suggested = suggestedFileName();
     const auto currentPath = fileEdit_->text().trimmed();
+
+    auto makeSuggested = [&]() {
+        const auto portNameValue = portCombo_->currentData().toString();
+        const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
+        const auto baudRate = baudCombo_->currentData().toString();
+        const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
+        const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+
+        const auto& config = Configuration::get();
+        QString baseDir = config.defaultComLogPath();
+
+        // If the current path points to a directory, prefer it.
+        const QFileInfo info( currentPath );
+        if ( info.isDir() && info.exists() ) {
+            baseDir = info.absoluteFilePath();
+        }
+
+        if ( baseDir.isEmpty() ) {
+            baseDir = defaultComLogDirectory();
+        }
+
+        QDir dir( baseDir );
+        if ( !dir.exists() ) {
+            if ( !dir.mkpath( "." ) ) {
+                dir.setPath( defaultComLogDirectory() );
+                dir.mkpath( "." );
+            }
+        }
+
+        return dir.filePath( fileName );
+    };
+
+    const auto suggested = makeSuggested();
     const bool canUpdate
         = !userEditedPath_ || currentPath.isEmpty() || currentPath == lastSuggestedPath_;
 
@@ -223,55 +287,6 @@ void OpenComPortDialog::populatePorts()
     }
 }
 
-void OpenComPortDialog::populateBaudRates()
-{
-    const QList<int> rates = { 300,   600,   1200,   1800,  2400,  4800,  7200,   9600,
-                               14400, 19200, 38400,  57600, 115200, 230400, 460800, 921600 };
-    for ( const auto rate : rates ) {
-        baudCombo_->addItem( QString::number( rate ), rate );
-    }
-
-    const auto defaultRateIndex = baudCombo_->findData( 115200 );
-    if ( defaultRateIndex >= 0 ) {
-        baudCombo_->setCurrentIndex( defaultRateIndex );
-    }
-}
-
-void OpenComPortDialog::populateDataBits()
-{
-    dataBitsCombo_->addItem( tr( "5" ), QSerialPort::Data5 );
-    dataBitsCombo_->addItem( tr( "6" ), QSerialPort::Data6 );
-    dataBitsCombo_->addItem( tr( "7" ), QSerialPort::Data7 );
-    dataBitsCombo_->addItem( tr( "8" ), QSerialPort::Data8 );
-    dataBitsCombo_->setCurrentIndex( dataBitsCombo_->findData( QSerialPort::Data8 ) );
-}
-
-void OpenComPortDialog::populateParity()
-{
-    parityCombo_->addItem( tr( "None" ), QSerialPort::NoParity );
-    parityCombo_->addItem( tr( "Even" ), QSerialPort::EvenParity );
-    parityCombo_->addItem( tr( "Odd" ), QSerialPort::OddParity );
-    parityCombo_->addItem( tr( "Mark" ), QSerialPort::MarkParity );
-    parityCombo_->addItem( tr( "Space" ), QSerialPort::SpaceParity );
-    parityCombo_->setCurrentIndex( parityCombo_->findData( QSerialPort::NoParity ) );
-}
-
-void OpenComPortDialog::populateStopBits()
-{
-    stopBitsCombo_->addItem( tr( "1" ), QSerialPort::OneStop );
-    stopBitsCombo_->addItem( tr( "1.5" ), QSerialPort::OneAndHalfStop );
-    stopBitsCombo_->addItem( tr( "2" ), QSerialPort::TwoStop );
-    stopBitsCombo_->setCurrentIndex( stopBitsCombo_->findData( QSerialPort::OneStop ) );
-}
-
-void OpenComPortDialog::populateFlowControl()
-{
-    flowCombo_->addItem( tr( "None" ), QSerialPort::NoFlowControl );
-    flowCombo_->addItem( tr( "RTS/CTS" ), QSerialPort::HardwareControl );
-    flowCombo_->addItem( tr( "XON/XOFF" ), QSerialPort::SoftwareControl );
-    flowCombo_->setCurrentIndex( flowCombo_->findData( QSerialPort::NoFlowControl ) );
-}
-
 QString OpenComPortDialog::suggestedFileName() const
 {
     const auto portNameValue = portCombo_->currentData().toString();
@@ -279,13 +294,18 @@ QString OpenComPortDialog::suggestedFileName() const
     const auto baudRate = baudCombo_->currentData().toString();
     const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
 
-    const auto basePath = QStandardPaths::writableLocation( QStandardPaths::DocumentsLocation );
-    const auto logsDirPath = basePath.isEmpty()
-                                 ? QDir::home().filePath( "logs" )
-                                 : QDir( basePath ).filePath( "logs" );
+    const auto& config = Configuration::get();
+
+    QString logsDirPath = config.defaultComLogPath();
+    if ( logsDirPath.isEmpty() ) {
+        logsDirPath = defaultComLogDirectory();
+    }
     QDir logsDir( logsDirPath );
     if ( !logsDir.exists() ) {
-        logsDir.mkpath( "." );
+        if ( !logsDir.mkpath( "." ) ) {
+            logsDir.setPath( defaultComLogDirectory() );
+            logsDir.mkpath( "." );
+        }
     }
 
     const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );

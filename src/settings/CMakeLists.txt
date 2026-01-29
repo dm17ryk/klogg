@@ -19,6 +19,7 @@ target_link_libraries(
          klogg_utils
          Qt${QT_VERSION_MAJOR}::Core
          Qt${QT_VERSION_MAJOR}::Gui
+         Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
 if(KLOGG_USE_LTO)
