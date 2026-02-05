@@ -9946,6 +9946,21 @@
                 "repeat": false,
                 "delay": 5
             }
+        },
+        {
+            "id": 663,
+            "enabled": true,
+            "hidden": false,
+            "name": "RESET MUX MIC",
+            "description": "RESET MUX MIC",
+            "sequence": {
+                "type": "hexString",
+                "value": "52 45 53 45 54 20 4d 55 58 20 4d 49 43 3A 35 3B 0D 0A"
+            },
+            "parameters": {
+                "repeat": false,
+                "delay": 5
+            }
         }
     ],
     "responses": [
