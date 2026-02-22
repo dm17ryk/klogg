@@ -56,6 +56,16 @@ From build_root:
 cmake --build . --config RelWithDebInfo
 ```
 
+## Deploy QT libs
+
+From build_root:
+
+```bash
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
+```
+
 ## Test
 
 Tests are enabled by default; to disable: `-DBUILD_TESTS:BOOL=OFF`.

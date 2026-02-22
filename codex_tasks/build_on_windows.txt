@@ -21,6 +21,7 @@ cmake --build . --config RelWithDebInfo
 
 "%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
 "%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
 
 cmake --install . --config Release --prefix "%CD%\_stage"
 "%QTDIR%\bin\windeployqt.exe" "%CD%\_stage\bin\klogg.exe"

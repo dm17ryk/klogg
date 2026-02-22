@@ -21,6 +21,7 @@
 #define MESSAGERECEIVER_H
 
 #include <QtCore/QCborValue>
+#include <QtCore/QFile>
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QObject>
@@ -45,6 +46,7 @@ class MessageReceiver final : public QObject {
 
   Q_SIGNALS:
     void loadFile( const QString& filename );
+    void activateWindow();
 
   public Q_SLOTS:
     void receiveMessage( const QByteArray& message )
@@ -57,7 +59,20 @@ class MessageReceiver final : public QObject {
             return;
         }
 
+        const auto ackPath = data.value( "ackPath" ).toString();
+        if ( !ackPath.isEmpty() ) {
+            QFile ackFile( ackPath );
+            if ( ackFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
+                ackFile.write( "ok" );
+                ackFile.close();
+            }
+        }
+
         QStringList filenames = data[ "files" ].toStringList();
+
+        if ( data.value( "activate" ).toBool() || filenames.isEmpty() ) {
+            Q_EMIT activateWindow();
+        }
 
         for ( const auto& f : filenames ) {
             Q_EMIT loadFile( f );

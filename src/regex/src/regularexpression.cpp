@@ -129,6 +129,17 @@ QString normalizeExtendedBooleanOps( QString expression )
     return expression;
 }
 
+bool canUseDirectHsCombinationBit( const QString& expression )
+{
+    // HS combination callbacks are safe for monotonic boolean logic only.
+    // Expressions with negation or parity-style operators can become true at
+    // an intermediate offset and then false later, so we must use evaluator.
+    const auto lower = expression.toLower();
+    return !lower.contains( '!' ) && !lower.contains( "not" ) && !lower.contains( "xor" )
+           && !lower.contains( "xnor" ) && !lower.contains( "nand" )
+           && !lower.contains( "nor" );
+}
+
 klogg::vector<RegularExpressionPattern>
 parseBooleanExpressions( QString& pattern, bool isCaseSensitive, bool isPlainText )
 {
@@ -349,12 +360,13 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
     , isBooleanCombination_( expression.isBooleanCombination_ )
     , hasHsCombination_( expression.hasHsCombination_ )
     , combinationIndex_( expression.combinationIndex_ )
-    , mainPatternId_( expression.subPatterns_.front().id() )
+    , mainPatternId_( expression.subPatterns_.empty() ? std::string{} : expression.subPatterns_.front().id() )
     , matcher_( expression.hsExpression_.createMatcher() )
 {
     const auto& config = Configuration::get();
     const auto useHyperscanEngine = config.regexpEngine() == RegexpEngine::Hyperscan;
-    if ( !useHyperscanEngine ) {
+    const bool forceQtMatcherForBooleanFallback = isBooleanCombination_ && !hasHsCombination_;
+    if ( !useHyperscanEngine || forceQtMatcherForBooleanFallback ) {
         matcher_ = DefaultRegularExpressionMatcher( expression.subPatterns_ );
     }
 
@@ -363,8 +375,9 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
             expression.expression_.toStdString(), expression.subPatterns_ );
     }
 
-    const bool useHsCombinationBit
-        = hasHsCombination_ && useHyperscanEngine && config.useHsCombinationBit();
+    const bool directHsCombinationSafe = canUseDirectHsCombinationBit( expression.expression_ );
+    const bool useHsCombinationBit = hasHsCombination_ && useHyperscanEngine
+                                     && config.useHsCombinationBit() && directHsCombinationSafe;
 
     if ( isBooleanCombination_ ) {
         // Boolean path: prefer HS combination bit if enabled, otherwise fall back to evaluator.
@@ -444,7 +457,8 @@ MultiPatternMatcher::match( std::string_view line ) const
         = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher_ );
 
     klogg::vector<std::pair<RegularExpressionPattern, bool>> matchedPatterns;
-    for ( size_t i = 0u; i < result.size(); ++i ) {
+    const auto count = std::min( result.size(), patterns_.size() );
+    for ( size_t i = 0u; i < count; ++i ) {
         matchedPatterns.emplace_back( patterns_[ i ], result[ i ] );
     }
 

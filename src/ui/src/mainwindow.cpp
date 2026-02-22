@@ -2513,7 +2513,17 @@ void MainWindow::writeSettings()
         widget_list;
     for ( int i = 0; i < mainTabWidget_.count(); ++i ) {
         auto view = qobject_cast<const CrawlerWidget*>( mainTabWidget_.widget( i ) );
-        widget_list.emplace_back( view, 0UL, view->context() );
+        if ( view == nullptr ) {
+            LOG_WARNING << "Skipping non-crawler tab while saving session at index " << i;
+            continue;
+        }
+
+        auto context = view->context();
+        if ( !context ) {
+            LOG_WARNING << "Skipping tab with missing context while saving session at index " << i;
+            continue;
+        }
+        widget_list.emplace_back( view, 0UL, std::move( context ) );
     }
     session_.save( widget_list, saveGeometry() );
 }

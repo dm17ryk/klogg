@@ -801,16 +801,8 @@ void CrawlerWidget::searchRefreshChangedHandler( bool isRefreshing )
 {
     searchState_.setAutorefresh( isRefreshing );
 
-    // If auto-refresh is enabled but no search has been run yet, kick off the
-    // initial search so subsequent refreshes can be incremental.
-    if ( isRefreshing && logFilteredData_ && !logFilteredData_->hasCurrentRegexp() ) {
-        const auto searchText = searchLineEdit_->currentText();
-        if ( !searchText.isEmpty() ) {
-            replaceCurrentSearch( searchText );
-            return;
-        }
-    }
-
+    // Do not auto-run search on startup from history/predefined content.
+    // Search is compiled and executed only after explicit user action.
     printSearchInfoMessage( logFilteredData_->getNbMatches() );
 }
 

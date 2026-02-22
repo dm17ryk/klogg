@@ -19,12 +19,16 @@
 
 #include "sessioninfo.h"
 
+#include <algorithm>
+
 #include <QSettings>
 
 #include "log.h"
 
 constexpr int OPENFILES_VERSION = 1;
 constexpr int SESSION_VERSION = 1;
+constexpr int MAX_WINDOWS_IN_SESSION = 64;
+constexpr int MAX_FILES_PER_WINDOW = 4096;
 
 void SessionInfo::retrieveFromStorage( QSettings& settings )
 {
@@ -35,9 +39,20 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
     if ( settings.value( "version", 0 ).toInt() == SESSION_VERSION ) {
         windows_.clear();
         const auto windowsCount = settings.beginReadArray( "windows" );
-        for ( auto windowIndex = 0; windowIndex < windowsCount; ++windowIndex ) {
+        if ( windowsCount > MAX_WINDOWS_IN_SESSION ) {
+            LOG_WARNING << "Session contains too many windows (" << windowsCount
+                        << "), truncating to " << MAX_WINDOWS_IN_SESSION;
+        }
+
+        const auto safeWindowsCount = std::min( windowsCount, MAX_WINDOWS_IN_SESSION );
+        for ( auto windowIndex = 0; windowIndex < safeWindowsCount; ++windowIndex ) {
             settings.setArrayIndex( static_cast<int>( windowIndex ) );
             QString windowId = settings.value( "id" ).toString();
+            if ( windowId.trimmed().isEmpty() ) {
+                LOG_WARNING << "Skipping window session with empty id at index " << windowIndex;
+                continue;
+            }
+
             auto window = Window{ windowId };
             window.geometry = settings.value( "geometry" ).toByteArray();
 
@@ -45,10 +60,19 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
                 settings.beginGroup( "OpenFiles" );
                 if ( settings.value( "version" ).toInt() == OPENFILES_VERSION ) {
                     int size = settings.beginReadArray( "openFiles" );
+                    if ( size > MAX_FILES_PER_WINDOW ) {
+                        LOG_WARNING << "Window session " << windowId << " has too many files ("
+                                    << size << "), truncating to " << MAX_FILES_PER_WINDOW;
+                    }
                     LOG_DEBUG << "SessionInfo: " << size << " files.";
-                    for ( int i = 0; i < size; ++i ) {
+                    const auto safeSize = std::min( size, MAX_FILES_PER_WINDOW );
+                    for ( int i = 0; i < safeSize; ++i ) {
                         settings.setArrayIndex( i );
                         QString file_name = settings.value( "fileName" ).toString();
+                        if ( file_name.trimmed().isEmpty() ) {
+                            LOG_WARNING << "Skipping empty file entry in window " << windowId;
+                            continue;
+                        }
                         uint64_t top_line = settings.value( "topLine" ).toULongLong();
                         QString view_context = settings.value( "viewContext" ).toString();
                         window.openFiles.emplace_back( file_name, top_line, view_context );

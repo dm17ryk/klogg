@@ -33,9 +33,13 @@
 #include <QCborValue>
 
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
+#include <QTemporaryFile>
+#include <QThread>
 #include <QUuid>
 
 #ifdef Q_OS_MAC
@@ -89,6 +93,8 @@ class KloggApp : public QApplication {
 
             QObject::connect( &messageReceiver_, &MessageReceiver::loadFile, this,
                               &KloggApp::loadFileNonInteractive );
+            QObject::connect( &messageReceiver_, &MessageReceiver::activateWindow, this,
+                              &KloggApp::activatePrimaryWindow );
 
             // Version checker notification
             connect( &versionChecker_, &VersionChecker::newVersionFound,
@@ -107,28 +113,60 @@ class KloggApp : public QApplication {
         return singleApplication_.primaryPid();
     }
 
-    void sendFilesToPrimaryInstance( std::vector<QString> filenames )
+    bool sendFilesToPrimaryInstance( const std::vector<QString>& filenames )
     {
 #ifdef Q_OS_WIN
         // TODO: fix pid passing
         ::AllowSetForegroundWindow( static_cast<DWORD>( primaryPid() ) );
 #endif
 
-        QTimer::singleShot( 100, [ files = std::move( filenames ), this ] {
-            QStringList filesToOpen;
-            std::copy( files.cbegin(), files.cend(), std::back_inserter( filesToOpen ) );
+        QStringList filesToOpen;
+        std::copy( filenames.cbegin(), filenames.cend(), std::back_inserter( filesToOpen ) );
 
-            QVariantMap data;
-            data.insert( "version", kloggVersion() );
-            data.insert( "files", QVariant{ filesToOpen } );
+        QString ackPath;
+        if ( filesToOpen.empty() ) {
+            QTemporaryFile ackFile( QDir::temp().filePath( "klogg_activate_ack_XXXXXX.tmp" ) );
+            ackFile.setAutoRemove( false );
+            if ( ackFile.open() ) {
+                ackPath = ackFile.fileName();
+                ackFile.close();
+                QFile::remove( ackPath );
+            }
+        }
 
-            auto cbor = QCborValue::fromVariant( data );
-            singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 );
+        QVariantMap data;
+        data.insert( "version", kloggVersion() );
+        data.insert( "activate", true );
+        data.insert( "files", QVariant{ filesToOpen } );
+        if ( !ackPath.isEmpty() ) {
+            data.insert( "ackPath", ackPath );
+        }
 
-            QTimer::singleShot( 100, this, &QApplication::quit );
-        } );
+        const auto cbor = QCborValue::fromVariant( data );
+        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 ) ) {
+            return false;
+        }
+
+        if ( ackPath.isEmpty() ) {
+            return true;
+        }
+
+        constexpr int AckTimeoutMs = 1200;
+        constexpr int AckPollMs = 20;
+        auto waitedMs = 0;
+        while ( waitedMs < AckTimeoutMs ) {
+            if ( QFileInfo::exists( ackPath ) ) {
+                QFile::remove( ackPath );
+                return true;
+            }
+
+            QThread::msleep( AckPollMs );
+            waitedMs += AckPollMs;
+        }
+
+        QFile::remove( ackPath );
+        return false;
     }
-
     void initCrashHandler()
     {
         crashHandler_ = std::make_unique<CrashHandler>();
@@ -206,6 +244,31 @@ class KloggApp : public QApplication {
         }
 
         activeWindows_.top()->loadFileNonInteractive( file );
+    }
+
+    void activatePrimaryWindow()
+    {
+        while ( !activeWindows_.empty() && activeWindows_.top().isNull() ) {
+            activeWindows_.pop();
+        }
+
+        if ( activeWindows_.empty() ) {
+            newWindow()->show();
+        }
+
+        if ( activeWindows_.empty() || activeWindows_.top().isNull() ) {
+            return;
+        }
+
+        MainWindow* window = activeWindows_.top().data();
+        if ( window->isMinimized() ) {
+            window->showNormal();
+        }
+        else {
+            window->show();
+        }
+        window->raise();
+        window->activateWindow();
     }
 
     void startBackgroundTasks()

@@ -184,6 +184,16 @@ By default, klogg will rely on cmake to figure out target MacOS version. Usually
 To override default cmake value pass an option `-DKLOGG_OSX_DEPLOYMENT_TARGET=<target>` to cmake during configuration step,
 `<target>` is one of `10.14`, `10.15`, `11`, `12`. Klogg's traget must be greater or equal to target used by Qt libraries.
 
+## Deploy QT libs
+
+From build_root:
+
+```bash
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
+```
+
 ## Running tests
 
 Tests are built by default. To turn them off pass `-DBUILD_TESTS:BOOL=OFF` to cmake.

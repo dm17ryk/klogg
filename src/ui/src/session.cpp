@@ -19,6 +19,9 @@
 
 #include "session.h"
 
+#include <exception>
+#include <QFileInfo>
+
 #include "log.h"
 
 #include <algorithm>
@@ -167,6 +170,16 @@ void WindowSession::save(
 
         std::tie( view_object, top_line, view_context ) = view;
 
+        if ( view_object == nullptr ) {
+            LOG_WARNING << "Skipping invalid session save entry: null view";
+            continue;
+        }
+
+        if ( !view_context ) {
+            LOG_WARNING << "Skipping invalid session save entry: null view context";
+            continue;
+        }
+
         const Session::OpenFile* file = appSession_->findOpenFileFromView( view_object );
         assert( file );
 
@@ -191,14 +204,35 @@ WindowSession::restore( const std::function<ViewInterface*()>& view_factory,
     std::vector<std::pair<QString, ViewInterface*>> result;
 
     for ( const auto& file : session_files ) {
+        if ( file.fileName.trimmed().isEmpty() ) {
+            LOG_WARNING << "Skipping invalid session entry with empty file name";
+            continue;
+        }
+
+        const QFileInfo fileInfo{ file.fileName };
+        if ( !fileInfo.exists() || !fileInfo.isFile() ) {
+            LOG_WARNING << "Skipping missing session file " << file.fileName;
+            continue;
+        }
+
         LOG_DEBUG << "Create view for " << file.fileName;
-        ViewInterface* view
-            = appSession_->openAlways( file.fileName, view_factory, file.viewContext );
-        result.emplace_back( file.fileName, view );
-        openedFiles_.emplace_back( file.fileName );
+        try {
+            ViewInterface* view
+                = appSession_->openAlways( file.fileName, view_factory, file.viewContext );
+            if ( view == nullptr ) {
+                LOG_ERROR << "Failed to create view for " << file.fileName;
+                continue;
+            }
+            result.emplace_back( file.fileName, view );
+            openedFiles_.emplace_back( file.fileName );
+        } catch ( const std::exception& e ) {
+            LOG_ERROR << "Failed to restore file " << file.fileName << ": " << e.what();
+        } catch ( ... ) {
+            LOG_ERROR << "Failed to restore file " << file.fileName << ": unknown exception";
+        }
     }
 
-    *current_file_index = klogg::isize( result ) - 1;
+    *current_file_index = result.empty() ? -1 : ( klogg::isize( result ) - 1 );
 
     return result;
 }
