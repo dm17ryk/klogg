@@ -38,8 +38,10 @@
 #include <QFontDatabase>
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QTemporaryFile>
-#include <QThread>
+#include <QTimer>
 #include <QUuid>
 
 #ifdef Q_OS_MAC
@@ -153,19 +155,36 @@ class KloggApp : public QApplication {
 
         constexpr int AckTimeoutMs = 1200;
         constexpr int AckPollMs = 20;
-        auto waitedMs = 0;
-        while ( waitedMs < AckTimeoutMs ) {
-            if ( QFileInfo::exists( ackPath ) ) {
-                QFile::remove( ackPath );
-                return true;
-            }
 
-            QThread::msleep( AckPollMs );
-            waitedMs += AckPollMs;
+        QElapsedTimer ackWaitTimer;
+        ackWaitTimer.start();
+
+        bool ackReceived = false;
+        QEventLoop ackWaitLoop;
+        QTimer ackPollTimer;
+        QTimer ackTimeoutTimer;
+        ackPollTimer.setInterval( AckPollMs );
+        ackPollTimer.setSingleShot( false );
+        ackTimeoutTimer.setSingleShot( true );
+
+        connect( &ackPollTimer, &QTimer::timeout, &ackWaitLoop, [ & ]() {
+            if ( QFileInfo::exists( ackPath ) ) {
+                ackReceived = true;
+                ackWaitLoop.quit();
+            }
+        } );
+        connect( &ackTimeoutTimer, &QTimer::timeout, &ackWaitLoop, &QEventLoop::quit );
+
+        ackPollTimer.start();
+        ackTimeoutTimer.start( AckTimeoutMs );
+        ackWaitLoop.exec( QEventLoop::ProcessEventsFlag::ExcludeUserInputEvents );
+
+        if ( !ackReceived && ackWaitTimer.elapsed() < AckTimeoutMs && QFileInfo::exists( ackPath ) ) {
+            ackReceived = true;
         }
 
         QFile::remove( ackPath );
-        return false;
+        return ackReceived;
     }
     void initCrashHandler()
     {
@@ -398,3 +417,4 @@ class KloggApp : public QApplication {
 };
 
 #endif // KLOGG_KLOGGAPP_H
+

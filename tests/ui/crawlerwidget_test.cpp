@@ -108,10 +108,7 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
     void setSearchPattern( const QString& pattern )
     {
-        crawler->searchLineEdit_->setFocus();
-        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_A, Qt::ControlModifier );
-        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_Delete );
-        QTest::qWait( 20 );
+        clearSearchPattern();
         QTest::keyClicks( crawler->searchLineEdit_, pattern );
     }
 
@@ -120,7 +117,7 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         crawler->searchLineEdit_->setFocus();
         QTest::keyClick( crawler->searchLineEdit_, Qt::Key_A, Qt::ControlModifier );
         QTest::keyClick( crawler->searchLineEdit_, Qt::Key_Delete );
-        QTest::qWait( 20 );
+        waitUiState( [ this ]() { return crawler->searchLineEdit_->currentText().isEmpty(); } );
     }
 
     void setAutoRefresh( bool enabled )
@@ -335,4 +332,5 @@ SCENARIO( "Crawler widget search", "[ui]" )
         }
     }
 }
+
 

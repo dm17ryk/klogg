@@ -60,24 +60,46 @@ class MessageReceiver final : public QObject {
         }
 
         const auto ackPath = data.value( "ackPath" ).toString();
-        if ( !ackPath.isEmpty() ) {
+
+        if ( !data.contains( "files" ) ) {
+            LOG_WARNING << "Invalid message payload: missing files field";
+            return;
+        }
+
+        const auto filesValue = data.value( "files" );
+        if ( !filesValue.canConvert<QStringList>() ) {
+            LOG_WARNING << "Invalid message payload: files must be a string list";
+            return;
+        }
+
+        const QStringList filenames = filesValue.toStringList();
+
+        bool didSomething = false;
+
+        if ( data.value( "activate" ).toBool() || filenames.isEmpty() ) {
+            Q_EMIT activateWindow();
+            didSomething = true;
+        }
+
+        for ( const auto& f : filenames ) {
+            if ( f.isEmpty() ) {
+                continue;
+            }
+
+            Q_EMIT loadFile( f );
+            didSomething = true;
+        }
+
+        if ( didSomething && !ackPath.isEmpty() ) {
             QFile ackFile( ackPath );
             if ( ackFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
                 ackFile.write( "ok" );
                 ackFile.close();
             }
         }
-
-        QStringList filenames = data[ "files" ].toStringList();
-
-        if ( data.value( "activate" ).toBool() || filenames.isEmpty() ) {
-            Q_EMIT activateWindow();
-        }
-
-        for ( const auto& f : filenames ) {
-            Q_EMIT loadFile( f );
-        }
     }
 };
 
 #endif // MESSAGERECEIVER_H
+
+

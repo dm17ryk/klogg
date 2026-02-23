@@ -2196,9 +2196,11 @@ void AbstractLogView::updateScrollBars()
     const LineLength visibleColumns = getNbVisibleCols();
     const auto visibleWrappedLines = getNbBottomWrappedVisibleLines();
     const auto wrappedLinesScrollAdjust = ( visibleWrappedLines - visibleLines ).get();
+    const auto rawVerticalScrollMax = logData_->getNbLine().get() < visibleLines.get() ? LinesCount::UnderlyingType{ 0 }
+                                        : logData_->getNbLine().get() - visibleLines.get();
+
     const auto maxVerticalScroll = std::clamp(
-        logData_->getNbLine().get() - visibleLines.get() + LinesCount::UnderlyingType{ 1 }
-            + wrappedLinesScrollAdjust,
+        rawVerticalScrollMax + LinesCount::UnderlyingType{ 1 } + wrappedLinesScrollAdjust,
         LinesCount::UnderlyingType{ 0 }, maxValue<LinesCount>().get() );
 
     verticalScrollBar()->setRange( 0, static_cast<int>( maxVerticalScroll ) );
