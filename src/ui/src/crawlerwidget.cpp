@@ -408,7 +408,7 @@ void CrawlerWidget::startNewSearch()
     // Update the SearchLine (history)
     updateSearchCombo();
     // Call the private function to do the search
-    replaceCurrentSearch( searchLineEdit_->currentText() );
+    replaceCurrentSearch( searchLineEdit_->currentText(), true, true );
 }
 
 void CrawlerWidget::updatePredefinedFiltersWidget()
@@ -709,7 +709,7 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
         searchEndLine_ = LineNumber( logData_->getNbLine().get() );
         if ( searchState_.isFileTruncated() )
             // We need to restart the search
-            replaceCurrentSearch( searchLineEdit_->currentText() );
+            replaceCurrentSearch( searchLineEdit_->currentText(), true );
         else
             logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
     }
@@ -801,8 +801,13 @@ void CrawlerWidget::searchRefreshChangedHandler( bool isRefreshing )
 {
     searchState_.setAutorefresh( isRefreshing );
 
-    // Do not auto-run search on startup from history/predefined content.
-    // Search is compiled and executed only after explicit user action.
+    if ( isRefreshing && !searchLineEdit_->currentText().isEmpty() ) {
+        // Enabling auto-refresh compiles and starts a fresh search.
+        // Toggling auto-refresh off/on should force recompilation.
+        replaceCurrentSearch( searchLineEdit_->currentText(), true, true );
+        return;
+    }
+
     printSearchInfoMessage( logFilteredData_->getNbMatches() );
 }
 
@@ -1571,7 +1576,8 @@ void CrawlerWidget::loadIcons()
 
 // Create a new search using the text passed, replace the currently
 // used one and destroy the old one.
-void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
+void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceFullScan,
+                                        bool forceRecompile )
 {
     LOG_INFO << "replacing current search with " << searchText;
     // Interrupt the search if it's ongoing
@@ -1594,82 +1600,95 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
         visibilityBox_->setCurrentIndex( 0 );
     }
 
-    // Clear and recompute the content of the filtered window.
-    logFilteredData_->clearSearch();
-    filteredView_->updateData();
-
     searchStartLine_ = 0_lnum;
     searchEndLine_ = LineNumber( logData_->getNbLine().get() );
 
     // Update the match overview
     overview_.updateData( logData_->getNbLine() );
 
-    if ( !searchText.isEmpty() ) {
-
-        // Constructs the regexp
-        auto regexpPattern = RegularExpressionPattern(
-            searchText, matchCaseButton_->isChecked(), inverseButton_->isChecked(),
-            booleanButton_->isChecked(), !useRegexpButton_->isChecked() );
-
-        RegularExpression hsExpression{ regexpPattern };
-        auto isValidExpression = hsExpression.isValid();
-        LOG_INFO << "Search pattern validation " << ( isValidExpression ? "ok" : "failed" );
-
-        if ( isValidExpression ) {
-            const bool samePatternAsCurrent
-                = logFilteredData_->hasCurrentRegexp() && logFilteredData_->fullScanCompleted()
-                  && logFilteredData_->currentRegexp() == regexpPattern;
-
-            LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
-                     << searchStartLine_ << ", " << searchEndLine_ << "]";
-            // Activate the stop button
-            stopButton_->setEnabled( true );
-            stopButton_->show();
-            clearButton_->hide();
-            searchButton_->hide();
-            // Start a new asynchronous search
-            if ( samePatternAsCurrent ) {
-                LOG_INFO << "Skipping full search: pattern unchanged, issuing incremental refresh";
-                logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
-            }
-            else {
-                logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
-            }
-            // Accept auto-refresh of the search
-            searchState_.startSearch();
-            searchInfoLine_->hide();
-            logMainView_->setSearchPattern( regexpPattern );
-            filteredView_->setSearchPattern( regexpPattern );
-        }
-        else {
-            LOG_WARNING << "Search pattern invalid: " << regexpPattern.pattern
-                        << " error: " << hsExpression.errorString();
-            // The regexp is wrong
-            logFilteredData_->clearSearch();
-            filteredView_->updateData();
-            searchState_.resetState();
-
-            // Inform the user
-            QString errorString = hsExpression.errorString();
-            QString errorMessage = tr( "Error in expression" );
-            // const int offset = regexp.patternErrorOffset();
-            // if ( offset != -1 ) {
-            //     errorMessage += " at position ";
-            //     errorMessage += QString::number( offset );
-            // }
-            errorMessage += ": ";
-            errorMessage += errorString;
-            searchInfoLine_->setPalette( ErrorPalette );
-            searchInfoLine_->setText( errorMessage );
-            searchInfoLine_->show();
-
-            logMainView_->setSearchPattern( {} );
-            filteredView_->setSearchPattern( {} );
-        }
-    }
-    else {
+    if ( searchText.isEmpty() ) {
+        logFilteredData_->clearSearch();
+        filteredView_->updateData();
         searchState_.resetState();
         printSearchInfoMessage();
+        return;
+    }
+
+    // Constructs the regexp
+    auto regexpPattern = RegularExpressionPattern(
+        searchText, matchCaseButton_->isChecked(), inverseButton_->isChecked(),
+        booleanButton_->isChecked(), !useRegexpButton_->isChecked() );
+
+    const bool samePatternAsCurrent
+        = !forceRecompile && logFilteredData_->hasCurrentRegexp()
+          && logFilteredData_->fullScanCompleted()
+          && logFilteredData_->currentRegexp() == regexpPattern;
+
+    if ( samePatternAsCurrent ) {
+        stopButton_->setEnabled( true );
+        stopButton_->show();
+        clearButton_->hide();
+        searchButton_->hide();
+
+        if ( forceFullScan ) {
+            LOG_INFO << "Pattern unchanged, forcing full refresh while reusing compiled expression";
+            logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+        }
+        else {
+            LOG_INFO << "Pattern unchanged, reusing compiled expression and issuing incremental refresh";
+            logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
+        }
+
+        searchState_.startSearch();
+        searchInfoLine_->hide();
+        logMainView_->setSearchPattern( regexpPattern );
+        filteredView_->setSearchPattern( regexpPattern );
+        return;
+    }
+
+    auto compiledExpression = std::make_shared<RegularExpression>( regexpPattern );
+    const auto isValidExpression = compiledExpression->isValid();
+    LOG_INFO << "Search pattern validation " << ( isValidExpression ? "ok" : "failed" );
+
+    if ( isValidExpression ) {
+        // Clear and recompute the content of the filtered window only when expression changed.
+        logFilteredData_->clearSearch();
+        filteredView_->updateData();
+
+        LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
+                 << searchStartLine_ << ", " << searchEndLine_ << "]";
+
+        stopButton_->setEnabled( true );
+        stopButton_->show();
+        clearButton_->hide();
+        searchButton_->hide();
+
+        logFilteredData_->runSearch( regexpPattern, std::move( compiledExpression ),
+                                     searchStartLine_, searchEndLine_ );
+
+        searchState_.startSearch();
+        searchInfoLine_->hide();
+        logMainView_->setSearchPattern( regexpPattern );
+        filteredView_->setSearchPattern( regexpPattern );
+    }
+    else {
+        LOG_WARNING << "Search pattern invalid: " << regexpPattern.pattern
+                    << " error: " << compiledExpression->errorString();
+
+        logFilteredData_->clearSearch();
+        filteredView_->updateData();
+        searchState_.resetState();
+
+        QString errorString = compiledExpression->errorString();
+        QString errorMessage = tr( "Error in expression" );
+        errorMessage += ": ";
+        errorMessage += errorString;
+        searchInfoLine_->setPalette( ErrorPalette );
+        searchInfoLine_->setText( errorMessage );
+        searchInfoLine_->show();
+
+        logMainView_->setSearchPattern( {} );
+        filteredView_->setSearchPattern( {} );
     }
 }
 

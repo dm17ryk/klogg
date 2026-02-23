@@ -90,19 +90,37 @@ LogFilteredData::LogFilteredData( const LogData* logData )
 
 void LogFilteredData::runSearch( const RegularExpressionPattern& regExp )
 {
-    runSearch( regExp, 0_lnum, LineNumber( getNbTotalLines().get() ) );
+    runSearch( regExp, nullptr, 0_lnum, LineNumber( getNbTotalLines().get() ) );
 }
 
 // Run the search and send newDataAvailable() signals.
 void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
                                  LineNumber endLine )
 {
+    runSearch( regExp, nullptr, startLine, endLine );
+}
+
+void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
+                                 std::shared_ptr<RegularExpression> compiledRegExp,
+                                 LineNumber startLine, LineNumber endLine )
+{
     LOG_DEBUG << "Entering runSearch";
 
     const auto& config = Configuration::get();
+    const auto previousRegExp = currentRegExp_;
+    auto previousCompiledRegExp = compiledRegExp_;
 
     clearSearch();
-    compiledRegExp_ = std::make_shared<RegularExpression>( regExp );
+    if ( compiledRegExp ) {
+        compiledRegExp_ = std::move( compiledRegExp );
+    }
+    else if ( previousCompiledRegExp && previousRegExp == regExp ) {
+        LOG_DEBUG << "Reusing previously compiled search expression";
+        compiledRegExp_ = std::move( previousCompiledRegExp );
+    }
+    else {
+        compiledRegExp_ = std::make_shared<RegularExpression>( regExp );
+    }
     currentRegExp_ = regExp;
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
     lastSearchStart_ = startLine;

@@ -78,6 +78,10 @@ class LogFilteredData : public AbstractLogData {
     // it is done, so the application should call interruptSearch() first.
     void runSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
                     LineNumber endLine );
+    // Reuse a precompiled expression to avoid recompiling for validation and run.
+    void runSearch( const RegularExpressionPattern& regExp,
+                    std::shared_ptr<RegularExpression> compiledRegExp, LineNumber startLine,
+                    LineNumber endLine );
     // Shortcut for runSearch on all file
     void runSearch( const RegularExpressionPattern& regExp );
 

@@ -108,7 +108,27 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
     void setSearchPattern( const QString& pattern )
     {
+        crawler->searchLineEdit_->setFocus();
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_A, Qt::ControlModifier );
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_Delete );
+        QTest::qWait( 20 );
         QTest::keyClicks( crawler->searchLineEdit_, pattern );
+    }
+
+    void clearSearchPattern()
+    {
+        crawler->searchLineEdit_->setFocus();
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_A, Qt::ControlModifier );
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_Delete );
+        QTest::qWait( 20 );
+    }
+
+    void setAutoRefresh( bool enabled )
+    {
+        if ( crawler->searchRefreshButton_->isChecked() != enabled ) {
+            QTest::mouseClick( crawler->searchRefreshButton_, Qt::LeftButton );
+            QTest::qWait( 100 );
+        }
     }
 
     void enableCaseSensitiveSearch()
@@ -273,5 +293,46 @@ SCENARIO( "Crawler widget search", "[ui]" )
                 REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() >= 2 );
             }
         }
+        WHEN( "auto-refresh is enabled with a pattern" )
+        {
+            crawlerVisitor.setSearchPattern( "this is line" );
+            crawlerVisitor.setAutoRefresh( true );
+
+            THEN( "search starts without pressing manual search" )
+            {
+                REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                    return crawlerVisitor.getLogFilteredNbLines().get() == SL_NB_LINES;
+                } ) );
+            }
+
+            AND_WHEN( "manual search is pressed after pattern change" )
+            {
+                crawlerVisitor.setAutoRefresh( false );
+                crawlerVisitor.clearSearchPattern();
+                crawlerVisitor.setSearchPattern( "line 000010" );
+                crawlerVisitor.runSearch();
+
+                THEN( "manual search recompiles and applies the new pattern" )
+                {
+                    REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 1 );
+                }
+            }
+
+            AND_WHEN( "auto-refresh is toggled off then on after pattern change" )
+            {
+                crawlerVisitor.setAutoRefresh( false );
+                crawlerVisitor.clearSearchPattern();
+                crawlerVisitor.setSearchPattern( "definitely_not_present_pattern" );
+                crawlerVisitor.setAutoRefresh( true );
+
+                THEN( "re-enable auto-refresh recompiles and applies the new pattern" )
+                {
+                    REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                        return crawlerVisitor.getLogFilteredNbLines().get() == 0;
+                    } ) );
+                }
+            }
+        }
     }
 }
+
