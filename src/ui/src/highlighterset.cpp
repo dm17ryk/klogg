@@ -265,6 +265,11 @@ void HighlighterSet::compile() const
     compiledExpression_ = std::make_shared<MultiRegularExpression>( patterns );
 }
 
+void HighlighterSet::invalidateCompiled() const
+{
+    compiledExpression_.reset();
+}
+
 HighlighterMatchType HighlighterSet::matchLine( const QString& line,
                                                 HighlightedMatchRanges& matches ) const
 {
@@ -450,7 +455,9 @@ void HighlighterSetCollection::updateCombinedSet()
         combinedActiveSet_.highlighterList_.append( set.highlighterList_ );
     }
 
-    combinedActiveSet_.compile();
+    // Avoid expensive regex compilation during startup/settings load.
+    // It will be compiled lazily on first match request.
+    combinedActiveSet_.invalidateCompiled();
 }
 
 QStringList HighlighterSetCollection::activeSetIds() const

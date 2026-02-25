@@ -21,6 +21,7 @@
 #define KLOGG_KLOGGAPP_H
 
 #include <algorithm>
+#include <exception>
 #include <cstddef>
 #include <iterator>
 #include <numeric>
@@ -30,6 +31,8 @@
 #include <QApplication>
 #include <vector>
 
+#include <QCborArray>
+#include <QCborMap>
 #include <QCborValue>
 
 #include <QDir>
@@ -136,15 +139,20 @@ class KloggApp : public QApplication {
             }
         }
 
-        QVariantMap data;
-        data.insert( "version", kloggVersion() );
-        data.insert( "activate", true );
-        data.insert( "files", QVariant{ filesToOpen } );
-        if ( !ackPath.isEmpty() ) {
-            data.insert( "ackPath", ackPath );
+        QCborArray filesArray;
+        for ( const auto& file : filesToOpen ) {
+            filesArray.append( file );
         }
 
-        const auto cbor = QCborValue::fromVariant( data );
+        QCborMap data;
+        data.insert( QLatin1String( "version" ), QString::fromLatin1( kloggVersion() ) );
+        data.insert( QLatin1String( "activate" ), true );
+        data.insert( QLatin1String( "files" ), filesArray );
+        if ( !ackPath.isEmpty() ) {
+            data.insert( QLatin1String( "ackPath" ), ackPath );
+        }
+
+        const QCborValue cbor( data );
         if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 ) ) {
             return false;
         }
@@ -197,19 +205,31 @@ class KloggApp : public QApplication {
             session_ = std::make_shared<Session>();
         }
 
+        MainWindow* lastShownWindow = nullptr;
+
         for ( auto&& windowSession : session_->windowSessions() ) {
-            auto w = newWindow( std::move( windowSession ) );
-            w->reloadGeometry();
-            w->reloadSession();
-            w->show();
+            try {
+                auto* window = newWindow( std::move( windowSession ) );
+                window->reloadGeometry();
+                window->show();
+                lastShownWindow = window;
+
+                // Keep startup responsive and avoid ending up with no visible
+                // window when session restore data is malformed.
+                window->reloadSession();
+            } catch ( const std::exception& e ) {
+                LOG_ERROR << "Failed to restore window session: " << e.what();
+            } catch ( ... ) {
+                LOG_ERROR << "Failed to restore window session: unknown exception";
+            }
         }
 
-        if ( mainWindows_.empty() ) {
-            auto w = newWindow();
-            w->show();
+        if ( lastShownWindow == nullptr ) {
+            lastShownWindow = newWindow();
+            lastShownWindow->show();
         }
 
-        return mainWindows_.back().second;
+        return lastShownWindow;
     }
 
     void clearInactiveSessions()
@@ -294,6 +314,26 @@ class KloggApp : public QApplication {
     {
         LOG_DEBUG << "startBackgroundTasks";
         versionChecker_.startCheck();
+    }
+
+    bool hasVisibleMainWindow() const
+    {
+        return std::any_of( mainWindows_.cbegin(), mainWindows_.cend(),
+                            []( const auto& data ) {
+                                return data.second != nullptr && data.second->isVisible();
+                            } );
+    }
+
+    void ensureMainWindowVisible()
+    {
+        if ( hasVisibleMainWindow() ) {
+            return;
+        }
+
+        LOG_WARNING << "No visible main window after startup, opening fallback window";
+        auto* fallbackWindow = newWindow();
+        fallbackWindow->reloadGeometry();
+        fallbackWindow->show();
     }
 
 #ifdef Q_OS_MAC

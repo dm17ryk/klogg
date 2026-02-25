@@ -195,6 +195,8 @@ int main( int argc, char* argv[] )
         mw->loadInitialFile( filename, parameters.follow_file );
     }
 
+    app.ensureMainWindowVisible();
+
     if ( startNewSession ) {
         app.clearInactiveSessions();
     }

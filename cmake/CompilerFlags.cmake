@@ -1,6 +1,10 @@
 function(set_project_compile_flags project_name)
 
-  set(MSVC_FLAGS /fp:fast /arch:AVX2 /GL /O2)
+  set(MSVC_FLAGS
+      /fp:fast
+      /arch:AVX2
+      $<$<NOT:$<CONFIG:Debug>>:/GL>
+      $<$<NOT:$<CONFIG:Debug>>:/O2>)
   set(MSVC_DEFINITIONS -DNOMINMAX)
 
   set(CLANG_FLAGS -ffast-math)

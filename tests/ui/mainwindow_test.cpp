@@ -30,6 +30,7 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "session.h"
+#include "sessioninfo.h"
 
 SCENARIO( "Main window tests", "[ui]" )
 {
@@ -127,4 +128,46 @@ SCENARIO( "Main window tests", "[ui]" )
             }
         }
     }
+}
+SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" )
+{
+    QTemporaryFile file{ "mainwindow_restore_XXXXXX.log" };
+    REQUIRE( file.open() );
+    REQUIRE( file.write( "line one\nline two\n" ) > 0 );
+    file.flush();
+
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+
+    struct SessionFilesRestoreGuard {
+        SessionInfo& sessionInfo;
+        QString windowId;
+        std::vector<SessionInfo::OpenFile> openFiles;
+
+        ~SessionFilesRestoreGuard()
+        {
+            sessionInfo.setOpenFiles( windowId, openFiles );
+            sessionInfo.save();
+        }
+    };
+
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+
+    sessionInfo.setOpenFiles(
+        "Main", { SessionInfo::OpenFile{
+                    file.fileName(), 0,
+                    "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":false,\"SP\":\"((VOICE COMMAND)|(VOICE CMD)|(VPD Voice Commands)\"}" } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    auto tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    mainWindow->reloadSession();
+    mainWindow->show();
+
+    REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
 }

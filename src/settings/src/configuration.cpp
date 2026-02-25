@@ -53,6 +53,13 @@
 namespace {
 std::once_flag fontInitFlag;
 static const Configuration DefaultConfiguration = {};
+QString canonicalShortcutActionId( QString action )
+{
+    if ( action == QLatin1String( ShortcutAction::LogViewJumpToButtom ) ) {
+        action = QLatin1String( ShortcutAction::LogViewJumpToBottom );
+    }
+    return action.trimmed();
+}
 
 } // namespace
 
@@ -362,16 +369,28 @@ void Configuration::retrieveFromStorage( QSettings& settings )
                         []( auto v ) { return v.toInt(); } );
     }
 
-    if ( settings.contains( "shortcuts.mapping" ) ) {
-        shortcuts_.clear();
+    auto loadedShortcuts = std::map<std::string, QStringList>{};
+    const auto loadShortcut = [ &loadedShortcuts ]( const QString& rawAction,
+                                                    const QStringList& keys ) {
+        const auto actionId = canonicalShortcutActionId( rawAction );
+        if ( actionId.isEmpty() ) {
+            return;
+        }
 
+        const auto actionUtf8 = actionId.toUtf8();
+        if ( actionUtf8.isEmpty() ) {
+            return;
+        }
+
+        loadedShortcuts.insert_or_assign(
+            std::string( actionUtf8.constData(), static_cast<size_t>( actionUtf8.size() ) ),
+            keys );
+    };
+
+    if ( settings.contains( "shortcuts.mapping" ) ) {
         const auto mapping = settings.value( "shortcuts.mapping" ).toMap();
-        for ( auto keys = mapping.begin(); keys != mapping.end(); ++keys ) {
-            auto action = keys.key().toStdString();
-            if ( action == ShortcutAction::LogViewJumpToButtom ) {
-                action = ShortcutAction::LogViewJumpToBottom;
-            }
-            shortcuts_.emplace( action, keys.value().toStringList() );
+        for ( auto keys = mapping.cbegin(); keys != mapping.cend(); ++keys ) {
+            loadShortcut( keys.key(), keys.value().toStringList() );
         }
 
         settings.remove( "shortcuts.mapping" );
@@ -380,16 +399,14 @@ void Configuration::retrieveFromStorage( QSettings& settings )
     const auto shortcutsCount = settings.beginReadArray( "shortcuts" );
     for ( auto shortcutIndex = 0; shortcutIndex < shortcutsCount; ++shortcutIndex ) {
         settings.setArrayIndex( static_cast<int>( shortcutIndex ) );
-        auto action = settings.value( "action", "" ).toString();
-        if ( !action.isEmpty() ) {
-            if ( action == ShortcutAction::LogViewJumpToButtom ) {
-                action = ShortcutAction::LogViewJumpToBottom;
-            }
-            const auto keys = settings.value( "keys", QStringList() ).toStringList();
-            shortcuts_.emplace( action.toStdString(), keys );
-        }
+        loadShortcut( settings.value( "action", "" ).toString(),
+                      settings.value( "keys", QStringList() ).toStringList() );
     }
     settings.endArray();
+
+    if ( !loadedShortcuts.empty() ) {
+        shortcuts_ = std::move( loadedShortcuts );
+    }
 
     settings.beginGroup( "dark" );
     for ( auto& color : darkPalette_ ) {

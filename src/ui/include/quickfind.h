@@ -231,8 +231,10 @@ class QuickFind : public QObject {
                               const QuickFindMatcher& matcher );
 
     AtomicFlag interruptRequested_;
-    QFuture<Portion> operationFuture_;
-    QFutureWatcher<Portion> operationWatcher_;
+    QFuture<void> operationFuture_;
+    QFutureWatcher<void> operationWatcher_;
+    Portion operationResult_;
 };
 
 #endif
+

@@ -126,7 +126,7 @@ QuickFind::QuickFind( const AbstractLogData& logData )
     connect( &searchingNotifier_, &SearchingNotifier::notify, this, &QuickFind::sendNotification,
              Qt::DirectConnection );
 
-    connect( &operationWatcher_, &QFutureWatcher<Portion>::finished, this,
+    connect( &operationWatcher_, &QFutureWatcher<void>::finished, this,
              &QuickFind::onSearchFutureReady );
 }
 
@@ -166,7 +166,7 @@ void QuickFind::stopSearch()
 
 void QuickFind::onSearchFutureReady()
 {
-    auto selection = operationFuture_.result();
+    const auto selection = operationResult_;
 
     if ( selection.isValid() ) {
         Q_EMIT searchDone( true, selection );
@@ -200,15 +200,9 @@ void QuickFind::incrementallySearchForward( Selection selection, QuickFindMatche
         incrementalSearchStatus_ = IncrementalSearchStatus( Forward, start_position, selection );
     }
 
-#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
-    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchForward, start_position,
-                                          selection, matcher );
-#else
-    operationFuture_ = QtConcurrent::run(
-        qOverload<const FilePosition&, const Selection&, const QuickFindMatcher&>(
-            &QuickFind::doSearchForward ),
-        this, start_position, selection, matcher );
-#endif
+    operationFuture_ = QtConcurrent::run( [ this, start_position, selection, matcher ]() {
+        operationResult_ = doSearchForward( start_position, selection, matcher );
+    } );
 
     operationWatcher_.setFuture( operationFuture_ );
 }
@@ -234,15 +228,9 @@ void QuickFind::incrementallySearchBackward( Selection selection, QuickFindMatch
         incrementalSearchStatus_ = IncrementalSearchStatus( Backward, start_position, selection );
     }
 
-#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
-    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchBackward, start_position,
-                                          selection, matcher );
-#else
-    operationFuture_ = QtConcurrent::run(
-        qOverload<const FilePosition&, const Selection&, const QuickFindMatcher&>(
-            &QuickFind::doSearchBackward ),
-        this, start_position, selection, matcher );
-#endif
+    operationFuture_ = QtConcurrent::run( [ this, start_position, selection, matcher ]() {
+        operationResult_ = doSearchBackward( start_position, selection, matcher );
+    } );
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -252,13 +240,9 @@ void QuickFind::searchForward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
-#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
-    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchForward, selection, matcher );
-#else
-    operationFuture_ = QtConcurrent::run(
-        qOverload<const Selection&, const QuickFindMatcher&>( &QuickFind::doSearchForward ), this,
-        selection, matcher );
-#endif
+    operationFuture_ = QtConcurrent::run( [ this, selection, matcher ]() {
+        operationResult_ = doSearchForward( selection, matcher );
+    } );
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -268,13 +252,9 @@ void QuickFind::searchBackward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
-#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
-    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchBackward, selection, matcher );
-#else
-    operationFuture_ = QtConcurrent::run(
-        qOverload<const Selection&, const QuickFindMatcher&>( &QuickFind::doSearchBackward ), this,
-        selection, matcher );
-#endif
+    operationFuture_ = QtConcurrent::run( [ this, selection, matcher ]() {
+        operationResult_ = doSearchBackward( selection, matcher );
+    } );
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -461,3 +441,6 @@ void QuickFind::sendNotification( QFNotification notification )
 {
     dispatchToMainThread( [ this, notification ]() { notify( notification ); } );
 }
+
+
+
