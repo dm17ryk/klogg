@@ -23,6 +23,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QCborValue>
 #include <QtCore/QFile>
+#include <QtCore/QFileDevice>
 #include <QtCore/QFileInfo>
 
 #include <QtCore/QJsonDocument>
@@ -99,9 +100,13 @@ class MessageReceiver final : public QObject {
             }
 
             QFile ackFile( ackPath );
-            if ( ackFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
+            if ( ackFile.open( QIODevice::WriteOnly | QIODevice::NewOnly,
+                               QFileDevice::ReadOwner | QFileDevice::WriteOwner ) ) {
                 ackFile.write( "ok" );
                 ackFile.close();
+            }
+            else {
+                LOG_WARNING << "Failed to create ack file " << ackPath << ackFile.errorString();
             }
         }
     }
