@@ -19,6 +19,8 @@
 
 #include <catch2/catch.hpp>
 
+#include <QDir>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTest>
@@ -31,6 +33,20 @@
 #include "mainwindow.h"
 #include "session.h"
 #include "sessioninfo.h"
+
+namespace {
+struct SessionFilesRestoreGuard {
+    SessionInfo& sessionInfo;
+    QString windowId;
+    std::vector<SessionInfo::OpenFile> openFiles;
+
+    ~SessionFilesRestoreGuard()
+    {
+        sessionInfo.setOpenFiles( windowId, openFiles );
+        sessionInfo.save();
+    }
+};
+} // namespace
 
 SCENARIO( "Main window tests", "[ui]" )
 {
@@ -139,18 +155,6 @@ SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" 
     auto& sessionInfo = SessionInfo::getSynced();
     sessionInfo.add( "Main" );
 
-    struct SessionFilesRestoreGuard {
-        SessionInfo& sessionInfo;
-        QString windowId;
-        std::vector<SessionInfo::OpenFile> openFiles;
-
-        ~SessionFilesRestoreGuard()
-        {
-            sessionInfo.setOpenFiles( windowId, openFiles );
-            sessionInfo.save();
-        }
-    };
-
     SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
 
     sessionInfo.setOpenFiles(
@@ -170,4 +174,67 @@ SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" 
     mainWindow->show();
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
+}
+
+SCENARIO( "Main window restores session with missing and empty files safely", "[ui][startup]" )
+{
+    QTemporaryFile validFile{ "mainwindow_restore_valid_XXXXXX.log" };
+    REQUIRE( validFile.open() );
+    REQUIRE( validFile.write( "line one\nline two\n" ) > 0 );
+    validFile.flush();
+
+    const QString missingFilePath = validFile.fileName() + ".does_not_exist";
+    QFile::remove( missingFilePath );
+
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+
+    sessionInfo.setOpenFiles(
+        "Main", { SessionInfo::OpenFile{ missingFilePath, 0, {} },
+                  SessionInfo::OpenFile{ QString{}, 0, {} },
+                  SessionInfo::OpenFile{ validFile.fileName(), 0, {} } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    mainWindow->reloadSession();
+    mainWindow->show();
+
+    REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
+    REQUIRE( tabArea->currentIndex() >= 0 );
+}
+
+SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )
+{
+    const QString missingFilePath
+        = QDir::temp().filePath( "klogg_missing_session_file_for_test.log" );
+    QFile::remove( missingFilePath );
+
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+
+    sessionInfo.setOpenFiles(
+        "Main", { SessionInfo::OpenFile{ QString{}, 0, {} },
+                  SessionInfo::OpenFile{ missingFilePath, 0, {} } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    mainWindow->reloadSession();
+    mainWindow->show();
+
+    REQUIRE( waitUiState( [ & ] { return tabArea->count() == 0; } ) );
+    REQUIRE( tabArea->currentIndex() == -1 );
 }

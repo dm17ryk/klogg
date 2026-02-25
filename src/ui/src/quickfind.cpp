@@ -126,7 +126,7 @@ QuickFind::QuickFind( const AbstractLogData& logData )
     connect( &searchingNotifier_, &SearchingNotifier::notify, this, &QuickFind::sendNotification,
              Qt::DirectConnection );
 
-    connect( &operationWatcher_, &QFutureWatcher<void>::finished, this,
+    connect( &operationWatcher_, &QFutureWatcher<Portion>::finished, this,
              &QuickFind::onSearchFutureReady );
 }
 
@@ -166,7 +166,7 @@ void QuickFind::stopSearch()
 
 void QuickFind::onSearchFutureReady()
 {
-    const auto selection = operationResult_;
+    const auto selection = operationFuture_.result();
 
     if ( selection.isValid() ) {
         Q_EMIT searchDone( true, selection );
@@ -201,7 +201,7 @@ void QuickFind::incrementallySearchForward( Selection selection, QuickFindMatche
     }
 
     operationFuture_ = QtConcurrent::run( [ this, start_position, selection, matcher ]() {
-        operationResult_ = doSearchForward( start_position, selection, matcher );
+        return doSearchForward( start_position, selection, matcher );
     } );
 
     operationWatcher_.setFuture( operationFuture_ );
@@ -229,7 +229,7 @@ void QuickFind::incrementallySearchBackward( Selection selection, QuickFindMatch
     }
 
     operationFuture_ = QtConcurrent::run( [ this, start_position, selection, matcher ]() {
-        operationResult_ = doSearchBackward( start_position, selection, matcher );
+        return doSearchBackward( start_position, selection, matcher );
     } );
     operationWatcher_.setFuture( operationFuture_ );
 }
@@ -240,9 +240,8 @@ void QuickFind::searchForward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
-    operationFuture_ = QtConcurrent::run( [ this, selection, matcher ]() {
-        operationResult_ = doSearchForward( selection, matcher );
-    } );
+    operationFuture_ = QtConcurrent::run(
+        [ this, selection, matcher ]() { return doSearchForward( selection, matcher ); } );
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -252,9 +251,8 @@ void QuickFind::searchBackward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
-    operationFuture_ = QtConcurrent::run( [ this, selection, matcher ]() {
-        operationResult_ = doSearchBackward( selection, matcher );
-    } );
+    operationFuture_ = QtConcurrent::run(
+        [ this, selection, matcher ]() { return doSearchBackward( selection, matcher ); } );
     operationWatcher_.setFuture( operationFuture_ );
 }
 

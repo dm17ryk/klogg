@@ -20,8 +20,10 @@
 #ifndef MESSAGERECEIVER_H
 #define MESSAGERECEIVER_H
 
+#include <QtCore/QDir>
 #include <QtCore/QCborValue>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QObject>
@@ -91,12 +93,53 @@ class MessageReceiver final : public QObject {
         }
 
         if ( didSomething && !ackPath.isEmpty() ) {
+            if ( !isValidAckPath( ackPath ) ) {
+                LOG_WARNING << "Ignoring invalid ack path " << ackPath;
+                return;
+            }
+
             QFile ackFile( ackPath );
             if ( ackFile.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
                 ackFile.write( "ok" );
                 ackFile.close();
             }
         }
+    }
+
+  private:
+    static bool isPathEqual( const QString& left, const QString& right )
+    {
+#ifdef Q_OS_WIN
+        return left.compare( right, Qt::CaseInsensitive ) == 0;
+#else
+        return left == right;
+#endif
+    }
+
+    static bool isValidAckPath( const QString& ackPath )
+    {
+        const QFileInfo ackInfo{ ackPath };
+        if ( !ackInfo.isAbsolute() ) {
+            return false;
+        }
+
+        const auto expectedDir = QDir::cleanPath( QDir::tempPath() );
+        const auto actualDir = QDir::cleanPath( ackInfo.absolutePath() );
+        if ( !isPathEqual( actualDir, expectedDir ) ) {
+            return false;
+        }
+
+        const auto fileName = ackInfo.fileName();
+        if ( !fileName.startsWith( "klogg_activate_ack_" ) || !fileName.endsWith( ".tmp" ) ) {
+            return false;
+        }
+
+        // Ack file must be newly created by the receiver.
+        if ( ackInfo.exists() ) {
+            return false;
+        }
+
+        return true;
     }
 };
 

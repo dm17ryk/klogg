@@ -125,7 +125,8 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     {
         if ( crawler->searchRefreshButton_->isChecked() != enabled ) {
             QTest::mouseClick( crawler->searchRefreshButton_, Qt::LeftButton );
-            QTest::qWait( 100 );
+            waitUiState(
+                [ this, enabled ]() { return crawler->searchRefreshButton_->isChecked() == enabled; } );
         }
     }
 

@@ -43,9 +43,8 @@ class Decompressor : public QObject {
     void finished( bool );
 
   private:
-    QFuture<void> future_;
-    QFutureWatcher<void> watcher_;
-    bool lastResult_{ false };
+    QFuture<bool> future_;
+    QFutureWatcher<bool> watcher_;
 };
 
 #endif // KLOGG_DECOMPRESSOR_H

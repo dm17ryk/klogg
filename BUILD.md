@@ -182,7 +182,7 @@ Binaries are placed into `build_root/output`.
 
 By default, klogg will rely on cmake to figure out target MacOS version. Usually it uses build host version.
 To override default cmake value pass an option `-DKLOGG_OSX_DEPLOYMENT_TARGET=<target>` to cmake during configuration step,
-`<target>` is one of `10.14`, `10.15`, `11`, `12`. Klogg's traget must be greater or equal to target used by Qt libraries.
+`<target>` is one of `10.14`, `10.15`, `11`, `12`. Klogg's target must be greater or equal to target used by Qt libraries.
 
 ## Deploy QT libs
 

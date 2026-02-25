@@ -239,16 +239,17 @@ bool doDecompress( std::shared_ptr<KCompressionDevice> input, const QString& arc
 Decompressor::Decompressor( QObject* parent )
     : QObject( parent )
 {
-    connect( &watcher_, &QFutureWatcher<void>::finished, [ this ]() {
-        LOG_INFO << "Decompressor finished " << lastResult_;
-        Q_EMIT finished( lastResult_ );
+    connect( &watcher_, &QFutureWatcher<bool>::finished, [ this ]() {
+        const auto result = future_.isValid() ? watcher_.result() : false;
+        LOG_INFO << "Decompressor finished " << result;
+        Q_EMIT finished( result );
     } );
 }
 
 bool Decompressor::waitForResult()
 {
     watcher_.waitForFinished();
-    return lastResult_;
+    return future_.isValid() ? watcher_.result() : false;
 }
 
 DecompressAction Decompressor::action( const QString& archiveFilePath )
@@ -278,10 +279,9 @@ bool Decompressor::decompress( const QString& archiveFilePath, QFile* outputFile
         return false;
     }
 
-    lastResult_ = false;
     future_ = QtConcurrent::run(
-        [ this, input = std::move( decompressor ), archiveFilePath, outputFile, &interrupt ] {
-            lastResult_ = doDecompress( input, archiveFilePath, outputFile, interrupt );
+        [ input = std::move( decompressor ), archiveFilePath, outputFile, &interrupt ]() {
+            return doDecompress( input, archiveFilePath, outputFile, interrupt );
         } );
     watcher_.setFuture( future_ );
 
@@ -299,10 +299,9 @@ bool Decompressor::extract( const QString& archiveFilePath, const QString& desti
 
     // Open the archive
 
-    lastResult_ = false;
     future_ = QtConcurrent::run(
-        [ this, ar = std::move( archive ), archiveFilePath, destination, &interrupt ] {
-            lastResult_ = doExtract( ar, archiveFilePath, destination, interrupt );
+        [ ar = std::move( archive ), archiveFilePath, destination, &interrupt ]() {
+            return doExtract( ar, archiveFilePath, destination, interrupt );
         } );
     watcher_.setFuture( future_ );
 
