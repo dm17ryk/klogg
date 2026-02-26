@@ -101,10 +101,35 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
     {
         std::lock_guard<std::mutex> lock( startupProgressMutex() );
         auto& data = startupProgressData();
-        data.state.value += std::max( 1, step );
-        if ( data.state.value > data.state.maximum ) {
-            data.state.maximum = data.state.value;
+        const int increment = std::max( 1, step );
+        const int nextValue = data.state.value + increment;
+        const bool closeToTop
+            = ( nextValue * 100 ) >= ( data.state.maximum * 85 );
+        if ( nextValue >= data.state.maximum || closeToTop ) {
+            const int currentRange = std::max( 1, data.state.maximum - data.state.minimum );
+            const int headroom = std::max( increment * 6, std::max( 20, currentRange / 2 ) );
+            data.state.maximum = nextValue + headroom;
         }
+        data.state.value = nextValue;
+        if ( !status.isEmpty() ) {
+            data.state.status = status;
+        }
+        data.state.detail = detail;
+        normalizeState( data.state );
+        state = data.state;
+        callback = data.callback;
+    }
+    notifyCallback( callback, state );
+}
+
+void StartupProgress::complete( const QString& status, const QString& detail )
+{
+    StartupProgressState state;
+    Callback callback;
+    {
+        std::lock_guard<std::mutex> lock( startupProgressMutex() );
+        auto& data = startupProgressData();
+        data.state.value = data.state.maximum;
         if ( !status.isEmpty() ) {
             data.state.status = status;
         }

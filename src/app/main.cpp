@@ -298,7 +298,7 @@ int main( int argc, char* argv[] )
         app.clearInactiveSessions();
     }
 
-    StartupProgress::setValue( 100, QObject::tr( "Ready" ), QObject::tr( "Application started" ) );
+    StartupProgress::complete( QObject::tr( "Ready" ), QObject::tr( "Application started" ) );
     StartupProgress::clearCallback();
     splash.finish( mw );
 

@@ -22,6 +22,7 @@ class StartupProgress {
     static void setRange( int minimum, int maximum );
     static void setValue( int value, const QString& status = {}, const QString& detail = {} );
     static void advance( const QString& status = {}, const QString& detail = {}, int step = 1 );
+    static void complete( const QString& status = {}, const QString& detail = {} );
     static void message( const QString& status, const QString& detail = {} );
     static bool isActive();
 };
