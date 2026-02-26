@@ -54,6 +54,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/serialcaptureworker.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsourceregistry.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/startupprogress.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tabbedcrawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewinterface.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewtools.h
@@ -125,6 +126,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/startupprogress.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tabbedcrawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/viewtools.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scratchpad.cpp

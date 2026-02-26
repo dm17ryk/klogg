@@ -132,6 +132,7 @@ class HighlighterSet {
 
     QString name() const;
     QString id() const;
+    QList<Highlighter> highlighters() const;
 
     // Returns weither the passed line match a filter of the set,
     // if so, it returns the fore/back colors the line should use.

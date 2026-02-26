@@ -36,6 +36,7 @@
 #include "savedsearches.h"
 #include "serialcaptureworker.h"
 #include "sessioninfo.h"
+#include "startupprogress.h"
 #include "viewinterface.h"
 
 namespace {
@@ -257,6 +258,9 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
         QString streamContext = file.streamContext;
         bool hasStreamContext = !streamContext.trimmed().isEmpty();
 
+        StartupProgress::advance( QStringLiteral( "Restoring session entry" ),
+                                  QFileInfo( fileName ).fileName() );
+
         if ( fileName.trimmed().isEmpty() ) {
             LOG_WARNING << "Skipping invalid session entry with empty file name";
             continue;
@@ -291,6 +295,8 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
 
         LOG_DEBUG << "Create view for " << fileName;
         try {
+            StartupProgress::advance( QStringLiteral( "Opening file" ),
+                                      QFileInfo( fileName ).fileName() );
             ViewInterface* view
                 = appSession_->openAlways( fileName, view_factory, file.viewContext );
             if ( view == nullptr ) {

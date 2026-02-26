@@ -62,6 +62,7 @@
 
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "startupprogress.h"
 #include "versionchecker.h"
 
 class KloggApp : public QApplication {
@@ -206,17 +207,21 @@ class KloggApp : public QApplication {
         }
 
         MainWindow* lastShownWindow = nullptr;
+        std::vector<MainWindow*> restoredWindows;
 
+        StartupProgress::advance( QObject::tr( "Restoring window sessions" ) );
         for ( auto&& windowSession : session_->windowSessions() ) {
             try {
                 auto* window = newWindow( std::move( windowSession ) );
                 window->reloadGeometry();
-                window->show();
-                lastShownWindow = window;
+                StartupProgress::advance( QObject::tr( "Restoring window" ),
+                                          QString::number( windowSession.windowIndex() ) );
 
                 // Keep startup responsive and avoid ending up with no visible
                 // window when session restore data is malformed.
                 window->reloadSession();
+                restoredWindows.push_back( window );
+                lastShownWindow = window;
             } catch ( const std::exception& e ) {
                 LOG_ERROR << "Failed to restore window session: " << e.what();
             } catch ( ... ) {
@@ -226,7 +231,12 @@ class KloggApp : public QApplication {
 
         if ( lastShownWindow == nullptr ) {
             lastShownWindow = newWindow();
-            lastShownWindow->show();
+            restoredWindows.push_back( lastShownWindow );
+        }
+
+        for ( auto* window : restoredWindows ) {
+            StartupProgress::advance( QObject::tr( "Showing window" ) );
+            window->show();
         }
 
         return lastShownWindow;

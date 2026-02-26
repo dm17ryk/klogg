@@ -250,6 +250,11 @@ QString HighlighterSet::id() const
     return id_;
 }
 
+QList<Highlighter> HighlighterSet::highlighters() const
+{
+    return highlighterList_;
+}
+
 bool HighlighterSet::isEmpty() const
 {
     return highlighterList_.isEmpty();

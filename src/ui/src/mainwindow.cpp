@@ -74,6 +74,7 @@
 #include <QScreen>
 #include <QShortcut>
 #include <QSortFilterProxyModel>
+#include <QRegularExpression>
 #include <QStringListModel>
 #include <QTemporaryFile>
 #include <QTextBrowser>
@@ -106,6 +107,7 @@
 #include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
+#include "predefinedfilters.h"
 #include "predefinedfiltersdialog.h"
 #include "progress.h"
 #include "readablesize.h"
@@ -113,6 +115,7 @@
 #include "sessioninfo.h"
 #include "shortcuts.h"
 #include "serialcaptureworker.h"
+#include "startupprogress.h"
 #include "streamsession.h"
 #include "styles.h"
 #include "tabbedcrawlerwidget.h"
@@ -157,6 +160,8 @@ MainWindow::MainWindow( WindowSession session )
     mainIcon_.addFile( ":/images/hicolor/48x48/klogg.png" );
 
     setWindowIcon( mainIcon_ );
+    StartupProgress::advance( tr( "Initializing main window" ),
+                              tr( "Loading settings and UI state" ) );
     readSettings();
 
     createTrayIcon();
@@ -218,7 +223,9 @@ MainWindow::MainWindow( WindowSession session )
     connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
              &MainWindow::sendActionById );
 
+    StartupProgress::advance( tr( "Loading previews" ), tr( "Loading preview definitions" ) );
     PreviewManager::instance().loadFromRepository();
+    StartupProgress::advance( tr( "Loading actions" ), tr( "Loading action/response definitions" ) );
     ActionsManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
@@ -274,6 +281,7 @@ void MainWindow::reloadGeometry()
 
 void MainWindow::reloadSession()
 {
+    StartupProgress::advance( tr( "Restoring session" ), tr( "Restoring opened tabs" ) );
     const auto& config = Configuration::get();
     const auto followFileOnLoad = config.followFileOnLoad() && config.anyFileWatchEnabled();
 
@@ -283,6 +291,7 @@ void MainWindow::reloadSession()
 
     for ( const auto& open_file : openedFiles ) {
         QString file_name = open_file.fileName;
+        StartupProgress::advance( tr( "Restoring tab" ), QFileInfo( file_name ).fileName() );
         auto* crawler_widget = static_cast<CrawlerWidget*>( open_file.view );
 
         if ( crawler_widget ) {
@@ -292,6 +301,8 @@ void MainWindow::reloadSession()
                 auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
                 if ( streamSettings ) {
                     streamSettings->filePath = file_name;
+                    StartupProgress::advance( tr( "Restoring COM stream" ),
+                                              streamSettings->portName );
                     if ( !startComCaptureSession( *streamSettings,
                                                   ComCaptureStartOptions::restore() ) ) {
                         LOG_WARNING << "Failed to restore COM stream for "
@@ -319,6 +330,7 @@ void MainWindow::reloadSession()
     }
 
     updateOpenedFilesMenu();
+    StartupProgress::advance( tr( "Session restored" ), tr( "Finishing startup" ) );
 }
 
 void MainWindow::loadInitialFile( QString fileName, bool followFile )
@@ -2594,14 +2606,57 @@ void MainWindow::readSettings()
     */
 
     // History of recent files
+    StartupProgress::advance( tr( "Loading recent files" ), tr( "Restoring recent files list" ) );
     RecentFiles::getSynced();
     updateRecentFileActions();
 
+    StartupProgress::advance( tr( "Loading favorites" ), tr( "Restoring favorite files list" ) );
     FavoriteFiles::getSynced();
     updateFavoritesMenu();
 
-    HighlighterSetCollection::getSynced();
+    StartupProgress::advance( tr( "Loading highlighters" ),
+                              tr( "Restoring and compiling highlighter sets" ) );
+    auto& highlighterCollection = HighlighterSetCollection::getSynced();
+    const auto highlighterSets = highlighterCollection.highlighterSets();
+    for ( const auto& highlighterSet : highlighterSets ) {
+        StartupProgress::advance( tr( "Loading highlighter set" ), highlighterSet.name() );
+        const auto highlighters = highlighterSet.highlighters();
+        for ( const auto& highlighter : highlighters ) {
+            const auto highlighterName = highlighter.pattern().isEmpty()
+                                             ? tr( "<empty pattern>" )
+                                             : highlighter.pattern();
+            StartupProgress::advance( tr( "Compiling highlighter" ), highlighterName );
+            highlighter.compile();
+        }
+        StartupProgress::advance( tr( "Compiling highlighter set" ), highlighterSet.name() );
+        highlighterSet.compile();
+    }
+    StartupProgress::advance( tr( "Compiling active highlighters" ) );
+    const auto& activeSet = highlighterCollection.currentActiveSet();
+    const auto activeHighlighters = activeSet.highlighters();
+    for ( const auto& highlighter : activeHighlighters ) {
+        const auto highlighterName
+            = highlighter.pattern().isEmpty() ? tr( "<empty pattern>" ) : highlighter.pattern();
+        StartupProgress::advance( tr( "Compiling active highlighter" ), highlighterName );
+        highlighter.compile();
+    }
+    activeSet.compile();
     updateHighlightersMenu();
+
+    StartupProgress::advance( tr( "Loading predefined filters" ),
+                              tr( "Restoring predefined filters" ) );
+    auto& predefinedFiltersCollection = PredefinedFiltersCollection::getSynced();
+    const auto predefinedFilters = predefinedFiltersCollection.getFilters();
+    for ( const auto& filter : predefinedFilters ) {
+        const auto filterName
+            = filter.name.isEmpty() ? filter.pattern.left( 64 ) : filter.name;
+        StartupProgress::advance( tr( "Compiling predefined filter" ), filterName );
+        if ( filter.useRegex ) {
+            QRegularExpression expression( filter.pattern,
+                                           QRegularExpression::UseUnicodePropertiesOption );
+            expression.optimize();
+        }
+    }
 }
 
 void MainWindow::displayQuickFindBar( QuickFindMux::QFDirection direction )

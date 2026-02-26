@@ -41,6 +41,15 @@
 #include <qapplication.h>
 #include <qthreadpool.h>
 
+#include <QCoreApplication>
+#include <QEventLoop>
+#include <QFileInfo>
+#include <QFont>
+#include <QPainter>
+#include <QPixmap>
+#include <QSplashScreen>
+#include <algorithm>
+
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -59,6 +68,7 @@
 #include "logger.h"
 #include "mainwindow.h"
 #include "styles.h"
+#include "startupprogress.h"
 
 #include "cli.h"
 #include "kloggapp.h"
@@ -112,6 +122,67 @@ void setApplicationAttributes( bool enableQtHdpi, int scaleFactorRounding )
 
     QCoreApplication::setAttribute( Qt::AA_DontShowIconsInMenus );
 }
+
+class StartupSplashScreen final : public QSplashScreen {
+  public:
+    explicit StartupSplashScreen( const QPixmap& pixmap )
+        : QSplashScreen( pixmap )
+    {
+    }
+
+    void updateFromState( const StartupProgressState& state )
+    {
+        state_ = state;
+        state_.maximum = std::max( state_.minimum + 1, state_.maximum );
+        state_.value = std::clamp( state_.value, state_.minimum, state_.maximum );
+        repaint();
+        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+    }
+
+  protected:
+    void drawContents( QPainter* painter ) override
+    {
+        const auto rect = this->rect();
+        const int panelHeight = 82;
+        const QRect panelRect( rect.left(), rect.bottom() - panelHeight + 1, rect.width(),
+                               panelHeight );
+        painter->fillRect( panelRect, QColor( 0, 0, 0, 150 ) );
+
+        QFont statusFont = painter->font();
+        statusFont.setPixelSize( 14 );
+        statusFont.setBold( true );
+        painter->setFont( statusFont );
+        painter->setPen( Qt::white );
+        painter->drawText( panelRect.adjusted( 12, 8, -12, -44 ),
+                           Qt::AlignLeft | Qt::AlignVCenter,
+                           state_.status.isEmpty() ? tr( "Loading..." ) : state_.status );
+
+        QFont detailFont = painter->font();
+        detailFont.setPixelSize( 12 );
+        detailFont.setBold( false );
+        painter->setFont( detailFont );
+        painter->setPen( QColor( 230, 230, 230 ) );
+        painter->drawText( panelRect.adjusted( 12, 28, -12, -24 ),
+                           Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine,
+                           state_.detail );
+
+        const QRect progressRect( panelRect.left() + 12, panelRect.bottom() - 20,
+                                  panelRect.width() - 24, 10 );
+        painter->setPen( QColor( 80, 80, 80 ) );
+        painter->setBrush( QColor( 35, 35, 35 ) );
+        painter->drawRect( progressRect );
+
+        const int range = std::max( 1, state_.maximum - state_.minimum );
+        const double ratio = static_cast<double>( state_.value - state_.minimum ) / range;
+        const int width = std::max( 0, static_cast<int>( ( progressRect.width() - 2 ) * ratio ) );
+        const QRect valueRect( progressRect.left() + 1, progressRect.top() + 1, width,
+                               progressRect.height() - 2 );
+        painter->fillRect( valueRect, QColor( 38, 140, 255 ) );
+    }
+
+  private:
+    StartupProgressState state_;
+};
 
 int main( int argc, char* argv[] )
 {
@@ -174,6 +245,19 @@ int main( int argc, char* argv[] )
 
     StyleManager::applyStyle( config.style() );
 
+    QPixmap splashPixmap( QStringLiteral( ":/images/splash.png" ) );
+    if ( splashPixmap.isNull() ) {
+        splashPixmap = QPixmap( 850, 320 );
+        splashPixmap.fill( QColor( 30, 30, 30 ) );
+    }
+    StartupSplashScreen splash( splashPixmap );
+    splash.show();
+    StartupProgress::setCallback(
+        [ &splash ]( const StartupProgressState& state ) { splash.updateFromState( state ); } );
+    StartupProgress::setRange( 0, 100 );
+    StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
+                               QObject::tr( "Preparing application state" ) );
+
     auto startNewSession = true;
     MainWindow* mw = nullptr;
     if ( parameters.load_session
@@ -192,14 +276,21 @@ int main( int argc, char* argv[] )
     }
 
     for ( const auto& filename : parameters.filenames ) {
+        StartupProgress::advance( QObject::tr( "Opening startup file" ),
+                                  QFileInfo( filename ).fileName() );
         mw->loadInitialFile( filename, parameters.follow_file );
     }
 
     app.ensureMainWindowVisible();
+    StartupProgress::advance( QObject::tr( "Finalizing startup" ) );
 
     if ( startNewSession ) {
         app.clearInactiveSessions();
     }
+
+    StartupProgress::setValue( 100, QObject::tr( "Ready" ), QObject::tr( "Application started" ) );
+    StartupProgress::clearCallback();
+    splash.finish( mw );
 
     app.startBackgroundTasks();
 
