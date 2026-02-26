@@ -128,6 +128,24 @@ void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
     dispatchToMainThread( [ crawler_widget ]() { crawler_widget->followSet( true ); } );
 }
 
+void showComPortMessage( QWidget* parent, QMessageBox::Icon icon, const QString& title,
+                         const QString& text, bool nonBlocking )
+{
+    if ( !nonBlocking ) {
+        if ( icon == QMessageBox::Information ) {
+            QMessageBox::information( parent, title, text );
+        }
+        else {
+            QMessageBox::warning( parent, title, text );
+        }
+        return;
+    }
+
+    auto* box = new QMessageBox( icon, title, text, QMessageBox::Ok, parent );
+    box->setAttribute( Qt::WA_DeleteOnClose );
+    box->setWindowModality( Qt::NonModal );
+    box->open();
+}
 static constexpr auto ClipboardMaxTry = 5;
 
 } // namespace
@@ -1104,6 +1122,22 @@ void MainWindow::openComPort()
 bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                                          MainWindow::ComCaptureStartOptions options )
 {
+    const auto showWarning = [ this, &options ]( const QString& message ) {
+        if ( !options.showErrors ) {
+            return;
+        }
+        showComPortMessage( this, QMessageBox::Warning, tr( "Open COM Port" ), message,
+                            options.nonBlockingErrors );
+    };
+
+    const auto showInformation = [ this, &options ]( const QString& message ) {
+        if ( !options.showErrors ) {
+            return;
+        }
+        showComPortMessage( this, QMessageBox::Information, tr( "Open COM Port" ), message,
+                            options.nonBlockingErrors );
+    };
+
     if ( settings.portName.isEmpty() || settings.filePath.isEmpty() ) {
         return false;
     }
@@ -1111,18 +1145,13 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     const QFileInfo info( settings.filePath );
     const auto absolutePath = info.absoluteFilePath();
     if ( absolutePath.isEmpty() ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
-        }
+        showWarning( tr( "Invalid capture file path." ) );
         return false;
     }
 
     const QDir dir( info.absolutePath() );
     if ( !dir.exists() ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning( this, tr( "Open COM Port" ),
-                                  tr( "Capture directory does not exist." ) );
-        }
+        showWarning( tr( "Capture directory does not exist." ) );
         return false;
     }
 
@@ -1140,20 +1169,14 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                                                            == 0;
                                          } );
     if ( !portExists ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning( this, tr( "Open COM Port" ),
-                                  tr( "COM port %1 was not found. Capture will not be restored." )
-                                      .arg( settings.portName ) );
-        }
+        showWarning( tr( "COM port %1 was not found. Capture will not be restored." )
+                         .arg( settings.portName ) );
         return false;
     }
+
     QString captureFileError;
     if ( !ensureComCaptureFileWritable( settings.filePath, &captureFileError ) ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning(
-                this, tr( "Open COM Port" ),
-                tr( "Failed to open capture file: %1" ).arg( captureFileError ) );
-        }
+        showWarning( tr( "Failed to open capture file: %1" ).arg( captureFileError ) );
         return false;
     }
 
@@ -1161,11 +1184,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() ) {
             existingSession->closeConnection();
-            if ( options.showErrors ) {
-                QMessageBox::information(
-                    this, tr( "Open COM Port" ),
-                    tr( "The existing capture is still closing. Please try again in a moment." ) );
-            }
+            showInformation( tr( "The existing capture is still closing. Please try again in a moment." ) );
             return false;
         }
         if ( actionsStreamSession_ == existingSession ) {
@@ -1187,9 +1206,10 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession, options ]( const QString& message ) {
                  if ( options.showErrors ) {
-                     QMessageBox::warning(
-                         this, tr( "COM port capture error" ),
-                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
+                     showComPortMessage(
+                         this, QMessageBox::Warning, tr( "COM port capture error" ),
+                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ),
+                         options.nonBlockingErrors );
                  }
                  else {
                      LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
