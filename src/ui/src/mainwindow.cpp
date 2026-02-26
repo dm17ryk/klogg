@@ -111,6 +111,7 @@
 #include "recentfiles.h"
 #include "sessioninfo.h"
 #include "shortcuts.h"
+#include "serialcaptureworker.h"
 #include "streamsession.h"
 #include "styles.h"
 #include "tabbedcrawlerwidget.h"
@@ -280,11 +281,26 @@ void MainWindow::reloadSession()
         = session_.restore( [] { return new CrawlerWidget(); }, &current_file_index );
 
     for ( const auto& open_file : openedFiles ) {
-        QString file_name = { open_file.first };
-        auto* crawler_widget = static_cast<CrawlerWidget*>( open_file.second );
+        QString file_name = open_file.fileName;
+        auto* crawler_widget = static_cast<CrawlerWidget*>( open_file.view );
 
         if ( crawler_widget ) {
             mainTabWidget_.addCrawler( crawler_widget, file_name );
+
+            if ( !open_file.streamContext.trimmed().isEmpty() ) {
+                auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
+                if ( streamSettings ) {
+                    streamSettings->filePath = file_name;
+                    if ( !startComCaptureSession( *streamSettings, false, false ) ) {
+                        LOG_WARNING << "Failed to restore COM stream for "
+                                    << file_name.toStdString();
+                    }
+                }
+                else {
+                    LOG_WARNING << "Skipping invalid stream context while restoring "
+                                << file_name.toStdString();
+                }
+            }
 
             if ( followFileOnLoad ) {
                 signalCrawlerToFollowFile( crawler_widget );
@@ -1054,28 +1070,57 @@ void MainWindow::openComPort()
         return;
     }
 
+    if ( !startComCaptureSession( settings, true, true ) ) {
+        return;
+    }
+
+    if ( !loadFile( settings.filePath, true ) ) {
+        if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
+            session->closeConnection();
+        }
+        QMessageBox::warning( this, tr( "Open COM Port" ),
+                              tr( "Failed to open capture file in klogg." ) );
+        return;
+    }
+
+    updateActionsSendState();
+}
+
+bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool allowActionsPrompt,
+                                         bool showErrors )
+{
+    if ( settings.portName.isEmpty() || settings.filePath.isEmpty() ) {
+        return false;
+    }
+
     const QFileInfo info( settings.filePath );
     const auto absolutePath = info.absoluteFilePath();
     if ( absolutePath.isEmpty() ) {
-        QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
-        return;
+        if ( showErrors ) {
+            QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
+        }
+        return false;
     }
 
     const QDir dir( info.absolutePath() );
     if ( !dir.exists() ) {
-        QMessageBox::warning( this, tr( "Open COM Port" ),
-                              tr( "Capture directory does not exist." ) );
-        return;
+        if ( showErrors ) {
+            QMessageBox::warning( this, tr( "Open COM Port" ),
+                                  tr( "Capture directory does not exist." ) );
+        }
+        return false;
     }
 
     settings.filePath = absolutePath;
 
     QFile ensureFile( settings.filePath );
     if ( !ensureFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
-        QMessageBox::warning(
-            this, tr( "Open COM Port" ),
-            tr( "Failed to open capture file: %1" ).arg( ensureFile.errorString() ) );
-        return;
+        if ( showErrors ) {
+            QMessageBox::warning(
+                this, tr( "Open COM Port" ),
+                tr( "Failed to open capture file: %1" ).arg( ensureFile.errorString() ) );
+        }
+        return false;
     }
     ensureFile.close();
 
@@ -1083,10 +1128,12 @@ void MainWindow::openComPort()
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() ) {
             existingSession->closeConnection();
-            QMessageBox::information(
-                this, tr( "Open COM Port" ),
-                tr( "The existing capture is still closing. Please try again in a moment." ) );
-            return;
+            if ( showErrors ) {
+                QMessageBox::information(
+                    this, tr( "Open COM Port" ),
+                    tr( "The existing capture is still closing. Please try again in a moment." ) );
+            }
+            return false;
         }
         if ( actionsStreamSession_ == existingSession ) {
             actionsStreamSession_.clear();
@@ -1105,10 +1152,16 @@ void MainWindow::openComPort()
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
-             [ this, filePath, safeSession ]( const QString& message ) {
-                 QMessageBox::warning(
-                     this, tr( "COM port capture error" ),
-                     tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
+             [ this, filePath, safeSession, showErrors ]( const QString& message ) {
+                 if ( showErrors ) {
+                     QMessageBox::warning(
+                         this, tr( "COM port capture error" ),
+                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
+                 }
+                 else {
+                     LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
+                                 << message.toStdString();
+                 }
                  if ( safeSession ) {
                      safeSession->closeConnection();
                  }
@@ -1119,27 +1172,23 @@ void MainWindow::openComPort()
     bool designateForActions = settings.useForActions;
     if ( designateForActions && actionsStreamSession_ && actionsStreamSession_ != session.get()
          && actionsStreamSession_->isConnectionOpen() ) {
-        const auto reply
-            = QMessageBox::question( this, tr( "Actions COM Port" ),
-                                     tr( "Are you sure you want to make %1 the actions COM port?" )
-                                         .arg( settings.portName ),
-                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
-        if ( reply != QMessageBox::Yes ) {
-            designateForActions = false;
+        if ( allowActionsPrompt ) {
+            const auto reply = QMessageBox::question(
+                this, tr( "Actions COM Port" ),
+                tr( "Are you sure you want to make %1 the actions COM port?" )
+                    .arg( settings.portName ),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
+            if ( reply != QMessageBox::Yes ) {
+                designateForActions = false;
+            }
         }
     }
     if ( designateForActions ) {
         actionsStreamSession_ = session.get();
     }
 
-    if ( !loadFile( settings.filePath, true ) ) {
-        session->closeConnection();
-        QMessageBox::warning( this, tr( "Open COM Port" ),
-                              tr( "Failed to open capture file in klogg." ) );
-        return;
-    }
-
     updateActionsSendState();
+    return true;
 }
 
 void MainWindow::openRemoteFile( const QUrl& url )
@@ -2508,9 +2557,7 @@ void MainWindow::writeSettings()
 {
     // Save the session
     // Generate the ordered list of widgets and their topLine
-    std::vector<
-        std::tuple<const ViewInterface*, uint64_t, std::shared_ptr<const ViewContextInterface>>>
-        widget_list;
+    std::vector<SaveFileInfo> widget_list;
     for ( int i = 0; i < mainTabWidget_.count(); ++i ) {
         auto view = qobject_cast<const CrawlerWidget*>( mainTabWidget_.widget( i ) );
         if ( view == nullptr ) {
@@ -2523,7 +2570,14 @@ void MainWindow::writeSettings()
             LOG_WARNING << "Skipping tab with missing context while saving session at index " << i;
             continue;
         }
-        widget_list.emplace_back( view, 0UL, std::move( context ) );
+
+        QString streamContext;
+        const auto fileName = session_.getFilename( view );
+        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( fileName ) ) {
+            streamContext = serializeSerialCaptureSettings( streamSession->captureSettings() );
+        }
+
+        widget_list.emplace_back( view, 0UL, std::move( context ), streamContext );
     }
     session_.save( widget_list, saveGeometry() );
 }

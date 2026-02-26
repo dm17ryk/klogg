@@ -138,9 +138,15 @@ class Session : public std::enable_shared_from_this<Session> {
     friend class WindowSession;
 };
 
-using OpenedFilesList = std::vector<std::pair<QString, ViewInterface*>>;
-using SaveFileInfo
-    = std::tuple<const ViewInterface*, uint64_t, std::shared_ptr<const ViewContextInterface>>;
+struct OpenedFileData {
+    QString fileName;
+    ViewInterface* view = nullptr;
+    QString streamContext;
+};
+
+using OpenedFilesList = std::vector<OpenedFileData>;
+using SaveFileInfo = std::tuple<const ViewInterface*, uint64_t,
+                                std::shared_ptr<const ViewContextInterface>, QString>;
 
 class WindowSession {
   public:

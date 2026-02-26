@@ -72,6 +72,7 @@ class Session;
 class RecentFiles;
 class HighlightersMenu;
 class StreamSession;
+struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
@@ -222,6 +223,8 @@ class MainWindow : public QMainWindow {
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
     void updateActionsSendState();
+    bool startComCaptureSession( SerialCaptureSettings& settings, bool allowActionsPrompt,
+                                 bool showErrors );
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
     StreamSession* currentStreamSession() const;

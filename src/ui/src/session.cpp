@@ -20,6 +20,9 @@
 #include "session.h"
 
 #include <exception>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 
 #include "log.h"
@@ -27,11 +30,66 @@
 #include <algorithm>
 #include <cassert>
 
+#include "comportutils.h"
+#include "configuration.h"
 #include "logdata.h"
 #include "logfiltereddata.h"
 #include "savedsearches.h"
+#include "serialcaptureworker.h"
 #include "sessioninfo.h"
 #include "viewinterface.h"
+
+namespace {
+QString resolveComCapturePath( const SerialCaptureSettings& settings )
+{
+    QString baseDir;
+    const QFileInfo configuredPath{ settings.filePath };
+    if ( configuredPath.exists() && configuredPath.isDir() ) {
+        baseDir = configuredPath.absoluteFilePath();
+    }
+    else if ( !configuredPath.absolutePath().isEmpty() ) {
+        baseDir = configuredPath.absolutePath();
+    }
+
+    if ( baseDir.isEmpty() ) {
+        const QFileInfo defaultPath{ Configuration::get().defaultComLogPath() };
+        if ( defaultPath.exists() && defaultPath.isDir() ) {
+            baseDir = defaultPath.absoluteFilePath();
+        }
+        else if ( !defaultPath.absolutePath().isEmpty() ) {
+            baseDir = defaultPath.absolutePath();
+        }
+    }
+
+    if ( baseDir.isEmpty() ) {
+        baseDir = defaultComLogDirectory();
+    }
+
+    QDir dir( baseDir );
+    if ( !dir.exists() && !dir.mkpath( "." ) ) {
+        dir.setPath( defaultComLogDirectory() );
+        dir.mkpath( "." );
+    }
+
+    const auto portName
+        = settings.portName.isEmpty() ? QStringLiteral( "port" ) : settings.portName.toLower();
+    const auto baudRate = QString::number( settings.baudRate );
+    const auto timestamp
+        = QDateTime::currentDateTime().toString( QStringLiteral( "yyyy-MM-dd_HH-mm-ss" ) );
+    const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+    return dir.filePath( fileName );
+}
+
+bool ensureCaptureFileExists( const QString& path )
+{
+    QFile file( path );
+    if ( !file.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        return false;
+    }
+    file.close();
+    return true;
+}
+} // namespace
 
 Session::Session()
 {
@@ -64,7 +122,7 @@ ViewInterface* Session::getViewIfOpen( const QString& file_name ) const
 ViewInterface* Session::open( const QString& file_name,
                               const std::function<ViewInterface*()>& view_factory )
 {
-    return openAlways( file_name, view_factory, nullptr );
+    return openAlways( file_name, view_factory, {} );
 }
 
 void Session::close( const ViewInterface* view )
@@ -157,7 +215,7 @@ std::vector<WindowSession> Session::windowSessions()
 
 void WindowSession::save(
     const std::vector<std::tuple<const ViewInterface*, uint64_t,
-                                 std::shared_ptr<const ViewContextInterface>>>& view_list,
+                                 std::shared_ptr<const ViewContextInterface>, QString>>& view_list,
     const QByteArray& geometry )
 {
     LOG_DEBUG << "Session::save";
@@ -167,8 +225,9 @@ void WindowSession::save(
         const ViewInterface* view_object;
         uint64_t top_line;
         std::shared_ptr<const ViewContextInterface> view_context;
+        QString stream_context;
 
-        std::tie( view_object, top_line, view_context ) = view;
+        std::tie( view_object, top_line, view_context, stream_context ) = view;
 
         if ( view_object == nullptr ) {
             LOG_WARNING << "Skipping invalid session save entry: null view";
@@ -184,7 +243,8 @@ void WindowSession::save(
         assert( file );
 
         LOG_DEBUG << "Saving " << file->fileName.toLocal8Bit().data() << " in session.";
-        session_files.emplace_back( file->fileName, top_line, view_context->toString() );
+        session_files.emplace_back( file->fileName, top_line, view_context->toString(),
+                                    stream_context );
     }
 
     auto& session = SessionInfo::getSynced();
@@ -193,42 +253,66 @@ void WindowSession::save(
     session.save();
 }
 
-std::vector<std::pair<QString, ViewInterface*>>
-WindowSession::restore( const std::function<ViewInterface*()>& view_factory,
-                        int* current_file_index )
+OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& view_factory,
+                                        int* current_file_index )
 {
     const auto& session = SessionInfo::getSynced();
 
     std::vector<SessionInfo::OpenFile> session_files = session.openFiles( windowId_ );
     LOG_DEBUG << "Session returned " << session_files.size();
-    std::vector<std::pair<QString, ViewInterface*>> result;
+    OpenedFilesList result;
 
     for ( const auto& file : session_files ) {
-        if ( file.fileName.trimmed().isEmpty() ) {
+        QString fileName = file.fileName;
+        QString streamContext = file.streamContext;
+        bool hasStreamContext = !streamContext.trimmed().isEmpty();
+
+        if ( fileName.trimmed().isEmpty() ) {
             LOG_WARNING << "Skipping invalid session entry with empty file name";
             continue;
         }
 
-        const QFileInfo fileInfo{ file.fileName };
-        if ( !fileInfo.exists() || !fileInfo.isFile() ) {
-            LOG_WARNING << "Skipping missing session file " << file.fileName;
-            continue;
+        if ( hasStreamContext ) {
+            auto streamSettings = deserializeSerialCaptureSettings( streamContext );
+            if ( !streamSettings ) {
+                LOG_WARNING << "Skipping invalid stream session context for " << fileName;
+                hasStreamContext = false;
+            }
+            else {
+                streamSettings->filePath = resolveComCapturePath( *streamSettings );
+                if ( !ensureCaptureFileExists( streamSettings->filePath ) ) {
+                    LOG_WARNING << "Skipping stream session due to file creation failure for "
+                                << streamSettings->filePath;
+                    continue;
+                }
+
+                fileName = streamSettings->filePath;
+                streamContext = serializeSerialCaptureSettings( *streamSettings );
+            }
         }
 
-        LOG_DEBUG << "Create view for " << file.fileName;
-        try {
-            ViewInterface* view
-                = appSession_->openAlways( file.fileName, view_factory, file.viewContext );
-            if ( view == nullptr ) {
-                LOG_ERROR << "Failed to create view for " << file.fileName;
+        if ( !hasStreamContext ) {
+            const QFileInfo fileInfo{ fileName };
+            if ( !fileInfo.exists() || !fileInfo.isFile() ) {
+                LOG_WARNING << "Skipping missing session file " << fileName;
                 continue;
             }
-            result.emplace_back( file.fileName, view );
-            openedFiles_.emplace_back( file.fileName );
+        }
+
+        LOG_DEBUG << "Create view for " << fileName;
+        try {
+            ViewInterface* view
+                = appSession_->openAlways( fileName, view_factory, file.viewContext );
+            if ( view == nullptr ) {
+                LOG_ERROR << "Failed to create view for " << fileName;
+                continue;
+            }
+            result.emplace_back( OpenedFileData{ fileName, view, streamContext } );
+            openedFiles_.emplace_back( fileName );
         } catch ( const std::exception& e ) {
-            LOG_ERROR << "Failed to restore file " << file.fileName << ": " << e.what();
+            LOG_ERROR << "Failed to restore file " << fileName << ": " << e.what();
         } catch ( ... ) {
-            LOG_ERROR << "Failed to restore file " << file.fileName << ": unknown exception";
+            LOG_ERROR << "Failed to restore file " << fileName << ": unknown exception";
         }
     }
 
