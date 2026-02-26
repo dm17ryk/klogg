@@ -2617,11 +2617,11 @@ void MainWindow::readSettings()
     StartupProgress::advance( tr( "Loading highlighters" ),
                               tr( "Restoring and compiling highlighter sets" ) );
     auto& highlighterCollection = HighlighterSetCollection::getSynced();
-    const auto highlighterSets = highlighterCollection.highlighterSets();
-    for ( const auto& highlighterSet : highlighterSets ) {
+    auto& highlighterSets = highlighterCollection.highlighterSets();
+    for ( auto& highlighterSet : highlighterSets ) {
         StartupProgress::advance( tr( "Loading highlighter set" ), highlighterSet.name() );
-        const auto highlighters = highlighterSet.highlighters();
-        for ( const auto& highlighter : highlighters ) {
+        auto& highlighters = highlighterSet.highlighters();
+        for ( auto& highlighter : highlighters ) {
             const auto highlighterName = highlighter.pattern().isEmpty()
                                              ? tr( "<empty pattern>" )
                                              : highlighter.pattern();
@@ -2633,7 +2633,7 @@ void MainWindow::readSettings()
     }
     StartupProgress::advance( tr( "Compiling active highlighters" ) );
     const auto& activeSet = highlighterCollection.currentActiveSet();
-    const auto activeHighlighters = activeSet.highlighters();
+    const auto& activeHighlighters = activeSet.highlighters();
     for ( const auto& highlighter : activeHighlighters ) {
         const auto highlighterName
             = highlighter.pattern().isEmpty() ? tr( "<empty pattern>" ) : highlighter.pattern();
@@ -2650,11 +2650,14 @@ void MainWindow::readSettings()
     for ( const auto& filter : predefinedFilters ) {
         const auto filterName
             = filter.name.isEmpty() ? filter.pattern.left( 64 ) : filter.name;
-        StartupProgress::advance( tr( "Compiling predefined filter" ), filterName );
+        StartupProgress::advance( tr( "Loading predefined filter" ), filterName );
         if ( filter.useRegex ) {
             QRegularExpression expression( filter.pattern,
                                            QRegularExpression::UseUnicodePropertiesOption );
-            expression.optimize();
+            if ( !expression.isValid() ) {
+                LOG_WARNING << "Invalid predefined filter regex " << filterName << ": "
+                            << expression.errorString();
+            }
         }
     }
 }

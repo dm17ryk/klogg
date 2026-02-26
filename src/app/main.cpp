@@ -45,9 +45,11 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFont>
+#include <QMetaObject>
 #include <QPainter>
 #include <QPixmap>
 #include <QSplashScreen>
+#include <QThread>
 #include <algorithm>
 
 #ifdef Q_OS_WIN
@@ -155,7 +157,7 @@ class StartupSplashScreen final : public QSplashScreen {
         painter->setPen( Qt::white );
         painter->drawText( panelRect.adjusted( 12, 8, -12, -44 ),
                            Qt::AlignLeft | Qt::AlignVCenter,
-                           state_.status.isEmpty() ? tr( "Loading..." ) : state_.status );
+                           state_.status.isEmpty() ? QObject::tr( "Loading..." ) : state_.status );
 
         QFont detailFont = painter->font();
         detailFont.setPixelSize( 12 );
@@ -252,8 +254,16 @@ int main( int argc, char* argv[] )
     }
     StartupSplashScreen splash( splashPixmap );
     splash.show();
-    StartupProgress::setCallback(
-        [ &splash ]( const StartupProgressState& state ) { splash.updateFromState( state ); } );
+    StartupProgress::setCallback( [ &splash ]( const StartupProgressState& state ) {
+        if ( QThread::currentThread() == splash.thread() ) {
+            splash.updateFromState( state );
+            return;
+        }
+
+        QMetaObject::invokeMethod(
+            &splash, [ &splash, state ]() { splash.updateFromState( state ); },
+            Qt::QueuedConnection );
+    } );
     StartupProgress::setRange( 0, 100 );
     StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
                                QObject::tr( "Preparing application state" ) );

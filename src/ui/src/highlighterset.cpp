@@ -250,7 +250,12 @@ QString HighlighterSet::id() const
     return id_;
 }
 
-QList<Highlighter> HighlighterSet::highlighters() const
+const QList<Highlighter>& HighlighterSet::highlighters() const
+{
+    return highlighterList_;
+}
+
+QList<Highlighter>& HighlighterSet::highlighters()
 {
     return highlighterList_;
 }
@@ -429,7 +434,12 @@ void HighlighterSet::retrieveFromStorage( QSettings& settings )
     }
 }
 
-QList<HighlighterSet> HighlighterSetCollection::highlighterSets() const
+const QList<HighlighterSet>& HighlighterSetCollection::highlighterSets() const
+{
+    return highlighters_;
+}
+
+QList<HighlighterSet>& HighlighterSetCollection::highlighterSets()
 {
     return highlighters_;
 }
