@@ -205,6 +205,14 @@ class MainWindow : public QMainWindow {
     void exitRequested();
 
   private:
+    struct ComCaptureStartOptions {
+        static ComCaptureStartOptions interactive() { return { true, true }; }
+        static ComCaptureStartOptions restore() { return { false, false }; }
+
+        bool allowActionsPrompt = true;
+        bool showErrors = true;
+    };
+
     void createActions();
     void loadIcons();
     void createMenus();
@@ -223,8 +231,8 @@ class MainWindow : public QMainWindow {
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
     void updateActionsSendState();
-    bool startComCaptureSession( SerialCaptureSettings& settings, bool allowActionsPrompt,
-                                 bool showErrors );
+    bool startComCaptureSession( SerialCaptureSettings& settings,
+                                 ComCaptureStartOptions options = ComCaptureStartOptions{} );
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
     StreamSession* currentStreamSession() const;

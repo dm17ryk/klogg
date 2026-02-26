@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "configuration.h"
 #include "log.h"
 
 namespace {
@@ -28,6 +29,7 @@ QByteArray timestampPrefix( const SerialCaptureSettings& settings, QStringView d
     prefix.append( QStringLiteral( " - " ) );
     return prefix.toUtf8();
 }
+
 } // namespace
 
 QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings )
@@ -62,6 +64,18 @@ std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QSt
 
     const auto object = document.object();
     SerialCaptureSettings settings;
+    const auto& config = Configuration::get();
+
+    settings.baudRate = static_cast<qint32>( config.defaultComBaudRate() );
+    settings.dataBits = config.defaultComDataBits();
+    settings.parity = config.defaultComParity();
+    settings.stopBits = config.defaultComStopBits();
+    settings.flowControl = config.defaultComFlowControl();
+    settings.filePath = config.defaultComLogPath();
+    settings.addTimestamps = config.defaultComTimestampEnabled();
+    settings.timestampFormat = config.defaultComTimestampFormat();
+    settings.logTransmits = config.defaultComLogTransmits();
+    settings.useForActions = false;
 
     settings.portName = object.value( QStringLiteral( "portName" ) ).toString();
     if ( settings.portName.trimmed().isEmpty() ) {
@@ -75,14 +89,14 @@ std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QSt
         object.value( QStringLiteral( "parity" ) ).toInt( static_cast<int>( settings.parity ) ) );
     settings.stopBits = static_cast<QSerialPort::StopBits>(
         object.value( QStringLiteral( "stopBits" ) ).toInt( static_cast<int>( settings.stopBits ) ) );
-    settings.flowControl = static_cast<QSerialPort::FlowControl>( object.value( QStringLiteral( "flowControl" ) )
-                                                                      .toInt( static_cast<int>( settings.flowControl ) ) );
-    settings.filePath = object.value( QStringLiteral( "filePath" ) ).toString();
-    settings.addTimestamps = object.value( QStringLiteral( "addTimestamps" ) ).toBool( false );
+    settings.flowControl = static_cast<QSerialPort::FlowControl>(
+        object.value( QStringLiteral( "flowControl" ) ).toInt( static_cast<int>( settings.flowControl ) ) );
+    settings.filePath = object.value( QStringLiteral( "filePath" ) ).toString( settings.filePath );
+    settings.addTimestamps = object.value( QStringLiteral( "addTimestamps" ) ).toBool( settings.addTimestamps );
     settings.timestampFormat
         = object.value( QStringLiteral( "timestampFormat" ) ).toString( settings.timestampFormat );
-    settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( false );
-    settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( false );
+    settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
+    settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
 
     return settings;
 }

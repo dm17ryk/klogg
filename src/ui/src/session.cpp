@@ -22,7 +22,6 @@
 #include <exception>
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 
 #include "log.h"
@@ -80,15 +79,6 @@ QString resolveComCapturePath( const SerialCaptureSettings& settings )
     return dir.filePath( fileName );
 }
 
-bool ensureCaptureFileExists( const QString& path )
-{
-    QFile file( path );
-    if ( !file.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
-        return false;
-    }
-    file.close();
-    return true;
-}
 } // namespace
 
 Session::Session()
@@ -280,7 +270,7 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
             }
             else {
                 streamSettings->filePath = resolveComCapturePath( *streamSettings );
-                if ( !ensureCaptureFileExists( streamSettings->filePath ) ) {
+                if ( !ensureComCaptureFileWritable( streamSettings->filePath ) ) {
                     LOG_WARNING << "Skipping stream session due to file creation failure for "
                                 << streamSettings->filePath;
                     continue;

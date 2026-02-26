@@ -1,6 +1,7 @@
 #include "comportutils.h"
 
 #include <QDir>
+#include <QFile>
 #include <QStandardPaths>
 
 QString defaultComLogDirectory()
@@ -17,6 +18,19 @@ QString defaultComLogDirectory()
     }
 
     return initialDir;
+}
+
+bool ensureComCaptureFileWritable( const QString& path, QString* errorMessage )
+{
+    QFile file( path );
+    if ( !file.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = file.errorString();
+        }
+        return false;
+    }
+    file.close();
+    return true;
 }
 
 void populateSerialControls( QComboBox* baudCombo,

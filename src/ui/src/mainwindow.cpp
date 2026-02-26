@@ -91,6 +91,7 @@
 #include "dispatch_to.h"
 #include "downloader.h"
 #include "actionsmanager.h"
+#include "comportutils.h"
 #include "encodings.h"
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
@@ -291,7 +292,8 @@ void MainWindow::reloadSession()
                 auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
                 if ( streamSettings ) {
                     streamSettings->filePath = file_name;
-                    if ( !startComCaptureSession( *streamSettings, false, false ) ) {
+                    if ( !startComCaptureSession( *streamSettings,
+                                                  ComCaptureStartOptions::restore() ) ) {
                         LOG_WARNING << "Failed to restore COM stream for "
                                     << file_name.toStdString();
                     }
@@ -1070,7 +1072,7 @@ void MainWindow::openComPort()
         return;
     }
 
-    if ( !startComCaptureSession( settings, true, true ) ) {
+    if ( !startComCaptureSession( settings, ComCaptureStartOptions::interactive() ) ) {
         return;
     }
 
@@ -1086,8 +1088,8 @@ void MainWindow::openComPort()
     updateActionsSendState();
 }
 
-bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool allowActionsPrompt,
-                                         bool showErrors )
+bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
+                                         MainWindow::ComCaptureStartOptions options )
 {
     if ( settings.portName.isEmpty() || settings.filePath.isEmpty() ) {
         return false;
@@ -1096,7 +1098,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool a
     const QFileInfo info( settings.filePath );
     const auto absolutePath = info.absoluteFilePath();
     if ( absolutePath.isEmpty() ) {
-        if ( showErrors ) {
+        if ( options.showErrors ) {
             QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
         }
         return false;
@@ -1104,7 +1106,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool a
 
     const QDir dir( info.absolutePath() );
     if ( !dir.exists() ) {
-        if ( showErrors ) {
+        if ( options.showErrors ) {
             QMessageBox::warning( this, tr( "Open COM Port" ),
                                   tr( "Capture directory does not exist." ) );
         }
@@ -1113,22 +1115,21 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool a
 
     settings.filePath = absolutePath;
 
-    QFile ensureFile( settings.filePath );
-    if ( !ensureFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
-        if ( showErrors ) {
+    QString captureFileError;
+    if ( !ensureComCaptureFileWritable( settings.filePath, &captureFileError ) ) {
+        if ( options.showErrors ) {
             QMessageBox::warning(
                 this, tr( "Open COM Port" ),
-                tr( "Failed to open capture file: %1" ).arg( ensureFile.errorString() ) );
+                tr( "Failed to open capture file: %1" ).arg( captureFileError ) );
         }
         return false;
     }
-    ensureFile.close();
 
     const auto filePath = settings.filePath;
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() ) {
             existingSession->closeConnection();
-            if ( showErrors ) {
+            if ( options.showErrors ) {
                 QMessageBox::information(
                     this, tr( "Open COM Port" ),
                     tr( "The existing capture is still closing. Please try again in a moment." ) );
@@ -1152,8 +1153,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool a
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
-             [ this, filePath, safeSession, showErrors ]( const QString& message ) {
-                 if ( showErrors ) {
+             [ this, filePath, safeSession, options ]( const QString& message ) {
+                 if ( options.showErrors ) {
                      QMessageBox::warning(
                          this, tr( "COM port capture error" ),
                          tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
@@ -1172,7 +1173,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings, bool a
     bool designateForActions = settings.useForActions;
     if ( designateForActions && actionsStreamSession_ && actionsStreamSession_ != session.get()
          && actionsStreamSession_->isConnectionOpen() ) {
-        if ( allowActionsPrompt ) {
+        if ( options.allowActionsPrompt ) {
             const auto reply = QMessageBox::question(
                 this, tr( "Actions COM Port" ),
                 tr( "Are you sure you want to make %1 the actions COM port?" )
