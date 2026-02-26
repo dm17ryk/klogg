@@ -75,7 +75,9 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
                         }
                         uint64_t top_line = settings.value( "topLine" ).toULongLong();
                         QString view_context = settings.value( "viewContext" ).toString();
-                        window.openFiles.emplace_back( file_name, top_line, view_context );
+                        QString stream_context = settings.value( "streamContext" ).toString();
+                        window.openFiles.emplace_back( file_name, top_line, view_context,
+                                                       stream_context );
                     }
                     settings.endArray();
                 }
@@ -123,6 +125,7 @@ void SessionInfo::saveToStorage( QSettings& settings ) const
             settings.setValue( "fileName", open_file->fileName );
             settings.setValue( "topLine", qint64( open_file->topLine ) );
             settings.setValue( "viewContext", open_file->viewContext );
+            settings.setValue( "streamContext", open_file->streamContext );
         }
         settings.endArray();
         settings.endGroup(); // OpenFiles

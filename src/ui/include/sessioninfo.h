@@ -57,10 +57,12 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
     }
 
     struct OpenFile {
-        OpenFile( const QString& file, uint64_t top, const QString& context )
+        OpenFile( const QString& file, uint64_t top, const QString& context,
+                  const QString& streamContext = {} )
             : fileName{ file }
             , topLine{ top }
             , viewContext{ context }
+            , streamContext{ streamContext }
         {
         }
 
@@ -70,6 +72,9 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
         // The view context contains parameter specific to the view's
         // implementation (such as geometry...)
         QString viewContext;
+
+        // Optional stream context for special sources (e.g. COM sessions).
+        QString streamContext;
     };
 
     struct Window {

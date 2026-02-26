@@ -3,7 +3,10 @@
 #include <QIODevice>
 #include <QStringView>
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 
+#include "configuration.h"
 #include "log.h"
 
 namespace {
@@ -26,7 +29,77 @@ QByteArray timestampPrefix( const SerialCaptureSettings& settings, QStringView d
     prefix.append( QStringLiteral( " - " ) );
     return prefix.toUtf8();
 }
+
 } // namespace
+
+QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings )
+{
+    QJsonObject object;
+    object.insert( QStringLiteral( "portName" ), settings.portName );
+    object.insert( QStringLiteral( "baudRate" ), settings.baudRate );
+    object.insert( QStringLiteral( "dataBits" ), static_cast<int>( settings.dataBits ) );
+    object.insert( QStringLiteral( "parity" ), static_cast<int>( settings.parity ) );
+    object.insert( QStringLiteral( "stopBits" ), static_cast<int>( settings.stopBits ) );
+    object.insert( QStringLiteral( "flowControl" ), static_cast<int>( settings.flowControl ) );
+    object.insert( QStringLiteral( "filePath" ), settings.filePath );
+    object.insert( QStringLiteral( "addTimestamps" ), settings.addTimestamps );
+    object.insert( QStringLiteral( "timestampFormat" ), settings.timestampFormat );
+    object.insert( QStringLiteral( "logTransmits" ), settings.logTransmits );
+    object.insert( QStringLiteral( "useForActions" ), settings.useForActions );
+
+    return QString::fromUtf8( QJsonDocument( object ).toJson( QJsonDocument::Compact ) );
+}
+
+std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QString& serialized )
+{
+    if ( serialized.trimmed().isEmpty() ) {
+        return std::nullopt;
+    }
+
+    QJsonParseError parseError{};
+    const auto document = QJsonDocument::fromJson( serialized.toUtf8(), &parseError );
+    if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+        return std::nullopt;
+    }
+
+    const auto object = document.object();
+    SerialCaptureSettings settings;
+    const auto& config = Configuration::get();
+
+    settings.baudRate = static_cast<qint32>( config.defaultComBaudRate() );
+    settings.dataBits = config.defaultComDataBits();
+    settings.parity = config.defaultComParity();
+    settings.stopBits = config.defaultComStopBits();
+    settings.flowControl = config.defaultComFlowControl();
+    settings.filePath = config.defaultComLogPath();
+    settings.addTimestamps = config.defaultComTimestampEnabled();
+    settings.timestampFormat = config.defaultComTimestampFormat();
+    settings.logTransmits = config.defaultComLogTransmits();
+    settings.useForActions = false;
+
+    settings.portName = object.value( QStringLiteral( "portName" ) ).toString();
+    if ( settings.portName.trimmed().isEmpty() ) {
+        return std::nullopt;
+    }
+
+    settings.baudRate = object.value( QStringLiteral( "baudRate" ) ).toInt( settings.baudRate );
+    settings.dataBits = static_cast<QSerialPort::DataBits>(
+        object.value( QStringLiteral( "dataBits" ) ).toInt( static_cast<int>( settings.dataBits ) ) );
+    settings.parity = static_cast<QSerialPort::Parity>(
+        object.value( QStringLiteral( "parity" ) ).toInt( static_cast<int>( settings.parity ) ) );
+    settings.stopBits = static_cast<QSerialPort::StopBits>(
+        object.value( QStringLiteral( "stopBits" ) ).toInt( static_cast<int>( settings.stopBits ) ) );
+    settings.flowControl = static_cast<QSerialPort::FlowControl>(
+        object.value( QStringLiteral( "flowControl" ) ).toInt( static_cast<int>( settings.flowControl ) ) );
+    settings.filePath = object.value( QStringLiteral( "filePath" ) ).toString( settings.filePath );
+    settings.addTimestamps = object.value( QStringLiteral( "addTimestamps" ) ).toBool( settings.addTimestamps );
+    settings.timestampFormat
+        = object.value( QStringLiteral( "timestampFormat" ) ).toString( settings.timestampFormat );
+    settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
+    settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
+
+    return settings;
+}
 
 SerialCaptureWorker::SerialCaptureWorker( SerialCaptureSettings settings, QObject* parent )
     : QObject( parent )

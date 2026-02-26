@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QObject>
 #include <QSerialPort>
+#include <optional>
 
 struct SerialCaptureSettings {
     QString portName;
@@ -18,6 +19,9 @@ struct SerialCaptureSettings {
     bool logTransmits = false;
     bool useForActions = false;
 };
+
+QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings );
+std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QString& serialized );
 
 class SerialCaptureWorker : public QObject {
     Q_OBJECT
