@@ -33,6 +33,7 @@
 
 #include "logdata.h"
 #include "logfiltereddata.h"
+#include "infoline.h"
 
 #include "crawlerwidget.h"
 
@@ -108,7 +109,25 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
     void setSearchPattern( const QString& pattern )
     {
+        clearSearchPattern();
         QTest::keyClicks( crawler->searchLineEdit_, pattern );
+    }
+
+    void clearSearchPattern()
+    {
+        crawler->searchLineEdit_->setFocus();
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_A, Qt::ControlModifier );
+        QTest::keyClick( crawler->searchLineEdit_, Qt::Key_Delete );
+        waitUiState( [ this ]() { return crawler->searchLineEdit_->currentText().isEmpty(); } );
+    }
+
+    void setAutoRefresh( bool enabled )
+    {
+        if ( crawler->searchRefreshButton_->isChecked() != enabled ) {
+            QTest::mouseClick( crawler->searchRefreshButton_, Qt::LeftButton );
+            waitUiState(
+                [ this, enabled ]() { return crawler->searchRefreshButton_->isChecked() == enabled; } );
+        }
     }
 
     void enableCaseSensitiveSearch()
@@ -150,6 +169,16 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         QTest::qWait( 100 );
 
         waitUiState( [ & ]() { return crawler->stopButton_->isHidden(); } );
+    }
+
+    QString currentSearchText() const
+    {
+        return crawler->searchLineEdit_->currentText();
+    }
+
+    QString searchInfoText() const
+    {
+        return crawler->searchInfoLine_->text();
     }
 
     void render()
@@ -272,6 +301,128 @@ SCENARIO( "Crawler widget search", "[ui]" )
             {
                 REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() >= 2 );
             }
+        }
+        WHEN( "auto-refresh is enabled with a pattern" )
+        {
+            crawlerVisitor.setSearchPattern( "this is line" );
+            crawlerVisitor.setAutoRefresh( true );
+
+            THEN( "search starts without pressing manual search" )
+            {
+                REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                    return crawlerVisitor.getLogFilteredNbLines().get() == SL_NB_LINES;
+                } ) );
+            }
+
+            AND_WHEN( "manual search is pressed after pattern change" )
+            {
+                crawlerVisitor.setAutoRefresh( false );
+                crawlerVisitor.clearSearchPattern();
+                crawlerVisitor.setSearchPattern( "line 000010" );
+                crawlerVisitor.runSearch();
+
+                THEN( "manual search recompiles and applies the new pattern" )
+                {
+                    REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 1 );
+                }
+            }
+
+            AND_WHEN( "auto-refresh is toggled off then on after pattern change" )
+            {
+                crawlerVisitor.setAutoRefresh( false );
+                crawlerVisitor.clearSearchPattern();
+                crawlerVisitor.setSearchPattern( "definitely_not_present_pattern" );
+                crawlerVisitor.setAutoRefresh( true );
+
+                THEN( "re-enable auto-refresh recompiles and applies the new pattern" )
+                {
+                    REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                        return crawlerVisitor.getLogFilteredNbLines().get() == 0;
+                    } ) );
+                }
+            }
+        }
+    }
+}
+
+
+
+SCENARIO( "Crawler restore with invalid saved expressions", "[ui][startup]" )
+{
+    QTemporaryFile file{ "crawler_restore_test_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    auto& savedSearches = session.savedSearches();
+
+    struct SavedSearchesRestoreGuard {
+        SavedSearches& searches;
+        QStringList history;
+        int historySize;
+
+        ~SavedSearchesRestoreGuard()
+        {
+            searches.clear();
+            searches.setHistorySize( historySize );
+            for ( auto it = history.crbegin(); it != history.crend(); ++it ) {
+                searches.addRecent( *it );
+            }
+        }
+    };
+
+    SavedSearchesRestoreGuard restoreGuard{ savedSearches, savedSearches.recentSearches(),
+                                            savedSearches.historySize() };
+
+    savedSearches.clear();
+    savedSearches.addRecent( "((VOICE COMMAND)|(VOICE CMD)|(VPD Voice Commands)" );
+
+    CrawlerWidgetVisitor crawlerVisitor;
+    crawlerVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } ) );
+
+    THEN( "search field is not auto-populated from history" )
+    {
+        REQUIRE( crawlerVisitor.currentSearchText().isEmpty() );
+    }
+
+    WHEN( "auto-refresh is restored with an invalid regex search pattern" )
+    {
+        crawlerVisitor.crawler->setViewContext(
+            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":false,\"SP\":\"((VOICE COMMAND)|(VOICE CMD)|(VPD Voice Commands)\"}" );
+
+        THEN( "startup remains alive and reports expression error" )
+        {
+            REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                return crawlerVisitor.searchInfoText().contains( "Error in expression" );
+            } ) );
+            REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 0 );
+        }
+    }
+
+    WHEN( "auto-refresh is restored with invalid boolean expression" )
+    {
+        crawlerVisitor.crawler->setViewContext(
+            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":true,\"SP\":\"\\\"a\\\" and (\"}" );
+
+        THEN( "startup remains alive and reports expression error" )
+        {
+            REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                return crawlerVisitor.searchInfoText().contains( "Error in expression" );
+            } ) );
+            REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 0 );
+        }
+    }
+
+    WHEN( "malformed view context is restored" )
+    {
+        crawlerVisitor.crawler->setViewContext( "not_a_json_context" );
+
+        THEN( "restore does not crash and keeps search empty" )
+        {
+            REQUIRE( crawlerVisitor.currentSearchText().isEmpty() );
+            REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 0 );
         }
     }
 }

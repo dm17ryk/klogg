@@ -160,6 +160,7 @@ target_link_libraries(
          klogg_versioncheck
          klogg_karchive
          Qt${QT_VERSION_MAJOR}::Widgets
+         Qt${QT_VERSION_MAJOR}::Concurrent
          Qt${QT_VERSION_MAJOR}::SerialPort
          Qt${QT_VERSION_MAJOR}::Xml
 )

@@ -43,6 +43,11 @@ int matchSingleCallback( unsigned int id, unsigned long long from, unsigned long
 
     auto* matchContext = static_cast<HsMatcherContext*>( context );
 
+    if ( matchContext->matchingPatterns.empty() ) {
+        LOG_ERROR << "Single match callback has empty pattern vector";
+        return 1;
+    }
+
     matchContext->matchingPatterns[ 0 ] = true;
     return 1;
 }
@@ -55,6 +60,12 @@ int matchMultiCallback( unsigned int id, unsigned long long from, unsigned long 
     Q_UNUSED( flags );
 
     auto* matchContext = static_cast<HsMatcherContext*>( context );
+
+    if ( id >= matchContext->matchingPatterns.size() ) {
+        LOG_ERROR << "Match callback id out of range" << id << "/"
+                  << matchContext->matchingPatterns.size();
+        return 1;
+    }
 
     matchContext->matchingPatterns[ id ] = true;
 
@@ -128,7 +139,9 @@ MatchedPatterns HsPrefilterMatcher::match( const std::string_view& utf8Data ) co
 {
     MatchedPatterns matchingPatterns = hsMatcher_.match( utf8Data );
 
-    for ( size_t i = 0u; i < matchingPatterns.size(); ++i ) {
+    const auto verifyCount = std::min( matchingPatterns.size(), patterns_.size() );
+
+    for ( size_t i = 0u; i < verifyCount; ++i ) {
         if ( matchingPatterns[ i ] ) {
             matchingPatterns[ i ]
                 = static_cast<QRegularExpression>( patterns_[ i ] )

@@ -20,7 +20,11 @@
 #ifndef MESSAGERECEIVER_H
 #define MESSAGERECEIVER_H
 
+#include <QtCore/QDir>
 #include <QtCore/QCborValue>
+#include <QtCore/QFile>
+#include <QtCore/QFileDevice>
+#include <QtCore/QFileInfo>
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QObject>
@@ -45,6 +49,7 @@ class MessageReceiver final : public QObject {
 
   Q_SIGNALS:
     void loadFile( const QString& filename );
+    void activateWindow();
 
   public Q_SLOTS:
     void receiveMessage( const QByteArray& message )
@@ -57,12 +62,92 @@ class MessageReceiver final : public QObject {
             return;
         }
 
-        QStringList filenames = data[ "files" ].toStringList();
+        const auto ackPath = data.value( "ackPath" ).toString();
+
+        if ( !data.contains( "files" ) ) {
+            LOG_WARNING << "Invalid message payload: missing files field";
+            return;
+        }
+
+        const auto filesValue = data.value( "files" );
+        if ( !filesValue.canConvert<QStringList>() ) {
+            LOG_WARNING << "Invalid message payload: files must be a string list";
+            return;
+        }
+
+        const QStringList filenames = filesValue.toStringList();
+
+        bool didSomething = false;
+
+        if ( data.value( "activate" ).toBool() || filenames.isEmpty() ) {
+            Q_EMIT activateWindow();
+            didSomething = true;
+        }
 
         for ( const auto& f : filenames ) {
+            if ( f.isEmpty() ) {
+                continue;
+            }
+
             Q_EMIT loadFile( f );
+            didSomething = true;
         }
+
+        if ( didSomething && !ackPath.isEmpty() ) {
+            if ( !isValidAckPath( ackPath ) ) {
+                LOG_WARNING << "Ignoring invalid ack path " << ackPath;
+                return;
+            }
+
+            QFile ackFile( ackPath );
+            if ( ackFile.open( QIODevice::WriteOnly | QIODevice::NewOnly,
+                               QFileDevice::ReadOwner | QFileDevice::WriteOwner ) ) {
+                ackFile.write( "ok" );
+                ackFile.close();
+            }
+            else {
+                LOG_WARNING << "Failed to create ack file " << ackPath << ackFile.errorString();
+            }
+        }
+    }
+
+  private:
+    static bool isPathEqual( const QString& left, const QString& right )
+    {
+#ifdef Q_OS_WIN
+        return left.compare( right, Qt::CaseInsensitive ) == 0;
+#else
+        return left == right;
+#endif
+    }
+
+    static bool isValidAckPath( const QString& ackPath )
+    {
+        const QFileInfo ackInfo{ ackPath };
+        if ( !ackInfo.isAbsolute() ) {
+            return false;
+        }
+
+        const auto expectedDir = QDir::cleanPath( QDir::tempPath() );
+        const auto actualDir = QDir::cleanPath( ackInfo.absolutePath() );
+        if ( !isPathEqual( actualDir, expectedDir ) ) {
+            return false;
+        }
+
+        const auto fileName = ackInfo.fileName();
+        if ( !fileName.startsWith( "klogg_activate_ack_" ) || !fileName.endsWith( ".tmp" ) ) {
+            return false;
+        }
+
+        // Ack file must be newly created by the receiver.
+        if ( ackInfo.exists() ) {
+            return false;
+        }
+
+        return true;
     }
 };
 
 #endif // MESSAGERECEIVER_H
+
+

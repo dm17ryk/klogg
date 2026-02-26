@@ -60,3 +60,7 @@ cmake-build-relwithdebinfo/
 #website
 website/hugo
 website/resources/
+
+# Local debug/backups
+config/klogg_session_bak.conf
+tmp_abc.txt

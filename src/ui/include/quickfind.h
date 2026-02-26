@@ -236,3 +236,4 @@ class QuickFind : public QObject {
 };
 
 #endif
+

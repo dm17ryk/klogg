@@ -17,6 +17,8 @@ set KLOGG_QT=Qt6
 set KLOGG_QT_DIR=%QTDIR%
 set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
 set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
+set PATH=%USERPROFILE%\.pyenv\pyenv-win\shims;%PATH%
+set PATH=%ProgramFiles(x86)%\Windows Kits\10\Debuggers\x64;%PATH%
 ```
 
 ## Project Structure & Module Organization
@@ -45,7 +47,9 @@ cd build_root
 From build_root:
 
 ```bash
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
 cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Debug ..
 ```
 
 ## Build
@@ -53,7 +57,19 @@ cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 From build_root:
 
 ```bash
+cmake --build . --config Release
 cmake --build . --config RelWithDebInfo
+cmake --build . --config Debug
+```
+
+## Deploy QT libs
+
+From build_root:
+
+```bash
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
 ```
 
 ## Test
@@ -61,10 +77,24 @@ cmake --build . --config RelWithDebInfo
 Tests are enabled by default; to disable: `-DBUILD_TESTS:BOOL=OFF`.
 Run tests from the build directory:
 
+Before you can run klogg.exe, need to deploy Qt dlls to same directory.
+
+```bash
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_itests.exe"
+
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_tests.exe"
+```
+
 From build_root:
 
 ```bash
+ctest --build-config Release --verbose
 ctest --build-config RelWithDebInfo --verbose
+ctest --build-config Debug --verbose
 ```
 
 ## Run
@@ -72,7 +102,9 @@ ctest --build-config RelWithDebInfo --verbose
 Before you can run klogg.exe, need to deploy Qt dlls to same directory.
 
 ```bash
-%QTDIR%\bin\windeployqt.exe output\RelWithDebInfo\klogg.exe
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
 ```
 
 ## Coding Style & Naming Conventions
@@ -107,3 +139,9 @@ to `security@filimonov.dev`.
 - Never run CMake in the repo root; always in build_root.
 - Prefer minimal diffs. Keep changes localized.
 - If you need to run commands, show them first; don't guess paths.
+
+## Debugging & Troubleshooting
+
+```bash
+C:\Strawberry\c\bin\gdb.exe "output\Debug\klogg.exe"
+```

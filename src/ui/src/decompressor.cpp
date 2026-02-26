@@ -240,14 +240,16 @@ Decompressor::Decompressor( QObject* parent )
     : QObject( parent )
 {
     connect( &watcher_, &QFutureWatcher<bool>::finished, [ this ]() {
-        LOG_INFO << "Decompressor finished " << watcher_.result();
-        Q_EMIT finished( watcher_.result() );
+        const auto result = future_.isValid() ? watcher_.result() : false;
+        LOG_INFO << "Decompressor finished " << result;
+        Q_EMIT finished( result );
     } );
 }
 
 bool Decompressor::waitForResult()
 {
-    return watcher_.result();
+    watcher_.waitForFinished();
+    return future_.isValid() ? watcher_.result() : false;
 }
 
 DecompressAction Decompressor::action( const QString& archiveFilePath )
@@ -278,7 +280,7 @@ bool Decompressor::decompress( const QString& archiveFilePath, QFile* outputFile
     }
 
     future_ = QtConcurrent::run(
-        [ input = std::move( decompressor ), archiveFilePath, outputFile, &interrupt ] {
+        [ input = std::move( decompressor ), archiveFilePath, outputFile, &interrupt ]() {
             return doDecompress( input, archiveFilePath, outputFile, interrupt );
         } );
     watcher_.setFuture( future_ );
@@ -298,10 +300,11 @@ bool Decompressor::extract( const QString& archiveFilePath, const QString& desti
     // Open the archive
 
     future_ = QtConcurrent::run(
-        [ ar = std::move( archive ), archiveFilePath, destination, &interrupt ] {
+        [ ar = std::move( archive ), archiveFilePath, destination, &interrupt ]() {
             return doExtract( ar, archiveFilePath, destination, interrupt );
         } );
     watcher_.setFuture( future_ );
 
     return true;
 }
+

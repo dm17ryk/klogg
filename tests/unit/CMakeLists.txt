@@ -4,6 +4,7 @@ add_executable(klogg_tests
     patternmatcher_test.cpp
     previewdecodeutils_test.cpp
     previewmatchstage_test.cpp
+    sessioninfo_test.cpp
     tests_main.cpp
 )
 

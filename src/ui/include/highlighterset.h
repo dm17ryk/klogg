@@ -145,6 +145,7 @@ class HighlighterSet {
     void retrieveFromStorage( QSettings& settings );
 
     void compile() const;
+    void invalidateCompiled() const;
 
   private:
     explicit HighlighterSet( const QString& name );

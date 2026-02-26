@@ -71,6 +71,24 @@ if(KLOGG_USE_HYPERSCAN)
     EXCLUDE_FROM_ALL
     YES
   )
+  if(MSVC)
+    foreach(_hs_target hs hs_compile hs_exec)
+      if(TARGET ${_hs_target})
+        foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
+          string(TOUPPER ${_cfg} _cfg_upper)
+          set_target_properties(
+            ${_hs_target}
+            PROPERTIES
+              ARCHIVE_OUTPUT_DIRECTORY_${_cfg_upper}
+              "${hyperscan_BINARY_DIR}/lib/${_cfg}"
+              LIBRARY_OUTPUT_DIRECTORY_${_cfg_upper}
+              "${hyperscan_BINARY_DIR}/bin/${_cfg}"
+              RUNTIME_OUTPUT_DIRECTORY_${_cfg_upper}
+              "${hyperscan_BINARY_DIR}/bin/${_cfg}")
+        endforeach()
+      endif()
+    endforeach()
+  endif()
   message("Adding alias for hyperscan")
   add_library(klogg_hyperscan INTERFACE)
   target_link_libraries(klogg_hyperscan INTERFACE hs)

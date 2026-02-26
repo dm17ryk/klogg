@@ -166,39 +166,42 @@ int main( int argc, char* argv[] )
 
     if ( !parameters.multi_instance && app.isSecondary() ) {
         LOG_INFO << "Found another klogg, pid " << app.primaryPid();
-        app.sendFilesToPrimaryInstance( parameters.filenames );
+        if ( app.sendFilesToPrimaryInstance( parameters.filenames ) ) {
+            return EXIT_SUCCESS;
+        }
+        LOG_WARNING << "Failed to contact primary instance, starting a new window";
+    }
+
+    StyleManager::applyStyle( config.style() );
+
+    auto startNewSession = true;
+    MainWindow* mw = nullptr;
+    if ( parameters.load_session
+         || ( parameters.filenames.empty() && !parameters.new_session && config.loadLastSession() ) ) {
+        mw = app.reloadSession();
+        startNewSession = false;
     }
     else {
-        StyleManager::applyStyle( config.style() );
-
-        auto startNewSession = true;
-        MainWindow* mw = nullptr;
-        if ( parameters.load_session
-             || ( parameters.filenames.empty() && !parameters.new_session
-                  && config.loadLastSession() ) ) {
-            mw = app.reloadSession();
-            startNewSession = false;
-        }
-        else {
-            mw = app.newWindow();
-            mw->reloadGeometry();
-            mw->show();
-        }
-
-        if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
-            mw->resize( parameters.window_width, parameters.window_height );
-        }
-
-        for ( const auto& filename : parameters.filenames ) {
-            mw->loadInitialFile( filename, parameters.follow_file );
-        }
-
-        if ( startNewSession ) {
-            app.clearInactiveSessions();
-        }
-
-        app.startBackgroundTasks();
+        mw = app.newWindow();
+        mw->reloadGeometry();
+        mw->show();
     }
+
+    if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
+        mw->resize( parameters.window_width, parameters.window_height );
+    }
+
+    for ( const auto& filename : parameters.filenames ) {
+        mw->loadInitialFile( filename, parameters.follow_file );
+    }
+
+    app.ensureMainWindowVisible();
+
+    if ( startNewSession ) {
+        app.clearInactiveSessions();
+    }
+
+    app.startBackgroundTasks();
 
     return app.exec();
 }

@@ -48,3 +48,4 @@ class Decompressor : public QObject {
 };
 
 #endif // KLOGG_DECOMPRESSOR_H
+

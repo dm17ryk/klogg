@@ -9961,6 +9961,21 @@
                 "repeat": false,
                 "delay": 5
             }
+        },
+        {
+            "id": 664,
+            "enabled": true,
+            "hidden": false,
+            "name": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
+            "description": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
+            "sequence": {
+                "type": "hexString",
+                "value": "45 45 50 52 4F 4D 20 57 52 49 54 45 3A 46 46 30 42 2C 30 37 3B 0D 0A"
+            },
+            "parameters": {
+                "repeat": false,
+                "delay": 5
+            }
         }
     ],
     "responses": [

@@ -215,6 +215,18 @@ set(KLOGG_QT_VERSION ${Qt${QT_VERSION_MAJOR}Core_VERSION})
 
 message("Qt version ${KLOGG_QT_VERSION}")
 message("LTO ${KLOGG_USE_LTO}")
+if(WIN32)
+  # Support Debug app builds with single-config (release-only) Qt installations.
+  # In that setup Qt debug libraries are absent and Debug iterator checks can reference
+  # private symbols not exported by release Qt DLLs.
+  set(_klogg_qt_core_debug_implib "")
+  get_target_property(_klogg_qt_core_debug_implib Qt${QT_VERSION_MAJOR}::Core IMPORTED_IMPLIB_DEBUG)
+  if(NOT _klogg_qt_core_debug_implib)
+    message(WARNING "Qt debug libraries are not available; defining QT_NO_DEBUG for Debug builds.")
+    add_compile_definitions($<$<CONFIG:Debug>:QT_NO_DEBUG>)
+  endif()
+  unset(_klogg_qt_core_debug_implib)
+endif()
 
 if(APPLE)
   if(${KLOGG_OSX_DEPLOYMENT_TARGET})
@@ -346,3 +358,4 @@ add_custom_target(
 )
 
 add_custom_target(klogg_stuff SOURCES .clang-format .clang-tidy .cmake-format)
+
