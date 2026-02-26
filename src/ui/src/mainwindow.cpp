@@ -67,6 +67,7 @@
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QSerialPortInfo>
 #include <QMimeData>
 #include <QPointer>
 #include <QProgressDialog>
@@ -1127,6 +1128,25 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     settings.filePath = absolutePath;
 
+    const auto availablePorts = QSerialPortInfo::availablePorts();
+    const bool portExists = std::any_of( availablePorts.cbegin(), availablePorts.cend(),
+                                         [ &settings ]( const QSerialPortInfo& portInfo ) {
+                                             return portInfo.portName().compare( settings.portName,
+                                                                                 Qt::CaseInsensitive )
+                                                        == 0
+                                                    || portInfo.systemLocation().compare(
+                                                           settings.portName,
+                                                           Qt::CaseInsensitive )
+                                                           == 0;
+                                         } );
+    if ( !portExists ) {
+        if ( options.showErrors ) {
+            QMessageBox::warning( this, tr( "Open COM Port" ),
+                                  tr( "COM port %1 was not found. Capture will not be restored." )
+                                      .arg( settings.portName ) );
+        }
+        return false;
+    }
     QString captureFileError;
     if ( !ensureComCaptureFileWritable( settings.filePath, &captureFileError ) ) {
         if ( options.showErrors ) {
@@ -2631,15 +2651,8 @@ void MainWindow::readSettings()
         StartupProgress::advance( tr( "Compiling highlighter set" ), highlighterSet.name() );
         highlighterSet.compile();
     }
-    StartupProgress::advance( tr( "Compiling active highlighters" ) );
+    StartupProgress::advance( tr( "Compiling active highlighter set" ) );
     const auto& activeSet = highlighterCollection.currentActiveSet();
-    const auto& activeHighlighters = activeSet.highlighters();
-    for ( const auto& highlighter : activeHighlighters ) {
-        const auto highlighterName
-            = highlighter.pattern().isEmpty() ? tr( "<empty pattern>" ) : highlighter.pattern();
-        StartupProgress::advance( tr( "Compiling active highlighter" ), highlighterName );
-        highlighter.compile();
-    }
     activeSet.compile();
     updateHighlightersMenu();
 

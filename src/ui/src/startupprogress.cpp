@@ -103,8 +103,7 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
         auto& data = startupProgressData();
         const int increment = std::max( 1, step );
         const int nextValue = data.state.value + increment;
-        const bool closeToTop
-            = ( nextValue * 100 ) >= ( data.state.maximum * 85 );
+        const bool closeToTop = ( nextValue * 100 ) >= ( data.state.maximum * 85 );
         if ( nextValue >= data.state.maximum || closeToTop ) {
             const int currentRange = std::max( 1, data.state.maximum - data.state.minimum );
             const int headroom = std::max( increment * 6, std::max( 20, currentRange / 2 ) );
@@ -164,3 +163,4 @@ bool StartupProgress::isActive()
     std::lock_guard<std::mutex> lock( startupProgressMutex() );
     return static_cast<bool>( startupProgressData().callback );
 }
+

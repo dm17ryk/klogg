@@ -26,3 +26,4 @@ class StartupProgress {
     static void message( const QString& status, const QString& detail = {} );
     static bool isActive();
 };
+

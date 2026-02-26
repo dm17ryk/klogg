@@ -19,6 +19,8 @@ set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%P
 set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
 set PATH=%USERPROFILE%\.pyenv\pyenv-win\shims;%PATH%
 set PATH=%ProgramFiles(x86)%\Windows Kits\10\Debuggers\x64;%PATH%
+d:
+cd %KLOGG_WORKSPACE%
 ```
 
 ## Project Structure & Module Organization
@@ -143,5 +145,5 @@ to `security@filimonov.dev`.
 ## Debugging & Troubleshooting
 
 ```bash
-C:\Strawberry\c\bin\gdb.exe "output\Debug\klogg.exe"
+cdb "output\Debug\klogg.exe"
 ```

@@ -207,7 +207,7 @@ class MainWindow : public QMainWindow {
   private:
     struct ComCaptureStartOptions {
         static ComCaptureStartOptions interactive() { return { true, true }; }
-        static ComCaptureStartOptions restore() { return { false, false }; }
+        static ComCaptureStartOptions restore() { return { false, true }; }
 
         bool allowActionsPrompt = true;
         bool showErrors = true;

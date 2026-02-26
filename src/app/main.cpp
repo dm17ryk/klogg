@@ -48,6 +48,7 @@
 #include <QMetaObject>
 #include <QPainter>
 #include <QPixmap>
+#include <QScopedValueRollback>
 #include <QSplashScreen>
 #include <QThread>
 #include <algorithm>
@@ -138,7 +139,14 @@ class StartupSplashScreen final : public QSplashScreen {
         state_.maximum = std::max( state_.minimum + 1, state_.maximum );
         state_.value = std::clamp( state_.value, state_.minimum, state_.maximum );
         repaint();
-        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+
+        // Startup can run before the main event loop starts; pump a minimal
+        // event set so queued splash updates are rendered.
+        if ( !processingEvents_ ) {
+            QScopedValueRollback<bool> guard( processingEvents_, true );
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                             | QEventLoop::ExcludeSocketNotifiers );
+        }
     }
 
   protected:
@@ -184,6 +192,7 @@ class StartupSplashScreen final : public QSplashScreen {
 
   private:
     StartupProgressState state_;
+    bool processingEvents_ = false;
 };
 
 int main( int argc, char* argv[] )
