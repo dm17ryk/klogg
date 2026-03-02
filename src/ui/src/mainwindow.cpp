@@ -58,8 +58,11 @@
 
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -79,6 +82,7 @@
 #include <QStringListModel>
 #include <QTemporaryFile>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolTip>
 #include <QUrl>
@@ -146,6 +150,102 @@ void showComPortMessage( QWidget* parent, QMessageBox::Icon icon, const QString&
     box->setWindowModality( Qt::NonModal );
     box->open();
 }
+
+void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QString& fileName )
+{
+    if ( crawler_widget == nullptr ) {
+        return;
+    }
+
+    const auto shortName = QFileInfo( fileName ).fileName();
+    StartupProgress::advance( QObject::tr( "Preparing tab" ), shortName );
+
+    if ( !crawler_widget->isStartupPreparationPending() ) {
+        StartupProgress::advance( QObject::tr( "Tab ready" ), shortName );
+        return;
+    }
+
+    constexpr int StartupPrepareTimeoutMs = 120000;
+    constexpr int StartupPollIntervalMs = 50;
+
+    bool timedOut = false;
+    int lastReportedSecond = -1;
+    QEventLoop waitLoop;
+    QElapsedTimer elapsed;
+    QTimer pollTimer;
+    elapsed.start();
+    pollTimer.setInterval( StartupPollIntervalMs );
+    pollTimer.setSingleShot( false );
+
+    const auto tryFinish = [ &waitLoop, crawler_widget ]() {
+        if ( !crawler_widget->isStartupPreparationPending() ) {
+            waitLoop.quit();
+        }
+    };
+
+    const auto loadingFinishedConnection = QObject::connect(
+        crawler_widget, &CrawlerWidget::loadingFinished, &waitLoop, [ & ]( LoadingStatus status ) {
+            const auto detail = QObject::tr( "%1 (%2)" )
+                                    .arg( shortName,
+                                          status == LoadingStatus::Successful
+                                              ? QObject::tr( "loading completed" )
+                                              : QObject::tr( "loading failed" ) );
+            StartupProgress::advance( QObject::tr( "Preparing tab" ), detail );
+            tryFinish();
+        } );
+
+    const auto loadingProgressConnection = QObject::connect(
+        crawler_widget, &CrawlerWidget::loadingProgressed, &waitLoop, [ & ]( int progress ) {
+            StartupProgress::advance( QObject::tr( "Preparing tab" ),
+                                      QObject::tr( "%1 (%2%)" ).arg( shortName ).arg( progress ) );
+        } );
+
+    const auto pollConnection = QObject::connect( &pollTimer, &QTimer::timeout, &waitLoop, [ & ]() {
+        tryFinish();
+        if ( !crawler_widget->isStartupPreparationPending() ) {
+            return;
+        }
+
+        const auto elapsedMs = elapsed.elapsed();
+        if ( elapsedMs >= StartupPrepareTimeoutMs ) {
+            timedOut = true;
+            waitLoop.quit();
+            return;
+        }
+
+        const int elapsedSeconds = elapsedMs / 1000;
+        if ( elapsedSeconds != lastReportedSecond ) {
+            lastReportedSecond = elapsedSeconds;
+            StartupProgress::message( QObject::tr( "Preparing tab" ),
+                                      QObject::tr( "%1 (waiting %2s)" )
+                                          .arg( shortName )
+                                          .arg( elapsedSeconds ) );
+        }
+    } );
+
+    pollTimer.start();
+    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                     | QEventLoop::ExcludeSocketNotifiers );
+    tryFinish();
+    if ( crawler_widget->isStartupPreparationPending() ) {
+        waitLoop.exec( QEventLoop::ExcludeUserInputEvents );
+    }
+
+    pollTimer.stop();
+    QObject::disconnect( loadingFinishedConnection );
+    QObject::disconnect( loadingProgressConnection );
+    QObject::disconnect( pollConnection );
+
+    if ( timedOut ) {
+        LOG_WARNING << "Startup tab preparation timeout for " << fileName.toStdString();
+        StartupProgress::advance( QObject::tr( "Preparing tab" ),
+                                  QObject::tr( "%1 (timeout)" ).arg( shortName ) );
+    }
+    else {
+        StartupProgress::advance( QObject::tr( "Tab ready" ), shortName );
+    }
+}
+
 static constexpr auto ClipboardMaxTry = 5;
 
 } // namespace
@@ -337,6 +437,8 @@ void MainWindow::reloadSession()
             if ( followFileOnLoad ) {
                 signalCrawlerToFollowFile( crawler_widget );
             }
+
+            waitForCrawlerStartupPreparation( crawler_widget, file_name );
         }
     }
 
@@ -2671,9 +2773,6 @@ void MainWindow::readSettings()
         StartupProgress::advance( tr( "Compiling highlighter set" ), highlighterSet.name() );
         highlighterSet.compile();
     }
-    StartupProgress::advance( tr( "Compiling active highlighter set" ) );
-    const auto& activeSet = highlighterCollection.currentActiveSet();
-    activeSet.compile();
     updateHighlightersMenu();
 
     StartupProgress::advance( tr( "Loading predefined filters" ),

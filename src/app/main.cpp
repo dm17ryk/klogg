@@ -138,7 +138,7 @@ class StartupSplashScreen final : public QSplashScreen {
         state_ = state;
         state_.maximum = std::max( state_.minimum + 1, state_.maximum );
         state_.value = std::clamp( state_.value, state_.minimum, state_.maximum );
-        repaint();
+        update();
 
         // Startup can run before the main event loop starts; pump a minimal
         // event set so queued splash updates are rendered.

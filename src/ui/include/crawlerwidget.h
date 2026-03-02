@@ -109,6 +109,7 @@ class CrawlerWidget : public QSplitter,
     bool isFollowEnabled() const;
 
     bool isTextWrapEnabled() const;
+    bool isStartupPreparationPending() const;
 
     void registerShortcuts();
 
@@ -424,6 +425,7 @@ class CrawlerWidget : public QSplitter,
     // Until we have received confirmation loading is finished, we
     // should consider we are loading something.
     bool loadingInProgress_ = true;
+    bool restoreSearchPending_ = false;
     bool firstLoadDone_ = false;
 
     klogg::vector<LineNumber> savedMarkedLines_;

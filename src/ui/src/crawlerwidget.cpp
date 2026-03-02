@@ -64,7 +64,6 @@
 #include <QShortcut>
 #include <QStandardItemModel>
 #include <QStringListModel>
-#include <QTimer>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -80,6 +79,7 @@
 #include "quickfindpattern.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
+#include "startupprogress.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
 
@@ -218,6 +218,11 @@ bool CrawlerWidget::isFollowEnabled() const
 bool CrawlerWidget::isTextWrapEnabled() const
 {
     return logMainView_->isTextWrapEnabled();
+}
+
+bool CrawlerWidget::isStartupPreparationPending() const
+{
+    return loadingInProgress_ || restoreSearchPending_;
 }
 
 void CrawlerWidget::reloadPredefinedFilters() const
@@ -390,21 +395,14 @@ void CrawlerWidget::doSetViewContext( const QString& view_context )
         std::transform( savedMarks.cbegin(), savedMarks.cend(), std::back_inserter( savedMarkedLines_ ),
                         []( const auto& l ) { return LineNumber( l ); } );
 
-        if ( context.autoRefresh() && !context.searchPattern().isEmpty() ) {
-            QTimer::singleShot( 0, this, [ this ]() {
-                if ( !searchRefreshButton_->isChecked() ) {
-                    return;
-                }
-
-                const auto searchText = searchLineEdit_->currentText();
-                if ( searchText.isEmpty() ) {
-                    return;
-                }
-
-                // Restore-time auto-refresh search is deferred to keep startup
-                // responsive and avoid nested event-loop reentrancy.
-                replaceCurrentSearch( searchText, true, true );
-            } );
+        restoreSearchPending_ = context.autoRefresh() && !context.searchPattern().isEmpty();
+        if ( restoreSearchPending_ && !loadingInProgress_ ) {
+            const auto restoredPattern = searchLineEdit_->currentText();
+            const auto progressDetail
+                = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
+            StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
+            replaceCurrentSearch( restoredPattern, true, true );
+            restoreSearchPending_ = false;
         }
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to restore crawler view context: " << e.what();
@@ -759,14 +757,26 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
 
     // searchButton_->setEnabled( true );
 
+    if ( status == LoadingStatus::Successful && restoreSearchPending_ ) {
+        const auto restoredPattern = searchLineEdit_->currentText();
+        const auto progressDetail
+            = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
+        StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
+        replaceCurrentSearch( restoredPattern, true, true );
+        restoreSearchPending_ = false;
+    }
     // See if we need to auto-refresh the search
-    if ( searchState_.isAutorefreshAllowed() ) {
+    else if ( searchState_.isAutorefreshAllowed() ) {
         searchEndLine_ = LineNumber( logData_->getNbLine().get() );
         if ( searchState_.isFileTruncated() )
             // We need to restart the search
             replaceCurrentSearch( searchLineEdit_->currentText(), true );
         else
             logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
+    }
+    else if ( status != LoadingStatus::Successful ) {
+        // Avoid blocking startup waiters forever on failed loads.
+        restoreSearchPending_ = false;
     }
 
     // Set the encoding for the views

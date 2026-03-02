@@ -1,13 +1,18 @@
 #include "startupprogress.h"
 
 #include <algorithm>
+#include <chrono>
 #include <mutex>
 #include <utility>
 
 namespace {
+constexpr auto kAdvanceNotifyInterval = std::chrono::milliseconds( 40 );
+
 struct StartupProgressData {
     StartupProgressState state;
     StartupProgress::Callback callback;
+    std::chrono::steady_clock::time_point lastAdvanceNotification{};
+    bool hasAdvanceNotification = false;
 };
 
 StartupProgressData& startupProgressData()
@@ -49,6 +54,8 @@ void StartupProgress::setCallback( Callback callback )
         normalizeState( data.state );
         state = data.state;
         currentCallback = data.callback;
+        data.lastAdvanceNotification = std::chrono::steady_clock::now();
+        data.hasAdvanceNotification = true;
     }
     notifyCallback( currentCallback, state );
 }
@@ -56,7 +63,9 @@ void StartupProgress::setCallback( Callback callback )
 void StartupProgress::clearCallback()
 {
     std::lock_guard<std::mutex> lock( startupProgressMutex() );
-    startupProgressData().callback = {};
+    auto& data = startupProgressData();
+    data.callback = {};
+    data.hasAdvanceNotification = false;
 }
 
 void StartupProgress::setRange( int minimum, int maximum )
@@ -71,6 +80,8 @@ void StartupProgress::setRange( int minimum, int maximum )
         normalizeState( data.state );
         state = data.state;
         callback = data.callback;
+        data.lastAdvanceNotification = std::chrono::steady_clock::now();
+        data.hasAdvanceNotification = true;
     }
     notifyCallback( callback, state );
 }
@@ -90,6 +101,8 @@ void StartupProgress::setValue( int value, const QString& status, const QString&
         normalizeState( data.state );
         state = data.state;
         callback = data.callback;
+        data.lastAdvanceNotification = std::chrono::steady_clock::now();
+        data.hasAdvanceNotification = true;
     }
     notifyCallback( callback, state );
 }
@@ -98,6 +111,8 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
 {
     StartupProgressState state;
     Callback callback;
+    bool shouldNotify = false;
+
     {
         std::lock_guard<std::mutex> lock( startupProgressMutex() );
         auto& data = startupProgressData();
@@ -109,16 +124,33 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
             const int headroom = std::max( increment * 6, std::max( 20, currentRange / 2 ) );
             data.state.maximum = nextValue + headroom;
         }
+
         data.state.value = nextValue;
         if ( !status.isEmpty() ) {
             data.state.status = status;
         }
         data.state.detail = detail;
         normalizeState( data.state );
-        state = data.state;
+
         callback = data.callback;
+        state = data.state;
+
+        const auto now = std::chrono::steady_clock::now();
+        const bool isComplete = data.state.value >= data.state.maximum;
+        const bool intervalElapsed
+            = !data.hasAdvanceNotification
+              || ( now - data.lastAdvanceNotification ) >= kAdvanceNotifyInterval;
+
+        shouldNotify = isComplete || intervalElapsed;
+        if ( shouldNotify ) {
+            data.lastAdvanceNotification = now;
+            data.hasAdvanceNotification = true;
+        }
     }
-    notifyCallback( callback, state );
+
+    if ( shouldNotify ) {
+        notifyCallback( callback, state );
+    }
 }
 
 void StartupProgress::complete( const QString& status, const QString& detail )
@@ -136,6 +168,8 @@ void StartupProgress::complete( const QString& status, const QString& detail )
         normalizeState( data.state );
         state = data.state;
         callback = data.callback;
+        data.lastAdvanceNotification = std::chrono::steady_clock::now();
+        data.hasAdvanceNotification = true;
     }
     notifyCallback( callback, state );
 }
@@ -154,6 +188,8 @@ void StartupProgress::message( const QString& status, const QString& detail )
         normalizeState( data.state );
         state = data.state;
         callback = data.callback;
+        data.lastAdvanceNotification = std::chrono::steady_clock::now();
+        data.hasAdvanceNotification = true;
     }
     notifyCallback( callback, state );
 }
@@ -163,4 +199,3 @@ bool StartupProgress::isActive()
     std::lock_guard<std::mutex> lock( startupProgressMutex() );
     return static_cast<bool>( startupProgressData().callback );
 }
-

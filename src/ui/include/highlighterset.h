@@ -135,7 +135,7 @@ class HighlighterSet {
     const QList<Highlighter>& highlighters() const;
     QList<Highlighter>& highlighters();
 
-    // Returns weither the passed line match a filter of the set,
+    // Returns whether the passed line matches a filter of the set,
     // if so, it returns the fore/back colors the line should use.
     HighlighterMatchType matchLine( const QString& line,
                                     HighlightedMatchRanges& matches ) const;
