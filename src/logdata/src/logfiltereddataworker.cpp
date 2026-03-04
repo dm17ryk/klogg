@@ -202,7 +202,8 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
 
 void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
                                     std::shared_ptr<RegularExpression> compiledRegexp,
-                                    LineNumber startLine, LineNumber endLine )
+                                    LineNumber startLine, LineNumber endLine,
+                                    uint64_t searchGeneration )
 {
     ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
@@ -211,11 +212,13 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
     LOG_INFO << "Search requested";
     QSemaphore operationStarted;
     operationsPool_.start(
-        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine ] {
+        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
+                          searchGeneration ] {
             operationStarted.release();
             ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<FullSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine );
+                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
+                searchGeneration );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
     operationStarted.acquire();
@@ -224,7 +227,7 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
 void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp,
                                           std::shared_ptr<RegularExpression> compiledRegexp,
                                           LineNumber startLine, LineNumber endLine,
-                                          LineNumber position )
+                                          LineNumber position, uint64_t searchGeneration )
 {
     ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
@@ -235,12 +238,12 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
     QSemaphore operationStarted;
     operationsPool_.start(
         createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
-                          position ] {
+                          position, searchGeneration ] {
             operationStarted.release();
             ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
                 sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
-                position );
+                position, searchGeneration );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
 
@@ -266,7 +269,8 @@ SearchResults LogFilteredDataWorker::getSearchResults() const
 SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
                                   const RegularExpressionPattern& regExp,
                                   std::shared_ptr<RegularExpression> compiledRegexp,
-                                  LineNumber startLine, LineNumber endLine )
+                                  LineNumber startLine, LineNumber endLine,
+                                  uint64_t searchGeneration )
 
     : interruptRequested_( interruptRequested )
     , regexp_( regExp )
@@ -274,6 +278,7 @@ SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& inte
     , sourceLogData_( sourceLogData )
     , startLine_( startLine )
     , endLine_( endLine )
+    , searchGeneration_( searchGeneration )
 
 {
 }
@@ -411,7 +416,8 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
                 if ( percentage > reportedPercentage || nbMatches > reportedMatches ) {
 
-                    Q_EMIT searchProgressed( nbMatches, std::min( 99, percentage ), initialLine );
+                    Q_EMIT searchProgressed( nbMatches, std::min( 99, percentage ), initialLine,
+                                             searchGeneration_ );
 
                     reportedPercentage = percentage;
                     reportedMatches = nbMatches;
@@ -489,7 +495,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                     / ( 1024 * 1024 )
              << " MiB/s";
 
-    Q_EMIT searchProgressed( nbMatches, 100, initialLine );
+    Q_EMIT searchProgressed( nbMatches, 100, initialLine, searchGeneration_ );
     Q_EMIT searchFinished();
 }
 

@@ -426,6 +426,7 @@ class CrawlerWidget : public QSplitter,
     // should consider we are loading something.
     bool loadingInProgress_ = true;
     bool restoreSearchPending_ = false;
+    bool startupFilterSearchInProgress_ = false;
     bool firstLoadDone_ = false;
 
     klogg::vector<LineNumber> savedMarkedLines_;

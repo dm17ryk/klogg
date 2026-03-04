@@ -133,14 +133,15 @@ public:
     SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
                      const RegularExpressionPattern& regExp,
                      std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                     LineNumber endLine );
+                     LineNumber endLine, uint64_t searchGeneration );
 
     // Run the search operation, returns true if it has been done
     // and false if it has been cancelled (results not copied)
     virtual void run( SearchData& result ) = 0;
 
 Q_SIGNALS:
-    void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine );
+    void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine,
+                           uint64_t searchGeneration );
     void searchFinished();
 
 protected:
@@ -154,6 +155,7 @@ protected:
     const LogData& sourceLogData_;
     LineNumber startLine_;
     LineNumber endLine_;
+    const uint64_t searchGeneration_;
 };
 
 class FullSearchOperation : public SearchOperation {
@@ -162,9 +164,9 @@ public:
     FullSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
                          const RegularExpressionPattern& regExp,
                          std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                         LineNumber endLine )
+                         LineNumber endLine, uint64_t searchGeneration )
         : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
-                           startLine, endLine )
+                           startLine, endLine, searchGeneration )
     {
     }
 
@@ -177,9 +179,9 @@ public:
     UpdateSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
                            const RegularExpressionPattern& regExp,
                            std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                           LineNumber endLine, LineNumber position )
+                           LineNumber endLine, LineNumber position, uint64_t searchGeneration )
         : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
-                           startLine, endLine )
+                           startLine, endLine, searchGeneration )
         , initialPosition_( position )
     {
     }
@@ -206,12 +208,12 @@ public:
     // Start the search with the passed regexp
     void search( const RegularExpressionPattern& regExp,
                  std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                 LineNumber endLine );
+                 LineNumber endLine, uint64_t searchGeneration );
     // Continue the previous search starting at the passed position
     // in the source file (line number)
     void updateSearch( const RegularExpressionPattern& regExp,
                        std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                       LineNumber endLine, LineNumber position );
+                       LineNumber endLine, LineNumber position, uint64_t searchGeneration );
 
     // Interrupts the search if one is in progress
     void interrupt();
@@ -222,7 +224,8 @@ public:
 Q_SIGNALS:
     // Sent during the indexing process to signal progress
     // percent being the percentage of completion.
-    void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine );
+    void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine,
+                           uint64_t searchGeneration );
     // Sent when indexing is finished, signals the client
     // to copy the new data back.
     void searchFinished();

@@ -89,6 +89,7 @@ class MainWindow : public QMainWindow {
     void reloadSession();
     // Loads the initial file (parameter passed or from config file)
     void loadInitialFile( QString fileName, bool followFile );
+    bool isStartupReadyForDisplay() const;
 
     void reTranslateUI();
 

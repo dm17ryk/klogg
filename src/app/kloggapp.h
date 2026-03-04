@@ -234,10 +234,114 @@ class KloggApp : public QApplication {
             restoredWindows.push_back( lastShownWindow );
         }
 
-        for ( auto* window : restoredWindows ) {
-            StartupProgress::advance( QObject::tr( "Showing window" ) );
-            window->show();
+        StartupProgress::advance( QObject::tr( "Preparing windows" ),
+                                  QObject::tr( "Waiting for restored tabs to become ready" ) );
+        constexpr int StartupUiReadyTimeoutMs = 120000;
+        constexpr int StartupProbeTimeoutMs = 5000;
+        constexpr int StartupUiIdleStableMs = 1500;
+        QElapsedTimer startupReadyTimer;
+        startupReadyTimer.start();
+        int lastReportedSecond = -1;
+        bool windowsShown = false;
+
+        const auto showRestoredWindows = [ & ]() {
+            if ( windowsShown ) {
+                return;
+            }
+
+            for ( auto* window : restoredWindows ) {
+                StartupProgress::advance( QObject::tr( "Showing window" ) );
+                window->show();
+            }
+
+            windowsShown = true;
+        };
+
+        const auto areWindowsReadyAndVisible = [ & ]() {
+            return std::all_of( restoredWindows.cbegin(), restoredWindows.cend(),
+                                []( const MainWindow* window ) {
+                                    return window != nullptr && window->isVisible()
+                                           && window->isStartupReadyForDisplay();
+                                } );
+        };
+
+        const auto runUiProbe = [ & ]() {
+            const auto targetCount = static_cast<int>( std::count_if(
+                restoredWindows.cbegin(), restoredWindows.cend(),
+                []( const MainWindow* window ) { return window != nullptr; } ) );
+            if ( targetCount == 0 ) {
+                return true;
+            }
+
+            auto processedCount = std::make_shared<int>( 0 );
+            for ( auto* window : restoredWindows ) {
+                if ( window == nullptr ) {
+                    continue;
+                }
+
+                QTimer::singleShot( 0, window, [ processedCount ]() { ++( *processedCount ); } );
+            }
+
+            QElapsedTimer probeTimer;
+            probeTimer.start();
+            while ( *processedCount < targetCount
+                    && probeTimer.elapsed() < StartupProbeTimeoutMs
+                    && startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                                 | QEventLoop::ExcludeSocketNotifiers );
+            }
+
+            return *processedCount == targetCount;
+        };
+
+        showRestoredWindows();
+
+        while ( startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+            if ( areWindowsReadyAndVisible() && runUiProbe() ) {
+                StartupProgress::message( QObject::tr( "Preparing windows" ),
+                                          QObject::tr( "Finalizing UI initialization" ) );
+
+                QElapsedTimer idleStableTimer;
+                idleStableTimer.start();
+
+                while ( startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+                    const bool windowsReady = areWindowsReadyAndVisible();
+                    const bool probeReady = windowsReady && runUiProbe();
+
+                    if ( probeReady ) {
+                        if ( idleStableTimer.elapsed() >= StartupUiIdleStableMs ) {
+                            StartupProgress::advance(
+                                QObject::tr( "Windows ready" ),
+                                QObject::tr( "Startup preparation complete" ) );
+                            return lastShownWindow;
+                        }
+                    }
+                    else {
+                        idleStableTimer.restart();
+                    }
+
+                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                                     | QEventLoop::ExcludeSocketNotifiers );
+                }
+            }
+
+            const int elapsedSeconds = static_cast<int>( startupReadyTimer.elapsed() / 1000 );
+            if ( elapsedSeconds != lastReportedSecond ) {
+                lastReportedSecond = elapsedSeconds;
+                StartupProgress::message( QObject::tr( "Preparing windows" ),
+                                          QObject::tr( "Waiting for UI initialization (%1s)" )
+                                              .arg( elapsedSeconds ) );
+            }
+
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                             | QEventLoop::ExcludeSocketNotifiers );
         }
+
+        LOG_WARNING << "Timed out waiting for restored windows to finish startup preparation";
+        StartupProgress::advance( QObject::tr( "Preparing windows" ),
+                                  QObject::tr( "Startup readiness timeout" ) );
+        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                         | QEventLoop::ExcludeSocketNotifiers );
 
         return lastShownWindow;
     }

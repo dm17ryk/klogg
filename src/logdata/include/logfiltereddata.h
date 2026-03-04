@@ -196,7 +196,8 @@ class LogFilteredData : public AbstractLogData {
     void searchProgressedThrottled();
 
   private Q_SLOTS:
-    void handleSearchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine );
+    void handleSearchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine,
+                                 uint64_t searchGeneration );
     void handleSearchProgressedThrottled();
 
   private:
@@ -252,7 +253,7 @@ class LogFilteredData : public AbstractLogData {
     LogFilteredDataWorker workerThread_;
 
     Mutex searchProgressMutex_;
-    std::tuple<LinesCount, int, LineNumber> searchProgress_;
+    std::tuple<LinesCount, int, LineNumber, uint64_t> searchProgress_;
 
     KDToolBox::KDSignalThrottler searchProgressThrottler_;
 

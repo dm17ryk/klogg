@@ -116,6 +116,8 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
     {
         std::lock_guard<std::mutex> lock( startupProgressMutex() );
         auto& data = startupProgressData();
+        const auto previousStatus = data.state.status;
+        const auto previousDetail = data.state.detail;
         const int increment = std::max( 1, step );
         const int nextValue = data.state.value + increment;
         const bool closeToTop = ( nextValue * 100 ) >= ( data.state.maximum * 85 );
@@ -140,8 +142,10 @@ void StartupProgress::advance( const QString& status, const QString& detail, int
         const bool intervalElapsed
             = !data.hasAdvanceNotification
               || ( now - data.lastAdvanceNotification ) >= kAdvanceNotifyInterval;
+        const bool stageTextChanged
+            = ( data.state.status != previousStatus ) || ( data.state.detail != previousDetail );
 
-        shouldNotify = isComplete || intervalElapsed;
+        shouldNotify = isComplete || intervalElapsed || stageTextChanged;
         if ( shouldNotify ) {
             data.lastAdvanceNotification = now;
             data.hasAdvanceNotification = true;

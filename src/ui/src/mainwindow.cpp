@@ -454,6 +454,22 @@ void MainWindow::reloadSession()
     StartupProgress::advance( tr( "Session restored" ), tr( "Finishing startup" ) );
 }
 
+bool MainWindow::isStartupReadyForDisplay() const
+{
+    if ( !loadingFileName.isEmpty() ) {
+        return false;
+    }
+
+    for ( auto i = 0; i < mainTabWidget_.count(); ++i ) {
+        auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( i ) );
+        if ( crawler != nullptr && crawler->isStartupPreparationPending() ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void MainWindow::loadInitialFile( QString fileName, bool followFile )
 {
     LOG_DEBUG << "loadInitialFile";
