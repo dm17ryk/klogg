@@ -27,11 +27,13 @@
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QWidget>
 
 #include <QToolBar>
 
 #include "test_utils.h"
 
+#include "configuration.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "session.h"
@@ -48,6 +50,21 @@ struct SessionFilesRestoreGuard {
     {
         sessionInfo.setOpenFiles( windowId, openFiles );
         sessionInfo.save();
+    }
+};
+
+struct MinimizeToTrayRestoreGuard {
+    bool previousValue = false;
+
+    explicit MinimizeToTrayRestoreGuard( bool value )
+        : previousValue( Configuration::get().minimizeToTray() )
+    {
+        Configuration::getSynced().setMinimizeToTray( value );
+    }
+
+    ~MinimizeToTrayRestoreGuard()
+    {
+        Configuration::getSynced().setMinimizeToTray( previousValue );
     }
 };
 
@@ -97,6 +114,15 @@ int firstProgressStatusIndex( const std::vector<StartupProgressState>& states, c
         return -1;
     }
     return static_cast<int>( std::distance( states.cbegin(), it ) );
+}
+
+bool hasVisibleTopLevelWindowWithTitle( const QString& titlePart )
+{
+    const auto widgets = QApplication::topLevelWidgets();
+    return std::any_of( widgets.cbegin(), widgets.cend(), [ &titlePart ]( const QWidget* widget ) {
+        return widget != nullptr && widget->isVisible()
+               && widget->windowTitle().contains( titlePart, Qt::CaseInsensitive );
+    } );
 }
 } // namespace
 
@@ -197,6 +223,35 @@ SCENARIO( "Main window tests", "[ui]" )
         }
     }
 }
+
+SCENARIO( "Closing main window closes auxiliary windows", "[ui]" )
+{
+    MinimizeToTrayRestoreGuard minimizeToTrayGuard{ false };
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    mainWindow->show();
+
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showScratchPad" ) );
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showPreviewer" ) );
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showActionsResponses" ) );
+
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
+    REQUIRE(
+        waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+
+    mainWindow->close();
+
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
+    REQUIRE(
+        waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+
+}
+
 SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" )
 {
     QTemporaryFile file{ "mainwindow_restore_XXXXXX.log" };

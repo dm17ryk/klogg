@@ -2039,6 +2039,10 @@ void MainWindow::closeEvent( QCloseEvent* event )
         this->hide();
     }
     else {
+        scratchPad_.close();
+        previewWindow_.close();
+        actionsResponsesWindow_.close();
+
         const auto saveSettings = session_.close();
         if ( saveSettings ) {
             writeSettings();
