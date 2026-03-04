@@ -131,6 +131,8 @@ class StartupSplashScreen final : public QSplashScreen {
     explicit StartupSplashScreen( const QPixmap& pixmap )
         : QSplashScreen( pixmap )
     {
+        // Keep splash above restored main windows until startup is fully finished.
+        setWindowFlag( Qt::WindowStaysOnTopHint, true );
     }
 
     void updateFromState( const StartupProgressState& state )
@@ -139,6 +141,7 @@ class StartupSplashScreen final : public QSplashScreen {
         state_.maximum = std::max( state_.minimum + 1, state_.maximum );
         state_.value = std::clamp( state_.value, state_.minimum, state_.maximum );
         update();
+        raise();
 
         // Startup can run before the main event loop starts; pump a minimal
         // event set so queued splash updates are rendered.
@@ -289,6 +292,7 @@ int main( int argc, char* argv[] )
         mw->reloadGeometry();
         mw->show();
     }
+
 
     if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
         mw->resize( parameters.window_width, parameters.window_height );
