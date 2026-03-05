@@ -205,7 +205,7 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
                                     LineNumber startLine, LineNumber endLine,
                                     uint64_t searchGeneration )
 {
-    ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
+    ScopedLock locker( operationsMutex_ );
     operationsPool_.waitForDone();
     interruptRequested_.clear();
 
@@ -215,7 +215,6 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
         createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
                           searchGeneration ] {
             operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<FullSearchOperation>(
                 sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
                 searchGeneration );
@@ -229,7 +228,7 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
                                           LineNumber startLine, LineNumber endLine,
                                           LineNumber position, uint64_t searchGeneration )
 {
-    ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
+    ScopedLock locker( operationsMutex_ );
     operationsPool_.waitForDone();
     interruptRequested_.clear();
 
@@ -240,7 +239,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
         createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
                           position, searchGeneration ] {
             operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
                 sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
                 position, searchGeneration );
@@ -285,6 +283,13 @@ SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& inte
 
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 {
+    if ( !compiledRegexp_ ) {
+        LOG_ERROR << "Skipping search: no compiled regexp";
+        Q_EMIT searchProgressed( searchData.getNbMatches(), 100, initialLine, searchGeneration_ );
+        Q_EMIT searchFinished();
+        return;
+    }
+
     const auto nbSourceLines = sourceLogData_.getNbLine();
 
     LOG_INFO << "Searching from line " << initialLine << " to " << nbSourceLines;
@@ -331,8 +336,17 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     klogg::vector<MatcherContext> regexMatchers;
     regexMatchers.reserve( matchingThreadsCount );
     for ( auto index = 0u; index < matchingThreadsCount; ++index ) {
+        auto matcher = compiledRegexp_->createMatcher();
+        if ( !matcher ) {
+            LOG_ERROR << "Skipping search: failed to create matcher #" << index;
+            Q_EMIT searchProgressed( searchData.getNbMatches(), 100, initialLine,
+                                     searchGeneration_ );
+            Q_EMIT searchFinished();
+            return;
+        }
+
         regexMatchers.emplace_back(
-            compiledRegexp_->createMatcher(), microseconds{ 0 },
+            std::move( matcher ), microseconds{ 0 },
             RegexMatcherNode(
                 searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
                     if ( interruptRequested_ ) {
@@ -344,7 +358,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                         return blockData;
                     }
 
-            const auto& matcher = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
+                    const auto& matcher = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
                     const auto matchStartTime = high_resolution_clock::now();
 
                     blockData->searchResults
@@ -378,6 +392,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
             searchGraph, 1, [ & ]( const BlockDataType& blockData ) {
                 if ( interruptRequested_ ) {
                     LOG_INFO << "Match processor interrupted";
+                    delete blockData;
                     return tbb::flow::continue_msg{};
                 }
 
@@ -448,7 +463,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         /*LOG_DEBUG << "Sending chunk starting at " << chunkStart << ", " <<
             lines.second.size()
                 << " lines read.";*/
-        BlockDataType blockData = new SearchBlockData{ chunkStart, std::move( lines ) };
+        auto blockData = std::make_unique<SearchBlockData>(
+            SearchBlockData{ chunkStart, std::move( lines ) } );
+        auto* rawBlockData = blockData.get();
 
         const auto lineSourceEndTime = high_resolution_clock::now();
         const auto chunkReadTime
@@ -463,8 +480,13 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         chunkStart = chunkStart + nbLinesInChunk;
         fileReadingDuration += chunkReadTime;
 
-        while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ ) {
+        while ( !blockPrefetcher.try_put( rawBlockData ) && !interruptRequested_ ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        }
+
+        if ( !interruptRequested_ ) {
+            // Ownership is transferred to the flow graph when try_put succeeds.
+            blockData.release();
         }
     }
 
