@@ -266,6 +266,7 @@ int main( int argc, char* argv[] )
     }
     StartupSplashScreen splash( splashPixmap );
     splash.show();
+    app.setStartupBootstrapGeometry( splash.frameGeometry().topLeft() );
     StartupProgress::setCallback( [ &splash ]( const StartupProgressState& state ) {
         if ( QThread::currentThread() == splash.thread() ) {
             splash.updateFromState( state );
@@ -289,13 +290,7 @@ int main( int argc, char* argv[] )
     }
     else {
         mw = app.newWindow();
-        mw->reloadGeometry();
         mw->show();
-    }
-
-
-    if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
-        mw->resize( parameters.window_width, parameters.window_height );
     }
 
     for ( const auto& filename : parameters.filenames ) {
@@ -314,6 +309,11 @@ int main( int argc, char* argv[] )
     StartupProgress::complete( QObject::tr( "Ready" ), QObject::tr( "Application started" ) );
     StartupProgress::clearCallback();
     splash.finish( mw );
+    app.finalizeStartupBootstrapGeometry();
+
+    if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
+        mw->resize( parameters.window_width, parameters.window_height );
+    }
 
     app.startBackgroundTasks();
 

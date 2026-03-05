@@ -43,8 +43,12 @@
 #include <QNetworkProxyFactory>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QPoint>
+#include <QRect>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QSize>
+#include <QStyle>
 #include <QUuid>
 
 #ifdef Q_OS_MAC
@@ -213,7 +217,9 @@ class KloggApp : public QApplication {
         for ( auto&& windowSession : session_->windowSessions() ) {
             try {
                 auto* window = newWindow( std::move( windowSession ) );
-                window->reloadGeometry();
+                if ( !startupBootstrapEnabled_ ) {
+                    window->reloadGeometry();
+                }
                 StartupProgress::advance( QObject::tr( "Restoring window" ),
                                           QString::number( windowSession.windowIndex() ) );
 
@@ -251,6 +257,9 @@ class KloggApp : public QApplication {
 
             for ( auto* window : restoredWindows ) {
                 StartupProgress::advance( QObject::tr( "Showing window" ) );
+                if ( startupBootstrapEnabled_ ) {
+                    applyStartupBootstrapGeometry( window );
+                }
                 window->show();
             }
 
@@ -381,9 +390,35 @@ class KloggApp : public QApplication {
         }
 
         auto window = newWindow( { session_, generateIdFromUuid(), nextWindowIndex() } );
-        window->restoreGeometry( geometry );
+        if ( startupBootstrapEnabled_ ) {
+            applyStartupBootstrapGeometry( window );
+        }
+        else {
+            window->restoreGeometry( geometry );
+        }
 
         return window;
+    }
+
+    void setStartupBootstrapGeometry( const QPoint& topLeft )
+    {
+        startupBootstrapEnabled_ = true;
+        startupBootstrapTopLeft_ = topLeft;
+    }
+
+    void finalizeStartupBootstrapGeometry()
+    {
+        if ( !startupBootstrapEnabled_ ) {
+            return;
+        }
+
+        startupBootstrapEnabled_ = false;
+        for ( auto& [ session, window ] : mainWindows_ ) {
+            Q_UNUSED( session );
+            if ( window != nullptr ) {
+                window->reloadGeometry();
+            }
+        }
     }
 
     void loadFileNonInteractive( const QString& file )
@@ -446,7 +481,12 @@ class KloggApp : public QApplication {
 
         LOG_WARNING << "No visible main window after startup, opening fallback window";
         auto* fallbackWindow = newWindow();
-        fallbackWindow->reloadGeometry();
+        if ( !startupBootstrapEnabled_ ) {
+            fallbackWindow->reloadGeometry();
+        }
+        else {
+            applyStartupBootstrapGeometry( fallbackWindow );
+        }
         fallbackWindow->show();
     }
 
@@ -475,6 +515,9 @@ class KloggApp : public QApplication {
         mainWindows_.emplace_back( session, new MainWindow( session ) );
 
         auto& window = mainWindows_.back().second;
+        if ( startupBootstrapEnabled_ ) {
+            applyStartupBootstrapGeometry( window );
+        }
 
         activeWindows_.push( QPointer<MainWindow>( window ) );
 
@@ -556,6 +599,24 @@ class KloggApp : public QApplication {
         }
     }
 
+    void applyStartupBootstrapGeometry( MainWindow* window ) const
+    {
+        if ( window == nullptr ) {
+            return;
+        }
+
+        auto bootstrapSize = window->minimumSizeHint().expandedTo( QSize( 320, 200 ) );
+        if ( !bootstrapSize.isValid() ) {
+            bootstrapSize = QSize( 320, 200 );
+        }
+
+        const auto titleBarHeight = window->style()->pixelMetric( QStyle::PM_TitleBarHeight, nullptr, window );
+        const auto bootstrapTopLeft
+            = startupBootstrapTopLeft_ + QPoint( 0, std::max( titleBarHeight, 24 ) );
+
+        window->setGeometry( QRect( bootstrapTopLeft, bootstrapSize ) );
+    }
+
   private:
     KDSingleApplication singleApplication_;
     std::unique_ptr<CrashHandler> crashHandler_;
@@ -566,6 +627,8 @@ class KloggApp : public QApplication {
 
     std::list<std::pair<WindowSession, MainWindow*>> mainWindows_;
     std::stack<QPointer<MainWindow>> activeWindows_;
+    bool startupBootstrapEnabled_ = false;
+    QPoint startupBootstrapTopLeft_;
 
     VersionChecker versionChecker_;
 };
