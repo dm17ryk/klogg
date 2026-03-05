@@ -250,6 +250,16 @@ QString HighlighterSet::id() const
     return id_;
 }
 
+const QList<Highlighter>& HighlighterSet::highlighters() const
+{
+    return highlighterList_;
+}
+
+QList<Highlighter>& HighlighterSet::highlighters()
+{
+    return highlighterList_;
+}
+
 bool HighlighterSet::isEmpty() const
 {
     return highlighterList_.isEmpty();
@@ -424,7 +434,12 @@ void HighlighterSet::retrieveFromStorage( QSettings& settings )
     }
 }
 
-QList<HighlighterSet> HighlighterSetCollection::highlighterSets() const
+const QList<HighlighterSet>& HighlighterSetCollection::highlighterSets() const
+{
+    return highlighters_;
+}
+
+QList<HighlighterSet>& HighlighterSetCollection::highlighterSets()
 {
     return highlighters_;
 }

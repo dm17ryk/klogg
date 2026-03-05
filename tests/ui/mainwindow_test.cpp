@@ -19,20 +19,26 @@
 
 #include <catch2/catch.hpp>
 
+#include <algorithm>
+#include <iterator>
+#include <mutex>
 #include <QDir>
 #include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QWidget>
 
 #include <QToolBar>
 
 #include "test_utils.h"
 
+#include "configuration.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "session.h"
 #include "sessioninfo.h"
+#include "startupprogress.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -46,6 +52,78 @@ struct SessionFilesRestoreGuard {
         sessionInfo.save();
     }
 };
+
+struct MinimizeToTrayRestoreGuard {
+    bool previousValue = false;
+
+    explicit MinimizeToTrayRestoreGuard( bool value )
+        : previousValue( Configuration::get().minimizeToTray() )
+    {
+        Configuration::getSynced().setMinimizeToTray( value );
+    }
+
+    ~MinimizeToTrayRestoreGuard()
+    {
+        Configuration::getSynced().setMinimizeToTray( previousValue );
+    }
+};
+
+struct StartupProgressCallbackGuard {
+    ~StartupProgressCallbackGuard() { StartupProgress::clearCallback(); }
+};
+
+class StartupProgressRecorder {
+  public:
+    void record( const StartupProgressState& state )
+    {
+        std::lock_guard<std::mutex> lock( mutex_ );
+        states_.push_back( state );
+    }
+
+    std::vector<StartupProgressState> snapshot() const
+    {
+        std::lock_guard<std::mutex> lock( mutex_ );
+        return states_;
+    }
+
+  private:
+    mutable std::mutex mutex_;
+    std::vector<StartupProgressState> states_;
+};
+
+bool hasProgressStatus( const std::vector<StartupProgressState>& states, const QString& text )
+{
+    return std::any_of( states.cbegin(), states.cend(), [ &text ]( const auto& state ) {
+        return state.status.contains( text, Qt::CaseInsensitive );
+    } );
+}
+
+bool hasProgressDetail( const std::vector<StartupProgressState>& states, const QString& text )
+{
+    return std::any_of( states.cbegin(), states.cend(), [ &text ]( const auto& state ) {
+        return state.detail.contains( text, Qt::CaseInsensitive );
+    } );
+}
+
+int firstProgressStatusIndex( const std::vector<StartupProgressState>& states, const QString& text )
+{
+    const auto it = std::find_if( states.cbegin(), states.cend(), [ &text ]( const auto& state ) {
+        return state.status.contains( text, Qt::CaseInsensitive );
+    } );
+    if ( it == states.cend() ) {
+        return -1;
+    }
+    return static_cast<int>( std::distance( states.cbegin(), it ) );
+}
+
+bool hasVisibleTopLevelWindowWithTitle( const QString& titlePart )
+{
+    const auto widgets = QApplication::topLevelWidgets();
+    return std::any_of( widgets.cbegin(), widgets.cend(), [ &titlePart ]( const QWidget* widget ) {
+        return widget != nullptr && widget->isVisible()
+               && widget->windowTitle().contains( titlePart, Qt::CaseInsensitive );
+    } );
+}
 } // namespace
 
 SCENARIO( "Main window tests", "[ui]" )
@@ -145,6 +223,35 @@ SCENARIO( "Main window tests", "[ui]" )
         }
     }
 }
+
+SCENARIO( "Closing main window closes auxiliary windows", "[ui]" )
+{
+    MinimizeToTrayRestoreGuard minimizeToTrayGuard{ false };
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    mainWindow->show();
+
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showScratchPad" ) );
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showPreviewer" ) );
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showActionsResponses" ) );
+
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
+    REQUIRE(
+        waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+
+    mainWindow->close();
+
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
+    REQUIRE(
+        waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+
+}
+
 SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" )
 {
     QTemporaryFile file{ "mainwindow_restore_XXXXXX.log" };
@@ -170,10 +277,143 @@ SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" 
     auto tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
     REQUIRE( tabArea != nullptr );
 
+    StartupProgressCallbackGuard callbackGuard;
+    StartupProgressRecorder startupRecorder;
+    StartupProgress::setCallback(
+        [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
     mainWindow->reloadSession();
     mainWindow->show();
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
+    const auto startupStates = startupRecorder.snapshot();
+
+    auto* crawler = qobject_cast<CrawlerWidget*>( tabArea->widget( 0 ) );
+    REQUIRE( crawler != nullptr );
+    REQUIRE_FALSE( crawler->isStartupPreparationPending() );
+    REQUIRE( mainWindow->isStartupReadyForDisplay() );
+    REQUIRE( hasProgressStatus( startupStates, "Restoring session" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Preparing tab" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Tab ready" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Session restored" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Restoring filter expression" ) );
+    REQUIRE( hasProgressDetail( startupStates, "VOICE COMMAND" ) );
+}
+
+SCENARIO( "Main window startup waits for restored filter completion", "[ui][startup]" )
+{
+    QTemporaryFile file{ "mainwindow_restore_search_XXXXXX.log" };
+    REQUIRE( file.open() );
+    for ( int i = 0; i < 1000; ++i ) {
+        REQUIRE( file.write( "alpha beta gamma\n" ) > 0 );
+    }
+    file.flush();
+
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+
+    sessionInfo.setOpenFiles(
+        "Main", { SessionInfo::OpenFile{
+                    file.fileName(), 0,
+                    "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":false,\"SP\":\"alpha\"}" } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    StartupProgressCallbackGuard callbackGuard;
+    StartupProgressRecorder startupRecorder;
+    StartupProgress::setCallback(
+        [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
+
+    mainWindow->reloadSession();
+    mainWindow->show();
+
+    REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
+    const auto startupStates = startupRecorder.snapshot();
+    auto* crawler = qobject_cast<CrawlerWidget*>( tabArea->widget( 0 ) );
+    REQUIRE( crawler != nullptr );
+    REQUIRE_FALSE( crawler->isStartupPreparationPending() );
+    REQUIRE( mainWindow->isStartupReadyForDisplay() );
+    REQUIRE( hasProgressStatus( startupStates, "Compiling filter expression" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Filter ready" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Tab ready" ) );
+
+    const auto compileIndex = firstProgressStatusIndex( startupStates, "Compiling filter expression" );
+    const auto readyIndex = firstProgressStatusIndex( startupStates, "Filter ready" );
+    const auto tabReadyIndex = firstProgressStatusIndex( startupStates, "Tab ready" );
+
+    REQUIRE( compileIndex >= 0 );
+    REQUIRE( readyIndex >= 0 );
+    REQUIRE( tabReadyIndex >= 0 );
+    REQUIRE( compileIndex <= readyIndex );
+    REQUIRE( readyIndex <= tabReadyIndex );
+}
+
+SCENARIO( "Main window remains responsive after startup restore", "[ui][startup]" )
+{
+    QTemporaryFile file{ "mainwindow_restore_responsive_XXXXXX.log" };
+    REQUIRE( file.open() );
+    for ( int i = 0; i < 20000; ++i ) {
+        REQUIRE( file.write( "alpha beta gamma delta epsilon\n" ) > 0 );
+    }
+    file.flush();
+
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+
+    sessionInfo.setOpenFiles(
+        "Main", { SessionInfo::OpenFile{
+                    file.fileName(), 0,
+                    "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":false,\"SP\":\"alpha|epsilon\"}" } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    mainWindow->reloadSession();
+    mainWindow->show();
+
+    REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
+    REQUIRE( waitUiState( [ & ] { return mainWindow->isStartupReadyForDisplay(); } ) );
+
+    int responsivenessTicks = 0;
+    QTimer responsivenessTimer;
+    responsivenessTimer.setInterval( 50 );
+    QObject::connect( &responsivenessTimer, &QTimer::timeout,
+                      [ &responsivenessTicks ]() { ++responsivenessTicks; } );
+    responsivenessTimer.start();
+
+    REQUIRE( waitUiState( [ & ] { return responsivenessTicks >= 15; } ) );
+}
+
+SCENARIO( "Main window startup reports initialization stages", "[ui][startup]" )
+{
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+
+    StartupProgressCallbackGuard callbackGuard;
+    StartupProgressRecorder startupRecorder;
+    StartupProgress::setCallback(
+        [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+
+    const auto startupStates = startupRecorder.snapshot();
+    REQUIRE( mainWindow != nullptr );
+    REQUIRE( hasProgressStatus( startupStates, "Loading previews" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Loading actions" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Loading highlighters" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Compiling highlighter" ) );
+    REQUIRE( hasProgressStatus( startupStates, "Loading predefined filters" ) );
 }
 
 SCENARIO( "Main window restores session with missing and empty files safely", "[ui][startup]" )

@@ -132,8 +132,10 @@ class HighlighterSet {
 
     QString name() const;
     QString id() const;
+    const QList<Highlighter>& highlighters() const;
+    QList<Highlighter>& highlighters();
 
-    // Returns weither the passed line match a filter of the set,
+    // Returns whether the passed line matches a filter of the set,
     // if so, it returns the fore/back colors the line should use.
     HighlighterMatchType matchLine( const QString& line,
                                     HighlightedMatchRanges& matches ) const;
@@ -179,7 +181,8 @@ class HighlighterSetCollection final : public Persistable<HighlighterSetCollecti
         return "HighlighterSetCollection";
     }
 
-    QList<HighlighterSet> highlighterSets() const;
+    const QList<HighlighterSet>& highlighterSets() const;
+    QList<HighlighterSet>& highlighterSets();
     void setHighlighterSets( const QList<HighlighterSet>& highlighters );
 
     const HighlighterSet& currentActiveSet() const;

@@ -151,7 +151,8 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
 
     if ( shouldRunSearch ) {
         attachReader();
-        workerThread_.search( currentRegExp_, compiledRegExp_, startLine, endLine );
+        workerThread_.search( currentRegExp_, compiledRegExp_, startLine, endLine,
+                              searchGeneration_ );
     }
 }
 
@@ -195,7 +196,7 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
 
     attachReader();
     workerThread_.updateSearch( currentRegExp_, compiledRegExp_, startLine, endLine,
-                                LineNumber( nbLinesProcessed_.get() ) );
+                                LineNumber( nbLinesProcessed_.get() ), searchGeneration_ );
 }
 
 void LogFilteredData::interruptSearch()
@@ -459,9 +460,21 @@ void LogFilteredData::updateSearchResultsCache()
 // Q_SLOTS:
 //
 void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress,
-                                              LineNumber initialLine )
+                                              LineNumber initialLine, uint64_t searchGeneration )
 {
     assert( nbMatches >= 0_lcount );
+
+    if ( searchGeneration != searchGeneration_ ) {
+        LOG_DEBUG << "Ignoring stale search update for generation " << searchGeneration
+                  << ", current generation " << searchGeneration_;
+
+        // The old search still attached a reader, so we must detach it when
+        // that generation reports completion.
+        if ( progress == 100 ) {
+            detachReader();
+        }
+        return;
+    }
 
     const auto searchResults = workerThread_.getSearchResults();
 
@@ -479,7 +492,7 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 
     {
         ScopedLock lock( searchProgressMutex_ );
-        searchProgress_ = std::make_tuple( nbMatches, progress, initialLine );
+        searchProgress_ = std::make_tuple( nbMatches, progress, initialLine, searchGeneration );
     }
 
     if ( progress == 100 ) {
@@ -502,9 +515,16 @@ void LogFilteredData::handleSearchProgressedThrottled()
     LinesCount nbMatches;
     int progress;
     LineNumber initialLine;
+    uint64_t searchGeneration;
     {
         ScopedLock lock( searchProgressMutex_ );
-        std::tie( nbMatches, progress, initialLine ) = searchProgress_;
+        std::tie( nbMatches, progress, initialLine, searchGeneration ) = searchProgress_;
+    }
+
+    if ( searchGeneration != searchGeneration_ ) {
+        LOG_DEBUG << "Skipping throttled stale search update for generation " << searchGeneration
+                  << ", current generation " << searchGeneration_;
+        return;
     }
     Q_EMIT searchProgressed( nbMatches, progress, initialLine );
 }

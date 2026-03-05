@@ -43,8 +43,12 @@
 #include <QNetworkProxyFactory>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QPoint>
+#include <QRect>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QSize>
+#include <QStyle>
 #include <QUuid>
 
 #ifdef Q_OS_MAC
@@ -62,6 +66,7 @@
 
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "startupprogress.h"
 #include "versionchecker.h"
 
 class KloggApp : public QApplication {
@@ -206,17 +211,23 @@ class KloggApp : public QApplication {
         }
 
         MainWindow* lastShownWindow = nullptr;
+        std::vector<MainWindow*> restoredWindows;
 
+        StartupProgress::advance( QObject::tr( "Restoring window sessions" ) );
         for ( auto&& windowSession : session_->windowSessions() ) {
             try {
                 auto* window = newWindow( std::move( windowSession ) );
-                window->reloadGeometry();
-                window->show();
-                lastShownWindow = window;
+                if ( !startupBootstrapEnabled_ ) {
+                    window->reloadGeometry();
+                }
+                StartupProgress::advance( QObject::tr( "Restoring window" ),
+                                          QString::number( windowSession.windowIndex() ) );
 
                 // Keep startup responsive and avoid ending up with no visible
                 // window when session restore data is malformed.
                 window->reloadSession();
+                restoredWindows.push_back( window );
+                lastShownWindow = window;
             } catch ( const std::exception& e ) {
                 LOG_ERROR << "Failed to restore window session: " << e.what();
             } catch ( ... ) {
@@ -226,8 +237,120 @@ class KloggApp : public QApplication {
 
         if ( lastShownWindow == nullptr ) {
             lastShownWindow = newWindow();
-            lastShownWindow->show();
+            restoredWindows.push_back( lastShownWindow );
         }
+
+        StartupProgress::advance( QObject::tr( "Preparing windows" ),
+                                  QObject::tr( "Waiting for restored tabs to become ready" ) );
+        constexpr int StartupUiReadyTimeoutMs = 120000;
+        constexpr int StartupProbeTimeoutMs = 5000;
+        constexpr int StartupUiIdleStableMs = 1500;
+        QElapsedTimer startupReadyTimer;
+        startupReadyTimer.start();
+        int lastReportedSecond = -1;
+        bool windowsShown = false;
+
+        const auto showRestoredWindows = [ & ]() {
+            if ( windowsShown ) {
+                return;
+            }
+
+            for ( auto* window : restoredWindows ) {
+                StartupProgress::advance( QObject::tr( "Showing window" ) );
+                if ( startupBootstrapEnabled_ ) {
+                    applyStartupBootstrapGeometry( window );
+                }
+                window->show();
+            }
+
+            windowsShown = true;
+        };
+
+        const auto areWindowsReadyAndVisible = [ & ]() {
+            return std::all_of( restoredWindows.cbegin(), restoredWindows.cend(),
+                                []( const MainWindow* window ) {
+                                    return window != nullptr && window->isVisible()
+                                           && window->isStartupReadyForDisplay();
+                                } );
+        };
+
+        const auto runUiProbe = [ & ]() {
+            const auto targetCount = static_cast<int>( std::count_if(
+                restoredWindows.cbegin(), restoredWindows.cend(),
+                []( const MainWindow* window ) { return window != nullptr; } ) );
+            if ( targetCount == 0 ) {
+                return true;
+            }
+
+            auto processedCount = std::make_shared<int>( 0 );
+            for ( auto* window : restoredWindows ) {
+                if ( window == nullptr ) {
+                    continue;
+                }
+
+                QTimer::singleShot( 0, window, [ processedCount ]() { ++( *processedCount ); } );
+            }
+
+            QElapsedTimer probeTimer;
+            probeTimer.start();
+            while ( *processedCount < targetCount
+                    && probeTimer.elapsed() < StartupProbeTimeoutMs
+                    && startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                                 | QEventLoop::ExcludeSocketNotifiers );
+            }
+
+            return *processedCount == targetCount;
+        };
+
+        showRestoredWindows();
+
+        while ( startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+            if ( areWindowsReadyAndVisible() && runUiProbe() ) {
+                StartupProgress::message( QObject::tr( "Preparing windows" ),
+                                          QObject::tr( "Finalizing UI initialization" ) );
+
+                QElapsedTimer idleStableTimer;
+                idleStableTimer.start();
+
+                while ( startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
+                    const bool windowsReady = areWindowsReadyAndVisible();
+                    const bool probeReady = windowsReady && runUiProbe();
+
+                    if ( probeReady ) {
+                        if ( idleStableTimer.elapsed() >= StartupUiIdleStableMs ) {
+                            StartupProgress::advance(
+                                QObject::tr( "Windows ready" ),
+                                QObject::tr( "Startup preparation complete" ) );
+                            return lastShownWindow;
+                        }
+                    }
+                    else {
+                        idleStableTimer.restart();
+                    }
+
+                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                                     | QEventLoop::ExcludeSocketNotifiers );
+                }
+            }
+
+            const int elapsedSeconds = static_cast<int>( startupReadyTimer.elapsed() / 1000 );
+            if ( elapsedSeconds != lastReportedSecond ) {
+                lastReportedSecond = elapsedSeconds;
+                StartupProgress::message( QObject::tr( "Preparing windows" ),
+                                          QObject::tr( "Waiting for UI initialization (%1s)" )
+                                              .arg( elapsedSeconds ) );
+            }
+
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                             | QEventLoop::ExcludeSocketNotifiers );
+        }
+
+        LOG_WARNING << "Timed out waiting for restored windows to finish startup preparation";
+        StartupProgress::advance( QObject::tr( "Preparing windows" ),
+                                  QObject::tr( "Startup readiness timeout" ) );
+        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                         | QEventLoop::ExcludeSocketNotifiers );
 
         return lastShownWindow;
     }
@@ -267,9 +390,35 @@ class KloggApp : public QApplication {
         }
 
         auto window = newWindow( { session_, generateIdFromUuid(), nextWindowIndex() } );
-        window->restoreGeometry( geometry );
+        if ( startupBootstrapEnabled_ ) {
+            applyStartupBootstrapGeometry( window );
+        }
+        else {
+            window->restoreGeometry( geometry );
+        }
 
         return window;
+    }
+
+    void setStartupBootstrapGeometry( const QPoint& topLeft )
+    {
+        startupBootstrapEnabled_ = true;
+        startupBootstrapTopLeft_ = topLeft;
+    }
+
+    void finalizeStartupBootstrapGeometry()
+    {
+        if ( !startupBootstrapEnabled_ ) {
+            return;
+        }
+
+        startupBootstrapEnabled_ = false;
+        for ( auto& [ session, window ] : mainWindows_ ) {
+            Q_UNUSED( session );
+            if ( window != nullptr ) {
+                window->reloadGeometry();
+            }
+        }
     }
 
     void loadFileNonInteractive( const QString& file )
@@ -332,7 +481,12 @@ class KloggApp : public QApplication {
 
         LOG_WARNING << "No visible main window after startup, opening fallback window";
         auto* fallbackWindow = newWindow();
-        fallbackWindow->reloadGeometry();
+        if ( !startupBootstrapEnabled_ ) {
+            fallbackWindow->reloadGeometry();
+        }
+        else {
+            applyStartupBootstrapGeometry( fallbackWindow );
+        }
         fallbackWindow->show();
     }
 
@@ -361,6 +515,9 @@ class KloggApp : public QApplication {
         mainWindows_.emplace_back( session, new MainWindow( session ) );
 
         auto& window = mainWindows_.back().second;
+        if ( startupBootstrapEnabled_ ) {
+            applyStartupBootstrapGeometry( window );
+        }
 
         activeWindows_.push( QPointer<MainWindow>( window ) );
 
@@ -442,6 +599,24 @@ class KloggApp : public QApplication {
         }
     }
 
+    void applyStartupBootstrapGeometry( MainWindow* window ) const
+    {
+        if ( window == nullptr ) {
+            return;
+        }
+
+        auto bootstrapSize = window->minimumSizeHint().expandedTo( QSize( 320, 200 ) );
+        if ( !bootstrapSize.isValid() ) {
+            bootstrapSize = QSize( 320, 200 );
+        }
+
+        const auto titleBarHeight = window->style()->pixelMetric( QStyle::PM_TitleBarHeight, nullptr, window );
+        const auto bootstrapTopLeft
+            = startupBootstrapTopLeft_ + QPoint( 0, std::max( titleBarHeight, 24 ) );
+
+        window->setGeometry( QRect( bootstrapTopLeft, bootstrapSize ) );
+    }
+
   private:
     KDSingleApplication singleApplication_;
     std::unique_ptr<CrashHandler> crashHandler_;
@@ -452,6 +627,8 @@ class KloggApp : public QApplication {
 
     std::list<std::pair<WindowSession, MainWindow*>> mainWindows_;
     std::stack<QPointer<MainWindow>> activeWindows_;
+    bool startupBootstrapEnabled_ = false;
+    QPoint startupBootstrapTopLeft_;
 
     VersionChecker versionChecker_;
 };

@@ -58,8 +58,11 @@
 
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -67,6 +70,7 @@
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QSerialPortInfo>
 #include <QMimeData>
 #include <QPointer>
 #include <QProgressDialog>
@@ -74,9 +78,11 @@
 #include <QScreen>
 #include <QShortcut>
 #include <QSortFilterProxyModel>
+#include <QRegularExpression>
 #include <QStringListModel>
 #include <QTemporaryFile>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolTip>
 #include <QUrl>
@@ -106,6 +112,7 @@
 #include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
+#include "predefinedfilters.h"
 #include "predefinedfiltersdialog.h"
 #include "progress.h"
 #include "readablesize.h"
@@ -113,6 +120,7 @@
 #include "sessioninfo.h"
 #include "shortcuts.h"
 #include "serialcaptureworker.h"
+#include "startupprogress.h"
 #include "streamsession.h"
 #include "styles.h"
 #include "tabbedcrawlerwidget.h"
@@ -122,6 +130,120 @@ namespace {
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
 {
     dispatchToMainThread( [ crawler_widget ]() { crawler_widget->followSet( true ); } );
+}
+
+void showComPortMessage( QWidget* parent, QMessageBox::Icon icon, const QString& title,
+                         const QString& text, bool nonBlocking )
+{
+    if ( !nonBlocking ) {
+        if ( icon == QMessageBox::Information ) {
+            QMessageBox::information( parent, title, text );
+        }
+        else {
+            QMessageBox::warning( parent, title, text );
+        }
+        return;
+    }
+
+    auto* box = new QMessageBox( icon, title, text, QMessageBox::Ok, parent );
+    box->setAttribute( Qt::WA_DeleteOnClose );
+    box->setWindowModality( Qt::NonModal );
+    box->open();
+}
+
+void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QString& fileName )
+{
+    if ( crawler_widget == nullptr ) {
+        return;
+    }
+
+    const auto shortName = QFileInfo( fileName ).fileName();
+    StartupProgress::advance( QObject::tr( "Preparing tab" ), shortName );
+
+    if ( !crawler_widget->isStartupPreparationPending() ) {
+        StartupProgress::advance( QObject::tr( "Tab ready" ), shortName );
+        return;
+    }
+
+    constexpr int StartupPrepareTimeoutMs = 120000;
+    constexpr int StartupPollIntervalMs = 50;
+
+    bool timedOut = false;
+    int lastReportedSecond = -1;
+    QEventLoop waitLoop;
+    QElapsedTimer elapsed;
+    QTimer pollTimer;
+    elapsed.start();
+    pollTimer.setInterval( StartupPollIntervalMs );
+    pollTimer.setSingleShot( false );
+
+    const auto tryFinish = [ &waitLoop, crawler_widget ]() {
+        if ( !crawler_widget->isStartupPreparationPending() ) {
+            waitLoop.quit();
+        }
+    };
+
+    const auto loadingFinishedConnection = QObject::connect(
+        crawler_widget, &CrawlerWidget::loadingFinished, &waitLoop, [ & ]( LoadingStatus status ) {
+            const auto detail = QObject::tr( "%1 (%2)" )
+                                    .arg( shortName,
+                                          status == LoadingStatus::Successful
+                                              ? QObject::tr( "loading completed" )
+                                              : QObject::tr( "loading failed" ) );
+            StartupProgress::advance( QObject::tr( "Preparing tab" ), detail );
+            tryFinish();
+        } );
+
+    const auto loadingProgressConnection = QObject::connect(
+        crawler_widget, &CrawlerWidget::loadingProgressed, &waitLoop, [ & ]( int progress ) {
+            StartupProgress::advance( QObject::tr( "Preparing tab" ),
+                                      QObject::tr( "%1 (%2%)" ).arg( shortName ).arg( progress ) );
+        } );
+
+    const auto pollConnection = QObject::connect( &pollTimer, &QTimer::timeout, &waitLoop, [ & ]() {
+        tryFinish();
+        if ( !crawler_widget->isStartupPreparationPending() ) {
+            return;
+        }
+
+        const auto elapsedMs = elapsed.elapsed();
+        if ( elapsedMs >= StartupPrepareTimeoutMs ) {
+            timedOut = true;
+            waitLoop.quit();
+            return;
+        }
+
+        const int elapsedSeconds = elapsedMs / 1000;
+        if ( elapsedSeconds != lastReportedSecond ) {
+            lastReportedSecond = elapsedSeconds;
+            StartupProgress::message( QObject::tr( "Preparing tab" ),
+                                      QObject::tr( "%1 (waiting %2s)" )
+                                          .arg( shortName )
+                                          .arg( elapsedSeconds ) );
+        }
+    } );
+
+    pollTimer.start();
+    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                     | QEventLoop::ExcludeSocketNotifiers );
+    tryFinish();
+    if ( crawler_widget->isStartupPreparationPending() ) {
+        waitLoop.exec( QEventLoop::ExcludeUserInputEvents );
+    }
+
+    pollTimer.stop();
+    QObject::disconnect( loadingFinishedConnection );
+    QObject::disconnect( loadingProgressConnection );
+    QObject::disconnect( pollConnection );
+
+    if ( timedOut ) {
+        LOG_WARNING << "Startup tab preparation timeout for " << fileName.toStdString();
+        StartupProgress::advance( QObject::tr( "Preparing tab" ),
+                                  QObject::tr( "%1 (timeout)" ).arg( shortName ) );
+    }
+    else {
+        StartupProgress::advance( QObject::tr( "Tab ready" ), shortName );
+    }
 }
 
 static constexpr auto ClipboardMaxTry = 5;
@@ -157,6 +279,8 @@ MainWindow::MainWindow( WindowSession session )
     mainIcon_.addFile( ":/images/hicolor/48x48/klogg.png" );
 
     setWindowIcon( mainIcon_ );
+    StartupProgress::advance( tr( "Initializing main window" ),
+                              tr( "Loading settings and UI state" ) );
     readSettings();
 
     createTrayIcon();
@@ -218,7 +342,9 @@ MainWindow::MainWindow( WindowSession session )
     connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
              &MainWindow::sendActionById );
 
+    StartupProgress::advance( tr( "Loading previews" ), tr( "Loading preview definitions" ) );
     PreviewManager::instance().loadFromRepository();
+    StartupProgress::advance( tr( "Loading actions" ), tr( "Loading action/response definitions" ) );
     ActionsManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
@@ -274,6 +400,7 @@ void MainWindow::reloadGeometry()
 
 void MainWindow::reloadSession()
 {
+    StartupProgress::advance( tr( "Restoring session" ), tr( "Restoring opened tabs" ) );
     const auto& config = Configuration::get();
     const auto followFileOnLoad = config.followFileOnLoad() && config.anyFileWatchEnabled();
 
@@ -283,6 +410,7 @@ void MainWindow::reloadSession()
 
     for ( const auto& open_file : openedFiles ) {
         QString file_name = open_file.fileName;
+        StartupProgress::advance( tr( "Restoring tab" ), QFileInfo( file_name ).fileName() );
         auto* crawler_widget = static_cast<CrawlerWidget*>( open_file.view );
 
         if ( crawler_widget ) {
@@ -292,6 +420,8 @@ void MainWindow::reloadSession()
                 auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
                 if ( streamSettings ) {
                     streamSettings->filePath = file_name;
+                    StartupProgress::advance( tr( "Restoring COM stream" ),
+                                              streamSettings->portName );
                     if ( !startComCaptureSession( *streamSettings,
                                                   ComCaptureStartOptions::restore() ) ) {
                         LOG_WARNING << "Failed to restore COM stream for "
@@ -307,6 +437,8 @@ void MainWindow::reloadSession()
             if ( followFileOnLoad ) {
                 signalCrawlerToFollowFile( crawler_widget );
             }
+
+            waitForCrawlerStartupPreparation( crawler_widget, file_name );
         }
     }
 
@@ -319,6 +451,23 @@ void MainWindow::reloadSession()
     }
 
     updateOpenedFilesMenu();
+    StartupProgress::advance( tr( "Session restored" ), tr( "Finishing startup" ) );
+}
+
+bool MainWindow::isStartupReadyForDisplay() const
+{
+    if ( !loadingFileName.isEmpty() ) {
+        return false;
+    }
+
+    for ( auto i = 0; i < mainTabWidget_.count(); ++i ) {
+        auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( i ) );
+        if ( crawler != nullptr && crawler->isStartupPreparationPending() ) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void MainWindow::loadInitialFile( QString fileName, bool followFile )
@@ -1091,6 +1240,22 @@ void MainWindow::openComPort()
 bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                                          MainWindow::ComCaptureStartOptions options )
 {
+    const auto showWarning = [ this, &options ]( const QString& message ) {
+        if ( !options.showErrors ) {
+            return;
+        }
+        showComPortMessage( this, QMessageBox::Warning, tr( "Open COM Port" ), message,
+                            options.nonBlockingErrors );
+    };
+
+    const auto showInformation = [ this, &options ]( const QString& message ) {
+        if ( !options.showErrors ) {
+            return;
+        }
+        showComPortMessage( this, QMessageBox::Information, tr( "Open COM Port" ), message,
+                            options.nonBlockingErrors );
+    };
+
     if ( settings.portName.isEmpty() || settings.filePath.isEmpty() ) {
         return false;
     }
@@ -1098,30 +1263,38 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     const QFileInfo info( settings.filePath );
     const auto absolutePath = info.absoluteFilePath();
     if ( absolutePath.isEmpty() ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning( this, tr( "Open COM Port" ), tr( "Invalid capture file path." ) );
-        }
+        showWarning( tr( "Invalid capture file path." ) );
         return false;
     }
 
     const QDir dir( info.absolutePath() );
     if ( !dir.exists() ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning( this, tr( "Open COM Port" ),
-                                  tr( "Capture directory does not exist." ) );
-        }
+        showWarning( tr( "Capture directory does not exist." ) );
         return false;
     }
 
     settings.filePath = absolutePath;
 
+    const auto availablePorts = QSerialPortInfo::availablePorts();
+    const bool portExists = std::any_of( availablePorts.cbegin(), availablePorts.cend(),
+                                         [ &settings ]( const QSerialPortInfo& portInfo ) {
+                                             return portInfo.portName().compare( settings.portName,
+                                                                                 Qt::CaseInsensitive )
+                                                        == 0
+                                                    || portInfo.systemLocation().compare(
+                                                           settings.portName,
+                                                           Qt::CaseInsensitive )
+                                                           == 0;
+                                         } );
+    if ( !portExists ) {
+        showWarning( tr( "COM port %1 was not found. Capture will not be restored." )
+                         .arg( settings.portName ) );
+        return false;
+    }
+
     QString captureFileError;
     if ( !ensureComCaptureFileWritable( settings.filePath, &captureFileError ) ) {
-        if ( options.showErrors ) {
-            QMessageBox::warning(
-                this, tr( "Open COM Port" ),
-                tr( "Failed to open capture file: %1" ).arg( captureFileError ) );
-        }
+        showWarning( tr( "Failed to open capture file: %1" ).arg( captureFileError ) );
         return false;
     }
 
@@ -1129,11 +1302,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() ) {
             existingSession->closeConnection();
-            if ( options.showErrors ) {
-                QMessageBox::information(
-                    this, tr( "Open COM Port" ),
-                    tr( "The existing capture is still closing. Please try again in a moment." ) );
-            }
+            showInformation( tr( "The existing capture is still closing. Please try again in a moment." ) );
             return false;
         }
         if ( actionsStreamSession_ == existingSession ) {
@@ -1155,9 +1324,10 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession, options ]( const QString& message ) {
                  if ( options.showErrors ) {
-                     QMessageBox::warning(
-                         this, tr( "COM port capture error" ),
-                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ) );
+                     showComPortMessage(
+                         this, QMessageBox::Warning, tr( "COM port capture error" ),
+                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ),
+                         options.nonBlockingErrors );
                  }
                  else {
                      LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
@@ -1869,6 +2039,10 @@ void MainWindow::closeEvent( QCloseEvent* event )
         this->hide();
     }
     else {
+        scratchPad_.close();
+        previewWindow_.close();
+        actionsResponsesWindow_.close();
+
         const auto saveSettings = session_.close();
         if ( saveSettings ) {
             writeSettings();
@@ -2594,14 +2768,50 @@ void MainWindow::readSettings()
     */
 
     // History of recent files
+    StartupProgress::advance( tr( "Loading recent files" ), tr( "Restoring recent files list" ) );
     RecentFiles::getSynced();
     updateRecentFileActions();
 
+    StartupProgress::advance( tr( "Loading favorites" ), tr( "Restoring favorite files list" ) );
     FavoriteFiles::getSynced();
     updateFavoritesMenu();
 
-    HighlighterSetCollection::getSynced();
+    StartupProgress::advance( tr( "Loading highlighters" ),
+                              tr( "Restoring and compiling highlighter sets" ) );
+    auto& highlighterCollection = HighlighterSetCollection::getSynced();
+    auto& highlighterSets = highlighterCollection.highlighterSets();
+    for ( auto& highlighterSet : highlighterSets ) {
+        StartupProgress::advance( tr( "Loading highlighter set" ), highlighterSet.name() );
+        auto& highlighters = highlighterSet.highlighters();
+        for ( auto& highlighter : highlighters ) {
+            const auto highlighterName = highlighter.pattern().isEmpty()
+                                             ? tr( "<empty pattern>" )
+                                             : highlighter.pattern();
+            StartupProgress::advance( tr( "Compiling highlighter" ), highlighterName );
+            highlighter.compile();
+        }
+        StartupProgress::advance( tr( "Compiling highlighter set" ), highlighterSet.name() );
+        highlighterSet.compile();
+    }
     updateHighlightersMenu();
+
+    StartupProgress::advance( tr( "Loading predefined filters" ),
+                              tr( "Restoring predefined filters" ) );
+    auto& predefinedFiltersCollection = PredefinedFiltersCollection::getSynced();
+    const auto predefinedFilters = predefinedFiltersCollection.getFilters();
+    for ( const auto& filter : predefinedFilters ) {
+        const auto filterName
+            = filter.name.isEmpty() ? filter.pattern.left( 64 ) : filter.name;
+        StartupProgress::advance( tr( "Loading predefined filter" ), filterName );
+        if ( filter.useRegex ) {
+            QRegularExpression expression( filter.pattern,
+                                           QRegularExpression::UseUnicodePropertiesOption );
+            if ( !expression.isValid() ) {
+                LOG_WARNING << "Invalid predefined filter regex " << filterName << ": "
+                            << expression.errorString();
+            }
+        }
+    }
 }
 
 void MainWindow::displayQuickFindBar( QuickFindMux::QFDirection direction )

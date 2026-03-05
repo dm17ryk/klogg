@@ -89,6 +89,7 @@ class MainWindow : public QMainWindow {
     void reloadSession();
     // Loads the initial file (parameter passed or from config file)
     void loadInitialFile( QString fileName, bool followFile );
+    bool isStartupReadyForDisplay() const;
 
     void reTranslateUI();
 
@@ -206,11 +207,12 @@ class MainWindow : public QMainWindow {
 
   private:
     struct ComCaptureStartOptions {
-        static ComCaptureStartOptions interactive() { return { true, true }; }
-        static ComCaptureStartOptions restore() { return { false, false }; }
+        static ComCaptureStartOptions interactive() { return { true, true, false }; }
+        static ComCaptureStartOptions restore() { return { false, true, true }; }
 
         bool allowActionsPrompt = true;
         bool showErrors = true;
+        bool nonBlockingErrors = false;
     };
 
     void createActions();

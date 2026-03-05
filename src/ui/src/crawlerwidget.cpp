@@ -64,7 +64,6 @@
 #include <QShortcut>
 #include <QStandardItemModel>
 #include <QStringListModel>
-#include <QTimer>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -80,6 +79,7 @@
 #include "quickfindpattern.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
+#include "startupprogress.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
 
@@ -220,6 +220,11 @@ bool CrawlerWidget::isTextWrapEnabled() const
     return logMainView_->isTextWrapEnabled();
 }
 
+bool CrawlerWidget::isStartupPreparationPending() const
+{
+    return loadingInProgress_ || restoreSearchPending_ || startupFilterSearchInProgress_;
+}
+
 void CrawlerWidget::reloadPredefinedFilters() const
 {
     predefinedFilters_->populatePredefinedFilters();
@@ -277,6 +282,7 @@ void CrawlerWidget::stopLoading()
 void CrawlerWidget::reload()
 {
     searchState_.resetState();
+    startupFilterSearchInProgress_ = false;
     constexpr auto DropCache = true;
     logFilteredData_->clearSearch( DropCache );
     logFilteredData_->clearMarks();
@@ -390,21 +396,14 @@ void CrawlerWidget::doSetViewContext( const QString& view_context )
         std::transform( savedMarks.cbegin(), savedMarks.cend(), std::back_inserter( savedMarkedLines_ ),
                         []( const auto& l ) { return LineNumber( l ); } );
 
-        if ( context.autoRefresh() && !context.searchPattern().isEmpty() ) {
-            QTimer::singleShot( 0, this, [ this ]() {
-                if ( !searchRefreshButton_->isChecked() ) {
-                    return;
-                }
-
-                const auto searchText = searchLineEdit_->currentText();
-                if ( searchText.isEmpty() ) {
-                    return;
-                }
-
-                // Restore-time auto-refresh search is deferred to keep startup
-                // responsive and avoid nested event-loop reentrancy.
-                replaceCurrentSearch( searchText, true, true );
-            } );
+        restoreSearchPending_ = context.autoRefresh() && !context.searchPattern().isEmpty();
+        if ( restoreSearchPending_ && !loadingInProgress_ ) {
+            const auto restoredPattern = searchLineEdit_->currentText();
+            const auto progressDetail
+                = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
+            StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
+            replaceCurrentSearch( restoredPattern, true, true );
+            restoreSearchPending_ = false;
         }
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to restore crawler view context: " << e.what();
@@ -475,6 +474,7 @@ void CrawlerWidget::updatePredefinedFiltersWidget()
 void CrawlerWidget::stopSearch()
 {
     logFilteredData_->interruptSearch();
+    startupFilterSearchInProgress_ = false;
     searchState_.stopSearch();
     printSearchInfoMessage();
 }
@@ -551,6 +551,12 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
         clearButton_->show();
     }
     else {
+        if ( StartupProgress::isActive() ) {
+            const auto pattern = searchLineEdit_->currentText();
+            const auto detail = pattern.isEmpty() ? tr( "<empty expression>" ) : pattern.left( 96 );
+            StartupProgress::message( tr( "Applying filter expression" ),
+                                      tr( "%1 (%2%)" ).arg( detail ).arg( progress ) );
+        }
         // Search in progress
         // We ignore 0% and 100% to avoid a flash when the search is very short
         if ( progress > 0 ) {
@@ -596,6 +602,15 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
                   << currenLineIndex;
         filteredView_->selectAndDisplayLine( currenLineIndex );
         filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+    }
+
+    if ( progress == 100 ) {
+        startupFilterSearchInProgress_ = false;
+        if ( StartupProgress::isActive() ) {
+            const auto pattern = searchLineEdit_->currentText();
+            const auto detail = pattern.isEmpty() ? tr( "<empty expression>" ) : pattern.left( 96 );
+            StartupProgress::advance( tr( "Filter ready" ), detail );
+        }
     }
 }
 
@@ -759,14 +774,27 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
 
     // searchButton_->setEnabled( true );
 
+    if ( status == LoadingStatus::Successful && restoreSearchPending_ ) {
+        const auto restoredPattern = searchLineEdit_->currentText();
+        const auto progressDetail
+            = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
+        StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
+        replaceCurrentSearch( restoredPattern, true, true );
+        restoreSearchPending_ = false;
+    }
     // See if we need to auto-refresh the search
-    if ( searchState_.isAutorefreshAllowed() ) {
+    else if ( searchState_.isAutorefreshAllowed() ) {
         searchEndLine_ = LineNumber( logData_->getNbLine().get() );
         if ( searchState_.isFileTruncated() )
             // We need to restart the search
             replaceCurrentSearch( searchLineEdit_->currentText(), true );
         else
             logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
+    }
+    else if ( status != LoadingStatus::Successful ) {
+        // Avoid blocking startup waiters forever on failed loads.
+        restoreSearchPending_ = false;
+        startupFilterSearchInProgress_ = false;
     }
 
     // Set the encoding for the views
@@ -1640,6 +1668,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         logFilteredData_->clearSearch();
         filteredView_->updateData();
         searchState_.resetState();
+        startupFilterSearchInProgress_ = false;
 
         QString errorMessage = tr( "Error in expression" );
         if ( !details.isEmpty() ) {
@@ -1659,6 +1688,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         LOG_INFO << "replacing current search with " << searchText;
         // Interrupt the search if it's ongoing
         logFilteredData_->interruptSearch();
+        startupFilterSearchInProgress_ = false;
 
         // We have to wait for the last search update (100%)
         // before clearing/restarting to avoid having remaining results.
@@ -1681,6 +1711,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             logFilteredData_->clearSearch();
             filteredView_->updateData();
             searchState_.resetState();
+            startupFilterSearchInProgress_ = false;
             printSearchInfoMessage();
             return;
         }
@@ -1689,6 +1720,10 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         auto regexpPattern = RegularExpressionPattern(
             searchText, matchCaseButton_->isChecked(), inverseButton_->isChecked(),
             booleanButton_->isChecked(), !useRegexpButton_->isChecked() );
+        if ( StartupProgress::isActive() ) {
+            const auto detail = searchText.isEmpty() ? tr( "<empty expression>" ) : searchText.left( 96 );
+            StartupProgress::advance( tr( "Compiling filter expression" ), detail );
+        }
 
         const bool samePatternAsCurrent
             = !forceRecompile && logFilteredData_->hasCurrentRegexp()
@@ -1700,6 +1735,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             stopButton_->show();
             clearButton_->hide();
             searchButton_->hide();
+            startupFilterSearchInProgress_ = true;
 
             if ( forceFullScan ) {
                 LOG_INFO << "Pattern unchanged, forcing full refresh while reusing compiled expression";
@@ -1733,6 +1769,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             stopButton_->show();
             clearButton_->hide();
             searchButton_->hide();
+            startupFilterSearchInProgress_ = true;
 
             logFilteredData_->runSearch( regexpPattern, std::move( compiledExpression ),
                                          searchStartLine_, searchEndLine_ );
@@ -1746,13 +1783,16 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             LOG_WARNING << "Search pattern invalid: " << regexpPattern.pattern
                         << " error: " << compiledExpression->errorString();
 
+            startupFilterSearchInProgress_ = false;
             showExpressionError( compiledExpression->errorString() );
         }
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Search update failed: " << e.what();
+        startupFilterSearchInProgress_ = false;
         showExpressionError( QString::fromLocal8Bit( e.what() ) );
     } catch ( ... ) {
         LOG_ERROR << "Search update failed with unknown exception";
+        startupFilterSearchInProgress_ = false;
         showExpressionError( tr( "unknown error" ) );
     }
 }

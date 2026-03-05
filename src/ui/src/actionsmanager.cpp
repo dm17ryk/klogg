@@ -6,6 +6,7 @@
 #include "actionsconfigparser.h"
 #include "log.h"
 #include "persistentinfo.h"
+#include "startupprogress.h"
 
 ActionsManager& ActionsManager::instance()
 {
@@ -15,12 +16,19 @@ ActionsManager& ActionsManager::instance()
 
 void ActionsManager::loadFromRepository()
 {
+    StartupProgress::advance( QObject::tr( "Loading actions repository" ) );
     const auto result = repository_.load();
     if ( !result.errors.isEmpty() ) {
         LOG_WARNING << "Failed to load actions: " << result.errors.join( "; " ).toStdString();
     }
     actions_ = result.actions;
     responses_ = result.responses;
+    for ( const auto& action : actions_ ) {
+        StartupProgress::advance( QObject::tr( "Loading action" ), action.name );
+    }
+    for ( const auto& response : responses_ ) {
+        StartupProgress::advance( QObject::tr( "Loading response" ), response.name );
+    }
     autoResponsesEnabled_
         = PersistentInfo::getSettings( app_settings{} )
               .value( "Actions/autoResponsesEnabled", true )

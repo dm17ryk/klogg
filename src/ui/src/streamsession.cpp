@@ -12,9 +12,9 @@ StreamSession::StreamSession( SerialCaptureSettings settings )
     , settings_( std::move( settings ) )
 {
     connect( &thread_, &QThread::finished, this, [ this ]() {
-        setConnectionClosed();
         started_ = false;
         stopping_ = false;
+        setConnectionClosed();
     } );
 }
 
@@ -71,9 +71,9 @@ void StreamSession::stop( bool waitForCompletion )
             thread_.wait();
         }
     }
-
-    setConnectionClosed();
     started_ = false;
+    stopping_ = false;
+    setConnectionClosed();
 }
 
 void StreamSession::closeConnection()
