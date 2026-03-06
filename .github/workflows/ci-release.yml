@@ -7,12 +7,15 @@ on:
         description: "Run ID of CI workflow"
         required: false
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
       SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
-      KLOGG_GITHUB_TOKEN: ${{ secrets.KLOGG_GITHUB_TOKEN }}
+      KLOGG_GITHUB_TOKEN: ${{ secrets.KLOGG_GITHUB_TOKEN || github.token }}
       DISCORD_NEW_VERSIONS_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
     steps:
     - uses: actions/checkout@v3
