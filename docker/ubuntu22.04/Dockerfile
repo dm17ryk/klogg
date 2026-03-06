@@ -5,6 +5,7 @@ RUN apt update -y \
  && apt install --no-install-recommends \
         build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libcurl4-openssl-dev \
+        libglib2.0-dev \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
