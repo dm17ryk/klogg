@@ -145,7 +145,7 @@ jobs:
           if-no-files-found: error
 
   Mac:
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.head_ref != 'fix_gh_ci' && github.ref_name != 'fix_gh_ci'"
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     strategy:
       fail-fast: false
       matrix:
@@ -208,7 +208,7 @@ jobs:
           if-no-files-found: error
 
   Windows:
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && github.head_ref != 'fix_gh_ci' && github.ref_name != 'fix_gh_ci'"
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     strategy:
       fail-fast: false
       matrix:
