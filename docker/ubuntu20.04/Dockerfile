@@ -13,7 +13,7 @@ RUN apt-get update -y && \
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN python3 -m pip install --no-cache-dir aqtinstall==3.2.1 && \
+RUN python3 -m pip install --no-cache-dir aqtinstall==3.1.18 && \
     python3 -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 
