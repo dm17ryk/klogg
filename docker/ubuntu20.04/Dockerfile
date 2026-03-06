@@ -3,7 +3,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -y && \
     apt-get install --no-install-recommends \
-        build-essential python3 python-is-python3 python3-pip \
+        build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
@@ -13,9 +13,10 @@ RUN apt-get update -y && \
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    python3 -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
-    python3 -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
+RUN python3 -m venv /tmp/aqt-venv && \
+    /tmp/aqt-venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /tmp/aqt-venv/bin/python -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
+    /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-linux-x86_64.sh && \
