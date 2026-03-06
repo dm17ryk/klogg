@@ -319,6 +319,43 @@ if(UNIX)
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://github.com/dm17ryk/klogg")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dmitry Kokotov <${CPACK_PACKAGE_CONTACT}>")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS YES)
+    set(_klogg_qt_private_dirs "")
+    foreach(_qt_component Core Widgets Gui Network SerialPort Xml Core5Compat)
+      if(TARGET Qt${QT_VERSION_MAJOR}::${_qt_component})
+        set(_qt_lib_location "")
+        foreach(_qt_location_prop
+                IMPORTED_LOCATION
+                IMPORTED_LOCATION_RELEASE
+                IMPORTED_LOCATION_RELWITHDEBINFO
+                IMPORTED_LOCATION_MINSIZEREL
+                IMPORTED_LOCATION_DEBUG)
+          get_target_property(
+            _qt_lib_location
+            Qt${QT_VERSION_MAJOR}::${_qt_component}
+            ${_qt_location_prop}
+          )
+          if(_qt_lib_location
+             AND NOT _qt_lib_location MATCHES "-NOTFOUND$"
+             AND EXISTS "${_qt_lib_location}")
+            break()
+          endif()
+          set(_qt_lib_location "")
+        endforeach()
+
+        if(_qt_lib_location)
+          get_filename_component(_qt_lib_dir "${_qt_lib_location}" DIRECTORY)
+          list(APPEND _klogg_qt_private_dirs "${_qt_lib_dir}")
+        endif()
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _klogg_qt_private_dirs)
+    if(_klogg_qt_private_dirs)
+      set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${_klogg_qt_private_dirs}")
+      message(
+        STATUS
+          "CPack DEB shlibdeps private dirs: ${CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS}"
+      )
+    endif()
 
     #RPM
     set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
