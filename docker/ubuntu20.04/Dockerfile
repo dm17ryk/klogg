@@ -20,10 +20,10 @@ RUN python3 -m venv /tmp/aqt-venv && \
     /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-linux-x86_64.sh && \
-    chmod 755 cmake-3.20.2-linux-x86_64.sh && \
-    ./cmake-3.20.2-linux-x86_64.sh --prefix=/opt/ --exclude-subdir --skip-license && \
-    rm cmake-3.20.2-linux-x86_64.sh
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-x86_64.sh && \
+    chmod 755 cmake-3.28.6-linux-x86_64.sh && \
+    ./cmake-3.28.6-linux-x86_64.sh --prefix=/opt/ --exclude-subdir --skip-license && \
+    rm cmake-3.28.6-linux-x86_64.sh
 
 ENV QT_ROOT=/opt/Qt/6.10.1/gcc_64
 ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/gcc_64/lib/cmake
