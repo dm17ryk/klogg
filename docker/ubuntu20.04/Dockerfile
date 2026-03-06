@@ -7,6 +7,7 @@ RUN apt-get update -y && \
         libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
         libglib2.0-dev \
         libdbus-1-dev \
+        libtiff5 \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
