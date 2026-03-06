@@ -25,6 +25,6 @@ RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2
     ./cmake-3.20.2-linux-x86_64.sh --prefix=/opt/ --exclude-subdir --skip-license && \
     rm cmake-3.20.2-linux-x86_64.sh
 
-ENV QT_ROOT=/opt/Qt/6.10.1/linux_gcc_64
-ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/linux_gcc_64/lib/cmake
-ENV PATH=/opt/bin:/opt/Qt/6.10.1/linux_gcc_64/bin:$PATH
+ENV QT_ROOT=/opt/Qt/6.10.1/gcc_64
+ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/gcc_64/lib/cmake
+ENV PATH=/opt/bin:/opt/Qt/6.10.1/gcc_64/bin:$PATH
