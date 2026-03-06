@@ -180,7 +180,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
     constexpr int StartupPollIntervalMs = 50;
 
     bool timedOut = false;
-    int lastReportedSecond = -1;
+    qint64 lastReportedSecond = -1;
     QEventLoop waitLoop;
     QElapsedTimer elapsed;
     QTimer pollTimer;
@@ -224,7 +224,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
             return;
         }
 
-        const int elapsedSeconds = elapsedMs / 1000;
+        const qint64 elapsedSeconds = elapsedMs / 1000;
         if ( elapsedSeconds != lastReportedSecond ) {
             lastReportedSecond = elapsedSeconds;
             StartupProgress::message( QObject::tr( "Preparing tab" ),
