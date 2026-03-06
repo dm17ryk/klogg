@@ -153,7 +153,7 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     }
 
     lineBuffer_.append( data );
-    int newlineIndex = lineBuffer_.indexOf( '\n' );
+    qsizetype newlineIndex = lineBuffer_.indexOf( '\n' );
     while ( newlineIndex >= 0 ) {
         QByteArray lineBytes = lineBuffer_.left( newlineIndex );
         lineBuffer_.remove( 0, newlineIndex + 1 );
