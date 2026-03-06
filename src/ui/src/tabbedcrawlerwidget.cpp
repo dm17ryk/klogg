@@ -110,7 +110,7 @@ TabbedCrawlerWidget::TabbedCrawlerWidget()
     connect( &myTabBar_, &CrawlerTabBar::showTabContextMenu, this,
              &TabbedCrawlerWidget::showContextMenu );
 
-    dispatchToMainThread( [ this ] { loadIcons(); } );
+    dispatchToObject( [ this ] { loadIcons(); }, this );
 }
 
 void TabbedCrawlerWidget::loadIcons()
@@ -138,7 +138,7 @@ void TabbedCrawlerWidget::changeEvent( QEvent* event )
                 = connected ? &it->second->captureSettings() : nullptr;
             setTabConnectionState( path, connected, settings );
         }
-        dispatchToMainThread( [ this ] { loadIcons(); } );
+        dispatchToObject( [ this ] { loadIcons(); }, this );
     }
 
     QWidget::changeEvent( event );

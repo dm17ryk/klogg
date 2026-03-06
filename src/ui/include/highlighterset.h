@@ -42,6 +42,7 @@
 #include <QColor>
 #include <QMetaType>
 #include <QRegularExpression>
+#include <QVector>
 #include <memory>
 #include <optional>
 #include <qcolor.h>
@@ -166,6 +167,7 @@ class HighlighterSet {
     friend class HighlighterSetCollection;
 
     mutable std::shared_ptr<MultiRegularExpression> compiledExpression_;
+    mutable QVector<int> compiledPatternToHighlighterIndex_;
 };
 
 struct QuickHighlighter {

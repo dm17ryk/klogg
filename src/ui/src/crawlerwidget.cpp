@@ -54,6 +54,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QCompleter>
 #include <QInputDialog>
 #include <QJsonDocument>
@@ -178,6 +179,56 @@ CrawlerWidget::CrawlerWidget( QWidget* parent )
 {
 }
 
+CrawlerWidget::~CrawlerWidget()
+{
+    QCoreApplication::removePostedEvents( this, QEvent::MetaCall );
+
+    // Stop async producers before UI teardown.
+    if ( logFilteredData_ ) {
+        disconnect( logFilteredData_.get(), nullptr, this, nullptr );
+        logFilteredData_->interruptSearch();
+    }
+    if ( logData_ ) {
+        disconnect( logData_.get(), nullptr, this, nullptr );
+        logData_->interruptLoading();
+    }
+
+    // Detach view references to filtered data first.
+    if ( logMainView_ ) {
+        QCoreApplication::removePostedEvents( logMainView_, QEvent::MetaCall );
+        logMainView_->useNewFiltering( nullptr );
+    }
+    if ( filteredView_ ) {
+        QCoreApplication::removePostedEvents( filteredView_, QEvent::MetaCall );
+    }
+
+    if ( tabbedFilteredView_ ) {
+        QCoreApplication::removePostedEvents( tabbedFilteredView_, QEvent::MetaCall );
+    }
+
+    for ( const auto& filteredViewData : filteredViewsData_ ) {
+        if ( filteredViewData.first ) {
+            QCoreApplication::removePostedEvents( filteredViewData.first, QEvent::MetaCall );
+        }
+    }
+
+    // Destroy views while backing data is still alive. This prevents
+    // asynchronous UI events from touching dangling log data pointers
+    // during QObject child teardown.
+    if ( tabbedFilteredView_ ) {
+        tabbedFilteredView_->setParent( nullptr );
+        delete tabbedFilteredView_;
+        tabbedFilteredView_ = nullptr;
+        filteredView_ = nullptr;
+    }
+
+    if ( logMainView_ ) {
+        logMainView_->setParent( nullptr );
+        delete logMainView_;
+        logMainView_ = nullptr;
+    }
+}
+
 // The top line is first one on the main display
 LineNumber CrawlerWidget::getTopLine() const
 {
@@ -260,10 +311,10 @@ void CrawlerWidget::doSendAllStateSignals()
 void CrawlerWidget::changeEvent( QEvent* event )
 {
     if ( event->type() == QEvent::StyleChange ) {
-        dispatchToMainThread( [ this ] {
+        dispatchToObject( [ this ] {
             loadIcons();
             searchInfoLineDefaultPalette_ = this->palette();
-        } );
+        }, this );
     }
 
     QWidget::changeEvent( event );
@@ -1010,7 +1061,7 @@ void CrawlerWidget::setSearchPattern( const QString& searchPattern )
     searchLineEdit_->lineEdit()->setFocus();
 
     if ( Configuration::get().autoRunSearchOnPatternChange() ) {
-        dispatchToMainThread( [ this ] { startNewSearch(); } );
+        dispatchToObject( [ this ] { startNewSearch(); }, this );
     }
 }
 
@@ -1296,7 +1347,7 @@ void CrawlerWidget::setup()
     connect( visibilityBox_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &CrawlerWidget::changeFilteredViewVisibility );
 
-    connect( logMainView_, &LogMainView::newSelection,
+    connect( logMainView_, &LogMainView::newSelection, this,
              [ this ]( auto ) { logMainView_->update(); } );
 
     connect( logMainView_, &LogMainView::newSelection, this,

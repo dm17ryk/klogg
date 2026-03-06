@@ -72,6 +72,7 @@ class LogFilteredData : public AbstractLogData {
   public:
     // Constructor used by LogData
     explicit LogFilteredData( const LogData* logData );
+    ~LogFilteredData() override;
 
     // Starts the async search, sending newDataAvailable() when new data found.
     // If a search is already in progress this function will block until
@@ -250,12 +251,13 @@ class LogFilteredData : public AbstractLogData {
 
     Visibility visibility_;
 
-    LogFilteredDataWorker workerThread_;
-
     Mutex searchProgressMutex_;
     std::tuple<LinesCount, int, LineNumber, uint64_t> searchProgress_;
 
     KDToolBox::KDSignalThrottler searchProgressThrottler_;
+
+    // Keep worker teardown ahead of throttler/mutex teardown.
+    LogFilteredDataWorker workerThread_;
 
   private:
     struct CachedSearchResult {

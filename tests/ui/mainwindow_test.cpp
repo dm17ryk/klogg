@@ -277,8 +277,8 @@ SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" 
     auto tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
     REQUIRE( tabArea != nullptr );
 
-    StartupProgressCallbackGuard callbackGuard;
     StartupProgressRecorder startupRecorder;
+    StartupProgressCallbackGuard callbackGuard;
     StartupProgress::setCallback(
         [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
     mainWindow->reloadSession();
@@ -325,8 +325,8 @@ SCENARIO( "Main window startup waits for restored filter completion", "[ui][star
     auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
     REQUIRE( tabArea != nullptr );
 
-    StartupProgressCallbackGuard callbackGuard;
     StartupProgressRecorder startupRecorder;
+    StartupProgressCallbackGuard callbackGuard;
     StartupProgress::setCallback(
         [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
 
@@ -401,8 +401,8 @@ SCENARIO( "Main window startup reports initialization stages", "[ui][startup]" )
     auto appSession = std::make_shared<Session>();
     WindowSession windowSession{ appSession, "Main", 0 };
 
-    StartupProgressCallbackGuard callbackGuard;
     StartupProgressRecorder startupRecorder;
+    StartupProgressCallbackGuard callbackGuard;
     StartupProgress::setCallback(
         [ &startupRecorder ]( const StartupProgressState& state ) { startupRecorder.record( state ); } );
     std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
@@ -448,6 +448,7 @@ SCENARIO( "Main window restores session with missing and empty files safely", "[
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
     REQUIRE( tabArea->currentIndex() >= 0 );
+    REQUIRE( waitUiState( [ & ] { return mainWindow->isStartupReadyForDisplay(); } ) );
 }
 
 SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )

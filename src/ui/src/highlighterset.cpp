@@ -191,6 +191,11 @@ void Highlighter::compile() const
         = useRegex_ ? regexp_.pattern() : QRegularExpression::escape( regexp_.pattern() );
 
     optimizedRegexp_ = QRegularExpression( pattern, regexp_.patternOptions() );
+    if ( !optimizedRegexp_->isValid() ) {
+        LOG_WARNING << "Skipping invalid highlighter pattern " << pattern << ": "
+                    << optimizedRegexp_->errorString();
+        return;
+    }
     optimizedRegexp_->optimize();
 }
 
@@ -200,6 +205,9 @@ bool Highlighter::matchLine( const QString& line, klogg::vector<HighlightedMatch
 
     if ( !optimizedRegexp_ ) {
         compile();
+    }
+    if ( !optimizedRegexp_ || !optimizedRegexp_->isValid() ) {
+        return false;
     }
 
     QRegularExpressionMatchIterator matchIterator = optimizedRegexp_->globalMatch( line );
@@ -267,10 +275,23 @@ bool HighlighterSet::isEmpty() const
 
 void HighlighterSet::compile() const
 {
-    klogg::vector<RegularExpressionPattern> patterns(
-        static_cast<size_t>( highlighterList_.size() ) );
-    std::transform( highlighterList_.begin(), highlighterList_.end(), patterns.begin(),
-                    []( const Highlighter& hl ) { return hl.expressionPattern(); } );
+    compiledPatternToHighlighterIndex_.clear();
+
+    klogg::vector<RegularExpressionPattern> patterns;
+    patterns.reserve( static_cast<size_t>( highlighterList_.size() ) );
+
+    for ( int index = 0; index < highlighterList_.size(); ++index ) {
+        const auto pattern = highlighterList_.at( index ).expressionPattern();
+        const auto regex = static_cast<QRegularExpression>( pattern );
+        if ( !regex.isValid() ) {
+            LOG_WARNING << "Skipping invalid highlighter pattern " << pattern.pattern << ": "
+                        << regex.errorString();
+            continue;
+        }
+
+        patterns.emplace_back( pattern );
+        compiledPatternToHighlighterIndex_.append( index );
+    }
 
     compiledExpression_ = std::make_shared<MultiRegularExpression>( patterns );
 }
@@ -278,6 +299,7 @@ void HighlighterSet::compile() const
 void HighlighterSet::invalidateCompiled() const
 {
     compiledExpression_.reset();
+    compiledPatternToHighlighterIndex_.clear();
 }
 
 HighlighterMatchType HighlighterSet::matchLine( const QString& line,
@@ -300,11 +322,26 @@ HighlighterMatchType HighlighterSet::matchLine( const QString& line,
     klogg::vector<std::pair<RegularExpressionPattern, bool>> matchedPatterns
         = matcher->match( std::string_view{ utf8Data.data(), resultSize } );
 
+    QVector<bool> matchedByHighlighter( highlighterList_.size(), false );
+    const auto matchedPatternCount = static_cast<int>( matchedPatterns.size() );
+    const auto mappedPatternCount
+        = static_cast<int>( compiledPatternToHighlighterIndex_.size() );
+    const auto matchedCount = qMin( matchedPatternCount, mappedPatternCount );
+    for ( int patternIndex = 0; patternIndex < matchedCount; ++patternIndex ) {
+        if ( matchedPatterns[ static_cast<size_t>( patternIndex ) ].second ) {
+            const auto highlighterIndex
+                = compiledPatternToHighlighterIndex_.at( patternIndex );
+            if ( highlighterIndex >= 0 && highlighterIndex < matchedByHighlighter.size() ) {
+                matchedByHighlighter[ highlighterIndex ] = true;
+            }
+        }
+    }
+
     auto matchType = HighlighterMatchType::NoMatch;
 
     for ( int index = static_cast<int>( highlighterList_.size() ) - 1; index >= 0; --index ) {
         const Highlighter& hl = highlighterList_[ index ];
-        if ( !matchedPatterns[ static_cast<size_t>( index ) ].second ) {
+        if ( !matchedByHighlighter[ index ] ) {
             continue;
         }
 

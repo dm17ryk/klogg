@@ -93,14 +93,14 @@ HighlighterSetEdit::HighlighterSetEdit( QWidget* parent )
     connect( highlighterEdit_, &HighlighterEdit::changed, this,
              &HighlighterSetEdit::updateHighlighterProperties );
 
-    dispatchToMainThread( [ this ] {
+    dispatchToObject( [ this ] {
         IconLoader iconLoader( this );
 
         addHighlighterButton->setIcon( iconLoader.load( "icons8-plus-16" ) );
         removeHighlighterButton->setIcon( iconLoader.load( "icons8-minus-16" ) );
         upHighlighterButton->setIcon( iconLoader.load( "icons8-up-16" ) );
         downHighlighterButton->setIcon( iconLoader.load( "icons8-down-arrow-16" ) );
-    } );
+    }, this );
 
     reset();
 }
@@ -169,7 +169,7 @@ void HighlighterSetEdit::removeHighlighter()
         setCurrentRow( -1 );
         highlighterSet_.highlighterList_.removeAt( index );
 
-        dispatchToMainThread( [ this, index ] {
+        dispatchToObject( [ this, index ] {
             delete highlighterListWidget->takeItem( index );
 
             int count = highlighterListWidget->count();
@@ -181,7 +181,7 @@ void HighlighterSetEdit::removeHighlighter()
                 // or the previous index if it is at the end
                 setCurrentRow( count - 1 );
             }
-        } );
+        }, this );
 
         Q_EMIT changed();
     }
@@ -195,12 +195,12 @@ void HighlighterSetEdit::moveHighlighterUp()
     if ( index > 0 ) {
         highlighterSet_.highlighterList_.move( index, index - 1 );
 
-        dispatchToMainThread( [ this, index ] {
+        dispatchToObject( [ this, index ] {
             QListWidgetItem* item = highlighterListWidget->takeItem( index );
             highlighterListWidget->insertItem( index - 1, item );
 
             setCurrentRow( index - 1 );
-        } );
+        }, this );
 
         Q_EMIT changed();
     }
@@ -214,12 +214,12 @@ void HighlighterSetEdit::moveHighlighterDown()
     if ( ( index >= 0 ) && ( index < ( highlighterListWidget->count() - 1 ) ) ) {
         highlighterSet_.highlighterList_.move( index, index + 1 );
 
-        dispatchToMainThread( [ this, index ] {
+        dispatchToObject( [ this, index ] {
             QListWidgetItem* item = highlighterListWidget->takeItem( index );
             highlighterListWidget->insertItem( index + 1, item );
 
             setCurrentRow( index + 1 );
-        } );
+        }, this );
 
         Q_EMIT changed();
     }
@@ -228,7 +228,7 @@ void HighlighterSetEdit::moveHighlighterDown()
 void HighlighterSetEdit::setCurrentRow( int row )
 {
     // ugly hack for mac
-    dispatchToMainThread( [ this, row ]() { highlighterListWidget->setCurrentRow( row ); } );
+    dispatchToObject( [ this, row ]() { highlighterListWidget->setCurrentRow( row ); }, this );
 }
 
 void HighlighterSetEdit::updatePropertyFields()

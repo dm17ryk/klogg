@@ -164,6 +164,20 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
     , combinationExpression_( combination )
     , hasCombination_( !combination.empty() )
 {
+    // Validate patterns with Qt first. Hyperscan prefilter can accept
+    // expressions that are still invalid as full Qt regular expressions.
+    // We rely on Qt matching for prefilter verification, so invalid Qt
+    // patterns must always be rejected early.
+    for ( const auto& pattern : patterns_ ) {
+        const auto regex = static_cast<QRegularExpression>( pattern );
+        if ( !regex.isValid() ) {
+            isValid_ = false;
+            errorMessage_ = regex.errorString();
+            LOG_ERROR << "Failed to compile pattern " << errorMessage_;
+            return;
+        }
+    }
+
     auto requiredInstructuins = CpuInstructions::SSE2;
     requiredInstructuins |= CpuInstructions::SSSE3;
 
@@ -266,17 +280,6 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                 return scratch;
             },
             database_.get() );
-    }
-
-    if ( !isHsValid() ) {
-        for ( const auto& pattern : patterns_ ) {
-            const auto regex = static_cast<QRegularExpression>( pattern );
-            if ( !regex.isValid() ) {
-                isValid_ = false;
-                errorMessage_ = regex.errorString();
-                break;
-            }
-        }
     }
 
     LOG_DEBUG << "Finished creating pattern database, patterns: " << patterns_.size()
