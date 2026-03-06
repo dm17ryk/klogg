@@ -85,6 +85,16 @@ jobs:
     - name: Cleanup release artifacts
       shell: sh
       run: |
+        for debug_archive in \
+          ./packages-focal/klogg_focal.debug.xz \
+          ./packages-jammy/klogg_jammy.debug.xz \
+          ./packages-noble/klogg_noble.debug.xz \
+          ./packages-appimage/klogg_appimage.debug.xz; do
+          if [ -f "$debug_archive" ]; then
+            xz -d "$debug_archive"
+          fi
+        done
+
         rm -rf ./packages-focal/klogg_focal
         rm -rf ./packages-jammy/klogg_jammy
         rm -rf ./packages-noble/klogg_noble
@@ -92,12 +102,19 @@ jobs:
         rm -rf ./packages-macos-intel-qt6/klogg-x64.app
         rm -rf ./packages-macos-arm-qt6/klogg-arm64.app
         mkdir ./linux-debug
-        mv ./packages-focal/klogg_focal.debug ./linux-debug
-        mv ./packages-jammy/klogg_jammy.debug ./linux-debug
-        mv ./packages-noble/klogg_noble.debug ./linux-debug
-        mv ./packages-appimage/klogg_appimage.debug ./linux-debug
-        tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
-        rm ./linux-debug/*.debug
+        for debug_file in \
+          ./packages-focal/klogg_focal.debug \
+          ./packages-jammy/klogg_jammy.debug \
+          ./packages-noble/klogg_noble.debug \
+          ./packages-appimage/klogg_appimage.debug; do
+          if [ -f "$debug_file" ]; then
+            mv "$debug_file" ./linux-debug
+          fi
+        done
+        if ls ./linux-debug/*.debug >/dev/null 2>&1; then
+          tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
+          rm ./linux-debug/*.debug
+        fi
       # rm -rf ./packages-oracle/klogg_oracle
       # mv ./packages-oracle/klogg_oracle.debug ./linux-debug
 
