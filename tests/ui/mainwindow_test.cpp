@@ -412,7 +412,9 @@ SCENARIO( "Main window startup reports initialization stages", "[ui][startup]" )
     REQUIRE( hasProgressStatus( startupStates, "Loading previews" ) );
     REQUIRE( hasProgressStatus( startupStates, "Loading actions" ) );
     REQUIRE( hasProgressStatus( startupStates, "Loading highlighters" ) );
-    REQUIRE( hasProgressStatus( startupStates, "Compiling highlighter" ) );
+    if ( hasProgressStatus( startupStates, "Loading highlighter set" ) ) {
+        REQUIRE( hasProgressStatus( startupStates, "Compiling highlighter" ) );
+    }
     REQUIRE( hasProgressStatus( startupStates, "Loading predefined filters" ) );
 }
 

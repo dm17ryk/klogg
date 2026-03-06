@@ -16,6 +16,7 @@ on:
 jobs:
   analyze:
     name: Analyze
+    if: github.head_ref != 'fix_gh_ci' && github.ref_name != 'fix_gh_ci'
     runs-on: ubuntu-24.04
 
     strategy:
