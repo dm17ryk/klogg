@@ -41,7 +41,7 @@ jobs:
           if-no-files-found: error
 
   Linux:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && ((github.head_ref != 'fix_gh_ci' && github.ref_name != 'fix_gh_ci') || matrix.config.os == 'ubuntu_jammy')"
     strategy:
       fail-fast: false
       matrix:
