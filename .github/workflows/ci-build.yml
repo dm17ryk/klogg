@@ -71,13 +71,13 @@ jobs:
           #   cmake_opts: -DCMAKE_BUILD_WITH_INSTALL_RPATH=on -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_HYPERSCAN=ON
 
           - os: ubuntu_focal
-            os_version: 20.04
+            os_version: 22.04
             arch: x64
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: focal
             package_suffix: deb
-            check_container: ubuntu:20.04
+            check_container: ubuntu:22.04
             container_root: docker/ubuntu20.04
             container: dm17ryk/klogg_ubuntu20.04
             cmake_opts:
