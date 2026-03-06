@@ -13,8 +13,9 @@ RUN apt update -y \
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN python3 -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
-    aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    python3 -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
+    python3 -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-linux-x86_64.sh && \
