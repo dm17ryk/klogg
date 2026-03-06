@@ -359,11 +359,11 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                                   return searchResults;
                     }
 
-                    const auto& matcher = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
+                    const auto& matcherPtr = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
                     const auto matchStartTime = high_resolution_clock::now();
 
                                   *searchResults
-                        = filterLines( *matcher, blockData->lines, blockData->chunkStart );
+                        = filterLines( *matcherPtr, blockData->lines, blockData->chunkStart );
 
                     const auto matchEndTime = high_resolution_clock::now();
 
