@@ -8,14 +8,19 @@ RUN apt-get update -y && \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
-        ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file -y && \
+        ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file \
+        software-properties-common -y && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update -y && \
+    apt-get install --no-install-recommends python3.10 python3.10-venv -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN python3 -m venv /tmp/aqt-venv && \
+RUN python3.10 -m venv /tmp/aqt-venv && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
+    /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt && \
     /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 

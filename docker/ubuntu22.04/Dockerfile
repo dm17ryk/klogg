@@ -16,6 +16,7 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN python3 -m venv /tmp/aqt-venv && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
+    /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt && \
     /tmp/aqt-venv/bin/python -m aqt install-qt linux desktop 6.10.1 linux_gcc_64 -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat
 
