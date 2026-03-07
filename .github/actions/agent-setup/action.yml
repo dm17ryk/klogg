@@ -14,7 +14,7 @@ runs:
         key: ${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ matrix.config.qt_version }}-QtCache
 
     - name: Install Qt host prerequisites
-      if: ${{ matrix.config.qt_host_arch }}
+      if: ${{ matrix.config.qt_host_arch && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
@@ -22,8 +22,22 @@ runs:
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         set-env: false
 
+    - name: Install Qt (windows arm64 manual)
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' && steps.cache-qt.outputs.cache-hit != 'true' }}
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade "aqtinstall>=3.3.0,<3.4"
+        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_host_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt"
+        python -m aqt install-qt windows_arm64 desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64 --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
+
+    - name: Set Qt6_Dir for windows arm64
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' }}
+      shell: pwsh
+      run: |
+        "Qt6_Dir=$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_arm64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Install Qt (with archives)
-      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives }}
+      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
@@ -33,7 +47,7 @@ runs:
         archives: ${{ matrix.config.qt_archives }}
 
     - name: Install Qt (default archives)
-      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives }}
+      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
