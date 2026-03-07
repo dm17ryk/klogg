@@ -3,7 +3,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN dnf update -y && \
     dnf install -y --setopt=install_weak_deps=False \
-        gcc gcc-c++ make cmake python3 python3-pip \
+        gcc gcc-c++ make cmake python3 python3-pip rpm-build \
         boost-devel openssl-devel libcurl-devel libicu-devel \
         glib2-devel dbus-devel \
         fontconfig freetype mesa-libGL-devel mesa-libGLU-devel \

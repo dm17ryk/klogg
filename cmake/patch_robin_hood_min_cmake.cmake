@@ -30,9 +30,20 @@ set(header_file "${PATCH_ROOT}/src/include/robin_hood.h")
 if(EXISTS "${header_file}")
   file(READ "${header_file}" header_content)
   if(NOT header_content MATCHES "#include <cstdint>")
-    string(REPLACE "#include <cstddef>"
-                   "#include <cstddef>\n#include <cstdint>"
-                   header_updated "${header_content}")
+    set(header_updated "${header_content}")
+    if(header_content MATCHES "#include <cstddef>")
+      string(REPLACE "#include <cstddef>"
+                     "#include <cstddef>\n#include <cstdint>"
+                     header_updated "${header_content}")
+    else()
+      string(REGEX MATCH "#include <[^\n]+>" first_include "${header_content}")
+      if(first_include)
+        string(REPLACE "${first_include}"
+                       "${first_include}\n#include <cstdint>"
+                       header_updated
+                       "${header_content}")
+      endif()
+    endif()
     if(NOT header_updated STREQUAL header_content)
       file(WRITE "${header_file}" "${header_updated}")
     endif()

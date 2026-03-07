@@ -1,8 +1,8 @@
 FROM ubuntu:jammy
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update -y \
- && apt install --no-install-recommends \
+RUN apt-get update -y \
+ && apt-get install --no-install-recommends --no-upgrade \
         build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libcurl4-openssl-dev \
         libglib2.0-dev \
@@ -11,7 +11,7 @@ RUN apt update -y \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
         ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file -y \
- && apt clean && rm -rf /var/lib/apt/lists/*
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
