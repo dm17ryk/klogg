@@ -6,11 +6,18 @@ endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/documentation.qrc.in ${DOCUMENTATION_RESOURCE} @ONLY)
 
-add_custom_command(
-  OUTPUT ${DOCUMENTATION_HTML}
-  COMMAND $<TARGET_FILE:maddy> ${DOCUMENTATION_FILE} ${DOCUMENTATION_HTML}
-  DEPENDS maddy ${DOCUMENTATION_FILE}
-)
+if(KLOGG_BUILD_DOCUMENTATION)
+  add_custom_command(
+    OUTPUT ${DOCUMENTATION_HTML}
+    COMMAND $<TARGET_FILE:maddy> ${DOCUMENTATION_FILE} ${DOCUMENTATION_HTML}
+    DEPENDS maddy ${DOCUMENTATION_FILE}
+  )
+else()
+  file(
+    WRITE "${DOCUMENTATION_HTML}"
+    "<html><body><p>Documentation generation disabled for this build.</p></body></html>\n"
+  )
+endif()
 
 set(TS_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/i18n/en.ts
