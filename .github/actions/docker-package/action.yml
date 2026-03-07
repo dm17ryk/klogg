@@ -25,8 +25,7 @@ runs:
     - name: Copy sym
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && xz ./output/klogg.debug"
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && mv ./output/klogg.debug.xz ./packages/klogg_${{ matrix.config.artifacts_id }}.debug.xz"
+        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && if [ -f ./output/klogg.debug ]; then xz ./output/klogg.debug && mv ./output/klogg.debug.xz ./packages/klogg_${{ matrix.config.artifacts_id }}.debug.xz; else echo 'klogg.debug is not present, skipping symbol archive'; fi"
         docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cp ./output/klogg ./packages/klogg_${{ matrix.config.artifacts_id }}"
 
     - name: Copy deps

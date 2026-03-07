@@ -71,9 +71,9 @@ Section "klogg" klogg
 
     SetOutPath $INSTDIR
     File release\klogg.exe
-    File release\klogg_crashpad_handler.exe
-    File release\klogg_minidump_dump.exe
-    File release\tbb12.dll
+    File /nonfatal release\klogg_crashpad_handler.exe
+    File /nonfatal release\klogg_minidump_dump.exe
+    File /nonfatal release\tbb12.dll
 
     File COPYING
     File NOTICE
