@@ -26,8 +26,11 @@
 #include <bitset>
 #include <vector>
 
+#if defined( _M_IX86 ) || defined( _M_X64 )
 #include <intrin.h>
+#endif
 
+#if defined( _M_IX86 ) || defined( _M_X64 )
 CpuInstructions supportedCpuInstructions()
 {
     CpuInstructions cpuInstructions = CpuInstructions::NONE;
@@ -85,6 +88,12 @@ CpuInstructions supportedCpuInstructions()
 
     return cpuInstructions;
 }
+#else
+CpuInstructions supportedCpuInstructions()
+{
+    return CpuInstructions::NONE;
+}
+#endif
 #elif defined (Q_OS_LINUX)
 CpuInstructions supportedCpuInstructions()
 {
