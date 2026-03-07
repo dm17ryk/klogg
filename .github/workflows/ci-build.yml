@@ -383,7 +383,7 @@ jobs:
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64
             ssl_dir_arch: arm64
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF
             artifacts_id: windows-arm64-qt6
 
           # - os: windows
