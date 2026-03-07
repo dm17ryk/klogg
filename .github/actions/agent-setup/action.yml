@@ -33,7 +33,7 @@ runs:
         foreach ( $tool in @("qmake", "qmake6", "qtpaths", "qtpaths6") ) {
           "@echo off`r`n" | Out-File -FilePath "$armBin\$tool.bat" -Encoding ascii -Force
         }
-        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
+        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --autodesktop --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
 
     - name: Set Qt6_Dir for windows arm64
       if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' }}
