@@ -314,7 +314,15 @@ jobs:
 
       - name: Setup Xcode
         shell: sh
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+        run: |
+          if [ -d /Applications/Xcode_15.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_15.2.app
+          elif [ -d /Applications/Xcode_16.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app
+          else
+            xcode-select -p
+          fi
+          xcodebuild -version
 
 #Install build deps
       - name: Set brew env
