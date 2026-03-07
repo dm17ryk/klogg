@@ -46,6 +46,7 @@ runs:
         "CMAKE_PREFIX_PATH=$qtRoot" >> $env:GITHUB_ENV
         "QT_HOST_PATH=$qtHostRoot" >> $env:GITHUB_ENV
         "QT_FORCE_FIND_TOOLS=ON" >> $env:GITHUB_ENV
+        "QT_TOOLCHAIN_FILE=$qtRoot\lib\cmake\Qt6\qt.toolchain.cmake" >> $env:GITHUB_ENV
         "$qtHostRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Install Qt (with archives)
