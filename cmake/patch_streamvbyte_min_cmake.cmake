@@ -30,3 +30,23 @@ string(
 if(NOT updated_arch STREQUAL content)
   file(WRITE "${patch_file}" "${updated_arch}")
 endif()
+
+set(isa_file "${PATCH_ROOT}/src/streamvbyte_isadetection.h")
+if(EXISTS "${isa_file}")
+  file(READ "${isa_file}" isa_content)
+
+  string(
+    REPLACE "#if defined(_MSC_VER)"
+            "#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))"
+            isa_updated "${isa_content}"
+  )
+  string(
+    REPLACE "#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))"
+            "#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM64EC))\n#include <arm64_neon.h>\n#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))"
+            isa_updated "${isa_updated}"
+  )
+
+  if(NOT isa_updated STREQUAL isa_content)
+    file(WRITE "${isa_file}" "${isa_updated}")
+  endif()
+endif()
