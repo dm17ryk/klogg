@@ -14,12 +14,19 @@ if(NOT match)
 endif()
 
 set(found_version "${CMAKE_MATCH_1}")
+set(updated_content "${content}")
 if(found_version VERSION_LESS "3.5")
   string(
     REGEX REPLACE "cmake_minimum_required\\(VERSION[ ]+[0-9.]+\\)"
-    "cmake_minimum_required(VERSION 3.5)" updated "${content}"
+    "cmake_minimum_required(VERSION 3.5)" updated_content "${content}"
   )
-  if(NOT updated STREQUAL content)
-    file(WRITE "${patch_file}" "${updated}")
-  endif()
+endif()
+
+string(
+  REPLACE "if(CMAKE_SYSTEM_PROCESSOR MATCHES \"^(aarch64.*|AARCH64.*)\")"
+          "if(CMAKE_SYSTEM_PROCESSOR MATCHES \"^(aarch64.*|AARCH64.*|arm64.*|ARM64.*)\")"
+          updated_arch "${updated_content}"
+)
+if(NOT updated_arch STREQUAL content)
+  file(WRITE "${patch_file}" "${updated_arch}")
 endif()
