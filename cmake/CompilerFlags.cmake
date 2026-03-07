@@ -2,9 +2,11 @@ function(set_project_compile_flags project_name)
 
   set(MSVC_FLAGS
       /fp:fast
-      /arch:AVX2
       $<$<NOT:$<CONFIG:Debug>>:/GL>
       $<$<NOT:$<CONFIG:Debug>>:/O2>)
+  if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64")
+    list(APPEND MSVC_FLAGS /arch:AVX2)
+  endif()
   set(MSVC_DEFINITIONS -DNOMINMAX)
 
   set(CLANG_FLAGS -ffast-math)
