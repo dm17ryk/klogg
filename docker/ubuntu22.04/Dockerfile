@@ -19,7 +19,7 @@ RUN python3 -m venv /tmp/aqt-venv && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
     ARCH=$(uname -m) && \
-    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then QT_AQT_OS=linux_arm64; QT_AQT_ARCH=gcc_64; QT_DIR=gcc_64; CMAKE_ARCH=aarch64; else QT_AQT_OS=linux; QT_AQT_ARCH=gcc_64; QT_DIR=gcc_64; CMAKE_ARCH=x86_64; fi && \
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then QT_AQT_OS=linux_arm64; QT_AQT_ARCH=linux_gcc_arm64; QT_DIR=gcc_arm64; CMAKE_ARCH=aarch64; else QT_AQT_OS=linux; QT_AQT_ARCH=linux_gcc_64; QT_DIR=gcc_64; CMAKE_ARCH=x86_64; fi && \
     /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt && \
     /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat && \

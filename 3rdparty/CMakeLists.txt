@@ -33,6 +33,10 @@ cpmaddpackage(
   ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_streamvbyte_min_cmake.cmake
 )
 
+if(TARGET streamvbyte AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64.*|AARCH64.*|arm64.*|ARM64.*)$")
+  target_compile_definitions(streamvbyte PRIVATE __ARM_NEON__)
+endif()
+
 if(APPLE)
   cpmaddpackage(
     NAME
