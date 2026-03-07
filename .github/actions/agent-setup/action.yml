@@ -30,7 +30,9 @@ runs:
         python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_host_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt"
         $armBin = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_arm64\bin"
         New-Item -ItemType Directory -Path $armBin -Force | Out-Null
-        "@echo off`r`n" | Out-File -FilePath "$armBin\qmake.bat" -Encoding ascii -Force
+        foreach ( $tool in @("qmake", "qtpaths", "qtpaths6") ) {
+          "@echo off`r`n" | Out-File -FilePath "$armBin\$tool.bat" -Encoding ascii -Force
+        }
         python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
 
     - name: Set Qt6_Dir for windows arm64
