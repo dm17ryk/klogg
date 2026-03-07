@@ -379,7 +379,6 @@ jobs:
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_arm64_cross_compiled
             qt_host_arch: win64_msvc2022_64
-            qt_aqt_version: ==3.2.1
             arch: arm64
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64

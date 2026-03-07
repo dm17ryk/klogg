@@ -21,7 +21,6 @@ runs:
         arch: ${{ matrix.config.qt_host_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         set-env: false
-        aqtversion: ${{ matrix.config.qt_aqt_version || '==3.2.1' }}
 
     - name: Install Qt (with archives)
       if: ${{ matrix.config.qt_arch && matrix.config.qt_archives }}
@@ -32,7 +31,6 @@ runs:
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
         archives: ${{ matrix.config.qt_archives }}
-        aqtversion: ${{ matrix.config.qt_aqt_version || '==3.2.1' }}
 
     - name: Install Qt (default archives)
       if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives }}
@@ -42,7 +40,6 @@ runs:
         arch: ${{ matrix.config.qt_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
-        aqtversion: ${{ matrix.config.qt_aqt_version || '==3.2.1' }}
 
     - name: Set boost env vars
       shell: sh
