@@ -13,15 +13,24 @@ runs:
         path: ../Qt
         key: ${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ matrix.config.qt_version }}-QtCache
 
-    - name: Install Qt
-      if: ${{ matrix.config.qt_arch }}
+    - name: Install Qt (with archives)
+      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives }}
       uses: jurplel/install-qt-action@v3
       with:
         version: ${{ matrix.config.qt_version }}
         arch: ${{ matrix.config.qt_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
-        archives: ${{ matrix.config.qt_archives || 'qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport' }}
+        archives: ${{ matrix.config.qt_archives }}
+
+    - name: Install Qt (default archives)
+      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives }}
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ matrix.config.qt_version }}
+        arch: ${{ matrix.config.qt_arch }}
+        cache: ${{ steps.cache-qt.outputs.cache-hit }}
+        modules: ${{ matrix.config.qt_modules }} qtserialport
 
     - name: Set boost env vars
       shell: sh

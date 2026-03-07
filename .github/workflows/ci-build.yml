@@ -378,7 +378,6 @@ jobs:
             qt_version: 6.10.1
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_arm64
-            qt_archives: qtbase qtimageformats qtsvg qttools qttranslations qtserialport
             arch: arm64
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64
