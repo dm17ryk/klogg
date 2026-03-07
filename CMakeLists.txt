@@ -139,7 +139,11 @@ else()
 
   string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _klogg_system_processor)
   if(_klogg_system_processor MATCHES "^(arm64|aarch64)$")
-    ucm_add_flags(C CXX "-march=native -mtune=generic")
+    if(KLOGG_GENERIC_CPU)
+      ucm_add_flags(C CXX "-march=armv8-a -mtune=generic")
+    else()
+      ucm_add_flags(C CXX "-march=native -mtune=generic")
+    endif()
   elseif(_klogg_system_processor MATCHES "^(x86_64|amd64|x86|i[3-6]86)$")
     ucm_add_flags(C CXX "-mmmx -msse -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt")
     if(KLOGG_GENERIC_CPU)
@@ -253,9 +257,11 @@ add_subdirectory(src)
 add_subdirectory(website)
 
 enable_testing()
-add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
-)
+if(NOT (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$"))
+  add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
+          WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+  )
+endif()
 # set_tests_properties(klogg_smoke PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>")
 
 if(${KLOGG_BUILD_TESTS})

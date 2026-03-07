@@ -49,6 +49,17 @@ runs:
         "QT_TOOLCHAIN_FILE=$qtRoot\lib\cmake\Qt6\qt.toolchain.cmake" >> $env:GITHUB_ENV
         "$qtHostRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+    - name: Set Qt6_Dir fallback for windows x64
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_64' }}
+      shell: pwsh
+      run: |
+        $qtRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_64"
+        if (Test-Path $qtRoot) {
+          "Qt6_Dir=$qtRoot" >> $env:GITHUB_ENV
+          "Qt6_DIR=$qtRoot" >> $env:GITHUB_ENV
+          "CMAKE_PREFIX_PATH=$qtRoot" >> $env:GITHUB_ENV
+        }
+
     - name: Install Qt (with archives)
       if: ${{ matrix.config.qt_arch && matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
       uses: jurplel/install-qt-action@v4

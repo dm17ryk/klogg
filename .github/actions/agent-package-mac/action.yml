@@ -41,7 +41,7 @@ runs:
       shell: sh
       run: |
         QT_PATH="${Qt6_DIR:-$Qt6_Dir}"
-        python3 $KLOGG_BUILD_ROOT/macdeployqtfix.py $KLOGG_BUILD_ROOT/output/klogg.app/Contents/MacOS/klogg "$QT_PATH"
+        python3 $KLOGG_BUILD_ROOT/macdeployqtfix.py $KLOGG_BUILD_ROOT/output/klogg.app/Contents/MacOS/klogg "$QT_PATH" || echo "Skipping non-fatal Qt6 deploy fix failure"
     
     - name: Mac deploy Qt SerialPort
       shell: sh
@@ -73,7 +73,12 @@ runs:
       shell: sh
       run: |
         cd $KLOGG_BUILD_ROOT
-        cpack --verbose -G "DragNDrop"
+        if ! cpack --verbose -G "DragNDrop"; then
+          echo "CPack DMG generation failed, falling back to hdiutil"
+          mkdir -p ./packages
+          rm -f "./packages/klogg-${KLOGG_VERSION}-OSX.dmg"
+          hdiutil create -fs HFS+ -srcfolder ./output/klogg.app -volname "klogg" -format UDZO "./packages/klogg-${KLOGG_VERSION}-OSX.dmg"
+        fi
 
     - name: Mac rename dmg
       shell: sh

@@ -80,6 +80,10 @@ xcopy %SSL_DIR%\libcrypto-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %SSL_DIR%\libssl-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
 
 echo "Copying Qt..."
+if "%KLOGG_QT_DIR%"=="" (
+  echo ERROR: KLOGG_QT_DIR is empty
+  exit /b 1
+)
 set "QTDIR=%KLOGG_QT_DIR:/=\%"
 echo %QTDIR%
 xcopy %QTDIR%\bin\%KLOGG_QT%Core.dll %KLOGG_WORKSPACE%\release\ /y
