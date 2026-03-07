@@ -313,8 +313,21 @@ if(UNIX)
 
     set(CPACK_GENERATOR DEB)
 
+    #deb/rpm architecture mapping
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _klogg_system_processor)
+    set(_klogg_deb_arch "${_klogg_system_processor}")
+    set(_klogg_rpm_arch "${_klogg_system_processor}")
+
+    if(_klogg_system_processor MATCHES "^(x86_64|amd64)$")
+      set(_klogg_deb_arch "amd64")
+      set(_klogg_rpm_arch "x86_64")
+    elseif(_klogg_system_processor MATCHES "^(aarch64|arm64)$")
+      set(_klogg_deb_arch "arm64")
+      set(_klogg_rpm_arch "aarch64")
+    endif()
+
     #deb
-    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${_klogg_deb_arch}")
     set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://github.com/dm17ryk/klogg")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dmitry Kokotov <${CPACK_PACKAGE_CONTACT}>")
@@ -358,7 +371,7 @@ if(UNIX)
     endif()
 
     #RPM
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "${_klogg_rpm_arch}")
     set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
     set(CPACK_RPM_PACKAGE_AUTOREQ YES)
     #set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= ${KLOGG_QT_VERSION}")

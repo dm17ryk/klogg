@@ -10,6 +10,11 @@ runs:
         echo "KLOGG_BUILD_ROOT=build_root" >> $GITHUB_ENV
         echo "KLOGG_ARCH=${{ matrix.config.arch }}" >> $GITHUB_ENV
         echo "KLOGG_CMAKE_OPTS=-G Ninja -DCMAKE_BUILD_TYPE=Release -DKLOGG_GENERIC_CPU=OFF -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr ${{ matrix.config.cmake_opts }}" >> $GITHUB_ENV
+        if [ -n "${{ matrix.config.container_platform }}" ]; then
+          echo "KLOGG_DOCKER_PLATFORM=--platform ${{ matrix.config.container_platform }}" >> $GITHUB_ENV
+        else
+          echo "KLOGG_DOCKER_PLATFORM=" >> $GITHUB_ENV
+        fi
     - name: Set macOS SDK root
       if: runner.os == 'macOS'
       shell: sh
