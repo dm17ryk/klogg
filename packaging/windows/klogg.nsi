@@ -142,11 +142,11 @@ Section "MSVC Runtime libraries" vcruntime
 !if ${PLATFORM} == "x64"
     File release\vcruntime140_1.dll
 
-    File release\libcrypto-1_1-x64.dll
-    File release\libssl-1_1-x64.dll
+    File /nonfatal release\libcrypto-1_1-x64.dll
+    File /nonfatal release\libssl-1_1-x64.dll
 !else
-    File release\libcrypto-1_1.dll
-    File release\libssl-1_1.dll
+    File /nonfatal release\libcrypto-1_1.dll
+    File /nonfatal release\libssl-1_1.dll
 !endif
 
 SectionEnd
