@@ -32,7 +32,7 @@ class ActionsFilterProxyModel : public QSortFilterProxyModel {
     void setFilterText( const QString& text )
     {
         filterText_ = text.trimmed();
-        invalidateFilter();
+        refreshFilter();
     }
 
   protected:
@@ -50,6 +50,16 @@ class ActionsFilterProxyModel : public QSortFilterProxyModel {
     }
 
   private:
+    void refreshFilter()
+    {
+#if QT_VERSION >= QT_VERSION_CHECK( 6, 9, 0 )
+        beginFilterChange();
+        endFilterChange( QSortFilterProxyModel::Direction::Rows );
+#else
+        invalidateFilter();
+#endif
+    }
+
     QString filterText_;
 };
 
@@ -100,7 +110,7 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
         regex_.setPattern( {} );
 
         if ( filterText_.isEmpty() ) {
-            invalidateFilter();
+            refreshFilter();
             return;
         }
 
@@ -122,7 +132,7 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
             filterValid_ = regex_.isValid();
         }
 
-        invalidateFilter();
+        refreshFilter();
     }
 
   protected:
@@ -166,6 +176,16 @@ class ResponsesFilterProxyModel : public QSortFilterProxyModel {
     }
 
   private:
+    void refreshFilter()
+    {
+#if QT_VERSION >= QT_VERSION_CHECK( 6, 9, 0 )
+        beginFilterChange();
+        endFilterChange( QSortFilterProxyModel::Direction::Rows );
+#else
+        invalidateFilter();
+#endif
+    }
+
     QString filterText_;
     ResponseFilterType filterType_ = ResponseFilterType::Text;
     bool filterValid_ = true;

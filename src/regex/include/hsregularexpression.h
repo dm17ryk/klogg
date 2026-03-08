@@ -190,7 +190,8 @@ class HsRegularExpression {
     {
     }
 
-    explicit HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns )
+    explicit HsRegularExpression( const klogg::vector<RegularExpressionPattern>& patterns,
+                                  const std::string& /*combination*/ = std::string{} )
         : patterns_( patterns )
     {
         for ( const auto& pattern : patterns_ ) {

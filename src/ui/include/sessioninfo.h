@@ -58,11 +58,11 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
     struct OpenFile {
         OpenFile( const QString& file, uint64_t top, const QString& context,
-                  const QString& streamContext = {} )
+                  const QString& streamContextValue = {} )
             : fileName{ file }
             , topLine{ top }
             , viewContext{ context }
-            , streamContext{ streamContext }
+            , streamContext{ streamContextValue }
         {
         }
 

@@ -91,7 +91,10 @@ int main( int argc, char* argv[] )
     config.setPollingEnabled( false );
 #endif
 
-    config.setNativeFileWatchEnabled( true );
+    // Native file watchers are flaky under heavy UI/integration test churn on
+    // Windows CI. Keep tests on polling to avoid non-deterministic heap
+    // corruption from watcher backend callbacks.
+    config.setNativeFileWatchEnabled( false );
 
     QThreadPool::globalInstance()->reserveThread();
 

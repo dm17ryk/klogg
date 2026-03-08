@@ -220,7 +220,6 @@ void LogDataWorker::indexAll( QTextCodec* forcedEncoding )
         createRunnable( [ this, &operationStarted, forcedEncoding, fileName = fileName_ ] {
             LOG_INFO << "FullIndex thread started";
             operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<FullIndexOperation>(
                 fileName, indexing_data_, interruptRequest_, forcedEncoding );
             return connectSignalsAndRun( operationRequested.get() );
@@ -241,7 +240,6 @@ void LogDataWorker::indexAdditionalLines()
         QThread::currentThread()->setObjectName( "PartialIndex" );
         LOG_INFO << "PartialIndex thread started";
         operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<PartialIndexOperation>( fileName, indexing_data_,
                                                                            interruptRequest_ );
         return connectSignalsAndRun( operationRequested.get() );
@@ -260,7 +258,6 @@ void LogDataWorker::checkFileChanges()
     QSemaphore operationStarted;
     operationsPool_.start( createRunnable( [ this, &operationStarted, fileName = fileName_ ] {
         operationStarted.release();
-        ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<CheckFileChangesOperation>(
             fileName, indexing_data_, interruptRequest_ );
 

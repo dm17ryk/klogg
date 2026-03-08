@@ -62,7 +62,7 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
 
     int progress = 0;
     do {
-        REQUIRE( searchProgressSpy.wait() );
+        REQUIRE( searchProgressSpy.safeWait( 10000 ) );
         QList<QVariant> progressArgs = searchProgressSpy.last();
         progress = progressArgs.at( 1 ).toInt();
     } while ( progress < 100 );
@@ -74,7 +74,7 @@ bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, Line
     filtered_data->updateSearch( startLine, endLine );
 
     int progress = 0;
-    int lastCount = searchProgressSpy.count();
+    const qsizetype lastCount = searchProgressSpy.count();
     while ( true ) {
         if ( !searchProgressSpy.safeWait( 500 ) ) {
             // No signal emitted (likely nothing to scan).

@@ -80,6 +80,10 @@ xcopy %SSL_DIR%\libcrypto-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %SSL_DIR%\libssl-1_1%SSL_ARCH%.dll %KLOGG_WORKSPACE%\release\ /y
 
 echo "Copying Qt..."
+if "%KLOGG_QT_DIR%"=="" (
+  echo ERROR: KLOGG_QT_DIR is empty
+  exit /b 1
+)
 set "QTDIR=%KLOGG_QT_DIR:/=\%"
 echo %QTDIR%
 xcopy %QTDIR%\bin\%KLOGG_QT%Core.dll %KLOGG_WORKSPACE%\release\ /y
@@ -111,6 +115,20 @@ xcopy %KLOGG_WORKSPACE%\packaging\windows\FileAssociation.nsh  /y
 
 echo "Making portable archive..."
 7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_klogg_listfile.txt
-@REM 7z a %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_pdb_listfile.txt
+
+set "PDB_ARCHIVE=%KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip"
+set "PDB_LIST=%KLOGG_WORKSPACE%\release\pdb_file_list.txt"
+if exist "%PDB_LIST%" del "%PDB_LIST%"
+for /f "delims=" %%F in ('dir /b /a-d "%KLOGG_WORKSPACE%\release\*.pdb" 2^>nul') do echo %KLOGG_WORKSPACE%\release\%%F>>"%PDB_LIST%"
+
+if exist "%PDB_LIST%" (
+  7z a "%PDB_ARCHIVE%" @"%PDB_LIST%"
+) else (
+  echo No PDB files were produced for this build>"%KLOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
+  7z a "%PDB_ARCHIVE%" "%KLOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
+  del "%KLOGG_WORKSPACE%\release\NO_PDB_SYMBOLS.txt"
+)
+
+if exist "%PDB_LIST%" del "%PDB_LIST%"
 
 echo "Done!"

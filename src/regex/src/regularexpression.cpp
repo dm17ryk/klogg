@@ -84,7 +84,7 @@ klogg::vector<QString> splitTopLevelOr( const QString& pattern )
         }
     }
 
-    flushPart( pattern.size() );
+    flushPart( type_safe::narrow_cast<int>( pattern.size() ) );
 
     return parts;
 }

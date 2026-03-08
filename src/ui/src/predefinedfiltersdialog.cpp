@@ -105,14 +105,14 @@ PredefinedFiltersDialog::PredefinedFiltersDialog( QWidget* parent )
     connect( filtersTableWidget, &QTableWidget::currentCellChanged, this,
              &PredefinedFiltersDialog::onCurrentCellChanged );
 
-    dispatchToMainThread( [ this ] {
+    dispatchToObject( [ this ] {
         IconLoader iconLoader( this );
 
         addFilterButton->setIcon( iconLoader.load( "icons8-plus-16" ) );
         removeFilterButton->setIcon( iconLoader.load( "icons8-minus-16" ) );
         upButton->setIcon( iconLoader.load( "icons8-up-16" ) );
         downButton->setIcon( iconLoader.load( "icons8-down-arrow-16" ) );
-    } );
+    }, this );
 }
 
 PredefinedFiltersDialog::PredefinedFiltersDialog( const QString& newFilter, QWidget* parent )
@@ -259,7 +259,7 @@ void PredefinedFiltersDialog::moveFilterDown()
 
 void PredefinedFiltersDialog::swapFilters( int currentRow, int newRow, int selectedColumn )
 {
-    dispatchToMainThread( [ this, currentRow, newRow, selectedColumn ] {
+    dispatchToObject( [ this, currentRow, newRow, selectedColumn ] {
         for ( int column = 0; column < filtersTableWidget->columnCount(); ++column ) {
             auto currentUseRegex = static_cast<CenteredCheckbox*>(
                 filtersTableWidget->cellWidget( currentRow, column ) );
@@ -281,7 +281,7 @@ void PredefinedFiltersDialog::swapFilters( int currentRow, int newRow, int selec
             }
         }
         filtersTableWidget->setCurrentCell( newRow, selectedColumn );
-    } );
+    }, this );
 }
 
 void PredefinedFiltersDialog::importFilters()

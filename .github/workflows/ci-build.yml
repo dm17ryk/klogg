@@ -71,16 +71,17 @@ jobs:
           #   cmake_opts: -DCMAKE_BUILD_WITH_INSTALL_RPATH=on -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_HYPERSCAN=ON
 
           - os: ubuntu_focal
-            os_version: 20.04
+            os_version: 22.04
             arch: x64
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: focal
             package_suffix: deb
-            check_container: ubuntu:20.04
+            check_container: ubuntu:22.04
             container_root: docker/ubuntu20.04
             container: dm17ryk/klogg_ubuntu20.04
             cmake_opts:
+            container_platform: linux/amd64
 
           - os: ubuntu_jammy
             os_version: 22.04
@@ -93,6 +94,7 @@ jobs:
             container_root: docker/ubuntu22.04
             container: dm17ryk/klogg_ubuntu22.04
             cmake_opts:
+            container_platform: linux/amd64
 
           - os: ubuntu_noble
             os_version: 24.04
@@ -105,6 +107,7 @@ jobs:
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04
             cmake_opts:
+            container_platform: linux/amd64
 
           - os: ubuntu_appimage
             os_version: 20.04
@@ -114,20 +117,155 @@ jobs:
             container_root: docker/ubuntu20.04
             container: dm17ryk/klogg_ubuntu20.04
             cmake_opts:
+            container_platform: linux/amd64
+
+          - os: ubuntu_focal
+            os_version: 22.04
+            arch: arm64
+            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            cpack_gen: DEB
+            artifacts_id: focal-arm64
+            package_suffix: deb
+            check_container: ubuntu:24.04
+            container_root: docker/ubuntu24.04
+            container: dm17ryk/klogg_ubuntu24.04_focal_arm64
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/arm64
+
+          - os: ubuntu_jammy
+            os_version: 22.04
+            arch: arm64
+            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            cpack_gen: DEB
+            artifacts_id: jammy-arm64
+            package_suffix: deb
+            check_container: ubuntu:24.04
+            container_root: docker/ubuntu24.04
+            container: dm17ryk/klogg_ubuntu24.04_jammy_arm64
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/arm64
+
+          - os: ubuntu_noble
+            os_version: 24.04
+            arch: arm64
+            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            cpack_gen: DEB
+            artifacts_id: noble-arm64
+            package_suffix: deb
+            check_container: ubuntu:24.04
+            container_root: docker/ubuntu24.04
+            container: dm17ryk/klogg_ubuntu24.04_arm64
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/arm64
+
+          - os: ubuntu_appimage_arm64
+            os_version: 22.04
+            arch: arm64
+            artifacts_id: appimage-arm64
+            package_suffix: AppImage
+            container_root: docker/ubuntu24.04
+            container: dm17ryk/klogg_ubuntu24.04_appimage_arm64
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/arm64
+
+          - os: fedora40
+            os_version: 22.04
+            arch: x64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora40
+            package_suffix: rpm
+            check_container: fedora:40
+            container_root: docker/fedora40
+            container: dm17ryk/klogg_fedora40
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/amd64
+
+          - os: fedora41
+            os_version: 22.04
+            arch: x64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora41
+            package_suffix: rpm
+            check_container: fedora:41
+            container_root: docker/fedora41
+            container: dm17ryk/klogg_fedora41
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/amd64
+
+          - os: fedora42
+            os_version: 22.04
+            arch: x64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora42
+            package_suffix: rpm
+            check_container: fedora:42
+            container_root: docker/fedora42
+            container: dm17ryk/klogg_fedora42
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            container_platform: linux/amd64
+
+          - os: fedora40
+            os_version: 22.04
+            arch: arm64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora40-arm64
+            package_suffix: rpm
+            check_container: fedora:40
+            container_root: docker/fedora40
+            container: dm17ryk/klogg_fedora40_arm64
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            container_platform: linux/arm64
+
+          - os: fedora41
+            os_version: 22.04
+            arch: arm64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora41-arm64
+            package_suffix: rpm
+            check_container: fedora:41
+            container_root: docker/fedora41
+            container: dm17ryk/klogg_fedora41_arm64
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            container_platform: linux/arm64
+
+          - os: fedora42
+            os_version: 22.04
+            arch: arm64
+            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            cpack_gen: RPM
+            artifacts_id: fedora42-arm64
+            package_suffix: rpm
+            check_container: fedora:42
+            container_root: docker/fedora42
+            container: dm17ryk/klogg_fedora42_arm64
+            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            container_platform: linux/arm64
 
 
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
 
-      #- uses: satackey/action-docker-layer-caching@v0.0.11
-      #  # Ignore the failure of a step and avoid terminating the job.
-      #  continue-on-error: true
+      - uses: docker/setup-qemu-action@v3
+        if: ${{ matrix.config.container_platform == 'linux/arm64' }}
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build container
         run: |
           cd ${{ matrix.config.container_root }}
-          docker build -t ${{ matrix.config.container }} .
+          if [ "${{ matrix.config.container_platform }}" = "linux/arm64" ]; then
+            docker buildx build --platform linux/arm64 -t ${{ matrix.config.container }} --load .
+          else
+            docker build -t ${{ matrix.config.container }} .
+          fi
       - name: Configure safe Git directory
         run: git config --global --add safe.directory /usr/local
 
@@ -150,14 +288,15 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          # - os: macos
-          #   os_version: 13
-          #   qt_version: 6.10.1
-          #   qt_arch: clang_64
-          #   qt_modules: qt5compat
-          #   arch: x64
-          #   artifacts_id: macos-intel-qt6
-          #   cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0
+          - os: macos
+            os_version: 15-intel
+            qt_version: 6.10.1
+            qt_arch: clang_64
+            qt_modules: qt5compat
+            arch: x64
+            artifacts_id: macos-intel-qt6
+            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
+
           - os: macos
             os_version: 14    # Target macOS 14 (Sonoma)
             arch: arm64       # Apple Silicon (ARM64) architecture
@@ -175,7 +314,15 @@ jobs:
 
       - name: Setup Xcode
         shell: sh
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+        run: |
+          if [ -d /Applications/Xcode_15.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_15.2.app
+          elif [ -d /Applications/Xcode_16.2.app ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app
+          else
+            xcode-select -p
+          fi
+          xcodebuild -version
 
 #Install build deps
       - name: Set brew env
@@ -218,10 +365,26 @@ jobs:
             qt_version: 6.10.1
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_64
+            qt_archives: qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport
             arch: x64
+            devcmd_arch: x64
             ssl_arch: -x64
+            ssl_dir_arch: x64
             cmake_opts:
             artifacts_id: windows-x64-qt6
+
+          - os: windows
+            os_version: 2022
+            qt_version: 6.10.1
+            qt_modules: qt5compat
+            qt_arch: win64_msvc2022_arm64_cross_compiled
+            qt_host_arch: win64_msvc2022_64
+            arch: arm64
+            devcmd_arch: amd64_arm64
+            ssl_arch: -arm64
+            ssl_dir_arch: arm64
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF -DKLOGG_GENERIC_CPU=ON -DKLOGG_BUILD_TESTS=OFF -DKLOGG_BUILD_TRANSLATIONS=OFF -DKLOGG_BUILD_DOCUMENTATION=OFF
+            artifacts_id: windows-arm64-qt6
 
           # - os: windows
           #   os_version: 2022
@@ -251,7 +414,7 @@ jobs:
       - name: Set openssl paths
         shell: sh
         run: |
-          echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.arch }}\bin" >> $GITHUB_ENV
+          echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.ssl_dir_arch }}\bin" >> $GITHUB_ENV
           echo "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $GITHUB_ENV 
 
       - uses: ./.github/actions/agent-setup
@@ -261,10 +424,11 @@ jobs:
       - name: Prepare dev cmd
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.config.arch }}
+          arch: ${{ matrix.config.devcmd_arch }}
 
       - uses: ./.github/actions/agent-build
       - uses: ./.github/actions/agent-run-tests
+        if: ${{ matrix.config.arch != 'arm64' }}
       - uses: ./.github/actions/agent-package-win
         with:
           s3-key-id: ${{ secrets.WIN_CS_KEY_ID }}

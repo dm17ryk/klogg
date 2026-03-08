@@ -7,9 +7,16 @@ on:
         description: "Run ID of CI workflow"
         required: false
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+      KLOGG_GITHUB_TOKEN: ${{ secrets.KLOGG_GITHUB_TOKEN || github.token }}
+      DISCORD_NEW_VERSIONS_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
     steps:
     - uses: actions/checkout@v3
     - name: Download artifacts for last successful CI workflow
@@ -33,62 +40,83 @@ jobs:
       run: ls -R ./packages-*
 
     - name: Setup Sentry CLI
+      if: ${{ false }}
       uses: mathrix-education/setup-sentry-cli@0.1.0
       env:
         ACTIONS_ALLOW_UNSECURE_COMMANDS: 'true'
       with:
-        token: ${{ secrets.SENTRY_TOKEN }}
+        token: ${{ env.SENTRY_TOKEN }}
         organization: anton-filimonov
         project: klogg
 
     - name: Create Sentry release
+      if: ${{ false }}
       shell: sh
       run: |
         sentry-cli releases new $KLOGG_VERSION
         sentry-cli releases set-commits --auto $KLOGG_VERSION
 
-    # - name: Upload symbols linux
-    #   shell: sh
-    #   run: |
-    #     xz -d ./packages-focal/klogg_focal.debug.xz
-    #     xz -d ./packages-jammy/klogg_jammy.debug.xz
-    #     xz -d ./packages-noble/klogg_noble.debug.xz
-    #     xz -d ./packages-appimage/klogg_appimage.debug.xz
-    #     sentry-cli upload-dif ./packages-focal/klogg_focal.debug ./packages-focal/klogg_focal
-    #     sentry-cli upload-dif ./packages-jammy/klogg_jammy.debug ./packages-jammy/klogg_jammy
-    #     sentry-cli upload-dif ./packages-noble/klogg_noble.debug  ./packages-noble/klogg_noble
-    #     sentry-cli upload-dif ./packages-appimage/klogg_appimage.debug  ./packages-appimage/klogg_appimage
-    #   # xz -d ./packages-oracle/klogg_oracle.debug.xz
-    #   # sentry-cli upload-dif ./packages-oracle/klogg_oracle.debug ./packages-oracle/klogg_oracle
+    - name: Upload symbols linux
+      if: ${{ false }}
+      shell: sh
+      run: |
+        xz -d ./packages-focal/klogg_focal.debug.xz
+        xz -d ./packages-jammy/klogg_jammy.debug.xz
+        xz -d ./packages-noble/klogg_noble.debug.xz
+        xz -d ./packages-appimage/klogg_appimage.debug.xz
+        sentry-cli upload-dif ./packages-focal/klogg_focal.debug ./packages-focal/klogg_focal
+        sentry-cli upload-dif ./packages-jammy/klogg_jammy.debug ./packages-jammy/klogg_jammy
+        sentry-cli upload-dif ./packages-noble/klogg_noble.debug  ./packages-noble/klogg_noble
+        sentry-cli upload-dif ./packages-appimage/klogg_appimage.debug  ./packages-appimage/klogg_appimage
+      # xz -d ./packages-oracle/klogg_oracle.debug.xz
+      # sentry-cli upload-dif ./packages-oracle/klogg_oracle.debug ./packages-oracle/klogg_oracle
 
-    # - name: Upload symbols mac
-    #   shell: sh
-    #   run: |
-    #     sentry-cli upload-dif ./packages-macos-arm-qt6/klogg-arm64.app/Contents/MacOS/klogg ./packages-macos-arm-qt6/klogg-arm64.dSym
-    #   # sentry-cli upload-dif ./packages-macos-intel-qt6/klogg-x64.app/Contents/MacOS/klogg ./packages-macos-intel-qt6/klogg-x64.dSym
+    - name: Upload symbols mac
+      if: ${{ false }}
+      shell: sh
+      run: |
+        sentry-cli upload-dif ./packages-macos-arm-qt6/klogg-arm64.app/Contents/MacOS/klogg ./packages-macos-arm-qt6/klogg-arm64.dSym
+      # sentry-cli upload-dif ./packages-macos-intel-qt6/klogg-x64.app/Contents/MacOS/klogg ./packages-macos-intel-qt6/klogg-x64.dSym
 
-    # - name: Upload symbols win
-    #   shell: sh
-    #   run: |
-    #     sentry-cli upload-dif ./packages-windows-x64-qt6/klogg-$KLOGG_VERSION-x64-Qt6-pdb.zip
-    #   # sentry-cli upload-dif ./packages-windows-x86-qt5/klogg-$KLOGG_VERSION-x86-Qt5-pdb.zip 
+    - name: Upload symbols win
+      if: ${{ false }}
+      shell: sh
+      run: |
+        sentry-cli upload-dif ./packages-windows-x64-qt6/klogg-$KLOGG_VERSION-x64-Qt6-pdb.zip
+      # sentry-cli upload-dif ./packages-windows-x86-qt5/klogg-$KLOGG_VERSION-x86-Qt5-pdb.zip
 
     - name: Cleanup release artifacts
       shell: sh
       run: |
-        rm -rf ./packages-focal/klogg_focal
-        rm -rf ./packages-jammy/klogg_jammy
-        rm -rf ./packages-noble/klogg_noble
-        rm -rf ./packages-appimage/klogg_appimage
-        rm -rf ./packages-macos-intel-qt6/klogg-x64.app
-        rm -rf ./packages-macos-arm-qt6/klogg-arm64.app
         mkdir ./linux-debug
-        mv ./packages-focal/klogg_focal.debug ./linux-debug
-        mv ./packages-jammy/klogg_jammy.debug ./linux-debug
-        mv ./packages-noble/klogg_noble.debug ./linux-debug
-        mv ./packages-appimage/klogg_appimage.debug ./linux-debug
-        tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
-        rm ./linux-debug/*.debug
+        for debug_archive in ./packages-*/klogg_*.debug.xz; do
+          if [ -f "$debug_archive" ]; then
+            xz -d "$debug_archive"
+          fi
+        done
+
+        for linux_binary_copy in ./packages-*/klogg_*; do
+          if [ -f "$linux_binary_copy" ]; then
+            case "$linux_binary_copy" in
+              *.debug|*.debug.xz) ;;
+              *) rm -f "$linux_binary_copy" ;;
+            esac
+          fi
+        done
+
+        rm -rf ./packages-macos-intel-qt6/klogg-x64.app || true
+        rm -rf ./packages-macos-arm-qt6/klogg-arm64.app || true
+
+        for debug_file in ./packages-*/klogg_*.debug; do
+          if [ -f "$debug_file" ]; then
+            mv "$debug_file" ./linux-debug
+          fi
+        done
+
+        if ls ./linux-debug/*.debug >/dev/null 2>&1; then
+          tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
+          rm ./linux-debug/*.debug
+        fi
       # rm -rf ./packages-oracle/klogg_oracle
       # mv ./packages-oracle/klogg_oracle.debug ./linux-debug
 
@@ -96,55 +124,74 @@ jobs:
       shell: sh
       run: |
         mkdir ./packages-bin
-        mv ./packages-appimage/klogg_deps.tar.xz ./packages-bin/klogg-$KLOGG_VERSION-deps.tar.xz
-        ar p  ./packages-focal/klogg-$KLOGG_VERSION-focal.deb data.tar.gz > ./packages-bin/klogg-$KLOGG_VERSION-bin.tar.gz
+
+        if [ -f ./packages-appimage/klogg_deps.tar.xz ]; then
+          mv ./packages-appimage/klogg_deps.tar.xz ./packages-bin/klogg-$KLOGG_VERSION-deps-x64.tar.xz
+        fi
+        if [ -f ./packages-appimage-arm64/klogg_deps.tar.xz ]; then
+          mv ./packages-appimage-arm64/klogg_deps.tar.xz ./packages-bin/klogg-$KLOGG_VERSION-deps-arm64.tar.xz
+        fi
+
+        if [ -f ./packages-focal/klogg-$KLOGG_VERSION-focal.deb ]; then
+          ar p ./packages-focal/klogg-$KLOGG_VERSION-focal.deb data.tar.gz > ./packages-bin/klogg-$KLOGG_VERSION-bin-x64.tar.gz
+        fi
+        if [ -f ./packages-focal-arm64/klogg-$KLOGG_VERSION-focal-arm64.deb ]; then
+          ar p ./packages-focal-arm64/klogg-$KLOGG_VERSION-focal-arm64.deb data.tar.gz > ./packages-bin/klogg-$KLOGG_VERSION-bin-arm64.tar.gz
+        fi
+
         mv ./klogg_version/klogg_version.txt ./packages-bin
 
     - name: Prepare checksums
       shell: sh
-      run:
-        sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt |
+      run: |
+        {
+          find ./packages-bin -maxdepth 1 -type f
+          find ./linux-debug -maxdepth 1 -type f 2>/dev/null || true
+          for package_dir in ./packages-*; do
+            if [ "$package_dir" != "./packages-bin" ] && [ -d "$package_dir" ]; then
+              find "$package_dir" -maxdepth 1 -type f
+            fi
+          done
+        } | sort | xargs sha256sum --binary > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
       # sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
 
-    - name: Release win
+    - name: Release continuous
+      if: ${{ env.KLOGG_GITHUB_TOKEN != '' }}
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
-        repo_token: ${{ secrets.KLOGG_GITHUB_TOKEN }}
-        automatic_release_tag: continuous-win
+        repo_token: ${{ env.KLOGG_GITHUB_TOKEN }}
+        automatic_release_tag: continuous-${{ env.KLOGG_VERSION }}
         prerelease: true
         files: |
           ./packages-windows-x64-qt6/*
-        # ./packages-windows-x86-qt5/*
-
-    - name: Release linux
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: ${{ secrets.KLOGG_GITHUB_TOKEN }}
-        automatic_release_tag: continuous-linux
-        prerelease: true
-        files: |
+          ./packages-windows-arm64-qt6/*
+          ./packages-macos-intel-qt6/*
+          ./packages-macos-arm-qt6/*
           ./packages-focal/*
+          ./packages-focal-arm64/*
           ./packages-jammy/*
+          ./packages-jammy-arm64/*
           ./packages-noble/*
+          ./packages-noble-arm64/*
           ./packages-appimage/*
+          ./packages-appimage-arm64/*
+          ./packages-fedora40/*
+          ./packages-fedora41/*
+          ./packages-fedora42/*
+          ./packages-fedora40-arm64/*
+          ./packages-fedora41-arm64/*
+          ./packages-fedora42-arm64/*
           ./packages-bin/*
           ./linux-debug/*
+        # ./packages-macos-intel-qt6/*
+        # ./packages-windows-x86-qt5/*
         # ./packages-oracle/*
 
-    - name: Release mac
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: ${{ secrets.KLOGG_GITHUB_TOKEN }}
-        automatic_release_tag: continuous-osx
-        prerelease: true
-        files: |
-          ./packages-macos-arm-qt6/*
-        # ./packages-macos-intel-qt6/*
-
     - name: Discord notification
+      if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
       env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
-        DISCORD_EMBEDS: '[{"title": "Windows", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-win"}, {"title": "Linux", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-linux"}, {"title": "Mac", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-osx"}]'
+        DISCORD_WEBHOOK: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK }}
+        DISCORD_EMBEDS: '[{"title": "Continuous", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-${{ env.KLOGG_VERSION }}"}]'
       uses: Ilshidur/action-discord@master
       with:
         args: 'New CI build {{KLOGG_VERSION}} has been released!'

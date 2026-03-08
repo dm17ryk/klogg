@@ -104,11 +104,20 @@ QuickFindWidget::QuickFindWidget( QWidget* parent )
     connect( editQuickFind_, &QLineEdit::textEdited, this, &QuickFindWidget::textChanged );
     connect( editQuickFind_, &QLineEdit::returnPressed, this, &QuickFindWidget::returnHandler );
 
-    connect( ignoreCaseCheck_, &QCheckBox::stateChanged, this, [ this ] {
+#if QT_VERSION >= QT_VERSION_CHECK( 6, 7, 0 )
+    connect( ignoreCaseCheck_, &QCheckBox::checkStateChanged, this,
+             [ this ]( Qt::CheckState ) {
+                 textChanged();
+                 Configuration::get().setQfIgnoreCase( ignoreCaseCheck_->isChecked() );
+                 Configuration::get().save();
+             } );
+#else
+    connect( ignoreCaseCheck_, &QCheckBox::stateChanged, this, [ this ]( int ) {
         textChanged();
         Configuration::get().setQfIgnoreCase( ignoreCaseCheck_->isChecked() );
         Configuration::get().save();
     } );
+#endif
 
     connect( previousButton_, &QToolButton::clicked, this, &QuickFindWidget::doSearchBackward );
     connect( nextButton_, &QToolButton::clicked, this, &QuickFindWidget::doSearchForward );

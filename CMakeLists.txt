@@ -19,6 +19,7 @@ option(KLOGG_BUILD_TESTS "Build tests" ON)
 option(KLOGG_USE_LTO "Use link time optimization" ON)
 option(KLOGG_USE_SENTRY "Use Sentry" OFF)
 option(KLOGG_GENERIC_CPU "Build for generic CPU" OFF)
+option(KLOGG_BUILD_DOCUMENTATION "Build generated HTML documentation" ON)
 option(KLOGG_OSX_DEPLOYMENT_TARGET "Override target MacOS version" "")
 
 if(KLOGG_USE_LTO
@@ -127,23 +128,33 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
   endif(CMAKE_C_FLAGS MATCHES "/W[0-4]")
 
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
+  if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
+  endif()
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj ")
 else()
   ucm_add_flags(CXX "-fno-sized-deallocation -fno-omit-frame-pointer")
 
-  if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
-    ucm_add_flags(C CXX "-march=native -mtune=generic")
-  else()
+  string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _klogg_system_processor)
+  if(_klogg_system_processor MATCHES "^(arm64|aarch64)$")
+    if(KLOGG_GENERIC_CPU)
+      ucm_add_flags(C CXX "-march=armv8-a -mtune=generic")
+    else()
+      ucm_add_flags(C CXX "-march=native -mtune=generic")
+    endif()
+  elseif(_klogg_system_processor MATCHES "^(x86_64|amd64|x86|i[3-6]86)$")
     ucm_add_flags(C CXX "-mmmx -msse -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt")
     if(KLOGG_GENERIC_CPU)
       ucm_add_flags(C CXX "-march=x86-64 -mtune=generic")
     else()
       ucm_add_flags(C CXX "-march=native -mtune=generic")
     endif()
+  else()
+    ucm_add_flags(C CXX "-march=native -mtune=generic")
   endif()
+  unset(_klogg_system_processor)
 endif(MSVC)
 
 if(WIN32)
@@ -246,9 +257,11 @@ add_subdirectory(src)
 add_subdirectory(website)
 
 enable_testing()
-add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
-)
+if(NOT (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$"))
+  add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
+          WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+  )
+endif()
 # set_tests_properties(klogg_smoke PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>")
 
 if(${KLOGG_BUILD_TESTS})
@@ -313,15 +326,65 @@ if(UNIX)
 
     set(CPACK_GENERATOR DEB)
 
+    #deb/rpm architecture mapping
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _klogg_system_processor)
+    set(_klogg_deb_arch "${_klogg_system_processor}")
+    set(_klogg_rpm_arch "${_klogg_system_processor}")
+
+    if(_klogg_system_processor MATCHES "^(x86_64|amd64)$")
+      set(_klogg_deb_arch "amd64")
+      set(_klogg_rpm_arch "x86_64")
+    elseif(_klogg_system_processor MATCHES "^(aarch64|arm64)$")
+      set(_klogg_deb_arch "arm64")
+      set(_klogg_rpm_arch "aarch64")
+    endif()
+
     #deb
-    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${_klogg_deb_arch}")
     set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "http://github.com/dm17ryk/klogg")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dmitry Kokotov <${CPACK_PACKAGE_CONTACT}>")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS YES)
+    set(_klogg_qt_private_dirs "")
+    foreach(_qt_component Core Widgets Gui Network SerialPort Xml Core5Compat)
+      if(TARGET Qt${QT_VERSION_MAJOR}::${_qt_component})
+        set(_qt_lib_location "")
+        foreach(_qt_location_prop
+                IMPORTED_LOCATION
+                IMPORTED_LOCATION_RELEASE
+                IMPORTED_LOCATION_RELWITHDEBINFO
+                IMPORTED_LOCATION_MINSIZEREL
+                IMPORTED_LOCATION_DEBUG)
+          get_target_property(
+            _qt_lib_location
+            Qt${QT_VERSION_MAJOR}::${_qt_component}
+            ${_qt_location_prop}
+          )
+          if(_qt_lib_location
+             AND NOT _qt_lib_location MATCHES "-NOTFOUND$"
+             AND EXISTS "${_qt_lib_location}")
+            break()
+          endif()
+          set(_qt_lib_location "")
+        endforeach()
+
+        if(_qt_lib_location)
+          get_filename_component(_qt_lib_dir "${_qt_lib_location}" DIRECTORY)
+          list(APPEND _klogg_qt_private_dirs "${_qt_lib_dir}")
+        endif()
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _klogg_qt_private_dirs)
+    if(_klogg_qt_private_dirs)
+      set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${_klogg_qt_private_dirs}")
+      message(
+        STATUS
+          "CPack DEB shlibdeps private dirs: ${CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS}"
+      )
+    endif()
 
     #RPM
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "${_klogg_rpm_arch}")
     set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
     set(CPACK_RPM_PACKAGE_AUTOREQ YES)
     #set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= ${KLOGG_QT_VERSION}")

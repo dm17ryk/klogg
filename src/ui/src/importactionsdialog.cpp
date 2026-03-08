@@ -564,7 +564,7 @@ void ImportActionsDialog::removeSelectedAction()
         pendingActionSelectionRow_ = -1;
     }
     else if ( row >= actions_.size() ) {
-        pendingActionSelectionRow_ = actions_.size() - 1;
+        pendingActionSelectionRow_ = static_cast<int>( actions_.size() ) - 1;
     }
     else {
         pendingActionSelectionRow_ = row;
@@ -608,7 +608,7 @@ void ImportActionsDialog::removeSelectedResponse()
         pendingResponseSelectionRow_ = -1;
     }
     else if ( row >= responses_.size() ) {
-        pendingResponseSelectionRow_ = responses_.size() - 1;
+        pendingResponseSelectionRow_ = static_cast<int>( responses_.size() ) - 1;
     }
     else {
         pendingResponseSelectionRow_ = row;

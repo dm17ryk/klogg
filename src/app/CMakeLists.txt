@@ -6,38 +6,48 @@ endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/documentation.qrc.in ${DOCUMENTATION_RESOURCE} @ONLY)
 
-add_custom_command(
-  OUTPUT ${DOCUMENTATION_HTML}
-  COMMAND $<TARGET_FILE:maddy> ${DOCUMENTATION_FILE} ${DOCUMENTATION_HTML}
-  DEPENDS maddy ${DOCUMENTATION_FILE}
-)
+if(KLOGG_BUILD_DOCUMENTATION)
+  add_custom_command(
+    OUTPUT ${DOCUMENTATION_HTML}
+    COMMAND $<TARGET_FILE:maddy> ${DOCUMENTATION_FILE} ${DOCUMENTATION_HTML}
+    DEPENDS maddy ${DOCUMENTATION_FILE}
+  )
+else()
+  file(
+    WRITE "${DOCUMENTATION_HTML}"
+    "<html><body><p>Documentation generation disabled for this build.</p></body></html>\n"
+  )
+endif()
 
 set(TS_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/i18n/en.ts
   ${CMAKE_CURRENT_SOURCE_DIR}/i18n/zh_CN.ts
 )
 
-find_package(Qt${QT_VERSION_MAJOR}LinguistTools REQUIRED)
-if (${QT_VERSION_MAJOR} EQUAL 5)
-  qt5_add_translation(QM_FILES ${TS_FILES})
-else (${QT_VERSION_MAJOR} EQUAL 6)
-  qt6_add_translation(QM_FILES ${TS_FILES})
-endif()
+option(KLOGG_BUILD_TRANSLATIONS "Build i18n translation resources" ON)
+if(KLOGG_BUILD_TRANSLATIONS)
+  find_package(Qt${QT_VERSION_MAJOR}LinguistTools REQUIRED)
+  if (${QT_VERSION_MAJOR} EQUAL 5)
+    qt5_add_translation(QM_FILES ${TS_FILES})
+  else (${QT_VERSION_MAJOR} EQUAL 6)
+    qt6_add_translation(QM_FILES ${TS_FILES})
+  endif()
 
-if (NOT TARGET Qt${QT_VERSION_MAJOR}::lupdate)
-    message(FATAL_ERROR "The package \"Qt${QT_VERSION_MAJOR}LinguistTools\" is required.")
-endif()
-set(Qt_LUPDATE_EXECUTABLE Qt${QT_VERSION_MAJOR}::lupdate)
-set(Qt_LCONVERT_EXECUTABLE Qt${QT_VERSION_MAJOR}::lconvert)
-add_custom_target(lupdate
-    COMMAND ${Qt_LUPDATE_EXECUTABLE} -recursive -no-obsolete ${CMAKE_SOURCE_DIR}/src -ts ${TS_FILES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src
-    COMMENT "Updating translations"
-)
+  if (NOT TARGET Qt${QT_VERSION_MAJOR}::lupdate)
+      message(FATAL_ERROR "The package \"Qt${QT_VERSION_MAJOR}LinguistTools\" is required.")
+  endif()
+  set(Qt_LUPDATE_EXECUTABLE Qt${QT_VERSION_MAJOR}::lupdate)
+  set(Qt_LCONVERT_EXECUTABLE Qt${QT_VERSION_MAJOR}::lconvert)
+  add_custom_target(lupdate
+      COMMAND ${Qt_LUPDATE_EXECUTABLE} -recursive -no-obsolete ${CMAKE_SOURCE_DIR}/src -ts ${TS_FILES}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src
+      COMMENT "Updating translations"
+  )
 
-include(TranslationUtils)
-add_app_translations_resource(KLOGG_I18N_RES ${QM_FILES})
-add_qt_translations_resource(KLOGG_QT_TRANSLATION_RES zh_CN)
+  include(TranslationUtils)
+  add_app_translations_resource(KLOGG_I18N_RES ${QM_FILES})
+  add_qt_translations_resource(KLOGG_QT_TRANSLATION_RES zh_CN)
+endif()
 
 set(MAIN_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cli.h
                  ${CMAKE_CURRENT_SOURCE_DIR}/klogg.qrc 

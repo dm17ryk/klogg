@@ -129,7 +129,18 @@ namespace {
 
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
 {
-    dispatchToMainThread( [ crawler_widget ]() { crawler_widget->followSet( true ); } );
+    if ( crawler_widget == nullptr ) {
+        return;
+    }
+
+    QPointer<CrawlerWidget> crawler = crawler_widget;
+    dispatchToObject(
+        [ crawler ]() {
+            if ( crawler != nullptr ) {
+                crawler->followSet( true );
+            }
+        },
+        crawler_widget );
 }
 
 void showComPortMessage( QWidget* parent, QMessageBox::Icon icon, const QString& title,
@@ -169,7 +180,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
     constexpr int StartupPollIntervalMs = 50;
 
     bool timedOut = false;
-    int lastReportedSecond = -1;
+    qint64 lastReportedSecond = -1;
     QEventLoop waitLoop;
     QElapsedTimer elapsed;
     QTimer pollTimer;
@@ -213,7 +224,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
             return;
         }
 
-        const int elapsedSeconds = elapsedMs / 1000;
+        const qint64 elapsedSeconds = elapsedMs / 1000;
         if ( elapsedSeconds != lastReportedSecond ) {
             lastReportedSecond = elapsedSeconds;
             StartupProgress::message( QObject::tr( "Preparing tab" ),
@@ -2064,20 +2075,20 @@ void MainWindow::changeEvent( QEvent* event )
 
         if ( this->windowState() & Qt::WindowMinimized ) {
             if ( Configuration::get().minimizeToTray() ) {
-                dispatchToMainThread( [ this ] {
+                dispatchToObject( [ this ] {
                     trayIcon_->show();
                     this->hide();
-                } );
+                }, this );
             }
         }
     }
     else if ( event->type() == QEvent::StyleChange ) {
-        dispatchToMainThread( [ this ] {
+        dispatchToObject( [ this ] {
             loadIcons();
             updateOpenedFilesMenu();
             updateFavoritesMenu();
             updateHighlightersMenu();
-        } );
+        }, this );
     }
     else if ( event->type() == QEvent::LanguageChange ) {
         reTranslateUI();
@@ -2672,7 +2683,7 @@ void MainWindow::selectOpenedFile()
                                                  QItemSelectionModel::SelectCurrent );
              } );
 
-    dispatchToMainThread( [ edit = filterEdit.get() ]() { edit->setFocus(); } );
+    dispatchToObject( [ edit = filterEdit.get() ]() { edit->setFocus(); }, filterEdit.get() );
 
     connect( selectFileDialog.get(), &QDialog::finished,
              [ this, openedFiles, dialog = selectFileDialog.get(), model = filteredModel.get(),

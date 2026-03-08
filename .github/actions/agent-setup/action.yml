@@ -13,15 +13,71 @@ runs:
         path: ../Qt
         key: ${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ matrix.config.qt_version }}-QtCache
 
-    - name: Install Qt
-      if: ${{ matrix.config.qt_arch }}
-      uses: jurplel/install-qt-action@v3
+    - name: Install Qt host prerequisites
+      if: ${{ matrix.config.qt_host_arch && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ matrix.config.qt_version }}
+        arch: ${{ matrix.config.qt_host_arch }}
+        cache: ${{ steps.cache-qt.outputs.cache-hit }}
+        set-env: false
+
+    - name: Install Qt (windows arm64 manual)
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' && steps.cache-qt.outputs.cache-hit != 'true' }}
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade "aqtinstall>=3.3.0,<3.4"
+        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_host_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt"
+        $armBin = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_arm64\bin"
+        New-Item -ItemType Directory -Path $armBin -Force | Out-Null
+        foreach ( $tool in @("qmake", "qmake6", "qtpaths", "qtpaths6") ) {
+          "@echo off`r`n" | Out-File -FilePath "$armBin\$tool.bat" -Encoding ascii -Force
+        }
+        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --autodesktop --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
+
+    - name: Set Qt6_Dir for windows arm64
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' }}
+      shell: pwsh
+      run: |
+        $qtRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_arm64"
+        $qtHostRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_64"
+        "Qt6_Dir=$qtRoot" >> $env:GITHUB_ENV
+        "Qt6_DIR=$qtRoot" >> $env:GITHUB_ENV
+        "CMAKE_PREFIX_PATH=$qtRoot" >> $env:GITHUB_ENV
+        "QT_HOST_PATH=$qtHostRoot" >> $env:GITHUB_ENV
+        "QT_FORCE_FIND_TOOLS=ON" >> $env:GITHUB_ENV
+        "QT_TOOLCHAIN_FILE=$qtRoot\lib\cmake\Qt6\qt.toolchain.cmake" >> $env:GITHUB_ENV
+        "$qtHostRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Set Qt6_Dir fallback for windows x64
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_64' }}
+      shell: pwsh
+      run: |
+        $qtRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_64"
+        if (Test-Path $qtRoot) {
+          "Qt6_Dir=$qtRoot" >> $env:GITHUB_ENV
+          "Qt6_DIR=$qtRoot" >> $env:GITHUB_ENV
+          "CMAKE_PREFIX_PATH=$qtRoot" >> $env:GITHUB_ENV
+        }
+
+    - name: Install Qt (with archives)
+      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
+      uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
         arch: ${{ matrix.config.qt_arch }}
-        cached: ${{ steps.cache-qt.outputs.cache-hit }}
+        cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
-        archives: qtbase qtimageformats qtsvg qttools qttranslations icu qtserialport
+        archives: ${{ matrix.config.qt_archives }}
+
+    - name: Install Qt (default archives)
+      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ matrix.config.qt_version }}
+        arch: ${{ matrix.config.qt_arch }}
+        cache: ${{ steps.cache-qt.outputs.cache-hit }}
+        modules: ${{ matrix.config.qt_modules }} qtserialport
 
     - name: Set boost env vars
       shell: sh

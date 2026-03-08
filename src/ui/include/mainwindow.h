@@ -234,7 +234,7 @@ class MainWindow : public QMainWindow {
     void updateHighlightersMenu();
     void updateActionsSendState();
     bool startComCaptureSession( SerialCaptureSettings& settings,
-                                 ComCaptureStartOptions options = ComCaptureStartOptions{} );
+                                 ComCaptureStartOptions options );
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
     StreamSession* currentStreamSession() const;
@@ -248,6 +248,9 @@ class MainWindow : public QMainWindow {
     void removeFromRecent( const QString& pathToRemove );
     void tryOpenClipboard( int tryTimes );
     void updateShortcuts();
+    bool startComCaptureSession( SerialCaptureSettings& settings ) {
+        return startComCaptureSession( settings, ComCaptureStartOptions{} );
+    }
 
     WindowSession session_;
     QString loadingFileName;

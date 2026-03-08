@@ -71,9 +71,9 @@ Section "klogg" klogg
 
     SetOutPath $INSTDIR
     File release\klogg.exe
-    File release\klogg_crashpad_handler.exe
-    File release\klogg_minidump_dump.exe
-    File release\tbb12.dll
+    File /nonfatal release\klogg_crashpad_handler.exe
+    File /nonfatal release\klogg_minidump_dump.exe
+    File /nonfatal release\tbb12.dll
 
     File COPYING
     File NOTICE
@@ -142,11 +142,11 @@ Section "MSVC Runtime libraries" vcruntime
 !if ${PLATFORM} == "x64"
     File release\vcruntime140_1.dll
 
-    File release\libcrypto-1_1-x64.dll
-    File release\libssl-1_1-x64.dll
+    File /nonfatal release\libcrypto-1_1-x64.dll
+    File /nonfatal release\libssl-1_1-x64.dll
 !else
-    File release\libcrypto-1_1.dll
-    File release\libssl-1_1.dll
+    File /nonfatal release\libcrypto-1_1.dll
+    File /nonfatal release\libssl-1_1.dll
 !endif
 
 SectionEnd

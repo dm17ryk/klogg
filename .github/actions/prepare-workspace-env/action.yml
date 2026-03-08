@@ -10,6 +10,11 @@ runs:
         echo "KLOGG_BUILD_ROOT=build_root" >> $GITHUB_ENV
         echo "KLOGG_ARCH=${{ matrix.config.arch }}" >> $GITHUB_ENV
         echo "KLOGG_CMAKE_OPTS=-G Ninja -DCMAKE_BUILD_TYPE=Release -DKLOGG_GENERIC_CPU=OFF -DKLOGG_USE_SENTRY=ON -DCMAKE_INSTALL_PREFIX=/usr ${{ matrix.config.cmake_opts }}" >> $GITHUB_ENV
+        if [ -n "${{ matrix.config.container_platform }}" ]; then
+          echo "KLOGG_DOCKER_PLATFORM=--platform ${{ matrix.config.container_platform }}" >> $GITHUB_ENV
+        else
+          echo "KLOGG_DOCKER_PLATFORM=" >> $GITHUB_ENV
+        fi
     - name: Set macOS SDK root
       if: runner.os == 'macOS'
       shell: sh
@@ -22,12 +27,36 @@ runs:
       if: "startsWith(matrix.config.qt_version, '5')"
       shell: sh
       run: |
+        QT_DIR="${Qt5_Dir}"
+        if [ -z "$QT_DIR" ]; then
+          QT_DIR="${Qt5_DIR}"
+        fi
+        if [ -z "$QT_DIR" ] && [ -n "${{ matrix.config.qt_arch }}" ]; then
+          case "${{ matrix.config.qt_arch }}" in
+            win64_msvc2022_64) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/msvc2022_64" ;;
+            win64_msvc2022_arm64_cross_compiled) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/msvc2022_arm64" ;;
+            clang_64) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/macos" ;;
+          esac
+        fi
+        QT_DIR=$(echo "$QT_DIR" | sed 's#\\#/#g')
         echo "KLOGG_QT=Qt5" >> $GITHUB_ENV
-        echo "KLOGG_QT_DIR=${{ env.Qt5_Dir }}" >> $GITHUB_ENV
+        echo "KLOGG_QT_DIR=$QT_DIR" >> $GITHUB_ENV
 
     - name: Set qt env var
       if: "startsWith(matrix.config.qt_version, '6')"
       shell: sh
       run: |
+        QT_DIR="${Qt6_Dir}"
+        if [ -z "$QT_DIR" ]; then
+          QT_DIR="${Qt6_DIR}"
+        fi
+        if [ -z "$QT_DIR" ] && [ -n "${{ matrix.config.qt_arch }}" ]; then
+          case "${{ matrix.config.qt_arch }}" in
+            win64_msvc2022_64) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/msvc2022_64" ;;
+            win64_msvc2022_arm64_cross_compiled) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/msvc2022_arm64" ;;
+            clang_64) QT_DIR="$GITHUB_WORKSPACE/../Qt/${{ matrix.config.qt_version }}/macos" ;;
+          esac
+        fi
+        QT_DIR=$(echo "$QT_DIR" | sed 's#\\#/#g')
         echo "KLOGG_QT=Qt6" >> $GITHUB_ENV
-        echo "KLOGG_QT_DIR=${{ env.Qt6_Dir }}" >> $GITHUB_ENV
+        echo "KLOGG_QT_DIR=$QT_DIR" >> $GITHUB_ENV

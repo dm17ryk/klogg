@@ -38,6 +38,7 @@ build_root_gcc/
 build_root_qt5/
 build_root_qt6/
 test_data/
+codex_tasks/*.log
 
 compile_commands.json
 

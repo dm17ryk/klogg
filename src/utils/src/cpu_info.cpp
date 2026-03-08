@@ -26,8 +26,11 @@
 #include <bitset>
 #include <vector>
 
+#if defined( _M_IX86 ) || defined( _M_X64 )
 #include <intrin.h>
+#endif
 
+#if defined( _M_IX86 ) || defined( _M_X64 )
 CpuInstructions supportedCpuInstructions()
 {
     CpuInstructions cpuInstructions = CpuInstructions::NONE;
@@ -85,11 +88,18 @@ CpuInstructions supportedCpuInstructions()
 
     return cpuInstructions;
 }
+#else
+CpuInstructions supportedCpuInstructions()
+{
+    return CpuInstructions::NONE;
+}
+#endif
 #elif defined (Q_OS_LINUX)
 CpuInstructions supportedCpuInstructions()
 {
     CpuInstructions cpuInstructions = CpuInstructions::NONE;
 
+#if defined( __x86_64__ ) || defined( __i386__ )
     if ( __builtin_cpu_supports( "avx512f" ) ) {
         cpuInstructions |= CpuInstructions::SSE2;
         cpuInstructions |= CpuInstructions::SSE3;
@@ -134,6 +144,7 @@ CpuInstructions supportedCpuInstructions()
     if ( __builtin_cpu_supports( "popcnt" ) ) {
         cpuInstructions |= CpuInstructions::POPCNT;
     }
+#endif
     return cpuInstructions;
 }
 #else

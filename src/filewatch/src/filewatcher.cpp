@@ -236,6 +236,12 @@ class EfswFileWatcher final : public efsw::FileWatchListener {
         }
     }
 
+    bool hasPollingOnlyWatches()
+    {
+        ScopedRecursiveLock lock( mutex_ );
+        return std::any_of( watchedPaths_.begin(), watchedPaths_.end(), isOnlyForPolling );
+    }
+
     void handleFileAction( efsw::WatchID watchid, const std::string& dir,
                            const std::string& filename, efsw::Action action,
                            std::string oldFilename ) override
@@ -383,8 +389,13 @@ void FileWatcher::sendChangesNotifications()
 void FileWatcher::updateConfiguration()
 {
     const auto& config = Configuration::get();
+    const bool fallbackPollingEnabled = efswWatcher_->hasPollingOnlyWatches();
+    const bool pollingEnabled = config.pollingEnabled() || fallbackPollingEnabled;
 
-    if ( config.pollingEnabled() ) {
+    if ( pollingEnabled ) {
+        if ( fallbackPollingEnabled && !config.pollingEnabled() ) {
+            LOG_WARNING << "Polling forced on because native file watch registration failed";
+        }
         LOG_INFO << "Polling files enabled";
         checkTimer_->start( config.pollIntervalMs() );
     }
