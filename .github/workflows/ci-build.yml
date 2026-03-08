@@ -129,7 +129,7 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_focal_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_jammy
@@ -142,7 +142,7 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_jammy_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_noble
@@ -155,7 +155,7 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_appimage_arm64
@@ -165,7 +165,7 @@ jobs:
             package_suffix: AppImage
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_appimage_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: fedora40
