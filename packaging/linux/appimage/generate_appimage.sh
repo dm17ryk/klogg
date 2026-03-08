@@ -20,8 +20,13 @@ run_linuxdeployqt() {
 
   for arch in "$LINUXDEPLOYQT_ARCH" "$LINUXDEPLOYQT_FALLBACK_ARCH"; do
     local appimage="linuxdeployqt-continuous-${arch}.AppImage"
-    wget -c -q "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/${appimage}"
+    wget -q -O "${appimage}" "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/${appimage}"
     chmod a+x "${appimage}"
+
+    if ! readelf -h "${appimage}" >/dev/null 2>&1; then
+      echo "linuxdeployqt (${arch}) is not a valid ELF binary, trying fallback..." >&2
+      continue
+    fi
 
     if VERSION=$KLOGG_VERSION "./${appimage}" "${args[@]}"; then
       return 0
@@ -33,12 +38,30 @@ run_linuxdeployqt() {
   return 1
 }
 
-run_linuxdeployqt appdir/usr/share/applications/*.desktop -bundle-non-qt-libs
+if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop -bundle-non-qt-libs; then
+  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    echo "WARNING: linuxdeployqt failed on ARM64, skipping AppImage generation." >&2
+    mkdir -p ./packages
+    echo "AppImage generation skipped on ARM64 due linuxdeployqt incompatibility." \
+      > "./packages/klogg-${KLOGG_VERSION}-appimage-arm64-skip.txt"
+    exit 0
+  fi
+  exit 1
+fi
 
 mkdir -p appdir/usr/lib
 cp "${LIB_DIR}"/libssl* appdir/usr/lib
 
-run_linuxdeployqt appdir/usr/share/applications/*.desktop -appimage
+if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop -appimage; then
+  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    echo "WARNING: linuxdeployqt failed on ARM64 during AppImage stage, skipping." >&2
+    mkdir -p ./packages
+    echo "AppImage generation skipped on ARM64 due linuxdeployqt incompatibility." \
+      > "./packages/klogg-${KLOGG_VERSION}-appimage-arm64-skip.txt"
+    exit 0
+  fi
+  exit 1
+fi
 
 mkdir -p ./packages
 APPIMAGE_FILE="$(ls ./klogg-$KLOGG_VERSION-*.AppImage | head -n 1)"
