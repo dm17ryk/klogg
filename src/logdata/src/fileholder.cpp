@@ -205,7 +205,9 @@ FileId FileId::getFileId( const QString& filename )
         return FileId{};
     }
 
-    ULARGE_INTEGER fileIndex = { info.nFileIndexLow, info.nFileIndexHigh };
+    ULARGE_INTEGER fileIndex{};
+    fileIndex.LowPart = info.nFileIndexLow;
+    fileIndex.HighPart = info.nFileIndexHigh;
     return FileId{ fileIndex.QuadPart, static_cast<uint64_t>( info.dwVolumeSerialNumber ) };
 #else
     struct stat info;
