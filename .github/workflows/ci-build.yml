@@ -442,10 +442,16 @@ jobs:
         if: ${{ runner.os == 'Windows' && matrix.config.backend == 'vectorscan' }}
         shell: pwsh
         run: |
-          winget install --id PolarGoose.Ragel --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $ragelDir = Join-Path $env:RUNNER_TEMP "ragel"
+          $ragel = Join-Path $ragelDir "ragel.exe"
+          New-Item -ItemType Directory -Path $ragelDir -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/eloraiby/ragel-windows/master/ragel.exe" `
+            -OutFile $ragel
           $ragel = (Get-Command ragel.exe -ErrorAction SilentlyContinue).Source
           if (-not $ragel) {
             $searchRoots = @(
+              $ragelDir,
               "$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages",
               "$env:ProgramFiles",
               "$env:ProgramFiles(x86)"
@@ -462,7 +468,7 @@ jobs:
             }
           }
           if (-not $ragel) {
-            throw "ragel.exe not found after winget installation"
+            throw "ragel.exe not found after installation"
           }
           Split-Path $ragel -Parent | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
