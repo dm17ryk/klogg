@@ -33,17 +33,6 @@
 
 namespace {
 
-QString backendName()
-{
-#ifdef KLOGG_BACKEND_HYPERSCAN
-    return QStringLiteral( "Hyperscan" );
-#elif defined( KLOGG_BACKEND_VECTORSCAN )
-    return QStringLiteral( "Vectorscan" );
-#else
-    return QStringLiteral( "Accelerated regex backend" );
-#endif
-}
-
 bool isAcceleratedBackendPlatformValid()
 {
     const auto validPlatformResult = hs_valid_platform();
@@ -63,7 +52,11 @@ bool isAcceleratedBackendPlatformValid()
         LOG_WARNING << "Hyperscan platform validation failed";
     }
 #else
-    LOG_WARNING << backendName().toStdString() << " platform validation failed";
+#ifdef KLOGG_BACKEND_VECTORSCAN
+    LOG_WARNING << "Vectorscan platform validation failed";
+#else
+    LOG_WARNING << "Accelerated regex backend platform validation failed";
+#endif
 #endif
 
     return false;
