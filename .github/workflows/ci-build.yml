@@ -401,6 +401,8 @@ jobs:
             qt_arch: win64_msvc2022_arm64_cross_compiled
             qt_host_arch: win64_msvc2022_64
             arch: arm64
+            cc: clang-cl
+            cxx: clang-cl
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64
             ssl_dir_arch: arm64
