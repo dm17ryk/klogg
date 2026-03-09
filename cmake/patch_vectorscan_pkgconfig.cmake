@@ -354,3 +354,43 @@ void unaligned_store_u64a(void *ptr, u64a val) {
     file(WRITE "${unaligned_file}" "${unaligned_updated}")
   endif()
 endif()
+
+set(alloc_file "${PATCH_ROOT}/src/util/alloc.cpp")
+if(EXISTS "${alloc_file}")
+  file(READ "${alloc_file}" alloc_content)
+  set(alloc_updated "${alloc_content}")
+
+  string(REPLACE [=[# elif defined(HAVE__ALIGNED_MALLOC)
+    /* on Windows */
+    #include <malloc.h>
+    #define posix_memalign(A, B, C) ((*A = (void *)_aligned_malloc(C, B)) == nullptr)
+]=]
+                 [=[# elif defined(HAVE__ALIGNED_MALLOC) || defined(_MSC_VER)
+    /* on Windows */
+    #include <malloc.h>
+    #define posix_memalign(A, B, C) ((*A = (void *)_aligned_malloc(C, B)) == nullptr)
+]=]
+                 alloc_updated
+                 "${alloc_updated}")
+
+  string(REPLACE [=[#if defined(__MINGW32__) || defined(__MINGW64__)
+    __mingw_aligned_free(ptr);
+#else
+    free(ptr);
+#endif
+]=]
+                 [=[#if defined(__MINGW32__) || defined(__MINGW64__)
+    __mingw_aligned_free(ptr);
+#elif defined(_MSC_VER)
+    _aligned_free(ptr);
+#else
+    free(ptr);
+#endif
+]=]
+                 alloc_updated
+                 "${alloc_updated}")
+
+  if(NOT alloc_updated STREQUAL alloc_content)
+    file(WRITE "${alloc_file}" "${alloc_updated}")
+  endif()
+endif()
