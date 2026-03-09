@@ -224,13 +224,33 @@ include(prepare_version)
 include(FindPkgConfig)
 
 if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUTABLE)
-  find_program(
-    KLOGG_PKG_CONFIG_EXECUTABLE
-    NAMES pkg-config pkg-config.bat pkgconf pkgconf.exe
-    HINTS
-      "C:/Strawberry/perl/bin"
-      "$ENV{ProgramFiles}/Git/usr/bin"
+  set(
+    KLOGG_PKG_CONFIG_CANDIDATES
+    "C:/Strawberry/c/bin/pkg-config.exe"
+    "C:/Strawberry/c/bin/pkg-config"
+    "C:/Strawberry/perl/bin/pkg-config.bat"
+    "C:/Strawberry/perl/bin/pkg-config"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config.exe"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config"
   )
+  foreach(KLOGG_PKG_CONFIG_CANDIDATE IN LISTS KLOGG_PKG_CONFIG_CANDIDATES)
+    if(EXISTS "${KLOGG_PKG_CONFIG_CANDIDATE}")
+      set(KLOGG_PKG_CONFIG_EXECUTABLE "${KLOGG_PKG_CONFIG_CANDIDATE}")
+      break()
+    endif()
+  endforeach()
+
+  if(NOT KLOGG_PKG_CONFIG_EXECUTABLE)
+    find_program(
+      KLOGG_PKG_CONFIG_EXECUTABLE
+      NAMES pkg-config pkg-config.bat pkgconf pkgconf.exe
+      HINTS
+        "C:/Strawberry/c/bin"
+        "C:/Strawberry/perl/bin"
+        "$ENV{ProgramFiles}/Git/usr/bin"
+    )
+  endif()
+
   if(KLOGG_PKG_CONFIG_EXECUTABLE)
     set(
       PKG_CONFIG_EXECUTABLE
