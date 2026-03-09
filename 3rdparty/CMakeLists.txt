@@ -205,6 +205,11 @@ elseif(KLOGG_REGEX_BACKEND STREQUAL "vectorscan")
     VectorCamp/vectorscan
     GIT_TAG
     d29730e1cb9daaa66bda63426cdce83505d2c809
+    PATCH_COMMAND
+    ${CMAKE_COMMAND}
+    -DPATCH_ROOT=.
+    -P
+    ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_vectorscan_pkgconfig.cmake
     EXCLUDE_FROM_ALL
     YES
     OPTIONS
