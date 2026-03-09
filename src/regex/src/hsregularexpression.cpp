@@ -33,6 +33,42 @@
 
 namespace {
 
+QString backendName()
+{
+#ifdef KLOGG_BACKEND_HYPERSCAN
+    return QStringLiteral( "Hyperscan" );
+#elif defined( KLOGG_BACKEND_VECTORSCAN )
+    return QStringLiteral( "Vectorscan" );
+#else
+    return QStringLiteral( "Accelerated regex backend" );
+#endif
+}
+
+bool isAcceleratedBackendPlatformValid()
+{
+    const auto validPlatformResult = hs_valid_platform();
+    if ( validPlatformResult == HS_SUCCESS ) {
+        return true;
+    }
+
+#ifdef KLOGG_BACKEND_HYPERSCAN
+    auto requiredInstructions = CpuInstructions::SSE2;
+    requiredInstructions |= CpuInstructions::SSSE3;
+    const auto cpuInstructions = supportedCpuInstructions();
+    if ( !hasRequiredInstructions( cpuInstructions, requiredInstructions ) ) {
+        LOG_WARNING << "Hyperscan platform validation failed, missing x86 SIMD baseline"
+                    << static_cast<unsigned>( cpuInstructions );
+    }
+    else {
+        LOG_WARNING << "Hyperscan platform validation failed";
+    }
+#else
+    LOG_WARNING << backendName().toStdString() << " platform validation failed";
+#endif
+
+    return false;
+}
+
 int matchSingleCallback( unsigned int id, unsigned long long from, unsigned long long to,
                          unsigned int flags, void* context )
 {
@@ -178,10 +214,7 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
         }
     }
 
-    auto requiredInstructuins = CpuInstructions::SSE2;
-    requiredInstructuins |= CpuInstructions::SSSE3;
-
-    if ( hasRequiredInstructions( supportedCpuInstructions(), requiredInstructuins ) ) {
+    if ( isAcceleratedBackendPlatformValid() ) {
         auto compileHsDatabase = []( const klogg::vector<RegularExpressionPattern>& expressions,
                                      const std::string& combinationExpression,
                                      QString& errorMessage, bool isPrefilter ) -> hs_database_t* {
@@ -261,9 +294,6 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                 },
                 patterns, combinationExpression_, preFilterErrorMessage ) };
         }
-    }
-    else {
-        LOG_WARNING << "Cpu doesn't have sse2 or ssse3, use qt regex engine";
     }
 
     if ( database_ ) {

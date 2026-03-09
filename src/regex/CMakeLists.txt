@@ -21,12 +21,12 @@ target_link_libraries(
          exprtk
 )
 
-if(KLOGG_USE_HYPERSCAN)
+if(KLOGG_REGEX_BACKEND STREQUAL "hyperscan")
   target_link_libraries(klogg_regex PUBLIC klogg_hyperscan)
-  target_compile_definitions(klogg_regex PUBLIC KLOGG_HAS_HS)
-elseif(KLOGG_USE_VECTORSCAN)
+  target_compile_definitions(klogg_regex PUBLIC KLOGG_HAS_HS KLOGG_BACKEND_HYPERSCAN)
+elseif(KLOGG_REGEX_BACKEND STREQUAL "vectorscan")
   target_link_libraries(klogg_regex PUBLIC klogg_vectorscan)
-  target_compile_definitions(klogg_regex PUBLIC KLOGG_HAS_HS)
+  target_compile_definitions(klogg_regex PUBLIC KLOGG_HAS_HS KLOGG_BACKEND_VECTORSCAN)
 endif()
 
 if(KLOGG_USE_LTO)

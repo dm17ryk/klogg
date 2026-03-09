@@ -1,0 +1,234 @@
+{
+  "kind": "codex_cli_structured_task",
+  "version": "1.0",
+  "title": "Implement performance-first regex backend matrix with max supported fat-runtime coverage",
+  "repo": "dm17ryk/klogg",
+  "agent_instructions": [
+    "Treat this JSON as the authoritative task specification.",
+    "Inspect the current repository state before editing anything.",
+    "Keep changes tightly scoped to backend selection, dependency configuration, runtime validation, CI, and documentation.",
+    "Do not ask follow-up questions. Make the best defensible implementation and clearly document any blockers."
+  ],
+  "priority_order": [
+    "matching_performance",
+    "correct_backend_selection",
+    "maximum_supported_fat_runtime_coverage",
+    "runtime_correctness",
+    "binary_portability",
+    "compilation_speed"
+  ],
+  "target_backend_matrix": {
+    "windows-x64": {
+      "backend": "hyperscan",
+      "fat_runtime": "on_if_supported"
+    },
+    "linux-x64": {
+      "backend": "hyperscan",
+      "fat_runtime": "on_if_supported"
+    },
+    "linux-arm64": {
+      "backend": "vectorscan",
+      "fat_runtime": "on_if_supported"
+    },
+    "macos-x64": {
+      "backend": "hyperscan",
+      "fat_runtime": "on_if_supported"
+    },
+    "macos-arm64": {
+      "backend": "vectorscan",
+      "fat_runtime": "on_if_supported"
+    },
+    "windows-arm64": {
+      "backend": "qt",
+      "fat_runtime": "n/a",
+      "note": "Do not enable Vectorscan yet. Preserve clean extension points for the next task."
+    }
+  },
+  "files_to_inspect_first": [
+    "CMakeLists.txt",
+    "3rdparty/CMakeLists.txt",
+    "src/regex/CMakeLists.txt",
+    "src/regex/src/hsregularexpression.cpp",
+    "src/utils/src/cpu_info.cpp",
+    ".github/workflows/ci-build.yml",
+    "BUILD.md"
+  ],
+  "core_objectives": [
+    "Implement deterministic build-time backend selection by OS and architecture.",
+    "Use Hyperscan on all x86_64 targets in the target matrix.",
+    "Use Vectorscan on Linux arm64 and macOS arm64.",
+    "Keep Windows arm64 on Qt fallback only for now.",
+    "Maximize fat-runtime use where the selected backend and target platform support it.",
+    "Preserve or improve matching performance even if that increases configure or compile complexity."
+  ],
+  "hard_constraints": [
+    "Do not introduce runtime fallback from Hyperscan to Vectorscan or from Vectorscan to Hyperscan. Backend choice remains build-time.",
+    "Qt regex remains the only runtime fallback.",
+    "Do not require SSE2 or SSSE3 on ARM Vectorscan paths.",
+    "Do not enable Vectorscan on Windows arm64 in this task.",
+    "Preserve explicit user override flags for KLOGG_USE_HYPERSCAN and KLOGG_USE_VECTORSCAN.",
+    "If both backends are enabled simultaneously, fail configuration with a clear message.",
+    "Avoid unrelated refactors outside the backend-selection path."
+  ],
+  "implementation_requirements": [
+    "Replace the current coarse platform default logic with explicit OS plus architecture selection.",
+    "Normalize architecture detection across CMAKE_SYSTEM_PROCESSOR, KLOGG_ARCH, MSVC generator platform, and CMAKE_OSX_ARCHITECTURES.",
+    "Treat x86_64 aliases consistently, including x86_64, amd64, AMD64, and x64.",
+    "Treat arm64 aliases consistently, including arm64, aarch64, and ARM64.",
+    "Preserve manual override behavior. Defaults should apply only when the user has not explicitly selected a backend.",
+    "Emit clear configure-time messages that print selected OS, arch, backend, and fat-runtime mode.",
+    "Keep backend selection mutually exclusive.",
+    "Preserve portable release behavior where possible. Do not silently over-specialize distributed non-fat builds to the local build host unless that is already intentional and documented."
+  ],
+  "platform_specific_rules": {
+    "windows-x64": [
+      "Default to Hyperscan.",
+      "Use the fastest practical non-fat configuration.",
+      "Do not attempt Linux-style fat runtime behavior on Windows."
+    ],
+    "linux-x64": [
+      "Default to Hyperscan.",
+      "Enable fat runtime when supported by the selected Hyperscan build.",
+      "Favor maximum x86 matching performance, including wider runtime variants when toolchain support exists.",
+      "Gracefully disable unavailable high-end variants instead of failing the build for optional optimizations."
+    ],
+    "linux-arm64": [
+      "Default to Vectorscan.",
+      "Enable fat runtime when supported.",
+      "Prefer the strongest Arm configuration the compiler can support, including SVE, SVE2, and SVE2_BITPERM when available.",
+      "Gracefully fall back to weaker supported Arm configurations if the strongest options are unavailable."
+    ],
+    "macos-x64": [
+      "Default to Hyperscan.",
+      "Use a non-fat configuration.",
+      "Optimize for runtime performance without making shipped binaries unnecessarily host-specific."
+    ],
+    "macos-arm64": [
+      "Default to Vectorscan.",
+      "Use a non-fat configuration.",
+      "Optimize for runtime performance on arm64 while keeping packaging sane."
+    ],
+    "windows-arm64": [
+      "Force both accelerated backends off by default.",
+      "Retain Qt-only behavior.",
+      "Leave the code organized so a future Windows arm64 plus Vectorscan task can be added cleanly."
+    ]
+  },
+  "required_code_changes": [
+    {
+      "path": "CMakeLists.txt",
+      "changes": [
+        "Refactor backend default selection to an explicit OS plus architecture matrix.",
+        "Add normalized target detection helpers or booleans.",
+        "Validate impossible or conflicting configurations with explicit fatal errors.",
+        "Keep manual overrides supported."
+      ]
+    },
+    {
+      "path": "3rdparty/CMakeLists.txt",
+      "changes": [
+        "Parameterize Hyperscan and Vectorscan package options by selected backend and target platform.",
+        "For Linux x64 Hyperscan, enable the widest practical performance-oriented runtime variants when supported by the toolchain.",
+        "For Linux arm64 Vectorscan, enable maximum supported fat-runtime and Arm feature coverage with graceful fallback.",
+        "For non-Linux targets that use accelerated backends, prefer fast non-fat builds.",
+        "Avoid settings that silently produce build-host-only artifacts unless explicitly documented."
+      ]
+    },
+    {
+      "path": "src/regex/CMakeLists.txt",
+      "changes": [
+        "Keep single-backend linkage behavior.",
+        "Add explicit backend compile definitions if needed for backend-aware runtime checks."
+      ]
+    },
+    {
+      "path": "src/regex/src/hsregularexpression.cpp",
+      "changes": [
+        "Remove unconditional x86-only SSE2 plus SSSE3 gating for all accelerated backends.",
+        "Make runtime validation backend-aware and architecture-aware.",
+        "For Hyperscan builds, use hs_valid_platform and any necessary x86-specific checks only where appropriate.",
+        "For Vectorscan arm64 builds, do not require x86 SIMD flags.",
+        "Preserve Qt fallback when backend validation, database creation, or scratch allocation fails."
+      ]
+    },
+    {
+      "path": "src/utils/src/cpu_info.cpp",
+      "changes": [
+        "Stop making ARM targets look unsupported merely because x86 CPUID logic is absent.",
+        "If CPU feature probing is still needed for diagnostics, make it backend-aware and architecture-aware.",
+        "Avoid coupling backend enablement to x86-only instruction flags."
+      ]
+    },
+    {
+      "path": ".github/workflows/ci-build.yml",
+      "changes": [
+        "Update jobs or options so the implemented backend matrix is visible in CI.",
+        "Keep Windows arm64 on Qt-only.",
+        "Make backend choice obvious in job naming, configure output, or artifact labeling."
+      ]
+    },
+    {
+      "path": "BUILD.md",
+      "changes": [
+        "Document the new default backend matrix.",
+        "Document where fat runtime is intentionally enabled and where it is intentionally off.",
+        "Document that Windows arm64 is Qt-only for now and that Vectorscan there is a future follow-up."
+      ]
+    }
+  ],
+  "design_rules": [
+    "Build-time backend selection only.",
+    "Runtime fallback to Qt only.",
+    "No x86 SIMD gate on ARM Vectorscan paths.",
+    "Prefer maximum supported fat-runtime coverage over simpler configuration when it materially helps matching performance.",
+    "When fat runtime is unavailable on the selected target, choose the fastest portable non-fat configuration rather than the simplest compile."
+  ],
+  "acceptance_criteria": [
+    "Windows x64 defaults to Hyperscan.",
+    "Linux x64 defaults to Hyperscan.",
+    "Linux arm64 defaults to Vectorscan.",
+    "macOS x64 defaults to Hyperscan.",
+    "macOS arm64 defaults to Vectorscan.",
+    "Windows arm64 defaults to Qt-only.",
+    "Linux x64 accelerated builds enable fat-runtime behavior when supported.",
+    "Linux arm64 accelerated builds enable fat-runtime behavior when supported.",
+    "macOS builds do not attempt unsupported fat-runtime configurations.",
+    "ARM64 Vectorscan paths are no longer blocked by SSE2 plus SSSE3 checks.",
+    "Explicit backend override flags still work.",
+    "Configure output clearly reports selected backend and fat-runtime mode."
+  ],
+  "verification_plan": {
+    "configure_checks": [
+      "Configure a Windows x64 build and confirm Hyperscan is selected by default.",
+      "Configure a Linux x64 build and confirm Hyperscan is selected by default.",
+      "Configure a Linux arm64 build and confirm Vectorscan is selected by default.",
+      "Configure a macOS x64 build and confirm Hyperscan is selected by default.",
+      "Configure a macOS arm64 build and confirm Vectorscan is selected by default.",
+      "Configure a Windows arm64 build and confirm both accelerated backends are disabled by default."
+    ],
+    "runtime_checks": [
+      "Run at least one focused regex smoke test on each accelerated backend path that can be exercised in the available environment.",
+      "Confirm Qt fallback still works when the accelerated backend is unavailable or invalid.",
+      "Confirm ARM64 accelerated paths do not trip the old x86-only runtime gate."
+    ],
+    "regression_checks": [
+      "Ensure no target links both Hyperscan and Vectorscan.",
+      "Ensure current Windows x64 behavior is preserved or improved.",
+      "Ensure CI still builds intended artifacts and that backend selection is visible in logs."
+    ]
+  },
+  "non_goals": [
+    "Do not implement Windows arm64 plus Vectorscan in this task.",
+    "Do not switch the repo to all-Vectorscan.",
+    "Do not change regex semantics or user-visible search behavior beyond backend selection and runtime validation.",
+    "Do not remove Qt fallback."
+  ],
+  "final_response_requirements": [
+    "List exactly which files were changed.",
+    "Summarize the final implemented backend matrix.",
+    "State where fat runtime is enabled and where it is intentionally disabled.",
+    "Call out any optional performance flags that were enabled only when toolchain support existed.",
+    "Call out any remaining upstream or toolchain limitations.",
+    "End with a short note about the next logical follow-up for Windows arm64 plus Vectorscan."
+  ]
+}
