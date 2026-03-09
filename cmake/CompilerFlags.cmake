@@ -4,7 +4,7 @@ function(set_project_compile_flags project_name)
       /fp:fast
       $<$<NOT:$<CONFIG:Debug>>:/GL>
       $<$<NOT:$<CONFIG:Debug>>:/O2>)
-  if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64")
+  if(NOT (DEFINED KLOGG_TARGET_IS_ARM64 AND KLOGG_TARGET_IS_ARM64))
     list(APPEND MSVC_FLAGS /arch:AVX2)
   endif()
   set(MSVC_DEFINITIONS -DNOMINMAX)

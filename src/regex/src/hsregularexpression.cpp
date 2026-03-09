@@ -33,12 +33,39 @@
 
 namespace {
 
+const char* acceleratedBackendName()
+{
+#ifdef KLOGG_BACKEND_HYPERSCAN
+    return "Hyperscan";
+#elif defined( KLOGG_BACKEND_VECTORSCAN )
+    return "Vectorscan";
+#else
+    return "Accelerated regex backend";
+#endif
+}
+
+const char* targetArchitectureName()
+{
+#if defined( _M_ARM64 ) || defined( __aarch64__ )
+    return "arm64";
+#elif defined( _M_X64 ) || defined( __x86_64__ )
+    return "x64";
+#elif defined( _M_IX86 ) || defined( __i386__ )
+    return "x86";
+#else
+    return "unknown";
+#endif
+}
+
 bool isAcceleratedBackendPlatformValid()
 {
     const auto validPlatformResult = hs_valid_platform();
     if ( validPlatformResult == HS_SUCCESS ) {
         return true;
     }
+
+    LOG_WARNING << acceleratedBackendName() << " platform validation failed on " << targetArchitectureName()
+                << " with status " << validPlatformResult;
 
 #ifdef KLOGG_BACKEND_HYPERSCAN
     auto requiredInstructions = CpuInstructions::SSE2;
@@ -207,7 +234,8 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
         }
     }
 
-    if ( isAcceleratedBackendPlatformValid() ) {
+    const auto platformValid = isAcceleratedBackendPlatformValid();
+    if ( platformValid ) {
         auto compileHsDatabase = []( const klogg::vector<RegularExpressionPattern>& expressions,
                                      const std::string& combinationExpression,
                                      QString& errorMessage, bool isPrefilter ) -> hs_database_t* {
@@ -289,6 +317,16 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
         }
     }
 
+    if ( !platformValid ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " is unavailable on " << targetArchitectureName();
+    }
+    else if ( !database_ ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " database initialization failed on " << targetArchitectureName() << ":"
+                    << errorMessage_;
+    }
+
     if ( database_ ) {
         scratch_ = makeUniqueResource<hs_scratch_t, hs_free_scratch>(
             []( hs_database_t* db ) -> hs_scratch_t* {
@@ -303,6 +341,11 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                 return scratch;
             },
             database_.get() );
+    }
+
+    if ( database_ && !scratch_ ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " scratch allocation failed on " << targetArchitectureName();
     }
 
     LOG_DEBUG << "Finished creating pattern database, patterns: " << patterns_.size()

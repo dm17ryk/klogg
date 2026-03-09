@@ -395,7 +395,7 @@ jobs:
 
           - os: windows
             os_version: 2022
-            backend: qt
+            backend: vectorscan
             qt_version: 6.10.1
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_arm64_cross_compiled
@@ -404,8 +404,8 @@ jobs:
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64
             ssl_dir_arch: arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF -DKLOGG_GENERIC_CPU=ON -DKLOGG_BUILD_TESTS=OFF -DKLOGG_BUILD_TRANSLATIONS=OFF -DKLOGG_BUILD_DOCUMENTATION=OFF
-            artifacts_id: windows-arm64-qt6
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_GENERIC_CPU=ON -DKLOGG_BUILD_TESTS=OFF -DKLOGG_BUILD_TRANSLATIONS=OFF -DKLOGG_BUILD_DOCUMENTATION=OFF
+            artifacts_id: windows-arm64-vectorscan-qt6
 
           # - os: windows
           #   os_version: 2022

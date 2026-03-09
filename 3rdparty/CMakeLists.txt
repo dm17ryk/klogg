@@ -138,6 +138,44 @@ if(KLOGG_REGEX_BACKEND STREQUAL "hyperscan")
   target_link_libraries(klogg_hyperscan INTERFACE hs)
   target_include_directories(klogg_hyperscan INTERFACE ${hyperscan_SOURCE_DIR}/src)
 elseif(KLOGG_REGEX_BACKEND STREQUAL "vectorscan")
+  set(_klogg_vs_fat_runtime OFF)
+  set(_klogg_vs_build_avx2 OFF)
+  set(_klogg_vs_build_avx512 OFF)
+  set(_klogg_vs_build_avx512vbmi OFF)
+  set(_klogg_vs_build_sve OFF)
+  set(_klogg_vs_build_sve2 OFF)
+  set(_klogg_vs_build_sve2_bitperm OFF)
+  set(_klogg_vs_target_label "${KLOGG_TARGET_OS}-${KLOGG_TARGET_ARCH}")
+
+  if(KLOGG_TARGET_OS STREQUAL "linux" AND KLOGG_TARGET_IS_X64)
+    check_c_compiler_flag("-march=skylake-avx512" KLOGG_VS_C_SKYLAKE_AVX512)
+    check_cxx_compiler_flag("-march=skylake-avx512" KLOGG_VS_CXX_SKYLAKE_AVX512)
+    check_c_compiler_flag("-march=icelake-server" KLOGG_VS_C_ICELAKE_SERVER)
+    check_cxx_compiler_flag("-march=icelake-server" KLOGG_VS_CXX_ICELAKE_SERVER)
+
+    set(_klogg_vs_fat_runtime ON)
+    set(_klogg_vs_build_avx2 ON)
+
+    if(KLOGG_VS_C_SKYLAKE_AVX512 AND KLOGG_VS_CXX_SKYLAKE_AVX512)
+      set(_klogg_vs_build_avx512 ON)
+    endif()
+
+    if(KLOGG_VS_C_ICELAKE_SERVER AND KLOGG_VS_CXX_ICELAKE_SERVER)
+      set(_klogg_vs_build_avx512vbmi ON)
+    endif()
+  elseif(KLOGG_TARGET_OS STREQUAL "linux" AND KLOGG_TARGET_IS_ARM64)
+    # Vectorscan detects unsupported Arm extensions and falls back to the
+    # strongest supported runtime variant.
+    set(_klogg_vs_fat_runtime ON)
+    set(_klogg_vs_build_sve ON)
+    set(_klogg_vs_build_sve2 ON)
+    set(_klogg_vs_build_sve2_bitperm ON)
+  elseif(KLOGG_TARGET_OS STREQUAL "windows" AND KLOGG_TARGET_IS_ARM64)
+    # Windows arm64 stays on a distributable native Vectorscan configuration.
+    # Keep the runtime non-fat and avoid x86-only SIMD feature variants.
+    set(_klogg_vs_target_label "windows-arm64-native")
+  endif()
+
   set(_klogg_vectorscan_options
       "BUILD_STATIC_LIBS ON"
       "BUILD_UNIT OFF"
@@ -147,62 +185,18 @@ elseif(KLOGG_REGEX_BACKEND STREQUAL "vectorscan")
       "BUILD_DOC OFF"
       "BUILD_CHIMERA OFF"
       "USE_CPU_NATIVE OFF"
-      "BUILD_AVX2 OFF"
-      "BUILD_AVX512 OFF"
-      "BUILD_AVX512VBMI OFF"
-      "BUILD_SVE OFF"
-      "BUILD_SVE2 OFF"
-      "BUILD_SVE2_BITPERM OFF"
-      "FAT_RUNTIME OFF")
+      "BUILD_AVX2 ${_klogg_vs_build_avx2}"
+      "BUILD_AVX512 ${_klogg_vs_build_avx512}"
+      "BUILD_AVX512VBMI ${_klogg_vs_build_avx512vbmi}"
+      "BUILD_SVE ${_klogg_vs_build_sve}"
+      "BUILD_SVE2 ${_klogg_vs_build_sve2}"
+      "BUILD_SVE2_BITPERM ${_klogg_vs_build_sve2_bitperm}"
+      "FAT_RUNTIME ${_klogg_vs_fat_runtime}")
 
-  if(KLOGG_TARGET_OS STREQUAL "linux" AND KLOGG_TARGET_IS_X64)
-    check_c_compiler_flag("-march=skylake-avx512" KLOGG_VS_C_SKYLAKE_AVX512)
-    check_cxx_compiler_flag("-march=skylake-avx512" KLOGG_VS_CXX_SKYLAKE_AVX512)
-    check_c_compiler_flag("-march=icelake-server" KLOGG_VS_C_ICELAKE_SERVER)
-    check_cxx_compiler_flag("-march=icelake-server" KLOGG_VS_CXX_ICELAKE_SERVER)
-
-    set(_klogg_vs_build_avx512 OFF)
-    if(KLOGG_VS_C_SKYLAKE_AVX512 AND KLOGG_VS_CXX_SKYLAKE_AVX512)
-      set(_klogg_vs_build_avx512 ON)
-    endif()
-
-    set(_klogg_vs_build_avx512vbmi OFF)
-    if(KLOGG_VS_C_ICELAKE_SERVER AND KLOGG_VS_CXX_ICELAKE_SERVER)
-      set(_klogg_vs_build_avx512vbmi ON)
-    endif()
-
-    set(_klogg_vectorscan_options
-        "BUILD_STATIC_LIBS ON"
-        "BUILD_UNIT OFF"
-        "BUILD_TOOLS OFF"
-        "BUILD_EXAMPLES OFF"
-        "BUILD_BENCHMARKS OFF"
-        "BUILD_DOC OFF"
-        "BUILD_CHIMERA OFF"
-        "USE_CPU_NATIVE OFF"
-        "FAT_RUNTIME ON"
-        "BUILD_AVX2 ON"
-        "BUILD_AVX512 ${_klogg_vs_build_avx512}"
-        "BUILD_AVX512VBMI ${_klogg_vs_build_avx512vbmi}")
-  elseif(KLOGG_TARGET_OS STREQUAL "linux" AND KLOGG_TARGET_IS_ARM64)
-    # Vectorscan detects unsupported Arm extensions and falls back to the
-    # strongest supported runtime variant.
-    set(_klogg_vectorscan_options
-        "BUILD_STATIC_LIBS ON"
-        "BUILD_UNIT OFF"
-        "BUILD_TOOLS OFF"
-        "BUILD_EXAMPLES OFF"
-        "BUILD_BENCHMARKS OFF"
-        "BUILD_DOC OFF"
-        "BUILD_CHIMERA OFF"
-        "USE_CPU_NATIVE OFF"
-        "FAT_RUNTIME ON"
-        "BUILD_SVE ON"
-        "BUILD_SVE2 ON"
-        "BUILD_SVE2_BITPERM ON")
-  endif()
-
-  message(STATUS "Configuring Vectorscan backend with options: ${_klogg_vectorscan_options}")
+  message(
+    STATUS
+      "Configuring Vectorscan backend for ${_klogg_vs_target_label}: fat-runtime=${_klogg_vs_fat_runtime}, avx2=${_klogg_vs_build_avx2}, avx512=${_klogg_vs_build_avx512}, avx512vbmi=${_klogg_vs_build_avx512vbmi}, sve=${_klogg_vs_build_sve}, sve2=${_klogg_vs_build_sve2}, sve2_bitperm=${_klogg_vs_build_sve2_bitperm}"
+  )
 
   cpmaddpackage(
     NAME
@@ -216,11 +210,11 @@ elseif(KLOGG_REGEX_BACKEND STREQUAL "vectorscan")
     OPTIONS
     ${_klogg_vectorscan_options}
   )
- 
+
   message("Adding alias for vectorscan")
   add_library(klogg_vectorscan INTERFACE)
   target_link_libraries(klogg_vectorscan INTERFACE hs)
-  target_include_directories(klogg_vectorscan INTERFACE 
+  target_include_directories(klogg_vectorscan INTERFACE
     ${vectorscan_SOURCE_DIR}/src
     ${vectorscan_BINARY_DIR}
   )

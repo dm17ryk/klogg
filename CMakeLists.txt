@@ -117,6 +117,8 @@ set(KLOGG_DEFAULT_FAT_RUNTIME_MODE "off")
 if(KLOGG_TARGET_OS STREQUAL "windows")
   if(KLOGG_TARGET_IS_X64)
     set(_klogg_default_use_hyperscan ON)
+  elseif(KLOGG_TARGET_IS_ARM64)
+    set(_klogg_default_use_vectorscan ON)
   endif()
 elseif(KLOGG_TARGET_OS STREQUAL "linux")
   if(KLOGG_TARGET_IS_X64)
@@ -141,9 +143,11 @@ if(KLOGG_USE_HYPERSCAN AND KLOGG_USE_VECTORSCAN)
   message(FATAL_ERROR "KLOGG_USE_HYPERSCAN and KLOGG_USE_VECTORSCAN are mutually exclusive")
 endif()
 
-if(KLOGG_TARGET_OS STREQUAL "windows" AND KLOGG_TARGET_IS_ARM64
-   AND (KLOGG_USE_HYPERSCAN OR KLOGG_USE_VECTORSCAN))
-  message(FATAL_ERROR "Windows arm64 is Qt-only in this task; disable KLOGG_USE_HYPERSCAN and KLOGG_USE_VECTORSCAN")
+if(KLOGG_TARGET_OS STREQUAL "windows" AND KLOGG_TARGET_IS_ARM64 AND KLOGG_USE_HYPERSCAN)
+  message(
+    FATAL_ERROR
+      "Windows arm64 supports Vectorscan or explicit Qt-only mode. Disable KLOGG_USE_HYPERSCAN or enable KLOGG_USE_VECTORSCAN instead."
+  )
 endif()
 
 if(KLOGG_TARGET_IS_X86 AND (KLOGG_USE_HYPERSCAN OR KLOGG_USE_VECTORSCAN))
@@ -218,6 +222,25 @@ include(StandardProjectSettings)
 include(ucm)
 include(prepare_version)
 include(FindPkgConfig)
+
+if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUTABLE)
+  find_program(
+    KLOGG_PKG_CONFIG_EXECUTABLE
+    NAMES pkg-config pkg-config.bat pkgconf pkgconf.exe
+    HINTS
+      "C:/Strawberry/perl/bin"
+      "$ENV{ProgramFiles}/Git/usr/bin"
+  )
+  if(KLOGG_PKG_CONFIG_EXECUTABLE)
+    set(
+      PKG_CONFIG_EXECUTABLE
+      "${KLOGG_PKG_CONFIG_EXECUTABLE}"
+      CACHE FILEPATH "pkg-config executable for Windows Vectorscan builds" FORCE
+    )
+    message(STATUS "Using pkg-config executable: ${PKG_CONFIG_EXECUTABLE}")
+  endif()
+endif()
+
 include(GNUInstallDirs)
 
 if(MSVC)
@@ -245,7 +268,7 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
   endif(CMAKE_C_FLAGS MATCHES "/W[0-4]")
 
-  if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64")
+  if(NOT KLOGG_TARGET_IS_ARM64)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
   endif()
@@ -374,7 +397,7 @@ add_subdirectory(src)
 add_subdirectory(website)
 
 enable_testing()
-if(NOT (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$"))
+if(NOT (WIN32 AND KLOGG_TARGET_IS_ARM64))
   add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
           WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
   )
