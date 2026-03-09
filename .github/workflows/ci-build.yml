@@ -438,6 +438,34 @@ jobs:
           echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.ssl_dir_arch }}\bin" >> $GITHUB_ENV
           echo "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $GITHUB_ENV 
 
+      - name: Install Ragel
+        if: ${{ runner.os == 'Windows' && matrix.config.backend == 'vectorscan' }}
+        shell: pwsh
+        run: |
+          winget install --id PolarGoose.Ragel --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $ragel = (Get-Command ragel.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ragel) {
+            $searchRoots = @(
+              "$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages",
+              "$env:ProgramFiles",
+              "$env:ProgramFiles(x86)"
+            )
+            foreach ( $root in $searchRoots ) {
+              if (Test-Path $root) {
+                $candidate = Get-ChildItem -Path $root -Filter ragel.exe -Recurse -ErrorAction SilentlyContinue |
+                  Select-Object -First 1 -ExpandProperty FullName
+                if ($candidate) {
+                  $ragel = $candidate
+                  break
+                }
+              }
+            }
+          }
+          if (-not $ragel) {
+            throw "ragel.exe not found after winget installation"
+          }
+          Split-Path $ragel -Parent | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - uses: ./.github/actions/agent-setup
       - uses: ./.github/actions/klogg-version
       - uses: ./.github/actions/prepare-workspace-env
