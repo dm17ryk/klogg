@@ -164,6 +164,9 @@ typedef signed long long ALIGN_ATTR(8) s64a;
 #endif
 #define really_really_inline __forceinline
 #define never_inline __declspec(noinline)
+#if !defined(__cplusplus)
+#define alignof __alignof
+#endif
 #if defined(__clang__)
 #define HAVE_TYPEOF 1
 #endif
