@@ -26,7 +26,9 @@ if(EXISTS "${xxhash_header}")
 #endif
 ]=]
                  [=[#elif defined(_MSC_VER)
-#  if defined(_M_ARM64) || defined(_M_ARM64EC)
+#  if defined(__clang__) && (defined(_M_ARM64) || defined(_M_ARM64EC))
+#    include <arm_neon.h>
+#  elif defined(_M_ARM64) || defined(_M_ARM64EC)
 #    include <arm64_neon.h>
 #  endif
 #  include <intrin.h>
