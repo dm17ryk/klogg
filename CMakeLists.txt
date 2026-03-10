@@ -36,18 +36,139 @@ else()
   set(KLOGG_ARCH 64)
 endif()
 
-if(WIN32)
-  if(KLOGG_ARCH EQUAL 64)
-    option(KLOGG_USE_HYPERSCAN "Use Hyperscan" ON)
-    option(KLOGG_USE_VECTORSCAN "Use Vectorscan" OFF)
-  else()
-    option(KLOGG_USE_HYPERSCAN "Use Hyperscan" OFF)
-    option(KLOGG_USE_VECTORSCAN "Use Vectorscan" OFF)
+function(klogg_normalize_target_arch out_arch out_source)
+  set(_klogg_candidates "")
+
+  if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    list(APPEND _klogg_candidates ${CMAKE_OSX_ARCHITECTURES})
   endif()
+
+  if(MSVC)
+    if(CMAKE_VS_PLATFORM_NAME)
+      list(APPEND _klogg_candidates "${CMAKE_VS_PLATFORM_NAME}")
+    endif()
+    if(CMAKE_GENERATOR_PLATFORM)
+      list(APPEND _klogg_candidates "${CMAKE_GENERATOR_PLATFORM}")
+    endif()
+  endif()
+
+  if(CMAKE_SYSTEM_PROCESSOR)
+    list(APPEND _klogg_candidates "${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+
+  foreach(_klogg_candidate IN LISTS _klogg_candidates)
+    string(TOLOWER "${_klogg_candidate}" _klogg_candidate_lower)
+
+    if(_klogg_candidate_lower MATCHES "(^|[^a-z0-9])(x86_64|amd64|x64)([^a-z0-9]|$)")
+      set(${out_arch} "x64" PARENT_SCOPE)
+      set(${out_source} "${_klogg_candidate}" PARENT_SCOPE)
+      return()
+    endif()
+
+    if(_klogg_candidate_lower MATCHES "(^|[^a-z0-9])(aarch64|arm64)([^a-z0-9]|$)")
+      set(${out_arch} "arm64" PARENT_SCOPE)
+      set(${out_source} "${_klogg_candidate}" PARENT_SCOPE)
+      return()
+    endif()
+
+    if(_klogg_candidate_lower MATCHES "(^|[^a-z0-9])(x86|i[3-6]86|win32)([^a-z0-9]|$)")
+      set(${out_arch} "x86" PARENT_SCOPE)
+      set(${out_source} "${_klogg_candidate}" PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+
+  if(KLOGG_ARCH EQUAL 64)
+    set(${out_arch} "x64" PARENT_SCOPE)
+    set(${out_source} "KLOGG_ARCH" PARENT_SCOPE)
+  else()
+    set(${out_arch} "x86" PARENT_SCOPE)
+    set(${out_source} "KLOGG_ARCH" PARENT_SCOPE)
+  endif()
+endfunction()
+
+if(WIN32)
+  set(KLOGG_TARGET_OS "windows")
+elseif(APPLE)
+  set(KLOGG_TARGET_OS "macos")
+elseif(UNIX)
+  set(KLOGG_TARGET_OS "linux")
 else()
-    option(KLOGG_USE_HYPERSCAN "Use Hyperscan" OFF)
-    option(KLOGG_USE_VECTORSCAN "Use Vectorscan" ON)
+  set(KLOGG_TARGET_OS "unknown")
 endif()
+
+klogg_normalize_target_arch(KLOGG_TARGET_ARCH KLOGG_TARGET_ARCH_SOURCE)
+
+set(KLOGG_TARGET_IS_X64 OFF)
+set(KLOGG_TARGET_IS_ARM64 OFF)
+set(KLOGG_TARGET_IS_X86 OFF)
+if(KLOGG_TARGET_ARCH STREQUAL "x64")
+  set(KLOGG_TARGET_IS_X64 ON)
+elseif(KLOGG_TARGET_ARCH STREQUAL "arm64")
+  set(KLOGG_TARGET_IS_ARM64 ON)
+elseif(KLOGG_TARGET_ARCH STREQUAL "x86")
+  set(KLOGG_TARGET_IS_X86 ON)
+endif()
+
+set(_klogg_default_use_hyperscan OFF)
+set(_klogg_default_use_vectorscan OFF)
+set(KLOGG_DEFAULT_FAT_RUNTIME_MODE "off")
+
+if(KLOGG_TARGET_OS STREQUAL "windows")
+  if(KLOGG_TARGET_IS_X64)
+    set(_klogg_default_use_hyperscan ON)
+  elseif(KLOGG_TARGET_IS_ARM64)
+    set(_klogg_default_use_vectorscan ON)
+  endif()
+elseif(KLOGG_TARGET_OS STREQUAL "linux")
+  if(KLOGG_TARGET_IS_X64)
+    set(_klogg_default_use_hyperscan ON)
+    set(KLOGG_DEFAULT_FAT_RUNTIME_MODE "on_if_supported")
+  elseif(KLOGG_TARGET_IS_ARM64)
+    set(_klogg_default_use_vectorscan ON)
+    set(KLOGG_DEFAULT_FAT_RUNTIME_MODE "on_if_supported")
+  endif()
+elseif(KLOGG_TARGET_OS STREQUAL "macos")
+  if(KLOGG_TARGET_IS_X64)
+    set(_klogg_default_use_hyperscan ON)
+  elseif(KLOGG_TARGET_IS_ARM64)
+    set(_klogg_default_use_vectorscan ON)
+  endif()
+endif()
+
+option(KLOGG_USE_HYPERSCAN "Use Hyperscan" ${_klogg_default_use_hyperscan})
+option(KLOGG_USE_VECTORSCAN "Use Vectorscan" ${_klogg_default_use_vectorscan})
+
+if(KLOGG_USE_HYPERSCAN AND KLOGG_USE_VECTORSCAN)
+  message(FATAL_ERROR "KLOGG_USE_HYPERSCAN and KLOGG_USE_VECTORSCAN are mutually exclusive")
+endif()
+
+if(KLOGG_TARGET_OS STREQUAL "windows" AND KLOGG_TARGET_IS_ARM64 AND KLOGG_USE_HYPERSCAN)
+  message(
+    FATAL_ERROR
+      "Windows arm64 supports Vectorscan or explicit Qt-only mode. Disable KLOGG_USE_HYPERSCAN or enable KLOGG_USE_VECTORSCAN instead."
+  )
+endif()
+
+if(KLOGG_TARGET_IS_X86 AND (KLOGG_USE_HYPERSCAN OR KLOGG_USE_VECTORSCAN))
+  message(FATAL_ERROR "Accelerated regex backends are only supported on x64 and arm64 targets")
+endif()
+
+if(KLOGG_USE_HYPERSCAN)
+  set(KLOGG_REGEX_BACKEND "hyperscan")
+  set(KLOGG_FAT_RUNTIME_MODE "${KLOGG_DEFAULT_FAT_RUNTIME_MODE}")
+elseif(KLOGG_USE_VECTORSCAN)
+  set(KLOGG_REGEX_BACKEND "vectorscan")
+  set(KLOGG_FAT_RUNTIME_MODE "${KLOGG_DEFAULT_FAT_RUNTIME_MODE}")
+else()
+  set(KLOGG_REGEX_BACKEND "qt")
+  set(KLOGG_FAT_RUNTIME_MODE "n/a")
+endif()
+
+message(
+  STATUS
+    "klogg backend selection: os=${KLOGG_TARGET_OS}, arch=${KLOGG_TARGET_ARCH} (${KLOGG_TARGET_ARCH_SOURCE}), backend=${KLOGG_REGEX_BACKEND}, fat-runtime=${KLOGG_FAT_RUNTIME_MODE}"
+)
 
 set(BUILD_VERSION
     $ENV{KLOGG_VERSION}
@@ -101,6 +222,68 @@ include(StandardProjectSettings)
 include(ucm)
 include(prepare_version)
 include(FindPkgConfig)
+
+if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUTABLE)
+  set(
+    KLOGG_PKG_CONFIG_CANDIDATES
+    "C:/Strawberry/c/bin/pkg-config.exe"
+    "C:/Strawberry/c/bin/pkg-config"
+    "C:/Strawberry/c/bin/pkgconf.exe"
+    "C:/Strawberry/c/bin/pkgconf"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config.exe"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkgconf.exe"
+    "$ENV{ProgramFiles}/Git/usr/bin/pkgconf"
+    "C:/Strawberry/perl/bin/pkg-config.bat"
+    "C:/Strawberry/perl/bin/pkg-config"
+  )
+  foreach(KLOGG_PKG_CONFIG_CANDIDATE IN LISTS KLOGG_PKG_CONFIG_CANDIDATES)
+    if(EXISTS "${KLOGG_PKG_CONFIG_CANDIDATE}")
+      execute_process(
+        COMMAND "${KLOGG_PKG_CONFIG_CANDIDATE}" --version
+        RESULT_VARIABLE KLOGG_PKG_CONFIG_RESULT
+        OUTPUT_QUIET
+        ERROR_QUIET
+      )
+      if(KLOGG_PKG_CONFIG_RESULT EQUAL 0)
+        set(KLOGG_PKG_CONFIG_EXECUTABLE "${KLOGG_PKG_CONFIG_CANDIDATE}")
+        break()
+      endif()
+    endif()
+  endforeach()
+
+  if(NOT KLOGG_PKG_CONFIG_EXECUTABLE)
+    find_program(
+      KLOGG_PKG_CONFIG_EXECUTABLE
+      NAMES pkgconf.exe pkgconf pkg-config.exe pkg-config pkg-config.bat
+      HINTS
+        "C:/Strawberry/c/bin"
+        "C:/Strawberry/perl/bin"
+        "$ENV{ProgramFiles}/Git/usr/bin"
+    )
+    if(KLOGG_PKG_CONFIG_EXECUTABLE)
+      execute_process(
+        COMMAND "${KLOGG_PKG_CONFIG_EXECUTABLE}" --version
+        RESULT_VARIABLE KLOGG_PKG_CONFIG_RESULT
+        OUTPUT_QUIET
+        ERROR_QUIET
+      )
+      if(NOT KLOGG_PKG_CONFIG_RESULT EQUAL 0)
+        unset(KLOGG_PKG_CONFIG_EXECUTABLE)
+      endif()
+    endif()
+  endif()
+
+  if(KLOGG_PKG_CONFIG_EXECUTABLE)
+    set(
+      PKG_CONFIG_EXECUTABLE
+      "${KLOGG_PKG_CONFIG_EXECUTABLE}"
+      CACHE FILEPATH "pkg-config executable for Windows Vectorscan builds" FORCE
+    )
+    message(STATUS "Using pkg-config executable: ${PKG_CONFIG_EXECUTABLE}")
+  endif()
+endif()
+
 include(GNUInstallDirs)
 
 if(MSVC)
@@ -128,7 +311,7 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
   endif(CMAKE_C_FLAGS MATCHES "/W[0-4]")
 
-  if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64")
+  if(NOT KLOGG_TARGET_IS_ARM64)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D __SSE4_1__=1 /D __SSE4_2__=1")
   endif()
@@ -257,7 +440,7 @@ add_subdirectory(src)
 add_subdirectory(website)
 
 enable_testing()
-if(NOT (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$"))
+if(NOT (WIN32 AND KLOGG_TARGET_IS_ARM64))
   add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
           WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
   )

@@ -33,6 +33,62 @@
 
 namespace {
 
+const char* acceleratedBackendName()
+{
+#ifdef KLOGG_BACKEND_HYPERSCAN
+    return "Hyperscan";
+#elif defined( KLOGG_BACKEND_VECTORSCAN )
+    return "Vectorscan";
+#else
+    return "Accelerated regex backend";
+#endif
+}
+
+const char* targetArchitectureName()
+{
+#if defined( _M_ARM64 ) || defined( __aarch64__ )
+    return "arm64";
+#elif defined( _M_X64 ) || defined( __x86_64__ )
+    return "x64";
+#elif defined( _M_IX86 ) || defined( __i386__ )
+    return "x86";
+#else
+    return "unknown";
+#endif
+}
+
+bool isAcceleratedBackendPlatformValid()
+{
+    const auto validPlatformResult = hs_valid_platform();
+    if ( validPlatformResult == HS_SUCCESS ) {
+        return true;
+    }
+
+    LOG_WARNING << acceleratedBackendName() << " platform validation failed on " << targetArchitectureName()
+                << " with status " << validPlatformResult;
+
+#ifdef KLOGG_BACKEND_HYPERSCAN
+    auto requiredInstructions = CpuInstructions::SSE2;
+    requiredInstructions |= CpuInstructions::SSSE3;
+    const auto cpuInstructions = supportedCpuInstructions();
+    if ( !hasRequiredInstructions( cpuInstructions, requiredInstructions ) ) {
+        LOG_WARNING << "Hyperscan platform validation failed, missing x86 SIMD baseline"
+                    << static_cast<unsigned>( cpuInstructions );
+    }
+    else {
+        LOG_WARNING << "Hyperscan platform validation failed";
+    }
+#else
+#ifdef KLOGG_BACKEND_VECTORSCAN
+    LOG_WARNING << "Vectorscan platform validation failed";
+#else
+    LOG_WARNING << "Accelerated regex backend platform validation failed";
+#endif
+#endif
+
+    return false;
+}
+
 int matchSingleCallback( unsigned int id, unsigned long long from, unsigned long long to,
                          unsigned int flags, void* context )
 {
@@ -178,10 +234,8 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
         }
     }
 
-    auto requiredInstructuins = CpuInstructions::SSE2;
-    requiredInstructuins |= CpuInstructions::SSSE3;
-
-    if ( hasRequiredInstructions( supportedCpuInstructions(), requiredInstructuins ) ) {
+    const auto platformValid = isAcceleratedBackendPlatformValid();
+    if ( platformValid ) {
         auto compileHsDatabase = []( const klogg::vector<RegularExpressionPattern>& expressions,
                                      const std::string& combinationExpression,
                                      QString& errorMessage, bool isPrefilter ) -> hs_database_t* {
@@ -262,8 +316,15 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                 patterns, combinationExpression_, preFilterErrorMessage ) };
         }
     }
-    else {
-        LOG_WARNING << "Cpu doesn't have sse2 or ssse3, use qt regex engine";
+
+    if ( !platformValid ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " is unavailable on " << targetArchitectureName();
+    }
+    else if ( !database_ ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " database initialization failed on " << targetArchitectureName() << ":"
+                    << errorMessage_;
     }
 
     if ( database_ ) {
@@ -280,6 +341,11 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
                 return scratch;
             },
             database_.get() );
+    }
+
+    if ( database_ && !scratch_ ) {
+        LOG_WARNING << "Falling back to Qt regex because " << acceleratedBackendName()
+                    << " scratch allocation failed on " << targetArchitectureName();
     }
 
     LOG_DEBUG << "Finished creating pattern database, patterns: " << patterns_.size()

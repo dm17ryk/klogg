@@ -42,6 +42,7 @@ jobs:
 
   Linux:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Linux (${{ matrix.config.os }}, ${{ matrix.config.arch }}, ${{ matrix.config.backend }})
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +74,7 @@ jobs:
           - os: ubuntu_focal
             os_version: 22.04
             arch: x64
+            backend: hyperscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: focal
@@ -80,12 +82,13 @@ jobs:
             check_container: ubuntu:22.04
             container_root: docker/ubuntu20.04
             container: dm17ryk/klogg_ubuntu20.04
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
             container_platform: linux/amd64
 
           - os: ubuntu_jammy
             os_version: 22.04
             arch: x64
+            backend: hyperscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: jammy
@@ -93,12 +96,13 @@ jobs:
             check_container: ubuntu:22.04
             container_root: docker/ubuntu22.04
             container: dm17ryk/klogg_ubuntu22.04
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
             container_platform: linux/amd64
 
           - os: ubuntu_noble
             os_version: 24.04
             arch: x64
+            backend: hyperscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: noble
@@ -106,22 +110,24 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
             container_platform: linux/amd64
 
           - os: ubuntu_appimage
             os_version: 20.04
             arch: x64
+            backend: hyperscan
             artifacts_id: appimage
             package_suffix: AppImage
             container_root: docker/ubuntu20.04
             container: dm17ryk/klogg_ubuntu20.04
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
             container_platform: linux/amd64
 
           - os: ubuntu_focal
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: focal-arm64
@@ -129,12 +135,13 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_focal_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_jammy
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: jammy-arm64
@@ -142,12 +149,13 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_jammy_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_noble
             os_version: 24.04
             arch: arm64
+            backend: vectorscan
             check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
             cpack_gen: DEB
             artifacts_id: noble-arm64
@@ -155,22 +163,24 @@ jobs:
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: ubuntu_appimage_arm64
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             artifacts_id: appimage-arm64
             package_suffix: AppImage
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_appimage_arm64
-            cmake_opts: -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
 
           - os: fedora40
             os_version: 22.04
             arch: x64
+            backend: hyperscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora40
@@ -178,12 +188,13 @@ jobs:
             check_container: fedora:40
             container_root: docker/fedora40
             container: dm17ryk/klogg_fedora40
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/amd64
 
           - os: fedora41
             os_version: 22.04
             arch: x64
+            backend: hyperscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora41
@@ -191,12 +202,13 @@ jobs:
             check_container: fedora:41
             container_root: docker/fedora41
             container: dm17ryk/klogg_fedora41
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/amd64
 
           - os: fedora42
             os_version: 22.04
             arch: x64
+            backend: hyperscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora42
@@ -204,12 +216,13 @@ jobs:
             check_container: fedora:42
             container_root: docker/fedora42
             container: dm17ryk/klogg_fedora42
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/amd64
 
           - os: fedora40
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora40-arm64
@@ -217,12 +230,13 @@ jobs:
             check_container: fedora:40
             container_root: docker/fedora40
             container: dm17ryk/klogg_fedora40_arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
           - os: fedora41
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora41-arm64
@@ -230,12 +244,13 @@ jobs:
             check_container: fedora:41
             container_root: docker/fedora41
             container: dm17ryk/klogg_fedora41_arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
           - os: fedora42
             os_version: 22.04
             arch: arm64
+            backend: vectorscan
             check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora42-arm64
@@ -243,7 +258,7 @@ jobs:
             check_container: fedora:42
             container_root: docker/fedora42
             container: dm17ryk/klogg_fedora42_arm64
-            cmake_opts: -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
 
@@ -284,29 +299,32 @@ jobs:
 
   Mac:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Mac (${{ matrix.config.arch }}, ${{ matrix.config.backend }})
     strategy:
       fail-fast: false
       matrix:
         config:
           - os: macos
             os_version: 15-intel
+            backend: hyperscan
             qt_version: 6.10.1
             qt_arch: clang_64
             qt_modules: qt5compat
             arch: x64
             artifacts_id: macos-intel-qt6
-            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
           - os: macos
             os_version: 14    # Target macOS 14 (Sonoma)
             arch: arm64       # Apple Silicon (ARM64) architecture
+            backend: vectorscan
             qt_version: 6.10.1
             qt_arch: clang_64
             qt_modules: qt5compat
             env:
               CXXFLAGS: "-Wno-error=deprecated-declarations"
             artifacts_id: macos-arm-qt6
-            cmake_opts: -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     steps:
@@ -356,12 +374,14 @@ jobs:
 
   Windows:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    name: Windows (${{ matrix.config.arch }}, ${{ matrix.config.backend }})
     strategy:
       fail-fast: false
       matrix:
         config:
           - os: windows
             os_version: 2022
+            backend: hyperscan
             qt_version: 6.10.1
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_64
@@ -370,21 +390,24 @@ jobs:
             devcmd_arch: x64
             ssl_arch: -x64
             ssl_dir_arch: x64
-            cmake_opts:
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
             artifacts_id: windows-x64-qt6
 
           - os: windows
             os_version: 2022
+            backend: vectorscan
             qt_version: 6.10.1
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_arm64_cross_compiled
             qt_host_arch: win64_msvc2022_64
             arch: arm64
+            cc: clang-cl
+            cxx: clang-cl
             devcmd_arch: amd64_arm64
             ssl_arch: -arm64
             ssl_dir_arch: arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_USE_SENTRY=OFF -DKLOGG_GENERIC_CPU=ON -DKLOGG_BUILD_TESTS=OFF -DKLOGG_BUILD_TRANSLATIONS=OFF -DKLOGG_BUILD_DOCUMENTATION=OFF
-            artifacts_id: windows-arm64-qt6
+            cmake_opts: -DCMAKE_C_COMPILER_TARGET=arm64-pc-windows-msvc -DCMAKE_CXX_COMPILER_TARGET=arm64-pc-windows-msvc -DCMAKE_ASM_COMPILER_TARGET=arm64-pc-windows-msvc -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF -DKLOGG_GENERIC_CPU=ON -DKLOGG_BUILD_TESTS=OFF -DKLOGG_BUILD_TRANSLATIONS=OFF -DKLOGG_BUILD_DOCUMENTATION=OFF
+            artifacts_id: windows-arm64-vectorscan-qt6
 
           # - os: windows
           #   os_version: 2022
@@ -416,6 +439,40 @@ jobs:
         run: |
           echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.ssl_dir_arch }}\bin" >> $GITHUB_ENV
           echo "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $GITHUB_ENV 
+
+      - name: Install Ragel
+        if: ${{ runner.os == 'Windows' && matrix.config.backend == 'vectorscan' }}
+        shell: pwsh
+        run: |
+          $ragelDir = Join-Path $env:RUNNER_TEMP "ragel"
+          $ragel = Join-Path $ragelDir "ragel.exe"
+          New-Item -ItemType Directory -Path $ragelDir -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/eloraiby/ragel-windows/master/ragel.exe" `
+            -OutFile $ragel
+          $ragel = (Get-Command ragel.exe -ErrorAction SilentlyContinue).Source
+          if (-not $ragel) {
+            $searchRoots = @(
+              $ragelDir,
+              "$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages",
+              "$env:ProgramFiles",
+              "$env:ProgramFiles(x86)"
+            )
+            foreach ( $root in $searchRoots ) {
+              if (Test-Path $root) {
+                $candidate = Get-ChildItem -Path $root -Filter ragel.exe -Recurse -ErrorAction SilentlyContinue |
+                  Select-Object -First 1 -ExpandProperty FullName
+                if ($candidate) {
+                  $ragel = $candidate
+                  break
+                }
+              }
+            }
+          }
+          if (-not $ragel) {
+            throw "ragel.exe not found after installation"
+          }
+          Split-Path $ragel -Parent | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - uses: ./.github/actions/agent-setup
       - uses: ./.github/actions/klogg-version

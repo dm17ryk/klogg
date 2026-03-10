@@ -3,8 +3,8 @@
 ## Overview
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
-Local builds can be faster because code can be optimized for current CPU instead of generic x86-64. Support for SSE4/AVX code paths
-will be enabled if available on build machine.
+Local builds can be faster because code can be optimized for current CPU instead of generic x86-64. Support for wider SIMD code paths
+will be enabled when the selected backend and toolchain support them.
 
 ## Getting the Source
 
@@ -30,7 +30,7 @@ To build Klogg:
   - QtTools
   - QtSerialPort
 
-To build Hyperscan regular expressions backend (default):
+To build accelerated regular expression backends:
 
 - CPU with support for [SSSE3](https://en.wikipedia.org/wiki/SSSE3) instructions (for Hyperscan backend)
 - Boost (1.58 or later, header-only part)
@@ -47,7 +47,7 @@ Building tests:
 
 All other dependencies are provided by [CPM](https://github.com/cpm-cmake/CPM.cmake) during cmake configuration stage (see 3rdparty directory).
 
-CPM will try to find Hyperscan, TBB, uchardet and xxhash installed on build host.
+CPM will try to find Hyperscan or Vectorscan, TBB, uchardet and xxhash installed on build host.
 If a library can't be found, the one provided by CPM will be used.
 
 ## Building
@@ -56,8 +56,28 @@ If a library can't be found, the one provided by CPM will be used.
 
 By default Klogg is built without support for reporting crash dumps. This can be enabled via cmake option `-DKLOGG_USE_SENTRY=ON`.
 
-Klogg uses Hyperscan regular expressions library which requires CPU with SSSE3 support, ragel and boost headers.
-Klogg can be built with only Qt reqular expressions backend by passing `-DKLOGG_USE_HYPERSCAN=OFF` to cmake.
+Klogg selects the accelerated regex backend by target OS and architecture:
+
+- Windows x64: Hyperscan
+- Linux x64: Hyperscan
+- Linux arm64: Vectorscan
+- macOS x64: Hyperscan
+- macOS arm64: Vectorscan
+- Windows arm64: Vectorscan
+
+Fat runtime is requested only on Linux accelerated builds:
+
+- Linux x64 + Hyperscan: fat runtime requested, with AVX-512 and AVX-512VBMI enabled only when the toolchain supports them
+- Linux arm64 + Vectorscan: fat runtime requested, with SVE/SVE2/SVE2_BITPERM requested and left to Vectorscan to degrade gracefully if the compiler does not support the strongest variant
+- Windows arm64 + Vectorscan: non-fat by design
+- Windows x64 and macOS accelerated builds: non-fat by design
+
+Backend selection remains build-time. Manual overrides are supported with:
+
+- `-DKLOGG_USE_HYPERSCAN=ON|OFF`
+- `-DKLOGG_USE_VECTORSCAN=ON|OFF`
+
+Only one accelerated backend can be enabled at a time. If both are disabled, klogg uses Qt regular expressions only. Windows arm64 now defaults to Vectorscan, while explicit Qt-only mode remains supported by setting both accelerated backends to OFF.
 
 Klogg can use custom memory allocator. By default it uses TBB memory allocator for Windows, mimalloc on Linux and default system allocator on MacOS.
 Memory allocator override can be turned off by passing `-DKLOGG_OVERRIDE_MALLOC`. If you want to use TBB allocator on Linux then pass
@@ -65,7 +85,7 @@ Memory allocator override can be turned off by passing `-DKLOGG_OVERRIDE_MALLOC`
 
 ### Building on Linux
 
-Here is how to build klogg on Ubuntu 18.04.
+Here is how to build klogg on Ubuntu.
 
 Install dependencies:
 
@@ -95,29 +115,35 @@ See `.github/workflows/ci-build.yml` for more information on build process.
 
 ### Building on Windows
 
-Install Microsoft Visual Studio 2017 or 2019 with C++ support.
+Install Microsoft Visual Studio 2022 with C++ support.
 Community edition can be downloaded from [Microsoft](https://visualstudio.microsoft.com/vs/).
 
 Intall latest Qt version using [online installer](https://www.qt.io/download-qt-installer).
 Make sure to select version matching Visual Studio installation. 64-bit libraries are recommended.
 
 Install CMake from [Kitware](https://cmake.org/download/).
-Use version 3.14 or later for Visual Studio 2019 support.
+Use version 3.14 or later for Visual Studio 2022 support.
 
 Download the Boost source code from http://www.boost.org/users/download/.
 Extract to some folder. Directory structure should be something like `C:\Boost\boost_1_63_0`.
 Then add `BOOST_ROOT` environment variable pointing to main directory of Boost sources so CMake is able to fine it.
 
-Prepare build environment for CMake. Open command prompt window and depending on version of Visual Studio run either
+Prepare the build environment for CMake. Open a Visual Studio 2022 developer command prompt and select the target architecture you want to build:
 
 ```
-call "%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Community\Common7\Tools\vsdevcmd" -arch=x64
+call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64
+```
+
+For Windows arm64 builds, use the ARM64 MSVC toolchain or the matching cross toolchain:
+
+```
+call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=arm64
 ```
 
 or
 
 ```
-call "%ProgramFiles(x86)%\Microsoft Visual Studio\2017\Community\Common7\Tools\vsdevcmd" -arch=x64
+call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64_arm64
 ```
 
 Next setup Qt paths:
@@ -132,18 +158,26 @@ Then add CMake to PATH:
 set PATH=<path_to_cmake_bin>:$PATH
 ```
 
-Configure klogg solution (use CMake generator matching Visual Studio version):
+Configure the klogg solution with a Visual Studio 2022 generator:
 
 ```
 cd <path_to_project_root>
 md build_root
 cd build_root
-cmake -G "Visual Studio 16 2019 Win64" -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+For Windows arm64 builds use the ARM64 platform explicitly:
+
+```
+cmake -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 ```
 
 CMake should generate `klogg.sln` file in `<path_to_project_root>\build_root` directory. Open solution and build it.
 
 Binaries are placed into `build_root/output`.
+
+Windows arm64 now uses Vectorscan by default in a non-fat configuration. CI currently cross-compiles this target and verifies compilation and packaging, but does not execute Windows arm64 binaries during CI. Runtime verification should be done on real Windows arm64 hardware or Windows-on-Arm emulation.
 
 For https network urls support download precompiled openssl library https://mirror.firedaemon.com/OpenSSL/openssl-1.1.1l-dev.zip.
 Put libcrypto-1_1 and libssl-1_1 for desired architecture near klogg binaries.

@@ -164,7 +164,7 @@ jobs:
         prerelease: true
         files: |
           ./packages-windows-x64-qt6/*
-          ./packages-windows-arm64-qt6/*
+          ./packages-windows-arm64-vectorscan-qt6/*
           ./packages-macos-intel-qt6/*
           ./packages-macos-arm-qt6/*
           ./packages-focal/*

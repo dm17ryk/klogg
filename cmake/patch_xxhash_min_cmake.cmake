@@ -15,3 +15,29 @@ string(
   "${content}"
 )
 file(WRITE "${patch_file}" "cmake_minimum_required(VERSION 3.10)\n\n${stripped}")
+
+set(xxhash_header "${PATCH_ROOT}/xxhash.h")
+if(EXISTS "${xxhash_header}")
+  file(READ "${xxhash_header}" header_content)
+  set(header_updated "${header_content}")
+
+  string(REPLACE [=[#elif defined(_MSC_VER)
+#  include <intrin.h>
+#endif
+]=]
+                 [=[#elif defined(_MSC_VER)
+#  if defined(__clang__) && (defined(_M_ARM64) || defined(_M_ARM64EC))
+#    include <arm_neon.h>
+#  elif defined(_M_ARM64) || defined(_M_ARM64EC)
+#    include <arm64_neon.h>
+#  endif
+#  include <intrin.h>
+#endif
+]=]
+                 header_updated
+                 "${header_updated}")
+
+  if(NOT header_updated STREQUAL header_content)
+    file(WRITE "${xxhash_header}" "${header_updated}")
+  endif()
+endif()

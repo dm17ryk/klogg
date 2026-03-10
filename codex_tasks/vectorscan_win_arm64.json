@@ -1,0 +1,215 @@
+{
+  "kind": "codex_cli_structured_task",
+  "version": "1.0",
+  "title": "Enable Vectorscan on Windows arm64 while preserving the current backend matrix",
+  "repo": "dm17ryk/klogg",
+  "assumptions": [
+    "The previous backend-matrix task is already implemented and merged.",
+    "All current platform defaults except Windows arm64 should remain unchanged.",
+    "Windows arm64 is currently the only target being promoted from Qt-only to an accelerated backend in this task."
+  ],
+  "objective": "Change Windows arm64 from Qt-only to Vectorscan, using ZEACENT/klogg as a practical MSVC/Vectorscan reference, while preserving the rest of the current matrix and keeping regex matching performance as the top priority.",
+  "priority_order": [
+    "Regex matching performance on Windows arm64",
+    "Correct and explicit Windows arm64 Vectorscan enablement",
+    "Runtime correctness and Qt fallback behavior",
+    "Maintainability and clarity of backend selection",
+    "Compilation convenience"
+  ],
+  "desired_backend_matrix": {
+    "windows-x64": {
+      "backend": "hyperscan"
+    },
+    "linux-x64": {
+      "backend": "hyperscan"
+    },
+    "linux-arm64": {
+      "backend": "vectorscan"
+    },
+    "macos-x64": {
+      "backend": "hyperscan"
+    },
+    "macos-arm64": {
+      "backend": "vectorscan"
+    },
+    "windows-arm64": {
+      "backend": "vectorscan",
+      "fat_runtime": "off",
+      "notes": "Use the fastest supported non-fat Windows arm64 configuration. Do not keep this target on Qt by default anymore."
+    }
+  },
+  "reference_repos": [
+    {
+      "repo": "ZEACENT/klogg",
+      "purpose": [
+        "Reference for Vectorscan integration on Windows with MSVC",
+        "Reference for CI/workflow structure for Windows plus Vectorscan builds",
+        "Reference for dependency wiring, compile definitions, logging, and packaging labels where applicable"
+      ],
+      "rules": [
+        "Use ZEACENT/klogg as an implementation reference, not as a source of truth for this repo's architecture matrix.",
+        "Copy ideas only where they fit the current dm17ryk/klogg codebase cleanly.",
+        "Do not blindly copy unrelated platform choices from ZEACENT/klogg."
+      ]
+    }
+  ],
+  "files_to_inspect_first": [
+    "CMakeLists.txt",
+    "3rdparty/CMakeLists.txt",
+    "src/regex/CMakeLists.txt",
+    "src/regex/include/hsregularexpression.h",
+    "src/regex/src/hsregularexpression.cpp",
+    "src/utils/src/cpu_info.cpp",
+    "cmake/CompilerFlags.cmake",
+    ".github/workflows/ci-build.yml",
+    "BUILD.md",
+    "README.md"
+  ],
+  "hard_constraints": [
+    "Do not change the default backend for Windows x64, Linux x64, Linux arm64, macOS x64, or macOS arm64.",
+    "Do not revert Windows arm64 to Qt-only by default.",
+    "Do not introduce runtime fallback from Vectorscan to Hyperscan or from Hyperscan to Vectorscan. Backend choice remains build-time.",
+    "Qt regex remains the only runtime fallback when backend validation or initialization fails.",
+    "Do not enable Linux-only fat-runtime assumptions on Windows arm64.",
+    "Prefer a native Windows arm64 Vectorscan path over SIMDe or other emulation-style fallbacks.",
+    "Do not make SIMDe the default backend path for Windows arm64. If a SIMDe-based escape hatch is added at all, it must be explicit, isolated, documented, and non-default.",
+    "Preserve manual override flags where practical, but unsupported combinations must fail clearly at configure time.",
+    "If both accelerated backends are enabled simultaneously, fail configuration with a clear error."
+  ],
+  "implementation_requirements": [
+    {
+      "area": "CMake backend selection",
+      "tasks": [
+        "Update backend auto-selection so Windows arm64 defaults to Vectorscan.",
+        "Preserve the already-implemented defaults for all other platform and architecture combinations.",
+        "Normalize architecture detection across CMAKE_SYSTEM_PROCESSOR, KLOGG_ARCH, MSVC generator platform, and any existing repo-specific helpers.",
+        "Recognize at minimum: x86_64, AMD64, x64, arm64, aarch64, ARM64.",
+        "Emit a configure-time summary that clearly reports target OS, target architecture, selected backend, and whether fat runtime is enabled."
+      ]
+    },
+    {
+      "area": "Third-party dependency wiring for Windows arm64",
+      "tasks": [
+        "Make sure Windows arm64 selects the Vectorscan dependency path in 3rdparty/CMakeLists.txt.",
+        "Audit all Vectorscan CMake options for Windows arm64 and remove any x86-only or Linux-only assumptions from this target.",
+        "Keep Windows arm64 on a performance-oriented non-fat configuration by default.",
+        "Keep USE_CPU_NATIVE off by default for distributable Windows arm64 builds unless there is a very strong repo-specific reason to do otherwise.",
+        "If additional ARM64-specific generator, toolset, or compiler conditionals are needed for MSVC, add them explicitly and document them.",
+        "Use ZEACENT/klogg as a reference for getting Vectorscan to compile with MSVC, but adapt the solution to this repo's current structure."
+      ]
+    },
+    {
+      "area": "Backend identity and compile definitions",
+      "tasks": [
+        "Ensure runtime code can explicitly distinguish Hyperscan vs Vectorscan.",
+        "If the repo currently uses backend-specific compile definitions from the previous task, preserve and extend them cleanly for Windows arm64.",
+        "Do not rely on a generic accelerated-backend macro if backend-specific behavior now differs materially."
+      ]
+    },
+    {
+      "area": "Runtime backend validation",
+      "tasks": [
+        "Make sure Windows arm64 Vectorscan activation does not depend on x86-only SSE2 or SSSE3 gates.",
+        "Prefer backend-native validation such as hs_valid_platform() plus actual database and scratch initialization outcomes.",
+        "If Vectorscan validation or initialization fails at runtime, fall back to Qt regex with a clear log message that includes backend name, target architecture, and failure reason.",
+        "Keep the runtime path cleanly shared with the already-working Linux arm64 and macOS arm64 Vectorscan logic where possible."
+      ]
+    },
+    {
+      "area": "CPU feature detection and compiler flags",
+      "tasks": [
+        "Audit src/utils/src/cpu_info.cpp so Windows arm64 no longer looks unsupported merely because x86 CPUID logic is absent.",
+        "Keep CPU feature detection for diagnostics or optional optimizations only; it must not be the deciding gate that disables Vectorscan on Windows arm64.",
+        "Ensure x86-only compiler flags such as AVX2 or x86-only intrinsics are never applied on Windows arm64.",
+        "If needed, add Windows arm64-specific diagnostic reporting, but do not block backend activation on missing x86 probes."
+      ]
+    },
+    {
+      "area": "Windows arm64 CI and build verification",
+      "tasks": [
+        "Update .github/workflows/ci-build.yml so Windows arm64 builds with Vectorscan enabled by default.",
+        "Use an MSVC ARM64 configuration explicitly, for example a Visual Studio generator with platform ARM64 or an equivalent supported approach.",
+        "Make backend choice visible in job names, configure output, artifact names, or package labels.",
+        "If the CI environment can only cross-compile but not execute Windows arm64 binaries, compile verification is acceptable in CI, but add a short manual verification note for real hardware or emulation."
+      ]
+    },
+    {
+      "area": "Documentation",
+      "tasks": [
+        "Update BUILD.md and any relevant README or build docs to state that Windows arm64 now uses Vectorscan by default.",
+        "Document that Windows arm64 uses a non-fat Vectorscan configuration in this step.",
+        "Document any special MSVC or generator requirements for Windows arm64 builds.",
+        "Document any explicit remaining limitations, such as runtime verification being compile-only in CI if execution is unavailable."
+      ]
+    },
+    {
+      "area": "Code organization for future work",
+      "tasks": [
+        "Keep the Windows arm64 Vectorscan path organized so future Windows-specific tuning can be added without reworking backend selection again.",
+        "Do not entangle Windows arm64 logic with Linux-only fat-runtime or ELF-specific assumptions."
+      ]
+    }
+  ],
+  "manual_override_rules": [
+    "Keep manual overrides for developers where practical.",
+    "If KLOGG_USE_VECTORSCAN=ON on Windows arm64, this is now a supported path and must build or fail clearly with a reproducible reason.",
+    "If KLOGG_USE_HYPERSCAN=ON on Windows arm64, fail configure clearly unless there is already an explicitly supported path in the repo.",
+    "If both KLOGG_USE_HYPERSCAN=OFF and KLOGG_USE_VECTORSCAN=OFF, Qt-only mode remains a valid explicit override."
+  ],
+  "acceptance_criteria": [
+    "Auto-selection chooses Vectorscan on Windows arm64.",
+    "Auto-selection for all other targets remains unchanged from the previous matrix task.",
+    "Windows arm64 configure output clearly reports Vectorscan as the selected backend.",
+    "Windows arm64 Vectorscan no longer depends on x86-only SSE2 or SSSE3 checks to activate.",
+    "Windows arm64 no longer defaults to Qt-only.",
+    "Qt fallback still works when Vectorscan validation, database compilation, or scratch allocation fails at runtime.",
+    "Windows arm64 CI is updated to build with Vectorscan enabled.",
+    "Windows arm64 uses a non-fat configuration by default.",
+    "No x86-only compiler flags leak into the Windows arm64 build.",
+    "The implementation remains compatible with the existing accelerated backend flow on the other supported targets."
+  ],
+  "verification_plan": {
+    "configure_checks": [
+      "Configure Windows arm64 with default settings and confirm Vectorscan is selected.",
+      "Configure Windows x64, Linux x64, Linux arm64, macOS x64, and macOS arm64 and confirm their existing defaults are unchanged.",
+      "Verify the configure summary prints OS, architecture, backend, and fat-runtime mode."
+    ],
+    "build_checks": [
+      "Build Windows arm64 in Release or RelWithDebInfo with MSVC and confirm Vectorscan compiles and links.",
+      "Confirm Windows arm64 does not pull in x86-only AVX2 or SSE-only compilation paths.",
+      "Confirm the CI workflow reflects the new Windows arm64 backend selection."
+    ],
+    "runtime_checks": [
+      "Where execution is possible, run a minimal regex smoke test on Windows arm64 and confirm Vectorscan path activation or clear Qt fallback logging.",
+      "If CI cannot execute Windows arm64 binaries, provide a small manual verification recipe for local ARM64 hardware or emulation."
+    ],
+    "regression_checks": [
+      "Verify no target links both Hyperscan and Vectorscan simultaneously.",
+      "Verify Linux arm64 and macOS arm64 Vectorscan paths remain intact.",
+      "Verify Windows x64 remains Hyperscan by default."
+    ]
+  },
+  "non_goals": [
+    "Do not switch Windows x64, Linux x64, or macOS x64 away from Hyperscan.",
+    "Do not reopen the broader backend-matrix design unless required for a narrowly scoped fix.",
+    "Do not reintroduce Windows arm64 as Qt-only by default.",
+    "Do not enable Linux-style fat runtime on Windows arm64.",
+    "Do not make SIMDe or another emulation-oriented path the default unless native Windows arm64 Vectorscan is provably impossible and the tradeoff is explicitly documented."
+  ],
+  "deliverables": [
+    "Code changes enabling Vectorscan by default on Windows arm64.",
+    "Updated CI/workflow configuration for Windows arm64 plus Vectorscan.",
+    "Updated documentation describing the Windows arm64 backend.",
+    "A concise PR summary explaining how Windows arm64 Vectorscan was wired, what was borrowed conceptually from ZEACENT/klogg, and any remaining upstream or toolchain caveats."
+  ],
+  "suggested_pr_title": "Enable Vectorscan on Windows arm64 and preserve the current platform backend matrix",
+  "final_response_requirements": [
+    "List exactly which files were changed.",
+    "State the final backend matrix after this task.",
+    "Explicitly confirm that Windows arm64 now uses Vectorscan by default.",
+    "State that Windows arm64 is non-fat in this step.",
+    "Call out any remaining MSVC, upstream, or runtime limitations.",
+    "Describe whether the Windows arm64 CI step is compile-only or includes runtime verification."
+  ],
+  "prompt_for_codex": "Implement this task exactly as specified. Assume the previous matrix task is already merged. Change only Windows arm64 from Qt-only to Vectorscan, while preserving all other platform defaults. Use ZEACENT/klogg as a practical reference for getting Vectorscan to compile with MSVC, but do not blindly copy its full platform strategy. Keep Windows arm64 on the fastest supported non-fat Vectorscan configuration. Do not require x86-only SSE2 or SSSE3 checks on Windows arm64. Prefer backend-native validation such as hs_valid_platform() and actual initialization outcomes. Keep Qt as the only runtime fallback. Update CI and documentation accordingly."
+}
