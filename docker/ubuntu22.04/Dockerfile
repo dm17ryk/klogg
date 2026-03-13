@@ -1,8 +1,14 @@
 FROM ubuntu:jammy
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -y \
- && apt-get install --no-install-recommends --no-upgrade \
+RUN rm -rf /var/lib/apt/lists/* \
+ && for attempt in 1 2 3 4 5; do \
+        apt-get update -o Acquire::Retries=3 -y && break; \
+        if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+        rm -rf /var/lib/apt/lists/*; \
+        sleep 5; \
+    done \
+ && apt-get install -o Acquire::Retries=3 --no-install-recommends --no-upgrade \
         build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libcurl4-openssl-dev \
         libglib2.0-dev \
