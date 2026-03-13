@@ -282,7 +282,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     CommanderRequest openRequest;
     openRequest.action = CommanderAction::OpenFile;
     openRequest.filePath = file.fileName();
-    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {}, {} };
 
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
@@ -293,7 +293,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
 
     CommanderRequest getInfoRequest;
     getInfoRequest.action = CommanderAction::GetInfo;
-    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {}, {} };
 
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
@@ -316,7 +316,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     CommanderRequest closeByIdRequest;
     closeByIdRequest.action = CommanderAction::CloseTab;
     closeByIdRequest.tabId = tabInfo.value( "tabId" ).toString();
-    CommanderResult closeByIdResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult closeByIdResult{ CommanderResultCode::ExecutionFailed, {}, {} };
 
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
@@ -325,7 +325,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     REQUIRE( waitUiState( [&] { return closeByIdResult.ok(); } ) );
     REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
 
-    CommanderResult reopenResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult reopenResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { reopenResult = mainWindow->executeCommanderRequest( openRequest ); },
@@ -336,7 +336,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     CommanderRequest closeByIndexRequest;
     closeByIndexRequest.action = CommanderAction::CloseTab;
     closeByIndexRequest.tabIndex = 0;
-    CommanderResult closeByIndexResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult closeByIndexResult{ CommanderResultCode::ExecutionFailed, {}, {} };
 
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
@@ -345,7 +345,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     REQUIRE( waitUiState( [&] { return closeByIndexResult.ok(); } ) );
     REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
 
-    CommanderResult reopenForCloseResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult reopenForCloseResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { reopenForCloseResult = mainWindow->executeCommanderRequest( openRequest ); },
@@ -356,7 +356,7 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     CommanderRequest closeRequest;
     closeRequest.action = CommanderAction::CloseFile;
     closeRequest.filePath = file.fileName();
-    CommanderResult closeResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult closeResult{ CommanderResultCode::ExecutionFailed, {}, {} };
 
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
@@ -398,7 +398,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
     CommanderRequest openSecond = openFirst;
     openSecond.filePath = secondFile.fileName();
 
-    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(), [ & ] { openResult = mainWindow->executeCommanderRequest( openFirst ); },
         Qt::QueuedConnection ) );
@@ -412,7 +412,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
 
     CommanderRequest getInfoRequest;
     getInfoRequest.action = CommanderAction::GetInfo;
-    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { getInfoResult = mainWindow->executeCommanderRequest( getInfoRequest ); },
@@ -429,7 +429,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
     CommanderRequest focusRequest;
     focusRequest.action = CommanderAction::FocusTab;
     focusRequest.tabId = firstTabId;
-    CommanderResult focusResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult focusResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { focusResult = mainWindow->executeCommanderRequest( focusRequest ); },
@@ -443,7 +443,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
     setFilterRequest.filterId = errorFilterId;
     setFilterRequest.predefinedFilters = true;
     setFilterRequest.runSearch = true;
-    CommanderResult setFilterResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult setFilterResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { setFilterResult = mainWindow->executeCommanderRequest( setFilterRequest ); },
@@ -453,7 +453,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
     CommanderRequest getFiltersRequest;
     getFiltersRequest.action = CommanderAction::GetFilters;
     getFiltersRequest.tabId = firstTabId;
-    CommanderResult getFiltersResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult getFiltersResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { getFiltersResult = mainWindow->executeCommanderRequest( getFiltersRequest ); },
@@ -474,7 +474,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
     getPredefinedFiltersRequest.action = CommanderAction::GetFilters;
     getPredefinedFiltersRequest.tabId = firstTabId;
     getPredefinedFiltersRequest.predefinedFilters = true;
-    CommanderResult getPredefinedFiltersResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult getPredefinedFiltersResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] {
@@ -489,7 +489,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
 
     CommanderRequest closeAllRequest;
     closeAllRequest.action = CommanderAction::CloseAll;
-    CommanderResult closeAllResult{ CommanderResultCode::ExecutionFailed, {} };
+    CommanderResult closeAllResult{ CommanderResultCode::ExecutionFailed, {}, {} };
     REQUIRE( QMetaObject::invokeMethod(
         mainWindow.get(),
         [ & ] { closeAllResult = mainWindow->executeCommanderRequest( closeAllRequest ); },
