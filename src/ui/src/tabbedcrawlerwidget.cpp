@@ -49,8 +49,6 @@ constexpr QLatin1String PathKey = QLatin1String( "path", 4 );
 constexpr QLatin1String StatusKey = QLatin1String( "status", 6 );
 constexpr QLatin1String TabIdKey = QLatin1String( "tabId", 5 );
 constexpr QLatin1String ConnectedKey = QLatin1String( "connected", 9 );
-constexpr QLatin1String PortNameKey = QLatin1String( "portName", 8 );
-constexpr QLatin1String BaudRateKey = QLatin1String( "baudRate", 8 );
 constexpr QLatin1String ActionsPortKey = QLatin1String( "actionsPort", 11 );
 } // namespace
 
