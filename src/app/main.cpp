@@ -242,7 +242,7 @@ void writeCliMessage( const QString& message, bool toStderr = false )
 #endif
 }
 
-void writeCliPayload( const QVariantMap& payload )
+void writeCliPayload( const QVariantMap& payload, bool pretty = false )
 {
     if ( payload.isEmpty() ) {
         return;
@@ -250,7 +250,8 @@ void writeCliPayload( const QVariantMap& payload )
 
     ensureCliConsoleAttached();
 
-    auto bytes = QJsonDocument::fromVariant( payload ).toJson( QJsonDocument::Compact );
+    auto bytes = QJsonDocument::fromVariant( payload ).toJson( pretty ? QJsonDocument::Indented
+                                                                      : QJsonDocument::Compact );
     bytes.append( '\n' );
     std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stdout );
     std::fflush( stdout );
@@ -321,7 +322,7 @@ int main( int argc, char* argv[] )
         if ( parameters.commander_request ) {
             const auto result = app.sendCommandToPrimaryInstance( *parameters.commander_request );
             if ( result.ok() ) {
-                writeCliPayload( result.payload );
+                writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
                 return EXIT_SUCCESS;
             }
 
@@ -360,19 +361,8 @@ int main( int argc, char* argv[] )
                                QObject::tr( "Preparing application state" ) );
 
     if ( parameters.commander_request && !isCommanderOpenAction( parameters.commander_request->action ) ) {
-        if ( parameters.commander_request->action == CommanderAction::GetInfo ) {
-            writeCliMessage( QObject::tr( "No running klogg instance." ), true );
-            return EXIT_FAILURE;
-        }
-
-        const auto result = app.executeCommanderRequest( *parameters.commander_request );
-        if ( !result.ok() ) {
-            writeCliMessage( result.message, true );
-            return EXIT_FAILURE;
-        }
-
-        writeCliPayload( result.payload );
-        return EXIT_SUCCESS;
+        writeCliMessage( QObject::tr( "No running klogg instance." ), true );
+        return EXIT_FAILURE;
     }
 
     auto startNewSession = true;
@@ -398,7 +388,7 @@ int main( int argc, char* argv[] )
             return EXIT_FAILURE;
         }
 
-        writeCliPayload( result.payload );
+        writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
     }
     else {
         for ( const auto& filename : parameters.filenames ) {

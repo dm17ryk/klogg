@@ -534,8 +534,23 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return closeUrlBySource( request.url );
     case CommanderAction::CloseCom:
         return closeComPortByName( request.portName );
+    case CommanderAction::CloseAll:
+        return closeAllTabsCommander();
     case CommanderAction::GetInfo:
         return commanderSuccess( {}, commanderWindowInfo() );
+    case CommanderAction::GetFilters:
+        return commanderFilters( request );
+    case CommanderAction::FocusTab:
+        if ( !request.tabId.isEmpty() ) {
+            return focusTabById( request.tabId );
+        }
+        if ( request.tabIndex ) {
+            return focusTabByIndex( *request.tabIndex );
+        }
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "focus_tab requires a tab selector." ) );
+    case CommanderAction::SetFilter:
+        return commanderSetFilter( request );
     case CommanderAction::CloseTab:
         if ( !request.tabId.isEmpty() ) {
             return closeTabById( request.tabId );
@@ -545,6 +560,7 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         }
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "close_tab requires a tab selector." ) );
+    case CommanderAction::CloseKlogg:
     case CommanderAction::None:
     default:
         return commanderFailure( CommanderResultCode::InvalidRequest,
@@ -2118,6 +2134,21 @@ CommanderResult MainWindow::closeTabById( const QString& tabId )
     return closeTabByIndex( index );
 }
 
+CrawlerWidget* MainWindow::crawlerWidgetByTabId( const QString& tabId ) const
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    return crawlerWidgetByIndex( index );
+}
+
+CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return nullptr;
+    }
+
+    return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
+}
+
 CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 {
     if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
@@ -2127,6 +2158,147 @@ CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 
     closeTab( tabIndex, ActionInitiator::App );
     return commanderSuccess();
+}
+
+CommanderResult MainWindow::focusTabById( const QString& tabId )
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    if ( index < 0 ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab %1 was not found." ).arg( tabId ) );
+    }
+
+    return focusTabByIndex( index );
+}
+
+CommanderResult MainWindow::focusTabByIndex( int tabIndex )
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
+    }
+
+    mainTabWidget_.setCurrentIndex( tabIndex );
+    setWindowState( windowState() & ~Qt::WindowMinimized );
+    show();
+    raise();
+    activateWindow();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::closeAllTabsCommander()
+{
+    closeAll( ActionInitiator::App );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
+{
+    CrawlerWidget* crawler = nullptr;
+    if ( !request.tabId.isEmpty() ) {
+        crawler = crawlerWidgetByTabId( request.tabId );
+    }
+    else if ( request.tabIndex ) {
+        crawler = crawlerWidgetByIndex( *request.tabIndex );
+    }
+    else {
+        crawler = currentCrawlerWidget();
+    }
+
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+    payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    payload.insert( QStringLiteral( "tabIndex" ), targetTabIndex );
+    payload.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( targetTabIndex ) );
+
+    auto filters = request.predefinedFilters ? crawler->commanderPredefinedFilters()
+                                             : crawler->commanderFilters();
+    if ( !request.filterId.isEmpty() ) {
+        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+            return value.toMap().value( QStringLiteral( "filterId" ) ).toString() == request.filterId;
+        } );
+        if ( match == filters.cend() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        filters = QVariantList{ *match };
+    }
+    else if ( request.filterIndex ) {
+        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+            return value.toMap().value( QStringLiteral( "filterIndex" ) ).toInt() == *request.filterIndex;
+        } );
+        if ( match == filters.cend() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        filters = QVariantList{ *match };
+    }
+
+    payload.insert( QStringLiteral( "filters" ), filters );
+    payload.insert( QStringLiteral( "source" ),
+                    request.predefinedFilters ? QStringLiteral( "predefined" )
+                                              : QStringLiteral( "history" ) );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request )
+{
+    CrawlerWidget* crawler = nullptr;
+    if ( !request.tabId.isEmpty() ) {
+        crawler = crawlerWidgetByTabId( request.tabId );
+    }
+    else if ( request.tabIndex ) {
+        crawler = crawlerWidgetByIndex( *request.tabIndex );
+    }
+    else {
+        crawler = currentCrawlerWidget();
+    }
+
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    if ( !request.filterId.isEmpty() ) {
+        const auto filter = request.predefinedFilters
+                                ? crawler->commanderPredefinedFilterById( request.filterId )
+                                : crawler->commanderFilterById( request.filterId );
+        if ( !filter ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
+                                                 request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    if ( request.filterIndex ) {
+        const auto filter = request.predefinedFilters
+                                ? crawler->commanderPredefinedFilterByIndex( *request.filterIndex )
+                                : crawler->commanderFilterByIndex( *request.filterIndex );
+        if ( !filter ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
+                                                 request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    if ( !request.filterString.isEmpty() ) {
+        crawler->applyCommanderSearchPattern( request.filterString, request.runSearch,
+                                              request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    return commanderFailure( CommanderResultCode::InvalidRequest,
+                             tr( "set_filter requires a filter selector." ) );
 }
 
 CommanderResult MainWindow::closeFileByPath( const QString& filePath )

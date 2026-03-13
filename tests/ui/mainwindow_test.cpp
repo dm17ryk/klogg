@@ -36,6 +36,7 @@
 #include "configuration.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "predefinedfilters.h"
 #include "session.h"
 #include "sessioninfo.h"
 #include "startupprogress.h"
@@ -70,6 +71,16 @@ struct MinimizeToTrayRestoreGuard {
 
 struct StartupProgressCallbackGuard {
     ~StartupProgressCallbackGuard() { StartupProgress::clearCallback(); }
+};
+
+struct PredefinedFiltersRestoreGuard {
+    PredefinedFiltersCollection::Collection filters
+        = PredefinedFiltersCollection::getSynced().getFilters();
+
+    ~PredefinedFiltersRestoreGuard()
+    {
+        PredefinedFiltersCollection::getSynced().saveToStorage( filters );
+    }
 };
 
 class StartupProgressRecorder {
@@ -352,6 +363,138 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
         [ & ] { closeResult = mainWindow->executeCommanderRequest( closeRequest ); },
         Qt::QueuedConnection ) );
     REQUIRE( waitUiState( [&] { return closeResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
+}
+
+SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][commander]" )
+{
+    PredefinedFiltersRestoreGuard restoreFilters;
+    const auto errorFilterId = createPredefinedFilterId();
+    const auto warnFilterId = createPredefinedFilterId();
+    PredefinedFiltersCollection::getSynced().saveToStorage(
+        { { errorFilterId, "Errors", "ERROR", false },
+          { warnFilterId, "Warnings", "WARN", false } } );
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "CommanderFilters", 0 };
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    mainWindow->show();
+
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    QTemporaryFile firstFile{ "mainwindow_filters_first_XXXXXX.log" };
+    QTemporaryFile secondFile{ "mainwindow_filters_second_XXXXXX.log" };
+    REQUIRE( firstFile.open() );
+    REQUIRE( secondFile.open() );
+    REQUIRE( firstFile.write( "ERROR line\nWARN line\n" ) > 0 );
+    REQUIRE( secondFile.write( "INFO line\n" ) > 0 );
+    firstFile.flush();
+    secondFile.flush();
+
+    CommanderRequest openFirst;
+    openFirst.action = CommanderAction::OpenFile;
+    openFirst.filePath = firstFile.fileName();
+    CommanderRequest openSecond = openFirst;
+    openSecond.filePath = secondFile.fileName();
+
+    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(), [ & ] { openResult = mainWindow->executeCommanderRequest( openFirst ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return openResult.ok(); } ) );
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(), [ & ] { openResult = mainWindow->executeCommanderRequest( openSecond ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return openResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 2; } ) );
+
+    CommanderRequest getInfoRequest;
+    getInfoRequest.action = CommanderAction::GetInfo;
+    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { getInfoResult = mainWindow->executeCommanderRequest( getInfoRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return getInfoResult.ok() && getInfoResult.hasPayload(); } ) );
+
+    const auto tabs = getInfoResult.payload.value( "tabs" ).toList();
+    REQUIRE( tabs.size() == 2 );
+    const auto firstTabId = tabs.at( 0 ).toMap().value( "tabId" ).toString();
+    const auto secondTabId = tabs.at( 1 ).toMap().value( "tabId" ).toString();
+    REQUIRE_FALSE( firstTabId.isEmpty() );
+    REQUIRE_FALSE( secondTabId.isEmpty() );
+
+    CommanderRequest focusRequest;
+    focusRequest.action = CommanderAction::FocusTab;
+    focusRequest.tabId = firstTabId;
+    CommanderResult focusResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { focusResult = mainWindow->executeCommanderRequest( focusRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return focusResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->currentIndex() == 0; } ) );
+
+    CommanderRequest setFilterRequest;
+    setFilterRequest.action = CommanderAction::SetFilter;
+    setFilterRequest.tabId = firstTabId;
+    setFilterRequest.filterId = errorFilterId;
+    setFilterRequest.predefinedFilters = true;
+    setFilterRequest.runSearch = true;
+    CommanderResult setFilterResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { setFilterResult = mainWindow->executeCommanderRequest( setFilterRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return setFilterResult.ok(); } ) );
+
+    CommanderRequest getFiltersRequest;
+    getFiltersRequest.action = CommanderAction::GetFilters;
+    getFiltersRequest.tabId = firstTabId;
+    CommanderResult getFiltersResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { getFiltersResult = mainWindow->executeCommanderRequest( getFiltersRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return getFiltersResult.ok() && getFiltersResult.hasPayload(); } ) );
+
+    const auto filters = getFiltersResult.payload.value( "filters" ).toList();
+    REQUIRE( getFiltersResult.payload.value( "source" ).toString() == "history" );
+    REQUIRE_FALSE( filters.isEmpty() );
+    const auto selectedHistoryFilter
+        = std::find_if( filters.cbegin(), filters.cend(), []( const auto& value ) {
+              return value.toMap().value( "selected" ).toBool();
+          } );
+    REQUIRE( selectedHistoryFilter != filters.cend() );
+    REQUIRE( selectedHistoryFilter->toMap().value( "filterString" ).toString() == "ERROR" );
+
+    CommanderRequest getPredefinedFiltersRequest;
+    getPredefinedFiltersRequest.action = CommanderAction::GetFilters;
+    getPredefinedFiltersRequest.tabId = firstTabId;
+    getPredefinedFiltersRequest.predefinedFilters = true;
+    CommanderResult getPredefinedFiltersResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] {
+            getPredefinedFiltersResult
+                = mainWindow->executeCommanderRequest( getPredefinedFiltersRequest );
+        },
+        Qt::QueuedConnection ) );
+    REQUIRE(
+        waitUiState( [&] { return getPredefinedFiltersResult.ok() && getPredefinedFiltersResult.hasPayload(); } ) );
+    REQUIRE( getPredefinedFiltersResult.payload.value( "source" ).toString() == "predefined" );
+    REQUIRE( getPredefinedFiltersResult.payload.value( "filters" ).toList().size() == 2 );
+
+    CommanderRequest closeAllRequest;
+    closeAllRequest.action = CommanderAction::CloseAll;
+    CommanderResult closeAllResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { closeAllResult = mainWindow->executeCommanderRequest( closeAllRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return closeAllResult.ok(); } ) );
     REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
 }
 

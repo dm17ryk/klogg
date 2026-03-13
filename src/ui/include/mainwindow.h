@@ -227,9 +227,14 @@ class MainWindow : public QMainWindow {
     void writeSettings();
     CommanderResult closeTabById( const QString& tabId );
     CommanderResult closeTabByIndex( int tabIndex );
+    CommanderResult focusTabById( const QString& tabId );
+    CommanderResult focusTabByIndex( int tabIndex );
+    CommanderResult closeAllTabsCommander();
     CommanderResult closeComPortByName( const QString& portName );
     CommanderResult closeFileByPath( const QString& filePath );
     CommanderResult closeUrlBySource( const QString& url );
+    CommanderResult commanderFilters( const CommanderRequest& request ) const;
+    CommanderResult commanderSetFilter( const CommanderRequest& request );
     bool loadFile( const QString& fileName, bool followFile = false );
     bool extractAndLoadFile( const QString& fileName );
     CommanderResult openRemoteFile( const QUrl& url, bool interactiveErrors = true,
@@ -264,6 +269,8 @@ class MainWindow : public QMainWindow {
         return startComCaptureSession( settings, ComCaptureStartOptions{} );
     }
     void registerRemoteFileSource( const QString& filePath, const QString& normalizedSourceUrl );
+    CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
+    CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
 
     WindowSession session_;
     QString loadingFileName;

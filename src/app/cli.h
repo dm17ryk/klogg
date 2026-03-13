@@ -114,7 +114,12 @@ struct CliParameters {
             "  klogg command --action close_file --file <path>\n"
             "  klogg command --action close_url --url <url>\n"
             "  klogg command --action close_com --port <name>\n"
-            "  klogg command --action get_info\n"
+            "  klogg command --action close_klogg\n"
+            "  klogg command --action close_all\n"
+            "  klogg command --action get_info [--pretty]\n"
+            "  klogg command --action get_filters [tab selector] [filter selector] [--predefined] [--pretty]\n"
+            "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
             "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
             "Run `klogg command --help` for detailed commander options." );
     }
@@ -130,7 +135,12 @@ struct CliParameters {
             "  close_file --file <path>\n"
             "  close_url  --url <url>\n"
             "  close_com  --port <name>\n"
-            "  get_info\n"
+            "  close_klogg\n"
+            "  close_all\n"
+            "  get_info   [--pretty|--preatty]\n"
+            "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> | --filter-index <n>] [--predefined] [--pretty|--preatty]\n"
+            "  focus_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  set_filter [--tab-id <id> | --window-index <n> --tab-index <n>] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
             "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
@@ -411,15 +421,36 @@ struct CliParameters {
         const QCommandLineOption tabIdOption( QStringLiteral( "tab-id" ),
                                               QStringLiteral( "Target tab id." ),
                                               QStringLiteral( "id" ) );
+        const QCommandLineOption filterIdOption( QStringLiteral( "filter-id" ),
+                                                 QStringLiteral( "Target filter id." ),
+                                                 QStringLiteral( "id" ) );
+        const QCommandLineOption filterIndexOption( QStringLiteral( "filter-index" ),
+                                                    QStringLiteral( "Target filter index." ),
+                                                    QStringLiteral( "index" ) );
+        const QCommandLineOption filterStringOption(
+            QStringLiteral( "filter-string" ),
+            QStringLiteral( "Literal filter/search expression to apply." ),
+            QStringLiteral( "expr" ) );
+        const QCommandLineOption predefinedOption(
+            QStringLiteral( "predefined" ),
+            QStringLiteral( "Use predefined filters instead of search-history filters." ) );
         const QCommandLineOption windowIndexOption(
             QStringLiteral( "window-index" ),
-            QStringLiteral( "Target window index for close_tab." ),
+            QStringLiteral( "Target window index for tab-focused actions." ),
             QStringLiteral( "index" ) );
         const QCommandLineOption tabIndexOption( QStringLiteral( "tab-index" ),
-                                                 QStringLiteral( "Target tab index for close_tab." ),
+                                                 QStringLiteral( "Target tab index for tab-focused actions." ),
                                                  QStringLiteral( "index" ) );
         const QCommandLineOption followOption( QStringLiteral( "follow" ),
                                                QStringLiteral( "Follow the opened file." ) );
+        const QCommandLineOption prettyOption(
+            QStringList{ QStringLiteral( "pretty" ), QStringLiteral( "preatty" ) },
+            QStringLiteral( "Print formatted JSON output." ) );
+        const QCommandLineOption searchOption( QStringLiteral( "search" ),
+                                               QStringLiteral( "Run search after setting the filter." ) );
+        const QCommandLineOption autoRefreshOption(
+            QStringLiteral( "auto-refresh" ),
+            QStringLiteral( "Rearm auto-refresh after applying the filter." ) );
         const QCommandLineOption baudOption( QStringLiteral( "baud" ),
                                              QStringLiteral( "COM baud rate." ),
                                              QStringLiteral( "baud" ) );
@@ -463,9 +494,16 @@ struct CliParameters {
         parser.addOption( urlOption );
         parser.addOption( portOption );
         parser.addOption( tabIdOption );
+        parser.addOption( filterIdOption );
+        parser.addOption( filterIndexOption );
+        parser.addOption( filterStringOption );
+        parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
         parser.addOption( followOption );
+        parser.addOption( prettyOption );
+        parser.addOption( searchOption );
+        parser.addOption( autoRefreshOption );
         parser.addOption( baudOption );
         parser.addOption( dataBitsOption );
         parser.addOption( parityOption );
@@ -517,6 +555,69 @@ struct CliParameters {
         CommanderRequest request;
         request.action = *action;
         request.followFile = parser.isSet( followOption );
+        request.prettyOutput = parser.isSet( prettyOption );
+        request.runSearch = parser.isSet( searchOption );
+        request.rearmAutoRefresh = parser.isSet( autoRefreshOption );
+        request.predefinedFilters = parser.isSet( predefinedOption );
+        if ( request.rearmAutoRefresh ) {
+            request.runSearch = true;
+        }
+
+        const auto tabId = parser.value( tabIdOption ).trimmed();
+        const bool hasTabId = !tabId.isEmpty();
+        const bool hasWindowIndex = parser.isSet( windowIndexOption );
+        const bool hasTabIndex = parser.isSet( tabIndexOption );
+        const auto validateTabSelector = [ & ]( const QString& actionName,
+                                                bool selectorRequired ) -> bool {
+            if ( hasTabId && ( hasWindowIndex || hasTabIndex ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "Use either --tab-id or --window-index with --tab-index for %1." )
+                        .arg( actionName ) );
+                return false;
+            }
+            if ( hasWindowIndex != hasTabIndex ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "--window-index and --tab-index must be used together for %1." )
+                        .arg( actionName ) );
+                return false;
+            }
+            if ( selectorRequired && !hasTabId && !hasWindowIndex ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "%1 requires --tab-id or --window-index with --tab-index." )
+                        .arg( actionName ) );
+                return false;
+            }
+
+            if ( hasTabId ) {
+                request.tabId = tabId;
+                return true;
+            }
+
+            if ( hasWindowIndex ) {
+                bool windowOk = false;
+                const auto parsedWindowIndex = parser.value( windowIndexOption ).toInt( &windowOk );
+                bool tabOk = false;
+                const auto parsedTabIndex = parser.value( tabIndexOption ).toInt( &tabOk );
+                if ( !windowOk || parsedWindowIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --window-index value." ) );
+                    return false;
+                }
+                if ( !tabOk || parsedTabIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --tab-index value." ) );
+                    return false;
+                }
+
+                request.windowIndex = parsedWindowIndex;
+                request.tabIndex = parsedTabIndex;
+            }
+
+            return true;
+        };
 
         switch ( *action ) {
         case CommanderAction::OpenFile:
@@ -546,61 +647,82 @@ struct CliParameters {
                 return result;
             }
             break;
-        case CommanderAction::CloseTab: {
-            const auto tabId = parser.value( tabIdOption ).trimmed();
-            const bool hasTabId = !tabId.isEmpty();
-            const bool hasWindowIndex = parser.isSet( windowIndexOption );
-            const bool hasTabIndex = parser.isSet( tabIndexOption );
-
-            if ( hasTabId && ( hasWindowIndex || hasTabIndex ) ) {
-                result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral(
-                        "Use either --tab-id or --window-index with --tab-index for close_tab." ) );
+        case CommanderAction::FocusTab:
+        case CommanderAction::CloseTab:
+            if ( !validateTabSelector( commanderActionToString( *action ), true ) ) {
                 return result;
-            }
-            if ( !hasTabId && !hasWindowIndex && !hasTabIndex ) {
-                result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral(
-                        "close_tab requires --tab-id or --window-index with --tab-index." ) );
-                return result;
-            }
-            if ( hasWindowIndex != hasTabIndex ) {
-                result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral(
-                        "--window-index and --tab-index must be used together for close_tab." ) );
-                return result;
-            }
-
-            if ( hasTabId ) {
-                request.tabId = tabId;
-            }
-            else {
-                bool windowOk = false;
-                const auto parsedWindowIndex = parser.value( windowIndexOption ).toInt( &windowOk );
-                bool tabOk = false;
-                const auto parsedTabIndex = parser.value( tabIndexOption ).toInt( &tabOk );
-                if ( !windowOk || parsedWindowIndex < 0 ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "Invalid --window-index value." ) );
-                    return result;
-                }
-                if ( !tabOk || parsedTabIndex < 0 ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "Invalid --tab-index value." ) );
-                    return result;
-                }
-
-                request.windowIndex = parsedWindowIndex;
-                request.tabIndex = parsedTabIndex;
             }
             break;
-        }
+        case CommanderAction::GetFilters:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::SetFilter:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+
+            request.filterId = parser.value( filterIdOption ).trimmed();
+            if ( parser.isSet( filterIndexOption ) ) {
+                bool ok = false;
+                const auto parsedFilterIndex = parser.value( filterIndexOption ).toInt( &ok );
+                if ( !ok || parsedFilterIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --filter-index value." ) );
+                    return result;
+                }
+                request.filterIndex = parsedFilterIndex;
+            }
+            request.filterString = parser.value( filterStringOption );
+
+            {
+                int selectors = 0;
+                selectors += request.filterId.isEmpty() ? 0 : 1;
+                selectors += request.filterIndex ? 1 : 0;
+                selectors += request.filterString.isEmpty() ? 0 : 1;
+                if ( selectors != 1 ) {
+                    result.output_message = formatParserError(
+                        parser,
+                        QStringLiteral(
+                            "set_filter requires exactly one of --filter-id, --filter-index, or --filter-string." ) );
+                    return result;
+                }
+            }
+            break;
+        case CommanderAction::CloseKlogg:
+        case CommanderAction::CloseAll:
+            if ( parser.isSet( prettyOption ) || parser.isSet( searchOption )
+                 || parser.isSet( autoRefreshOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Unsupported options were provided for this action." ) );
+                return result;
+            }
+            break;
         case CommanderAction::GetInfo:
+            break;
         case CommanderAction::None:
             break;
+        }
+
+        if ( *action == CommanderAction::GetFilters ) {
+            request.filterId = parser.value( filterIdOption ).trimmed();
+            if ( parser.isSet( filterIndexOption ) ) {
+                bool ok = false;
+                const auto parsedFilterIndex = parser.value( filterIndexOption ).toInt( &ok );
+                if ( !ok || parsedFilterIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --filter-index value." ) );
+                    return result;
+                }
+                request.filterIndex = parsedFilterIndex;
+            }
+
+            if ( !request.filterId.isEmpty() && request.filterIndex ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Use either --filter-id or --filter-index for get_filters." ) );
+                return result;
+            }
         }
 
         if ( *action == CommanderAction::OpenCom ) {

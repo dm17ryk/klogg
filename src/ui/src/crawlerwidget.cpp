@@ -73,6 +73,8 @@
 
 #include "crawlerwidget.h"
 
+#include <QCryptographicHash>
+
 #include "configuration.h"
 #include "dispatch_to.h"
 #include "fontutils.h"
@@ -358,6 +360,101 @@ void CrawlerWidget::setEncoding( std::optional<int> mib )
 void CrawlerWidget::focusSearchEdit()
 {
     searchLineEdit_->setFocus( Qt::ShortcutFocusReason );
+}
+
+QVariantList CrawlerWidget::commanderFilters() const
+{
+    QVariantList filters;
+    const auto history = savedSearches_->recentSearches();
+    filters.reserve( history.size() );
+
+    const auto currentFilter = searchLineEdit_->currentText();
+    for ( int filterIndex = 0; filterIndex < history.size(); ++filterIndex ) {
+        const auto& filterString = history.at( filterIndex );
+        QVariantMap filterInfo;
+        filterInfo.insert( QStringLiteral( "filterId" ),
+                           QString::fromLatin1( QCryptographicHash::hash(
+                                                    filterString.toUtf8(), QCryptographicHash::Sha1 )
+                                                    .toHex() ) );
+        filterInfo.insert( QStringLiteral( "filterIndex" ), filterIndex );
+        filterInfo.insert( QStringLiteral( "filterString" ), filterString );
+        filterInfo.insert( QStringLiteral( "selected" ), filterString == currentFilter );
+        filters.push_back( filterInfo );
+    }
+
+    return filters;
+}
+
+QVariantList CrawlerWidget::commanderPredefinedFilters() const
+{
+    return predefinedFilters_->commanderFilters();
+}
+
+std::optional<PredefinedFilter> CrawlerWidget::commanderFilterById( const QString& filterId ) const
+{
+    if ( filterId.isEmpty() ) {
+        return std::nullopt;
+    }
+
+    const auto history = savedSearches_->recentSearches();
+    for ( int filterIndex = 0; filterIndex < history.size(); ++filterIndex ) {
+        const auto& filterString = history.at( filterIndex );
+        const auto computedId = QString::fromLatin1(
+            QCryptographicHash::hash( filterString.toUtf8(), QCryptographicHash::Sha1 ).toHex() );
+        if ( computedId == filterId ) {
+            return PredefinedFilter{ QString{}, filterString, filterString, false };
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<PredefinedFilter> CrawlerWidget::commanderFilterByIndex( int filterIndex ) const
+{
+    const auto history = savedSearches_->recentSearches();
+    if ( filterIndex < 0 || filterIndex >= history.size() ) {
+        return std::nullopt;
+    }
+
+    const auto& filterString = history.at( filterIndex );
+    return PredefinedFilter{ QString{}, filterString, filterString, false };
+}
+
+std::optional<PredefinedFilter> CrawlerWidget::commanderPredefinedFilterById(
+    const QString& filterId ) const
+{
+    return predefinedFilters_->commanderFilterById( filterId );
+}
+
+std::optional<PredefinedFilter> CrawlerWidget::commanderPredefinedFilterByIndex(
+    int filterIndex ) const
+{
+    return predefinedFilters_->commanderFilterByIndex( filterIndex );
+}
+
+void CrawlerWidget::applyCommanderSearchPattern( const QString& searchPattern, bool runSearch,
+                                                 bool rearmAutoRefresh )
+{
+    setSearchPattern( searchPattern, false );
+
+    if ( runSearch ) {
+        startNewSearch();
+    }
+
+    if ( rearmAutoRefresh ) {
+        if ( searchRefreshButton_->isChecked() ) {
+            searchRefreshButton_->setChecked( false );
+        }
+        searchRefreshButton_->setChecked( true );
+    }
+}
+
+void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filter, bool runSearch,
+                                                    bool rearmAutoRefresh )
+{
+    QString searchPattern;
+    combinePatterns( searchPattern, escapeSearchPattern( filter.pattern, filter.useRegex ) );
+    applyCommanderSearchPattern( searchPattern, runSearch, rearmAutoRefresh );
 }
 
 void CrawlerWidget::goToLine()
@@ -1055,12 +1152,17 @@ void CrawlerWidget::replaceSearch( const QString& searchString )
 
 void CrawlerWidget::setSearchPattern( const QString& searchPattern )
 {
+    setSearchPattern( searchPattern, true );
+}
+
+void CrawlerWidget::setSearchPattern( const QString& searchPattern, bool allowAutoRun )
+{
     searchLineEdit_->setEditText( searchPattern );
     updatePredefinedFiltersWidget();
     // Set the focus to lineEdit so that the user can press 'Return' immediately
     searchLineEdit_->lineEdit()->setFocus();
 
-    if ( Configuration::get().autoRunSearchOnPatternChange() ) {
+    if ( allowAutoRun && Configuration::get().autoRunSearchOnPatternChange() ) {
         dispatchToObject( [ this ] { startNewSearch(); }, this );
     }
 }

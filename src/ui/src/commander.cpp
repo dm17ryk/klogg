@@ -58,8 +58,18 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "close_url" );
     case CommanderAction::CloseCom:
         return QStringLiteral( "close_com" );
+    case CommanderAction::CloseKlogg:
+        return QStringLiteral( "close_klogg" );
+    case CommanderAction::CloseAll:
+        return QStringLiteral( "close_all" );
     case CommanderAction::GetInfo:
         return QStringLiteral( "get_info" );
+    case CommanderAction::GetFilters:
+        return QStringLiteral( "get_filters" );
+    case CommanderAction::FocusTab:
+        return QStringLiteral( "focus_tab" );
+    case CommanderAction::SetFilter:
+        return QStringLiteral( "set_filter" );
     case CommanderAction::CloseTab:
         return QStringLiteral( "close_tab" );
     case CommanderAction::None:
@@ -89,8 +99,23 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "close_com" ) ) {
         return CommanderAction::CloseCom;
     }
+    if ( normalized == QStringLiteral( "close_klogg" ) ) {
+        return CommanderAction::CloseKlogg;
+    }
+    if ( normalized == QStringLiteral( "close_all" ) ) {
+        return CommanderAction::CloseAll;
+    }
     if ( normalized == QStringLiteral( "get_info" ) ) {
         return CommanderAction::GetInfo;
+    }
+    if ( normalized == QStringLiteral( "get_filters" ) ) {
+        return CommanderAction::GetFilters;
+    }
+    if ( normalized == QStringLiteral( "focus_tab" ) ) {
+        return CommanderAction::FocusTab;
+    }
+    if ( normalized == QStringLiteral( "set_filter" ) ) {
+        return CommanderAction::SetFilter;
     }
     if ( normalized == QStringLiteral( "close_tab" ) ) {
         return CommanderAction::CloseTab;
@@ -166,14 +191,35 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.tabId.isEmpty() ) {
         map.insert( QStringLiteral( "tabId" ), request.tabId );
     }
+    if ( !request.filterId.isEmpty() ) {
+        map.insert( QStringLiteral( "filterId" ), request.filterId );
+    }
+    if ( !request.filterString.isEmpty() ) {
+        map.insert( QStringLiteral( "filterString" ), request.filterString );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
     if ( request.tabIndex ) {
         map.insert( QStringLiteral( "tabIndex" ), *request.tabIndex );
     }
+    if ( request.filterIndex ) {
+        map.insert( QStringLiteral( "filterIndex" ), *request.filterIndex );
+    }
     if ( request.followFile ) {
         map.insert( QStringLiteral( "followFile" ), true );
+    }
+    if ( request.predefinedFilters ) {
+        map.insert( QStringLiteral( "predefinedFilters" ), true );
+    }
+    if ( request.prettyOutput ) {
+        map.insert( QStringLiteral( "prettyOutput" ), true );
+    }
+    if ( request.runSearch ) {
+        map.insert( QStringLiteral( "runSearch" ), true );
+    }
+    if ( request.rearmAutoRefresh ) {
+        map.insert( QStringLiteral( "rearmAutoRefresh" ), true );
     }
 
     QVariantMap comMap;
@@ -224,7 +270,13 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.url = map.value( QStringLiteral( "url" ) ).toString();
     request.portName = map.value( QStringLiteral( "portName" ) ).toString();
     request.tabId = map.value( QStringLiteral( "tabId" ) ).toString();
+    request.filterId = map.value( QStringLiteral( "filterId" ) ).toString();
+    request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
+    request.predefinedFilters = map.value( QStringLiteral( "predefinedFilters" ) ).toBool();
+    request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();
+    request.runSearch = map.value( QStringLiteral( "runSearch" ) ).toBool();
+    request.rearmAutoRefresh = map.value( QStringLiteral( "rearmAutoRefresh" ) ).toBool();
 
     const auto windowIndexIt = map.find( QStringLiteral( "windowIndex" ) );
     if ( windowIndexIt != map.end() ) {
@@ -246,6 +298,17 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
             return std::nullopt;
         }
         request.tabIndex = value;
+    }
+
+    const auto filterIndexIt = map.find( QStringLiteral( "filterIndex" ) );
+    if ( filterIndexIt != map.end() ) {
+        bool ok = false;
+        const auto value = filterIndexIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander filter index." ) );
+            return std::nullopt;
+        }
+        request.filterIndex = value;
     }
 
     const auto comSettingsValue = map.value( QStringLiteral( "comSettings" ) );

@@ -41,6 +41,8 @@
 #define PREDEFINEDFILTERSCOMBOBOX_H_
 
 #include <QComboBox>
+#include <QVariantList>
+#include <optional>
 
 #include "predefinedfilters.h"
 
@@ -60,6 +62,9 @@ class PredefinedFiltersComboBox final : public QComboBox {
 
     void populatePredefinedFilters();
     void updateSearchPattern( const QString newSearchPattern, bool useLogicalCombining );
+    QVariantList commanderFilters() const;
+    std::optional<PredefinedFilter> commanderFilterById( const QString& filterId ) const;
+    std::optional<PredefinedFilter> commanderFilterByIndex( int filterIndex ) const;
 
     virtual void showPopup();
 
@@ -70,6 +75,7 @@ class PredefinedFiltersComboBox final : public QComboBox {
     void setTitle( const QString& title );
     void insertFilters( const PredefinedFiltersCollection::Collection& filters );
     void collectFilters();
+    QList<int> selectedFilterIndexes() const;
 
   private:
     PredefinedFiltersCollection filtersCollection_;

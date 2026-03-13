@@ -1,12 +1,14 @@
 #include <catch2/catch.hpp>
 
 #include <QFileInfo>
+#include <QSettings>
 #include <QTemporaryDir>
 
 #include "cli.h"
 #include "commander.h"
 #include "comportutils.h"
 #include "configuration.h"
+#include "predefinedfilters.h"
 
 namespace {
 struct ComDefaultsRestoreGuard {
@@ -56,6 +58,9 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_code == EXIT_SUCCESS );
     REQUIRE( parameters.exit_message.contains( "open_com" ) );
     REQUIRE( parameters.exit_message.contains( "get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "get_filters" ) );
+    REQUIRE( parameters.exit_message.contains( "set_filter" ) );
+    REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
     REQUIRE( parameters.exit_message.contains( "close_tab" ) );
     REQUIRE( parameters.exit_message.contains( "--port <name>" ) );
 }
@@ -119,6 +124,24 @@ TEST_CASE( "Commander CLI parses get_info action", "[commander][cli]" )
     REQUIRE( parameters.commander_request->action == CommanderAction::GetInfo );
 }
 
+TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
+{
+    CliParameters getInfoPretty(
+        { "klogg", "command", "--action", "get_info", "--pretty" } );
+
+    REQUIRE_FALSE( getInfoPretty.parse_error );
+    REQUIRE( getInfoPretty.commander_request.has_value() );
+    REQUIRE( getInfoPretty.commander_request->prettyOutput );
+
+    CliParameters getFiltersPretty(
+        { "klogg", "command", "--action", "get_filters", "--preatty" } );
+
+    REQUIRE_FALSE( getFiltersPretty.parse_error );
+    REQUIRE( getFiltersPretty.commander_request.has_value() );
+    REQUIRE( getFiltersPretty.commander_request->action == CommanderAction::GetFilters );
+    REQUIRE( getFiltersPretty.commander_request->prettyOutput );
+}
+
 TEST_CASE( "Commander CLI parses close_tab selectors", "[commander][cli]" )
 {
     CliParameters byId( { "klogg", "command", "--action", "close_tab", "--tab-id",
@@ -163,6 +186,67 @@ TEST_CASE( "Commander CLI rejects invalid close_tab selectors", "[commander][cli
     REQUIRE( negativeTabIndex.parse_error_message.contains( "--tab-index" ) );
 }
 
+TEST_CASE( "Commander CLI parses focus_tab selectors", "[commander][cli]" )
+{
+    CliParameters byId(
+        { "klogg", "command", "--action", "focus_tab", "--tab-id", "tab-42" } );
+    REQUIRE_FALSE( byId.parse_error );
+    REQUIRE( byId.commander_request.has_value() );
+    REQUIRE( byId.commander_request->action == CommanderAction::FocusTab );
+    REQUIRE( byId.commander_request->tabId == "tab-42" );
+
+    CliParameters byIndex( { "klogg", "command", "--action", "focus_tab", "--window-index",
+                             "2", "--tab-index", "1" } );
+    REQUIRE_FALSE( byIndex.parse_error );
+    REQUIRE( byIndex.commander_request.has_value() );
+    REQUIRE( byIndex.commander_request->windowIndex == 2 );
+    REQUIRE( byIndex.commander_request->tabIndex == 1 );
+}
+
+TEST_CASE( "Commander CLI parses filter actions", "[commander][cli]" )
+{
+    CliParameters getFilters(
+        { "klogg", "command", "--action", "get_filters", "--tab-id", "tab-7",
+          "--filter-index", "3", "--pretty" } );
+    REQUIRE_FALSE( getFilters.parse_error );
+    REQUIRE( getFilters.commander_request.has_value() );
+    REQUIRE( getFilters.commander_request->action == CommanderAction::GetFilters );
+    REQUIRE( getFilters.commander_request->tabId == "tab-7" );
+    REQUIRE( getFilters.commander_request->filterIndex == 3 );
+    REQUIRE( getFilters.commander_request->prettyOutput );
+    REQUIRE_FALSE( getFilters.commander_request->predefinedFilters );
+
+    CliParameters setFilter(
+        { "klogg", "command", "--action", "set_filter", "--window-index", "0", "--tab-index",
+          "1", "--filter-id", "flt-1", "--predefined", "--search", "--auto-refresh" } );
+    REQUIRE_FALSE( setFilter.parse_error );
+    REQUIRE( setFilter.commander_request.has_value() );
+    REQUIRE( setFilter.commander_request->action == CommanderAction::SetFilter );
+    REQUIRE( setFilter.commander_request->windowIndex == 0 );
+    REQUIRE( setFilter.commander_request->tabIndex == 1 );
+    REQUIRE( setFilter.commander_request->filterId == "flt-1" );
+    REQUIRE( setFilter.commander_request->predefinedFilters );
+    REQUIRE( setFilter.commander_request->runSearch );
+    REQUIRE( setFilter.commander_request->rearmAutoRefresh );
+}
+
+TEST_CASE( "Commander CLI rejects invalid set_filter selectors", "[commander][cli]" )
+{
+    CliParameters missingFilter( { "klogg", "command", "--action", "set_filter" } );
+    REQUIRE( missingFilter.parse_error );
+    REQUIRE( missingFilter.parse_error_message.contains( "exactly one" ) );
+
+    CliParameters multipleFilters(
+        { "klogg", "command", "--action", "set_filter", "--filter-id", "flt-1",
+          "--filter-index", "0" } );
+    REQUIRE( multipleFilters.parse_error );
+    REQUIRE( multipleFilters.parse_error_message.contains( "exactly one" ) );
+
+    CliParameters missingFocusSelector( { "klogg", "command", "--action", "focus_tab" } );
+    REQUIRE( missingFocusSelector.parse_error );
+    REQUIRE( missingFocusSelector.parse_error_message.contains( "focus_tab requires" ) );
+}
+
 TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
 {
     CliParameters parameters( { "klogg", "--help" } );
@@ -171,6 +255,8 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "klogg command --action open_file" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action close_com" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action get_filters" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action set_filter" ) );
 }
 
 TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
@@ -180,6 +266,13 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.tabId = "tab-123";
     request.windowIndex = 1;
     request.tabIndex = 2;
+    request.filterId = "flt-1";
+    request.filterIndex = 4;
+    request.filterString = "alpha|beta";
+    request.prettyOutput = true;
+    request.predefinedFilters = true;
+    request.runSearch = true;
+    request.rearmAutoRefresh = true;
     request.portName = "COM9";
     request.comSettings.portName = "COM9";
     request.comSettings.baudRate = 115200;
@@ -196,6 +289,13 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->tabId == request.tabId );
     REQUIRE( restored->windowIndex == request.windowIndex );
     REQUIRE( restored->tabIndex == request.tabIndex );
+    REQUIRE( restored->filterId == request.filterId );
+    REQUIRE( restored->filterIndex == request.filterIndex );
+    REQUIRE( restored->filterString == request.filterString );
+    REQUIRE( restored->prettyOutput == request.prettyOutput );
+    REQUIRE( restored->predefinedFilters == request.predefinedFilters );
+    REQUIRE( restored->runSearch == request.runSearch );
+    REQUIRE( restored->rearmAutoRefresh == request.rearmAutoRefresh );
     REQUIRE( restored->portName == request.portName );
     REQUIRE( restored->comSettings.baudRate.has_value() );
     REQUIRE( restored->comSettings.baudRate == request.comSettings.baudRate );
@@ -289,4 +389,50 @@ TEST_CASE( "Commander COM settings inherit preferences and support overrides", "
     REQUIRE( resolvedOverrides.baudRate == 230400 );
     REQUIRE_FALSE( resolvedOverrides.addTimestamps );
     REQUIRE_FALSE( resolvedOverrides.logTransmits );
+}
+
+TEST_CASE( "Predefined filters migrate missing ids and persist them", "[commander][filters]" )
+{
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+
+    const auto settingsPath = dir.filePath( "filters.ini" );
+    {
+        QSettings settings( settingsPath, QSettings::IniFormat );
+        settings.beginGroup( "PredefinedFiltersCollection" );
+        settings.setValue( "version", 2 );
+        settings.beginWriteArray( "filters" );
+        settings.setArrayIndex( 0 );
+        settings.setValue( "name", "Errors" );
+        settings.setValue( "filter", "ERROR" );
+        settings.setValue( "regex", false );
+        settings.endArray();
+        settings.endGroup();
+    }
+
+    PredefinedFiltersCollection collection;
+    {
+        QSettings settings( settingsPath, QSettings::IniFormat );
+        collection.retrieveFromStorage( settings );
+    }
+
+    const auto loadedFilters = collection.getFilters();
+    REQUIRE( loadedFilters.size() == 1 );
+    REQUIRE_FALSE( loadedFilters.front().id.isEmpty() );
+    REQUIRE( loadedFilters.front().name == "Errors" );
+
+    {
+        QSettings settings( settingsPath, QSettings::IniFormat );
+        collection.saveToStorage( settings );
+    }
+
+    QSettings reloadedSettings( settingsPath, QSettings::IniFormat );
+    reloadedSettings.beginGroup( "PredefinedFiltersCollection" );
+    REQUIRE( reloadedSettings.value( "version" ).toInt() == 3 );
+    const auto size = reloadedSettings.beginReadArray( "filters" );
+    REQUIRE( size == 1 );
+    reloadedSettings.setArrayIndex( 0 );
+    REQUIRE( reloadedSettings.value( "id" ).toString() == loadedFilters.front().id );
+    reloadedSettings.endArray();
+    reloadedSettings.endGroup();
 }

@@ -15,7 +15,12 @@ enum class CommanderAction {
     CloseFile,
     CloseUrl,
     CloseCom,
+    CloseKlogg,
+    CloseAll,
     GetInfo,
+    GetFilters,
+    FocusTab,
+    SetFilter,
     CloseTab,
 };
 
@@ -47,9 +52,16 @@ struct CommanderRequest {
     QString url;
     QString portName;
     QString tabId;
+    QString filterId;
+    QString filterString;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
+    std::optional<int> filterIndex;
     bool followFile = false;
+    bool predefinedFilters = false;
+    bool prettyOutput = false;
+    bool runSearch = false;
+    bool rearmAutoRefresh = false;
     CommanderComSettings comSettings;
 };
 

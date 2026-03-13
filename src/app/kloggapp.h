@@ -510,19 +510,47 @@ class KloggApp : public QApplication {
             return result;
         }
 
-        if ( request.action == CommanderAction::CloseTab && request.windowIndex ) {
-            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
-                if ( window == nullptr ) {
-                    continue;
-                }
+        if ( request.action == CommanderAction::CloseKlogg ) {
+            exitApplication();
+            return commanderSuccess();
+        }
 
-                if ( static_cast<int>( windowSession.windowIndex() ) == *request.windowIndex ) {
-                    return window->executeCommanderRequest( request );
+        if ( request.action == CommanderAction::CloseAll ) {
+            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                Q_UNUSED( windowSession );
+                if ( window != nullptr ) {
+                    window->executeCommanderRequest( request );
                 }
             }
+            return commanderSuccess();
+        }
 
-            return commanderFailure( CommanderResultCode::NotFound,
-                                     QStringLiteral( "Requested window was not found." ) );
+        const auto targetSpecificWindow
+            = request.action == CommanderAction::CloseTab
+              || request.action == CommanderAction::FocusTab
+              || request.action == CommanderAction::GetFilters
+              || request.action == CommanderAction::SetFilter;
+
+        if ( targetSpecificWindow && request.windowIndex ) {
+            auto* window = windowByIndex( *request.windowIndex );
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "Requested window was not found." ) );
+            }
+
+            return window->executeCommanderRequest( request );
+        }
+
+        if ( ( request.action == CommanderAction::GetFilters
+               || request.action == CommanderAction::SetFilter )
+             && request.tabId.isEmpty() && !request.tabIndex ) {
+            auto* window = activeWindowIfAny();
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "No active klogg window was found." ) );
+            }
+
+            return window->executeCommanderRequest( request );
         }
 
         CommanderResult lastNotFound = commanderFailure(
@@ -741,17 +769,38 @@ class KloggApp : public QApplication {
 
     MainWindow* activeWindowOrCreate()
     {
+        auto* activeWindow = activeWindowIfAny();
+        if ( activeWindow == nullptr ) {
+            auto* newMainWindow = newWindow();
+            newMainWindow->show();
+            return newMainWindow;
+        }
+
+        return activeWindow;
+    }
+
+    MainWindow* activeWindowIfAny()
+    {
         while ( !activeWindows_.empty() && activeWindows_.top().isNull() ) {
             activeWindows_.pop();
         }
 
         if ( activeWindows_.empty() ) {
-            auto* window = newWindow();
-            window->show();
-            return window;
+            return nullptr;
         }
 
         return activeWindows_.top().data();
+    }
+
+    MainWindow* windowByIndex( int windowIndex ) const
+    {
+        for ( const auto& [ session, window ] : mainWindows_ ) {
+            if ( window != nullptr && static_cast<int>( session.windowIndex() ) == windowIndex ) {
+                return window;
+            }
+        }
+
+        return nullptr;
     }
 
     static QString createUniqueTempPath( const QString& prefix, const QString& suffix )
