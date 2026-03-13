@@ -65,7 +65,6 @@ set(KLOGG_UI_SOURCES
 set(KLOGG_GREP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/klogg_grep.cpp)
 
 set(MAIN_LIBS
-    klogg_commander
     klogg_logdata
     klogg_crash_handler
     roaring
@@ -112,7 +111,7 @@ endif()
 
 target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui)
 target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui)
-target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS})
+target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS} klogg_commander)
 
 target_compile_definitions(klogg_portable PUBLIC -DKLOGG_PORTABLE)
 
