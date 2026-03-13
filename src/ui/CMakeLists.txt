@@ -158,6 +158,7 @@ target_link_libraries(
   klogg_ui
   PUBLIC project_options
          project_warnings
+         klogg_commander
          klogg_logdata
          klogg_versioncheck
          klogg_karchive

@@ -52,6 +52,7 @@
 #include <QSplashScreen>
 #include <QThread>
 #include <algorithm>
+#include <cstdio>
 
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
@@ -198,6 +199,44 @@ class StartupSplashScreen final : public QSplashScreen {
     bool processingEvents_ = false;
 };
 
+namespace {
+void writeCliMessage( const QString& message, bool toStderr = false )
+{
+    if ( message.isEmpty() ) {
+        return;
+    }
+
+#ifdef Q_OS_WIN
+    static bool consoleInitialized = false;
+    if ( !consoleInitialized ) {
+        consoleInitialized = true;
+        if ( GetConsoleWindow() == nullptr && AttachConsole( ATTACH_PARENT_PROCESS ) ) {
+            FILE* stream = nullptr;
+            freopen_s( &stream, "CONOUT$", "w", stdout );
+            freopen_s( &stream, "CONOUT$", "w", stderr );
+            freopen_s( &stream, "CONIN$", "r", stdin );
+        }
+    }
+#endif
+
+    auto output = message;
+    if ( !output.endsWith( '\n' ) ) {
+        output += '\n';
+    }
+
+    const auto bytes = output.toLocal8Bit();
+    auto* stream = toStderr ? stderr : stdout;
+    std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stream );
+    std::fflush( stream );
+#ifdef Q_OS_WIN
+    if ( !toStderr ) {
+        std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stderr );
+        std::fflush( stderr );
+    }
+#endif
+}
+} // namespace
+
 int main( int argc, char* argv[] )
 {
 #ifdef KLOGG_USE_MIMALLOC
@@ -212,6 +251,14 @@ int main( int argc, char* argv[] )
 
     MainWindow::installLanguage( config.language() );
     CliParameters parameters( app );
+    if ( parameters.exit_requested ) {
+        writeCliMessage( parameters.exit_message, parameters.exit_code != EXIT_SUCCESS );
+        return parameters.exit_code;
+    }
+    if ( parameters.parse_error ) {
+        writeCliMessage( parameters.parse_error_message, true );
+        return EXIT_FAILURE;
+    }
 
     const auto logLevel
         = static_cast<logging::LogLevel>( std::max( parameters.log_level, config.loggingLevel() ) );
@@ -251,6 +298,16 @@ int main( int argc, char* argv[] )
 
     if ( !parameters.multi_instance && app.isSecondary() ) {
         LOG_INFO << "Found another klogg, pid " << app.primaryPid();
+        if ( parameters.commander_request ) {
+            const auto result = app.sendCommandToPrimaryInstance( *parameters.commander_request );
+            if ( result.ok() ) {
+                return EXIT_SUCCESS;
+            }
+
+            writeCliMessage( result.message, true );
+            return EXIT_FAILURE;
+        }
+
         if ( app.sendFilesToPrimaryInstance( parameters.filenames ) ) {
             return EXIT_SUCCESS;
         }
@@ -283,7 +340,11 @@ int main( int argc, char* argv[] )
 
     auto startNewSession = true;
     MainWindow* mw = nullptr;
-    if ( parameters.load_session
+    if ( parameters.commander_request ) {
+        mw = app.newWindow();
+        mw->show();
+    }
+    else if ( parameters.load_session
          || ( parameters.filenames.empty() && !parameters.new_session && config.loadLastSession() ) ) {
         mw = app.reloadSession();
         startNewSession = false;
@@ -293,10 +354,19 @@ int main( int argc, char* argv[] )
         mw->show();
     }
 
-    for ( const auto& filename : parameters.filenames ) {
-        StartupProgress::advance( QObject::tr( "Opening startup file" ),
-                                  QFileInfo( filename ).fileName() );
-        mw->loadInitialFile( filename, parameters.follow_file );
+    if ( parameters.commander_request ) {
+        const auto result = app.executeCommanderRequest( *parameters.commander_request );
+        if ( !result.ok() ) {
+            writeCliMessage( result.message, true );
+            return EXIT_FAILURE;
+        }
+    }
+    else {
+        for ( const auto& filename : parameters.filenames ) {
+            StartupProgress::advance( QObject::tr( "Opening startup file" ),
+                                      QFileInfo( filename ).fileName() );
+            mw->loadInitialFile( filename, parameters.follow_file );
+        }
     }
 
     app.ensureMainWindowVisible();

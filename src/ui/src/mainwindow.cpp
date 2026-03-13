@@ -491,6 +491,55 @@ void MainWindow::loadInitialFile( QString fileName, bool followFile )
     }
 }
 
+CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& request )
+{
+    switch ( request.action ) {
+    case CommanderAction::OpenFile:
+        return loadFile( request.filePath, request.followFile )
+                   ? commanderSuccess()
+                   : commanderFailure( CommanderResultCode::ExecutionFailed,
+                                       tr( "Failed to open file %1." ).arg( request.filePath ) );
+    case CommanderAction::OpenUrl: {
+        const auto url = QUrl::fromUserInput( request.url );
+        if ( !url.isValid() || url.isEmpty() ) {
+            return commanderFailure( CommanderResultCode::InvalidRequest,
+                                     tr( "Invalid URL %1." ).arg( request.url ) );
+        }
+        return openRemoteFile( url, false, request.url );
+    }
+    case CommanderAction::OpenCom: {
+        auto settings = resolveCommanderComSettings( request.comSettings );
+        QString errorMessage;
+        if ( !startComCaptureSession( settings, { false, false, true }, &errorMessage ) ) {
+            return commanderFailure(
+                CommanderResultCode::ExecutionFailed,
+                errorMessage.isEmpty() ? tr( "Failed to open COM port %1." ).arg( settings.portName )
+                                       : errorMessage );
+        }
+
+        if ( !loadFile( settings.filePath, true ) ) {
+            if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
+                session->closeConnection();
+            }
+            return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                     tr( "Failed to open capture file %1." ).arg( settings.filePath ) );
+        }
+
+        return commanderSuccess();
+    }
+    case CommanderAction::CloseFile:
+        return closeFileByPath( request.filePath );
+    case CommanderAction::CloseUrl:
+        return closeUrlBySource( request.url );
+    case CommanderAction::CloseCom:
+        return closeComPortByName( request.portName );
+    case CommanderAction::None:
+    default:
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "Unsupported commander action." ) );
+    }
+}
+
 void MainWindow::reTranslateUI()
 {
     using namespace klogg::mainwindow;
@@ -1249,9 +1298,13 @@ void MainWindow::openComPort()
 }
 
 bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
-                                         MainWindow::ComCaptureStartOptions options )
+                                         MainWindow::ComCaptureStartOptions options,
+                                         QString* errorMessage )
 {
-    const auto showWarning = [ this, &options ]( const QString& message ) {
+    const auto showWarning = [ this, &options, errorMessage ]( const QString& message ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = message;
+        }
         if ( !options.showErrors ) {
             return;
         }
@@ -1259,7 +1312,10 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                             options.nonBlockingErrors );
     };
 
-    const auto showInformation = [ this, &options ]( const QString& message ) {
+    const auto showInformation = [ this, &options, errorMessage ]( const QString& message ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = message;
+        }
         if ( !options.showErrors ) {
             return;
         }
@@ -1373,7 +1429,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     return true;
 }
 
-void MainWindow::openRemoteFile( const QUrl& url )
+CommanderResult MainWindow::openRemoteFile( const QUrl& url, bool interactiveErrors,
+                                            const QString& normalizedSourceUrl )
 {
     Downloader downloader;
 
@@ -1394,16 +1451,30 @@ void MainWindow::openRemoteFile( const QUrl& url )
     if ( tempFile->open() ) {
         downloader.download( url, tempFile );
         if ( !progressDialog.exec() ) {
-            loadFile( tempFile->fileName() );
+            if ( loadFile( tempFile->fileName() ) ) {
+                if ( !normalizedSourceUrl.isEmpty() ) {
+                    registerRemoteFileSource( tempFile->fileName(), normalizedSourceUrl );
+                }
+                return commanderSuccess();
+            }
+
+            const auto message = tr( "Failed to open downloaded file %1." ).arg( tempFile->fileName() );
+            if ( interactiveErrors ) {
+                QMessageBox::critical( this, tr( "Klogg - File download" ), message );
+            }
+            return commanderFailure( CommanderResultCode::ExecutionFailed, message );
         }
-        else {
+        else if ( interactiveErrors ) {
             QMessageBox::critical( this, tr( "Klogg - File download" ), downloader.lastError() );
         }
+        return commanderFailure( CommanderResultCode::ExecutionFailed, downloader.lastError() );
     }
-    else {
+    else if ( interactiveErrors ) {
         QMessageBox::critical( this, tr( "Klogg - File download" ),
                                tr( "Failed to create temp file" ) );
     }
+    return commanderFailure( CommanderResultCode::ExecutionFailed,
+                             tr( "Failed to create temp file." ) );
 }
 
 void MainWindow::switchToOpenedFile( QAction* action )
@@ -1579,7 +1650,7 @@ void MainWindow::openUrl()
         = QInputDialog::getText( this, tr( "Open URL as log file" ), tr( "URL to download:" ),
                                  QLineEdit::Normal, selectedUrl, &ok );
     if ( ok && !url.isEmpty() ) {
-        openRemoteFile( url );
+        openRemoteFile( url, true, normalizeCommanderUrl( url ) );
     }
 }
 
@@ -1931,6 +2002,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
+    remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
         if ( session->isConnectionOpen() ) {
             session->closeConnection();
@@ -1952,6 +2024,60 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     updateOpenedFilesMenu();
 
     widget->deleteLater();
+}
+
+CommanderResult MainWindow::closeFileByPath( const QString& filePath )
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        if ( session_.getFilename( widget ) == filePath ) {
+            closeTab( index, ActionInitiator::App );
+            return commanderSuccess();
+        }
+    }
+
+    return commanderFailure( CommanderResultCode::NotFound,
+                             tr( "Open file %1 was not found." ).arg( filePath ) );
+}
+
+CommanderResult MainWindow::closeUrlBySource( const QString& url )
+{
+    const auto target = std::find_if( remoteFileSources_.cbegin(), remoteFileSources_.cend(),
+                                      [ &url ]( const auto& entry ) { return entry.second == url; } );
+    if ( target == remoteFileSources_.cend() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open URL %1 was not found." ).arg( url ) );
+    }
+
+    return closeFileByPath( target->first );
+}
+
+CommanderResult MainWindow::closeComPortByName( const QString& portName )
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto fileName = session_.getFilename( widget );
+        auto* streamSession = mainTabWidget_.streamSessionForPath( fileName );
+        if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+            continue;
+        }
+
+        if ( streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive ) == 0 ) {
+            streamSession->closeConnection();
+            return commanderSuccess();
+        }
+    }
+
+    return commanderFailure( CommanderResultCode::NotFound,
+                             tr( "Open COM port %1 was not found." ).arg( portName ) );
 }
 
 void MainWindow::currentTabChanged( int index )
@@ -2035,6 +2161,16 @@ void MainWindow::loadFileNonInteractive( const QString& file_name )
     if ( auto currentCrawler = currentCrawlerWidget() ) {
         currentCrawler->setFocus();
     }
+}
+
+void MainWindow::registerRemoteFileSource( const QString& filePath,
+                                           const QString& normalizedSourceUrl )
+{
+    if ( filePath.isEmpty() || normalizedSourceUrl.isEmpty() ) {
+        return;
+    }
+
+    remoteFileSources_[ QFileInfo{ filePath }.absoluteFilePath() ] = normalizedSourceUrl;
 }
 
 //

@@ -22,17 +22,28 @@
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <vector>
 
+#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QString>
+#include <QStringList>
 
+#include "commander.h"
 #include "klogg_version.h"
 #include "log.h"
 
 struct CliParameters {
+    struct CommanderParseResult {
+        std::optional<CommanderRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
     bool new_session = false;
     bool load_session = false;
     bool multi_instance = false;
@@ -42,17 +53,112 @@ struct CliParameters {
     bool enable_logging = false;
     int log_level = 3;
 
+    bool parse_error = false;
+    QString parse_error_message;
+    bool exit_requested = false;
+    int exit_code = EXIT_SUCCESS;
+    QString exit_message;
+
     std::vector<QString> filenames;
+    std::optional<CommanderRequest> commander_request;
 
     int window_width = 0;
     int window_height = 0;
 
     QString pattern;
 
+    CliParameters() = default;
+
     CliParameters( QCoreApplication& app, bool console = false )
     {
+        parse( app.arguments(), console );
+    }
+
+    CliParameters( const QStringList& arguments, bool console = false )
+    {
+        parse( arguments, console );
+    }
+
+    bool isCommanderMode() const
+    {
+        return commander_request.has_value();
+    }
+
+    static QString versionText()
+    {
+        QString output;
+        output += QStringLiteral( "klogg %1\n" ).arg( QString::fromLatin1( kloggVersion() ) );
+        output += QStringLiteral( "Built %1 from %2(%3)\n" )
+                      .arg( QString::fromLatin1( kloggBuildDate() ),
+                            QString::fromLatin1( kloggCommit() ),
+                            QString::fromLatin1( kloggGitVersion() ) );
+        output += QStringLiteral(
+            "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\n" );
+        output += QStringLiteral(
+            "This is free software.  You may redistribute copies of it under the terms of\n" );
+        output += QStringLiteral(
+            "the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n" );
+        output += QStringLiteral( "There is NO WARRANTY, to the extent permitted by law.\n" );
+        return output;
+    }
+
+  private:
+    static QString mainHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg log viewer\n\n"
+            "Commander mode:\n"
+            "  klogg command --action open_file --file <path> [--follow]\n"
+            "  klogg command --action open_url --url <url>\n"
+            "  klogg command --action open_com --port <name> [serial options]\n"
+            "  klogg command --action close_file --file <path>\n"
+            "  klogg command --action close_url --url <url>\n"
+            "  klogg command --action close_com --port <name>\n\n"
+            "Run `klogg command --help` for detailed commander options." );
+    }
+
+    static QString commanderHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg commander\n\n"
+            "Actions:\n"
+            "  open_file  --file <path> [--follow]\n"
+            "  open_url   --url <url>\n"
+            "  open_com   --port <name> [--file <path>] [serial options]\n"
+            "  close_file --file <path>\n"
+            "  close_url  --url <url>\n"
+            "  close_com  --port <name>\n\n"
+            "For open_com, omitted serial options inherit the current Preferences values." );
+    }
+
+    static QString formatParserError( const QCommandLineParser& parser, const QString& errorMessage )
+    {
+        auto output = errorMessage.trimmed();
+        const auto helpText = parser.helpText().trimmed();
+        if ( !helpText.isEmpty() ) {
+            output += QStringLiteral( "\n\n" ) + helpText;
+        }
+        return output;
+    }
+
+    void parse( const QStringList& arguments, bool console )
+    {
+        if ( !console && arguments.size() > 1
+             && arguments.at( 1 ).compare( QStringLiteral( "command" ), Qt::CaseInsensitive ) == 0 ) {
+            const auto commanderResult = parseCommanderArguments( arguments );
+            commander_request = commanderResult.request;
+            exit_requested = commanderResult.exit_requested;
+            exit_code = commanderResult.exit_code;
+            exit_message = commanderResult.output_message;
+            if ( !commander_request && !exit_requested ) {
+                parse_error = true;
+                parse_error_message = commanderResult.output_message;
+            }
+            return;
+        }
+
         QCommandLineParser parser;
-        parser.setApplicationDescription( "Klogg log viewer" );
+        parser.setApplicationDescription( mainHelpDescription() );
         const auto helpOption = parser.addHelpOption();
         const auto versionOption = parser.addVersionOption();
 
@@ -107,18 +213,27 @@ struct CliParameters {
             parser.addOption( patternOption );
         }
 
-        parser.process( app );
+        if ( !parser.parse( arguments ) ) {
+            parse_error = true;
+            parse_error_message = formatParserError( parser, parser.errorText() );
+            return;
+        }
 
         if ( parser.isSet( helpOption ) ) {
-            parser.showHelp( EXIT_SUCCESS );
+            exit_requested = true;
+            exit_code = EXIT_SUCCESS;
+            exit_message = parser.helpText();
+            return;
         }
 
         if ( parser.isSet( versionOption ) ) {
-            print_version();
-            exit( EXIT_SUCCESS );
+            exit_requested = true;
+            exit_code = EXIT_SUCCESS;
+            exit_message = versionText();
+            return;
         }
 
-        if (parser.value( debugOption ).toInt() > 0) {
+        if ( parser.value( debugOption ).toInt() > 0 ) {
             enable_logging = true;
         }
 
@@ -144,12 +259,12 @@ struct CliParameters {
             if ( parser.isSet( followOption ) ) {
                 follow_file = true;
             }
-        }
-        else {
 
-            if ( parser.isSet( patternOption ) ) {
-                pattern = parser.value( patternOption );
-            }
+            window_width = parser.value( QStringLiteral( "window-width" ) ).toInt();
+            window_height = parser.value( QStringLiteral( "window-height" ) ).toInt();
+        }
+        else if ( parser.isSet( patternOption ) ) {
+            pattern = parser.value( patternOption );
         }
 
         for ( const auto& file : parser.positionalArguments() ) {
@@ -158,18 +273,344 @@ struct CliParameters {
         }
     }
 
-    static void print_version()
+    static std::optional<QSerialPort::DataBits> parseDataBits( const QString& rawValue )
     {
-        std::cout << "klogg " << kloggVersion().data() << "\n";
-        std::cout << "Built " << kloggBuildDate().data() << " from " << kloggCommit().data() << "("
-                  << kloggGitVersion().data() << ")\n";
+        bool ok = false;
+        const auto value = rawValue.toInt( &ok );
+        if ( !ok ) {
+            return std::nullopt;
+        }
 
-        std::cout
-            << "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\n";
-        std::cout
-            << "This is free software.  You may redistribute copies of it under the terms of\n";
-        std::cout << "the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n";
-        std::cout << "There is NO WARRANTY, to the extent permitted by law.\n";
+        switch ( value ) {
+        case 5:
+            return QSerialPort::Data5;
+        case 6:
+            return QSerialPort::Data6;
+        case 7:
+            return QSerialPort::Data7;
+        case 8:
+            return QSerialPort::Data8;
+        default:
+            return std::nullopt;
+        }
+    }
+
+    static std::optional<QSerialPort::Parity> parseParity( const QString& rawValue )
+    {
+        const auto value = rawValue.trimmed().toLower();
+        if ( value == QStringLiteral( "none" ) ) {
+            return QSerialPort::NoParity;
+        }
+        if ( value == QStringLiteral( "even" ) ) {
+            return QSerialPort::EvenParity;
+        }
+        if ( value == QStringLiteral( "odd" ) ) {
+            return QSerialPort::OddParity;
+        }
+        if ( value == QStringLiteral( "mark" ) ) {
+            return QSerialPort::MarkParity;
+        }
+        if ( value == QStringLiteral( "space" ) ) {
+            return QSerialPort::SpaceParity;
+        }
+
+        return std::nullopt;
+    }
+
+    static std::optional<QSerialPort::StopBits> parseStopBits( const QString& rawValue )
+    {
+        const auto value = rawValue.trimmed().toLower();
+        if ( value == QStringLiteral( "1" ) ) {
+            return QSerialPort::OneStop;
+        }
+        if ( value == QStringLiteral( "1.5" ) ) {
+            return QSerialPort::OneAndHalfStop;
+        }
+        if ( value == QStringLiteral( "2" ) ) {
+            return QSerialPort::TwoStop;
+        }
+
+        return std::nullopt;
+    }
+
+    static std::optional<QSerialPort::FlowControl> parseFlowControl( const QString& rawValue )
+    {
+        const auto value = rawValue.trimmed().toLower();
+        if ( value == QStringLiteral( "none" ) ) {
+            return QSerialPort::NoFlowControl;
+        }
+        if ( value == QStringLiteral( "hardware" ) || value == QStringLiteral( "rts/cts" ) ) {
+            return QSerialPort::HardwareControl;
+        }
+        if ( value == QStringLiteral( "software" ) || value == QStringLiteral( "xon/xoff" ) ) {
+            return QSerialPort::SoftwareControl;
+        }
+
+        return std::nullopt;
+    }
+
+    static bool validateExclusiveBooleanOptions( QCommandLineParser& parser,
+                                                 const QCommandLineOption& enabledOption,
+                                                 const QCommandLineOption& disabledOption,
+                                                 QString* errorMessage )
+    {
+        if ( parser.isSet( enabledOption ) && parser.isSet( disabledOption ) ) {
+            *errorMessage = QStringLiteral( "Options --%1 and --%2 cannot be used together." )
+                                .arg( enabledOption.names().back(), disabledOption.names().back() );
+            return false;
+        }
+
+        return true;
+    }
+
+    static std::optional<bool> parseOptionalBoolean( QCommandLineParser& parser,
+                                                     const QCommandLineOption& enabledOption,
+                                                     const QCommandLineOption& disabledOption )
+    {
+        if ( parser.isSet( enabledOption ) ) {
+            return true;
+        }
+        if ( parser.isSet( disabledOption ) ) {
+            return false;
+        }
+
+        return std::nullopt;
+    }
+
+    static CommanderParseResult parseCommanderArguments( const QStringList& arguments )
+    {
+        CommanderParseResult result;
+        QStringList commandArguments;
+        commandArguments.reserve( arguments.size() - 1 );
+        commandArguments.push_back( arguments.value( 0 ) + QStringLiteral( " command" ) );
+        for ( int i = 2; i < arguments.size(); ++i ) {
+            commandArguments.push_back( arguments.at( i ) );
+        }
+
+        QCommandLineParser parser;
+        parser.setApplicationDescription( commanderHelpDescription() );
+        const auto helpOption = parser.addHelpOption();
+        const auto versionOption = parser.addVersionOption();
+
+        const QCommandLineOption actionOption( QStringLiteral( "action" ),
+                                               QStringLiteral( "Commander action to execute." ),
+                                               QStringLiteral( "action" ) );
+        const QCommandLineOption fileOption( QStringLiteral( "file" ),
+                                             QStringLiteral( "Target file path." ),
+                                             QStringLiteral( "path" ) );
+        const QCommandLineOption urlOption( QStringLiteral( "url" ),
+                                            QStringLiteral( "Target URL." ),
+                                            QStringLiteral( "url" ) );
+        const QCommandLineOption portOption( QStringLiteral( "port" ),
+                                             QStringLiteral( "Target COM port name." ),
+                                             QStringLiteral( "port" ) );
+        const QCommandLineOption followOption( QStringLiteral( "follow" ),
+                                               QStringLiteral( "Follow the opened file." ) );
+        const QCommandLineOption baudOption( QStringLiteral( "baud" ),
+                                             QStringLiteral( "COM baud rate." ),
+                                             QStringLiteral( "baud" ) );
+        const QCommandLineOption dataBitsOption( QStringLiteral( "data-bits" ),
+                                                 QStringLiteral( "COM data bits (5, 6, 7, 8)." ),
+                                                 QStringLiteral( "bits" ) );
+        const QCommandLineOption parityOption( QStringLiteral( "parity" ),
+                                               QStringLiteral( "COM parity (none, even, odd, mark, space)." ),
+                                               QStringLiteral( "parity" ) );
+        const QCommandLineOption stopBitsOption( QStringLiteral( "stop-bits" ),
+                                                 QStringLiteral( "COM stop bits (1, 1.5, 2)." ),
+                                                 QStringLiteral( "stop_bits" ) );
+        const QCommandLineOption flowControlOption(
+            QStringLiteral( "flow-control" ),
+            QStringLiteral( "COM flow control (none, hardware, software)." ),
+            QStringLiteral( "flow_control" ) );
+        const QCommandLineOption timestampsOption( QStringLiteral( "timestamps" ),
+                                                   QStringLiteral( "Enable timestamps in COM capture." ) );
+        const QCommandLineOption noTimestampsOption(
+            QStringLiteral( "no-timestamps" ),
+            QStringLiteral( "Disable timestamps in COM capture." ) );
+        const QCommandLineOption timestampFormatOption(
+            QStringLiteral( "timestamp-format" ),
+            QStringLiteral( "Timestamp format for COM capture." ),
+            QStringLiteral( "format" ) );
+        const QCommandLineOption logTransmitsOption(
+            QStringLiteral( "log-transmits" ),
+            QStringLiteral( "Enable COM transmit logging." ) );
+        const QCommandLineOption noLogTransmitsOption(
+            QStringLiteral( "no-log-transmits" ),
+            QStringLiteral( "Disable COM transmit logging." ) );
+        const QCommandLineOption useForActionsOption(
+            QStringLiteral( "use-for-actions" ),
+            QStringLiteral( "Use the COM capture as the actions port." ) );
+        const QCommandLineOption noUseForActionsOption(
+            QStringLiteral( "no-use-for-actions" ),
+            QStringLiteral( "Do not use the COM capture as the actions port." ) );
+
+        parser.addOption( actionOption );
+        parser.addOption( fileOption );
+        parser.addOption( urlOption );
+        parser.addOption( portOption );
+        parser.addOption( followOption );
+        parser.addOption( baudOption );
+        parser.addOption( dataBitsOption );
+        parser.addOption( parityOption );
+        parser.addOption( stopBitsOption );
+        parser.addOption( flowControlOption );
+        parser.addOption( timestampsOption );
+        parser.addOption( noTimestampsOption );
+        parser.addOption( timestampFormatOption );
+        parser.addOption( logTransmitsOption );
+        parser.addOption( noLogTransmitsOption );
+        parser.addOption( useForActionsOption );
+        parser.addOption( noUseForActionsOption );
+
+        if ( !parser.parse( commandArguments ) ) {
+            result.output_message = formatParserError( parser, parser.errorText() );
+            return result;
+        }
+
+        if ( parser.isSet( helpOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = parser.helpText();
+            return result;
+        }
+        if ( parser.isSet( versionOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        if ( !validateExclusiveBooleanOptions( parser, timestampsOption, noTimestampsOption,
+                                               &result.output_message )
+             || !validateExclusiveBooleanOptions( parser, logTransmitsOption, noLogTransmitsOption,
+                                                  &result.output_message )
+             || !validateExclusiveBooleanOptions( parser, useForActionsOption,
+                                                  noUseForActionsOption, &result.output_message ) ) {
+            result.output_message = formatParserError( parser, result.output_message );
+            return result;
+        }
+
+        const auto action = commanderActionFromString( parser.value( actionOption ) );
+        if ( !action ) {
+            result.output_message
+                = formatParserError( parser, QStringLiteral( "Missing or invalid --action value." ) );
+            return result;
+        }
+
+        CommanderRequest request;
+        request.action = *action;
+        request.followFile = parser.isSet( followOption );
+
+        switch ( *action ) {
+        case CommanderAction::OpenFile:
+        case CommanderAction::CloseFile:
+            request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );
+            if ( request.filePath.isEmpty() ) {
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "--file is required for this action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::OpenUrl:
+        case CommanderAction::CloseUrl:
+            request.url = normalizeCommanderUrl( parser.value( urlOption ) );
+            if ( request.url.isEmpty() ) {
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "--url is required for this action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::OpenCom:
+        case CommanderAction::CloseCom:
+            request.portName = parser.value( portOption ).trimmed();
+            if ( request.portName.isEmpty() ) {
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "--port is required for this action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::None:
+            break;
+        }
+
+        if ( *action == CommanderAction::OpenCom ) {
+            request.comSettings.portName = request.portName;
+
+            if ( parser.isSet( fileOption ) ) {
+                const auto filePath = parser.value( fileOption ).trimmed();
+                request.comSettings.filePath = filePath.isEmpty()
+                                                   ? QString{}
+                                                   : normalizeCommanderFilePath( filePath );
+            }
+
+            if ( parser.isSet( baudOption ) ) {
+                bool ok = false;
+                const auto baudRate = parser.value( baudOption ).toInt( &ok );
+                if ( !ok || baudRate <= 0 ) {
+                    result.output_message
+                        = formatParserError( parser, QStringLiteral( "Invalid --baud value." ) );
+                    return result;
+                }
+                request.comSettings.baudRate = baudRate;
+            }
+
+            if ( parser.isSet( dataBitsOption ) ) {
+                request.comSettings.dataBits = parseDataBits( parser.value( dataBitsOption ) );
+                if ( !request.comSettings.dataBits ) {
+                    result.output_message
+                        = formatParserError( parser, QStringLiteral( "Invalid --data-bits value." ) );
+                    return result;
+                }
+            }
+
+            if ( parser.isSet( parityOption ) ) {
+                request.comSettings.parity = parseParity( parser.value( parityOption ) );
+                if ( !request.comSettings.parity ) {
+                    result.output_message
+                        = formatParserError( parser, QStringLiteral( "Invalid --parity value." ) );
+                    return result;
+                }
+            }
+
+            if ( parser.isSet( stopBitsOption ) ) {
+                request.comSettings.stopBits = parseStopBits( parser.value( stopBitsOption ) );
+                if ( !request.comSettings.stopBits ) {
+                    result.output_message
+                        = formatParserError( parser, QStringLiteral( "Invalid --stop-bits value." ) );
+                    return result;
+                }
+            }
+
+            if ( parser.isSet( flowControlOption ) ) {
+                request.comSettings.flowControl
+                    = parseFlowControl( parser.value( flowControlOption ) );
+                if ( !request.comSettings.flowControl ) {
+                    result.output_message
+                        = formatParserError( parser, QStringLiteral( "Invalid --flow-control value." ) );
+                    return result;
+                }
+            }
+
+            request.comSettings.addTimestamps
+                = parseOptionalBoolean( parser, timestampsOption, noTimestampsOption );
+            request.comSettings.logTransmits
+                = parseOptionalBoolean( parser, logTransmitsOption, noLogTransmitsOption );
+            request.comSettings.useForActions
+                = parseOptionalBoolean( parser, useForActionsOption, noUseForActionsOption );
+
+            if ( parser.isSet( timestampFormatOption ) ) {
+                request.comSettings.timestampFormat
+                    = parser.value( timestampFormatOption ).trimmed();
+                if ( request.comSettings.timestampFormat->isEmpty() ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --timestamp-format value." ) );
+                    return result;
+                }
+            }
+        }
+
+        result.request = request;
+        return result;
     }
 };
 

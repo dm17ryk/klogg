@@ -164,34 +164,11 @@ void OpenComPortDialog::updateSuggestedFileName()
     const auto currentPath = fileEdit_->text().trimmed();
 
     auto makeSuggested = [&]() {
-        const auto portNameValue = portCombo_->currentData().toString();
-        const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
-        const auto baudRate = baudCombo_->currentData().toString();
-        const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
-        const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
-
-        const auto& config = Configuration::get();
-        QString baseDir = config.defaultComLogPath();
-
-        // If the current path points to a directory, prefer it.
-        const QFileInfo info( currentPath );
-        if ( info.isDir() && info.exists() ) {
-            baseDir = info.absoluteFilePath();
-        }
-
-        if ( baseDir.isEmpty() ) {
-            baseDir = defaultComLogDirectory();
-        }
-
-        QDir dir( baseDir );
-        if ( !dir.exists() ) {
-            if ( !dir.mkpath( "." ) ) {
-                dir.setPath( defaultComLogDirectory() );
-                dir.mkpath( "." );
-            }
-        }
-
-        return dir.filePath( fileName );
+        SerialCaptureSettings settings = defaultSerialCaptureSettings();
+        settings.portName = portCombo_->currentData().toString();
+        settings.baudRate = baudCombo_->currentData().toInt();
+        settings.filePath = currentPath;
+        return suggestedComCapturePath( settings );
     };
 
     const auto suggested = makeSuggested();
@@ -289,27 +266,10 @@ void OpenComPortDialog::populatePorts()
 
 QString OpenComPortDialog::suggestedFileName() const
 {
-    const auto portNameValue = portCombo_->currentData().toString();
-    const auto portName = portNameValue.isEmpty() ? QString( "port" ) : portNameValue.toLower();
-    const auto baudRate = baudCombo_->currentData().toString();
-    const auto timestamp = QDateTime::currentDateTime().toString( "yyyy-MM-dd_HH-mm-ss" );
-
-    const auto& config = Configuration::get();
-
-    QString logsDirPath = config.defaultComLogPath();
-    if ( logsDirPath.isEmpty() ) {
-        logsDirPath = defaultComLogDirectory();
-    }
-    QDir logsDir( logsDirPath );
-    if ( !logsDir.exists() ) {
-        if ( !logsDir.mkpath( "." ) ) {
-            logsDir.setPath( defaultComLogDirectory() );
-            logsDir.mkpath( "." );
-        }
-    }
-
-    const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
-    return logsDir.filePath( fileName );
+    SerialCaptureSettings settings = defaultSerialCaptureSettings();
+    settings.portName = portCombo_->currentData().toString();
+    settings.baudRate = baudCombo_->currentData().toInt();
+    return suggestedComCapturePath( settings );
 }
 
 bool OpenComPortDialog::isPortItemEnabled( int index ) const

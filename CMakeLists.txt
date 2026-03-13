@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
+
 project(
   klogg
   VERSION 24.11.2
@@ -416,8 +420,23 @@ if(WIN32)
   set(_klogg_qt_core_debug_implib "")
   get_target_property(_klogg_qt_core_debug_implib Qt${QT_VERSION_MAJOR}::Core IMPORTED_IMPLIB_DEBUG)
   if(NOT _klogg_qt_core_debug_implib)
-    message(WARNING "Qt debug libraries are not available; defining QT_NO_DEBUG for Debug builds.")
+    message(
+      WARNING
+        "Qt debug libraries are not available; using release-style Qt/MSVC settings for Debug builds."
+    )
     add_compile_definitions($<$<CONFIG:Debug>:QT_NO_DEBUG>)
+    add_compile_definitions($<$<CONFIG:Debug>:NDEBUG>)
+    add_compile_options($<$<CONFIG:Debug>:/UDEBUG>)
+    add_compile_options($<$<CONFIG:Debug>:/U_DEBUG>)
+    if(MSVC)
+      set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+      foreach(_klogg_flag_var CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG)
+        if(DEFINED ${_klogg_flag_var})
+          string(REPLACE "/MDd" "/MD" ${_klogg_flag_var} "${${_klogg_flag_var}}")
+        endif()
+      endforeach()
+      unset(_klogg_flag_var)
+    endif()
   endif()
   unset(_klogg_qt_core_debug_implib)
 endif()

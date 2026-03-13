@@ -40,6 +40,20 @@ int main( int argc, char* argv[] )
 
     QCoreApplication app( argc, argv );
     CliParameters parameters( app, true );
+    if ( parameters.exit_requested ) {
+        std::cout << parameters.exit_message.toStdString();
+        if ( !parameters.exit_message.endsWith( '\n' ) ) {
+            std::cout << "\n";
+        }
+        return parameters.exit_code;
+    }
+    if ( parameters.parse_error ) {
+        std::cerr << parameters.parse_error_message.toStdString();
+        if ( !parameters.parse_error_message.endsWith( '\n' ) ) {
+            std::cerr << "\n";
+        }
+        return EXIT_FAILURE;
+    }
 
     logging::enableLogging( true, static_cast<logging::LogLevel>( parameters.log_level ) );
 

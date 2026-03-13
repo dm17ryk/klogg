@@ -65,10 +65,26 @@ set(KLOGG_UI_SOURCES
 set(KLOGG_GREP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/klogg_grep.cpp)
 
 set(MAIN_LIBS
+    klogg_commander
     klogg_logdata
     klogg_crash_handler
     roaring
     kdsingleapp
+)
+
+add_library(
+  klogg_commander STATIC
+  ${CMAKE_SOURCE_DIR}/src/ui/include/commander.h
+  ${CMAKE_SOURCE_DIR}/src/ui/src/commander.cpp
+)
+
+target_include_directories(klogg_commander PUBLIC ${CMAKE_SOURCE_DIR}/src/ui/include)
+target_link_libraries(
+  klogg_commander
+  PUBLIC project_options
+         project_warnings
+         Qt${QT_VERSION_MAJOR}::Core
+         Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
 add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})

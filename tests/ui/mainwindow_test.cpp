@@ -252,6 +252,47 @@ SCENARIO( "Closing main window closes auxiliary windows", "[ui]" )
 
 }
 
+SCENARIO( "Commander requests open and close files", "[ui][commander]" )
+{
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Commander", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    mainWindow->show();
+
+    auto* tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabArea != nullptr );
+
+    QTemporaryFile file{ "mainwindow_commander_XXXXXX.log" };
+    REQUIRE( file.open() );
+    REQUIRE( file.write( "line one\nline two\n" ) > 0 );
+    file.flush();
+
+    CommanderRequest openRequest;
+    openRequest.action = CommanderAction::OpenFile;
+    openRequest.filePath = file.fileName();
+    CommanderResult openResult{ CommanderResultCode::ExecutionFailed, {} };
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { openResult = mainWindow->executeCommanderRequest( openRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return openResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 1; } ) );
+
+    CommanderRequest closeRequest;
+    closeRequest.action = CommanderAction::CloseFile;
+    closeRequest.filePath = file.fileName();
+    CommanderResult closeResult{ CommanderResultCode::ExecutionFailed, {} };
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { closeResult = mainWindow->executeCommanderRequest( closeRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return closeResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
+}
+
 SCENARIO( "Main window restores invalid session filter safely", "[ui][startup]" )
 {
     QTemporaryFile file{ "mainwindow_restore_XXXXXX.log" };

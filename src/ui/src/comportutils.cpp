@@ -1,8 +1,36 @@
 #include "comportutils.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+
+#include "configuration.h"
+
+namespace {
+QString resolveComCaptureBaseDir( const QString& preferredPath )
+{
+    if ( !preferredPath.trimmed().isEmpty() ) {
+        const QFileInfo preferredInfo{ preferredPath };
+        if ( preferredInfo.exists() && preferredInfo.isDir() ) {
+            return preferredInfo.absoluteFilePath();
+        }
+        if ( !preferredInfo.absolutePath().isEmpty() ) {
+            return preferredInfo.absolutePath();
+        }
+    }
+
+    const QFileInfo defaultPath{ Configuration::get().defaultComLogPath() };
+    if ( defaultPath.exists() && defaultPath.isDir() ) {
+        return defaultPath.absoluteFilePath();
+    }
+    if ( !defaultPath.absolutePath().isEmpty() ) {
+        return defaultPath.absolutePath();
+    }
+
+    return defaultComLogDirectory();
+}
+} // namespace
 
 QString defaultComLogDirectory()
 {
@@ -18,6 +46,93 @@ QString defaultComLogDirectory()
     }
 
     return initialDir;
+}
+
+SerialCaptureSettings defaultSerialCaptureSettings()
+{
+    const auto& config = Configuration::get();
+
+    SerialCaptureSettings settings;
+    settings.baudRate = config.defaultComBaudRate();
+    settings.dataBits = config.defaultComDataBits();
+    settings.parity = config.defaultComParity();
+    settings.stopBits = config.defaultComStopBits();
+    settings.flowControl = config.defaultComFlowControl();
+    settings.filePath = config.defaultComLogPath();
+    settings.addTimestamps = config.defaultComTimestampEnabled();
+    settings.timestampFormat = config.defaultComTimestampFormat();
+    settings.logTransmits = config.defaultComLogTransmits();
+    return settings;
+}
+
+QString suggestedComCapturePath( const SerialCaptureSettings& settings )
+{
+    auto baseDir = resolveComCaptureBaseDir( settings.filePath );
+    QDir dir( baseDir );
+    if ( !dir.exists() && !dir.mkpath( "." ) ) {
+        dir.setPath( defaultComLogDirectory() );
+        dir.mkpath( "." );
+    }
+
+    const auto portName
+        = settings.portName.isEmpty() ? QStringLiteral( "port" ) : settings.portName.toLower();
+    const auto baudRate = QString::number( settings.baudRate );
+    const auto timestamp
+        = QDateTime::currentDateTime().toString( QStringLiteral( "yyyy-MM-dd_HH-mm-ss" ) );
+    const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+    return dir.filePath( fileName );
+}
+
+SerialCaptureSettings resolveCommanderComSettings( const CommanderComSettings& overrides )
+{
+    auto settings = defaultSerialCaptureSettings();
+    settings.portName = overrides.portName.trimmed();
+
+    const bool filePathProvided = overrides.filePath.has_value();
+    if ( overrides.filePath ) {
+        settings.filePath = overrides.filePath->trimmed();
+    }
+    if ( overrides.baudRate ) {
+        settings.baudRate = *overrides.baudRate;
+    }
+    if ( overrides.dataBits ) {
+        settings.dataBits = *overrides.dataBits;
+    }
+    if ( overrides.parity ) {
+        settings.parity = *overrides.parity;
+    }
+    if ( overrides.stopBits ) {
+        settings.stopBits = *overrides.stopBits;
+    }
+    if ( overrides.flowControl ) {
+        settings.flowControl = *overrides.flowControl;
+    }
+    if ( overrides.addTimestamps ) {
+        settings.addTimestamps = *overrides.addTimestamps;
+    }
+    if ( overrides.timestampFormat ) {
+        settings.timestampFormat = overrides.timestampFormat->trimmed();
+    }
+    if ( overrides.logTransmits ) {
+        settings.logTransmits = *overrides.logTransmits;
+    }
+    if ( overrides.useForActions ) {
+        settings.useForActions = *overrides.useForActions;
+    }
+
+    const QFileInfo configuredInfo{ settings.filePath };
+    if ( !filePathProvided ) {
+        settings.filePath = suggestedComCapturePath( settings );
+    }
+    else if ( settings.filePath.trimmed().isEmpty()
+              || ( configuredInfo.exists() && configuredInfo.isDir() ) ) {
+        settings.filePath = suggestedComCapturePath( settings );
+    }
+    else {
+        settings.filePath = configuredInfo.absoluteFilePath();
+    }
+
+    return settings;
 }
 
 bool ensureComCaptureFileWritable( const QString& path, QString* errorMessage )
