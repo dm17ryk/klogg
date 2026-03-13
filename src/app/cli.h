@@ -113,7 +113,9 @@ struct CliParameters {
             "  klogg command --action open_com --port <name> [serial options]\n"
             "  klogg command --action close_file --file <path>\n"
             "  klogg command --action close_url --url <url>\n"
-            "  klogg command --action close_com --port <name>\n\n"
+            "  klogg command --action close_com --port <name>\n"
+            "  klogg command --action get_info\n"
+            "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
             "Run `klogg command --help` for detailed commander options." );
     }
 
@@ -127,7 +129,9 @@ struct CliParameters {
             "  open_com   --port <name> [--file <path>] [serial options]\n"
             "  close_file --file <path>\n"
             "  close_url  --url <url>\n"
-            "  close_com  --port <name>\n\n"
+            "  close_com  --port <name>\n"
+            "  get_info\n"
+            "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
 
@@ -404,6 +408,16 @@ struct CliParameters {
         const QCommandLineOption portOption( QStringLiteral( "port" ),
                                              QStringLiteral( "Target COM port name." ),
                                              QStringLiteral( "port" ) );
+        const QCommandLineOption tabIdOption( QStringLiteral( "tab-id" ),
+                                              QStringLiteral( "Target tab id." ),
+                                              QStringLiteral( "id" ) );
+        const QCommandLineOption windowIndexOption(
+            QStringLiteral( "window-index" ),
+            QStringLiteral( "Target window index for close_tab." ),
+            QStringLiteral( "index" ) );
+        const QCommandLineOption tabIndexOption( QStringLiteral( "tab-index" ),
+                                                 QStringLiteral( "Target tab index for close_tab." ),
+                                                 QStringLiteral( "index" ) );
         const QCommandLineOption followOption( QStringLiteral( "follow" ),
                                                QStringLiteral( "Follow the opened file." ) );
         const QCommandLineOption baudOption( QStringLiteral( "baud" ),
@@ -448,6 +462,9 @@ struct CliParameters {
         parser.addOption( fileOption );
         parser.addOption( urlOption );
         parser.addOption( portOption );
+        parser.addOption( tabIdOption );
+        parser.addOption( windowIndexOption );
+        parser.addOption( tabIndexOption );
         parser.addOption( followOption );
         parser.addOption( baudOption );
         parser.addOption( dataBitsOption );
@@ -529,6 +546,59 @@ struct CliParameters {
                 return result;
             }
             break;
+        case CommanderAction::CloseTab: {
+            const auto tabId = parser.value( tabIdOption ).trimmed();
+            const bool hasTabId = !tabId.isEmpty();
+            const bool hasWindowIndex = parser.isSet( windowIndexOption );
+            const bool hasTabIndex = parser.isSet( tabIndexOption );
+
+            if ( hasTabId && ( hasWindowIndex || hasTabIndex ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral(
+                        "Use either --tab-id or --window-index with --tab-index for close_tab." ) );
+                return result;
+            }
+            if ( !hasTabId && !hasWindowIndex && !hasTabIndex ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral(
+                        "close_tab requires --tab-id or --window-index with --tab-index." ) );
+                return result;
+            }
+            if ( hasWindowIndex != hasTabIndex ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral(
+                        "--window-index and --tab-index must be used together for close_tab." ) );
+                return result;
+            }
+
+            if ( hasTabId ) {
+                request.tabId = tabId;
+            }
+            else {
+                bool windowOk = false;
+                const auto parsedWindowIndex = parser.value( windowIndexOption ).toInt( &windowOk );
+                bool tabOk = false;
+                const auto parsedTabIndex = parser.value( tabIndexOption ).toInt( &tabOk );
+                if ( !windowOk || parsedWindowIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --window-index value." ) );
+                    return result;
+                }
+                if ( !tabOk || parsedTabIndex < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --tab-index value." ) );
+                    return result;
+                }
+
+                request.windowIndex = parsedWindowIndex;
+                request.tabIndex = parsedTabIndex;
+            }
+            break;
+        }
+        case CommanderAction::GetInfo:
         case CommanderAction::None:
             break;
         }

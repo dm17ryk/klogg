@@ -24,6 +24,7 @@
 #include <QTabWidget>
 #include <QColor>
 #include <QIcon>
+#include <QVariant>
 #include <map>
 #include <memory>
 #include <qobjectdefs.h>
@@ -81,8 +82,14 @@ class TabbedCrawlerWidget : public QTabWidget {
                                   const std::shared_ptr<StreamSession>& session );
     void clearStreamSessionForPath( const QString& fileName );
     StreamSession* streamSessionForPath( const QString& fileName ) const;
+    StreamSession* streamSessionForTab( int tab ) const;
     bool hasOpenStreamSession() const;
     StreamSession* firstOpenStreamSession() const;
+    QString tabPathAt( int index ) const;
+    QString tabIdAt( int index ) const;
+    QString tabDisplayNameAt( int index ) const;
+    int findTabById( const QString& tabId ) const;
+    void setTabActionsPort( const QString& fileName, bool isActionsPort );
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;
@@ -103,8 +110,9 @@ class TabbedCrawlerWidget : public QTabWidget {
 
   private:
     void addTabBarItem( int index, const QString& fileName );
-    QString tabPathAt( int index ) const;
-    StreamSession* streamSessionForTab( int tab ) const;
+    void setTabMetadataValue( int index, const QString& key, const QVariant& value );
+    QVariant tabMetadataValue( int index, const QString& key ) const;
+    void updateTabPresentation( int index );
 
     // Set the data status (icon) for the tab number 'index'
     void setTabDataStatus( int index, DataStatus status );

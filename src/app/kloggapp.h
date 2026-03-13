@@ -480,6 +480,22 @@ class KloggApp : public QApplication {
 
     CommanderResult executeCommanderRequest( const CommanderRequest& request )
     {
+        if ( request.action == CommanderAction::GetInfo ) {
+            QVariantList windows;
+            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                Q_UNUSED( windowSession );
+                if ( window == nullptr ) {
+                    continue;
+                }
+
+                windows.push_back( window->commanderWindowInfo() );
+            }
+
+            QVariantMap payload;
+            payload.insert( QStringLiteral( "windows" ), windows );
+            return commanderSuccess( {}, payload );
+        }
+
         if ( isCommanderOpenAction( request.action ) ) {
             auto* window = activeWindowOrCreate();
             if ( window == nullptr ) {
@@ -492,6 +508,21 @@ class KloggApp : public QApplication {
                 activatePrimaryWindow();
             }
             return result;
+        }
+
+        if ( request.action == CommanderAction::CloseTab && request.windowIndex ) {
+            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                if ( window == nullptr ) {
+                    continue;
+                }
+
+                if ( static_cast<int>( windowSession.windowIndex() ) == *request.windowIndex ) {
+                    return window->executeCommanderRequest( request );
+                }
+            }
+
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     QStringLiteral( "Requested window was not found." ) );
         }
 
         CommanderResult lastNotFound = commanderFailure(

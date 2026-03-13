@@ -280,6 +280,68 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     REQUIRE( waitUiState( [&] { return openResult.ok(); } ) );
     REQUIRE( waitUiState( [&] { return tabArea->count() == 1; } ) );
 
+    CommanderRequest getInfoRequest;
+    getInfoRequest.action = CommanderAction::GetInfo;
+    CommanderResult getInfoResult{ CommanderResultCode::ExecutionFailed, {} };
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { getInfoResult = mainWindow->executeCommanderRequest( getInfoRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return getInfoResult.ok() && getInfoResult.hasPayload(); } ) );
+
+    const auto windowInfo = getInfoResult.payload;
+    REQUIRE( windowInfo.value( "windowIndex" ).toInt() == 0 );
+    REQUIRE_FALSE( windowInfo.value( "windowId" ).toString().isEmpty() );
+
+    const auto tabs = windowInfo.value( "tabs" ).toList();
+    REQUIRE( tabs.size() == 1 );
+    const auto tabInfo = tabs.front().toMap();
+    REQUIRE( tabInfo.value( "tabIndex" ).toInt() == 0 );
+    REQUIRE_FALSE( tabInfo.value( "tabId" ).toString().isEmpty() );
+    REQUIRE( tabInfo.value( "sourceType" ).toString() == "file" );
+    REQUIRE( tabInfo.value( "filePath" ).toString() == file.fileName() );
+
+    CommanderRequest closeByIdRequest;
+    closeByIdRequest.action = CommanderAction::CloseTab;
+    closeByIdRequest.tabId = tabInfo.value( "tabId" ).toString();
+    CommanderResult closeByIdResult{ CommanderResultCode::ExecutionFailed, {} };
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { closeByIdResult = mainWindow->executeCommanderRequest( closeByIdRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return closeByIdResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
+
+    CommanderResult reopenResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { reopenResult = mainWindow->executeCommanderRequest( openRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return reopenResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 1; } ) );
+
+    CommanderRequest closeByIndexRequest;
+    closeByIndexRequest.action = CommanderAction::CloseTab;
+    closeByIndexRequest.tabIndex = 0;
+    CommanderResult closeByIndexResult{ CommanderResultCode::ExecutionFailed, {} };
+
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { closeByIndexResult = mainWindow->executeCommanderRequest( closeByIndexRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return closeByIndexResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 0; } ) );
+
+    CommanderResult reopenForCloseResult{ CommanderResultCode::ExecutionFailed, {} };
+    REQUIRE( QMetaObject::invokeMethod(
+        mainWindow.get(),
+        [ & ] { reopenForCloseResult = mainWindow->executeCommanderRequest( openRequest ); },
+        Qt::QueuedConnection ) );
+    REQUIRE( waitUiState( [&] { return reopenForCloseResult.ok(); } ) );
+    REQUIRE( waitUiState( [&] { return tabArea->count() == 1; } ) );
+
     CommanderRequest closeRequest;
     closeRequest.action = CommanderAction::CloseFile;
     closeRequest.filePath = file.fileName();

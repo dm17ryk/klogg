@@ -15,6 +15,8 @@ enum class CommanderAction {
     CloseFile,
     CloseUrl,
     CloseCom,
+    GetInfo,
+    CloseTab,
 };
 
 enum class CommanderResultCode {
@@ -44,6 +46,9 @@ struct CommanderRequest {
     QString filePath;
     QString url;
     QString portName;
+    QString tabId;
+    std::optional<int> windowIndex;
+    std::optional<int> tabIndex;
     bool followFile = false;
     CommanderComSettings comSettings;
 };
@@ -51,10 +56,16 @@ struct CommanderRequest {
 struct CommanderResult {
     CommanderResultCode code = CommanderResultCode::Success;
     QString message;
+    QVariantMap payload;
 
     bool ok() const
     {
         return code == CommanderResultCode::Success;
+    }
+
+    bool hasPayload() const
+    {
+        return !payload.isEmpty();
     }
 };
 
@@ -76,7 +87,7 @@ bool writeCommanderResult( const QString& resultPath, const CommanderResult& res
 std::optional<CommanderResult> readCommanderResult( const QString& resultPath,
                                                     QString* errorMessage = nullptr );
 
-CommanderResult commanderSuccess( const QString& message = {} );
+CommanderResult commanderSuccess( const QString& message = {}, const QVariantMap& payload = {} );
 CommanderResult commanderFailure( CommanderResultCode code, const QString& message );
 
 Q_DECLARE_METATYPE( CommanderRequest )

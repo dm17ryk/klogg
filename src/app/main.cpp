@@ -45,6 +45,7 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFont>
+#include <QJsonDocument>
 #include <QMetaObject>
 #include <QPainter>
 #include <QPixmap>
@@ -200,12 +201,8 @@ class StartupSplashScreen final : public QSplashScreen {
 };
 
 namespace {
-void writeCliMessage( const QString& message, bool toStderr = false )
+void ensureCliConsoleAttached()
 {
-    if ( message.isEmpty() ) {
-        return;
-    }
-
 #ifdef Q_OS_WIN
     static bool consoleInitialized = false;
     if ( !consoleInitialized ) {
@@ -218,6 +215,15 @@ void writeCliMessage( const QString& message, bool toStderr = false )
         }
     }
 #endif
+}
+
+void writeCliMessage( const QString& message, bool toStderr = false )
+{
+    if ( message.isEmpty() ) {
+        return;
+    }
+
+    ensureCliConsoleAttached();
 
     auto output = message;
     if ( !output.endsWith( '\n' ) ) {
@@ -234,6 +240,20 @@ void writeCliMessage( const QString& message, bool toStderr = false )
         std::fflush( stderr );
     }
 #endif
+}
+
+void writeCliPayload( const QVariantMap& payload )
+{
+    if ( payload.isEmpty() ) {
+        return;
+    }
+
+    ensureCliConsoleAttached();
+
+    auto bytes = QJsonDocument::fromVariant( payload ).toJson( QJsonDocument::Compact );
+    bytes.append( '\n' );
+    std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stdout );
+    std::fflush( stdout );
 }
 } // namespace
 
@@ -301,6 +321,7 @@ int main( int argc, char* argv[] )
         if ( parameters.commander_request ) {
             const auto result = app.sendCommandToPrimaryInstance( *parameters.commander_request );
             if ( result.ok() ) {
+                writeCliPayload( result.payload );
                 return EXIT_SUCCESS;
             }
 
@@ -338,6 +359,22 @@ int main( int argc, char* argv[] )
     StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
                                QObject::tr( "Preparing application state" ) );
 
+    if ( parameters.commander_request && !isCommanderOpenAction( parameters.commander_request->action ) ) {
+        if ( parameters.commander_request->action == CommanderAction::GetInfo ) {
+            writeCliMessage( QObject::tr( "No running klogg instance." ), true );
+            return EXIT_FAILURE;
+        }
+
+        const auto result = app.executeCommanderRequest( *parameters.commander_request );
+        if ( !result.ok() ) {
+            writeCliMessage( result.message, true );
+            return EXIT_FAILURE;
+        }
+
+        writeCliPayload( result.payload );
+        return EXIT_SUCCESS;
+    }
+
     auto startNewSession = true;
     MainWindow* mw = nullptr;
     if ( parameters.commander_request ) {
@@ -360,6 +397,8 @@ int main( int argc, char* argv[] )
             writeCliMessage( result.message, true );
             return EXIT_FAILURE;
         }
+
+        writeCliPayload( result.payload );
     }
     else {
         for ( const auto& filename : parameters.filenames ) {

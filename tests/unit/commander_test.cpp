@@ -55,6 +55,8 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_requested );
     REQUIRE( parameters.exit_code == EXIT_SUCCESS );
     REQUIRE( parameters.exit_message.contains( "open_com" ) );
+    REQUIRE( parameters.exit_message.contains( "get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "close_tab" ) );
     REQUIRE( parameters.exit_message.contains( "--port <name>" ) );
 }
 
@@ -108,6 +110,59 @@ TEST_CASE( "Commander CLI parses open_com overrides", "[commander][cli]" )
     REQUIRE( *parameters.commander_request->comSettings.useForActions );
 }
 
+TEST_CASE( "Commander CLI parses get_info action", "[commander][cli]" )
+{
+    CliParameters parameters( { "klogg", "command", "--action", "get_info" } );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE( parameters.commander_request.has_value() );
+    REQUIRE( parameters.commander_request->action == CommanderAction::GetInfo );
+}
+
+TEST_CASE( "Commander CLI parses close_tab selectors", "[commander][cli]" )
+{
+    CliParameters byId( { "klogg", "command", "--action", "close_tab", "--tab-id",
+                          "abc123" } );
+    REQUIRE_FALSE( byId.parse_error );
+    REQUIRE( byId.commander_request.has_value() );
+    REQUIRE( byId.commander_request->action == CommanderAction::CloseTab );
+    REQUIRE( byId.commander_request->tabId == "abc123" );
+    REQUIRE_FALSE( byId.commander_request->windowIndex.has_value() );
+    REQUIRE_FALSE( byId.commander_request->tabIndex.has_value() );
+
+    CliParameters byIndex( { "klogg", "command", "--action", "close_tab", "--window-index",
+                             "2", "--tab-index", "4" } );
+    REQUIRE_FALSE( byIndex.parse_error );
+    REQUIRE( byIndex.commander_request.has_value() );
+    REQUIRE( byIndex.commander_request->action == CommanderAction::CloseTab );
+    REQUIRE( byIndex.commander_request->windowIndex == 2 );
+    REQUIRE( byIndex.commander_request->tabIndex == 4 );
+    REQUIRE( byIndex.commander_request->tabId.isEmpty() );
+}
+
+TEST_CASE( "Commander CLI rejects invalid close_tab selectors", "[commander][cli]" )
+{
+    CliParameters missingSelector( { "klogg", "command", "--action", "close_tab" } );
+    REQUIRE( missingSelector.parse_error );
+    REQUIRE( missingSelector.parse_error_message.contains( "close_tab requires" ) );
+
+    CliParameters mixedSelectors(
+        { "klogg", "command", "--action", "close_tab", "--tab-id", "abc123", "--window-index",
+          "1", "--tab-index", "0" } );
+    REQUIRE( mixedSelectors.parse_error );
+    REQUIRE( mixedSelectors.parse_error_message.contains( "Use either --tab-id" ) );
+
+    CliParameters missingTabIndex(
+        { "klogg", "command", "--action", "close_tab", "--window-index", "1" } );
+    REQUIRE( missingTabIndex.parse_error );
+    REQUIRE( missingTabIndex.parse_error_message.contains( "--window-index and --tab-index" ) );
+
+    CliParameters negativeTabIndex( { "klogg", "command", "--action", "close_tab",
+                                      "--window-index", "1", "--tab-index", "-1" } );
+    REQUIRE( negativeTabIndex.parse_error );
+    REQUIRE( negativeTabIndex.parse_error_message.contains( "--tab-index" ) );
+}
+
 TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
 {
     CliParameters parameters( { "klogg", "--help" } );
@@ -115,12 +170,16 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_requested );
     REQUIRE( parameters.exit_message.contains( "klogg command --action open_file" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action close_com" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action get_info" ) );
 }
 
 TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
 {
     CommanderRequest request;
-    request.action = CommanderAction::OpenCom;
+    request.action = CommanderAction::CloseTab;
+    request.tabId = "tab-123";
+    request.windowIndex = 1;
+    request.tabIndex = 2;
     request.portName = "COM9";
     request.comSettings.portName = "COM9";
     request.comSettings.baudRate = 115200;
@@ -134,6 +193,9 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored.has_value() );
     REQUIRE( errorMessage.isEmpty() );
     REQUIRE( restored->action == request.action );
+    REQUIRE( restored->tabId == request.tabId );
+    REQUIRE( restored->windowIndex == request.windowIndex );
+    REQUIRE( restored->tabIndex == request.tabIndex );
     REQUIRE( restored->portName == request.portName );
     REQUIRE( restored->comSettings.baudRate.has_value() );
     REQUIRE( restored->comSettings.baudRate == request.comSettings.baudRate );
@@ -160,6 +222,27 @@ TEST_CASE( "Commander result file roundtrip", "[commander][ipc]" )
     REQUIRE( errorMessage.isEmpty() );
     REQUIRE( restored->code == expected.code );
     REQUIRE( restored->message == expected.message );
+}
+
+TEST_CASE( "Commander result payload roundtrip", "[commander][ipc]" )
+{
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+
+    const auto resultPath = dir.filePath( "commander_payload.json" );
+    QVariantMap payload;
+    payload.insert( "windows", QVariantList{ QVariantMap{ { "windowIndex", 0 } } } );
+    const auto expected = commanderSuccess( {}, payload );
+
+    REQUIRE( writeCommanderResult( resultPath, expected ) );
+
+    QString errorMessage;
+    const auto restored = readCommanderResult( resultPath, &errorMessage );
+
+    REQUIRE( restored.has_value() );
+    REQUIRE( errorMessage.isEmpty() );
+    REQUIRE( restored->ok() );
+    REQUIRE( restored->payload == payload );
 }
 
 TEST_CASE( "Commander COM settings inherit preferences and support overrides", "[commander][com]" )

@@ -92,6 +92,7 @@ class MainWindow : public QMainWindow {
     void loadInitialFile( QString fileName, bool followFile );
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
+    QVariantMap commanderWindowInfo() const;
 
     void reTranslateUI();
 
@@ -224,6 +225,8 @@ class MainWindow : public QMainWindow {
     void createTrayIcon();
     void readSettings();
     void writeSettings();
+    CommanderResult closeTabById( const QString& tabId );
+    CommanderResult closeTabByIndex( int tabIndex );
     CommanderResult closeComPortByName( const QString& portName );
     CommanderResult closeFileByPath( const QString& filePath );
     CommanderResult closeUrlBySource( const QString& url );
@@ -249,6 +252,8 @@ class MainWindow : public QMainWindow {
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
     void updateInfoLine();
     void updateComPortStatus();
+    void refreshComTabIndicators();
+    bool isActionsStreamSession( const StreamSession* streamSession ) const;
     void showInfoLabels( bool show );
     void logScreenInfo( QScreen* screen );
     void removeFromFavorites( const QString& pathToRemove );

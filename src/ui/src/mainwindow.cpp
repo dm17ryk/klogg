@@ -258,6 +258,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
 }
 
 static constexpr auto ClipboardMaxTry = 5;
+static const auto ActionsPortSuffix = QStringLiteral( " (actions)" );
 
 } // namespace
 
@@ -533,11 +534,76 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return closeUrlBySource( request.url );
     case CommanderAction::CloseCom:
         return closeComPortByName( request.portName );
+    case CommanderAction::GetInfo:
+        return commanderSuccess( {}, commanderWindowInfo() );
+    case CommanderAction::CloseTab:
+        if ( !request.tabId.isEmpty() ) {
+            return closeTabById( request.tabId );
+        }
+        if ( request.tabIndex ) {
+            return closeTabByIndex( *request.tabIndex );
+        }
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "close_tab requires a tab selector." ) );
     case CommanderAction::None:
     default:
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "Unsupported commander action." ) );
     }
+}
+
+QVariantMap MainWindow::commanderWindowInfo() const
+{
+    QVariantList tabs;
+
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto filePath = session_.getFilename( widget );
+        if ( filePath.isEmpty() ) {
+            continue;
+        }
+
+        QVariantMap tabInfo;
+        tabInfo.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        tabInfo.insert( QStringLiteral( "tabIndex" ), index );
+        tabInfo.insert( QStringLiteral( "filePath" ), filePath );
+        tabInfo.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
+
+        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+            tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "com" ) );
+            QVariantMap comInfo;
+            const auto settings = streamSession->captureSettings();
+            comInfo.insert( QStringLiteral( "portName" ), settings.portName );
+            comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
+            comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+            comInfo.insert( QStringLiteral( "isActionsPort" ),
+                            isActionsStreamSession( streamSession ) );
+            tabInfo.insert( QStringLiteral( "com" ), comInfo );
+        }
+        else {
+            const auto remoteSource = remoteFileSources_.find( filePath );
+            if ( remoteSource != remoteFileSources_.cend() ) {
+                tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "url" ) );
+                tabInfo.insert( QStringLiteral( "sourceUrl" ), remoteSource->second );
+            }
+            else {
+                tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "file" ) );
+            }
+        }
+
+        tabs.push_back( tabInfo );
+    }
+
+    QVariantMap windowInfo;
+    windowInfo.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    windowInfo.insert( QStringLiteral( "windowIndex" ),
+                       static_cast<int>( session_.windowIndex() ) );
+    windowInfo.insert( QStringLiteral( "tabs" ), tabs );
+    return windowInfo;
 }
 
 void MainWindow::reTranslateUI()
@@ -1381,8 +1447,22 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath, safeSession ] {
-                 mainTabWidget_.clearStreamSessionForPath( filePath );
+             [ this, filePath, session, safeSession ] {
+                 bool tabStillOpen = false;
+                 for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+                     auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+                     if ( widget != nullptr && session_.getFilename( widget ) == filePath ) {
+                         tabStillOpen = true;
+                         break;
+                     }
+                 }
+
+                 if ( tabStillOpen ) {
+                     mainTabWidget_.setStreamSessionForPath( filePath, session );
+                 }
+                 else {
+                     mainTabWidget_.clearStreamSessionForPath( filePath );
+                 }
                  if ( actionsStreamSession_ == safeSession ) {
                      actionsStreamSession_.clear();
                  }
@@ -2022,8 +2102,31 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     session_.close( widget );
 
     updateOpenedFilesMenu();
+    updateActionsSendState();
 
     widget->deleteLater();
+}
+
+CommanderResult MainWindow::closeTabById( const QString& tabId )
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    if ( index < 0 ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab %1 was not found." ).arg( tabId ) );
+    }
+
+    return closeTabByIndex( index );
+}
+
+CommanderResult MainWindow::closeTabByIndex( int tabIndex )
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
+    }
+
+    closeTab( tabIndex, ActionInitiator::App );
+    return commanderSuccess();
 }
 
 CommanderResult MainWindow::closeFileByPath( const QString& filePath )
@@ -2485,6 +2588,7 @@ void MainWindow::updateActionsSendState()
         available = mainTabWidget_.hasOpenStreamSession();
     }
     actionsResponsesWindow_.setSendAvailable( available );
+    refreshComTabIndicators();
     updateComPortStatus();
 }
 
@@ -2497,13 +2601,41 @@ void MainWindow::updateComPortStatus()
     const auto* streamSession = currentStreamSession();
     if ( streamSession && streamSession->isConnectionOpen() ) {
         const auto settings = streamSession->captureSettings();
-        comPortField->setText( tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
+        auto text = tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate );
+        if ( isActionsStreamSession( streamSession ) ) {
+            text += ActionsPortSuffix;
+        }
+        comPortField->setText( text );
         comPortField->setVisible( true );
     }
     else {
         comPortField->clear();
         comPortField->setVisible( false );
     }
+}
+
+void MainWindow::refreshComTabIndicators()
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto filePath = session_.getFilename( widget );
+        if ( filePath.isEmpty() ) {
+            continue;
+        }
+
+        const auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
+        mainTabWidget_.setTabActionsPort( filePath, isActionsStreamSession( streamSession ) );
+    }
+}
+
+bool MainWindow::isActionsStreamSession( const StreamSession* streamSession ) const
+{
+    return streamSession != nullptr && streamSession == actionsStreamSession_.data()
+           && streamSession->isConnectionOpen();
 }
 
 // Update the title bar.

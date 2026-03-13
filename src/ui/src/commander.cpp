@@ -58,6 +58,10 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "close_url" );
     case CommanderAction::CloseCom:
         return QStringLiteral( "close_com" );
+    case CommanderAction::GetInfo:
+        return QStringLiteral( "get_info" );
+    case CommanderAction::CloseTab:
+        return QStringLiteral( "close_tab" );
     case CommanderAction::None:
     default:
         return {};
@@ -84,6 +88,12 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "close_com" ) ) {
         return CommanderAction::CloseCom;
+    }
+    if ( normalized == QStringLiteral( "get_info" ) ) {
+        return CommanderAction::GetInfo;
+    }
+    if ( normalized == QStringLiteral( "close_tab" ) ) {
+        return CommanderAction::CloseTab;
     }
 
     return std::nullopt;
@@ -153,6 +163,15 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.portName.isEmpty() ) {
         map.insert( QStringLiteral( "portName" ), request.portName );
     }
+    if ( !request.tabId.isEmpty() ) {
+        map.insert( QStringLiteral( "tabId" ), request.tabId );
+    }
+    if ( request.windowIndex ) {
+        map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
+    }
+    if ( request.tabIndex ) {
+        map.insert( QStringLiteral( "tabIndex" ), *request.tabIndex );
+    }
     if ( request.followFile ) {
         map.insert( QStringLiteral( "followFile" ), true );
     }
@@ -204,7 +223,30 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.filePath = map.value( QStringLiteral( "filePath" ) ).toString();
     request.url = map.value( QStringLiteral( "url" ) ).toString();
     request.portName = map.value( QStringLiteral( "portName" ) ).toString();
+    request.tabId = map.value( QStringLiteral( "tabId" ) ).toString();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
+
+    const auto windowIndexIt = map.find( QStringLiteral( "windowIndex" ) );
+    if ( windowIndexIt != map.end() ) {
+        bool ok = false;
+        const auto value = windowIndexIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander window index." ) );
+            return std::nullopt;
+        }
+        request.windowIndex = value;
+    }
+
+    const auto tabIndexIt = map.find( QStringLiteral( "tabIndex" ) );
+    if ( tabIndexIt != map.end() ) {
+        bool ok = false;
+        const auto value = tabIndexIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander tab index." ) );
+            return std::nullopt;
+        }
+        request.tabIndex = value;
+    }
 
     const auto comSettingsValue = map.value( QStringLiteral( "comSettings" ) );
     if ( comSettingsValue.canConvert<QVariantMap>() ) {
@@ -265,6 +307,9 @@ QVariantMap commanderResultToVariantMap( const CommanderResult& result )
     QVariantMap map;
     map.insert( QStringLiteral( "code" ), commanderResultCodeToString( result.code ) );
     map.insert( QStringLiteral( "message" ), result.message );
+    if ( !result.payload.isEmpty() ) {
+        map.insert( QStringLiteral( "payload" ), result.payload );
+    }
     return map;
 }
 
@@ -296,6 +341,14 @@ std::optional<CommanderResult> commanderResultFromVariantMap( const QVariantMap&
     CommanderResult result;
     result.code = code;
     result.message = map.value( QStringLiteral( "message" ) ).toString();
+    const auto payloadIt = map.find( QStringLiteral( "payload" ) );
+    if ( payloadIt != map.end() ) {
+        if ( !payloadIt->canConvert<QVariantMap>() ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander result payload." ) );
+            return std::nullopt;
+        }
+        result.payload = payloadIt->toMap();
+    }
     return result;
 }
 
@@ -339,9 +392,9 @@ std::optional<CommanderResult> readCommanderResult( const QString& resultPath,
     return commanderResultFromVariantMap( document.toVariant().toMap(), errorMessage );
 }
 
-CommanderResult commanderSuccess( const QString& message )
+CommanderResult commanderSuccess( const QString& message, const QVariantMap& payload )
 {
-    return { CommanderResultCode::Success, message };
+    return { CommanderResultCode::Success, message, payload };
 }
 
 CommanderResult commanderFailure( CommanderResultCode code, const QString& message )
