@@ -4,21 +4,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN rm -rf /var/lib/apt/lists/* && \
     for attempt in 1 2 3 4 5; do \
-        apt-get update -o Acquire::Retries=3 -y && break; \
+        apt-get -o Acquire::Retries=3 update -y && break; \
         if [ "$attempt" -eq 5 ]; then exit 1; fi; \
         rm -rf /var/lib/apt/lists/*; \
         sleep 5; \
     done && \
-    apt-get install -o Acquire::Retries=3 --no-install-recommends software-properties-common -y && \
+    apt-get -o Acquire::Retries=3 install --no-install-recommends software-properties-common -y && \
     add-apt-repository ppa:beineri/opt-qt-5.15.3-focal -y && \
     rm -rf /var/lib/apt/lists/* && \
     for attempt in 1 2 3 4 5; do \
-        apt-get update -o Acquire::Retries=3 -y && break; \
+        apt-get -o Acquire::Retries=3 update -y && break; \
         if [ "$attempt" -eq 5 ]; then exit 1; fi; \
         rm -rf /var/lib/apt/lists/*; \
         sleep 5; \
     done && \
-    apt-get install -o Acquire::Retries=3 --no-install-recommends build-essential python3 python-is-python3 \
+    apt-get -o Acquire::Retries=3 install --no-install-recommends build-essential python3 python-is-python3 \
                     qt515base qt515svg qt515tools qt515imageformats qt515translations \
                     mesa-common-dev libglu1-mesa-dev \
                     libboost-dev libicu-dev libssl-dev libcurl4-openssl-dev \
