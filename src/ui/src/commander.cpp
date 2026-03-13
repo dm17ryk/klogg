@@ -462,5 +462,5 @@ CommanderResult commanderSuccess( const QString& message, const QVariantMap& pay
 
 CommanderResult commanderFailure( CommanderResultCode code, const QString& message )
 {
-    return { code, message };
+    return { code, message, {} };
 }
