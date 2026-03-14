@@ -7,9 +7,12 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QSignalBlocker>
 #include <QtGlobal>
 #include <QSpinBox>
 #include <QVBoxLayout>
+
+#include "previewdecodeutils.h"
 
 namespace {
 QStringList splitCsvValues( const QString& text )
@@ -23,6 +26,18 @@ QStringList splitCsvValues( const QString& text )
         }
     }
     return values;
+}
+
+QString bytesToHexString( const QByteArray& bytes )
+{
+    QStringList parts;
+    parts.reserve( bytes.size() );
+    for ( const auto byte : bytes ) {
+        parts.push_back( QStringLiteral( "%1" )
+                             .arg( static_cast<quint8>( byte ), 2, 16, QLatin1Char( '0' ) )
+                             .toUpper() );
+    }
+    return parts.join( QLatin1Char( ' ' ) );
 }
 } // namespace
 
@@ -40,9 +55,13 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     sequenceTypeCombo_->addItem( tr( "String" ), actionSequenceTypeToString( ActionSequenceType::String ) );
     sequenceTypeCombo_->addItem( tr( "Hex String" ), actionSequenceTypeToString( ActionSequenceType::HexString ) );
 
-    sequenceValueEdit_ = new QPlainTextEdit( this );
-    sequenceValueEdit_->setTabChangesFocus( true );
-    sequenceValueEdit_->setMinimumHeight( 110 );
+    stringValueEdit_ = new QPlainTextEdit( this );
+    stringValueEdit_->setTabChangesFocus( true );
+    stringValueEdit_->setMinimumHeight( 80 );
+
+    hexValueEdit_ = new QPlainTextEdit( this );
+    hexValueEdit_->setTabChangesFocus( true );
+    hexValueEdit_->setMinimumHeight( 80 );
 
     delaySpin_ = new QSpinBox( this );
     delaySpin_->setRange( 0, 3600000 );
@@ -69,7 +88,8 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     formLayout->addRow( tr( "Name" ), nameEdit_ );
     formLayout->addRow( tr( "Description" ), descriptionEdit_ );
     formLayout->addRow( tr( "Sequence type" ), sequenceTypeCombo_ );
-    formLayout->addRow( tr( "Sequence" ), sequenceValueEdit_ );
+    formLayout->addRow( tr( "String value" ), stringValueEdit_ );
+    formLayout->addRow( tr( "Hex string value" ), hexValueEdit_ );
     formLayout->addRow( tr( "Initial delay" ), delaySpin_ );
     formLayout->addRow( tr( "Repeat count" ), repeatCountSpin_ );
     formLayout->addRow( tr( "Repeat interval" ), repeatIntervalSpin_ );
@@ -86,6 +106,9 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     layout->addLayout( formLayout );
     layout->addWidget( buttons );
     setLayout( layout );
+
+    connect( stringValueEdit_, &QPlainTextEdit::textChanged, this, &ActionEditDialog::syncHexFromString );
+    connect( hexValueEdit_, &QPlainTextEdit::textChanged, this, &ActionEditDialog::syncStringFromHex );
 }
 
 void ActionEditDialog::setAction( const ActionDefinition& action )
@@ -109,7 +132,9 @@ void ActionEditDialog::accept()
     if ( !ok ) {
         action_.sequence.type = ActionSequenceType::String;
     }
-    action_.sequence.value = sequenceValueEdit_->toPlainText().trimmed();
+    const auto stringValue = stringValueEdit_->toPlainText();
+    const auto hexValue = hexValueEdit_->toPlainText().trimmed();
+    action_.sequence.value = action_.sequence.type == ActionSequenceType::HexString ? hexValue : stringValue;
     action_.parameters.delay = delaySpin_->value();
     action_.parameters.repeatCount = repeatCountSpin_->value();
     action_.parameters.repeat = action_.parameters.repeatCount > 1;
@@ -134,7 +159,7 @@ void ActionEditDialog::populateFromAction( const ActionDefinition& action )
     descriptionEdit_->setPlainText( action.description );
     const auto index = sequenceTypeCombo_->findData( actionSequenceTypeToString( action.sequence.type ) );
     sequenceTypeCombo_->setCurrentIndex( index >= 0 ? index : 0 );
-    sequenceValueEdit_->setPlainText( action.sequence.value );
+    setSequenceEditors( action.sequence );
     delaySpin_->setValue( action.parameters.delay );
     repeatCountSpin_->setValue( qMax( 1, action.parameters.repeatCount ) );
     repeatIntervalSpin_->setValue( action.parameters.repeatInterval );
@@ -143,4 +168,52 @@ void ActionEditDialog::populateFromAction( const ActionDefinition& action )
     const auto checksumIndex = checksumAlgorithmCombo_->findText( action.checksum.algorithm );
     checksumAlgorithmCombo_->setCurrentIndex( checksumIndex >= 0 ? checksumIndex : 0 );
     checksumPlaceholderEdit_->setText( action.checksum.placeholder );
+}
+
+void ActionEditDialog::syncHexFromString()
+{
+    if ( syncingSequenceEditors_ ) {
+        return;
+    }
+
+    syncingSequenceEditors_ = true;
+    const QSignalBlocker blocker( hexValueEdit_ );
+    hexValueEdit_->setPlainText( bytesToHexString( stringValueEdit_->toPlainText().toLatin1() ) );
+    syncingSequenceEditors_ = false;
+}
+
+void ActionEditDialog::syncStringFromHex()
+{
+    if ( syncingSequenceEditors_ ) {
+        return;
+    }
+
+    const auto decoded = decodeHexStringToBytes( hexValueEdit_->toPlainText() );
+    if ( !decoded.ok ) {
+        return;
+    }
+
+    syncingSequenceEditors_ = true;
+    const QSignalBlocker blocker( stringValueEdit_ );
+    stringValueEdit_->setPlainText( QString::fromLatin1( decoded.bytes ) );
+    syncingSequenceEditors_ = false;
+}
+
+void ActionEditDialog::setSequenceEditors( const ActionSequence& sequence )
+{
+    syncingSequenceEditors_ = true;
+    const QSignalBlocker stringBlocker( stringValueEdit_ );
+    const QSignalBlocker hexBlocker( hexValueEdit_ );
+
+    if ( sequence.type == ActionSequenceType::HexString ) {
+        const auto decoded = decodeHexStringToBytes( sequence.value );
+        stringValueEdit_->setPlainText( decoded.ok ? QString::fromLatin1( decoded.bytes ) : QString() );
+        hexValueEdit_->setPlainText( decoded.ok ? bytesToHexString( decoded.bytes ) : sequence.value );
+    }
+    else {
+        stringValueEdit_->setPlainText( sequence.value );
+        hexValueEdit_->setPlainText( bytesToHexString( sequence.value.toLatin1() ) );
+    }
+
+    syncingSequenceEditors_ = false;
 }

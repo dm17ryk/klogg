@@ -23,12 +23,16 @@ class ActionEditDialog : public QDialog {
 
   private:
     void populateFromAction( const ActionDefinition& action );
+    void syncHexFromString();
+    void syncStringFromHex();
+    void setSequenceEditors( const ActionSequence& sequence );
 
     ActionDefinition action_;
     QLineEdit* nameEdit_ = nullptr;
     QPlainTextEdit* descriptionEdit_ = nullptr;
     QComboBox* sequenceTypeCombo_ = nullptr;
-    QPlainTextEdit* sequenceValueEdit_ = nullptr;
+    QPlainTextEdit* stringValueEdit_ = nullptr;
+    QPlainTextEdit* hexValueEdit_ = nullptr;
     QSpinBox* delaySpin_ = nullptr;
     QSpinBox* repeatCountSpin_ = nullptr;
     QSpinBox* repeatIntervalSpin_ = nullptr;
@@ -36,4 +40,5 @@ class ActionEditDialog : public QDialog {
     QCheckBox* checksumEnabledCheck_ = nullptr;
     QComboBox* checksumAlgorithmCombo_ = nullptr;
     QLineEdit* checksumPlaceholderEdit_ = nullptr;
+    bool syncingSequenceEditors_ = false;
 };

@@ -75,6 +75,36 @@ void setError( QString* errorMessage, const QString& message )
     }
 }
 
+void normalizeResponseAction( ResponseActionDefinition* responseAction )
+{
+    if ( responseAction == nullptr ) {
+        return;
+    }
+
+    responseAction->steps.erase(
+        std::remove_if( responseAction->steps.begin(), responseAction->steps.end(),
+                        []( const ResponseActionStep& step ) { return step.actionId < 0; } ),
+        responseAction->steps.end() );
+
+    if ( responseAction->steps.isEmpty() && responseAction->hasActionId
+         && responseAction->actionId >= 0 ) {
+        responseAction->steps.push_back( { responseAction->actionId, 0 } );
+    }
+
+    if ( !responseAction->steps.isEmpty() ) {
+        responseAction->hasActionId = true;
+        responseAction->actionId = responseAction->steps.front().actionId;
+    }
+    else {
+        responseAction->hasActionId = false;
+        responseAction->actionId = -1;
+    }
+
+    if ( !responseAction->hasInlineAction ) {
+        responseAction->inlineAction = {};
+    }
+}
+
 QString bytesToHexString( const QByteArray& bytes )
 {
     QStringList parts;
@@ -365,6 +395,18 @@ bool validateResponseDefinition( const ResponseDefinition& response, QString* er
         }
     }
 
+    for ( const auto& step : response.response.steps ) {
+        if ( step.actionId < 0 ) {
+            setError( errorMessage, QStringLiteral( "Response linked action id is invalid." ) );
+            return false;
+        }
+        if ( step.delayMs < 0 ) {
+            setError( errorMessage,
+                      QStringLiteral( "Response linked action delay must be non-negative." ) );
+            return false;
+        }
+    }
+
     if ( response.response.hasInlineAction ) {
         ActionDefinition inlineAction;
         inlineAction.name = response.name;
@@ -372,6 +414,20 @@ bool validateResponseDefinition( const ResponseDefinition& response, QString* er
         if ( !validateActionDefinition( inlineAction, errorMessage ) ) {
             return false;
         }
+    }
+
+    const auto hasLinkedSteps = !response.response.steps.isEmpty()
+                                || ( response.response.hasActionId
+                                     && response.response.actionId >= 0 );
+    const auto hasSideEffects = !response.response.comment.isEmpty()
+                                || response.response.linebreak
+                                || response.response.timestamp
+                                || response.response.snapshot
+                                || response.response.stopCommunication;
+    if ( !hasLinkedSteps && !response.response.hasInlineAction && !hasSideEffects ) {
+        setError( errorMessage,
+                  QStringLiteral( "Response must perform at least one action or side effect." ) );
+        return false;
     }
 
     return true;
@@ -384,6 +440,11 @@ void normalizeActionDefinitions( QVector<ActionDefinition>* actions )
 
 void normalizeResponseDefinitions( QVector<ResponseDefinition>* responses )
 {
+    if ( responses != nullptr ) {
+        for ( auto& response : *responses ) {
+            normalizeResponseAction( &response.response );
+        }
+    }
     normalizeResponseOrderValues( responses );
 }
 
@@ -427,6 +488,14 @@ QVariantMap responseDefinitionToVariantMap( const ResponseDefinition& response )
     QVariantMap responseAction;
     responseAction.insert( QStringLiteral( "action_id" ), response.response.actionId );
     responseAction.insert( QStringLiteral( "has_action_id" ), response.response.hasActionId );
+    QVariantList steps;
+    for ( const auto& step : response.response.steps ) {
+        QVariantMap stepMap;
+        stepMap.insert( QStringLiteral( "action_id" ), step.actionId );
+        stepMap.insert( QStringLiteral( "delay_ms" ), step.delayMs );
+        steps.push_back( stepMap );
+    }
+    responseAction.insert( QStringLiteral( "steps" ), steps );
     responseAction.insert( QStringLiteral( "has_inline_action" ),
                            response.response.hasInlineAction );
     responseAction.insert( QStringLiteral( "comment" ), response.response.comment );
@@ -535,6 +604,14 @@ ResponseDefinition responseDefinitionFromVariantMap( const QVariantMap& map,
                                 responseAction.contains( QStringLiteral( "action_id" ) ) )
               .toBool();
     response.response.actionId = responseAction.value( QStringLiteral( "action_id" ), -1 ).toInt();
+    const auto stepsList = responseAction.value( QStringLiteral( "steps" ) ).toList();
+    for ( const auto& stepValue : stepsList ) {
+        const auto stepMap = stepValue.toMap();
+        ResponseActionStep step;
+        step.actionId = stepMap.value( QStringLiteral( "action_id" ), -1 ).toInt();
+        step.delayMs = stepMap.value( QStringLiteral( "delay_ms" ), 0 ).toInt();
+        response.response.steps.push_back( step );
+    }
     response.response.hasInlineAction
         = responseAction.value( QStringLiteral( "has_inline_action" ),
                                 responseAction.contains( QStringLiteral( "action" ) ) )
@@ -557,6 +634,8 @@ ResponseDefinition responseDefinitionFromVariantMap( const QVariantMap& map,
             setError( errorMessage, QStringLiteral( "Invalid response inline action type." ) );
         }
     }
+
+    normalizeResponseAction( &response.response );
 
     QString validationError;
     if ( !validateResponseDefinition( response, &validationError ) ) {

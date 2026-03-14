@@ -144,41 +144,79 @@ bool executeResponseDefinition( StreamSession* session,
             return false;
         }
     }
-    else if ( response.response.hasActionId ) {
-        const auto* action = ActionsManager::instance().findActionById( response.response.actionId );
+
+    QVector<ActionDefinition> linkedActions;
+    QVector<int> linkedDelays;
+    linkedActions.reserve( response.response.steps.size() );
+    linkedDelays.reserve( response.response.steps.size() );
+    for ( const auto& step : response.response.steps ) {
+        const auto* action = ActionsManager::instance().findActionById( step.actionId );
         if ( action == nullptr ) {
-            setError( errorMessage, QObject::tr( "Unknown action id %1." ).arg( response.response.actionId ) );
+            setError( errorMessage, QObject::tr( "Unknown action id %1." ).arg( step.actionId ) );
             return false;
         }
-        if ( !sendActionDefinition( session, *action, captures, errorMessage ) ) {
-            return false;
-        }
+        linkedActions.push_back( *action );
+        linkedDelays.push_back( qMax( 0, step.delayMs ) );
     }
 
-    if ( !response.response.comment.isEmpty() || response.response.linebreak ) {
-        QStringList missing;
-        QString comment = response.response.comment;
-        if ( !captures.isEmpty() ) {
-            comment = resolveTemplateString( comment, captures, &missing );
-        }
-        if ( response.response.timestamp ) {
-            const auto timestamp = QDateTime::currentDateTime().toString( Qt::ISODateWithMs );
-            comment = comment.isEmpty() ? timestamp : QStringLiteral( "%1 %2" ).arg( timestamp, comment );
+    QPointer<StreamSession> safeSession = session;
+    int cumulativeDelay = 0;
+    for ( int index = 0; index < linkedActions.size(); ++index ) {
+        cumulativeDelay += linkedDelays.at( index );
+        const auto action = linkedActions.at( index );
+        if ( cumulativeDelay <= 0 ) {
+            if ( !sendActionDefinition( session, action, captures, errorMessage ) ) {
+                return false;
+            }
+            continue;
         }
 
-        QByteArray output;
-        if ( !comment.isEmpty() ) {
-            output.append( comment.toLatin1() );
-            output.append( "\r\n" );
-        }
-        if ( response.response.linebreak ) {
-            output.append( "\r\n" );
-        }
-        session->appendToFile( output );
+        QTimer::singleShot( cumulativeDelay, session, [ safeSession, action, captures ]() {
+            if ( safeSession && safeSession->isConnectionOpen() ) {
+                QString ignoredError;
+                sendActionDefinition( safeSession, action, captures, &ignoredError );
+            }
+        } );
     }
 
-    if ( response.response.stopCommunication ) {
-        session->closeConnection();
+    const auto finalizeResponse = [ safeSession, response, captures ]() {
+        if ( !safeSession ) {
+            return;
+        }
+
+        if ( !response.response.comment.isEmpty() || response.response.linebreak ) {
+            QStringList missing;
+            QString comment = response.response.comment;
+            if ( !captures.isEmpty() ) {
+                comment = resolveTemplateString( comment, captures, &missing );
+            }
+            if ( response.response.timestamp ) {
+                const auto timestamp = QDateTime::currentDateTime().toString( Qt::ISODateWithMs );
+                comment = comment.isEmpty() ? timestamp
+                                            : QStringLiteral( "%1 %2" ).arg( timestamp, comment );
+            }
+
+            QByteArray output;
+            if ( !comment.isEmpty() ) {
+                output.append( comment.toLatin1() );
+                output.append( "\r\n" );
+            }
+            if ( response.response.linebreak ) {
+                output.append( "\r\n" );
+            }
+            safeSession->appendToFile( output );
+        }
+
+        if ( response.response.stopCommunication ) {
+            safeSession->closeConnection();
+        }
+    };
+
+    if ( cumulativeDelay > 0 ) {
+        QTimer::singleShot( cumulativeDelay, session, finalizeResponse );
+    }
+    else {
+        finalizeResponse();
     }
 
     return true;

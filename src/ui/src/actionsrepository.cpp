@@ -56,6 +56,16 @@ QJsonObject responseToJson( const ResponseDefinition& response )
     if ( response.response.hasActionId ) {
         responseObj.insert( "action_id", response.response.actionId );
     }
+    if ( !response.response.steps.isEmpty() ) {
+        QJsonArray stepsArray;
+        for ( const auto& step : response.response.steps ) {
+            QJsonObject stepObj;
+            stepObj.insert( "action_id", step.actionId );
+            stepObj.insert( "delay_ms", step.delayMs );
+            stepsArray.append( stepObj );
+        }
+        responseObj.insert( "steps", stepsArray );
+    }
     if ( response.response.hasInlineAction ) {
         responseObj.insert( "action", sequenceToJson( response.response.inlineAction ) );
     }
@@ -102,7 +112,7 @@ bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
     }
 
     QJsonObject root;
-    root.insert( "version", 2 );
+    root.insert( "version", 3 );
     root.insert( "actions", actionsArray );
     root.insert( "responses", responsesArray );
 

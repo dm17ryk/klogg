@@ -185,9 +185,13 @@ QString ResponsesTableModel::tooltipForResponse( const ResponseDefinition& respo
     tooltip.append( tr( "Match: %1 (%2)" )
                         .arg( response.match.value,
                               responseMatchTypeToString( response.match.type ) ) );
-    if ( response.response.hasActionId ) {
+    if ( !response.response.steps.isEmpty() ) {
         tooltip.append( '\n' );
-        tooltip.append( tr( "Action id: %1" ).arg( response.response.actionId ) );
+        tooltip.append( tr( "Linked actions: %1" ).arg( response.response.steps.size() ) );
+    }
+    else if ( response.response.hasActionId ) {
+        tooltip.append( '\n' );
+        tooltip.append( tr( "Linked actions: 1" ) );
     }
     if ( response.response.hasInlineAction ) {
         tooltip.append( '\n' );

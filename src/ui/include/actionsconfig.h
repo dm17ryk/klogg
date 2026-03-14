@@ -59,9 +59,15 @@ struct ResponseMatchDefinition {
     QRegularExpression compiled;
 };
 
+struct ResponseActionStep {
+    int actionId = -1;
+    int delayMs = 0;
+};
+
 struct ResponseActionDefinition {
     bool hasActionId = false;
     int actionId = -1;
+    QVector<ResponseActionStep> steps;
     bool hasInlineAction = false;
     ActionSequence inlineAction;
     QString comment;

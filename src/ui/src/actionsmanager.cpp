@@ -25,6 +25,36 @@ void setError( QString* errorMessage, const QString& message )
         *errorMessage = message;
     }
 }
+
+bool validateResponseActionIds( const QVector<ActionDefinition>& actions,
+                                const ResponseDefinition& response,
+                                QString* errorMessage )
+{
+    const auto hasActionId = [ &actions ]( int actionId ) {
+        return std::any_of( actions.cbegin(), actions.cend(),
+                            [ actionId ]( const ActionDefinition& action ) {
+                                return action.id == actionId;
+                            } );
+    };
+
+    for ( const auto& step : response.response.steps ) {
+        if ( !hasActionId( step.actionId ) ) {
+            setError( errorMessage,
+                      QObject::tr( "Response linked action id %1 was not found." ).arg( step.actionId ) );
+            return false;
+        }
+    }
+
+    if ( response.response.hasActionId && response.response.actionId >= 0
+         && !hasActionId( response.response.actionId ) ) {
+        setError( errorMessage,
+                  QObject::tr( "Response linked action id %1 was not found." )
+                      .arg( response.response.actionId ) );
+        return false;
+    }
+
+    return true;
+}
 } // namespace
 
 ActionsManager& ActionsManager::instance()
@@ -220,10 +250,15 @@ bool ActionsManager::deleteAction( int id, QString* errorMessage )
 
     auto updatedResponses = responses_;
     for ( auto& response : updatedResponses ) {
-        if ( response.response.hasActionId && response.response.actionId == id ) {
-            response.response.hasActionId = false;
-            response.response.actionId = -1;
-        }
+        response.response.steps.erase(
+            std::remove_if( response.response.steps.begin(), response.response.steps.end(),
+                            [ id ]( const ResponseActionStep& step ) {
+                                return step.actionId == id;
+                            } ),
+            response.response.steps.end() );
+        response.response.hasActionId = !response.response.steps.isEmpty();
+        response.response.actionId = response.response.hasActionId ? response.response.steps.front().actionId
+                                                                  : -1;
     }
 
     normalizeActionDefinitions( &updatedActions );
@@ -279,6 +314,9 @@ bool ActionsManager::createResponse( ResponseDefinition response, QString* error
     if ( !validateResponseDefinition( response, errorMessage ) ) {
         return false;
     }
+    if ( !validateResponseActionIds( actions_, response, errorMessage ) ) {
+        return false;
+    }
     if ( findResponseById( response.id ) != nullptr ) {
         setError( errorMessage, tr( "Response id %1 already exists." ).arg( response.id ) );
         return false;
@@ -312,6 +350,9 @@ bool ActionsManager::updateResponse( int id, ResponseDefinition response, QStrin
     response.id = id;
     response.order = it->order;
     if ( !validateResponseDefinition( response, errorMessage ) ) {
+        return false;
+    }
+    if ( !validateResponseActionIds( actions_, response, errorMessage ) ) {
         return false;
     }
     *it = response;

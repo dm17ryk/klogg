@@ -335,7 +335,8 @@ bool parseResponse( const QJsonObject& object,
     }
     const auto responseObj = responseValue.toObject();
     const QSet<QString> responseKeys = { "action_id", "action", "comment", "linebreak",
-                                         "timestamp", "snapshot", "stop_communication" };
+                                         "timestamp", "snapshot", "stop_communication",
+                                         "steps" };
     const auto responseExtraKeys = unknownKeys( responseObj, responseKeys );
     for ( const auto& key : responseExtraKeys ) {
         if ( warnings ) {
@@ -353,6 +354,46 @@ bool parseResponse( const QJsonObject& object,
         else if ( warnings ) {
             warnings->push_back(
                 QString( "Invalid action_id for response '%1'." ).arg( out->name ) );
+        }
+    }
+
+    if ( responseObj.contains( "steps" ) ) {
+        const auto stepsValue = responseObj.value( "steps" );
+        if ( !stepsValue.isArray() ) {
+            if ( warnings ) {
+                warnings->push_back(
+                    QString( "Invalid steps array for response '%1'." ).arg( out->name ) );
+            }
+        }
+        else {
+            const auto stepsArray = stepsValue.toArray();
+            for ( qsizetype stepIndex = 0; stepIndex < stepsArray.size(); ++stepIndex ) {
+                const auto stepValue = stepsArray.at( stepIndex );
+                if ( !stepValue.isObject() ) {
+                    if ( warnings ) {
+                        warnings->push_back(
+                            QString( "Invalid response step %1 for '%2'." )
+                                .arg( stepIndex )
+                                .arg( out->name ) );
+                    }
+                    continue;
+                }
+
+                const auto stepObj = stepValue.toObject();
+                ResponseActionStep step;
+                if ( stepObj.value( "action_id" ).isDouble() ) {
+                    step.actionId = stepObj.value( "action_id" ).toInt();
+                }
+                else if ( warnings ) {
+                    warnings->push_back(
+                        QString( "Invalid action_id in response step %1 for '%2'." )
+                            .arg( stepIndex )
+                            .arg( out->name ) );
+                    continue;
+                }
+                step.delayMs = stepObj.value( "delay_ms" ).toInt( 0 );
+                out->response.steps.push_back( step );
+            }
         }
     }
 
@@ -387,6 +428,11 @@ bool parseResponse( const QJsonObject& object,
     if ( responseObj.contains( "stop_communication" ) ) {
         out->response.stopCommunication
             = responseObj.value( "stop_communication" ).toBool( false );
+    }
+
+    if ( out->response.steps.isEmpty() && out->response.hasActionId
+         && out->response.actionId >= 0 ) {
+        out->response.steps.push_back( { out->response.actionId, 0 } );
     }
 
     return true;
