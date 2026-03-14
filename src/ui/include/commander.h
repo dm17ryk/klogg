@@ -19,6 +19,16 @@ enum class CommanderAction {
     CloseAll,
     GetInfo,
     GetFilters,
+    GetActions,
+    GetResponses,
+    CreateAction,
+    UpdateAction,
+    DeleteAction,
+    CreateResponse,
+    UpdateResponse,
+    DeleteResponse,
+    SendAction,
+    WaitResponse,
     FocusTab,
     SetFilter,
     CloseTab,
@@ -54,15 +64,19 @@ struct CommanderRequest {
     QString tabId;
     QString filterId;
     QString filterString;
+    QString entityName;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
+    std::optional<int> entityId;
+    std::optional<int> timeoutMs;
     bool followFile = false;
     bool predefinedFilters = false;
     bool prettyOutput = false;
     bool runSearch = false;
     bool rearmAutoRefresh = false;
     CommanderComSettings comSettings;
+    QVariantMap definitionPayload;
 };
 
 struct CommanderResult {

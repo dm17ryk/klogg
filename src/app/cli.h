@@ -28,7 +28,11 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QString>
 #include <QStringList>
 
@@ -117,6 +121,16 @@ struct CliParameters {
             "  klogg command --action close_klogg\n"
             "  klogg command --action close_all\n"
             "  klogg command --action get_info [--pretty]\n"
+            "  klogg command --action get_actions [--pretty]\n"
+            "  klogg command --action get_responses [--pretty]\n"
+            "  klogg command --action create_action --json-file <path>\n"
+            "  klogg command --action update_action --id <id> --json-file <path>\n"
+            "  klogg command --action delete_action --id <id>\n"
+            "  klogg command --action create_response --json-file <path>\n"
+            "  klogg command --action update_response --id <id> --json-file <path>\n"
+            "  klogg command --action delete_response --id <id>\n"
+            "  klogg command --action send_action --id <id> [tab selector]\n"
+            "  klogg command --action wait_response (--id <id> | --name <name>) [tab selector] --timeout-ms <n>\n"
             "  klogg command --action get_filters [tab selector] [filter selector] [--predefined] [--pretty]\n"
             "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
@@ -138,6 +152,16 @@ struct CliParameters {
             "  close_klogg\n"
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
+            "  get_actions [--pretty|--preatty]\n"
+            "  get_responses [--pretty|--preatty]\n"
+            "  create_action --json-file <path>\n"
+            "  update_action --id <id> --json-file <path>\n"
+            "  delete_action --id <id>\n"
+            "  create_response --json-file <path>\n"
+            "  update_response --id <id> --json-file <path>\n"
+            "  delete_response --id <id>\n"
+            "  send_action --id <id> [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  wait_response (--id <id> | --name <name>) [--tab-id <id> | --window-index <n> --tab-index <n>] --timeout-ms <ms>\n"
             "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> | --filter-index <n>] [--predefined] [--pretty|--preatty]\n"
             "  focus_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  set_filter [--tab-id <id> | --window-index <n> --tab-index <n>] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
@@ -391,6 +415,30 @@ struct CliParameters {
         return std::nullopt;
     }
 
+    static std::optional<QVariantMap> loadJsonObjectFile( const QString& path,
+                                                          QString* errorMessage )
+    {
+        QFile file( path );
+        if ( !file.open( QIODevice::ReadOnly ) ) {
+            if ( errorMessage != nullptr ) {
+                *errorMessage
+                    = QStringLiteral( "Failed to open JSON file %1: %2" ).arg( path, file.errorString() );
+            }
+            return std::nullopt;
+        }
+
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson( file.readAll(), &parseError );
+        if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+            if ( errorMessage != nullptr ) {
+                *errorMessage = QStringLiteral( "Invalid JSON object in %1." ).arg( path );
+            }
+            return std::nullopt;
+        }
+
+        return document.object().toVariantMap();
+    }
+
     static CommanderParseResult parseCommanderArguments( const QStringList& arguments )
     {
         CommanderParseResult result;
@@ -431,6 +479,18 @@ struct CliParameters {
             QStringLiteral( "filter-string" ),
             QStringLiteral( "Literal filter/search expression to apply." ),
             QStringLiteral( "expr" ) );
+        const QCommandLineOption idOption( QStringLiteral( "id" ),
+                                           QStringLiteral( "Action/response id." ),
+                                           QStringLiteral( "id" ) );
+        const QCommandLineOption nameOption( QStringLiteral( "name" ),
+                                             QStringLiteral( "Action/response name." ),
+                                             QStringLiteral( "name" ) );
+        const QCommandLineOption jsonFileOption( QStringLiteral( "json-file" ),
+                                                 QStringLiteral( "Path to a JSON object payload." ),
+                                                 QStringLiteral( "path" ) );
+        const QCommandLineOption timeoutMsOption( QStringLiteral( "timeout-ms" ),
+                                                  QStringLiteral( "Timeout in milliseconds." ),
+                                                  QStringLiteral( "ms" ) );
         const QCommandLineOption predefinedOption(
             QStringLiteral( "predefined" ),
             QStringLiteral( "Use predefined filters instead of search-history filters." ) );
@@ -497,6 +557,10 @@ struct CliParameters {
         parser.addOption( filterIdOption );
         parser.addOption( filterIndexOption );
         parser.addOption( filterStringOption );
+        parser.addOption( idOption );
+        parser.addOption( nameOption );
+        parser.addOption( jsonFileOption );
+        parser.addOption( timeoutMsOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
@@ -559,8 +623,31 @@ struct CliParameters {
         request.runSearch = parser.isSet( searchOption );
         request.rearmAutoRefresh = parser.isSet( autoRefreshOption );
         request.predefinedFilters = parser.isSet( predefinedOption );
+        request.entityName = parser.value( nameOption ).trimmed();
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
+        }
+
+        if ( parser.isSet( idOption ) ) {
+            bool ok = false;
+            const auto parsedId = parser.value( idOption ).toInt( &ok );
+            if ( !ok || parsedId < 0 ) {
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "Invalid --id value." ) );
+                return result;
+            }
+            request.entityId = parsedId;
+        }
+
+        if ( parser.isSet( timeoutMsOption ) ) {
+            bool ok = false;
+            const auto parsedTimeout = parser.value( timeoutMsOption ).toInt( &ok );
+            if ( !ok || parsedTimeout <= 0 ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Invalid --timeout-ms value." ) );
+                return result;
+            }
+            request.timeoutMs = parsedTimeout;
         }
 
         const auto tabId = parser.value( tabIdOption ).trimmed();
@@ -690,6 +777,54 @@ struct CliParameters {
                 }
             }
             break;
+        case CommanderAction::GetActions:
+        case CommanderAction::GetResponses:
+            break;
+        case CommanderAction::CreateAction:
+        case CommanderAction::CreateResponse:
+            if ( !parser.isSet( jsonFileOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--json-file is required for this action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::UpdateAction:
+        case CommanderAction::DeleteAction:
+        case CommanderAction::UpdateResponse:
+        case CommanderAction::DeleteResponse:
+        case CommanderAction::SendAction:
+            if ( *action == CommanderAction::SendAction
+                 && !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            if ( !request.entityId ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--id is required for this action." ) );
+                return result;
+            }
+            if ( ( *action == CommanderAction::UpdateAction
+                   || *action == CommanderAction::UpdateResponse )
+                 && !parser.isSet( jsonFileOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--json-file is required for this action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::WaitResponse:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            if ( ( request.entityId ? 1 : 0 ) + ( request.entityName.isEmpty() ? 0 : 1 ) != 1 ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "wait_response requires exactly one of --id or --name." ) );
+                return result;
+            }
+            if ( !request.timeoutMs ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--timeout-ms is required for wait_response." ) );
+                return result;
+            }
+            break;
         case CommanderAction::CloseKlogg:
         case CommanderAction::CloseAll:
             if ( parser.isSet( prettyOption ) || parser.isSet( searchOption )
@@ -799,6 +934,18 @@ struct CliParameters {
                     return result;
                 }
             }
+        }
+
+        if ( *action == CommanderAction::CreateAction || *action == CommanderAction::UpdateAction
+             || *action == CommanderAction::CreateResponse
+             || *action == CommanderAction::UpdateResponse ) {
+            QString errorMessage;
+            const auto payload = loadJsonObjectFile( parser.value( jsonFileOption ), &errorMessage );
+            if ( !payload ) {
+                result.output_message = formatParserError( parser, errorMessage );
+                return result;
+            }
+            request.definitionPayload = *payload;
         }
 
         result.request = request;

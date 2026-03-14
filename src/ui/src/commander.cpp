@@ -66,6 +66,26 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "get_info" );
     case CommanderAction::GetFilters:
         return QStringLiteral( "get_filters" );
+    case CommanderAction::GetActions:
+        return QStringLiteral( "get_actions" );
+    case CommanderAction::GetResponses:
+        return QStringLiteral( "get_responses" );
+    case CommanderAction::CreateAction:
+        return QStringLiteral( "create_action" );
+    case CommanderAction::UpdateAction:
+        return QStringLiteral( "update_action" );
+    case CommanderAction::DeleteAction:
+        return QStringLiteral( "delete_action" );
+    case CommanderAction::CreateResponse:
+        return QStringLiteral( "create_response" );
+    case CommanderAction::UpdateResponse:
+        return QStringLiteral( "update_response" );
+    case CommanderAction::DeleteResponse:
+        return QStringLiteral( "delete_response" );
+    case CommanderAction::SendAction:
+        return QStringLiteral( "send_action" );
+    case CommanderAction::WaitResponse:
+        return QStringLiteral( "wait_response" );
     case CommanderAction::FocusTab:
         return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
@@ -110,6 +130,36 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "get_filters" ) ) {
         return CommanderAction::GetFilters;
+    }
+    if ( normalized == QStringLiteral( "get_actions" ) ) {
+        return CommanderAction::GetActions;
+    }
+    if ( normalized == QStringLiteral( "get_responses" ) ) {
+        return CommanderAction::GetResponses;
+    }
+    if ( normalized == QStringLiteral( "create_action" ) ) {
+        return CommanderAction::CreateAction;
+    }
+    if ( normalized == QStringLiteral( "update_action" ) ) {
+        return CommanderAction::UpdateAction;
+    }
+    if ( normalized == QStringLiteral( "delete_action" ) ) {
+        return CommanderAction::DeleteAction;
+    }
+    if ( normalized == QStringLiteral( "create_response" ) ) {
+        return CommanderAction::CreateResponse;
+    }
+    if ( normalized == QStringLiteral( "update_response" ) ) {
+        return CommanderAction::UpdateResponse;
+    }
+    if ( normalized == QStringLiteral( "delete_response" ) ) {
+        return CommanderAction::DeleteResponse;
+    }
+    if ( normalized == QStringLiteral( "send_action" ) ) {
+        return CommanderAction::SendAction;
+    }
+    if ( normalized == QStringLiteral( "wait_response" ) ) {
+        return CommanderAction::WaitResponse;
     }
     if ( normalized == QStringLiteral( "focus_tab" ) ) {
         return CommanderAction::FocusTab;
@@ -197,6 +247,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.filterString.isEmpty() ) {
         map.insert( QStringLiteral( "filterString" ), request.filterString );
     }
+    if ( !request.entityName.isEmpty() ) {
+        map.insert( QStringLiteral( "entityName" ), request.entityName );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -205,6 +258,12 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( request.filterIndex ) {
         map.insert( QStringLiteral( "filterIndex" ), *request.filterIndex );
+    }
+    if ( request.entityId ) {
+        map.insert( QStringLiteral( "entityId" ), *request.entityId );
+    }
+    if ( request.timeoutMs ) {
+        map.insert( QStringLiteral( "timeoutMs" ), *request.timeoutMs );
     }
     if ( request.followFile ) {
         map.insert( QStringLiteral( "followFile" ), true );
@@ -251,6 +310,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !comMap.isEmpty() ) {
         map.insert( QStringLiteral( "comSettings" ), comMap );
     }
+    if ( !request.definitionPayload.isEmpty() ) {
+        map.insert( QStringLiteral( "definitionPayload" ), request.definitionPayload );
+    }
 
     return map;
 }
@@ -272,6 +334,7 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.tabId = map.value( QStringLiteral( "tabId" ) ).toString();
     request.filterId = map.value( QStringLiteral( "filterId" ) ).toString();
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
+    request.entityName = map.value( QStringLiteral( "entityName" ) ).toString();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
     request.predefinedFilters = map.value( QStringLiteral( "predefinedFilters" ) ).toBool();
     request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();
@@ -309,6 +372,28 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
             return std::nullopt;
         }
         request.filterIndex = value;
+    }
+
+    const auto entityIdIt = map.find( QStringLiteral( "entityId" ) );
+    if ( entityIdIt != map.end() ) {
+        bool ok = false;
+        const auto value = entityIdIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander entity id." ) );
+            return std::nullopt;
+        }
+        request.entityId = value;
+    }
+
+    const auto timeoutMsIt = map.find( QStringLiteral( "timeoutMs" ) );
+    if ( timeoutMsIt != map.end() ) {
+        bool ok = false;
+        const auto value = timeoutMsIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander timeout." ) );
+            return std::nullopt;
+        }
+        request.timeoutMs = value;
     }
 
     const auto comSettingsValue = map.value( QStringLiteral( "comSettings" ) );
@@ -360,6 +445,15 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
         if ( useForActionsIt != comMap.end() ) {
             request.comSettings.useForActions = useForActionsIt->toBool();
         }
+    }
+
+    const auto definitionPayloadIt = map.find( QStringLiteral( "definitionPayload" ) );
+    if ( definitionPayloadIt != map.end() ) {
+        if ( !definitionPayloadIt->canConvert<QVariantMap>() ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander definition payload." ) );
+            return std::nullopt;
+        }
+        request.definitionPayload = definitionPayloadIt->toMap();
     }
 
     return request;

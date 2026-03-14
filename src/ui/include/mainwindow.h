@@ -235,6 +235,8 @@ class MainWindow : public QMainWindow {
     CommanderResult closeUrlBySource( const QString& url );
     CommanderResult commanderFilters( const CommanderRequest& request ) const;
     CommanderResult commanderSetFilter( const CommanderRequest& request );
+    CommanderResult commanderSendAction( const CommanderRequest& request );
+    CommanderResult commanderWaitResponse( const CommanderRequest& request );
     bool loadFile( const QString& fileName, bool followFile = false );
     bool extractAndLoadFile( const QString& fileName );
     CommanderResult openRemoteFile( const QUrl& url, bool interactiveErrors = true,
@@ -271,6 +273,8 @@ class MainWindow : public QMainWindow {
     void registerRemoteFileSource( const QString& filePath, const QString& normalizedSourceUrl );
     CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
+    CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
+    StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
 
     WindowSession session_;
     QString loadingFileName;

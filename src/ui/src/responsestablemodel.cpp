@@ -159,6 +159,14 @@ void ResponsesTableModel::refresh()
     endResetModel();
 }
 
+const ResponseDefinition* ResponsesTableModel::responseAt( int row ) const
+{
+    if ( row < 0 || row >= responses_.size() ) {
+        return nullptr;
+    }
+    return &responses_.at( row );
+}
+
 QString ResponsesTableModel::previewMatch( const ResponseMatchDefinition& match ) const
 {
     return truncateText( match.value, 64 );

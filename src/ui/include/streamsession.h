@@ -4,8 +4,6 @@
 #include <QByteArray>
 #include <QThread>
 
-#include "actionsmanager.h"
-#include "previewdecodeutils.h"
 #include "serialcaptureworker.h"
 
 class StreamSession : public QObject {
@@ -22,6 +20,7 @@ class StreamSession : public QObject {
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
     void sendBytes( const QByteArray& data );
+    void appendToFile( const QByteArray& data );
 
   public Q_SLOTS:
     void closeConnection();
@@ -29,12 +28,12 @@ class StreamSession : public QObject {
   Q_SIGNALS:
     void errorOccurred( const QString& message );
     void connectionClosed();
+    void lineObserved( const QByteArray& lineBytes );
 
   private:
     void setupWorker();
     void setConnectionClosed();
     void handleIncomingLine( const QByteArray& lineBytes );
-    void appendToFile( const QByteArray& data );
 
   private Q_SLOTS:
     void handleDataReceived( const QByteArray& data );

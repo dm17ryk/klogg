@@ -56,6 +56,7 @@
 #endif
 
 #include "configuration.h"
+#include "actionsmanager.h"
 #include "commander.h"
 #include "crashhandler.h"
 #include "klogg_version.h"
@@ -496,6 +497,102 @@ class KloggApp : public QApplication {
             return commanderSuccess( {}, payload );
         }
 
+        if ( request.action == CommanderAction::GetActions ) {
+            QVariantList actions;
+            for ( const auto& action : ActionsManager::instance().actions() ) {
+                actions.push_back( actionDefinitionToVariantMap( action ) );
+            }
+            return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "actions" ), actions } } );
+        }
+
+        if ( request.action == CommanderAction::GetResponses ) {
+            QVariantList responses;
+            for ( const auto& response : ActionsManager::instance().responses() ) {
+                responses.push_back( responseDefinitionToVariantMap( response ) );
+            }
+            return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "responses" ), responses } } );
+        }
+
+        if ( request.action == CommanderAction::CreateAction ) {
+            QString errorMessage;
+            const auto action = actionDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().createAction( action, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::UpdateAction ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing action id." ) );
+            }
+            QString errorMessage;
+            const auto action = actionDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().updateAction( *request.entityId, action, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::DeleteAction ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing action id." ) );
+            }
+            QString errorMessage;
+            if ( !ActionsManager::instance().deleteAction( *request.entityId, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::CreateResponse ) {
+            QString errorMessage;
+            const auto response = responseDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().createResponse( response, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::UpdateResponse ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing response id." ) );
+            }
+            QString errorMessage;
+            const auto response = responseDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().updateResponse( *request.entityId, response, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::DeleteResponse ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing response id." ) );
+            }
+            QString errorMessage;
+            if ( !ActionsManager::instance().deleteResponse( *request.entityId, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
         if ( isCommanderOpenAction( request.action ) ) {
             auto* window = activeWindowOrCreate();
             if ( window == nullptr ) {
@@ -529,7 +626,9 @@ class KloggApp : public QApplication {
             = request.action == CommanderAction::CloseTab
               || request.action == CommanderAction::FocusTab
               || request.action == CommanderAction::GetFilters
-              || request.action == CommanderAction::SetFilter;
+              || request.action == CommanderAction::SetFilter
+              || request.action == CommanderAction::SendAction
+              || request.action == CommanderAction::WaitResponse;
 
         if ( targetSpecificWindow && request.windowIndex ) {
             auto* window = windowByIndex( *request.windowIndex );
@@ -542,7 +641,9 @@ class KloggApp : public QApplication {
         }
 
         if ( ( request.action == CommanderAction::GetFilters
-               || request.action == CommanderAction::SetFilter )
+               || request.action == CommanderAction::SetFilter
+               || request.action == CommanderAction::SendAction
+               || request.action == CommanderAction::WaitResponse )
              && request.tabId.isEmpty() && !request.tabIndex ) {
             auto* window = activeWindowIfAny();
             if ( window == nullptr ) {

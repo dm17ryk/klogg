@@ -97,6 +97,7 @@
 #include "dispatch_to.h"
 #include "downloader.h"
 #include "actionsmanager.h"
+#include "actionruntime.h"
 #include "comportutils.h"
 #include "encodings.h"
 #include "favoritefiles.h"
@@ -540,6 +541,10 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSuccess( {}, commanderWindowInfo() );
     case CommanderAction::GetFilters:
         return commanderFilters( request );
+    case CommanderAction::SendAction:
+        return commanderSendAction( request );
+    case CommanderAction::WaitResponse:
+        return commanderWaitResponse( request );
     case CommanderAction::FocusTab:
         if ( !request.tabId.isEmpty() ) {
             return focusTabById( request.tabId );
@@ -561,6 +566,14 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "close_tab requires a tab selector." ) );
     case CommanderAction::CloseKlogg:
+    case CommanderAction::GetActions:
+    case CommanderAction::GetResponses:
+    case CommanderAction::CreateAction:
+    case CommanderAction::UpdateAction:
+    case CommanderAction::DeleteAction:
+    case CommanderAction::CreateResponse:
+    case CommanderAction::UpdateResponse:
+    case CommanderAction::DeleteResponse:
     case CommanderAction::None:
     default:
         return commanderFailure( CommanderResultCode::InvalidRequest,
@@ -1921,14 +1934,13 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
 
-    const auto result = actionSequenceToBytes( action->sequence );
-    if ( !result.ok ) {
+    QString errorMessage;
+    if ( !sendActionDefinition( streamSession, *action, {}, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
-                              tr( "Failed to encode action: %1" ).arg( result.error ) );
+                              errorMessage.isEmpty() ? tr( "Failed to send action." )
+                                                     : errorMessage );
         return;
     }
-
-    streamSession->sendBytes( result.bytes );
 }
 void MainWindow::encodingChanged( QAction* action )
 {
@@ -2149,6 +2161,31 @@ CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
     return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
 }
 
+CrawlerWidget* MainWindow::commanderTargetCrawler( const CommanderRequest& request ) const
+{
+    if ( !request.tabId.isEmpty() ) {
+        return crawlerWidgetByTabId( request.tabId );
+    }
+    if ( request.tabIndex ) {
+        return crawlerWidgetByIndex( *request.tabIndex );
+    }
+    return currentCrawlerWidget();
+}
+
+StreamSession* MainWindow::streamSessionForCrawler( const CrawlerWidget* crawler ) const
+{
+    if ( crawler == nullptr ) {
+        return nullptr;
+    }
+
+    const auto filePath = session_.getFilename( crawler );
+    if ( filePath.isEmpty() ) {
+        return nullptr;
+    }
+
+    return mainTabWidget_.streamSessionForPath( filePath );
+}
+
 CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 {
     if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
@@ -2192,18 +2229,126 @@ CommanderResult MainWindow::closeAllTabsCommander()
     return commanderSuccess();
 }
 
+CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request )
+{
+    if ( !request.entityId ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "send_action requires an action id." ) );
+    }
+
+    const auto* action = ActionsManager::instance().findActionById( *request.entityId );
+    if ( action == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Action %1 was not found." ).arg( *request.entityId ) );
+    }
+
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QString errorMessage;
+    if ( !sendActionDefinition( streamSession, *action, {}, &errorMessage ) ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 errorMessage.isEmpty() ? tr( "Failed to send action." )
+                                                        : errorMessage );
+    }
+
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& request )
+{
+    if ( !request.timeoutMs || *request.timeoutMs <= 0 ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "wait_response requires a positive timeout." ) );
+    }
+
+    const ResponseDefinition* response = nullptr;
+    if ( request.entityId ) {
+        response = ActionsManager::instance().findResponseById( *request.entityId );
+    }
+    else if ( !request.entityName.isEmpty() ) {
+        response = ActionsManager::instance().findResponseByName( request.entityName );
+    }
+
+    if ( response == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response was not found." ) );
+    }
+
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot( true );
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "responseId" ), response->id );
+    payload.insert( QStringLiteral( "responseName" ), response->name );
+
+    CommanderResult result = commanderFailure( CommanderResultCode::ExecutionFailed,
+                                               tr( "wait_response did not complete." ) );
+
+    QMetaObject::Connection lineConnection;
+    QMetaObject::Connection disconnectConnection;
+    QObject::connect( &timer, &QTimer::timeout, &loop, [ & ]() {
+        result = commanderFailure( CommanderResultCode::NotFound,
+                                   tr( "Timed out waiting for response %1." ).arg( response->name ) );
+        loop.quit();
+    } );
+    disconnectConnection = QObject::connect( streamSession, &QObject::destroyed, &loop, [ & ]() {
+        result = commanderFailure( CommanderResultCode::ExecutionFailed,
+                                   tr( "COM session closed while waiting for response." ) );
+        loop.quit();
+    } );
+    lineConnection = QObject::connect( streamSession, &StreamSession::lineObserved, &loop,
+                                       [ & ]( const QByteArray& lineBytes ) {
+                                           const auto match = matchResponseDefinition( *response, lineBytes );
+                                           if ( !match.matched ) {
+                                               return;
+                                           }
+
+                                           QVariantMap captures;
+                                           for ( auto it = match.captures.cbegin();
+                                                 it != match.captures.cend(); ++it ) {
+                                               captures.insert( it.key(), it.value() );
+                                           }
+                                           payload.insert( QStringLiteral( "matchedLine" ), match.lineText );
+                                           if ( !captures.isEmpty() ) {
+                                               payload.insert( QStringLiteral( "captures" ), captures );
+                                           }
+                                           result = commanderSuccess( {}, payload );
+                                           loop.quit();
+                                       } );
+
+    timer.start( *request.timeoutMs );
+    loop.exec();
+    QObject::disconnect( lineConnection );
+    QObject::disconnect( disconnectConnection );
+    return result;
+}
+
 CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
 {
-    CrawlerWidget* crawler = nullptr;
-    if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
-    }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
-    }
+    auto* crawler = commanderTargetCrawler( request );
 
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
@@ -2249,16 +2394,7 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
 
 CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request )
 {
-    CrawlerWidget* crawler = nullptr;
-    if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
-    }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
-    }
+    auto* crawler = commanderTargetCrawler( request );
 
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,

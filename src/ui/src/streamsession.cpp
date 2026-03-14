@@ -3,6 +3,9 @@
 
 #include <QMetaObject>
 
+#include "actionruntime.h"
+#include "actionsmanager.h"
+#include "previewdecodeutils.h"
 #include "streamsourceregistry.h"
 
 #include "log.h"
@@ -185,6 +188,8 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         return;
     }
 
+    Q_EMIT lineObserved( lineBytes );
+
     if ( !ActionsManager::instance().autoResponsesEnabled() ) {
         return;
     }
@@ -200,93 +205,16 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
             continue;
         }
 
-        bool matched = false;
-        QMap<QString, QString> captures;
-
-        switch ( response.match.type ) {
-        case ResponseMatchType::String:
-            matched = lineText.contains( response.match.value );
-            break;
-        case ResponseMatchType::HexString: {
-            const auto decoded = decodeHexStringToBytes( response.match.value );
-            if ( decoded.ok ) {
-                matched = lineBytes.contains( decoded.bytes );
-            }
-            break;
-        }
-        case ResponseMatchType::Regex: {
-            const auto regex = response.match.compiled.isValid()
-                                   ? response.match.compiled
-                                   : QRegularExpression( response.match.value );
-            const auto match = regex.match( lineText );
-            if ( match.hasMatch() ) {
-                matched = true;
-                const auto names = regex.namedCaptureGroups();
-                for ( const auto& name : names ) {
-                    if ( name.isEmpty() ) {
-                        continue;
-                    }
-                    captures.insert( name, match.captured( name ) );
-                }
-                const auto texts = match.capturedTexts();
-                for ( qsizetype i = 0; i < texts.size(); ++i ) {
-                    captures.insert( QString::number( i ), texts.at( i ) );
-                }
-            }
-            break;
-        }
-        }
-
-        if ( !matched ) {
+        const auto match = matchResponseDefinition( response, lineBytes, lineText );
+        if ( !match.matched ) {
             continue;
         }
 
-        const ActionSequence* sequence = nullptr;
-        ActionSequence inlineSequence;
-        if ( response.response.hasInlineAction ) {
-            inlineSequence = response.response.inlineAction;
-            sequence = &inlineSequence;
-        }
-        else if ( response.response.hasActionId ) {
-            if ( const auto* action
-                 = ActionsManager::instance().findActionById( response.response.actionId ) ) {
-                sequence = &action->sequence;
-            }
-        }
-
-        if ( sequence ) {
-            QStringList missing;
-            const auto result = actionSequenceToBytes( *sequence, captures, &missing );
-            if ( result.ok ) {
-                sendBytes( result.bytes );
-            }
-            else {
-                LOG_WARNING << "Failed to encode response action for "
-                            << response.name.toStdString() << ": "
-                            << result.error.toStdString();
-            }
-        }
-
-        if ( !response.response.comment.isEmpty() || response.response.linebreak ) {
-            QStringList missing;
-            QString comment = response.response.comment;
-            if ( !captures.isEmpty() ) {
-                comment = resolveTemplateString( comment, captures, &missing );
-            }
-            if ( response.response.timestamp ) {
-                const auto timestamp = QDateTime::currentDateTime().toString( Qt::ISODateWithMs );
-                comment = comment.isEmpty() ? timestamp : QString( "%1 %2" ).arg( timestamp, comment );
-            }
-
-            QByteArray output;
-            if ( !comment.isEmpty() ) {
-                output.append( comment.toLatin1() );
-                output.append( "\r\n" );
-            }
-            if ( response.response.linebreak ) {
-                output.append( "\r\n" );
-            }
-            appendToFile( output );
+        QString errorMessage;
+        if ( !executeResponseDefinition( this, response, match.captures, &errorMessage ) ) {
+            LOG_WARNING << "Failed to execute response action for "
+                        << response.name.toStdString() << ": "
+                        << errorMessage.toStdString();
         }
 
         if ( response.response.snapshot ) {
@@ -294,7 +222,6 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         }
 
         if ( response.response.stopCommunication ) {
-            closeConnection();
             break;
         }
     }

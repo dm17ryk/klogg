@@ -1,9 +1,13 @@
 #include <catch2/catch.hpp>
 
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 
+#include "actionruntime.h"
 #include "cli.h"
 #include "commander.h"
 #include "comportutils.h"
@@ -58,6 +62,12 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_code == EXIT_SUCCESS );
     REQUIRE( parameters.exit_message.contains( "open_com" ) );
     REQUIRE( parameters.exit_message.contains( "get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "get_actions" ) );
+    REQUIRE( parameters.exit_message.contains( "get_responses" ) );
+    REQUIRE( parameters.exit_message.contains( "create_action" ) );
+    REQUIRE( parameters.exit_message.contains( "update_response" ) );
+    REQUIRE( parameters.exit_message.contains( "send_action" ) );
+    REQUIRE( parameters.exit_message.contains( "wait_response" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
@@ -122,6 +132,79 @@ TEST_CASE( "Commander CLI parses get_info action", "[commander][cli]" )
     REQUIRE_FALSE( parameters.parse_error );
     REQUIRE( parameters.commander_request.has_value() );
     REQUIRE( parameters.commander_request->action == CommanderAction::GetInfo );
+}
+
+TEST_CASE( "Commander CLI parses actions CRUD requests", "[commander][cli]" )
+{
+    QTemporaryDir dir;
+    REQUIRE( dir.isValid() );
+
+    const auto payloadPath = dir.filePath( "action.json" );
+    QFile payloadFile( payloadPath );
+    REQUIRE( payloadFile.open( QIODevice::WriteOnly ) );
+    payloadFile.write( QJsonDocument( QJsonObject{
+                           { "id", 17 },
+                           { "name", "Ping" },
+                           { "sequence", QJsonObject{ { "type", "String" }, { "value", "AT" } } },
+                       } )
+                           .toJson( QJsonDocument::Compact ) );
+    payloadFile.close();
+
+    CliParameters createParameters(
+        { "klogg", "command", "--action", "create_action", "--json-file", payloadPath } );
+    REQUIRE_FALSE( createParameters.parse_error );
+    REQUIRE( createParameters.commander_request.has_value() );
+    REQUIRE( createParameters.commander_request->action == CommanderAction::CreateAction );
+    REQUIRE( createParameters.commander_request->definitionPayload.value( "name" ).toString() == "Ping" );
+
+    CliParameters updateParameters(
+        { "klogg", "command", "--action", "update_action", "--id", "17", "--json-file",
+          payloadPath } );
+    REQUIRE_FALSE( updateParameters.parse_error );
+    REQUIRE( updateParameters.commander_request.has_value() );
+    REQUIRE( updateParameters.commander_request->entityId == 17 );
+
+    CliParameters deleteParameters(
+        { "klogg", "command", "--action", "delete_response", "--id", "9" } );
+    REQUIRE_FALSE( deleteParameters.parse_error );
+    REQUIRE( deleteParameters.commander_request.has_value() );
+    REQUIRE( deleteParameters.commander_request->action == CommanderAction::DeleteResponse );
+    REQUIRE( deleteParameters.commander_request->entityId == 9 );
+}
+
+TEST_CASE( "Commander CLI parses send and wait response requests", "[commander][cli]" )
+{
+    CliParameters sendParameters(
+        { "klogg", "command", "--action", "send_action", "--id", "12", "--tab-id", "tab-1" } );
+    REQUIRE_FALSE( sendParameters.parse_error );
+    REQUIRE( sendParameters.commander_request.has_value() );
+    REQUIRE( sendParameters.commander_request->action == CommanderAction::SendAction );
+    REQUIRE( sendParameters.commander_request->entityId == 12 );
+    REQUIRE( sendParameters.commander_request->tabId == "tab-1" );
+
+    CliParameters waitParameters(
+        { "klogg", "command", "--action", "wait_response", "--name", "Ready", "--timeout-ms",
+          "1500", "--window-index", "0", "--tab-index", "1" } );
+    REQUIRE_FALSE( waitParameters.parse_error );
+    REQUIRE( waitParameters.commander_request.has_value() );
+    REQUIRE( waitParameters.commander_request->action == CommanderAction::WaitResponse );
+    REQUIRE( waitParameters.commander_request->entityName == "Ready" );
+    REQUIRE( waitParameters.commander_request->timeoutMs == 1500 );
+    REQUIRE( waitParameters.commander_request->windowIndex == 0 );
+    REQUIRE( waitParameters.commander_request->tabIndex == 1 );
+}
+
+TEST_CASE( "Commander CLI rejects invalid wait_response selectors", "[commander][cli]" )
+{
+    CliParameters missingSelector(
+        { "klogg", "command", "--action", "wait_response", "--timeout-ms", "1000" } );
+    REQUIRE( missingSelector.parse_error );
+    REQUIRE( missingSelector.parse_error_message.contains( "exactly one of --id or --name" ) );
+
+    CliParameters missingTimeout(
+        { "klogg", "command", "--action", "wait_response", "--id", "7" } );
+    REQUIRE( missingTimeout.parse_error );
+    REQUIRE( missingTimeout.parse_error_message.contains( "--timeout-ms" ) );
 }
 
 TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
@@ -255,6 +338,8 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "klogg command --action open_file" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action close_com" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action get_actions" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action send_action" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action set_filter" ) );
 }
@@ -269,6 +354,9 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.filterId = "flt-1";
     request.filterIndex = 4;
     request.filterString = "alpha|beta";
+    request.entityId = 7;
+    request.entityName = "Ready";
+    request.timeoutMs = 5000;
     request.prettyOutput = true;
     request.predefinedFilters = true;
     request.runSearch = true;
@@ -278,6 +366,7 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.comSettings.baudRate = 115200;
     request.comSettings.addTimestamps = false;
     request.comSettings.useForActions = true;
+    request.definitionPayload = QVariantMap{ { "name", "Ping" }, { "order", 1 } };
 
     QString errorMessage;
     const auto restored
@@ -292,6 +381,9 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->filterId == request.filterId );
     REQUIRE( restored->filterIndex == request.filterIndex );
     REQUIRE( restored->filterString == request.filterString );
+    REQUIRE( restored->entityId == request.entityId );
+    REQUIRE( restored->entityName == request.entityName );
+    REQUIRE( restored->timeoutMs == request.timeoutMs );
     REQUIRE( restored->prettyOutput == request.prettyOutput );
     REQUIRE( restored->predefinedFilters == request.predefinedFilters );
     REQUIRE( restored->runSearch == request.runSearch );
@@ -303,6 +395,7 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->comSettings.addTimestamps == request.comSettings.addTimestamps );
     REQUIRE( restored->comSettings.useForActions.has_value() );
     REQUIRE( restored->comSettings.useForActions == request.comSettings.useForActions );
+    REQUIRE( restored->definitionPayload == request.definitionPayload );
 }
 
 TEST_CASE( "Commander result file roundtrip", "[commander][ipc]" )
@@ -435,4 +528,51 @@ TEST_CASE( "Predefined filters migrate missing ids and persist them", "[commande
     REQUIRE( reloadedSettings.value( "id" ).toString() == loadedFilters.front().id );
     reloadedSettings.endArray();
     reloadedSettings.endGroup();
+}
+
+TEST_CASE( "Action definition variant roundtrip preserves extended fields", "[commander][actions]" )
+{
+    ActionDefinition action;
+    action.id = 42;
+    action.order = 3;
+    action.name = "Ping";
+    action.description = "Send ping";
+    action.sequence.type = ActionSequenceType::HexString;
+    action.sequence.value = "41 54 ${CHECKSUM}";
+    action.parameters.repeat = true;
+    action.parameters.delay = 25;
+    action.parameters.repeatCount = 4;
+    action.parameters.repeatInterval = 150;
+    action.parameters.variableNames = { "checksum" };
+    action.checksum.enabled = true;
+    action.checksum.algorithm = "sum8";
+    action.checksum.placeholder = "${CHECKSUM}";
+
+    QString errorMessage;
+    const auto restored = actionDefinitionFromVariantMap( actionDefinitionToVariantMap( action ),
+                                                          &errorMessage );
+    REQUIRE( errorMessage.isEmpty() );
+    REQUIRE( restored.id == action.id );
+    REQUIRE( restored.order == action.order );
+    REQUIRE( restored.parameters.repeatCount == action.parameters.repeatCount );
+    REQUIRE( restored.parameters.repeatInterval == action.parameters.repeatInterval );
+    REQUIRE( restored.parameters.variableNames == action.parameters.variableNames );
+    REQUIRE( restored.checksum.enabled == action.checksum.enabled );
+    REQUIRE( restored.checksum.algorithm == action.checksum.algorithm );
+}
+
+TEST_CASE( "Wildcard response matching captures matching lines", "[commander][actions]" )
+{
+    ResponseDefinition response;
+    response.id = 5;
+    response.name = "Wildcard";
+    response.match.type = ResponseMatchType::Wildcard;
+    response.match.value = "READY * OK";
+    response.match.compiled = QRegularExpression(
+        QRegularExpression::wildcardToRegularExpression( response.match.value ),
+        QRegularExpression::CaseInsensitiveOption );
+
+    const auto match = matchResponseDefinition( response, QByteArray( "ready 123 ok" ) );
+    REQUIRE( match.matched );
+    REQUIRE( match.lineText == "ready 123 ok" );
 }
