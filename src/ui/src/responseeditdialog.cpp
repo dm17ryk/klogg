@@ -52,34 +52,41 @@ class ResponseActionStepDialog : public QDialog {
     {
         setWindowTitle( tr( "Linked Action Step" ) );
 
+        filterEdit_ = new QLineEdit( this );
+        filterEdit_->setPlaceholderText( tr( "Filter actions" ) );
+
         actionCombo_ = new QComboBox( this );
-        for ( const auto& action : actions_ ) {
-            actionCombo_->addItem( QStringLiteral( "%1 (%2)" ).arg( action.name ).arg( action.id ),
-                                   action.id );
-        }
 
         delaySpin_ = new QSpinBox( this );
         delaySpin_->setRange( 0, 3600000 );
         delaySpin_->setSuffix( tr( " ms" ) );
 
         auto* formLayout = new QFormLayout;
+        formLayout->addRow( tr( "Filter" ), filterEdit_ );
         formLayout->addRow( tr( "Action" ), actionCombo_ );
         formLayout->addRow( tr( "Delay" ), delaySpin_ );
 
-        auto* buttons
-            = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this );
-        connect( buttons, &QDialogButtonBox::accepted, this, &QDialog::accept );
-        connect( buttons, &QDialogButtonBox::rejected, this, &QDialog::reject );
+        buttons_ = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this );
+        connect( filterEdit_, &QLineEdit::textChanged, this, [this]() {
+            reloadActionCombo( currentActionId() );
+        } );
+        connect( actionCombo_, qOverload<int>( &QComboBox::currentIndexChanged ), this, [this]( int ) {
+            updateState();
+        } );
+        connect( buttons_, &QDialogButtonBox::accepted, this, &QDialog::accept );
+        connect( buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject );
 
         auto* layout = new QVBoxLayout( this );
         layout->addLayout( formLayout );
-        layout->addWidget( buttons );
+        layout->addWidget( buttons_ );
+
+        reloadActionCombo();
     }
 
     void setStep( const ResponseActionStep& step )
     {
-        const auto index = actionCombo_->findData( step.actionId );
-        actionCombo_->setCurrentIndex( index >= 0 ? index : 0 );
+        filterEdit_->clear();
+        reloadActionCombo( step.actionId );
         delaySpin_->setValue( step.delayMs );
     }
 
@@ -89,9 +96,46 @@ class ResponseActionStepDialog : public QDialog {
     }
 
   private:
+    void reloadActionCombo( int preferredActionId = -1 )
+    {
+        const auto filter = filterEdit_->text().trimmed();
+        actionCombo_->clear();
+
+        for ( const auto& action : actions_ ) {
+            const auto label = QStringLiteral( "%1 (%2)" ).arg( action.name ).arg( action.id );
+            if ( !filter.isEmpty()
+                 && !label.contains( filter, Qt::CaseInsensitive )
+                 && !action.description.contains( filter, Qt::CaseInsensitive ) ) {
+                continue;
+            }
+
+            actionCombo_->addItem( label, action.id );
+        }
+
+        const auto index = preferredActionId >= 0 ? actionCombo_->findData( preferredActionId ) : 0;
+        actionCombo_->setCurrentIndex( index >= 0 ? index : ( actionCombo_->count() > 0 ? 0 : -1 ) );
+        updateState();
+    }
+
+    int currentActionId() const
+    {
+        return actionCombo_->currentData().isValid() ? actionCombo_->currentData().toInt() : -1;
+    }
+
+    void updateState()
+    {
+        const bool hasActions = actionCombo_->count() > 0 && currentActionId() >= 0;
+        actionCombo_->setEnabled( hasActions );
+        if ( auto* okButton = buttons_->button( QDialogButtonBox::Ok ) ) {
+            okButton->setEnabled( hasActions );
+        }
+    }
+
     QVector<ActionDefinition> actions_;
+    QLineEdit* filterEdit_ = nullptr;
     QComboBox* actionCombo_ = nullptr;
     QSpinBox* delaySpin_ = nullptr;
+    QDialogButtonBox* buttons_ = nullptr;
 };
 } // namespace
 
