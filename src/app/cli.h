@@ -121,6 +121,15 @@ struct CliParameters {
             "  klogg command --action close_klogg\n"
             "  klogg command --action close_all\n"
             "  klogg command --action get_info [--pretty]\n"
+            "  klogg command --action start_comm [tab selector]\n"
+            "  klogg command --action stop_comm [tab selector]\n"
+            "  klogg command --action get_comm_status [tab selector] [--pretty]\n"
+            "  klogg command --action start_logging [tab selector]\n"
+            "  klogg command --action stop_logging [tab selector]\n"
+            "  klogg command --action add_comment --text <value> [--timestamp] [tab selector]\n"
+            "  klogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
+            "  klogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
+            "  klogg command --action clear_comm [tab selector]\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -152,6 +161,15 @@ struct CliParameters {
             "  close_klogg\n"
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
+            "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  stop_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  get_comm_status [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
+            "  start_logging [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  stop_logging  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  add_comment --text <value> [--timestamp] [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  get_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
+            "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -479,6 +497,15 @@ struct CliParameters {
             QStringLiteral( "filter-string" ),
             QStringLiteral( "Literal filter/search expression to apply." ),
             QStringLiteral( "expr" ) );
+        const QCommandLineOption textOption( QStringLiteral( "text" ),
+                                             QStringLiteral( "Comment text for add_comment." ),
+                                             QStringLiteral( "text" ) );
+        const QCommandLineOption timestampOption(
+            QStringLiteral( "timestamp" ),
+            QStringLiteral( "Prefix add_comment output with a timestamp." ) );
+        const QCommandLineOption allOption(
+            QStringLiteral( "all" ),
+            QStringLiteral( "Target all matching response counters." ) );
         const QCommandLineOption idOption( QStringLiteral( "id" ),
                                            QStringLiteral( "Action/response id." ),
                                            QStringLiteral( "id" ) );
@@ -557,6 +584,9 @@ struct CliParameters {
         parser.addOption( filterIdOption );
         parser.addOption( filterIndexOption );
         parser.addOption( filterStringOption );
+        parser.addOption( textOption );
+        parser.addOption( timestampOption );
+        parser.addOption( allOption );
         parser.addOption( idOption );
         parser.addOption( nameOption );
         parser.addOption( jsonFileOption );
@@ -624,6 +654,9 @@ struct CliParameters {
         request.rearmAutoRefresh = parser.isSet( autoRefreshOption );
         request.predefinedFilters = parser.isSet( predefinedOption );
         request.entityName = parser.value( nameOption ).trimmed();
+        request.commentText = parser.value( textOption );
+        request.allEntities = parser.isSet( allOption );
+        request.timestampComment = parser.isSet( timestampOption );
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
         }
@@ -822,6 +855,42 @@ struct CliParameters {
             if ( !request.timeoutMs ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral( "--timeout-ms is required for wait_response." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::StartComm:
+        case CommanderAction::StopComm:
+        case CommanderAction::GetCommStatus:
+        case CommanderAction::StartLogging:
+        case CommanderAction::StopLogging:
+        case CommanderAction::ClearComm:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::AddComment:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            request.commentText = request.commentText.trimmed();
+            if ( request.commentText.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--text is required for add_comment." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::GetResponseCounter:
+        case CommanderAction::ResetResponseCounter:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            if ( ( request.entityId ? 1 : 0 ) + ( request.entityName.isEmpty() ? 0 : 1 )
+                     + ( request.allEntities ? 1 : 0 )
+                 != 1 ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "%1 requires exactly one of --id, --name, or --all." )
+                        .arg( commanderActionToString( *action ) ) );
                 return result;
             }
             break;

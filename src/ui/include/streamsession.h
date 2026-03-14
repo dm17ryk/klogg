@@ -2,7 +2,9 @@
 
 #include <QObject>
 #include <QByteArray>
+#include <QMap>
 #include <QThread>
+#include <QVariantList>
 
 #include "serialcaptureworker.h"
 
@@ -21,6 +23,12 @@ class StreamSession : public QObject {
     const SerialCaptureSettings& captureSettings() const;
     void sendBytes( const QByteArray& data );
     void appendToFile( const QByteArray& data );
+    bool isLoggingEnabled() const;
+    void setLoggingEnabled( bool enabled );
+    int responseCounter( int responseId ) const;
+    QVariantList responseCounters() const;
+    void resetResponseCounter( int responseId );
+    void resetAllResponseCounters();
 
   public Q_SLOTS:
     void closeConnection();
@@ -28,6 +36,7 @@ class StreamSession : public QObject {
   Q_SIGNALS:
     void errorOccurred( const QString& message );
     void connectionClosed();
+    void connectionOpened();
     void lineObserved( const QByteArray& lineBytes );
 
   private:
@@ -45,5 +54,7 @@ class StreamSession : public QObject {
     bool started_ = false;
     bool stopping_ = false;
     bool connectionOpen_ = false;
+    bool loggingEnabled_ = true;
     QByteArray lineBuffer_;
+    QMap<int, int> responseCounters_;
 };

@@ -34,6 +34,7 @@ class SerialCaptureWorker : public QObject {
     void stop();
     void sendData( QByteArray data );
     void appendToFile( QByteArray data );
+    void setLoggingEnabled( bool enabled );
 
   Q_SIGNALS:
     void errorOccurred( const QString& message );
@@ -51,4 +52,5 @@ class SerialCaptureWorker : public QObject {
     int flushCounter_ = 0;
     bool stopping_ = false;
     bool atLineStart_ = true;
+    bool loggingEnabled_ = true;
 };

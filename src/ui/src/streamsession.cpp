@@ -2,6 +2,7 @@
 #include <QDateTime>
 
 #include <QMetaObject>
+#include <QVariantMap>
 
 #include "actionruntime.h"
 #include "actionsmanager.h"
@@ -37,8 +38,19 @@ void StreamSession::start()
     stopping_ = false;
     started_ = true;
     connectionOpen_ = true;
+    lineBuffer_.clear();
+    responseCounters_.clear();
     StreamSourceRegistry::get().registerSerialPort( settings_.portName );
     thread_.start();
+    if ( worker_ ) {
+        const auto invoked = QMetaObject::invokeMethod( worker_, "setLoggingEnabled",
+                                                        Qt::QueuedConnection,
+                                                        Q_ARG( bool, loggingEnabled_ ) );
+        if ( !invoked ) {
+            LOG_ERROR << "Failed to apply logging state for " << settings_.portName.toStdString();
+        }
+    }
+    Q_EMIT connectionOpened();
 }
 
 void StreamSession::stop( bool waitForCompletion )
@@ -182,6 +194,53 @@ void StreamSession::appendToFile( const QByteArray& data )
     }
 }
 
+bool StreamSession::isLoggingEnabled() const
+{
+    return loggingEnabled_;
+}
+
+void StreamSession::setLoggingEnabled( bool enabled )
+{
+    loggingEnabled_ = enabled;
+    if ( worker_ ) {
+        const auto invoked = QMetaObject::invokeMethod( worker_, "setLoggingEnabled",
+                                                        Qt::QueuedConnection,
+                                                        Q_ARG( bool, enabled ) );
+        if ( !invoked ) {
+            LOG_ERROR << "Failed to toggle logging state for " << settings_.portName.toStdString();
+        }
+    }
+}
+
+int StreamSession::responseCounter( int responseId ) const
+{
+    return responseCounters_.value( responseId, 0 );
+}
+
+QVariantList StreamSession::responseCounters() const
+{
+    QVariantList counters;
+    const auto& responses = ActionsManager::instance().responses();
+    for ( const auto& response : responses ) {
+        QVariantMap counter;
+        counter.insert( QStringLiteral( "responseId" ), response.id );
+        counter.insert( QStringLiteral( "responseName" ), response.name );
+        counter.insert( QStringLiteral( "count" ), responseCounter( response.id ) );
+        counters.push_back( counter );
+    }
+    return counters;
+}
+
+void StreamSession::resetResponseCounter( int responseId )
+{
+    responseCounters_[ responseId ] = 0;
+}
+
+void StreamSession::resetAllResponseCounters()
+{
+    responseCounters_.clear();
+}
+
 void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
 {
     if ( lineBytes.isEmpty() ) {
@@ -209,6 +268,8 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         if ( !match.matched ) {
             continue;
         }
+
+        responseCounters_[ response.id ] = responseCounters_.value( response.id, 0 ) + 1;
 
         QString errorMessage;
         if ( !executeResponseDefinition( this, response, match.captures, &errorMessage ) ) {

@@ -59,6 +59,7 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
@@ -545,6 +546,24 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSendAction( request );
     case CommanderAction::WaitResponse:
         return commanderWaitResponse( request );
+    case CommanderAction::StartComm:
+        return commanderStartComm( request );
+    case CommanderAction::StopComm:
+        return commanderStopComm( request );
+    case CommanderAction::GetCommStatus:
+        return commanderGetCommStatus( request );
+    case CommanderAction::StartLogging:
+        return commanderSetLogging( request, true );
+    case CommanderAction::StopLogging:
+        return commanderSetLogging( request, false );
+    case CommanderAction::AddComment:
+        return commanderAddComment( request );
+    case CommanderAction::GetResponseCounter:
+        return commanderGetResponseCounter( request );
+    case CommanderAction::ResetResponseCounter:
+        return commanderResetResponseCounter( request );
+    case CommanderAction::ClearComm:
+        return commanderClearComm( request );
     case CommanderAction::FocusTab:
         if ( !request.tabId.isEmpty() ) {
             return focusTabById( request.tabId );
@@ -609,8 +628,11 @@ QVariantMap MainWindow::commanderWindowInfo() const
             comInfo.insert( QStringLiteral( "portName" ), settings.portName );
             comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
             comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+            comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
             comInfo.insert( QStringLiteral( "isActionsPort" ),
                             isActionsStreamSession( streamSession ) );
+            comInfo.insert( QStringLiteral( "responseCounters" ),
+                            commanderResponseCounters( streamSession ) );
             tabInfo.insert( QStringLiteral( "com" ), comInfo );
         }
         else {
@@ -1475,6 +1497,11 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
+    connect( session.get(), &StreamSession::connectionOpened, this,
+             [ this, filePath, session ] {
+                 mainTabWidget_.setStreamSessionForPath( filePath, session );
+                 updateActionsSendState();
+             } );
     connect( session.get(), &StreamSession::connectionClosed, this,
              [ this, filePath, session, safeSession ] {
                  bool tabStillOpen = false;
@@ -2186,6 +2213,64 @@ StreamSession* MainWindow::streamSessionForCrawler( const CrawlerWidget* crawler
     return mainTabWidget_.streamSessionForPath( filePath );
 }
 
+StreamSession* MainWindow::commanderTargetStreamSession( const CommanderRequest& request,
+                                                        bool requireOpen ) const
+{
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return nullptr;
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr ) {
+        return nullptr;
+    }
+    if ( requireOpen && !streamSession->isConnectionOpen() ) {
+        return nullptr;
+    }
+
+    return streamSession;
+}
+
+QVariantList MainWindow::commanderResponseCounters( StreamSession* streamSession,
+                                                    const CommanderRequest* request ) const
+{
+    if ( streamSession == nullptr ) {
+        return {};
+    }
+
+    auto counters = streamSession->responseCounters();
+    if ( request == nullptr ) {
+        return counters;
+    }
+
+    if ( request->allEntities ) {
+        return counters;
+    }
+
+    const auto matchesRequestedCounter = [ request ]( const QVariant& value ) {
+        const auto map = value.toMap();
+        if ( request->entityId ) {
+            return map.value( QStringLiteral( "responseId" ) ).toInt() == *request->entityId;
+        }
+        if ( !request->entityName.isEmpty() ) {
+            return map.value( QStringLiteral( "responseName" ) )
+                       .toString()
+                       .compare( request->entityName, Qt::CaseInsensitive )
+                   == 0;
+        }
+        return true;
+    };
+
+    QVariantList filtered;
+    for ( const auto& counter : counters ) {
+        if ( matchesRequestedCounter( counter ) ) {
+            filtered.push_back( counter );
+        }
+    }
+    return filtered;
+}
+
 CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 {
     if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
@@ -2344,6 +2429,168 @@ CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& reque
     QObject::disconnect( lineConnection );
     QObject::disconnect( disconnectConnection );
     return result;
+}
+
+CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    if ( streamSession->isConnectionOpen() ) {
+        return commanderSuccess();
+    }
+
+    streamSession->start();
+    updateActionsSendState();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderStopComm( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    streamSession->closeConnection();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& request ) const
+{
+    auto* crawler = commanderTargetCrawler( request );
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( crawler == nullptr || streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "tabId" ),
+                    mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) ) );
+    payload.insert( QStringLiteral( "tabIndex" ), mainTabWidget_.indexOf( crawler ) );
+    payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+    payload.insert( QStringLiteral( "filePath" ), session_.getFilename( crawler ) );
+    payload.insert( QStringLiteral( "displayName" ),
+                    mainTabWidget_.tabDisplayNameAt( mainTabWidget_.indexOf( crawler ) ) );
+
+    const auto& settings = streamSession->captureSettings();
+    QVariantMap comInfo;
+    comInfo.insert( QStringLiteral( "portName" ), settings.portName );
+    comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
+    comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+    comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
+    comInfo.insert( QStringLiteral( "isActionsPort" ), isActionsStreamSession( streamSession ) );
+    comInfo.insert( QStringLiteral( "responseCounters" ),
+                    commanderResponseCounters( streamSession ) );
+    payload.insert( QStringLiteral( "com" ), comInfo );
+
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderSetLogging( const CommanderRequest& request, bool enabled )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    streamSession->setLoggingEnabled( enabled );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderAddComment( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QString text = request.commentText.trimmed();
+    if ( request.timestampComment ) {
+        const auto timestamp = QDateTime::currentDateTime().toString( Qt::ISODateWithMs );
+        text = text.isEmpty() ? timestamp : QStringLiteral( "%1 %2" ).arg( timestamp, text );
+    }
+    if ( text.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "add_comment requires text." ) );
+    }
+
+    QByteArray output = text.toUtf8();
+    output.append( "\r\n" );
+    streamSession->appendToFile( output );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderGetResponseCounter( const CommanderRequest& request ) const
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    const auto counters = commanderResponseCounters( streamSession, &request );
+    if ( counters.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response counter was not found." ) );
+    }
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "responseCounters" ), counters );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderResetResponseCounter( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    if ( request.allEntities ) {
+        streamSession->resetAllResponseCounters();
+        return commanderSuccess();
+    }
+
+    const ResponseDefinition* response = nullptr;
+    if ( request.entityId ) {
+        response = ActionsManager::instance().findResponseById( *request.entityId );
+    }
+    else if ( !request.entityName.isEmpty() ) {
+        response = ActionsManager::instance().findResponseByName( request.entityName );
+    }
+
+    if ( response == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response was not found." ) );
+    }
+
+    streamSession->resetResponseCounter( response->id );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderClearComm( const CommanderRequest& request )
+{
+    auto* crawler = commanderTargetCrawler( request );
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( crawler == nullptr || streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    mainTabWidget_.setCurrentWidget( crawler );
+    crawler->reload();
+    return commanderSuccess(
+        tr( "Live communication view reloaded. Non-destructive clear is not yet separate from reload." ) );
 }
 
 CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const

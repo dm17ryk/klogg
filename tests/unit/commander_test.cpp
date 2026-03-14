@@ -68,6 +68,9 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "update_response" ) );
     REQUIRE( parameters.exit_message.contains( "send_action" ) );
     REQUIRE( parameters.exit_message.contains( "wait_response" ) );
+    REQUIRE( parameters.exit_message.contains( "start_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "get_comm_status" ) );
+    REQUIRE( parameters.exit_message.contains( "get_response_counter" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
@@ -192,6 +195,45 @@ TEST_CASE( "Commander CLI parses send and wait response requests", "[commander][
     REQUIRE( waitParameters.commander_request->timeoutMs == 1500 );
     REQUIRE( waitParameters.commander_request->windowIndex == 0 );
     REQUIRE( waitParameters.commander_request->tabIndex == 1 );
+}
+
+TEST_CASE( "Commander CLI parses communication automation requests", "[commander][cli]" )
+{
+    CliParameters startComm(
+        { "klogg", "command", "--action", "start_comm", "--tab-id", "tab-1" } );
+    REQUIRE_FALSE( startComm.parse_error );
+    REQUIRE( startComm.commander_request.has_value() );
+    REQUIRE( startComm.commander_request->action == CommanderAction::StartComm );
+    REQUIRE( startComm.commander_request->tabId == "tab-1" );
+
+    CliParameters addComment(
+        { "klogg", "command", "--action", "add_comment", "--text", "hello", "--timestamp" } );
+    REQUIRE_FALSE( addComment.parse_error );
+    REQUIRE( addComment.commander_request.has_value() );
+    REQUIRE( addComment.commander_request->action == CommanderAction::AddComment );
+    REQUIRE( addComment.commander_request->commentText == "hello" );
+    REQUIRE( addComment.commander_request->timestampComment );
+
+    CliParameters getCounter(
+        { "klogg", "command", "--action", "get_response_counter", "--all", "--pretty" } );
+    REQUIRE_FALSE( getCounter.parse_error );
+    REQUIRE( getCounter.commander_request.has_value() );
+    REQUIRE( getCounter.commander_request->action == CommanderAction::GetResponseCounter );
+    REQUIRE( getCounter.commander_request->allEntities );
+    REQUIRE( getCounter.commander_request->prettyOutput );
+}
+
+TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )
+{
+    CliParameters missingSelector(
+        { "klogg", "command", "--action", "get_response_counter" } );
+    REQUIRE( missingSelector.parse_error );
+    REQUIRE( missingSelector.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
+
+    CliParameters mixedSelectors(
+        { "klogg", "command", "--action", "reset_response_counter", "--id", "1", "--all" } );
+    REQUIRE( mixedSelectors.parse_error );
+    REQUIRE( mixedSelectors.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid wait_response selectors", "[commander][cli]" )
@@ -338,6 +380,8 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "klogg command --action open_file" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action close_com" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_info" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action start_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action get_comm_status" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_actions" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action send_action" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_filters" ) );
@@ -356,7 +400,10 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.filterString = "alpha|beta";
     request.entityId = 7;
     request.entityName = "Ready";
+    request.commentText = "manual note";
     request.timeoutMs = 5000;
+    request.allEntities = true;
+    request.timestampComment = true;
     request.prettyOutput = true;
     request.predefinedFilters = true;
     request.runSearch = true;
@@ -383,7 +430,10 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->filterString == request.filterString );
     REQUIRE( restored->entityId == request.entityId );
     REQUIRE( restored->entityName == request.entityName );
+    REQUIRE( restored->commentText == request.commentText );
     REQUIRE( restored->timeoutMs == request.timeoutMs );
+    REQUIRE( restored->allEntities == request.allEntities );
+    REQUIRE( restored->timestampComment == request.timestampComment );
     REQUIRE( restored->prettyOutput == request.prettyOutput );
     REQUIRE( restored->predefinedFilters == request.predefinedFilters );
     REQUIRE( restored->runSearch == request.runSearch );

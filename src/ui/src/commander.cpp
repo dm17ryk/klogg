@@ -86,6 +86,24 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "send_action" );
     case CommanderAction::WaitResponse:
         return QStringLiteral( "wait_response" );
+    case CommanderAction::StartComm:
+        return QStringLiteral( "start_comm" );
+    case CommanderAction::StopComm:
+        return QStringLiteral( "stop_comm" );
+    case CommanderAction::GetCommStatus:
+        return QStringLiteral( "get_comm_status" );
+    case CommanderAction::StartLogging:
+        return QStringLiteral( "start_logging" );
+    case CommanderAction::StopLogging:
+        return QStringLiteral( "stop_logging" );
+    case CommanderAction::AddComment:
+        return QStringLiteral( "add_comment" );
+    case CommanderAction::GetResponseCounter:
+        return QStringLiteral( "get_response_counter" );
+    case CommanderAction::ResetResponseCounter:
+        return QStringLiteral( "reset_response_counter" );
+    case CommanderAction::ClearComm:
+        return QStringLiteral( "clear_comm" );
     case CommanderAction::FocusTab:
         return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
@@ -160,6 +178,33 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "wait_response" ) ) {
         return CommanderAction::WaitResponse;
+    }
+    if ( normalized == QStringLiteral( "start_comm" ) ) {
+        return CommanderAction::StartComm;
+    }
+    if ( normalized == QStringLiteral( "stop_comm" ) ) {
+        return CommanderAction::StopComm;
+    }
+    if ( normalized == QStringLiteral( "get_comm_status" ) ) {
+        return CommanderAction::GetCommStatus;
+    }
+    if ( normalized == QStringLiteral( "start_logging" ) ) {
+        return CommanderAction::StartLogging;
+    }
+    if ( normalized == QStringLiteral( "stop_logging" ) ) {
+        return CommanderAction::StopLogging;
+    }
+    if ( normalized == QStringLiteral( "add_comment" ) ) {
+        return CommanderAction::AddComment;
+    }
+    if ( normalized == QStringLiteral( "get_response_counter" ) ) {
+        return CommanderAction::GetResponseCounter;
+    }
+    if ( normalized == QStringLiteral( "reset_response_counter" ) ) {
+        return CommanderAction::ResetResponseCounter;
+    }
+    if ( normalized == QStringLiteral( "clear_comm" ) ) {
+        return CommanderAction::ClearComm;
     }
     if ( normalized == QStringLiteral( "focus_tab" ) ) {
         return CommanderAction::FocusTab;
@@ -250,6 +295,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.entityName.isEmpty() ) {
         map.insert( QStringLiteral( "entityName" ), request.entityName );
     }
+    if ( !request.commentText.isEmpty() ) {
+        map.insert( QStringLiteral( "commentText" ), request.commentText );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -264,6 +312,12 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( request.timeoutMs ) {
         map.insert( QStringLiteral( "timeoutMs" ), *request.timeoutMs );
+    }
+    if ( request.allEntities ) {
+        map.insert( QStringLiteral( "allEntities" ), true );
+    }
+    if ( request.timestampComment ) {
+        map.insert( QStringLiteral( "timestampComment" ), true );
     }
     if ( request.followFile ) {
         map.insert( QStringLiteral( "followFile" ), true );
@@ -335,6 +389,9 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.filterId = map.value( QStringLiteral( "filterId" ) ).toString();
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
     request.entityName = map.value( QStringLiteral( "entityName" ) ).toString();
+    request.commentText = map.value( QStringLiteral( "commentText" ) ).toString();
+    request.allEntities = map.value( QStringLiteral( "allEntities" ) ).toBool();
+    request.timestampComment = map.value( QStringLiteral( "timestampComment" ) ).toBool();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
     request.predefinedFilters = map.value( QStringLiteral( "predefinedFilters" ) ).toBool();
     request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();

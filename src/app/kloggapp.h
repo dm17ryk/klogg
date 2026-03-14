@@ -628,7 +628,16 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::GetFilters
               || request.action == CommanderAction::SetFilter
               || request.action == CommanderAction::SendAction
-              || request.action == CommanderAction::WaitResponse;
+              || request.action == CommanderAction::WaitResponse
+              || request.action == CommanderAction::StartComm
+              || request.action == CommanderAction::StopComm
+              || request.action == CommanderAction::GetCommStatus
+              || request.action == CommanderAction::StartLogging
+              || request.action == CommanderAction::StopLogging
+              || request.action == CommanderAction::AddComment
+              || request.action == CommanderAction::GetResponseCounter
+              || request.action == CommanderAction::ResetResponseCounter
+              || request.action == CommanderAction::ClearComm;
 
         if ( targetSpecificWindow && request.windowIndex ) {
             auto* window = windowByIndex( *request.windowIndex );
@@ -643,7 +652,16 @@ class KloggApp : public QApplication {
         if ( ( request.action == CommanderAction::GetFilters
                || request.action == CommanderAction::SetFilter
                || request.action == CommanderAction::SendAction
-               || request.action == CommanderAction::WaitResponse )
+               || request.action == CommanderAction::WaitResponse
+               || request.action == CommanderAction::StartComm
+               || request.action == CommanderAction::StopComm
+               || request.action == CommanderAction::GetCommStatus
+               || request.action == CommanderAction::StartLogging
+               || request.action == CommanderAction::StopLogging
+               || request.action == CommanderAction::AddComment
+               || request.action == CommanderAction::GetResponseCounter
+               || request.action == CommanderAction::ResetResponseCounter
+               || request.action == CommanderAction::ClearComm )
              && request.tabId.isEmpty() && !request.tabIndex ) {
             auto* window = activeWindowIfAny();
             if ( window == nullptr ) {

@@ -29,6 +29,15 @@ enum class CommanderAction {
     DeleteResponse,
     SendAction,
     WaitResponse,
+    StartComm,
+    StopComm,
+    GetCommStatus,
+    StartLogging,
+    StopLogging,
+    AddComment,
+    GetResponseCounter,
+    ResetResponseCounter,
+    ClearComm,
     FocusTab,
     SetFilter,
     CloseTab,
@@ -65,11 +74,14 @@ struct CommanderRequest {
     QString filterId;
     QString filterString;
     QString entityName;
+    QString commentText;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
     std::optional<int> entityId;
     std::optional<int> timeoutMs;
+    bool allEntities = false;
+    bool timestampComment = false;
     bool followFile = false;
     bool predefinedFilters = false;
     bool prettyOutput = false;
