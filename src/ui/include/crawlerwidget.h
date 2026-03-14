@@ -51,6 +51,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QToolButton>
+#include <QVariantList>
 #include <QVBoxLayout>
 
 #include "colorlabelsmanager.h"
@@ -130,6 +131,16 @@ class CrawlerWidget : public QSplitter,
     void applyConfiguration();
 
   public:
+    QVariantList commanderFilters() const;
+    QVariantList commanderPredefinedFilters() const;
+    std::optional<PredefinedFilter> commanderFilterById( const QString& filterId ) const;
+    std::optional<PredefinedFilter> commanderFilterByIndex( int filterIndex ) const;
+    std::optional<PredefinedFilter> commanderPredefinedFilterById( const QString& filterId ) const;
+    std::optional<PredefinedFilter> commanderPredefinedFilterByIndex( int filterIndex ) const;
+    void applyCommanderSearchPattern( const QString& searchPattern, bool runSearch,
+                                      bool rearmAutoRefresh );
+    void applyCommanderPredefinedFilter( const PredefinedFilter& filter, bool runSearch,
+                                         bool rearmAutoRefresh );
     template <class T>
     struct access_by;
 
@@ -344,6 +355,7 @@ class CrawlerWidget : public QSplitter,
     QString escapeSearchPattern( const QString& searchPattern, bool isRegex = false ) const;
     QString& combinePatterns( QString& currentPattern, const QString& newPattern ) const;
     void setSearchPattern( const QString& searchPattern );
+    void setSearchPattern( const QString& searchPattern, bool allowAutoRun );
 
     void resetStateOnSearchPatternChanges();
 

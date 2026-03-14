@@ -258,6 +258,7 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
 }
 
 static constexpr auto ClipboardMaxTry = 5;
+static const auto ActionsPortSuffix = QStringLiteral( " (actions)" );
 
 } // namespace
 
@@ -489,6 +490,136 @@ void MainWindow::loadInitialFile( QString fileName, bool followFile )
     if ( !fileName.isEmpty() ) {
         loadFile( fileName, followFile );
     }
+}
+
+CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& request )
+{
+    switch ( request.action ) {
+    case CommanderAction::OpenFile:
+        return loadFile( request.filePath, request.followFile )
+                   ? commanderSuccess()
+                   : commanderFailure( CommanderResultCode::ExecutionFailed,
+                                       tr( "Failed to open file %1." ).arg( request.filePath ) );
+    case CommanderAction::OpenUrl: {
+        const auto url = QUrl::fromUserInput( request.url );
+        if ( !url.isValid() || url.isEmpty() ) {
+            return commanderFailure( CommanderResultCode::InvalidRequest,
+                                     tr( "Invalid URL %1." ).arg( request.url ) );
+        }
+        return openRemoteFile( url, false, request.url );
+    }
+    case CommanderAction::OpenCom: {
+        auto settings = resolveCommanderComSettings( request.comSettings );
+        QString errorMessage;
+        if ( !startComCaptureSession( settings, { false, false, true }, &errorMessage ) ) {
+            return commanderFailure(
+                CommanderResultCode::ExecutionFailed,
+                errorMessage.isEmpty() ? tr( "Failed to open COM port %1." ).arg( settings.portName )
+                                       : errorMessage );
+        }
+
+        if ( !loadFile( settings.filePath, true ) ) {
+            if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
+                session->closeConnection();
+            }
+            return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                     tr( "Failed to open capture file %1." ).arg( settings.filePath ) );
+        }
+
+        return commanderSuccess();
+    }
+    case CommanderAction::CloseFile:
+        return closeFileByPath( request.filePath );
+    case CommanderAction::CloseUrl:
+        return closeUrlBySource( request.url );
+    case CommanderAction::CloseCom:
+        return closeComPortByName( request.portName );
+    case CommanderAction::CloseAll:
+        return closeAllTabsCommander();
+    case CommanderAction::GetInfo:
+        return commanderSuccess( {}, commanderWindowInfo() );
+    case CommanderAction::GetFilters:
+        return commanderFilters( request );
+    case CommanderAction::FocusTab:
+        if ( !request.tabId.isEmpty() ) {
+            return focusTabById( request.tabId );
+        }
+        if ( request.tabIndex ) {
+            return focusTabByIndex( *request.tabIndex );
+        }
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "focus_tab requires a tab selector." ) );
+    case CommanderAction::SetFilter:
+        return commanderSetFilter( request );
+    case CommanderAction::CloseTab:
+        if ( !request.tabId.isEmpty() ) {
+            return closeTabById( request.tabId );
+        }
+        if ( request.tabIndex ) {
+            return closeTabByIndex( *request.tabIndex );
+        }
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "close_tab requires a tab selector." ) );
+    case CommanderAction::CloseKlogg:
+    case CommanderAction::None:
+    default:
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "Unsupported commander action." ) );
+    }
+}
+
+QVariantMap MainWindow::commanderWindowInfo() const
+{
+    QVariantList tabs;
+
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto filePath = session_.getFilename( widget );
+        if ( filePath.isEmpty() ) {
+            continue;
+        }
+
+        QVariantMap tabInfo;
+        tabInfo.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        tabInfo.insert( QStringLiteral( "tabIndex" ), index );
+        tabInfo.insert( QStringLiteral( "filePath" ), filePath );
+        tabInfo.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
+
+        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+            tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "com" ) );
+            QVariantMap comInfo;
+            const auto settings = streamSession->captureSettings();
+            comInfo.insert( QStringLiteral( "portName" ), settings.portName );
+            comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
+            comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+            comInfo.insert( QStringLiteral( "isActionsPort" ),
+                            isActionsStreamSession( streamSession ) );
+            tabInfo.insert( QStringLiteral( "com" ), comInfo );
+        }
+        else {
+            const auto remoteSource = remoteFileSources_.find( filePath );
+            if ( remoteSource != remoteFileSources_.cend() ) {
+                tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "url" ) );
+                tabInfo.insert( QStringLiteral( "sourceUrl" ), remoteSource->second );
+            }
+            else {
+                tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "file" ) );
+            }
+        }
+
+        tabs.push_back( tabInfo );
+    }
+
+    QVariantMap windowInfo;
+    windowInfo.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    windowInfo.insert( QStringLiteral( "windowIndex" ),
+                       static_cast<int>( session_.windowIndex() ) );
+    windowInfo.insert( QStringLiteral( "tabs" ), tabs );
+    return windowInfo;
 }
 
 void MainWindow::reTranslateUI()
@@ -1249,9 +1380,13 @@ void MainWindow::openComPort()
 }
 
 bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
-                                         MainWindow::ComCaptureStartOptions options )
+                                         MainWindow::ComCaptureStartOptions options,
+                                         QString* errorMessage )
 {
-    const auto showWarning = [ this, &options ]( const QString& message ) {
+    const auto showWarning = [ this, &options, errorMessage ]( const QString& message ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = message;
+        }
         if ( !options.showErrors ) {
             return;
         }
@@ -1259,7 +1394,10 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                             options.nonBlockingErrors );
     };
 
-    const auto showInformation = [ this, &options ]( const QString& message ) {
+    const auto showInformation = [ this, &options, errorMessage ]( const QString& message ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = message;
+        }
         if ( !options.showErrors ) {
             return;
         }
@@ -1325,8 +1463,22 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath, safeSession ] {
-                 mainTabWidget_.clearStreamSessionForPath( filePath );
+             [ this, filePath, session, safeSession ] {
+                 bool tabStillOpen = false;
+                 for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+                     auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+                     if ( widget != nullptr && session_.getFilename( widget ) == filePath ) {
+                         tabStillOpen = true;
+                         break;
+                     }
+                 }
+
+                 if ( tabStillOpen ) {
+                     mainTabWidget_.setStreamSessionForPath( filePath, session );
+                 }
+                 else {
+                     mainTabWidget_.clearStreamSessionForPath( filePath );
+                 }
                  if ( actionsStreamSession_ == safeSession ) {
                      actionsStreamSession_.clear();
                  }
@@ -1373,7 +1525,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     return true;
 }
 
-void MainWindow::openRemoteFile( const QUrl& url )
+CommanderResult MainWindow::openRemoteFile( const QUrl& url, bool interactiveErrors,
+                                            const QString& normalizedSourceUrl )
 {
     Downloader downloader;
 
@@ -1394,16 +1547,30 @@ void MainWindow::openRemoteFile( const QUrl& url )
     if ( tempFile->open() ) {
         downloader.download( url, tempFile );
         if ( !progressDialog.exec() ) {
-            loadFile( tempFile->fileName() );
+            if ( loadFile( tempFile->fileName() ) ) {
+                if ( !normalizedSourceUrl.isEmpty() ) {
+                    registerRemoteFileSource( tempFile->fileName(), normalizedSourceUrl );
+                }
+                return commanderSuccess();
+            }
+
+            const auto message = tr( "Failed to open downloaded file %1." ).arg( tempFile->fileName() );
+            if ( interactiveErrors ) {
+                QMessageBox::critical( this, tr( "Klogg - File download" ), message );
+            }
+            return commanderFailure( CommanderResultCode::ExecutionFailed, message );
         }
-        else {
+        else if ( interactiveErrors ) {
             QMessageBox::critical( this, tr( "Klogg - File download" ), downloader.lastError() );
         }
+        return commanderFailure( CommanderResultCode::ExecutionFailed, downloader.lastError() );
     }
-    else {
+    else if ( interactiveErrors ) {
         QMessageBox::critical( this, tr( "Klogg - File download" ),
                                tr( "Failed to create temp file" ) );
     }
+    return commanderFailure( CommanderResultCode::ExecutionFailed,
+                             tr( "Failed to create temp file." ) );
 }
 
 void MainWindow::switchToOpenedFile( QAction* action )
@@ -1579,7 +1746,7 @@ void MainWindow::openUrl()
         = QInputDialog::getText( this, tr( "Open URL as log file" ), tr( "URL to download:" ),
                                  QLineEdit::Normal, selectedUrl, &ok );
     if ( ok && !url.isEmpty() ) {
-        openRemoteFile( url );
+        openRemoteFile( url, true, normalizeCommanderUrl( url ) );
     }
 }
 
@@ -1931,6 +2098,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
+    remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
         if ( session->isConnectionOpen() ) {
             session->closeConnection();
@@ -1950,8 +2118,241 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     session_.close( widget );
 
     updateOpenedFilesMenu();
+    updateActionsSendState();
 
     widget->deleteLater();
+}
+
+CommanderResult MainWindow::closeTabById( const QString& tabId )
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    if ( index < 0 ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab %1 was not found." ).arg( tabId ) );
+    }
+
+    return closeTabByIndex( index );
+}
+
+CrawlerWidget* MainWindow::crawlerWidgetByTabId( const QString& tabId ) const
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    return crawlerWidgetByIndex( index );
+}
+
+CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return nullptr;
+    }
+
+    return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
+}
+
+CommanderResult MainWindow::closeTabByIndex( int tabIndex )
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
+    }
+
+    closeTab( tabIndex, ActionInitiator::App );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::focusTabById( const QString& tabId )
+{
+    const auto index = mainTabWidget_.findTabById( tabId );
+    if ( index < 0 ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab %1 was not found." ).arg( tabId ) );
+    }
+
+    return focusTabByIndex( index );
+}
+
+CommanderResult MainWindow::focusTabByIndex( int tabIndex )
+{
+    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
+    }
+
+    mainTabWidget_.setCurrentIndex( tabIndex );
+    setWindowState( windowState() & ~Qt::WindowMinimized );
+    show();
+    raise();
+    activateWindow();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::closeAllTabsCommander()
+{
+    closeAll( ActionInitiator::App );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
+{
+    CrawlerWidget* crawler = nullptr;
+    if ( !request.tabId.isEmpty() ) {
+        crawler = crawlerWidgetByTabId( request.tabId );
+    }
+    else if ( request.tabIndex ) {
+        crawler = crawlerWidgetByIndex( *request.tabIndex );
+    }
+    else {
+        crawler = currentCrawlerWidget();
+    }
+
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+    payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    payload.insert( QStringLiteral( "tabIndex" ), targetTabIndex );
+    payload.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( targetTabIndex ) );
+
+    auto filters = request.predefinedFilters ? crawler->commanderPredefinedFilters()
+                                             : crawler->commanderFilters();
+    if ( !request.filterId.isEmpty() ) {
+        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+            return value.toMap().value( QStringLiteral( "filterId" ) ).toString() == request.filterId;
+        } );
+        if ( match == filters.cend() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        filters = QVariantList{ *match };
+    }
+    else if ( request.filterIndex ) {
+        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+            return value.toMap().value( QStringLiteral( "filterIndex" ) ).toInt() == *request.filterIndex;
+        } );
+        if ( match == filters.cend() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        filters = QVariantList{ *match };
+    }
+
+    payload.insert( QStringLiteral( "filters" ), filters );
+    payload.insert( QStringLiteral( "source" ),
+                    request.predefinedFilters ? QStringLiteral( "predefined" )
+                                              : QStringLiteral( "history" ) );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request )
+{
+    CrawlerWidget* crawler = nullptr;
+    if ( !request.tabId.isEmpty() ) {
+        crawler = crawlerWidgetByTabId( request.tabId );
+    }
+    else if ( request.tabIndex ) {
+        crawler = crawlerWidgetByIndex( *request.tabIndex );
+    }
+    else {
+        crawler = currentCrawlerWidget();
+    }
+
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    if ( !request.filterId.isEmpty() ) {
+        const auto filter = request.predefinedFilters
+                                ? crawler->commanderPredefinedFilterById( request.filterId )
+                                : crawler->commanderFilterById( request.filterId );
+        if ( !filter ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
+                                                 request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    if ( request.filterIndex ) {
+        const auto filter = request.predefinedFilters
+                                ? crawler->commanderPredefinedFilterByIndex( *request.filterIndex )
+                                : crawler->commanderFilterByIndex( *request.filterIndex );
+        if ( !filter ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Requested filter was not found." ) );
+        }
+        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
+                                                 request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    if ( !request.filterString.isEmpty() ) {
+        crawler->applyCommanderSearchPattern( request.filterString, request.runSearch,
+                                              request.rearmAutoRefresh );
+        return commanderSuccess();
+    }
+
+    return commanderFailure( CommanderResultCode::InvalidRequest,
+                             tr( "set_filter requires a filter selector." ) );
+}
+
+CommanderResult MainWindow::closeFileByPath( const QString& filePath )
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        if ( session_.getFilename( widget ) == filePath ) {
+            closeTab( index, ActionInitiator::App );
+            return commanderSuccess();
+        }
+    }
+
+    return commanderFailure( CommanderResultCode::NotFound,
+                             tr( "Open file %1 was not found." ).arg( filePath ) );
+}
+
+CommanderResult MainWindow::closeUrlBySource( const QString& url )
+{
+    const auto target = std::find_if( remoteFileSources_.cbegin(), remoteFileSources_.cend(),
+                                      [ &url ]( const auto& entry ) { return entry.second == url; } );
+    if ( target == remoteFileSources_.cend() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open URL %1 was not found." ).arg( url ) );
+    }
+
+    return closeFileByPath( target->first );
+}
+
+CommanderResult MainWindow::closeComPortByName( const QString& portName )
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto fileName = session_.getFilename( widget );
+        auto* streamSession = mainTabWidget_.streamSessionForPath( fileName );
+        if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+            continue;
+        }
+
+        if ( streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive ) == 0 ) {
+            streamSession->closeConnection();
+            return commanderSuccess();
+        }
+    }
+
+    return commanderFailure( CommanderResultCode::NotFound,
+                             tr( "Open COM port %1 was not found." ).arg( portName ) );
 }
 
 void MainWindow::currentTabChanged( int index )
@@ -2035,6 +2436,16 @@ void MainWindow::loadFileNonInteractive( const QString& file_name )
     if ( auto currentCrawler = currentCrawlerWidget() ) {
         currentCrawler->setFocus();
     }
+}
+
+void MainWindow::registerRemoteFileSource( const QString& filePath,
+                                           const QString& normalizedSourceUrl )
+{
+    if ( filePath.isEmpty() || normalizedSourceUrl.isEmpty() ) {
+        return;
+    }
+
+    remoteFileSources_[ QFileInfo{ filePath }.absoluteFilePath() ] = normalizedSourceUrl;
 }
 
 //
@@ -2349,6 +2760,7 @@ void MainWindow::updateActionsSendState()
         available = mainTabWidget_.hasOpenStreamSession();
     }
     actionsResponsesWindow_.setSendAvailable( available );
+    refreshComTabIndicators();
     updateComPortStatus();
 }
 
@@ -2361,13 +2773,41 @@ void MainWindow::updateComPortStatus()
     const auto* streamSession = currentStreamSession();
     if ( streamSession && streamSession->isConnectionOpen() ) {
         const auto settings = streamSession->captureSettings();
-        comPortField->setText( tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate ) );
+        auto text = tr( "%1 @ %2" ).arg( settings.portName ).arg( settings.baudRate );
+        if ( isActionsStreamSession( streamSession ) ) {
+            text += ActionsPortSuffix;
+        }
+        comPortField->setText( text );
         comPortField->setVisible( true );
     }
     else {
         comPortField->clear();
         comPortField->setVisible( false );
     }
+}
+
+void MainWindow::refreshComTabIndicators()
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr ) {
+            continue;
+        }
+
+        const auto filePath = session_.getFilename( widget );
+        if ( filePath.isEmpty() ) {
+            continue;
+        }
+
+        const auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
+        mainTabWidget_.setTabActionsPort( filePath, isActionsStreamSession( streamSession ) );
+    }
+}
+
+bool MainWindow::isActionsStreamSession( const StreamSession* streamSession ) const
+{
+    return streamSession != nullptr && streamSession == actionsStreamSession_.data()
+           && streamSession->isConnectionOpen();
 }
 
 // Update the title bar.

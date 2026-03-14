@@ -32,6 +32,7 @@
 #include <QtCore/QVariant>
 
 #include "log.h"
+#include "commander.h"
 #include "klogg_version.h"
 
 /*
@@ -50,6 +51,7 @@ class MessageReceiver final : public QObject {
   Q_SIGNALS:
     void loadFile( const QString& filename );
     void activateWindow();
+    void executeCommand( const CommanderRequest& request, const QString& resultPath );
 
   public Q_SLOTS:
     void receiveMessage( const QByteArray& message )
@@ -63,6 +65,12 @@ class MessageReceiver final : public QObject {
         }
 
         const auto ackPath = data.value( "ackPath" ).toString();
+        const auto resultPath = data.value( "resultPath" ).toString();
+
+        if ( data.value( "type" ).toString() == QLatin1String( "command" ) ) {
+            handleCommandMessage( data, resultPath );
+            return;
+        }
 
         if ( !data.contains( "files" ) ) {
             LOG_WARNING << "Invalid message payload: missing files field";
@@ -112,6 +120,32 @@ class MessageReceiver final : public QObject {
     }
 
   private:
+    void handleCommandMessage( const QVariantMap& data, const QString& resultPath )
+    {
+        if ( !isValidTempPath( resultPath, QStringLiteral( "klogg_command_result_" ),
+                               QStringLiteral( ".tmp" ) ) ) {
+            LOG_WARNING << "Ignoring invalid result path " << resultPath;
+            return;
+        }
+
+        const auto commandValue = data.value( QStringLiteral( "command" ) );
+        if ( !commandValue.canConvert<QVariantMap>() ) {
+            writeFailureResult( resultPath, QStringLiteral( "Invalid commander payload." ) );
+            return;
+        }
+
+        QString errorMessage;
+        const auto request = commanderRequestFromVariantMap( commandValue.toMap(), &errorMessage );
+        if ( !request ) {
+            writeFailureResult( resultPath, errorMessage.isEmpty()
+                                                ? QStringLiteral( "Invalid commander payload." )
+                                                : errorMessage );
+            return;
+        }
+
+        Q_EMIT executeCommand( *request, resultPath );
+    }
+
     static bool isPathEqual( const QString& left, const QString& right )
     {
 #ifdef Q_OS_WIN
@@ -121,30 +155,43 @@ class MessageReceiver final : public QObject {
 #endif
     }
 
-    static bool isValidAckPath( const QString& ackPath )
+    static bool isValidTempPath( const QString& path, const QString& prefix, const QString& suffix )
     {
-        const QFileInfo ackInfo{ ackPath };
-        if ( !ackInfo.isAbsolute() ) {
+        const QFileInfo info{ path };
+        if ( !info.isAbsolute() ) {
             return false;
         }
 
         const auto expectedDir = QDir::cleanPath( QDir::tempPath() );
-        const auto actualDir = QDir::cleanPath( ackInfo.absolutePath() );
+        const auto actualDir = QDir::cleanPath( info.absolutePath() );
         if ( !isPathEqual( actualDir, expectedDir ) ) {
             return false;
         }
 
-        const auto fileName = ackInfo.fileName();
-        if ( !fileName.startsWith( "klogg_activate_ack_" ) || !fileName.endsWith( ".tmp" ) ) {
+        const auto fileName = info.fileName();
+        if ( !fileName.startsWith( prefix ) || !fileName.endsWith( suffix ) ) {
             return false;
         }
 
-        // Ack file must be newly created by the receiver.
-        if ( ackInfo.exists() ) {
+        if ( info.exists() ) {
             return false;
         }
 
         return true;
+    }
+
+    static bool isValidAckPath( const QString& ackPath )
+    {
+        return isValidTempPath( ackPath, QStringLiteral( "klogg_activate_ack_" ),
+                                QStringLiteral( ".tmp" ) );
+    }
+
+    static void writeFailureResult( const QString& resultPath, const QString& message )
+    {
+        const auto result = commanderFailure( CommanderResultCode::InvalidRequest, message );
+        if ( !writeCommanderResult( resultPath, result ) ) {
+            LOG_WARNING << "Failed to write commander result to " << resultPath;
+        }
     }
 };
 

@@ -52,6 +52,10 @@
 #include "log.h"
 #include "predefinedfilters.h"
 
+namespace {
+constexpr auto FilterIdRole = Qt::UserRole + 1;
+}
+
 class CenteredCheckbox : public QWidget {
   public:
     explicit CenteredCheckbox( QWidget* parent = nullptr )
@@ -160,7 +164,9 @@ void PredefinedFiltersDialog::populateFiltersTable(
 
     int filterIndex = 0;
     for ( const auto& filter : filters ) {
-        filtersTableWidget->setItem( filterIndex, 0, new QTableWidgetItem( filter.name ) );
+        auto* nameItem = new QTableWidgetItem( filter.name );
+        nameItem->setData( FilterIdRole, filter.id );
+        filtersTableWidget->setItem( filterIndex, 0, nameItem );
         filtersTableWidget->setItem( filterIndex, 1, new QTableWidgetItem( filter.pattern ) );
         auto* regexCheckbox = new CenteredCheckbox;
         regexCheckbox->setChecked( filter.useRegex );
@@ -196,13 +202,17 @@ PredefinedFiltersCollection::Collection PredefinedFiltersDialog::readFiltersTabl
 
         const auto name = filtersTableWidget->item( i, 0 )->text();
         const auto value = filtersTableWidget->item( i, 1 )->text();
+        auto filterId = filtersTableWidget->item( i, 0 )->data( FilterIdRole ).toString();
+        if ( filterId.isEmpty() ) {
+            filterId = createPredefinedFilterId();
+        }
 
         const auto useRegexCheckbox
             = static_cast<CenteredCheckbox*>( filtersTableWidget->cellWidget( i, 2 ) );
         const auto useRegex = useRegexCheckbox ? useRegexCheckbox->isChecked() : false;
 
         if ( !name.isEmpty() && !value.isEmpty() ) {
-            currentFilters.push_back( { name, value, useRegex } );
+            currentFilters.push_back( { filterId, name, value, useRegex } );
         }
     }
 
@@ -219,7 +229,9 @@ void PredefinedFiltersDialog::addFilterRow( const QString& newFilter )
     const auto newRow = filtersTableWidget->rowCount();
     filtersTableWidget->setRowCount( newRow + 1 );
     filtersTableWidget->setItem( newRow, 1, new QTableWidgetItem( newFilter ) );
-    filtersTableWidget->setItem( newRow, 0, new QTableWidgetItem( "" ) );
+    auto* nameItem = new QTableWidgetItem( "" );
+    nameItem->setData( FilterIdRole, createPredefinedFilterId() );
+    filtersTableWidget->setItem( newRow, 0, nameItem );
     auto regexCheckBox = new CenteredCheckbox;
     filtersTableWidget->setCellWidget( newRow, 2, regexCheckBox );
 

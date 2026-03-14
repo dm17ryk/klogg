@@ -51,6 +51,7 @@
 #include <memory>
 #include <mutex>
 
+#include "commander.h"
 #include "configuration.h"
 #include "crawlerwidget.h"
 #include "downloader.h"
@@ -90,6 +91,8 @@ class MainWindow : public QMainWindow {
     // Loads the initial file (parameter passed or from config file)
     void loadInitialFile( QString fileName, bool followFile );
     bool isStartupReadyForDisplay() const;
+    CommanderResult executeCommanderRequest( const CommanderRequest& request );
+    QVariantMap commanderWindowInfo() const;
 
     void reTranslateUI();
 
@@ -222,9 +225,20 @@ class MainWindow : public QMainWindow {
     void createTrayIcon();
     void readSettings();
     void writeSettings();
+    CommanderResult closeTabById( const QString& tabId );
+    CommanderResult closeTabByIndex( int tabIndex );
+    CommanderResult focusTabById( const QString& tabId );
+    CommanderResult focusTabByIndex( int tabIndex );
+    CommanderResult closeAllTabsCommander();
+    CommanderResult closeComPortByName( const QString& portName );
+    CommanderResult closeFileByPath( const QString& filePath );
+    CommanderResult closeUrlBySource( const QString& url );
+    CommanderResult commanderFilters( const CommanderRequest& request ) const;
+    CommanderResult commanderSetFilter( const CommanderRequest& request );
     bool loadFile( const QString& fileName, bool followFile = false );
     bool extractAndLoadFile( const QString& fileName );
-    void openRemoteFile( const QUrl& url );
+    CommanderResult openRemoteFile( const QUrl& url, bool interactiveErrors = true,
+                                    const QString& normalizedSourceUrl = {} );
     void updateTitleBar( const QString& fileName );
     void addRecentFile( const QString& fileName );
     void updateRecentFileActions();
@@ -234,7 +248,8 @@ class MainWindow : public QMainWindow {
     void updateHighlightersMenu();
     void updateActionsSendState();
     bool startComCaptureSession( SerialCaptureSettings& settings,
-                                 ComCaptureStartOptions options );
+                                 ComCaptureStartOptions options,
+                                 QString* errorMessage = nullptr );
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
     StreamSession* currentStreamSession() const;
@@ -242,6 +257,8 @@ class MainWindow : public QMainWindow {
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
     void updateInfoLine();
     void updateComPortStatus();
+    void refreshComTabIndicators();
+    bool isActionsStreamSession( const StreamSession* streamSession ) const;
     void showInfoLabels( bool show );
     void logScreenInfo( QScreen* screen );
     void removeFromFavorites( const QString& pathToRemove );
@@ -251,6 +268,9 @@ class MainWindow : public QMainWindow {
     bool startComCaptureSession( SerialCaptureSettings& settings ) {
         return startComCaptureSession( settings, ComCaptureStartOptions{} );
     }
+    void registerRemoteFileSource( const QString& filePath, const QString& normalizedSourceUrl );
+    CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
+    CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
 
     WindowSession session_;
     QString loadingFileName;
@@ -356,6 +376,7 @@ class MainWindow : public QMainWindow {
     QPointer<StreamSession> actionsStreamSession_;
 
     QTemporaryDir tempDir_;
+    std::map<QString, QString> remoteFileSources_;
 
     bool isMaximized_ = false;
     bool isCloseFromTray_ = false;

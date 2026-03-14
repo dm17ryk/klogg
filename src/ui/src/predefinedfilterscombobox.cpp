@@ -38,14 +38,18 @@
 
 #include "predefinedfilterscombobox.h"
 
+#include <algorithm>
+
 #include <QStandardItemModel>
 #include <QStyledItemDelegate>
 #include <qabstractitemview.h>
+#include <QRegularExpression>
 
 #include "log.h"
 
 constexpr int PatternRole = Qt::UserRole + 1;
 constexpr int RegexRole = PatternRole + 1;
+constexpr int FilterIdRole = RegexRole + 1;
 
 class QCheckListStyledItemDelegate : public QStyledItemDelegate {
   public:
@@ -120,6 +124,89 @@ void PredefinedFiltersComboBox::updateSearchPattern( const QString newSearchPatt
     searchPattern_.useLogicalCombining_ = useLogicalCombining;
 }
 
+QList<int> PredefinedFiltersComboBox::selectedFilterIndexes() const
+{
+    QList<int> selectedIndexes;
+
+    QString searchPattern = searchPattern_.newOne_;
+    QString delimiter( "\\|" );
+
+    if ( searchPattern_.useLogicalCombining_ ) {
+        delimiter = R"(" or ")";
+        if ( searchPattern.size() >= 2 ) {
+            searchPattern = searchPattern.mid( 1, searchPattern.size() - 2 );
+        }
+    }
+
+    const auto parts = searchPattern.split( QRegularExpression( delimiter ), Qt::SkipEmptyParts );
+    const auto totalRows = model_->rowCount();
+    for ( int filterIndex = 1; filterIndex < totalRows; ++filterIndex ) {
+        const auto item = model_->item( filterIndex );
+        if ( item == nullptr || !item->isCheckable() ) {
+            continue;
+        }
+
+        const auto pattern = item->data( PatternRole ).toString();
+        if ( parts.contains( pattern ) ) {
+            selectedIndexes.push_back( filterIndex - 1 );
+        }
+    }
+
+    return selectedIndexes;
+}
+
+QVariantList PredefinedFiltersComboBox::commanderFilters() const
+{
+    QVariantList filters;
+    const auto currentFilters = filtersCollection_.getFilters();
+    const auto selectedIndexes = selectedFilterIndexes();
+
+    filters.reserve( currentFilters.size() );
+    for ( int filterIndex = 0; filterIndex < currentFilters.size(); ++filterIndex ) {
+        const auto& filter = currentFilters.at( filterIndex );
+        QVariantMap filterInfo;
+        filterInfo.insert( QStringLiteral( "filterId" ), filter.id );
+        filterInfo.insert( QStringLiteral( "filterIndex" ), filterIndex );
+        filterInfo.insert( QStringLiteral( "name" ), filter.name );
+        filterInfo.insert( QStringLiteral( "pattern" ), filter.pattern );
+        filterInfo.insert( QStringLiteral( "useRegex" ), filter.useRegex );
+        filterInfo.insert( QStringLiteral( "selected" ), selectedIndexes.contains( filterIndex ) );
+        filters.push_back( filterInfo );
+    }
+
+    return filters;
+}
+
+std::optional<PredefinedFilter> PredefinedFiltersComboBox::commanderFilterById(
+    const QString& filterId ) const
+{
+    if ( filterId.isEmpty() ) {
+        return std::nullopt;
+    }
+
+    const auto currentFilters = filtersCollection_.getFilters();
+    const auto filterIt = std::find_if( currentFilters.cbegin(), currentFilters.cend(),
+                                        [ &filterId ]( const auto& filter ) {
+                                            return filter.id == filterId;
+                                        } );
+    if ( filterIt == currentFilters.cend() ) {
+        return std::nullopt;
+    }
+
+    return *filterIt;
+}
+
+std::optional<PredefinedFilter> PredefinedFiltersComboBox::commanderFilterByIndex(
+    int filterIndex ) const
+{
+    const auto currentFilters = filtersCollection_.getFilters();
+    if ( filterIndex < 0 || filterIndex >= currentFilters.size() ) {
+        return std::nullopt;
+    }
+
+    return currentFilters.at( filterIndex );
+}
+
 void PredefinedFiltersComboBox::showPopup()
 {
     if ( searchPattern_.newOne_ == searchPattern_.lastOne_ ) {
@@ -185,6 +272,7 @@ void PredefinedFiltersComboBox::insertFilters(
 
         item->setData( filter.pattern, PatternRole );
         item->setData( filter.useRegex, RegexRole );
+        item->setData( filter.id, FilterIdRole );
 
         model_->insertRow( model_->rowCount(), item );
     }
@@ -209,7 +297,8 @@ void PredefinedFiltersComboBox::collectFilters()
             continue;
         }
 
-        selectedPatterns.append( { item->text(), item->data( PatternRole ).toString(),
+        selectedPatterns.append( { item->data( FilterIdRole ).toString(), item->text(),
+                                   item->data( PatternRole ).toString(),
                                    item->data( RegexRole ).toBool() } );
     }
 

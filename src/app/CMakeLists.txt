@@ -71,6 +71,21 @@ set(MAIN_LIBS
     kdsingleapp
 )
 
+add_library(
+  klogg_commander STATIC
+  ${CMAKE_SOURCE_DIR}/src/ui/include/commander.h
+  ${CMAKE_SOURCE_DIR}/src/ui/src/commander.cpp
+)
+
+target_include_directories(klogg_commander PUBLIC ${CMAKE_SOURCE_DIR}/src/ui/include)
+target_link_libraries(
+  klogg_commander
+  PUBLIC project_options
+         project_warnings
+         Qt${QT_VERSION_MAJOR}::Core
+         Qt${QT_VERSION_MAJOR}::SerialPort
+)
+
 add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_portable ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_grep ${MAIN_SOURCES} ${KLOGG_GREP_SOURCES})
@@ -96,7 +111,7 @@ endif()
 
 target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui)
 target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui)
-target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS})
+target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS} klogg_commander)
 
 target_compile_definitions(klogg_portable PUBLIC -DKLOGG_PORTABLE)
 

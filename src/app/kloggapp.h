@@ -56,6 +56,7 @@
 #endif
 
 #include "configuration.h"
+#include "commander.h"
 #include "crashhandler.h"
 #include "klogg_version.h"
 #include "log.h"
@@ -96,6 +97,7 @@ class KloggApp : public QApplication {
         qRegisterMetaType<QFNotificationProgress>( "QFNotificationProgress" );
         qRegisterMetaType<QFNotificationInterrupted>( "QFNotificationInterrupted" );
         qRegisterMetaType<QuickFindMatcher>( "QuickFindMatcher" );
+        qRegisterMetaType<CommanderRequest>( "CommanderRequest" );
 
         if ( singleApplication_.isPrimaryInstance() ) {
             QObject::connect( &singleApplication_, &KDSingleApplication::messageReceived, &messageReceiver_,
@@ -105,6 +107,8 @@ class KloggApp : public QApplication {
                               &KloggApp::loadFileNonInteractive );
             QObject::connect( &messageReceiver_, &MessageReceiver::activateWindow, this,
                               &KloggApp::activatePrimaryWindow );
+            QObject::connect( &messageReceiver_, &MessageReceiver::executeCommand, this,
+                              &KloggApp::handleCommanderRequest );
 
             // Version checker notification
             connect( &versionChecker_, &VersionChecker::newVersionFound,
@@ -135,13 +139,8 @@ class KloggApp : public QApplication {
 
         QString ackPath;
         if ( filesToOpen.empty() ) {
-            QTemporaryFile ackFile( QDir::temp().filePath( "klogg_activate_ack_XXXXXX.tmp" ) );
-            ackFile.setAutoRemove( false );
-            if ( ackFile.open() ) {
-                ackPath = ackFile.fileName();
-                ackFile.close();
-                QFile::remove( ackPath );
-            }
+            ackPath = createUniqueTempPath( QStringLiteral( "klogg_activate_ack_" ),
+                                            QStringLiteral( ".tmp" ) );
         }
 
         QCborArray filesArray;
@@ -198,6 +197,51 @@ class KloggApp : public QApplication {
 
         QFile::remove( ackPath );
         return ackReceived;
+    }
+
+    CommanderResult sendCommandToPrimaryInstance( const CommanderRequest& request )
+    {
+#ifdef Q_OS_WIN
+        ::AllowSetForegroundWindow( static_cast<DWORD>( primaryPid() ) );
+#endif
+
+        const auto resultPath = createUniqueTempPath( QStringLiteral( "klogg_command_result_" ),
+                                                      QStringLiteral( ".tmp" ) );
+        if ( resultPath.isEmpty() ) {
+            return commanderFailure( CommanderResultCode::TransportError,
+                                     QStringLiteral( "Failed to create commander response file." ) );
+        }
+
+        QCborMap data;
+        data.insert( QLatin1String( "version" ), QString::fromLatin1( kloggVersion() ) );
+        data.insert( QLatin1String( "type" ), QStringLiteral( "command" ) );
+        data.insert( QLatin1String( "resultPath" ), resultPath );
+        data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
+
+        const QCborValue cbor( data );
+        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 ) ) {
+            QFile::remove( resultPath );
+            return commanderFailure( CommanderResultCode::TransportError,
+                                     QStringLiteral( "Failed to contact the primary klogg instance." ) );
+        }
+
+        if ( !waitForResponseFile( resultPath, 5000 ) ) {
+            QFile::remove( resultPath );
+            return commanderFailure( CommanderResultCode::TransportError,
+                                     QStringLiteral( "Timed out waiting for commander response." ) );
+        }
+
+        QString readError;
+        const auto result = readCommanderResult( resultPath, &readError );
+        QFile::remove( resultPath );
+        if ( !result ) {
+            return commanderFailure( CommanderResultCode::TransportError,
+                                     readError.isEmpty()
+                                         ? QStringLiteral( "Invalid commander response." )
+                                         : readError );
+        }
+
+        return *result;
     }
     void initCrashHandler()
     {
@@ -434,6 +478,104 @@ class KloggApp : public QApplication {
         activeWindows_.top()->loadFileNonInteractive( file );
     }
 
+    CommanderResult executeCommanderRequest( const CommanderRequest& request )
+    {
+        if ( request.action == CommanderAction::GetInfo ) {
+            QVariantList windows;
+            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                Q_UNUSED( windowSession );
+                if ( window == nullptr ) {
+                    continue;
+                }
+
+                windows.push_back( window->commanderWindowInfo() );
+            }
+
+            QVariantMap payload;
+            payload.insert( QStringLiteral( "windows" ), windows );
+            return commanderSuccess( {}, payload );
+        }
+
+        if ( isCommanderOpenAction( request.action ) ) {
+            auto* window = activeWindowOrCreate();
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                         QStringLiteral( "Failed to create a klogg window." ) );
+            }
+
+            const auto result = window->executeCommanderRequest( request );
+            if ( result.ok() ) {
+                activatePrimaryWindow();
+            }
+            return result;
+        }
+
+        if ( request.action == CommanderAction::CloseKlogg ) {
+            exitApplication();
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::CloseAll ) {
+            for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                Q_UNUSED( windowSession );
+                if ( window != nullptr ) {
+                    window->executeCommanderRequest( request );
+                }
+            }
+            return commanderSuccess();
+        }
+
+        const auto targetSpecificWindow
+            = request.action == CommanderAction::CloseTab
+              || request.action == CommanderAction::FocusTab
+              || request.action == CommanderAction::GetFilters
+              || request.action == CommanderAction::SetFilter;
+
+        if ( targetSpecificWindow && request.windowIndex ) {
+            auto* window = windowByIndex( *request.windowIndex );
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "Requested window was not found." ) );
+            }
+
+            return window->executeCommanderRequest( request );
+        }
+
+        if ( ( request.action == CommanderAction::GetFilters
+               || request.action == CommanderAction::SetFilter )
+             && request.tabId.isEmpty() && !request.tabIndex ) {
+            auto* window = activeWindowIfAny();
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "No active klogg window was found." ) );
+            }
+
+            return window->executeCommanderRequest( request );
+        }
+
+        CommanderResult lastNotFound = commanderFailure(
+            CommanderResultCode::NotFound, QStringLiteral( "Requested target was not found." ) );
+
+        for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+            Q_UNUSED( windowSession );
+            if ( window == nullptr ) {
+                continue;
+            }
+
+            const auto result = window->executeCommanderRequest( request );
+            if ( result.ok() ) {
+                return result;
+            }
+            if ( result.code != CommanderResultCode::NotFound ) {
+                return result;
+            }
+
+            lastNotFound = result;
+        }
+
+        return lastNotFound;
+    }
+
     void activatePrimaryWindow()
     {
         while ( !activeWindows_.empty() && activeWindows_.top().isNull() ) {
@@ -457,6 +599,14 @@ class KloggApp : public QApplication {
         }
         window->raise();
         window->activateWindow();
+    }
+
+    void handleCommanderRequest( const CommanderRequest& request, const QString& resultPath )
+    {
+        const auto result = executeCommanderRequest( request );
+        if ( !writeCommanderResult( resultPath, result ) ) {
+            LOG_WARNING << "Failed to write commander result to " << resultPath;
+        }
     }
 
     void startBackgroundTasks()
@@ -615,6 +765,81 @@ class KloggApp : public QApplication {
             = startupBootstrapTopLeft_ + QPoint( 0, std::max( titleBarHeight, 24 ) );
 
         window->setGeometry( QRect( bootstrapTopLeft, bootstrapSize ) );
+    }
+
+    MainWindow* activeWindowOrCreate()
+    {
+        auto* activeWindow = activeWindowIfAny();
+        if ( activeWindow == nullptr ) {
+            auto* newMainWindow = newWindow();
+            newMainWindow->show();
+            return newMainWindow;
+        }
+
+        return activeWindow;
+    }
+
+    MainWindow* activeWindowIfAny()
+    {
+        while ( !activeWindows_.empty() && activeWindows_.top().isNull() ) {
+            activeWindows_.pop();
+        }
+
+        if ( activeWindows_.empty() ) {
+            return nullptr;
+        }
+
+        return activeWindows_.top().data();
+    }
+
+    MainWindow* windowByIndex( int windowIndex ) const
+    {
+        for ( const auto& [ session, window ] : mainWindows_ ) {
+            if ( window != nullptr && static_cast<int>( session.windowIndex() ) == windowIndex ) {
+                return window;
+            }
+        }
+
+        return nullptr;
+    }
+
+    static QString createUniqueTempPath( const QString& prefix, const QString& suffix )
+    {
+        const auto tempDirPath = QDir::tempPath();
+        for ( auto attempt = 0; attempt < 16; ++attempt ) {
+            const auto candidate = QDir{ tempDirPath }.filePath(
+                prefix + QUuid::createUuid().toString( QUuid::WithoutBraces ) + suffix );
+            if ( !QFileInfo::exists( candidate ) ) {
+                return candidate;
+            }
+        }
+        return {};
+    }
+
+    static bool waitForResponseFile( const QString& resultPath, int timeoutMs )
+    {
+        constexpr int PollIntervalMs = 20;
+
+        bool received = false;
+        QEventLoop waitLoop;
+        QTimer pollTimer;
+        QTimer timeoutTimer;
+        pollTimer.setInterval( PollIntervalMs );
+        timeoutTimer.setSingleShot( true );
+
+        connect( &pollTimer, &QTimer::timeout, &waitLoop, [ & ]() {
+            if ( QFileInfo::exists( resultPath ) ) {
+                received = true;
+                waitLoop.quit();
+            }
+        } );
+        connect( &timeoutTimer, &QTimer::timeout, &waitLoop, &QEventLoop::quit );
+
+        pollTimer.start();
+        timeoutTimer.start( timeoutMs );
+        waitLoop.exec( QEventLoop::ProcessEventsFlag::ExcludeUserInputEvents );
+
+        return received || QFileInfo::exists( resultPath );
     }
 
   private:

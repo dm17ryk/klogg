@@ -46,6 +46,7 @@
 #include "persistable.h"
 
 struct PredefinedFilter {
+    QString id;
     QString name;
     QString pattern;
     bool useRegex;
@@ -70,10 +71,12 @@ class PredefinedFiltersCollection final : public Persistable<PredefinedFiltersCo
     void saveToStorage( const Collection& filters );
 
   private:
-    static constexpr int PredefinedFiltersCollection_VERSION = 2;
+    static constexpr int PredefinedFiltersCollection_VERSION = 3;
 
     Collection filters_;
 };
+
+QString createPredefinedFilterId();
 
 Q_DECLARE_METATYPE(PredefinedFilter)
 

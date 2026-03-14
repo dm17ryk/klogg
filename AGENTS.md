@@ -23,6 +23,24 @@ d:
 cd %KLOGG_WORKSPACE%
 ```
 
+## Agents Terminal Setup
+
+To prevent errors from profile modules or missing tools, use a clean terminal session with the necessary environment variables set. Avoid running CMake or build commands in a terminal with custom profiles that may interfere with the build process.
+
+## Use Developer Command Prompt for VS 2022
+
+Use the "x64 Native Tools Command Prompt for VS 2022" to ensure all necessary environment variables for MSVC, CMake, and Qt are set correctly. This avoids issues with missing tools or libraries during the build process.
+
+```bash
+cmd.exe /d /k "d:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -startdir=none -arch=x64 -host_arch=x64
+```
+
+or
+
+```bash
+pwsh.exe -NoExit -NoProfile -Command "&{Import-Module """d:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"""; Enter-VsDevShell 3487df70 -SkipAutomaticLocation -DevCmdArguments """-arch=x64 -host_arch=x64"""}"
+```
+
 ## Project Structure & Module Organization
 
 Source lives in `src/` (Qt/C++17 app code and UI). Tests are split into

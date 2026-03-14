@@ -28,6 +28,7 @@
 #include <QMenu>
 #include <QPalette>
 #include <QPointer>
+#include <QUuid>
 #include <qobjectdefs.h>
 #include <qpoint.h>
 
@@ -46,6 +47,9 @@
 namespace {
 constexpr QLatin1String PathKey = QLatin1String( "path", 4 );
 constexpr QLatin1String StatusKey = QLatin1String( "status", 6 );
+constexpr QLatin1String TabIdKey = QLatin1String( "tabId", 5 );
+constexpr QLatin1String ConnectedKey = QLatin1String( "connected", 9 );
+constexpr QLatin1String ActionsPortKey = QLatin1String( "actionsPort", 11 );
 } // namespace
 
 TabbedCrawlerWidget::TabbedCrawlerWidget()
@@ -135,7 +139,8 @@ void TabbedCrawlerWidget::changeEvent( QEvent* event )
             const bool connected = it != streamSessions_.end() && it->second
                                    && it->second->isConnectionOpen();
             const SerialCaptureSettings* settings
-                = connected ? &it->second->captureSettings() : nullptr;
+                = ( it != streamSessions_.end() && it->second ) ? &it->second->captureSettings()
+                                                                : nullptr;
             setTabConnectionState( path, connected, settings );
         }
         dispatchToObject( [ this ] { loadIcons(); }, this );
@@ -146,18 +151,15 @@ void TabbedCrawlerWidget::changeEvent( QEvent* event )
 
 void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
 {
-    const auto tabLabel = QFileInfo( fileName ).fileName();
-    const auto tabName = TabNameMapping::getSynced().tabName( fileName );
-
-    myTabBar_.setTabIcon( index, olddata_icon_ );
-    myTabBar_.setTabText( index, tabName.isEmpty() ? tabLabel : tabName );
-    myTabBar_.setTabToolTip( index, QDir::toNativeSeparators( fileName ) );
-
     QVariantMap tabData;
     tabData[ PathKey ] = fileName;
     tabData[ StatusKey ] = static_cast<int>( DataStatus::OLD_DATA );
+    tabData[ TabIdKey ] = QUuid::createUuid().toString( QUuid::WithoutBraces );
+    tabData[ ConnectedKey ] = false;
+    tabData[ ActionsPortKey ] = false;
 
     myTabBar_.setTabData( index, tabData );
+    updateTabPresentation( index );
 
     setCurrentIndex( index );
 
@@ -166,8 +168,7 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
     const auto sessionIt = streamSessions_.find( fileName );
     if ( sessionIt != streamSessions_.end() && sessionIt->second ) {
         const bool connected = sessionIt->second->isConnectionOpen();
-        const auto* settings
-            = connected ? &sessionIt->second->captureSettings() : nullptr;
+        const auto* settings = &sessionIt->second->captureSettings();
         setTabConnectionState( fileName, connected, settings );
     }
 }
@@ -225,6 +226,20 @@ QString TabbedCrawlerWidget::tabPathAt( int index ) const
     return myTabBar_.tabData( index ).toMap()[ PathKey ].toString();
 }
 
+QString TabbedCrawlerWidget::tabIdAt( int index ) const
+{
+    return myTabBar_.tabData( index ).toMap()[ TabIdKey ].toString();
+}
+
+QString TabbedCrawlerWidget::tabDisplayNameAt( int index ) const
+{
+    if ( index < 0 || index >= count() ) {
+        return {};
+    }
+
+    return myTabBar_.tabText( index );
+}
+
 StreamSession* TabbedCrawlerWidget::streamSessionForTab( int tab ) const
 {
     if ( tab < 0 || tab >= count() ) {
@@ -248,6 +263,32 @@ StreamSession* TabbedCrawlerWidget::streamSessionForPath( const QString& fileNam
     }
 
     return it->second.get();
+}
+
+int TabbedCrawlerWidget::findTabById( const QString& tabId ) const
+{
+    if ( tabId.isEmpty() ) {
+        return -1;
+    }
+
+    for ( int index = 0; index < count(); ++index ) {
+        if ( tabIdAt( index ) == tabId ) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+void TabbedCrawlerWidget::setTabActionsPort( const QString& fileName, bool isActionsPort )
+{
+    for ( int index = 0; index < count(); ++index ) {
+        if ( tabPathAt( index ) == fileName ) {
+            setTabMetadataValue( index, QStringLiteral( "actionsPort" ), isActionsPort );
+            updateTabPresentation( index );
+            return;
+        }
+    }
 }
 
 bool TabbedCrawlerWidget::hasOpenStreamSession() const
@@ -358,25 +399,21 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
 
     connect( renameTab, &QAction::triggered, this, [ this, tab ] {
         bool isNameEntered = false;
-        auto newName = QInputDialog::getText( this, "Rename tab", "Tab name", QLineEdit::Normal,
-                                              myTabBar_.tabText( tab ), &isNameEntered );
+        const auto tabPath = tabPathAt( tab );
+        const auto currentName = TabNameMapping::getSynced().tabName( tabPath );
+        auto newName = QInputDialog::getText(
+            this, "Rename tab", "Tab name", QLineEdit::Normal,
+            currentName.isEmpty() ? QFileInfo( tabPath ).fileName() : currentName, &isNameEntered );
         if ( isNameEntered ) {
-            const auto tabPath = tabPathAt( tab );
             TabNameMapping::getSynced().setTabName( tabPath, newName ).save();
-
-            if ( newName.isEmpty() ) {
-                myTabBar_.setTabText( tab, QFileInfo( tabPath ).fileName() );
-            }
-            else {
-                myTabBar_.setTabText( tab, std::move( newName ) );
-            }
+            updateTabPresentation( tab );
         }
     } );
 
     connect( resetTabName, &QAction::triggered, this, [ this, tab ] {
         const auto tabPath = tabPathAt( tab );
         TabNameMapping::getSynced().setTabName( tabPath, "" ).save();
-        myTabBar_.setTabText( tab, QFileInfo( tabPath ).fileName() );
+        updateTabPresentation( tab );
     } );
 
     menu.exec( globalPoint );
@@ -463,25 +500,77 @@ void TabbedCrawlerWidget::updateTabBarVisibility()
 void TabbedCrawlerWidget::setTabConnectionState( const QString& fileName, bool connected,
                                                  const SerialCaptureSettings* settings )
 {
-    const auto color = connected ? openStreamTabColor_ : defaultTabTextColor_;
     for ( int i = 0; i < count(); ++i ) {
         if ( tabPathAt( i ) == fileName ) {
-            const auto baseToolTip = QDir::toNativeSeparators( fileName );
-            if ( connected && settings ) {
-                myTabBar_.setTabToolTip(
-                    i, QStringLiteral( "%1 (%2 @ %3)" )
-                           .arg( baseToolTip, settings->portName )
-                           .arg( settings->baudRate ) );
-                myTabBar_.setTabIcon( i, connectionIcon_ );
+            setTabMetadataValue( i, QStringLiteral( "connected" ), connected );
+            if ( settings != nullptr ) {
+                setTabMetadataValue( i, QStringLiteral( "portName" ), settings->portName );
+                setTabMetadataValue( i, QStringLiteral( "baudRate" ), settings->baudRate );
             }
             else {
-                myTabBar_.setTabToolTip( i, baseToolTip );
-                updateIcon( i );
+                setTabMetadataValue( i, QStringLiteral( "portName" ), {} );
+                setTabMetadataValue( i, QStringLiteral( "baudRate" ), {} );
             }
-            myTabBar_.setTabTextColor( i, color );
+            updateTabPresentation( i );
             break;
         }
     }
+}
+
+void TabbedCrawlerWidget::setTabMetadataValue( int index, const QString& key, const QVariant& value )
+{
+    auto tabData = myTabBar_.tabData( index ).toMap();
+    if ( value.isValid() ) {
+        tabData.insert( key, value );
+    }
+    else {
+        tabData.remove( key );
+    }
+    myTabBar_.setTabData( index, tabData );
+}
+
+QVariant TabbedCrawlerWidget::tabMetadataValue( int index, const QString& key ) const
+{
+    if ( index < 0 || index >= count() ) {
+        return {};
+    }
+
+    return myTabBar_.tabData( index ).toMap().value( key );
+}
+
+void TabbedCrawlerWidget::updateTabPresentation( int index )
+{
+    if ( index < 0 || index >= count() ) {
+        return;
+    }
+
+    const auto fileName = tabPathAt( index );
+    const auto tabLabel = QFileInfo( fileName ).fileName();
+    const auto tabName = TabNameMapping::getSynced().tabName( fileName );
+    const auto connected = tabMetadataValue( index, QStringLiteral( "connected" ) ).toBool();
+    const auto portName = tabMetadataValue( index, QStringLiteral( "portName" ) ).toString();
+    const auto baudRate = tabMetadataValue( index, QStringLiteral( "baudRate" ) ).toInt();
+    const auto isActionsPort = tabMetadataValue( index, QStringLiteral( "actionsPort" ) ).toBool();
+    const auto suffix = isActionsPort ? QStringLiteral( " (actions)" ) : QString{};
+
+    myTabBar_.setTabText( index, ( tabName.isEmpty() ? tabLabel : tabName ) + suffix );
+
+    auto toolTip = QDir::toNativeSeparators( fileName );
+    if ( !portName.isEmpty() ) {
+        toolTip += QStringLiteral( " (%1 @ %2)" ).arg( portName ).arg( baudRate );
+        if ( isActionsPort ) {
+            toolTip += QStringLiteral( " (actions)" );
+        }
+    }
+    myTabBar_.setTabToolTip( index, toolTip );
+
+    if ( connected ) {
+        myTabBar_.setTabIcon( index, connectionIcon_ );
+    }
+    else {
+        updateIcon( index );
+    }
+    myTabBar_.setTabTextColor( index, connected ? openStreamTabColor_ : defaultTabTextColor_ );
 }
 
 void TabbedCrawlerWidget::setAlwaysShowTabBar( bool alwaysShow )

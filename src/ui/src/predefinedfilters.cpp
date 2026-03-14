@@ -38,7 +38,25 @@
 
 #include "predefinedfilters.h"
 
+#include <QUuid>
+
 #include "log.h"
+
+namespace {
+void ensureFilterIds( PredefinedFiltersCollection::Collection& filters )
+{
+    for ( auto& filter : filters ) {
+        if ( filter.id.isEmpty() ) {
+            filter.id = createPredefinedFilterId();
+        }
+    }
+}
+} // namespace
+
+QString createPredefinedFilterId()
+{
+    return QUuid::createUuid().toString( QUuid::WithoutBraces );
+}
 
 void PredefinedFiltersCollection::retrieveFromStorage( QSettings& settings )
 {
@@ -55,11 +73,13 @@ void PredefinedFiltersCollection::retrieveFromStorage( QSettings& settings )
             for ( int i = 0; i < size; ++i ) {
                 settings.setArrayIndex( i );
 
-                filters_.push_back( { settings.value( "name" ).toString(),
+                filters_.push_back( { settings.value( "id" ).toString(),
+                                      settings.value( "name" ).toString(),
                                       settings.value( "filter" ).toString(),
                                       settings.value( "regex", true ).toBool() } );
             }
             settings.endArray();
+            ensureFilterIds( filters_ );
         }
         else {
             LOG_ERROR << "Unknown version of PredefinedFiltersCollection, ignoring it...";
@@ -81,6 +101,7 @@ void PredefinedFiltersCollection::saveToStorage( QSettings& settings ) const
     int arrayIndex = 0;
     for ( const auto& filter : filters_ ) {
         settings.setArrayIndex( arrayIndex );
+        settings.setValue( "id", filter.id );
         settings.setValue( "name", filter.name );
         settings.setValue( "filter", filter.pattern );
         settings.setValue( "regex", filter.useRegex );
@@ -112,4 +133,5 @@ PredefinedFiltersCollection::Collection PredefinedFiltersCollection::getSyncedFi
 void PredefinedFiltersCollection::setFilters( const Collection& filters )
 {
     filters_ = filters;
+    ensureFilterIds( filters_ );
 }
