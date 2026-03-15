@@ -71,6 +71,8 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "start_comm" ) );
     REQUIRE( parameters.exit_message.contains( "get_comm_status" ) );
     REQUIRE( parameters.exit_message.contains( "get_response_counter" ) );
+    REQUIRE( parameters.exit_message.contains( "run_script" ) );
+    REQUIRE( parameters.exit_message.contains( "get_script_status" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
@@ -221,6 +223,25 @@ TEST_CASE( "Commander CLI parses communication automation requests", "[commander
     REQUIRE( getCounter.commander_request->action == CommanderAction::GetResponseCounter );
     REQUIRE( getCounter.commander_request->allEntities );
     REQUIRE( getCounter.commander_request->prettyOutput );
+}
+
+TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
+{
+    CliParameters runScript(
+        { "klogg", "command", "--action", "run_script", "--script-file", "test.py",
+          "--args-json-file", "args.json" } );
+    REQUIRE_FALSE( runScript.parse_error );
+    REQUIRE( runScript.commander_request.has_value() );
+    REQUIRE( runScript.commander_request->action == CommanderAction::RunScript );
+    REQUIRE( runScript.commander_request->scriptFilePath.endsWith( "test.py" ) );
+    REQUIRE( runScript.commander_request->argsJsonFilePath.endsWith( "args.json" ) );
+
+    CliParameters getStatus(
+        { "klogg", "command", "--action", "get_script_status", "--pretty" } );
+    REQUIRE_FALSE( getStatus.parse_error );
+    REQUIRE( getStatus.commander_request.has_value() );
+    REQUIRE( getStatus.commander_request->action == CommanderAction::GetScriptStatus );
+    REQUIRE( getStatus.commander_request->prettyOutput );
 }
 
 TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )
@@ -382,6 +403,8 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_info" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action start_comm" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_comm_status" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action run_script" ) );
+    REQUIRE( parameters.exit_message.contains( "klogg command --action get_script_status" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_actions" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action send_action" ) );
     REQUIRE( parameters.exit_message.contains( "klogg command --action get_filters" ) );
@@ -401,6 +424,8 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.entityId = 7;
     request.entityName = "Ready";
     request.commentText = "manual note";
+    request.scriptFilePath = "D:/scripts/demo.py";
+    request.argsJsonFilePath = "D:/scripts/demo.args.json";
     request.timeoutMs = 5000;
     request.allEntities = true;
     request.timestampComment = true;
@@ -431,6 +456,8 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->entityId == request.entityId );
     REQUIRE( restored->entityName == request.entityName );
     REQUIRE( restored->commentText == request.commentText );
+    REQUIRE( restored->scriptFilePath == request.scriptFilePath );
+    REQUIRE( restored->argsJsonFilePath == request.argsJsonFilePath );
     REQUIRE( restored->timeoutMs == request.timeoutMs );
     REQUIRE( restored->allEntities == request.allEntities );
     REQUIRE( restored->timestampComment == request.timestampComment );

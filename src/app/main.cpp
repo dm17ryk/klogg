@@ -360,7 +360,9 @@ int main( int argc, char* argv[] )
     StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
                                QObject::tr( "Preparing application state" ) );
 
-    if ( parameters.commander_request && !isCommanderOpenAction( parameters.commander_request->action ) ) {
+    if ( parameters.commander_request
+         && parameters.commander_request->action != CommanderAction::RunScript
+         && !isCommanderOpenAction( parameters.commander_request->action ) ) {
         writeCliMessage( QObject::tr( "No running klogg instance." ), true );
         return EXIT_FAILURE;
     }

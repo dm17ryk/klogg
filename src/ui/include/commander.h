@@ -38,6 +38,9 @@ enum class CommanderAction {
     GetResponseCounter,
     ResetResponseCounter,
     ClearComm,
+    RunScript,
+    StopScript,
+    GetScriptStatus,
     FocusTab,
     SetFilter,
     CloseTab,
@@ -75,6 +78,8 @@ struct CommanderRequest {
     QString filterString;
     QString entityName;
     QString commentText;
+    QString scriptFilePath;
+    QString argsJsonFilePath;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;

@@ -92,6 +92,8 @@ extern const char* showPreviewerText;
 extern const char* showPreviewerStatusTip;
 extern const char* showActionsResponsesText;
 extern const char* showActionsResponsesStatusTip;
+extern const char* showScriptRunnerText;
+extern const char* showScriptRunnerStatusTip;
 extern const char* addToFavoritesText;
 extern const char* removeFromFavoritesText;
 extern const char* selectOpenFileText;

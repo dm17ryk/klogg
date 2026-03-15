@@ -73,8 +73,10 @@
 #include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QMimeData>
+#include <QPainter>
 #include <QPointer>
 #include <QProgressDialog>
+#include <QPixmap>
 #include <QResource>
 #include <QScreen>
 #include <QShortcut>
@@ -128,6 +130,25 @@
 #include "tabbedcrawlerwidget.h"
 
 namespace {
+
+QIcon makePythonScriptRunnerIcon() {
+    constexpr auto iconSize = 20;
+
+    QPixmap pixmap( iconSize, iconSize );
+    pixmap.fill( Qt::transparent );
+
+    QPainter painter( &pixmap );
+    painter.setRenderHint( QPainter::Antialiasing, true );
+
+    auto font = painter.font();
+    font.setBold( true );
+    font.setPixelSize( 11 );
+    painter.setFont( font );
+    painter.setPen( qApp->palette().color( QPalette::WindowText ) );
+    painter.drawText( pixmap.rect(), Qt::AlignCenter, QStringLiteral( "py" ) );
+
+    return QIcon( pixmap );
+}
 
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
 {
@@ -650,9 +671,14 @@ QVariantMap MainWindow::commanderWindowInfo() const
     }
 
     QVariantMap windowInfo;
+    const auto currentTabIndex = mainTabWidget_.currentIndex();
     windowInfo.insert( QStringLiteral( "windowId" ), session_.windowId() );
     windowInfo.insert( QStringLiteral( "windowIndex" ),
                        static_cast<int>( session_.windowIndex() ) );
+    windowInfo.insert( QStringLiteral( "currentTabIndex" ), currentTabIndex );
+    windowInfo.insert( QStringLiteral( "currentTabId" ),
+                       currentTabIndex >= 0 ? mainTabWidget_.tabIdAt( currentTabIndex )
+                                            : QString{} );
     windowInfo.insert( QStringLiteral( "tabs" ), tabs );
     return windowInfo;
 }
@@ -778,6 +804,8 @@ void MainWindow::reTranslateUI()
     showActionsResponsesAction->setText( transAction( action::showActionsResponsesText ) );
     showActionsResponsesAction->setStatusTip(
         transAction( action::showActionsResponsesStatusTip ) );
+    showScriptRunnerAction->setText( transAction( action::showScriptRunnerText ) );
+    showScriptRunnerAction->setStatusTip( transAction( action::showScriptRunnerStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -1039,6 +1067,11 @@ void MainWindow::createActions()
     connect( showActionsResponsesAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showActionsResponses(); } );
 
+    showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
+    showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
+    connect( showScriptRunnerAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showScriptRunner(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -1152,6 +1185,7 @@ void MainWindow::loadIcons()
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
     showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
     showActionsResponsesAction->setIcon( iconLoader_.load( "icons8-venn-diagram" ) );
+    showScriptRunnerAction->setIcon( makePythonScriptRunnerIcon() );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -1233,6 +1267,7 @@ void MainWindow::createMenus()
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
+    toolsMenu->addAction( showScriptRunnerAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -1305,6 +1340,7 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
     toolBar->addAction( showActionsResponsesAction );
+    toolBar->addAction( showScriptRunnerAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1919,6 +1955,12 @@ void MainWindow::showActionsResponses()
     actionsResponsesWindow_.show();
     actionsResponsesWindow_.activateWindow();
 }
+
+void MainWindow::showScriptRunner()
+{
+    QMetaObject::invokeMethod( qApp, "showScriptRunnerWindow", Qt::DirectConnection );
+}
+
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );

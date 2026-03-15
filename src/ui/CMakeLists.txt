@@ -55,6 +55,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/sessioninfo.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/signalmux.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/serialcaptureworker.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scriptrunnerwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scriptsupervisor.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsourceregistry.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/startupprogress.h
@@ -130,6 +132,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/sessioninfo.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/signalmux.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptrunnerwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptsupervisor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/startupprogress.cpp
@@ -170,6 +174,7 @@ target_link_libraries(
          klogg_karchive
          Qt${QT_VERSION_MAJOR}::Widgets
          Qt${QT_VERSION_MAJOR}::Concurrent
+         Qt${QT_VERSION_MAJOR}::Network
          Qt${QT_VERSION_MAJOR}::SerialPort
          Qt${QT_VERSION_MAJOR}::Xml
 )

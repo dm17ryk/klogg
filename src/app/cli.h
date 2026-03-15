@@ -130,6 +130,9 @@ struct CliParameters {
             "  klogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
             "  klogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
             "  klogg command --action clear_comm [tab selector]\n"
+            "  klogg command --action run_script --script-file <path> [--args-json-file <path>]\n"
+            "  klogg command --action stop_script\n"
+            "  klogg command --action get_script_status [--pretty]\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -170,6 +173,9 @@ struct CliParameters {
             "  get_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
             "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  run_script --script-file <path> [--args-json-file <path>]\n"
+            "  stop_script\n"
+            "  get_script_status [--pretty|--preatty]\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -500,6 +506,13 @@ struct CliParameters {
         const QCommandLineOption textOption( QStringLiteral( "text" ),
                                              QStringLiteral( "Comment text for add_comment." ),
                                              QStringLiteral( "text" ) );
+        const QCommandLineOption scriptFileOption( QStringLiteral( "script-file" ),
+                                                   QStringLiteral( "Python script file to run." ),
+                                                   QStringLiteral( "path" ) );
+        const QCommandLineOption argsJsonFileOption(
+            QStringLiteral( "args-json-file" ),
+            QStringLiteral( "Optional JSON file passed to the Python script." ),
+            QStringLiteral( "path" ) );
         const QCommandLineOption timestampOption(
             QStringLiteral( "timestamp" ),
             QStringLiteral( "Prefix add_comment output with a timestamp." ) );
@@ -585,6 +598,8 @@ struct CliParameters {
         parser.addOption( filterIndexOption );
         parser.addOption( filterStringOption );
         parser.addOption( textOption );
+        parser.addOption( scriptFileOption );
+        parser.addOption( argsJsonFileOption );
         parser.addOption( timestampOption );
         parser.addOption( allOption );
         parser.addOption( idOption );
@@ -655,6 +670,9 @@ struct CliParameters {
         request.predefinedFilters = parser.isSet( predefinedOption );
         request.entityName = parser.value( nameOption ).trimmed();
         request.commentText = parser.value( textOption );
+        request.scriptFilePath = normalizeCommanderFilePath( parser.value( scriptFileOption ) );
+        request.argsJsonFilePath
+            = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
         request.allEntities = parser.isSet( allOption );
         request.timestampComment = parser.isSet( timestampOption );
         if ( request.rearmAutoRefresh ) {
@@ -893,6 +911,16 @@ struct CliParameters {
                         .arg( commanderActionToString( *action ) ) );
                 return result;
             }
+            break;
+        case CommanderAction::RunScript:
+            if ( request.scriptFilePath.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--script-file is required for run_script." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::StopScript:
+        case CommanderAction::GetScriptStatus:
             break;
         case CommanderAction::CloseKlogg:
         case CommanderAction::CloseAll:

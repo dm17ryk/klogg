@@ -98,6 +98,8 @@ const char* action::showPreviewerStatusTip = QT_TR_NOOP( "Show the previewer" );
 const char* action::showActionsResponsesText = QT_TR_NOOP( "Actions/Responses" );
 const char* action::showActionsResponsesStatusTip
     = QT_TR_NOOP( "Show actions and responses" );
+const char* action::showScriptRunnerText = QT_TR_NOOP( "Script Runner" );
+const char* action::showScriptRunnerStatusTip = QT_TR_NOOP( "Show the Python script runner" );
 const char* action::addToFavoritesText = QT_TR_NOOP( "Add to favorites" );
 const char* action::removeFromFavoritesText = QT_TR_NOOP( "Remove from favorites..." );
 const char* action::selectOpenFileText = QT_TR_NOOP( "Switch to opened file..." );

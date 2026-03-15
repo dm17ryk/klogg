@@ -63,6 +63,7 @@ set(KLOGG_UI_SOURCES
 )
 
 set(KLOGG_GREP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/klogg_grep.cpp)
+set(KLOGG_PYTHON_RUNTIME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/python_runtime)
 
 set(MAIN_LIBS
     klogg_logdata
@@ -173,6 +174,22 @@ if(WIN32)
       COMMENT "Copy tbbmalloc_proxy"
     )
   endif()
+
+  add_custom_command(
+    TARGET klogg
+    POST_BUILD
+    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg>/python_runtime
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Copy Python runtime files"
+  )
+
+  add_custom_command(
+    TARGET klogg_portable
+    POST_BUILD
+    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg_portable>/python_runtime
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Copy Python runtime files"
+  )
 endif()
 
 if(KLOGG_USE_SENTRY)

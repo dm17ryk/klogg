@@ -104,6 +104,12 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "reset_response_counter" );
     case CommanderAction::ClearComm:
         return QStringLiteral( "clear_comm" );
+    case CommanderAction::RunScript:
+        return QStringLiteral( "run_script" );
+    case CommanderAction::StopScript:
+        return QStringLiteral( "stop_script" );
+    case CommanderAction::GetScriptStatus:
+        return QStringLiteral( "get_script_status" );
     case CommanderAction::FocusTab:
         return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
@@ -206,6 +212,15 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "clear_comm" ) ) {
         return CommanderAction::ClearComm;
     }
+    if ( normalized == QStringLiteral( "run_script" ) ) {
+        return CommanderAction::RunScript;
+    }
+    if ( normalized == QStringLiteral( "stop_script" ) ) {
+        return CommanderAction::StopScript;
+    }
+    if ( normalized == QStringLiteral( "get_script_status" ) ) {
+        return CommanderAction::GetScriptStatus;
+    }
     if ( normalized == QStringLiteral( "focus_tab" ) ) {
         return CommanderAction::FocusTab;
     }
@@ -297,6 +312,12 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( !request.commentText.isEmpty() ) {
         map.insert( QStringLiteral( "commentText" ), request.commentText );
+    }
+    if ( !request.scriptFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "scriptFilePath" ), request.scriptFilePath );
+    }
+    if ( !request.argsJsonFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "argsJsonFilePath" ), request.argsJsonFilePath );
     }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
@@ -390,6 +411,8 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
     request.entityName = map.value( QStringLiteral( "entityName" ) ).toString();
     request.commentText = map.value( QStringLiteral( "commentText" ) ).toString();
+    request.scriptFilePath = map.value( QStringLiteral( "scriptFilePath" ) ).toString();
+    request.argsJsonFilePath = map.value( QStringLiteral( "argsJsonFilePath" ) ).toString();
     request.allEntities = map.value( QStringLiteral( "allEntities" ) ).toBool();
     request.timestampComment = map.value( QStringLiteral( "timestampComment" ) ).toBool();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();

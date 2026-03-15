@@ -68,6 +68,8 @@
 
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "scriptrunnerwindow.h"
+#include "scriptsupervisor.h"
 #include "startupprogress.h"
 #include "versionchecker.h"
 
@@ -82,6 +84,9 @@ class KloggApp : public QApplication {
         QFontDatabase::addApplicationFont( ":/fonts/DejaVuSansMono.ttf" );
 
         QNetworkProxyFactory::setUseSystemConfiguration( true );
+        scriptSupervisor_.setCommanderExecutor(
+            [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
+        scriptRunnerWindow_.setWindowTitle( tr( "klogg - script runner" ) );
 
         qRegisterMetaType<LoadingStatus>( "LoadingStatus" );
         qRegisterMetaType<LinesCount>( "LinesCount" );
@@ -482,6 +487,7 @@ class KloggApp : public QApplication {
     CommanderResult executeCommanderRequest( const CommanderRequest& request )
     {
         if ( request.action == CommanderAction::GetInfo ) {
+            auto* activeWindow = activeWindowIfAny();
             QVariantList windows;
             for ( const auto& [ windowSession, window ] : mainWindows_ ) {
                 Q_UNUSED( windowSession );
@@ -489,12 +495,26 @@ class KloggApp : public QApplication {
                     continue;
                 }
 
-                windows.push_back( window->commanderWindowInfo() );
+                auto windowInfo = window->commanderWindowInfo();
+                windowInfo.insert( QStringLiteral( "isActiveWindow" ), window == activeWindow );
+                windows.push_back( windowInfo );
             }
 
             QVariantMap payload;
             payload.insert( QStringLiteral( "windows" ), windows );
             return commanderSuccess( {}, payload );
+        }
+
+        if ( request.action == CommanderAction::RunScript ) {
+            return scriptSupervisor_.runScript( request.scriptFilePath, request.argsJsonFilePath );
+        }
+
+        if ( request.action == CommanderAction::StopScript ) {
+            return scriptSupervisor_.stopScript();
+        }
+
+        if ( request.action == CommanderAction::GetScriptStatus ) {
+            return scriptSupervisor_.scriptStatus();
         }
 
         if ( request.action == CommanderAction::GetActions ) {
@@ -726,6 +746,24 @@ class KloggApp : public QApplication {
         if ( !writeCommanderResult( resultPath, result ) ) {
             LOG_WARNING << "Failed to write commander result to " << resultPath;
         }
+    }
+
+    ScriptSupervisor* scriptSupervisor()
+    {
+        return &scriptSupervisor_;
+    }
+
+    Q_INVOKABLE void showScriptRunnerWindow( const QString& scriptPath = {} )
+    {
+        if ( !scriptPath.isEmpty() ) {
+            scriptRunnerWindow_.setScriptPath( scriptPath );
+        }
+        auto state = scriptRunnerWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        scriptRunnerWindow_.setWindowState( state );
+        scriptRunnerWindow_.show();
+        scriptRunnerWindow_.raise();
+        scriptRunnerWindow_.activateWindow();
     }
 
     void startBackgroundTasks()
@@ -966,6 +1004,8 @@ class KloggApp : public QApplication {
     std::unique_ptr<CrashHandler> crashHandler_;
 
     MessageReceiver messageReceiver_;
+    ScriptSupervisor scriptSupervisor_;
+    ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
 
     std::shared_ptr<Session> session_;
 

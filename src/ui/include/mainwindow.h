@@ -73,6 +73,7 @@ class Session;
 class RecentFiles;
 class HighlightersMenu;
 class StreamSession;
+class ScriptSupervisor;
 struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
@@ -144,6 +145,7 @@ class MainWindow : public QMainWindow {
     void showScratchPad();
     void showPreviewer();
     void showActionsResponses();
+    void showScriptRunner();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
@@ -343,6 +345,7 @@ class MainWindow : public QMainWindow {
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
     QAction* showActionsResponsesAction;
+    QAction* showScriptRunnerAction;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;
