@@ -86,6 +86,7 @@ ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
 bool sendActionDefinition( StreamSession* session,
                            const ActionDefinition& action,
                            const QMap<QString, QString>& substitutions,
+                           int stepIndex,
                            QString* errorMessage )
 {
     if ( session == nullptr || !session->isConnectionOpen() ) {
@@ -111,13 +112,17 @@ bool sendActionDefinition( StreamSession* session,
         const auto delayMs = firstDelay + ( index * repeatInterval );
         if ( delayMs <= 0 ) {
             if ( safeSession ) {
+                safeSession->notifyActionSend( action.id, action.name, stepIndex, encoded.bytes );
                 safeSession->sendBytes( encoded.bytes );
             }
             continue;
         }
 
-        QTimer::singleShot( delayMs, session, [ safeSession, bytes = encoded.bytes ]() {
+        QTimer::singleShot( delayMs, session,
+                            [ safeSession, actionId = action.id, actionName = action.name,
+                              stepIndex, bytes = encoded.bytes ]() {
             if ( safeSession && safeSession->isConnectionOpen() ) {
+                safeSession->notifyActionSend( actionId, actionName, stepIndex, bytes );
                 safeSession->sendBytes( bytes );
             }
         } );
@@ -140,7 +145,7 @@ bool executeResponseDefinition( StreamSession* session,
         ActionDefinition inlineAction;
         inlineAction.name = response.name;
         inlineAction.sequence = response.response.inlineAction;
-        if ( !sendActionDefinition( session, inlineAction, captures, errorMessage ) ) {
+        if ( !sendActionDefinition( session, inlineAction, captures, -1, errorMessage ) ) {
             return false;
         }
     }
@@ -165,16 +170,17 @@ bool executeResponseDefinition( StreamSession* session,
         cumulativeDelay += linkedDelays.at( index );
         const auto action = linkedActions.at( index );
         if ( cumulativeDelay <= 0 ) {
-            if ( !sendActionDefinition( session, action, captures, errorMessage ) ) {
+            if ( !sendActionDefinition( session, action, captures, index, errorMessage ) ) {
                 return false;
             }
             continue;
         }
 
-        QTimer::singleShot( cumulativeDelay, session, [ safeSession, action, captures ]() {
+        QTimer::singleShot( cumulativeDelay, session,
+                            [ safeSession, action, captures, stepIndex = index ]() {
             if ( safeSession && safeSession->isConnectionOpen() ) {
                 QString ignoredError;
-                sendActionDefinition( safeSession, action, captures, &ignoredError );
+                sendActionDefinition( safeSession, action, captures, stepIndex, &ignoredError );
             }
         } );
     }

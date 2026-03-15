@@ -94,6 +94,7 @@ class MainWindow : public QMainWindow {
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
     QVariantMap commanderWindowInfo() const;
+    void refreshScriptStatusIndicators();
 
     void reTranslateUI();
 
@@ -298,6 +299,14 @@ class MainWindow : public QMainWindow {
                                        int counter,
                                        const QByteArray& lineBytes,
                                        const QString& matchedText ) const;
+      void publishScriptTxEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
+      void publishScriptActionSendEvent( const QString& filePath,
+                                         int actionId,
+                                         const QString& actionName,
+                                         int stepIndex,
+                                         const QByteArray& payloadBytes ) const;
+      QString scriptContextForTab( int index ) const;
+      void restoreScriptContextForTab( int index, const QString& scriptContext );
 
     WindowSession session_;
     QString loadingFileName;

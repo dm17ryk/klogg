@@ -90,6 +90,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     QString tabDisplayNameAt( int index ) const;
     int findTabById( const QString& tabId ) const;
     void setTabActionsPort( const QString& fileName, bool isActionsPort );
+    void setTabScriptActive( const QString& tabId, bool isActive );
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;

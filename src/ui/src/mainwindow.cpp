@@ -68,6 +68,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -148,6 +151,11 @@ QIcon makePythonScriptRunnerIcon() {
     painter.drawText( pixmap.rect(), Qt::AlignCenter, QStringLiteral( "py" ) );
 
     return QIcon( pixmap );
+}
+
+bool applicationHasMethod( const char* signature )
+{
+    return qApp != nullptr && qApp->metaObject()->indexOfMethod( signature ) >= 0;
 }
 
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
@@ -423,6 +431,7 @@ MainWindow::MainWindow( WindowSession session )
     updateTitleBar( "" );
     loadIcons();
     reTranslateUI();
+    refreshScriptStatusIndicators();
 }
 
 void MainWindow::reloadGeometry()
@@ -471,6 +480,11 @@ void MainWindow::reloadSession()
 
             if ( followFileOnLoad ) {
                 signalCrawlerToFollowFile( crawler_widget );
+            }
+
+            if ( !open_file.scriptContext.trimmed().isEmpty() ) {
+                restoreScriptContextForTab( mainTabWidget_.indexOf( crawler_widget ),
+                                            open_file.scriptContext );
             }
 
             waitForCrawlerStartupPreparation( crawler_widget, file_name );
@@ -637,7 +651,8 @@ QVariantMap MainWindow::commanderWindowInfo() const
         }
 
         QVariantMap tabInfo;
-        tabInfo.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        const auto tabId = mainTabWidget_.tabIdAt( index );
+        tabInfo.insert( QStringLiteral( "tabId" ), tabId );
         tabInfo.insert( QStringLiteral( "tabIndex" ), index );
         tabInfo.insert( QStringLiteral( "filePath" ), filePath );
         tabInfo.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
@@ -665,6 +680,15 @@ QVariantMap MainWindow::commanderWindowInfo() const
             else {
                 tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "file" ) );
             }
+        }
+
+        QVariantMap scriptStatus;
+        if ( applicationHasMethod( "scriptStatusForTab(QString)" )
+             && QMetaObject::invokeMethod( qApp, "scriptStatusForTab", Qt::DirectConnection,
+                                        Q_RETURN_ARG( QVariantMap, scriptStatus ),
+                                        Q_ARG( QString, tabId ) )
+             && !scriptStatus.isEmpty() ) {
+            tabInfo.insert( QStringLiteral( "script" ), scriptStatus );
         }
 
         tabs.push_back( tabInfo );
@@ -718,7 +742,12 @@ void MainWindow::publishScriptEvent( const QVariantMap& event ) const
         return;
     }
 
-    const auto invoked = QMetaObject::invokeMethod( qApp, "publishScriptEvent", Qt::DirectConnection,
+    if ( !applicationHasMethod( "publishScriptEvent(QVariantMap)" ) ) {
+        return;
+    }
+
+    const auto invoked = QMetaObject::invokeMethod( qApp, "publishScriptEvent",
+                                                    Qt::DirectConnection,
                                                     Q_ARG( QVariantMap, event ) );
     if ( !invoked ) {
         LOG_WARNING << "Failed to publish script event";
@@ -764,6 +793,115 @@ void MainWindow::publishScriptResponseEvent( const QString& filePath,
     event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( lineBytes.toHex() ) );
     event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( lineBytes.toBase64() ) );
     publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptTxEvent( const QString& filePath, const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "tx" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptActionSendEvent( const QString& filePath,
+                                               int actionId,
+                                               const QString& actionName,
+                                               int stepIndex,
+                                               const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "action_send" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "actionId" ), actionId );
+    event.insert( QStringLiteral( "actionName" ), actionName );
+    if ( stepIndex >= 0 ) {
+        event.insert( QStringLiteral( "stepIndex" ), stepIndex );
+    }
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::refreshScriptStatusIndicators()
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        const auto tabId = mainTabWidget_.tabIdAt( index );
+        bool active = false;
+        if ( applicationHasMethod( "hasActiveScriptForTab(QString)" ) ) {
+            QMetaObject::invokeMethod( qApp, "hasActiveScriptForTab", Qt::DirectConnection,
+                                       Q_RETURN_ARG( bool, active ),
+                                       Q_ARG( QString, tabId ) );
+        }
+        mainTabWidget_.setTabScriptActive( tabId, active );
+    }
+}
+
+QString MainWindow::scriptContextForTab( int index ) const
+{
+    if ( index < 0 || index >= mainTabWidget_.count() ) {
+        return {};
+    }
+
+    QVariantMap scriptBinding;
+    const auto tabId = mainTabWidget_.tabIdAt( index );
+    if ( !applicationHasMethod( "scriptBindingForTab(QString)" )
+         || !QMetaObject::invokeMethod( qApp, "scriptBindingForTab", Qt::DirectConnection,
+                                      Q_RETURN_ARG( QVariantMap, scriptBinding ),
+                                      Q_ARG( QString, tabId ) )
+         || scriptBinding.isEmpty() ) {
+        return {};
+    }
+
+    return QString::fromUtf8(
+        QJsonDocument::fromVariant( scriptBinding ).toJson( QJsonDocument::Compact ) );
+}
+
+void MainWindow::restoreScriptContextForTab( int index, const QString& scriptContext )
+{
+    if ( index < 0 || index >= mainTabWidget_.count() || scriptContext.trimmed().isEmpty() ) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson( scriptContext.toUtf8(), &parseError );
+    if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+        LOG_WARNING << "Invalid script context for restored tab";
+        return;
+    }
+
+    auto scriptBinding = document.object().toVariantMap();
+    scriptBinding.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+    scriptBinding.insert( QStringLiteral( "tabIndex" ), index );
+    scriptBinding.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    scriptBinding.insert( QStringLiteral( "windowIndex" ),
+                          static_cast<int>( session_.windowIndex() ) );
+    scriptBinding.insert( QStringLiteral( "displayName" ),
+                          mainTabWidget_.tabDisplayNameAt( index ) );
+    const auto filePath = mainTabWidget_.tabPathAt( index );
+    scriptBinding.insert( QStringLiteral( "filePath" ), filePath );
+    if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+        scriptBinding.insert( QStringLiteral( "portName" ),
+                              streamSession->captureSettings().portName );
+    }
+
+    if ( applicationHasMethod( "restoreScriptBindingVariant(QVariant)" ) ) {
+        QMetaObject::invokeMethod( qApp, "restoreScriptBindingVariant", Qt::DirectConnection,
+                                   Q_ARG( QVariant, QVariant::fromValue( scriptBinding ) ) );
+    }
 }
 
 void MainWindow::reTranslateUI()
@@ -1663,6 +1801,16 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
              [ this, filePath ]( const QByteArray& payloadBytes ) {
                  publishScriptReceiveEvent( filePath, payloadBytes );
              } );
+    connect( session.get(), &StreamSession::dataTransmitted, this,
+             [ this, filePath ]( const QByteArray& payloadBytes ) {
+                 publishScriptTxEvent( filePath, payloadBytes );
+             } );
+    connect( session.get(), &StreamSession::actionSent, this,
+             [ this, filePath ]( int actionId, const QString& actionName, int stepIndex,
+                                 const QByteArray& payloadBytes ) {
+                 publishScriptActionSendEvent( filePath, actionId, actionName, stepIndex,
+                                               payloadBytes );
+             } );
     connect( session.get(), &StreamSession::responseMatched, this,
              [ this, filePath ]( int responseId, const QString& responseName, int counter,
                                  const QByteArray& lineBytes, const QString& matchedText ) {
@@ -1691,6 +1839,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     }
 
     updateActionsSendState();
+    refreshScriptStatusIndicators();
     return true;
 }
 
@@ -2051,7 +2200,10 @@ void MainWindow::showActionsResponses()
 
 void MainWindow::showScriptRunner()
 {
-    QMetaObject::invokeMethod( qApp, "showScriptRunnerWindow", Qt::DirectConnection );
+    if ( applicationHasMethod( "showScriptRunnerWindow()" )
+         || applicationHasMethod( "showScriptRunnerWindow(QString)" ) ) {
+        QMetaObject::invokeMethod( qApp, "showScriptRunnerWindow", Qt::DirectConnection );
+    }
 }
 
 void MainWindow::sendToScratchpad( QString newData )
@@ -2097,7 +2249,7 @@ void MainWindow::sendActionById( int actionId )
     }
 
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, {}, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
@@ -2272,6 +2424,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
+    const auto tabId = mainTabWidget_.tabIdAt( index );
     remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
         if ( session->isConnectionOpen() ) {
@@ -2283,6 +2436,12 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     }
 
     widget->stopLoading();
+    if ( !tabId.isEmpty() ) {
+        if ( applicationHasMethod( "forgetScriptTab(QString)" ) ) {
+            QMetaObject::invokeMethod( qApp, "forgetScriptTab", Qt::DirectConnection,
+                                       Q_ARG( QString, tabId ) );
+        }
+    }
     mainTabWidget_.removeCrawler( index );
 
     if ( initiator == ActionInitiator::User ) {
@@ -2293,6 +2452,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
     updateOpenedFilesMenu();
     updateActionsSendState();
+    refreshScriptStatusIndicators();
 
     widget->deleteLater();
 }
@@ -2475,7 +2635,7 @@ CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request
     }
 
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, {}, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
         return commanderFailure( CommanderResultCode::ExecutionFailed,
                                  errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                         : errorMessage );
@@ -3716,12 +3876,14 @@ void MainWindow::writeSettings()
         }
 
         QString streamContext;
+        QString scriptContext;
         const auto fileName = session_.getFilename( view );
         if ( auto* streamSession = mainTabWidget_.streamSessionForPath( fileName ) ) {
             streamContext = serializeSerialCaptureSettings( streamSession->captureSettings() );
         }
+        scriptContext = scriptContextForTab( i );
 
-        widget_list.emplace_back( view, 0UL, std::move( context ), streamContext );
+        widget_list.emplace_back( view, 0UL, std::move( context ), streamContext, scriptContext );
     }
     session_.save( widget_list, saveGeometry() );
 }

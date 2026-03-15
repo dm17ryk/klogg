@@ -129,6 +129,16 @@ void StreamSession::sendBytes( const QByteArray& data )
     }
 }
 
+void StreamSession::notifyActionSend( int actionId, const QString& actionName, int stepIndex,
+                                      const QByteArray& data )
+{
+    if ( actionId < 0 || data.isEmpty() ) {
+        return;
+    }
+
+    Q_EMIT actionSent( actionId, actionName, stepIndex, data );
+}
+
 void StreamSession::setupWorker()
 {
     if ( worker_ ) {
@@ -146,6 +156,8 @@ void StreamSession::setupWorker()
              [ this ]( const QString& message ) { Q_EMIT errorOccurred( message ); } );
     connect( worker_, &SerialCaptureWorker::dataReceived, this,
              &StreamSession::handleDataReceived );
+    connect( worker_, &SerialCaptureWorker::dataTransmitted, this,
+             [ this ]( const QByteArray& data ) { Q_EMIT dataTransmitted( data ); } );
 }
 
 void StreamSession::setConnectionClosed()

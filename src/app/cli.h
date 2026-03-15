@@ -130,11 +130,11 @@ struct CliParameters {
             "  klogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
             "  klogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
             "  klogg command --action clear_comm [tab selector]\n"
-            "  klogg command --action run_script --script-file <path> [--args-json-file <path>]\n"
-            "  klogg command --action stop_script\n"
-            "  klogg command --action get_script_status [--pretty]\n"
-            "  klogg command --action get_script_subscriptions [--pretty]\n"
-            "  klogg command --action clear_script_subscriptions\n"
+            "  klogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
+            "  klogg command --action stop_script [tab selector | --all]\n"
+            "  klogg command --action get_script_status [tab selector | --all] [--pretty]\n"
+            "  klogg command --action get_script_subscriptions [tab selector | --all] [--pretty]\n"
+            "  klogg command --action clear_script_subscriptions [tab selector | --all]\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -175,11 +175,11 @@ struct CliParameters {
             "  get_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
             "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  run_script --script-file <path> [--args-json-file <path>]\n"
-            "  stop_script\n"
-            "  get_script_status [--pretty|--preatty]\n"
-            "  get_script_subscriptions [--pretty|--preatty]\n"
-            "  clear_script_subscriptions\n"
+            "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  stop_script [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
+            "  get_script_status [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  get_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  clear_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -917,6 +917,9 @@ struct CliParameters {
             }
             break;
             case CommanderAction::RunScript:
+                if ( !validateTabSelector( commanderActionToString( *action ), true ) ) {
+                    return result;
+                }
                 if ( request.scriptFilePath.isEmpty() ) {
                     result.output_message = formatParserError(
                         parser, QStringLiteral( "--script-file is required for run_script." ) );
@@ -927,6 +930,15 @@ struct CliParameters {
             case CommanderAction::GetScriptStatus:
             case CommanderAction::GetScriptSubscriptions:
             case CommanderAction::ClearScriptSubscriptions:
+                if ( parser.isSet( allOption ) && ( hasTabId || hasWindowIndex || hasTabIndex ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Use either a tab selector or --all for this action." ) );
+                    return result;
+                }
+                if ( !parser.isSet( allOption )
+                     && !validateTabSelector( commanderActionToString( *action ), true ) ) {
+                    return result;
+                }
                 break;
         case CommanderAction::CloseKlogg:
         case CommanderAction::CloseAll:

@@ -50,6 +50,7 @@ constexpr QLatin1String StatusKey = QLatin1String( "status", 6 );
 constexpr QLatin1String TabIdKey = QLatin1String( "tabId", 5 );
 constexpr QLatin1String ConnectedKey = QLatin1String( "connected", 9 );
 constexpr QLatin1String ActionsPortKey = QLatin1String( "actionsPort", 11 );
+constexpr QLatin1String ScriptActiveKey = QLatin1String( "scriptActive", 12 );
 } // namespace
 
 TabbedCrawlerWidget::TabbedCrawlerWidget()
@@ -157,6 +158,7 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
     tabData[ TabIdKey ] = QUuid::createUuid().toString( QUuid::WithoutBraces );
     tabData[ ConnectedKey ] = false;
     tabData[ ActionsPortKey ] = false;
+    tabData[ ScriptActiveKey ] = false;
 
     myTabBar_.setTabData( index, tabData );
     updateTabPresentation( index );
@@ -289,6 +291,17 @@ void TabbedCrawlerWidget::setTabActionsPort( const QString& fileName, bool isAct
             return;
         }
     }
+}
+
+void TabbedCrawlerWidget::setTabScriptActive( const QString& tabId, bool isActive )
+{
+    const auto index = findTabById( tabId );
+    if ( index < 0 ) {
+        return;
+    }
+
+    setTabMetadataValue( index, QStringLiteral( "scriptActive" ), isActive );
+    updateTabPresentation( index );
 }
 
 bool TabbedCrawlerWidget::hasOpenStreamSession() const
@@ -551,7 +564,14 @@ void TabbedCrawlerWidget::updateTabPresentation( int index )
     const auto portName = tabMetadataValue( index, QStringLiteral( "portName" ) ).toString();
     const auto baudRate = tabMetadataValue( index, QStringLiteral( "baudRate" ) ).toInt();
     const auto isActionsPort = tabMetadataValue( index, QStringLiteral( "actionsPort" ) ).toBool();
-    const auto suffix = isActionsPort ? QStringLiteral( " (actions)" ) : QString{};
+    const auto hasActiveScript = tabMetadataValue( index, QStringLiteral( "scriptActive" ) ).toBool();
+    QString suffix;
+    if ( isActionsPort ) {
+        suffix += QStringLiteral( " (actions)" );
+    }
+    if ( hasActiveScript ) {
+        suffix += QStringLiteral( " (py)" );
+    }
 
     myTabBar_.setTabText( index, ( tabName.isEmpty() ? tabLabel : tabName ) + suffix );
 
@@ -561,6 +581,9 @@ void TabbedCrawlerWidget::updateTabPresentation( int index )
         if ( isActionsPort ) {
             toolTip += QStringLiteral( " (actions)" );
         }
+    }
+    if ( hasActiveScript ) {
+        toolTip += QStringLiteral( " [python script running]" );
     }
     myTabBar_.setTabToolTip( index, toolTip );
 

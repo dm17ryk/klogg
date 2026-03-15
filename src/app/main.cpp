@@ -361,7 +361,6 @@ int main( int argc, char* argv[] )
                                QObject::tr( "Preparing application state" ) );
 
     if ( parameters.commander_request
-         && parameters.commander_request->action != CommanderAction::RunScript
          && !isCommanderOpenAction( parameters.commander_request->action ) ) {
         writeCliMessage( QObject::tr( "No running klogg instance." ), true );
         return EXIT_FAILURE;

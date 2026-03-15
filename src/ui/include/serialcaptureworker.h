@@ -40,6 +40,7 @@ class SerialCaptureWorker : public QObject {
     void errorOccurred( const QString& message );
     void finished();
     void dataReceived( const QByteArray& data );
+    void dataTransmitted( const QByteArray& data );
 
   private Q_SLOTS:
     void onReadyRead();

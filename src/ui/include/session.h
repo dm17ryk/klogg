@@ -142,11 +142,12 @@ struct OpenedFileData {
     QString fileName;
     ViewInterface* view = nullptr;
     QString streamContext;
+    QString scriptContext;
 };
 
 using OpenedFilesList = std::vector<OpenedFileData>;
 using SaveFileInfo = std::tuple<const ViewInterface*, uint64_t,
-                                std::shared_ptr<const ViewContextInterface>, QString>;
+                                std::shared_ptr<const ViewContextInterface>, QString, QString>;
 
 class WindowSession {
   public:

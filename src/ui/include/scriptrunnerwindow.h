@@ -4,6 +4,7 @@
 
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 
@@ -25,11 +26,13 @@ class ScriptRunnerWindow : public QWidget {
     void stopScript();
     void openScriptFolder();
     void refreshFromSupervisor();
+    void selectedRunChanged();
 
   private:
     ScriptSupervisor* supervisor_;
     QLineEdit* scriptPathEdit_;
     QLineEdit* argsJsonPathEdit_;
+    QListWidget* runsList_;
     QLabel* statusLabel_;
     QLabel* summaryLabel_;
     QLabel* subscriptionsLabel_;
@@ -37,4 +40,5 @@ class ScriptRunnerWindow : public QWidget {
     QPushButton* runButton_;
     QPushButton* rerunButton_;
     QPushButton* stopButton_;
+    QString selectedTabId_;
 };

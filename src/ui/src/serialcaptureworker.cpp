@@ -202,6 +202,9 @@ void SerialCaptureWorker::sendData( QByteArray data )
         Q_EMIT errorOccurred(
             tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
+    else {
+        Q_EMIT dataTransmitted( data.left( qMax<qint64>( 0, written ) ) );
+    }
 
     if ( loggingEnabled_ && settings_.logTransmits && file_.isOpen() ) {
         QByteArray toWrite;

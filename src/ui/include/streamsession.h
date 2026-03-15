@@ -22,6 +22,8 @@ class StreamSession : public QObject {
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
     void sendBytes( const QByteArray& data );
+    void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
+                           const QByteArray& data );
     void appendToFile( const QByteArray& data );
     bool isLoggingEnabled() const;
     void setLoggingEnabled( bool enabled );
@@ -38,7 +40,12 @@ class StreamSession : public QObject {
     void connectionClosed();
     void connectionOpened();
     void dataObserved( const QByteArray& dataBytes );
+    void dataTransmitted( const QByteArray& dataBytes );
     void lineObserved( const QByteArray& lineBytes );
+    void actionSent( int actionId,
+                     const QString& actionName,
+                     int stepIndex,
+                     const QByteArray& dataBytes );
     void responseMatched( int responseId,
                           const QString& responseName,
                           int counter,

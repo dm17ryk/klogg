@@ -87,6 +87,15 @@ class KloggApp : public QApplication {
         scriptSupervisor_.setCommanderExecutor(
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
         scriptRunnerWindow_.setWindowTitle( tr( "klogg - script runner" ) );
+        connect( &scriptSupervisor_, &ScriptSupervisor::statusChanged, this,
+                 [ this ]() {
+                     for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                         Q_UNUSED( windowSession );
+                         if ( window != nullptr ) {
+                             window->refreshScriptStatusIndicators();
+                         }
+                     }
+                 } );
 
         qRegisterMetaType<LoadingStatus>( "LoadingStatus" );
         qRegisterMetaType<LinesCount>( "LinesCount" );
@@ -506,23 +515,23 @@ class KloggApp : public QApplication {
         }
 
         if ( request.action == CommanderAction::RunScript ) {
-            return scriptSupervisor_.runScript( request.scriptFilePath, request.argsJsonFilePath );
+            return scriptSupervisor_.runScript( request );
         }
 
         if ( request.action == CommanderAction::StopScript ) {
-            return scriptSupervisor_.stopScript();
+            return scriptSupervisor_.stopScript( request );
         }
 
         if ( request.action == CommanderAction::GetScriptStatus ) {
-            return scriptSupervisor_.scriptStatus();
+            return scriptSupervisor_.scriptStatus( request );
         }
 
         if ( request.action == CommanderAction::GetScriptSubscriptions ) {
-            return scriptSupervisor_.scriptSubscriptions();
+            return scriptSupervisor_.scriptSubscriptions( request );
         }
 
         if ( request.action == CommanderAction::ClearScriptSubscriptions ) {
-            return scriptSupervisor_.clearScriptSubscriptions();
+            return scriptSupervisor_.clearScriptSubscriptions( request );
         }
 
         if ( request.action == CommanderAction::GetActions ) {
@@ -759,6 +768,36 @@ class KloggApp : public QApplication {
     ScriptSupervisor* scriptSupervisor()
     {
         return &scriptSupervisor_;
+    }
+
+    Q_INVOKABLE QVariantMap scriptStatusForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.scriptStatusForTab( tabId );
+    }
+
+    Q_INVOKABLE QVariantMap scriptBindingForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.scriptBindingForTab( tabId );
+    }
+
+    Q_INVOKABLE bool hasActiveScriptForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.hasActiveScriptForTab( tabId );
+    }
+
+    Q_INVOKABLE void restoreScriptBinding( const QVariantMap& binding )
+    {
+        scriptSupervisor_.restoreScriptBinding( binding );
+    }
+
+    Q_INVOKABLE void restoreScriptBindingVariant( const QVariant& binding )
+    {
+        scriptSupervisor_.restoreScriptBinding( binding.toMap() );
+    }
+
+    Q_INVOKABLE void forgetScriptTab( const QString& tabId )
+    {
+        scriptSupervisor_.forgetTab( tabId );
     }
 
     Q_INVOKABLE void showScriptRunnerWindow( const QString& scriptPath = {} )

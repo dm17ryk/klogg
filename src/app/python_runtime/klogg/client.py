@@ -55,6 +55,39 @@ class ResponseEvent:
     window_id: str = ""
 
 
+@dataclass
+class SendEvent:
+    tab_id: str
+    window_index: int
+    tab_index: int
+    file_path: str
+    port_name: str
+    text: str
+    raw_bytes: bytes
+    hex_string: str
+    timestamp: str
+    display_name: str = ""
+    window_id: str = ""
+
+
+@dataclass
+class ActionSendEvent:
+    tab_id: str
+    window_index: int
+    tab_index: int
+    file_path: str
+    port_name: str
+    text: str
+    raw_bytes: bytes
+    hex_string: str
+    timestamp: str
+    action_id: int
+    action_name: str
+    step_index: int = -1
+    display_name: str = ""
+    window_id: str = ""
+
+
 class _RpcClient:
     MAX_EVENT_QUEUE = 1000
 
@@ -79,6 +112,10 @@ class _RpcClient:
         self._dropped_events = 0
         self._receive_handlers: Dict[str, List[Callable[[ReceiveEvent], Any]]] = {}
         self._response_handlers: Dict[str, List[Tuple[Callable[[ResponseEvent], Any], Optional[int], str]]] = {}
+        self._send_handlers: Dict[str, List[Callable[[SendEvent], Any]]] = {}
+        self._action_send_handlers: Dict[str, List[Tuple[Callable[[ActionSendEvent], Any], Optional[int], str]]] = {}
+        self._timers: Dict[int, Dict[str, Any]] = {}
+        self._next_timer_id = 1
         self._reader_thread = threading.Thread(target=self._reader_loop, name="klogg-rpc-reader", daemon=True)
         self._reader_thread.start()
 
@@ -183,6 +220,8 @@ class _RpcClient:
         *,
         response_id: Optional[int] = None,
         response_name: Optional[str] = None,
+        action_id: Optional[int] = None,
+        action_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload = dict(selector)
         payload["eventType"] = event_type
@@ -190,6 +229,10 @@ class _RpcClient:
             payload["responseId"] = int(response_id)
         if response_name:
             payload["responseName"] = response_name
+        if action_id is not None:
+            payload["actionId"] = int(action_id)
+        if action_name:
+            payload["actionName"] = action_name
         return self.request("subscribe_event", payload)
 
     def clear_event_handlers(self, selector: Dict[str, Any]) -> None:
@@ -211,27 +254,100 @@ class _RpcClient:
     def clear_local_handlers(self, tab_id: str) -> None:
         self._receive_handlers.pop(tab_id, None)
         self._response_handlers.pop(tab_id, None)
+        self._send_handlers.pop(tab_id, None)
+        self._action_send_handlers.pop(tab_id, None)
+
+    def register_send_handler(self, tab_id: str, handler: Callable[[SendEvent], Any]) -> None:
+        self._send_handlers.setdefault(tab_id, []).append(handler)
+
+    def register_action_send_handler(
+        self,
+        tab_id: str,
+        handler: Callable[[ActionSendEvent], Any],
+        *,
+        action_id: Optional[int] = None,
+        action_name: str = "",
+    ) -> None:
+        self._action_send_handlers.setdefault(tab_id, []).append((handler, action_id, action_name))
+
+    def set_timeout(self, handler: Callable[[], Any], delay_ms: int) -> int:
+        timer_id = self._next_timer_id
+        self._next_timer_id += 1
+        with self._event_condition:
+            self._timers[timer_id] = {
+                "handler": handler,
+                "interval_ms": max(0, int(delay_ms)),
+                "repeat": False,
+                "next_run": time.monotonic() + (max(0, int(delay_ms)) / 1000.0),
+            }
+            self._event_condition.notify_all()
+        return timer_id
+
+    def set_interval(self, handler: Callable[[], Any], interval_ms: int) -> int:
+        timer_id = self._next_timer_id
+        self._next_timer_id += 1
+        interval = max(1, int(interval_ms))
+        with self._event_condition:
+            self._timers[timer_id] = {
+                "handler": handler,
+                "interval_ms": interval,
+                "repeat": True,
+                "next_run": time.monotonic() + (interval / 1000.0),
+            }
+            self._event_condition.notify_all()
+        return timer_id
+
+    def clear_timer(self, timer_id: int) -> None:
+        with self._event_condition:
+            self._timers.pop(int(timer_id), None)
+            self._event_condition.notify_all()
 
     def run(self) -> None:
         self._local_stop_requested = False
         self._send_notification("set_dispatch_state", {"state": "dispatching"})
         try:
             while not self._local_stop_requested:
+                timer_handler: Optional[Callable[[], Any]] = None
+                event: Optional[Dict[str, Any]] = None
                 with self._event_condition:
                     while not self._event_queue and not self._closed and not self._local_stop_requested:
-                        self._event_condition.wait(timeout=0.2)
+                        now = time.monotonic()
+                        due_timer = None
+                        for timer_id, timer in list(self._timers.items()):
+                            if timer["next_run"] <= now:
+                                due_timer = (timer_id, timer)
+                                break
+                        if due_timer is not None:
+                            timer_id, timer = due_timer
+                            timer_handler = timer["handler"]
+                            if timer["repeat"]:
+                                timer["next_run"] = time.monotonic() + (timer["interval_ms"] / 1000.0)
+                            else:
+                                self._timers.pop(timer_id, None)
+                            break
+
+                        next_due = None
+                        for timer in self._timers.values():
+                            candidate = max(0.0, timer["next_run"] - now)
+                            next_due = candidate if next_due is None else min(next_due, candidate)
+                        self._event_condition.wait(timeout=0.2 if next_due is None else min(0.2, next_due))
 
                     if self._local_stop_requested:
                         break
 
-                    if self._event_queue:
+                    if timer_handler is not None:
+                        pass
+                    elif self._event_queue:
                         event = self._event_queue.popleft()
                     elif self._closed:
                         break
                     else:
                         continue
 
-                self._dispatch_event(event)
+                if timer_handler is not None:
+                    self._invoke_handler(lambda _ignored: timer_handler(), None)
+                elif event is not None:
+                    self._dispatch_event(event)
         finally:
             self._send_notification("set_dispatch_state", {"state": "idle"})
             self._local_stop_requested = False
@@ -285,6 +401,51 @@ class _RpcClient:
                 if expected_id is not None and expected_id != event.response_id:
                     continue
                 if expected_name and expected_name.lower() != event.response_name.lower():
+                    continue
+                self._invoke_handler(handler, event)
+            return
+
+        if event_type == "tx":
+            event = SendEvent(
+                tab_id=tab_id,
+                window_index=int(payload.get("windowIndex", -1)),
+                tab_index=int(payload.get("tabIndex", -1)),
+                file_path=payload.get("filePath", ""),
+                port_name=payload.get("portName", ""),
+                text=payload.get("text", ""),
+                raw_bytes=base64.b64decode(payload.get("rawBase64", "") or b""),
+                hex_string=payload.get("hexString", ""),
+                timestamp=payload.get("timestamp", ""),
+                display_name=payload.get("displayName", ""),
+                window_id=payload.get("windowId", ""),
+            )
+            handlers = list(self._send_handlers.get(tab_id, []))
+            for handler in handlers:
+                self._invoke_handler(handler, event)
+            return
+
+        if event_type == "action_send":
+            event = ActionSendEvent(
+                tab_id=tab_id,
+                window_index=int(payload.get("windowIndex", -1)),
+                tab_index=int(payload.get("tabIndex", -1)),
+                file_path=payload.get("filePath", ""),
+                port_name=payload.get("portName", ""),
+                text=payload.get("text", ""),
+                raw_bytes=base64.b64decode(payload.get("rawBase64", "") or b""),
+                hex_string=payload.get("hexString", ""),
+                timestamp=payload.get("timestamp", ""),
+                action_id=int(payload.get("actionId", 0)),
+                action_name=payload.get("actionName", ""),
+                step_index=int(payload.get("stepIndex", -1)),
+                display_name=payload.get("displayName", ""),
+                window_id=payload.get("windowId", ""),
+            )
+            handlers = list(self._action_send_handlers.get(tab_id, []))
+            for handler, expected_id, expected_name in handlers:
+                if expected_id is not None and expected_id != event.action_id:
+                    continue
+                if expected_name and expected_name.lower() != event.action_name.lower():
                     continue
                 self._invoke_handler(handler, event)
 
@@ -454,6 +615,21 @@ class TabRef:
         _get_client().clear_event_handlers(self._selector)
         _get_client().clear_local_handlers(self._ensure_tab_id())
 
+    def on_send(self, handler: Callable[[SendEvent], Any]) -> None:
+        resolved = _get_client().subscribe_event(self._selector, "tx")
+        self._update_selector(resolved)
+        _get_client().register_send_handler(str(resolved.get("tabId", "")), handler)
+
+    def on_action_send(self, handler: Callable[[ActionSendEvent], Any], *,
+                       action_id: Optional[int] = None, name: Optional[str] = None) -> None:
+        resolved = _get_client().subscribe_event(
+            self._selector, "action_send", action_id=action_id, action_name=name
+        )
+        self._update_selector(resolved)
+        _get_client().register_action_send_handler(
+            str(resolved.get("tabId", "")), handler, action_id=action_id, action_name=name or ""
+        )
+
 
 class Application:
     def get_info(self) -> Dict[str, Any]:
@@ -538,6 +714,18 @@ def run() -> None:
 
 def stop() -> None:
     _get_client().stop()
+
+
+def set_timeout(handler: Callable[[], Any], delay_ms: int) -> int:
+    return _get_client().set_timeout(handler, delay_ms)
+
+
+def set_interval(handler: Callable[[], Any], interval_ms: int) -> int:
+    return _get_client().set_interval(handler, interval_ms)
+
+
+def clear_timer(timer_id: int) -> None:
+    _get_client().clear_timer(timer_id)
 
 
 def log(message: Any) -> None:

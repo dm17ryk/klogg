@@ -20,6 +20,7 @@ ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
 bool sendActionDefinition( StreamSession* session,
                            const ActionDefinition& action,
                            const QMap<QString, QString>& substitutions = {},
+                           int stepIndex = -1,
                            QString* errorMessage = nullptr );
 bool executeResponseDefinition( StreamSession* session,
                                 const ResponseDefinition& response,

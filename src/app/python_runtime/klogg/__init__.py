@@ -1,25 +1,35 @@
 from .client import (
+    ActionSendEvent,
     ReceiveEvent,
+    SendEvent,
     ResponseEvent,
     TabRef,
     app,
+    clear_timer,
     is_stop_requested,
     log,
     run,
+    set_interval,
+    set_timeout,
     sleep_ms,
     stop,
 )
 from .exceptions import KloggError
 
 __all__ = [
+    "ActionSendEvent",
     "ReceiveEvent",
+    "SendEvent",
     "ResponseEvent",
     "TabRef",
     "KloggError",
     "app",
+    "clear_timer",
     "is_stop_requested",
     "log",
     "run",
+    "set_interval",
+    "set_timeout",
     "sleep_ms",
     "stop",
 ]

@@ -231,34 +231,39 @@ TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
 {
     CliParameters runScript(
         { "klogg", "command", "--action", "run_script", "--script-file", "test.py",
-          "--args-json-file", "args.json" } );
+          "--args-json-file", "args.json", "--tab-id", "tab-1" } );
     REQUIRE_FALSE( runScript.parse_error );
     REQUIRE( runScript.commander_request.has_value() );
     REQUIRE( runScript.commander_request->action == CommanderAction::RunScript );
     REQUIRE( runScript.commander_request->scriptFilePath.endsWith( "test.py" ) );
     REQUIRE( runScript.commander_request->argsJsonFilePath.endsWith( "args.json" ) );
+    REQUIRE( runScript.commander_request->tabId == "tab-1" );
 
     CliParameters getStatus(
-        { "klogg", "command", "--action", "get_script_status", "--pretty" } );
+        { "klogg", "command", "--action", "get_script_status", "--all", "--pretty" } );
     REQUIRE_FALSE( getStatus.parse_error );
     REQUIRE( getStatus.commander_request.has_value() );
     REQUIRE( getStatus.commander_request->action == CommanderAction::GetScriptStatus );
+    REQUIRE( getStatus.commander_request->allEntities );
     REQUIRE( getStatus.commander_request->prettyOutput );
 
     CliParameters getSubscriptions(
-        { "klogg", "command", "--action", "get_script_subscriptions", "--pretty" } );
+        { "klogg", "command", "--action", "get_script_subscriptions", "--tab-id", "tab-1",
+          "--pretty" } );
     REQUIRE_FALSE( getSubscriptions.parse_error );
     REQUIRE( getSubscriptions.commander_request.has_value() );
     REQUIRE( getSubscriptions.commander_request->action
              == CommanderAction::GetScriptSubscriptions );
+    REQUIRE( getSubscriptions.commander_request->tabId == "tab-1" );
     REQUIRE( getSubscriptions.commander_request->prettyOutput );
 
     CliParameters clearSubscriptions(
-        { "klogg", "command", "--action", "clear_script_subscriptions" } );
+        { "klogg", "command", "--action", "clear_script_subscriptions", "--all" } );
     REQUIRE_FALSE( clearSubscriptions.parse_error );
     REQUIRE( clearSubscriptions.commander_request.has_value() );
     REQUIRE( clearSubscriptions.commander_request->action
              == CommanderAction::ClearScriptSubscriptions );
+    REQUIRE( clearSubscriptions.commander_request->allEntities );
 }
 
 TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )
