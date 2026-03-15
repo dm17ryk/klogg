@@ -1,5 +1,7 @@
 #include "scriptsupervisor.h"
 
+#include <algorithm>
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -15,6 +17,8 @@
 namespace {
 
 constexpr int OutputTailLimit = 200;
+constexpr auto ReceiveEventType = "receive";
+constexpr auto ResponseEventType = "response";
 
 QString randomToken()
 {
@@ -52,6 +56,11 @@ QString trimTrailingNewline( const QString& line )
         trimmed.chop( 1 );
     }
     return trimmed;
+}
+
+QString selectorTabId( const QVariantMap& params )
+{
+    return params.value( QStringLiteral( "tabId" ) ).toString().trimmed();
 }
 
 } // namespace
@@ -151,8 +160,12 @@ CommanderResult ScriptSupervisor::runScript( const QString& scriptFilePath,
     pendingStderr_.clear();
     socketBuffer_.clear();
     lastError_.clear();
+    lastCallbackError_.clear();
     exitCode_ = 0;
     stopRequested_ = false;
+    droppedEvents_ = 0;
+    dispatchState_ = QStringLiteral( "idle" );
+    subscriptions_.clear();
     startedAt_ = QDateTime::currentDateTimeUtc();
     finishedAt_ = {};
     authToken_ = randomToken();
@@ -215,6 +228,43 @@ CommanderResult ScriptSupervisor::stopScript()
 CommanderResult ScriptSupervisor::scriptStatus() const
 {
     return commanderSuccess( {}, statusPayload() );
+}
+
+CommanderResult ScriptSupervisor::scriptSubscriptions() const
+{
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "subscriptions" ), subscriptionsPayload() );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult ScriptSupervisor::clearScriptSubscriptions()
+{
+    subscriptions_.clear();
+    Q_EMIT statusChanged();
+    return commanderSuccess();
+}
+
+void ScriptSupervisor::publishEvent( const QVariantMap& event )
+{
+    if ( socket_ == nullptr || subscriptions_.isEmpty() ) {
+        return;
+    }
+
+    const auto eventType = event.value( QStringLiteral( "eventType" ) ).toString();
+    const auto tabId = event.value( QStringLiteral( "tabId" ) ).toString();
+    const auto hasSubscriber = std::any_of(
+        subscriptions_.cbegin(), subscriptions_.cend(), [ & ]( const auto& subscription ) {
+            return subscription.tabId == tabId && subscription.eventType == eventType;
+        } );
+
+    if ( !hasSubscriber ) {
+        return;
+    }
+
+    QVariantMap message;
+    message.insert( QStringLiteral( "type" ), QStringLiteral( "event" ) );
+    message.insert( QStringLiteral( "event" ), event );
+    sendRpcMessage( socket_, message );
 }
 
 bool ScriptSupervisor::hasActiveScript() const
@@ -283,7 +333,10 @@ void ScriptSupervisor::handleProcessFinished( int exitCode, QProcess::ExitStatus
         setState( ScriptRunState::Failed );
     }
 
+    subscriptions_.clear();
+    dispatchState_ = QStringLiteral( "idle" );
     server_.close();
+    Q_EMIT statusChanged();
 }
 
 void ScriptSupervisor::handleProcessError( QProcess::ProcessError error )
@@ -402,7 +455,11 @@ void ScriptSupervisor::resetRunState()
     pendingStdout_.clear();
     pendingStderr_.clear();
     outputTail_.clear();
+    lastCallbackError_.clear();
+    subscriptions_.clear();
     stopRequested_ = false;
+    droppedEvents_ = 0;
+    dispatchState_ = QStringLiteral( "idle" );
     exitCode_ = 0;
     startedAt_ = {};
     finishedAt_ = {};
@@ -462,6 +519,10 @@ QVariantMap ScriptSupervisor::statusPayload() const
     }
     payload.insert( QStringLiteral( "exitCode" ), exitCode_ );
     payload.insert( QStringLiteral( "lastError" ), lastError_ );
+    payload.insert( QStringLiteral( "lastCallbackError" ), lastCallbackError_ );
+    payload.insert( QStringLiteral( "droppedEvents" ), droppedEvents_ );
+    payload.insert( QStringLiteral( "dispatchState" ), dispatchState_ );
+    payload.insert( QStringLiteral( "subscriptions" ), subscriptionsPayload() );
 
     QVariantList outputTail;
     for ( const auto& line : outputTail_ ) {
@@ -471,12 +532,39 @@ QVariantMap ScriptSupervisor::statusPayload() const
     return payload;
 }
 
+QVariantList ScriptSupervisor::subscriptionsPayload() const
+{
+    QVariantList payload;
+    for ( const auto& subscription : subscriptions_ ) {
+        QVariantMap item;
+        item.insert( QStringLiteral( "tabId" ), subscription.tabId );
+        item.insert( QStringLiteral( "windowIndex" ), subscription.windowIndex );
+        item.insert( QStringLiteral( "tabIndex" ), subscription.tabIndex );
+        item.insert( QStringLiteral( "windowId" ), subscription.windowId );
+        item.insert( QStringLiteral( "filePath" ), subscription.filePath );
+        item.insert( QStringLiteral( "displayName" ), subscription.displayName );
+        item.insert( QStringLiteral( "portName" ), subscription.portName );
+        item.insert( QStringLiteral( "eventType" ), subscription.eventType );
+        if ( subscription.responseId.has_value() ) {
+            item.insert( QStringLiteral( "responseId" ), *subscription.responseId );
+        }
+        if ( !subscription.responseName.isEmpty() ) {
+            item.insert( QStringLiteral( "responseName" ), subscription.responseName );
+        }
+        payload.push_back( item );
+    }
+    return payload;
+}
+
 void ScriptSupervisor::handleRpcMessage( const QVariantMap& message )
 {
     const auto requestId = message.value( QStringLiteral( "id" ) ).toInt();
     const auto token = message.value( QStringLiteral( "token" ) ).toString();
+    const auto isNotification = message.value( QStringLiteral( "notification" ) ).toBool();
     if ( token != authToken_ ) {
-        sendRpcResponse( socket_, rpcErrorEnvelope( requestId, QStringLiteral( "unauthorized" ) ) );
+        if ( !isNotification ) {
+            sendRpcMessage( socket_, rpcErrorEnvelope( requestId, QStringLiteral( "unauthorized" ) ) );
+        }
         return;
     }
 
@@ -487,35 +575,144 @@ void ScriptSupervisor::handleRpcMessage( const QVariantMap& message )
         response.insert( QStringLiteral( "ok" ), true );
         response.insert( QStringLiteral( "result" ),
                          QVariantMap{ { QStringLiteral( "stopRequested" ), stopRequested_ } } );
-        sendRpcResponse( socket_, response );
+        sendRpcMessage( socket_, response );
+        return;
+    }
+
+    const auto params = message.value( QStringLiteral( "params" ) ).toMap();
+
+    if ( method == QStringLiteral( "subscribe_event" ) ) {
+        QString errorMessage;
+        const auto target = resolveSubscriptionTarget( params, &errorMessage );
+        if ( target.isEmpty() ) {
+            if ( !isNotification ) {
+                sendRpcMessage( socket_, rpcErrorEnvelope( requestId, errorMessage ) );
+            }
+            return;
+        }
+
+        const auto eventType = params.value( QStringLiteral( "eventType" ) ).toString().trimmed();
+        if ( eventType != QLatin1String( ReceiveEventType )
+             && eventType != QLatin1String( ResponseEventType ) ) {
+            if ( !isNotification ) {
+                sendRpcMessage( socket_, rpcErrorEnvelope( requestId, QStringLiteral( "unsupported event type" ) ) );
+            }
+            return;
+        }
+
+        ScriptSubscription subscription;
+        subscription.tabId = target.value( QStringLiteral( "tabId" ) ).toString();
+        subscription.windowIndex = target.value( QStringLiteral( "windowIndex" ) ).toInt();
+        subscription.tabIndex = target.value( QStringLiteral( "tabIndex" ) ).toInt();
+        subscription.windowId = target.value( QStringLiteral( "windowId" ) ).toString();
+        subscription.filePath = target.value( QStringLiteral( "filePath" ) ).toString();
+        subscription.displayName = target.value( QStringLiteral( "displayName" ) ).toString();
+        subscription.portName = target.value( QStringLiteral( "portName" ) ).toString();
+        subscription.eventType = eventType;
+        if ( params.contains( QStringLiteral( "responseId" ) ) ) {
+            subscription.responseId = params.value( QStringLiteral( "responseId" ) ).toInt();
+        }
+        subscription.responseName = params.value( QStringLiteral( "responseName" ) ).toString().trimmed();
+        subscriptions_.push_back( subscription );
+        Q_EMIT statusChanged();
+
+        if ( !isNotification ) {
+            QVariantMap payload = target;
+            payload.insert( QStringLiteral( "eventType" ), eventType );
+            if ( subscription.responseId.has_value() ) {
+                payload.insert( QStringLiteral( "responseId" ), *subscription.responseId );
+            }
+            if ( !subscription.responseName.isEmpty() ) {
+                payload.insert( QStringLiteral( "responseName" ), subscription.responseName );
+            }
+
+            QVariantMap response;
+            response.insert( QStringLiteral( "id" ), requestId );
+            response.insert( QStringLiteral( "ok" ), true );
+            response.insert( QStringLiteral( "result" ), payload );
+            sendRpcMessage( socket_, response );
+        }
+        return;
+    }
+
+    if ( method == QStringLiteral( "clear_event_handlers" ) ) {
+        const auto tabId = selectorTabId( params );
+        if ( tabId.isEmpty() ) {
+            QString errorMessage;
+            const auto target = resolveSubscriptionTarget( params, &errorMessage );
+            if ( target.isEmpty() ) {
+                if ( !isNotification ) {
+                    sendRpcMessage( socket_, rpcErrorEnvelope( requestId, errorMessage ) );
+                }
+                return;
+            }
+            clearSubscriptionsForTab( target.value( QStringLiteral( "tabId" ) ).toString() );
+        }
+        else {
+            clearSubscriptionsForTab( tabId );
+        }
+
+        if ( !isNotification ) {
+            QVariantMap response;
+            response.insert( QStringLiteral( "id" ), requestId );
+            response.insert( QStringLiteral( "ok" ), true );
+            response.insert( QStringLiteral( "result" ), QVariantMap{} );
+            sendRpcMessage( socket_, response );
+        }
+        return;
+    }
+
+    if ( method == QStringLiteral( "set_dispatch_state" ) ) {
+        dispatchState_ = params.value( QStringLiteral( "state" ) ).toString().trimmed();
+        if ( dispatchState_.isEmpty() ) {
+            dispatchState_ = QStringLiteral( "idle" );
+        }
+        Q_EMIT statusChanged();
+        return;
+    }
+
+    if ( method == QStringLiteral( "report_callback_error" ) ) {
+        lastCallbackError_ = params.value( QStringLiteral( "error" ) ).toString();
+        if ( !lastCallbackError_.isEmpty() ) {
+            appendOutputLine( tr( "[script-callback] %1" ).arg( lastCallbackError_ ) );
+        }
+        Q_EMIT statusChanged();
+        return;
+    }
+
+    if ( method == QStringLiteral( "report_event_stats" ) ) {
+        droppedEvents_ = params.value( QStringLiteral( "droppedEvents" ) ).toInt();
+        Q_EMIT statusChanged();
         return;
     }
 
     if ( method != QStringLiteral( "command" ) ) {
-        sendRpcResponse( socket_,
-                         rpcErrorEnvelope( requestId, QStringLiteral( "unsupported method" ) ) );
+        if ( !isNotification ) {
+            sendRpcMessage( socket_,
+                            rpcErrorEnvelope( requestId, QStringLiteral( "unsupported method" ) ) );
+        }
         return;
     }
 
     if ( !commanderExecutor_ ) {
-        sendRpcResponse( socket_,
-                         rpcErrorEnvelope( requestId, QStringLiteral( "no commander executor" ) ) );
+        sendRpcMessage( socket_,
+                        rpcErrorEnvelope( requestId, QStringLiteral( "no commander executor" ) ) );
         return;
     }
 
     QString errorMessage;
     const auto request = commanderRequestFromVariantMap(
-        message.value( QStringLiteral( "params" ) ).toMap(), &errorMessage );
+        params, &errorMessage );
     if ( !request ) {
-        sendRpcResponse( socket_, rpcErrorEnvelope( requestId, errorMessage ) );
+        sendRpcMessage( socket_, rpcErrorEnvelope( requestId, errorMessage ) );
         return;
     }
 
     const auto result = commanderExecutor_( *request );
-    sendRpcResponse( socket_, rpcResultEnvelope( requestId, result ) );
+    sendRpcMessage( socket_, rpcResultEnvelope( requestId, result ) );
 }
 
-void ScriptSupervisor::sendRpcResponse( QTcpSocket* socket, const QVariantMap& response )
+void ScriptSupervisor::sendRpcMessage( QTcpSocket* socket, const QVariantMap& response )
 {
     if ( socket == nullptr ) {
         return;
@@ -543,4 +740,92 @@ QVariantMap ScriptSupervisor::rpcErrorEnvelope( int requestId, const QString& er
     response.insert( QStringLiteral( "ok" ), false );
     response.insert( QStringLiteral( "error" ), errorText );
     return response;
+}
+
+QVariantMap ScriptSupervisor::resolveSubscriptionTarget( const QVariantMap& selector,
+                                                         QString* errorMessage ) const
+{
+    if ( !commanderExecutor_ ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = QStringLiteral( "no commander executor" );
+        }
+        return {};
+    }
+
+    CommanderRequest request;
+    request.action = CommanderAction::GetInfo;
+    const auto infoResult = commanderExecutor_( request );
+    if ( !infoResult.ok() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = infoResult.message;
+        }
+        return {};
+    }
+
+    const auto windows = infoResult.payload.value( QStringLiteral( "windows" ) ).toList();
+    const auto requestedTabId = selector.value( QStringLiteral( "tabId" ) ).toString().trimmed();
+    const auto requestedWindowIndex = selector.value( QStringLiteral( "windowIndex" ) );
+    const auto requestedTabIndex = selector.value( QStringLiteral( "tabIndex" ) );
+
+    for ( const auto& windowValue : windows ) {
+        const auto window = windowValue.toMap();
+        const auto windowIndex = window.value( QStringLiteral( "windowIndex" ) ).toInt();
+        if ( requestedWindowIndex.isValid() && windowIndex != requestedWindowIndex.toInt() ) {
+            continue;
+        }
+
+        const auto tabs = window.value( QStringLiteral( "tabs" ) ).toList();
+        for ( const auto& tabValue : tabs ) {
+            const auto tab = tabValue.toMap();
+            const auto tabIndex = tab.value( QStringLiteral( "tabIndex" ) ).toInt();
+            if ( !requestedTabId.isEmpty() ) {
+                if ( tab.value( QStringLiteral( "tabId" ) ).toString() != requestedTabId ) {
+                    continue;
+                }
+            }
+            else if ( requestedWindowIndex.isValid() || requestedTabIndex.isValid() ) {
+                if ( !requestedWindowIndex.isValid() || !requestedTabIndex.isValid()
+                     || tabIndex != requestedTabIndex.toInt() ) {
+                    continue;
+                }
+            }
+            else {
+                continue;
+            }
+
+            const auto sourceType = tab.value( QStringLiteral( "sourceType" ) ).toString();
+            if ( sourceType != QStringLiteral( "com" ) ) {
+                if ( errorMessage != nullptr ) {
+                    *errorMessage = tr( "Requested tab is not a live communication tab." );
+                }
+                return {};
+            }
+
+            QVariantMap target;
+            target.insert( QStringLiteral( "tabId" ), tab.value( QStringLiteral( "tabId" ) ) );
+            target.insert( QStringLiteral( "tabIndex" ), tab.value( QStringLiteral( "tabIndex" ) ) );
+            target.insert( QStringLiteral( "windowId" ), window.value( QStringLiteral( "windowId" ) ) );
+            target.insert( QStringLiteral( "windowIndex" ), window.value( QStringLiteral( "windowIndex" ) ) );
+            target.insert( QStringLiteral( "filePath" ), tab.value( QStringLiteral( "filePath" ) ) );
+            target.insert( QStringLiteral( "displayName" ), tab.value( QStringLiteral( "displayName" ) ) );
+            target.insert( QStringLiteral( "portName" ),
+                           tab.value( QStringLiteral( "com" ) ).toMap().value( QStringLiteral( "portName" ) ) );
+            return target;
+        }
+    }
+
+    if ( errorMessage != nullptr ) {
+        *errorMessage = tr( "Requested live communication tab was not found." );
+    }
+    return {};
+}
+
+void ScriptSupervisor::clearSubscriptionsForTab( const QString& tabId )
+{
+    subscriptions_.erase( std::remove_if( subscriptions_.begin(), subscriptions_.end(),
+                                          [ &tabId ]( const auto& subscription ) {
+                                              return subscription.tabId == tabId;
+                                          } ),
+                          subscriptions_.end() );
+    Q_EMIT statusChanged();
 }

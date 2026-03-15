@@ -133,6 +133,8 @@ struct CliParameters {
             "  klogg command --action run_script --script-file <path> [--args-json-file <path>]\n"
             "  klogg command --action stop_script\n"
             "  klogg command --action get_script_status [--pretty]\n"
+            "  klogg command --action get_script_subscriptions [--pretty]\n"
+            "  klogg command --action clear_script_subscriptions\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -176,6 +178,8 @@ struct CliParameters {
             "  run_script --script-file <path> [--args-json-file <path>]\n"
             "  stop_script\n"
             "  get_script_status [--pretty|--preatty]\n"
+            "  get_script_subscriptions [--pretty|--preatty]\n"
+            "  clear_script_subscriptions\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -912,16 +916,18 @@ struct CliParameters {
                 return result;
             }
             break;
-        case CommanderAction::RunScript:
-            if ( request.scriptFilePath.isEmpty() ) {
-                result.output_message = formatParserError(
-                    parser, QStringLiteral( "--script-file is required for run_script." ) );
-                return result;
-            }
-            break;
-        case CommanderAction::StopScript:
-        case CommanderAction::GetScriptStatus:
-            break;
+            case CommanderAction::RunScript:
+                if ( request.scriptFilePath.isEmpty() ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--script-file is required for run_script." ) );
+                    return result;
+                }
+                break;
+            case CommanderAction::StopScript:
+            case CommanderAction::GetScriptStatus:
+            case CommanderAction::GetScriptSubscriptions:
+            case CommanderAction::ClearScriptSubscriptions:
+                break;
         case CommanderAction::CloseKlogg:
         case CommanderAction::CloseAll:
             if ( parser.isSet( prettyOption ) || parser.isSet( searchOption )

@@ -73,6 +73,8 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "get_response_counter" ) );
     REQUIRE( parameters.exit_message.contains( "run_script" ) );
     REQUIRE( parameters.exit_message.contains( "get_script_status" ) );
+    REQUIRE( parameters.exit_message.contains( "get_script_subscriptions" ) );
+    REQUIRE( parameters.exit_message.contains( "clear_script_subscriptions" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
@@ -242,6 +244,21 @@ TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
     REQUIRE( getStatus.commander_request.has_value() );
     REQUIRE( getStatus.commander_request->action == CommanderAction::GetScriptStatus );
     REQUIRE( getStatus.commander_request->prettyOutput );
+
+    CliParameters getSubscriptions(
+        { "klogg", "command", "--action", "get_script_subscriptions", "--pretty" } );
+    REQUIRE_FALSE( getSubscriptions.parse_error );
+    REQUIRE( getSubscriptions.commander_request.has_value() );
+    REQUIRE( getSubscriptions.commander_request->action
+             == CommanderAction::GetScriptSubscriptions );
+    REQUIRE( getSubscriptions.commander_request->prettyOutput );
+
+    CliParameters clearSubscriptions(
+        { "klogg", "command", "--action", "clear_script_subscriptions" } );
+    REQUIRE_FALSE( clearSubscriptions.parse_error );
+    REQUIRE( clearSubscriptions.commander_request.has_value() );
+    REQUIRE( clearSubscriptions.commander_request->action
+             == CommanderAction::ClearScriptSubscriptions );
 }
 
 TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )

@@ -285,10 +285,19 @@ class MainWindow : public QMainWindow {
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
-    StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
-                                                bool requireOpen ) const;
-    QVariantList commanderResponseCounters( StreamSession* streamSession,
-                                            const CommanderRequest* request = nullptr ) const;
+      StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
+                                                  bool requireOpen ) const;
+      QVariantList commanderResponseCounters( StreamSession* streamSession,
+                                              const CommanderRequest* request = nullptr ) const;
+      QVariantMap scriptEventContextForFile( const QString& filePath ) const;
+      void publishScriptEvent( const QVariantMap& event ) const;
+      void publishScriptReceiveEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
+      void publishScriptResponseEvent( const QString& filePath,
+                                       int responseId,
+                                       const QString& responseName,
+                                       int counter,
+                                       const QByteArray& lineBytes,
+                                       const QString& matchedText ) const;
 
     WindowSession session_;
     QString loadingFileName;

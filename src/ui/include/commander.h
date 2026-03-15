@@ -41,6 +41,8 @@ enum class CommanderAction {
     RunScript,
     StopScript,
     GetScriptStatus,
+    GetScriptSubscriptions,
+    ClearScriptSubscriptions,
     FocusTab,
     SetFilter,
     CloseTab,

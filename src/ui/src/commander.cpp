@@ -110,6 +110,10 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "stop_script" );
     case CommanderAction::GetScriptStatus:
         return QStringLiteral( "get_script_status" );
+    case CommanderAction::GetScriptSubscriptions:
+        return QStringLiteral( "get_script_subscriptions" );
+    case CommanderAction::ClearScriptSubscriptions:
+        return QStringLiteral( "clear_script_subscriptions" );
     case CommanderAction::FocusTab:
         return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
@@ -220,6 +224,12 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "get_script_status" ) ) {
         return CommanderAction::GetScriptStatus;
+    }
+    if ( normalized == QStringLiteral( "get_script_subscriptions" ) ) {
+        return CommanderAction::GetScriptSubscriptions;
+    }
+    if ( normalized == QStringLiteral( "clear_script_subscriptions" ) ) {
+        return CommanderAction::ClearScriptSubscriptions;
     }
     if ( normalized == QStringLiteral( "focus_tab" ) ) {
         return CommanderAction::FocusTab;

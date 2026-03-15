@@ -37,7 +37,13 @@ class StreamSession : public QObject {
     void errorOccurred( const QString& message );
     void connectionClosed();
     void connectionOpened();
+    void dataObserved( const QByteArray& dataBytes );
     void lineObserved( const QByteArray& lineBytes );
+    void responseMatched( int responseId,
+                          const QString& responseName,
+                          int counter,
+                          const QByteArray& lineBytes,
+                          const QString& lineText );
 
   private:
     void setupWorker();

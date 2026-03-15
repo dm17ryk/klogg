@@ -517,6 +517,14 @@ class KloggApp : public QApplication {
             return scriptSupervisor_.scriptStatus();
         }
 
+        if ( request.action == CommanderAction::GetScriptSubscriptions ) {
+            return scriptSupervisor_.scriptSubscriptions();
+        }
+
+        if ( request.action == CommanderAction::ClearScriptSubscriptions ) {
+            return scriptSupervisor_.clearScriptSubscriptions();
+        }
+
         if ( request.action == CommanderAction::GetActions ) {
             QVariantList actions;
             for ( const auto& action : ActionsManager::instance().actions() ) {
@@ -764,6 +772,11 @@ class KloggApp : public QApplication {
         scriptRunnerWindow_.show();
         scriptRunnerWindow_.raise();
         scriptRunnerWindow_.activateWindow();
+    }
+
+    Q_INVOKABLE void publishScriptEvent( const QVariantMap& event )
+    {
+        scriptSupervisor_.publishEvent( event );
     }
 
     void startBackgroundTasks()

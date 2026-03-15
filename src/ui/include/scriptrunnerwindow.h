@@ -32,6 +32,7 @@ class ScriptRunnerWindow : public QWidget {
     QLineEdit* argsJsonPathEdit_;
     QLabel* statusLabel_;
     QLabel* summaryLabel_;
+    QLabel* subscriptionsLabel_;
     QPlainTextEdit* outputEdit_;
     QPushButton* runButton_;
     QPushButton* rerunButton_;

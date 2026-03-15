@@ -20,6 +20,7 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     , argsJsonPathEdit_( new QLineEdit( this ) )
     , statusLabel_( new QLabel( this ) )
     , summaryLabel_( new QLabel( this ) )
+    , subscriptionsLabel_( new QLabel( this ) )
     , outputEdit_( new QPlainTextEdit( this ) )
     , runButton_( new QPushButton( tr( "Run" ), this ) )
     , rerunButton_( new QPushButton( tr( "Rerun" ), this ) )
@@ -55,6 +56,8 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
 
     rootLayout->addWidget( statusLabel_ );
     rootLayout->addWidget( summaryLabel_ );
+    subscriptionsLabel_->setWordWrap( true );
+    rootLayout->addWidget( subscriptionsLabel_ );
 
     outputEdit_->setReadOnly( true );
     outputEdit_->setLineWrapMode( QPlainTextEdit::NoWrap );
@@ -149,12 +152,38 @@ void ScriptRunnerWindow::refreshFromSupervisor()
     const auto finishedAt = status.value( QStringLiteral( "finishedAt" ) ).toString();
     const auto exitCode = status.value( QStringLiteral( "exitCode" ) ).toInt();
     const auto lastError = status.value( QStringLiteral( "lastError" ) ).toString();
+    const auto lastCallbackError = status.value( QStringLiteral( "lastCallbackError" ) ).toString();
+    const auto droppedEvents = status.value( QStringLiteral( "droppedEvents" ) ).toInt();
+    const auto dispatchState = status.value( QStringLiteral( "dispatchState" ) ).toString();
     summaryLabel_->setText(
-        tr( "Started: %1 | Finished: %2 | Exit: %3 | Error: %4" )
+        tr( "Started: %1 | Finished: %2 | Exit: %3 | Error: %4 | Callback: %5 | Dispatch: %6 | Dropped: %7" )
             .arg( startedAt.isEmpty() ? tr( "-" ) : startedAt,
                   finishedAt.isEmpty() ? tr( "-" ) : finishedAt,
                   QString::number( exitCode ),
-                  lastError.isEmpty() ? tr( "-" ) : lastError ) );
+                  lastError.isEmpty() ? tr( "-" ) : lastError,
+                  lastCallbackError.isEmpty() ? tr( "-" ) : lastCallbackError,
+                  dispatchState.isEmpty() ? tr( "idle" ) : dispatchState,
+                  QString::number( droppedEvents ) ) );
+
+    QStringList subscriptions;
+    for ( const auto& item : status.value( QStringLiteral( "subscriptions" ) ).toList() ) {
+        const auto subscription = item.toMap();
+        auto line = tr( "%1 %2" )
+                        .arg( subscription.value( QStringLiteral( "eventType" ) ).toString(),
+                              subscription.value( QStringLiteral( "tabId" ) ).toString() );
+        const auto responseName = subscription.value( QStringLiteral( "responseName" ) ).toString();
+        if ( subscription.contains( QStringLiteral( "responseId" ) ) ) {
+            line += tr( " (response id %1)" )
+                        .arg( subscription.value( QStringLiteral( "responseId" ) ).toInt() );
+        }
+        else if ( !responseName.isEmpty() ) {
+            line += tr( " (%1)" ).arg( responseName );
+        }
+        subscriptions.push_back( line );
+    }
+    subscriptionsLabel_->setText(
+        tr( "Subscriptions: %1" )
+            .arg( subscriptions.isEmpty() ? tr( "-" ) : subscriptions.join( tr( "; " ) ) ) );
 
     QStringList lines;
     const auto output = status.value( QStringLiteral( "outputTail" ) ).toList();

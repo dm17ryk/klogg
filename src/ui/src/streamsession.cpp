@@ -167,6 +167,8 @@ void StreamSession::handleDataReceived( const QByteArray& data )
         return;
     }
 
+    Q_EMIT dataObserved( data );
+
     lineBuffer_.append( data );
     qsizetype newlineIndex = lineBuffer_.indexOf( '\n' );
     while ( newlineIndex >= 0 ) {
@@ -270,6 +272,8 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         }
 
         responseCounters_[ response.id ] = responseCounters_.value( response.id, 0 ) + 1;
+        Q_EMIT responseMatched( response.id, response.name, responseCounters_.value( response.id ),
+                                lineBytes, lineText );
 
         QString errorMessage;
         if ( !executeResponseDefinition( this, response, match.captures, &errorMessage ) ) {

@@ -683,6 +683,89 @@ QVariantMap MainWindow::commanderWindowInfo() const
     return windowInfo;
 }
 
+QVariantMap MainWindow::scriptEventContextForFile( const QString& filePath ) const
+{
+    if ( filePath.isEmpty() ) {
+        return {};
+    }
+
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr || session_.getFilename( widget ) != filePath ) {
+            continue;
+        }
+
+        QVariantMap context;
+        context.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        context.insert( QStringLiteral( "tabIndex" ), index );
+        context.insert( QStringLiteral( "windowId" ), session_.windowId() );
+        context.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+        context.insert( QStringLiteral( "filePath" ), filePath );
+        context.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
+        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+            context.insert( QStringLiteral( "portName" ),
+                            streamSession->captureSettings().portName );
+        }
+        return context;
+    }
+
+    return {};
+}
+
+void MainWindow::publishScriptEvent( const QVariantMap& event ) const
+{
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    const auto invoked = QMetaObject::invokeMethod( qApp, "publishScriptEvent", Qt::DirectConnection,
+                                                    Q_ARG( QVariantMap, event ) );
+    if ( !invoked ) {
+        LOG_WARNING << "Failed to publish script event";
+    }
+}
+
+void MainWindow::publishScriptReceiveEvent( const QString& filePath,
+                                            const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "receive" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptResponseEvent( const QString& filePath,
+                                             int responseId,
+                                             const QString& responseName,
+                                             int counter,
+                                             const QByteArray& lineBytes,
+                                             const QString& matchedText ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "response" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "responseId" ), responseId );
+    event.insert( QStringLiteral( "responseName" ), responseName );
+    event.insert( QStringLiteral( "counter" ), counter );
+    event.insert( QStringLiteral( "matchedText" ), matchedText );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( lineBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( lineBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
 void MainWindow::reTranslateUI()
 {
     using namespace klogg::mainwindow;
@@ -1572,9 +1655,19 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                      LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
                                  << message.toStdString();
                  }
-                 if ( safeSession ) {
-                     safeSession->closeConnection();
-                 }
+                   if ( safeSession ) {
+                       safeSession->closeConnection();
+                   }
+               } );
+    connect( session.get(), &StreamSession::dataObserved, this,
+             [ this, filePath ]( const QByteArray& payloadBytes ) {
+                 publishScriptReceiveEvent( filePath, payloadBytes );
+             } );
+    connect( session.get(), &StreamSession::responseMatched, this,
+             [ this, filePath ]( int responseId, const QString& responseName, int counter,
+                                 const QByteArray& lineBytes, const QString& matchedText ) {
+                 publishScriptResponseEvent( filePath, responseId, responseName, counter,
+                                             lineBytes, matchedText );
              } );
     session->start();
     mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
