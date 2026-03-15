@@ -291,9 +291,10 @@ class MainWindow : public QMainWindow {
                                                   bool requireOpen ) const;
       QVariantList commanderResponseCounters( StreamSession* streamSession,
                                               const CommanderRequest* request = nullptr ) const;
-      QVariantMap scriptEventContextForFile( const QString& filePath ) const;
-      void publishScriptEvent( const QVariantMap& event ) const;
-      void publishScriptReceiveEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
+        QVariantMap scriptEventContextForFile( const QString& filePath ) const;
+        void publishScriptEvent( const QVariantMap& event ) const;
+        void publishScriptLifecycleEvent( const QString& filePath, const QString& eventType ) const;
+        void publishScriptReceiveEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
       void publishScriptResponseEvent( const QString& filePath,
                                        int responseId,
                                        const QString& responseName,
@@ -306,8 +307,10 @@ class MainWindow : public QMainWindow {
                                          const QString& actionName,
                                          int stepIndex,
                                          const QByteArray& payloadBytes ) const;
-      QString scriptContextForTab( int index ) const;
-      void restoreScriptContextForTab( int index, const QString& scriptContext );
+        QString scriptContextForTab( int index ) const;
+        void restoreScriptContextForTab( int index, const QString& scriptContext );
+        QString globalScriptContext() const;
+        void restoreGlobalScriptContext();
 
     WindowSession session_;
     QString loadingFileName;

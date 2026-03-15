@@ -23,6 +23,11 @@ enum class ScriptRunState {
     Cancelled,
 };
 
+enum class ScriptRunScope {
+    Tab,
+    Global,
+};
+
 class ScriptSupervisor : public QObject {
     Q_OBJECT
 
@@ -33,17 +38,25 @@ class ScriptSupervisor : public QObject {
     void setCommanderExecutor( std::function<CommanderResult( const CommanderRequest& )> executor );
 
     CommanderResult runScript( const CommanderRequest& request );
+    CommanderResult runGlobalScript( const CommanderRequest& request );
     CommanderResult stopScript( const CommanderRequest& request );
+    CommanderResult stopGlobalScript();
     CommanderResult scriptStatus( const CommanderRequest& request ) const;
+    CommanderResult globalScriptStatus() const;
     CommanderResult scriptSubscriptions( const CommanderRequest& request ) const;
+    CommanderResult globalScriptSubscriptions() const;
     CommanderResult clearScriptSubscriptions( const CommanderRequest& request );
+    CommanderResult clearGlobalScriptSubscriptions();
     void publishEvent( const QVariantMap& event );
 
     bool hasActiveScripts() const;
     bool hasActiveScriptForTab( const QString& tabId ) const;
     QVariantMap scriptStatusForTab( const QString& tabId ) const;
     QVariantMap scriptBindingForTab( const QString& tabId ) const;
+    QVariantMap globalScriptStatusPayload() const;
+    QVariantMap globalScriptBinding() const;
     void restoreScriptBinding( const QVariantMap& binding );
+    void restoreGlobalScriptBinding( const QVariantMap& binding );
     void forgetTab( const QString& tabId );
 
   Q_SIGNALS:
@@ -60,6 +73,7 @@ class ScriptSupervisor : public QObject {
         QString displayName;
         QString portName;
         QString eventType;
+        QString sourceType;
         std::optional<int> responseId;
         QString responseName;
         std::optional<int> actionId;
@@ -73,8 +87,10 @@ class ScriptSupervisor : public QObject {
     QString workerBootstrapPath() const;
 
     ScriptRun* findRun( const QString& tabId ) const;
+    ScriptRun* findGlobalRun() const;
     ScriptRun* findRunForRequest( const CommanderRequest& request ) const;
     void removeRun( const QString& tabId );
+    void removeGlobalRun();
     bool beginListening( ScriptRun* run, QString* errorMessage );
     void resetSocketState( ScriptRun* run );
     void appendOutputChunk( ScriptRun* run, const QString& chunk, bool stderrStream );
@@ -84,6 +100,7 @@ class ScriptSupervisor : public QObject {
     QVariantList subscriptionsPayload( const ScriptRun* run ) const;
     QVariantList allStatusPayloads() const;
     QVariantList allSubscriptionsPayloads() const;
+    QVariantMap lifecycleTargetInfo( const QVariantMap& selector, QString* errorMessage ) const;
     QVariantMap resolveTargetInfo( const CommanderRequest& request,
                                    bool requireSelector,
                                    QString* errorMessage ) const;

@@ -30,11 +30,18 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     , scriptPathEdit_( new QLineEdit( this ) )
     , argsJsonPathEdit_( new QLineEdit( this ) )
     , runsList_( new QListWidget( this ) )
+    , globalStatusLabel_( new QLabel( this ) )
+    , globalSummaryLabel_( new QLabel( this ) )
+    , globalSubscriptionsLabel_( new QLabel( this ) )
+    , globalOutputEdit_( new QPlainTextEdit( this ) )
     , statusLabel_( new QLabel( this ) )
     , summaryLabel_( new QLabel( this ) )
     , subscriptionsLabel_( new QLabel( this ) )
     , outputEdit_( new QPlainTextEdit( this ) )
     , runButton_( new QPushButton( tr( "Run On Active Tab" ), this ) )
+    , runGlobalButton_( new QPushButton( tr( "Run Global" ), this ) )
+    , rerunGlobalButton_( new QPushButton( tr( "Rerun Global" ), this ) )
+    , stopGlobalButton_( new QPushButton( tr( "Stop Global" ), this ) )
     , rerunButton_( new QPushButton( tr( "Rerun Selected" ), this ) )
     , stopButton_( new QPushButton( tr( "Stop Selected" ), this ) )
 {
@@ -58,6 +65,10 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     rootLayout->addLayout( argsRow );
 
     auto* buttonRow = new QHBoxLayout();
+    buttonRow->addWidget( runGlobalButton_ );
+    buttonRow->addWidget( rerunGlobalButton_ );
+    buttonRow->addWidget( stopGlobalButton_ );
+    buttonRow->addSpacing( 12 );
     auto* openFolderButton = new QPushButton( tr( "Open Folder" ), this );
     buttonRow->addWidget( runButton_ );
     buttonRow->addWidget( rerunButton_ );
@@ -66,7 +77,16 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     buttonRow->addStretch( 1 );
     rootLayout->addLayout( buttonRow );
 
-    rootLayout->addWidget( new QLabel( tr( "Script Runs" ), this ) );
+    rootLayout->addWidget( new QLabel( tr( "Global Script" ), this ) );
+    globalSubscriptionsLabel_->setWordWrap( true );
+    globalOutputEdit_->setReadOnly( true );
+    globalOutputEdit_->setLineWrapMode( QPlainTextEdit::NoWrap );
+    rootLayout->addWidget( globalStatusLabel_ );
+    rootLayout->addWidget( globalSummaryLabel_ );
+    rootLayout->addWidget( globalSubscriptionsLabel_ );
+    rootLayout->addWidget( globalOutputEdit_, 1 );
+
+    rootLayout->addWidget( new QLabel( tr( "Per-Tab Scripts" ), this ) );
     rootLayout->addWidget( runsList_, 1 );
     rootLayout->addWidget( statusLabel_ );
     rootLayout->addWidget( summaryLabel_ );
@@ -82,6 +102,9 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     connect( browseArgsButton, &QPushButton::clicked, this,
              &ScriptRunnerWindow::browseArgsFile );
     connect( runButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::runScript );
+    connect( runGlobalButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::runGlobalScript );
+    connect( rerunGlobalButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::rerunGlobalScript );
+    connect( stopGlobalButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::stopGlobalScript );
     connect( rerunButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::rerunScript );
     connect( stopButton_, &QPushButton::clicked, this, &ScriptRunnerWindow::stopScript );
     connect( openFolderButton, &QPushButton::clicked, this, &ScriptRunnerWindow::openScriptFolder );
@@ -137,6 +160,20 @@ void ScriptRunnerWindow::runScript()
     refreshFromSupervisor();
 }
 
+void ScriptRunnerWindow::runGlobalScript()
+{
+    if ( supervisor_ == nullptr ) {
+        return;
+    }
+
+    CommanderRequest request;
+    request.action = CommanderAction::RunGlobalScript;
+    request.scriptFilePath = scriptPathEdit_->text().trimmed();
+    request.argsJsonFilePath = argsJsonPathEdit_->text().trimmed();
+    supervisor_->runGlobalScript( request );
+    refreshFromSupervisor();
+}
+
 void ScriptRunnerWindow::rerunScript()
 {
     if ( supervisor_ == nullptr || selectedTabId_.isEmpty() ) {
@@ -149,6 +186,22 @@ void ScriptRunnerWindow::rerunScript()
     request.argsJsonFilePath = argsJsonPathEdit_->text().trimmed();
     request.tabId = selectedTabId_;
     supervisor_->runScript( request );
+    refreshFromSupervisor();
+}
+
+void ScriptRunnerWindow::rerunGlobalScript()
+{
+    if ( supervisor_ == nullptr ) {
+        return;
+    }
+
+    supervisor_->stopGlobalScript();
+
+    CommanderRequest request;
+    request.action = CommanderAction::RunGlobalScript;
+    request.scriptFilePath = scriptPathEdit_->text().trimmed();
+    request.argsJsonFilePath = argsJsonPathEdit_->text().trimmed();
+    supervisor_->runGlobalScript( request );
     refreshFromSupervisor();
 }
 
@@ -165,6 +218,16 @@ void ScriptRunnerWindow::stopScript()
     refreshFromSupervisor();
 }
 
+void ScriptRunnerWindow::stopGlobalScript()
+{
+    if ( supervisor_ == nullptr ) {
+        return;
+    }
+
+    supervisor_->stopGlobalScript();
+    refreshFromSupervisor();
+}
+
 void ScriptRunnerWindow::openScriptFolder()
 {
     const QFileInfo info( scriptPathEdit_->text().trimmed() );
@@ -177,17 +240,23 @@ void ScriptRunnerWindow::openScriptFolder()
 void ScriptRunnerWindow::refreshFromSupervisor()
 {
     QVariantList runs;
+    QVariantMap globalRun;
     if ( supervisor_ != nullptr ) {
         const auto payload = supervisor_->scriptStatus( allScriptsRequest( CommanderAction::GetScriptStatus ) ).payload;
         runs = payload.value( QStringLiteral( "runs" ) ).toList();
+        globalRun = supervisor_->globalScriptStatusPayload();
     }
 
     const auto previousSelection = selectedTabId_;
     runsList_->blockSignals( true );
     runsList_->clear();
     int selectedRow = -1;
+    int visibleIndex = 0;
     for ( int index = 0; index < runs.size(); ++index ) {
         const auto run = runs.at( index ).toMap();
+        if ( run.value( QStringLiteral( "scope" ) ).toString() == QStringLiteral( "global" ) ) {
+            continue;
+        }
         const auto label
             = tr( "%1 | %2 | %3" )
                   .arg( run.value( QStringLiteral( "displayName" ) ).toString(),
@@ -196,8 +265,9 @@ void ScriptRunnerWindow::refreshFromSupervisor()
         auto* item = new QListWidgetItem( label, runsList_ );
         item->setData( Qt::UserRole, run );
         if ( run.value( QStringLiteral( "tabId" ) ).toString() == previousSelection ) {
-            selectedRow = index;
+            selectedRow = visibleIndex;
         }
+        ++visibleIndex;
     }
     runsList_->blockSignals( false );
 
@@ -211,6 +281,54 @@ void ScriptRunnerWindow::refreshFromSupervisor()
         selectedTabId_.clear();
         selectedRunChanged();
     }
+
+    if ( globalRun.isEmpty() ) {
+        globalStatusLabel_->setText( tr( "Status: -" ) );
+        globalSummaryLabel_->setText( tr( "No global script configured." ) );
+        globalSubscriptionsLabel_->setText( tr( "Subscriptions: -" ) );
+        globalOutputEdit_->clear();
+        rerunGlobalButton_->setEnabled( !scriptPathEdit_->text().trimmed().isEmpty() );
+        stopGlobalButton_->setEnabled( false );
+        return;
+    }
+
+    globalStatusLabel_->setText(
+        tr( "Status: %1 (%2)" )
+            .arg( globalRun.value( QStringLiteral( "state" ) ).toString(),
+                  globalRun.value( QStringLiteral( "displayName" ) ).toString() ) );
+    globalSummaryLabel_->setText(
+        tr( "Exit: %1 | Error: %2 | Callback: %3 | Dropped: %4" )
+            .arg( QString::number( globalRun.value( QStringLiteral( "exitCode" ) ).toInt() ),
+                  globalRun.value( QStringLiteral( "lastError" ) ).toString().isEmpty()
+                      ? tr( "-" )
+                      : globalRun.value( QStringLiteral( "lastError" ) ).toString(),
+                  globalRun.value( QStringLiteral( "lastCallbackError" ) ).toString().isEmpty()
+                      ? tr( "-" )
+                      : globalRun.value( QStringLiteral( "lastCallbackError" ) ).toString(),
+                  QString::number( globalRun.value( QStringLiteral( "droppedEvents" ) ).toInt() ) ) );
+    QStringList globalSubscriptions;
+    for ( const auto& entry : globalRun.value( QStringLiteral( "subscriptions" ) ).toList() ) {
+        const auto subscription = entry.toMap();
+        auto line = subscription.value( QStringLiteral( "eventType" ) ).toString();
+        if ( !subscription.value( QStringLiteral( "portName" ) ).toString().isEmpty() ) {
+            line += tr( " port:%1" ).arg( subscription.value( QStringLiteral( "portName" ) ).toString() );
+        }
+        globalSubscriptions.push_back( line );
+    }
+    globalSubscriptionsLabel_->setText(
+        tr( "Subscriptions: %1" ).arg( globalSubscriptions.isEmpty() ? tr( "-" )
+                                                                     : globalSubscriptions.join( tr( "; " ) ) ) );
+    QStringList globalLines;
+    for ( const auto& line : globalRun.value( QStringLiteral( "outputTail" ) ).toList() ) {
+        globalLines.push_back( line.toString() );
+    }
+    globalOutputEdit_->setPlainText( globalLines.join( '\n' ) );
+    const auto globalState = globalRun.value( QStringLiteral( "state" ) ).toString();
+    rerunGlobalButton_->setEnabled( !globalRun.value( QStringLiteral( "scriptFile" ) ).toString().isEmpty()
+                                    || !scriptPathEdit_->text().trimmed().isEmpty() );
+    stopGlobalButton_->setEnabled( globalState == QStringLiteral( "starting" )
+                                   || globalState == QStringLiteral( "running" )
+                                   || globalState == QStringLiteral( "stopping" ) );
 }
 
 void ScriptRunnerWindow::selectedRunChanged()

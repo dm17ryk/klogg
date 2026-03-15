@@ -26,7 +26,7 @@
 #include "log.h"
 
 constexpr int OPENFILES_VERSION = 2;
-constexpr int SESSION_VERSION = 1;
+constexpr int SESSION_VERSION = 2;
 constexpr int MAX_WINDOWS_IN_SESSION = 64;
 constexpr int MAX_FILES_PER_WINDOW = 4096;
 
@@ -36,8 +36,15 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
 
     settings.beginGroup( "Window" );
 
-    if ( settings.value( "version", 0 ).toInt() == SESSION_VERSION ) {
+    const auto sessionVersion = settings.value( "version", 0 ).toInt();
+    if ( sessionVersion == 1 || sessionVersion == SESSION_VERSION ) {
         windows_.clear();
+        if ( sessionVersion >= 2 ) {
+            globalScriptContext_ = settings.value( "globalScriptContext" ).toString();
+        }
+        else {
+            globalScriptContext_.clear();
+        }
         const auto windowsCount = settings.beginReadArray( "windows" );
         if ( windowsCount > MAX_WINDOWS_IN_SESSION ) {
             LOG_WARNING << "Session contains too many windows (" << windowsCount
@@ -110,6 +117,7 @@ void SessionInfo::saveToStorage( QSettings& settings ) const
 
     settings.beginGroup( "Window" );
     settings.setValue( "version", SESSION_VERSION );
+    settings.setValue( "globalScriptContext", globalScriptContext_ );
 
     settings.remove( "windows" );
     settings.beginWriteArray( "windows" );

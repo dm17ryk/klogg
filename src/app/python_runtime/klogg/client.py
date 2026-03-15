@@ -88,6 +88,34 @@ class ActionSendEvent:
     window_id: str = ""
 
 
+@dataclass
+class TabLifecycleEvent:
+    tab_id: str
+    window_index: int
+    tab_index: int
+    file_path: str
+    display_name: str
+    window_id: str
+    source_type: str
+    port_name: str
+    timestamp: str
+    event_type: str
+
+
+@dataclass
+class CommLifecycleEvent:
+    tab_id: str
+    window_index: int
+    tab_index: int
+    file_path: str
+    display_name: str
+    window_id: str
+    source_type: str
+    port_name: str
+    timestamp: str
+    event_type: str
+
+
 class _RpcClient:
     MAX_EVENT_QUEUE = 1000
 
@@ -114,6 +142,14 @@ class _RpcClient:
         self._response_handlers: Dict[str, List[Tuple[Callable[[ResponseEvent], Any], Optional[int], str]]] = {}
         self._send_handlers: Dict[str, List[Callable[[SendEvent], Any]]] = {}
         self._action_send_handlers: Dict[str, List[Tuple[Callable[[ActionSendEvent], Any], Optional[int], str]]] = {}
+        self._app_receive_handlers: List[Tuple[Callable[[ReceiveEvent], Any], str, str]] = []
+        self._app_response_handlers: List[Tuple[Callable[[ResponseEvent], Any], Optional[int], str, str, str]] = []
+        self._app_send_handlers: List[Tuple[Callable[[SendEvent], Any], str, str]] = []
+        self._app_action_send_handlers: List[Tuple[Callable[[ActionSendEvent], Any], Optional[int], str, str, str]] = []
+        self._tab_open_handlers: List[Callable[[TabLifecycleEvent], Any]] = []
+        self._tab_close_handlers: List[Callable[[TabLifecycleEvent], Any]] = []
+        self._comm_start_handlers: List[Callable[[CommLifecycleEvent], Any]] = []
+        self._comm_stop_handlers: List[Callable[[CommLifecycleEvent], Any]] = []
         self._timers: Dict[int, Dict[str, Any]] = {}
         self._next_timer_id = 1
         self._reader_thread = threading.Thread(target=self._reader_loop, name="klogg-rpc-reader", daemon=True)
@@ -257,6 +293,16 @@ class _RpcClient:
         self._send_handlers.pop(tab_id, None)
         self._action_send_handlers.pop(tab_id, None)
 
+    def clear_app_handlers(self) -> None:
+        self._app_receive_handlers.clear()
+        self._app_response_handlers.clear()
+        self._app_send_handlers.clear()
+        self._app_action_send_handlers.clear()
+        self._tab_open_handlers.clear()
+        self._tab_close_handlers.clear()
+        self._comm_start_handlers.clear()
+        self._comm_stop_handlers.clear()
+
     def register_send_handler(self, tab_id: str, handler: Callable[[SendEvent], Any]) -> None:
         self._send_handlers.setdefault(tab_id, []).append(handler)
 
@@ -269,6 +315,50 @@ class _RpcClient:
         action_name: str = "",
     ) -> None:
         self._action_send_handlers.setdefault(tab_id, []).append((handler, action_id, action_name))
+
+    def register_app_receive_handler(
+        self, handler: Callable[[ReceiveEvent], Any], *, tab_id: str = "", port_name: str = ""
+    ) -> None:
+        self._app_receive_handlers.append((handler, tab_id, port_name))
+
+    def register_app_response_handler(
+        self,
+        handler: Callable[[ResponseEvent], Any],
+        *,
+        response_id: Optional[int] = None,
+        response_name: str = "",
+        tab_id: str = "",
+        port_name: str = "",
+    ) -> None:
+        self._app_response_handlers.append((handler, response_id, response_name, tab_id, port_name))
+
+    def register_app_send_handler(
+        self, handler: Callable[[SendEvent], Any], *, tab_id: str = "", port_name: str = ""
+    ) -> None:
+        self._app_send_handlers.append((handler, tab_id, port_name))
+
+    def register_app_action_send_handler(
+        self,
+        handler: Callable[[ActionSendEvent], Any],
+        *,
+        action_id: Optional[int] = None,
+        action_name: str = "",
+        tab_id: str = "",
+        port_name: str = "",
+    ) -> None:
+        self._app_action_send_handlers.append((handler, action_id, action_name, tab_id, port_name))
+
+    def register_tab_open_handler(self, handler: Callable[[TabLifecycleEvent], Any]) -> None:
+        self._tab_open_handlers.append(handler)
+
+    def register_tab_close_handler(self, handler: Callable[[TabLifecycleEvent], Any]) -> None:
+        self._tab_close_handlers.append(handler)
+
+    def register_comm_start_handler(self, handler: Callable[[CommLifecycleEvent], Any]) -> None:
+        self._comm_start_handlers.append(handler)
+
+    def register_comm_stop_handler(self, handler: Callable[[CommLifecycleEvent], Any]) -> None:
+        self._comm_stop_handlers.append(handler)
 
     def set_timeout(self, handler: Callable[[], Any], delay_ms: int) -> int:
         timer_id = self._next_timer_id
@@ -377,6 +467,12 @@ class _RpcClient:
             handlers = list(self._receive_handlers.get(tab_id, []))
             for handler in handlers:
                 self._invoke_handler(handler, event)
+            for handler, expected_tab_id, expected_port_name in list(self._app_receive_handlers):
+                if expected_tab_id and expected_tab_id != event.tab_id:
+                    continue
+                if expected_port_name and expected_port_name.lower() != event.port_name.lower():
+                    continue
+                self._invoke_handler(handler, event)
             return
 
         if event_type == "response":
@@ -403,6 +499,16 @@ class _RpcClient:
                 if expected_name and expected_name.lower() != event.response_name.lower():
                     continue
                 self._invoke_handler(handler, event)
+            for handler, expected_id, expected_name, expected_tab_id, expected_port_name in list(self._app_response_handlers):
+                if expected_id is not None and expected_id != event.response_id:
+                    continue
+                if expected_name and expected_name.lower() != event.response_name.lower():
+                    continue
+                if expected_tab_id and expected_tab_id != event.tab_id:
+                    continue
+                if expected_port_name and expected_port_name.lower() != event.port_name.lower():
+                    continue
+                self._invoke_handler(handler, event)
             return
 
         if event_type == "tx":
@@ -421,6 +527,12 @@ class _RpcClient:
             )
             handlers = list(self._send_handlers.get(tab_id, []))
             for handler in handlers:
+                self._invoke_handler(handler, event)
+            for handler, expected_tab_id, expected_port_name in list(self._app_send_handlers):
+                if expected_tab_id and expected_tab_id != event.tab_id:
+                    continue
+                if expected_port_name and expected_port_name.lower() != event.port_name.lower():
+                    continue
                 self._invoke_handler(handler, event)
             return
 
@@ -448,7 +560,54 @@ class _RpcClient:
                 if expected_name and expected_name.lower() != event.action_name.lower():
                     continue
                 self._invoke_handler(handler, event)
+            for handler, expected_id, expected_name, expected_tab_id, expected_port_name in list(self._app_action_send_handlers):
+                if expected_id is not None and expected_id != event.action_id:
+                    continue
+                if expected_name and expected_name.lower() != event.action_name.lower():
+                    continue
+                if expected_tab_id and expected_tab_id != event.tab_id:
+                    continue
+                if expected_port_name and expected_port_name.lower() != event.port_name.lower():
+                    continue
+                self._invoke_handler(handler, event)
+            return
 
+        if event_type in ("tab_open", "tab_close"):
+            event = TabLifecycleEvent(
+                tab_id=tab_id,
+                window_index=int(payload.get("windowIndex", -1)),
+                tab_index=int(payload.get("tabIndex", -1)),
+                file_path=payload.get("filePath", ""),
+                display_name=payload.get("displayName", ""),
+                window_id=payload.get("windowId", ""),
+                source_type=payload.get("sourceType", ""),
+                port_name=payload.get("portName", ""),
+                timestamp=payload.get("timestamp", ""),
+                event_type=event_type,
+            )
+            handlers = self._tab_open_handlers if event_type == "tab_open" else self._tab_close_handlers
+            for handler in list(handlers):
+                self._invoke_handler(handler, event)
+            return
+
+        if event_type in ("comm_start", "comm_stop"):
+            event = CommLifecycleEvent(
+                tab_id=tab_id,
+                window_index=int(payload.get("windowIndex", -1)),
+                tab_index=int(payload.get("tabIndex", -1)),
+                file_path=payload.get("filePath", ""),
+                display_name=payload.get("displayName", ""),
+                window_id=payload.get("windowId", ""),
+                source_type=payload.get("sourceType", ""),
+                port_name=payload.get("portName", ""),
+                timestamp=payload.get("timestamp", ""),
+                event_type=event_type,
+            )
+            handlers = self._comm_start_handlers if event_type == "comm_start" else self._comm_stop_handlers
+            for handler in list(handlers):
+                self._invoke_handler(handler, event)
+            return
+            
     def _invoke_handler(self, handler: Callable[[Any], Any], event: Any) -> None:
         try:
             handler(event)
@@ -650,6 +809,33 @@ class Application:
                 result.append(TabRef.from_info(tab, window_index))
         return result
 
+    def live_tabs(self) -> List[TabRef]:
+        result: List[TabRef] = []
+        info = self.get_info()
+        for window in info.get("windows", []):
+            window_index = window.get("windowIndex")
+            for tab in window.get("tabs", []):
+                if tab.get("sourceType") != "com":
+                    continue
+                com_info = tab.get("com", {})
+                if not com_info.get("connected", False):
+                    continue
+                result.append(TabRef.from_info(tab, window_index))
+        return result
+
+    def find_tabs(self, *, port_name: Optional[str] = None, source_type: Optional[str] = None) -> List[TabRef]:
+        result: List[TabRef] = []
+        requested_port = (port_name or "").lower()
+        for tab in self.tabs():
+            info = tab.info()
+            if source_type and info.get("sourceType") != source_type:
+                continue
+            com_info = info.get("com", {})
+            if requested_port and com_info.get("portName", "").lower() != requested_port:
+                continue
+            result.append(tab)
+        return result
+
     def current_tab(self) -> TabRef:
         info = self.get_info()
         for window in info.get("windows", []):
@@ -695,6 +881,100 @@ class Application:
 
     def script_args(self) -> Any:
         return _get_client().script_args
+
+    def on_receive(
+        self, handler: Callable[[ReceiveEvent], Any], *, tab_id: Optional[str] = None,
+        port_name: Optional[str] = None
+    ) -> None:
+        selector: Dict[str, Any] = {}
+        if tab_id:
+            selector["tabId"] = tab_id
+        if port_name:
+            selector["portName"] = port_name
+        _get_client().subscribe_event(selector, "receive")
+        _get_client().register_app_receive_handler(
+            handler, tab_id=tab_id or "", port_name=port_name or ""
+        )
+
+    def on_response(
+        self, handler: Callable[[ResponseEvent], Any], *, response_id: Optional[int] = None,
+        name: Optional[str] = None, tab_id: Optional[str] = None, port_name: Optional[str] = None
+    ) -> None:
+        selector: Dict[str, Any] = {}
+        if tab_id:
+            selector["tabId"] = tab_id
+        if port_name:
+            selector["portName"] = port_name
+        _get_client().subscribe_event(
+            selector,
+            "response",
+            response_id=response_id,
+            response_name=name,
+        )
+        _get_client().register_app_response_handler(
+            handler,
+            response_id=response_id,
+            response_name=name or "",
+            tab_id=tab_id or "",
+            port_name=port_name or "",
+        )
+
+    def on_send(
+        self, handler: Callable[[SendEvent], Any], *, tab_id: Optional[str] = None,
+        port_name: Optional[str] = None
+    ) -> None:
+        selector: Dict[str, Any] = {}
+        if tab_id:
+            selector["tabId"] = tab_id
+        if port_name:
+            selector["portName"] = port_name
+        _get_client().subscribe_event(selector, "tx")
+        _get_client().register_app_send_handler(
+            handler, tab_id=tab_id or "", port_name=port_name or ""
+        )
+
+    def on_action_send(
+        self, handler: Callable[[ActionSendEvent], Any], *, action_id: Optional[int] = None,
+        name: Optional[str] = None, tab_id: Optional[str] = None, port_name: Optional[str] = None
+    ) -> None:
+        selector: Dict[str, Any] = {}
+        if tab_id:
+            selector["tabId"] = tab_id
+        if port_name:
+            selector["portName"] = port_name
+        _get_client().subscribe_event(
+            selector,
+            "action_send",
+            action_id=action_id,
+            action_name=name,
+        )
+        _get_client().register_app_action_send_handler(
+            handler,
+            action_id=action_id,
+            action_name=name or "",
+            tab_id=tab_id or "",
+            port_name=port_name or "",
+        )
+
+    def on_tab_open(self, handler: Callable[[TabLifecycleEvent], Any]) -> None:
+        _get_client().subscribe_event({}, "tab_open")
+        _get_client().register_tab_open_handler(handler)
+
+    def on_tab_close(self, handler: Callable[[TabLifecycleEvent], Any]) -> None:
+        _get_client().subscribe_event({}, "tab_close")
+        _get_client().register_tab_close_handler(handler)
+
+    def on_comm_start(self, handler: Callable[[CommLifecycleEvent], Any]) -> None:
+        _get_client().subscribe_event({}, "comm_start")
+        _get_client().register_comm_start_handler(handler)
+
+    def on_comm_stop(self, handler: Callable[[CommLifecycleEvent], Any]) -> None:
+        _get_client().subscribe_event({}, "comm_stop")
+        _get_client().register_comm_stop_handler(handler)
+
+    def clear_event_handlers(self) -> None:
+        _get_client().clear_event_handlers({})
+        _get_client().clear_app_handlers()
 
 
 app = Application()

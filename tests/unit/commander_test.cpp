@@ -75,6 +75,10 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "get_script_status" ) );
     REQUIRE( parameters.exit_message.contains( "get_script_subscriptions" ) );
     REQUIRE( parameters.exit_message.contains( "clear_script_subscriptions" ) );
+    REQUIRE( parameters.exit_message.contains( "run_global_script" ) );
+    REQUIRE( parameters.exit_message.contains( "get_global_script_status" ) );
+    REQUIRE( parameters.exit_message.contains( "get_global_script_subscriptions" ) );
+    REQUIRE( parameters.exit_message.contains( "clear_global_script_subscriptions" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
@@ -264,6 +268,59 @@ TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
     REQUIRE( clearSubscriptions.commander_request->action
              == CommanderAction::ClearScriptSubscriptions );
     REQUIRE( clearSubscriptions.commander_request->allEntities );
+}
+
+TEST_CASE( "Commander CLI parses global script runner requests", "[commander][cli]" )
+{
+    CliParameters runGlobal(
+        { "klogg", "command", "--action", "run_global_script", "--script-file", "global.py",
+          "--args-json-file", "args.json" } );
+    REQUIRE_FALSE( runGlobal.parse_error );
+    REQUIRE( runGlobal.commander_request.has_value() );
+    REQUIRE( runGlobal.commander_request->action == CommanderAction::RunGlobalScript );
+    REQUIRE( runGlobal.commander_request->scriptFilePath.endsWith( "global.py" ) );
+    REQUIRE( runGlobal.commander_request->argsJsonFilePath.endsWith( "args.json" ) );
+
+    CliParameters getGlobalStatus(
+        { "klogg", "command", "--action", "get_global_script_status", "--pretty" } );
+    REQUIRE_FALSE( getGlobalStatus.parse_error );
+    REQUIRE( getGlobalStatus.commander_request.has_value() );
+    REQUIRE( getGlobalStatus.commander_request->action == CommanderAction::GetGlobalScriptStatus );
+    REQUIRE( getGlobalStatus.commander_request->prettyOutput );
+
+    CliParameters getGlobalSubscriptions(
+        { "klogg", "command", "--action", "get_global_script_subscriptions", "--pretty" } );
+    REQUIRE_FALSE( getGlobalSubscriptions.parse_error );
+    REQUIRE( getGlobalSubscriptions.commander_request.has_value() );
+    REQUIRE( getGlobalSubscriptions.commander_request->action
+             == CommanderAction::GetGlobalScriptSubscriptions );
+    REQUIRE( getGlobalSubscriptions.commander_request->prettyOutput );
+
+    CliParameters clearGlobalSubscriptions(
+        { "klogg", "command", "--action", "clear_global_script_subscriptions" } );
+    REQUIRE_FALSE( clearGlobalSubscriptions.parse_error );
+    REQUIRE( clearGlobalSubscriptions.commander_request.has_value() );
+    REQUIRE( clearGlobalSubscriptions.commander_request->action
+             == CommanderAction::ClearGlobalScriptSubscriptions );
+}
+
+TEST_CASE( "Commander CLI rejects invalid global script selectors", "[commander][cli]" )
+{
+    CliParameters missingScript(
+        { "klogg", "command", "--action", "run_global_script" } );
+    REQUIRE( missingScript.parse_error );
+    REQUIRE( missingScript.parse_error_message.contains( "--script-file" ) );
+
+    CliParameters globalWithTab(
+        { "klogg", "command", "--action", "run_global_script", "--script-file", "global.py",
+          "--tab-id", "tab-1" } );
+    REQUIRE( globalWithTab.parse_error );
+    REQUIRE( globalWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+
+    CliParameters globalStatusWithAll(
+        { "klogg", "command", "--action", "get_global_script_status", "--all" } );
+    REQUIRE( globalStatusWithAll.parse_error );
+    REQUIRE( globalStatusWithAll.parse_error_message.contains( "does not accept tab selectors or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )

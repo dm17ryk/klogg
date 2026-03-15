@@ -39,6 +39,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QJsonDocument>
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
 #include <QElapsedTimer>
@@ -62,6 +63,7 @@
 #include "klogg_version.h"
 #include "log.h"
 #include "session.h"
+#include "sessioninfo.h"
 #include "uuid.h"
 
 #include <kdsingleapplication.h>
@@ -518,20 +520,40 @@ class KloggApp : public QApplication {
             return scriptSupervisor_.runScript( request );
         }
 
+        if ( request.action == CommanderAction::RunGlobalScript ) {
+            return scriptSupervisor_.runGlobalScript( request );
+        }
+
         if ( request.action == CommanderAction::StopScript ) {
             return scriptSupervisor_.stopScript( request );
+        }
+
+        if ( request.action == CommanderAction::StopGlobalScript ) {
+            return scriptSupervisor_.stopGlobalScript();
         }
 
         if ( request.action == CommanderAction::GetScriptStatus ) {
             return scriptSupervisor_.scriptStatus( request );
         }
 
+        if ( request.action == CommanderAction::GetGlobalScriptStatus ) {
+            return scriptSupervisor_.globalScriptStatus();
+        }
+
         if ( request.action == CommanderAction::GetScriptSubscriptions ) {
             return scriptSupervisor_.scriptSubscriptions( request );
         }
 
+        if ( request.action == CommanderAction::GetGlobalScriptSubscriptions ) {
+            return scriptSupervisor_.globalScriptSubscriptions();
+        }
+
         if ( request.action == CommanderAction::ClearScriptSubscriptions ) {
             return scriptSupervisor_.clearScriptSubscriptions( request );
+        }
+
+        if ( request.action == CommanderAction::ClearGlobalScriptSubscriptions ) {
+            return scriptSupervisor_.clearGlobalScriptSubscriptions();
         }
 
         if ( request.action == CommanderAction::GetActions ) {
@@ -775,9 +797,19 @@ class KloggApp : public QApplication {
         return scriptSupervisor_.scriptStatusForTab( tabId );
     }
 
+    Q_INVOKABLE QVariantMap globalScriptStatus() const
+    {
+        return scriptSupervisor_.globalScriptStatusPayload();
+    }
+
     Q_INVOKABLE QVariantMap scriptBindingForTab( const QString& tabId ) const
     {
         return scriptSupervisor_.scriptBindingForTab( tabId );
+    }
+
+    Q_INVOKABLE QVariantMap globalScriptBinding() const
+    {
+        return scriptSupervisor_.globalScriptBinding();
     }
 
     Q_INVOKABLE bool hasActiveScriptForTab( const QString& tabId ) const
@@ -795,9 +827,39 @@ class KloggApp : public QApplication {
         scriptSupervisor_.restoreScriptBinding( binding.toMap() );
     }
 
+    Q_INVOKABLE void restoreGlobalScriptBinding( const QVariantMap& binding )
+    {
+        scriptSupervisor_.restoreGlobalScriptBinding( binding );
+    }
+
+    Q_INVOKABLE void restoreGlobalScriptBindingVariant( const QVariant& binding )
+    {
+        scriptSupervisor_.restoreGlobalScriptBinding( binding.toMap() );
+    }
+
     Q_INVOKABLE void forgetScriptTab( const QString& tabId )
     {
         scriptSupervisor_.forgetTab( tabId );
+    }
+
+    Q_INVOKABLE void restoreGlobalScriptBindingFromSession()
+    {
+        if ( globalScriptRestoreAttempted_ ) {
+            return;
+        }
+
+        globalScriptRestoreAttempted_ = true;
+        const auto binding = SessionInfo::getSynced().globalScriptContext();
+        if ( binding.trimmed().isEmpty() ) {
+            return;
+        }
+
+        const auto document = QJsonDocument::fromJson( binding.toUtf8() );
+        if ( !document.isObject() ) {
+            return;
+        }
+
+        scriptSupervisor_.restoreGlobalScriptBinding( document.object().toVariantMap() );
     }
 
     Q_INVOKABLE void showScriptRunnerWindow( const QString& scriptPath = {} )
@@ -1058,6 +1120,7 @@ class KloggApp : public QApplication {
     MessageReceiver messageReceiver_;
     ScriptSupervisor scriptSupervisor_;
     ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
+    bool globalScriptRestoreAttempted_ = false;
 
     std::shared_ptr<Session> session_;
 

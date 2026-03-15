@@ -155,6 +155,16 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
         }
     }
 
+    QString globalScriptContext() const
+    {
+        return globalScriptContext_;
+    }
+
+    void setGlobalScriptContext( const QString& context )
+    {
+        globalScriptContext_ = context;
+    }
+
     // Reads/writes the current config in the QSettings object passed
     void saveToStorage( QSettings& settings ) const;
     void retrieveFromStorage( QSettings& settings );
@@ -176,6 +186,7 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
   private:
     mutable std::vector<Window> windows_;
+    QString globalScriptContext_;
 };
 
 #endif

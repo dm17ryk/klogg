@@ -1,6 +1,8 @@
 from .client import (
     ActionSendEvent,
+    CommLifecycleEvent,
     ReceiveEvent,
+    TabLifecycleEvent,
     SendEvent,
     ResponseEvent,
     TabRef,
@@ -18,9 +20,11 @@ from .exceptions import KloggError
 
 __all__ = [
     "ActionSendEvent",
+    "CommLifecycleEvent",
     "ReceiveEvent",
     "SendEvent",
     "ResponseEvent",
+    "TabLifecycleEvent",
     "TabRef",
     "KloggError",
     "app",

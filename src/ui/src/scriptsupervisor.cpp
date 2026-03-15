@@ -24,6 +24,10 @@ constexpr auto ReceiveEventType = "receive";
 constexpr auto ResponseEventType = "response";
 constexpr auto TxEventType = "tx";
 constexpr auto ActionSendEventType = "action_send";
+constexpr auto TabOpenEventType = "tab_open";
+constexpr auto TabCloseEventType = "tab_close";
+constexpr auto CommStartEventType = "comm_start";
+constexpr auto CommStopEventType = "comm_stop";
 
 QString randomToken()
 {
@@ -75,6 +79,7 @@ bool matchesName( const QString& expected, const QString& actual )
 } // namespace
 
 struct ScriptSupervisor::ScriptRun {
+    ScriptRunScope scope = ScriptRunScope::Tab;
     QString ownerTabId;
     int ownerWindowIndex = -1;
     int ownerTabIndex = -1;
@@ -192,6 +197,42 @@ CommanderResult ScriptSupervisor::runScript( const CommanderRequest& request )
     return commanderSuccess();
 }
 
+CommanderResult ScriptSupervisor::runGlobalScript( const CommanderRequest& request )
+{
+    const QFileInfo scriptInfo( request.scriptFilePath );
+    if ( !scriptInfo.exists() || !scriptInfo.isFile() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Python script %1 was not found." ).arg( request.scriptFilePath ) );
+    }
+
+    if ( !request.argsJsonFilePath.isEmpty() ) {
+        const QFileInfo argsInfo( request.argsJsonFilePath );
+        if ( !argsInfo.exists() || !argsInfo.isFile() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "JSON args file %1 was not found." )
+                                         .arg( request.argsJsonFilePath ) );
+        }
+    }
+
+    if ( findGlobalRun() != nullptr ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "A global Python script is already configured or running." ) );
+    }
+
+    auto run = std::make_unique<ScriptRun>();
+    run->scope = ScriptRunScope::Global;
+    run->ownerDisplayName = tr( "Global Coordinator" );
+    run->scriptFilePath = scriptInfo.absoluteFilePath();
+    run->argsJsonFilePath = request.argsJsonFilePath.isEmpty()
+                                ? QString{}
+                                : QFileInfo( request.argsJsonFilePath ).absoluteFilePath();
+
+    runs_.push_back( std::move( run ) );
+    auto* createdRun = findGlobalRun();
+    startRunProcess( createdRun );
+    return commanderSuccess();
+}
+
 CommanderResult ScriptSupervisor::stopScript( const CommanderRequest& request )
 {
     if ( request.allEntities ) {
@@ -227,6 +268,20 @@ CommanderResult ScriptSupervisor::stopScript( const CommanderRequest& request )
     return commanderSuccess();
 }
 
+CommanderResult ScriptSupervisor::stopGlobalScript()
+{
+    auto* run = findGlobalRun();
+    if ( run == nullptr || !isActiveState( run->state ) ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "No global Python script is currently running." ) );
+    }
+
+    run->stopRequested = true;
+    setState( run, ScriptRunState::Stopping );
+    run->process.kill();
+    return commanderSuccess();
+}
+
 CommanderResult ScriptSupervisor::scriptStatus( const CommanderRequest& request ) const
 {
     if ( request.allEntities ) {
@@ -237,6 +292,17 @@ CommanderResult ScriptSupervisor::scriptStatus( const CommanderRequest& request 
     if ( run == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "No Python script was found for the requested tab." ) );
+    }
+
+    return commanderSuccess( {}, statusPayload( run ) );
+}
+
+CommanderResult ScriptSupervisor::globalScriptStatus() const
+{
+    const auto* run = findGlobalRun();
+    if ( run == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "No global Python script was found." ) );
     }
 
     return commanderSuccess( {}, statusPayload( run ) );
@@ -264,6 +330,20 @@ CommanderResult ScriptSupervisor::scriptSubscriptions( const CommanderRequest& r
     return commanderSuccess( {}, payload );
 }
 
+CommanderResult ScriptSupervisor::globalScriptSubscriptions() const
+{
+    const auto* run = findGlobalRun();
+    if ( run == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "No global Python script was found." ) );
+    }
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "scope" ), QStringLiteral( "global" ) );
+    payload.insert( QStringLiteral( "subscriptions" ), subscriptionsPayload( run ) );
+    return commanderSuccess( {}, payload );
+}
+
 CommanderResult ScriptSupervisor::clearScriptSubscriptions( const CommanderRequest& request )
 {
     if ( request.allEntities ) {
@@ -287,16 +367,28 @@ CommanderResult ScriptSupervisor::clearScriptSubscriptions( const CommanderReque
     return commanderSuccess();
 }
 
+CommanderResult ScriptSupervisor::clearGlobalScriptSubscriptions()
+{
+    auto* run = findGlobalRun();
+    if ( run == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "No global Python script was found." ) );
+    }
+
+    run->subscriptions.clear();
+    Q_EMIT statusChanged();
+    return commanderSuccess();
+}
+
 void ScriptSupervisor::publishEvent( const QVariantMap& event )
 {
-    const auto tabId = event.value( QStringLiteral( "tabId" ) ).toString();
     const auto eventType = event.value( QStringLiteral( "eventType" ) ).toString();
-    if ( tabId.isEmpty() || eventType.isEmpty() ) {
+    if ( eventType.isEmpty() ) {
         return;
     }
 
     for ( const auto& run : runs_ ) {
-        if ( !run || run->ownerTabId != tabId || run->socket == nullptr ) {
+        if ( !run || run->socket == nullptr ) {
             continue;
         }
 
@@ -358,6 +450,29 @@ QVariantMap ScriptSupervisor::scriptBindingForTab( const QString& tabId ) const
     return {};
 }
 
+QVariantMap ScriptSupervisor::globalScriptStatusPayload() const
+{
+    if ( const auto* run = findGlobalRun() ) {
+        return statusPayload( run );
+    }
+    return {};
+}
+
+QVariantMap ScriptSupervisor::globalScriptBinding() const
+{
+    if ( const auto* run = findGlobalRun() ) {
+        QVariantMap binding;
+        binding.insert( QStringLiteral( "scriptFile" ), run->scriptFilePath );
+        binding.insert( QStringLiteral( "argsJsonFile" ), run->argsJsonFilePath );
+        binding.insert( QStringLiteral( "enabled" ), run->enabled );
+        binding.insert( QStringLiteral( "autostart" ), run->autostart );
+        binding.insert( QStringLiteral( "broken" ), run->broken );
+        binding.insert( QStringLiteral( "lastError" ), run->lastError );
+        return binding;
+    }
+    return {};
+}
+
 void ScriptSupervisor::restoreScriptBinding( const QVariantMap& binding )
 {
     const auto tabId = binding.value( QStringLiteral( "tabId" ) ).toString();
@@ -384,6 +499,42 @@ void ScriptSupervisor::restoreScriptBinding( const QVariantMap& binding )
     runs_.push_back( std::move( run ) );
 
     auto* restoredRun = findRun( tabId );
+    if ( restoredRun == nullptr || restoredRun->scriptFilePath.isEmpty() ) {
+        return;
+    }
+
+    if ( !restoredRun->enabled || !restoredRun->autostart ) {
+        Q_EMIT statusChanged();
+        return;
+    }
+
+    if ( !QFileInfo::exists( restoredRun->scriptFilePath ) ) {
+        restoredRun->broken = true;
+        restoredRun->lastError
+            = tr( "Python script %1 was not found during session restore." ).arg( restoredRun->scriptFilePath );
+        setState( restoredRun, ScriptRunState::Failed );
+        return;
+    }
+
+    startRunProcess( restoredRun );
+}
+
+void ScriptSupervisor::restoreGlobalScriptBinding( const QVariantMap& binding )
+{
+    removeGlobalRun();
+
+    auto run = std::make_unique<ScriptRun>();
+    run->scope = ScriptRunScope::Global;
+    run->ownerDisplayName = tr( "Global Coordinator" );
+    run->scriptFilePath = binding.value( QStringLiteral( "scriptFile" ) ).toString();
+    run->argsJsonFilePath = binding.value( QStringLiteral( "argsJsonFile" ) ).toString();
+    run->enabled = binding.value( QStringLiteral( "enabled" ), true ).toBool();
+    run->autostart = binding.value( QStringLiteral( "autostart" ), true ).toBool();
+    run->broken = binding.value( QStringLiteral( "broken" ), false ).toBool();
+    run->lastError = binding.value( QStringLiteral( "lastError" ) ).toString();
+    runs_.push_back( std::move( run ) );
+
+    auto* restoredRun = findGlobalRun();
     if ( restoredRun == nullptr || restoredRun->scriptFilePath.isEmpty() ) {
         return;
     }
@@ -452,6 +603,15 @@ ScriptSupervisor::ScriptRun* ScriptSupervisor::findRun( const QString& tabId ) c
     return it != runs_.end() ? it->get() : nullptr;
 }
 
+ScriptSupervisor::ScriptRun* ScriptSupervisor::findGlobalRun() const
+{
+    const auto it = std::find_if( runs_.begin(), runs_.end(),
+                                  []( const auto& run ) {
+                                      return run && run->scope == ScriptRunScope::Global;
+                                  } );
+    return it != runs_.end() ? it->get() : nullptr;
+}
+
 ScriptSupervisor::ScriptRun* ScriptSupervisor::findRunForRequest( const CommanderRequest& request ) const
 {
     if ( !request.tabId.isEmpty() ) {
@@ -471,6 +631,31 @@ void ScriptSupervisor::removeRun( const QString& tabId )
     const auto it = std::find_if( runs_.begin(), runs_.end(),
                                   [ &tabId ]( const auto& run ) {
                                       return run && run->ownerTabId == tabId;
+                                  } );
+    if ( it == runs_.end() ) {
+        return;
+    }
+
+    auto& run = *it;
+    if ( run->socket != nullptr ) {
+        run->socket->disconnectFromHost();
+        run->socket->deleteLater();
+        run->socket = nullptr;
+    }
+    run->server.close();
+    if ( run->process.state() != QProcess::NotRunning ) {
+        run->process.kill();
+        run->process.waitForFinished( 2000 );
+    }
+    runs_.erase( it );
+    Q_EMIT statusChanged();
+}
+
+void ScriptSupervisor::removeGlobalRun()
+{
+    const auto it = std::find_if( runs_.begin(), runs_.end(),
+                                  []( const auto& run ) {
+                                      return run && run->scope == ScriptRunScope::Global;
                                   } );
     if ( it == runs_.end() ) {
         return;
@@ -562,6 +747,9 @@ void ScriptSupervisor::setState( ScriptRun* run, ScriptRunState state )
 QVariantMap ScriptSupervisor::statusPayload( const ScriptRun* run ) const
 {
     QVariantMap payload;
+    payload.insert( QStringLiteral( "scope" ),
+                    run->scope == ScriptRunScope::Global ? QStringLiteral( "global" )
+                                                         : QStringLiteral( "tab" ) );
     payload.insert( QStringLiteral( "tabId" ), run->ownerTabId );
     payload.insert( QStringLiteral( "windowIndex" ), run->ownerWindowIndex );
     payload.insert( QStringLiteral( "tabIndex" ), run->ownerTabIndex );
@@ -609,6 +797,9 @@ QVariantList ScriptSupervisor::subscriptionsPayload( const ScriptRun* run ) cons
         item.insert( QStringLiteral( "displayName" ), subscription.displayName );
         item.insert( QStringLiteral( "portName" ), subscription.portName );
         item.insert( QStringLiteral( "eventType" ), subscription.eventType );
+        if ( !subscription.sourceType.isEmpty() ) {
+            item.insert( QStringLiteral( "sourceType" ), subscription.sourceType );
+        }
         if ( subscription.responseId ) {
             item.insert( QStringLiteral( "responseId" ), *subscription.responseId );
         }
@@ -645,6 +836,9 @@ QVariantList ScriptSupervisor::allSubscriptionsPayloads() const
             continue;
         }
         QVariantMap payload;
+        payload.insert( QStringLiteral( "scope" ),
+                        run->scope == ScriptRunScope::Global ? QStringLiteral( "global" )
+                                                             : QStringLiteral( "tab" ) );
         payload.insert( QStringLiteral( "tabId" ), run->ownerTabId );
         payload.insert( QStringLiteral( "windowIndex" ), run->ownerWindowIndex );
         payload.insert( QStringLiteral( "tabIndex" ), run->ownerTabIndex );
@@ -747,6 +941,74 @@ QVariantMap ScriptSupervisor::resolveTargetInfo( const QVariantMap& selector,
 
     if ( errorMessage != nullptr ) {
         *errorMessage = tr( "Requested live communication tab was not found." );
+    }
+    return {};
+}
+
+QVariantMap ScriptSupervisor::lifecycleTargetInfo( const QVariantMap& selector,
+                                                   QString* errorMessage ) const
+{
+    if ( !commanderExecutor_ ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = QStringLiteral( "no commander executor" );
+        }
+        return {};
+    }
+
+    CommanderRequest request;
+    request.action = CommanderAction::GetInfo;
+    const auto infoResult = commanderExecutor_( request );
+    if ( !infoResult.ok() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = infoResult.message;
+        }
+        return {};
+    }
+
+    const auto windows = infoResult.payload.value( QStringLiteral( "windows" ) ).toList();
+    const auto requestedTabId = selector.value( QStringLiteral( "tabId" ) ).toString().trimmed();
+    const auto requestedWindowIndex = selector.value( QStringLiteral( "windowIndex" ) );
+    const auto requestedTabIndex = selector.value( QStringLiteral( "tabIndex" ) );
+
+    auto matchTab = [ & ]( const QVariantMap& window, const QVariantMap& tab ) -> bool {
+        if ( !requestedTabId.isEmpty() ) {
+            return tab.value( QStringLiteral( "tabId" ) ).toString() == requestedTabId;
+        }
+        if ( requestedWindowIndex.isValid() || requestedTabIndex.isValid() ) {
+            return requestedWindowIndex.isValid() && requestedTabIndex.isValid()
+                   && window.value( QStringLiteral( "windowIndex" ) ).toInt() == requestedWindowIndex.toInt()
+                   && tab.value( QStringLiteral( "tabIndex" ) ).toInt() == requestedTabIndex.toInt();
+        }
+        return window.value( QStringLiteral( "isActiveWindow" ) ).toBool()
+               && window.value( QStringLiteral( "currentTabId" ) ).toString()
+                      == tab.value( QStringLiteral( "tabId" ) ).toString();
+    };
+
+    for ( const auto& windowValue : windows ) {
+        const auto window = windowValue.toMap();
+        const auto tabs = window.value( QStringLiteral( "tabs" ) ).toList();
+        for ( const auto& tabValue : tabs ) {
+            const auto tab = tabValue.toMap();
+            if ( !matchTab( window, tab ) ) {
+                continue;
+            }
+
+            QVariantMap target;
+            target.insert( QStringLiteral( "tabId" ), tab.value( QStringLiteral( "tabId" ) ) );
+            target.insert( QStringLiteral( "tabIndex" ), tab.value( QStringLiteral( "tabIndex" ) ) );
+            target.insert( QStringLiteral( "windowId" ), window.value( QStringLiteral( "windowId" ) ) );
+            target.insert( QStringLiteral( "windowIndex" ), window.value( QStringLiteral( "windowIndex" ) ) );
+            target.insert( QStringLiteral( "filePath" ), tab.value( QStringLiteral( "filePath" ) ) );
+            target.insert( QStringLiteral( "displayName" ), tab.value( QStringLiteral( "displayName" ) ) );
+            target.insert( QStringLiteral( "sourceType" ), tab.value( QStringLiteral( "sourceType" ) ) );
+            target.insert( QStringLiteral( "portName" ),
+                           tab.value( QStringLiteral( "com" ) ).toMap().value( QStringLiteral( "portName" ) ) );
+            return target;
+        }
+    }
+
+    if ( errorMessage != nullptr ) {
+        *errorMessage = tr( "Requested tab was not found." );
     }
     return {};
 }
@@ -1013,43 +1275,81 @@ void ScriptSupervisor::handleRpcMessage( ScriptRun* run, const QVariantMap& mess
     const auto params = message.value( QStringLiteral( "params" ) ).toMap();
 
     if ( method == QStringLiteral( "subscribe_event" ) ) {
-        QString errorMessage;
-        const auto target = resolveTargetInfo( params, &errorMessage );
-        if ( target.isEmpty() ) {
-            if ( !isNotification ) {
-                sendRpcMessage( run, rpcErrorEnvelope( requestId, errorMessage ) );
-            }
-            return;
-        }
-
-        if ( target.value( QStringLiteral( "tabId" ) ).toString() != run->ownerTabId ) {
-            if ( !isNotification ) {
-                sendRpcMessage( run, rpcErrorEnvelope( requestId,
-                                                       QStringLiteral( "subscriptions are limited to the owner tab" ) ) );
-            }
-            return;
-        }
-
         const auto eventType = params.value( QStringLiteral( "eventType" ) ).toString().trimmed();
         if ( eventType != QLatin1String( ReceiveEventType )
              && eventType != QLatin1String( ResponseEventType )
              && eventType != QLatin1String( TxEventType )
-             && eventType != QLatin1String( ActionSendEventType ) ) {
+             && eventType != QLatin1String( ActionSendEventType )
+             && eventType != QLatin1String( TabOpenEventType )
+             && eventType != QLatin1String( TabCloseEventType )
+             && eventType != QLatin1String( CommStartEventType )
+             && eventType != QLatin1String( CommStopEventType ) ) {
             if ( !isNotification ) {
                 sendRpcMessage( run, rpcErrorEnvelope( requestId, QStringLiteral( "unsupported event type" ) ) );
             }
             return;
         }
 
+        const bool lifecycleEvent = eventType == QLatin1String( TabOpenEventType )
+                                    || eventType == QLatin1String( TabCloseEventType );
+        QString errorMessage;
+        QVariantMap target;
+        const bool hasTabSelector = params.contains( QStringLiteral( "tabId" ) )
+                                    || params.contains( QStringLiteral( "windowIndex" ) )
+                                    || params.contains( QStringLiteral( "tabIndex" ) );
+        if ( hasTabSelector ) {
+            target = lifecycleEvent ? lifecycleTargetInfo( params, &errorMessage )
+                                    : resolveTargetInfo( params, &errorMessage );
+            if ( target.isEmpty() ) {
+                if ( !isNotification ) {
+                    sendRpcMessage( run, rpcErrorEnvelope( requestId, errorMessage ) );
+                }
+                return;
+            }
+        }
+
+        if ( run->scope == ScriptRunScope::Tab ) {
+            if ( target.isEmpty() ) {
+                target = lifecycleEvent ? lifecycleTargetInfo( QVariantMap{
+                                                                   { QStringLiteral( "tabId" ),
+                                                                     run->ownerTabId } },
+                                                               &errorMessage )
+                                        : resolveTargetInfo( QVariantMap{
+                                                                 { QStringLiteral( "tabId" ),
+                                                                   run->ownerTabId } },
+                                                             &errorMessage );
+                if ( target.isEmpty() ) {
+                    if ( !isNotification ) {
+                        sendRpcMessage( run, rpcErrorEnvelope( requestId, errorMessage ) );
+                    }
+                    return;
+                }
+            }
+
+            if ( target.value( QStringLiteral( "tabId" ) ).toString() != run->ownerTabId ) {
+                if ( !isNotification ) {
+                    sendRpcMessage( run, rpcErrorEnvelope(
+                                             requestId,
+                                             QStringLiteral(
+                                                 "subscriptions are limited to the owner tab" ) ) );
+                }
+                return;
+            }
+        }
+
         ScriptSubscription subscription;
         subscription.tabId = target.value( QStringLiteral( "tabId" ) ).toString();
-        subscription.windowIndex = target.value( QStringLiteral( "windowIndex" ) ).toInt();
-        subscription.tabIndex = target.value( QStringLiteral( "tabIndex" ) ).toInt();
+        subscription.windowIndex = target.value( QStringLiteral( "windowIndex" ), -1 ).toInt();
+        subscription.tabIndex = target.value( QStringLiteral( "tabIndex" ), -1 ).toInt();
         subscription.windowId = target.value( QStringLiteral( "windowId" ) ).toString();
         subscription.filePath = target.value( QStringLiteral( "filePath" ) ).toString();
         subscription.displayName = target.value( QStringLiteral( "displayName" ) ).toString();
-        subscription.portName = target.value( QStringLiteral( "portName" ) ).toString();
+        subscription.portName = params.value( QStringLiteral( "portName" ) ).toString().trimmed();
+        if ( subscription.portName.isEmpty() ) {
+            subscription.portName = target.value( QStringLiteral( "portName" ) ).toString();
+        }
         subscription.eventType = eventType;
+        subscription.sourceType = target.value( QStringLiteral( "sourceType" ) ).toString();
         if ( params.contains( QStringLiteral( "responseId" ) ) ) {
             subscription.responseId = params.value( QStringLiteral( "responseId" ) ).toInt();
         }
@@ -1064,6 +1364,9 @@ void ScriptSupervisor::handleRpcMessage( ScriptRun* run, const QVariantMap& mess
         if ( !isNotification ) {
             QVariantMap payload = target;
             payload.insert( QStringLiteral( "eventType" ), eventType );
+            if ( !subscription.portName.isEmpty() ) {
+                payload.insert( QStringLiteral( "portName" ), subscription.portName );
+            }
             if ( subscription.responseId ) {
                 payload.insert( QStringLiteral( "responseId" ), *subscription.responseId );
             }
@@ -1187,8 +1490,25 @@ void ScriptSupervisor::clearSubscriptionsForTab( const QString& tabId )
 bool ScriptSupervisor::eventMatchesSubscription( const QVariantMap& event,
                                                  const ScriptSubscription& subscription ) const
 {
-    if ( subscription.tabId != event.value( QStringLiteral( "tabId" ) ).toString()
-         || subscription.eventType != event.value( QStringLiteral( "eventType" ) ).toString() ) {
+    if ( subscription.eventType != event.value( QStringLiteral( "eventType" ) ).toString() ) {
+        return false;
+    }
+
+    if ( !subscription.tabId.isEmpty()
+         && subscription.tabId != event.value( QStringLiteral( "tabId" ) ).toString() ) {
+        return false;
+    }
+
+    if ( !subscription.portName.isEmpty()
+         && subscription.portName.compare( event.value( QStringLiteral( "portName" ) ).toString(),
+                                           Qt::CaseInsensitive )
+                != 0 ) {
+        return false;
+    }
+
+    if ( !subscription.sourceType.isEmpty()
+         && subscription.sourceType
+                != event.value( QStringLiteral( "sourceType" ) ).toString() ) {
         return false;
     }
 

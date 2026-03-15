@@ -106,14 +106,24 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "clear_comm" );
     case CommanderAction::RunScript:
         return QStringLiteral( "run_script" );
+    case CommanderAction::RunGlobalScript:
+        return QStringLiteral( "run_global_script" );
     case CommanderAction::StopScript:
         return QStringLiteral( "stop_script" );
+    case CommanderAction::StopGlobalScript:
+        return QStringLiteral( "stop_global_script" );
     case CommanderAction::GetScriptStatus:
         return QStringLiteral( "get_script_status" );
+    case CommanderAction::GetGlobalScriptStatus:
+        return QStringLiteral( "get_global_script_status" );
     case CommanderAction::GetScriptSubscriptions:
         return QStringLiteral( "get_script_subscriptions" );
+    case CommanderAction::GetGlobalScriptSubscriptions:
+        return QStringLiteral( "get_global_script_subscriptions" );
     case CommanderAction::ClearScriptSubscriptions:
         return QStringLiteral( "clear_script_subscriptions" );
+    case CommanderAction::ClearGlobalScriptSubscriptions:
+        return QStringLiteral( "clear_global_script_subscriptions" );
     case CommanderAction::FocusTab:
         return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
@@ -219,17 +229,32 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "run_script" ) ) {
         return CommanderAction::RunScript;
     }
+    if ( normalized == QStringLiteral( "run_global_script" ) ) {
+        return CommanderAction::RunGlobalScript;
+    }
     if ( normalized == QStringLiteral( "stop_script" ) ) {
         return CommanderAction::StopScript;
+    }
+    if ( normalized == QStringLiteral( "stop_global_script" ) ) {
+        return CommanderAction::StopGlobalScript;
     }
     if ( normalized == QStringLiteral( "get_script_status" ) ) {
         return CommanderAction::GetScriptStatus;
     }
+    if ( normalized == QStringLiteral( "get_global_script_status" ) ) {
+        return CommanderAction::GetGlobalScriptStatus;
+    }
     if ( normalized == QStringLiteral( "get_script_subscriptions" ) ) {
         return CommanderAction::GetScriptSubscriptions;
     }
+    if ( normalized == QStringLiteral( "get_global_script_subscriptions" ) ) {
+        return CommanderAction::GetGlobalScriptSubscriptions;
+    }
     if ( normalized == QStringLiteral( "clear_script_subscriptions" ) ) {
         return CommanderAction::ClearScriptSubscriptions;
+    }
+    if ( normalized == QStringLiteral( "clear_global_script_subscriptions" ) ) {
+        return CommanderAction::ClearGlobalScriptSubscriptions;
     }
     if ( normalized == QStringLiteral( "focus_tab" ) ) {
         return CommanderAction::FocusTab;

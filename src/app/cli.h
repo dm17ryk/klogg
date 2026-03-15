@@ -131,10 +131,15 @@ struct CliParameters {
             "  klogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
             "  klogg command --action clear_comm [tab selector]\n"
             "  klogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
+            "  klogg command --action run_global_script --script-file <path> [--args-json-file <path>]\n"
             "  klogg command --action stop_script [tab selector | --all]\n"
+            "  klogg command --action stop_global_script\n"
             "  klogg command --action get_script_status [tab selector | --all] [--pretty]\n"
+            "  klogg command --action get_global_script_status [--pretty]\n"
             "  klogg command --action get_script_subscriptions [tab selector | --all] [--pretty]\n"
+            "  klogg command --action get_global_script_subscriptions [--pretty]\n"
             "  klogg command --action clear_script_subscriptions [tab selector | --all]\n"
+            "  klogg command --action clear_global_script_subscriptions\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -176,10 +181,15 @@ struct CliParameters {
             "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  run_global_script --script-file <path> [--args-json-file <path>]\n"
             "  stop_script [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
+            "  stop_global_script\n"
             "  get_script_status [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  get_global_script_status [--pretty|--preatty]\n"
             "  get_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  get_global_script_subscriptions [--pretty|--preatty]\n"
             "  clear_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
+            "  clear_global_script_subscriptions\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -926,6 +936,18 @@ struct CliParameters {
                     return result;
                 }
                 break;
+            case CommanderAction::RunGlobalScript:
+                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "run_global_script does not accept tab selectors or --all." ) );
+                    return result;
+                }
+                if ( request.scriptFilePath.isEmpty() ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--script-file is required for run_global_script." ) );
+                    return result;
+                }
+                break;
             case CommanderAction::StopScript:
             case CommanderAction::GetScriptStatus:
             case CommanderAction::GetScriptSubscriptions:
@@ -937,6 +959,17 @@ struct CliParameters {
                 }
                 if ( !parser.isSet( allOption )
                      && !validateTabSelector( commanderActionToString( *action ), true ) ) {
+                    return result;
+                }
+                break;
+            case CommanderAction::StopGlobalScript:
+            case CommanderAction::GetGlobalScriptStatus:
+            case CommanderAction::GetGlobalScriptSubscriptions:
+            case CommanderAction::ClearGlobalScriptSubscriptions:
+                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "%1 does not accept tab selectors or --all." )
+                                    .arg( commanderActionToString( *action ) ) );
                     return result;
                 }
                 break;

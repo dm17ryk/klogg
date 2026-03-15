@@ -459,6 +459,7 @@ void MainWindow::reloadSession()
 
         if ( crawler_widget ) {
             mainTabWidget_.addCrawler( crawler_widget, file_name );
+            publishScriptLifecycleEvent( file_name, QStringLiteral( "tab_open" ) );
 
             if ( !open_file.streamContext.trimmed().isEmpty() ) {
                 auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
@@ -490,6 +491,8 @@ void MainWindow::reloadSession()
             waitForCrawlerStartupPreparation( crawler_widget, file_name );
         }
     }
+
+    restoreGlobalScriptContext();
 
     if ( current_file_index >= 0 ) {
         mainTabWidget_.setCurrentIndex( current_file_index );
@@ -754,6 +757,20 @@ void MainWindow::publishScriptEvent( const QVariantMap& event ) const
     }
 }
 
+void MainWindow::publishScriptLifecycleEvent( const QString& filePath,
+                                              const QString& eventType ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), eventType );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    publishScriptEvent( event );
+}
+
 void MainWindow::publishScriptReceiveEvent( const QString& filePath,
                                             const QByteArray& payloadBytes ) const
 {
@@ -870,6 +887,20 @@ QString MainWindow::scriptContextForTab( int index ) const
         QJsonDocument::fromVariant( scriptBinding ).toJson( QJsonDocument::Compact ) );
 }
 
+QString MainWindow::globalScriptContext() const
+{
+    QVariantMap scriptBinding;
+    if ( !applicationHasMethod( "globalScriptBinding()" )
+         || !QMetaObject::invokeMethod( qApp, "globalScriptBinding", Qt::DirectConnection,
+                                        Q_RETURN_ARG( QVariantMap, scriptBinding ) )
+         || scriptBinding.isEmpty() ) {
+        return {};
+    }
+
+    return QString::fromUtf8(
+        QJsonDocument::fromVariant( scriptBinding ).toJson( QJsonDocument::Compact ) );
+}
+
 void MainWindow::restoreScriptContextForTab( int index, const QString& scriptContext )
 {
     if ( index < 0 || index >= mainTabWidget_.count() || scriptContext.trimmed().isEmpty() ) {
@@ -901,6 +932,14 @@ void MainWindow::restoreScriptContextForTab( int index, const QString& scriptCon
     if ( applicationHasMethod( "restoreScriptBindingVariant(QVariant)" ) ) {
         QMetaObject::invokeMethod( qApp, "restoreScriptBindingVariant", Qt::DirectConnection,
                                    Q_ARG( QVariant, QVariant::fromValue( scriptBinding ) ) );
+    }
+}
+
+void MainWindow::restoreGlobalScriptContext()
+{
+    if ( applicationHasMethod( "restoreGlobalScriptBindingFromSession()" ) ) {
+        QMetaObject::invokeMethod( qApp, "restoreGlobalScriptBindingFromSession",
+                                   Qt::DirectConnection );
     }
 }
 
@@ -1758,6 +1797,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     connect( session.get(), &StreamSession::connectionOpened, this,
              [ this, filePath, session ] {
                  mainTabWidget_.setStreamSessionForPath( filePath, session );
+                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_start" ) );
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::connectionClosed, this,
@@ -1780,6 +1820,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  if ( actionsStreamSession_ == safeSession ) {
                      actionsStreamSession_.clear();
                  }
+                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_stop" ) );
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
@@ -2435,6 +2476,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
+    publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_close" ) );
     const auto tabId = mainTabWidget_.tabIdAt( index );
     remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
@@ -3384,6 +3426,7 @@ bool MainWindow::loadFile( const QString& fileName, bool followFile )
             // mainTabWidget_.setEnabled( false );
 
             int index = mainTabWidget_.addCrawler( crawler_widget, fileName );
+            publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_open" ) );
 
             // Setting the new tab, the user will see a blank page for the duration
             // of the loading, with no way to switch to another tab
@@ -3896,6 +3939,7 @@ void MainWindow::writeSettings()
 
         widget_list.emplace_back( view, 0UL, std::move( context ), streamContext, scriptContext );
     }
+    SessionInfo::getSynced().setGlobalScriptContext( globalScriptContext() );
     session_.save( widget_list, saveGeometry() );
 }
 
