@@ -208,6 +208,9 @@ void OptionsDialog::setupComDefaults()
 {
     populateSerialControls( comBaudComboBox, comDataBitsComboBox, comParityComboBox,
                             comStopBitsComboBox, comFlowComboBox );
+    comActionEditorLineEndingComboBox->addItem( tr( "CRLF (\\r\\n)" ), QStringLiteral( "crlf" ) );
+    comActionEditorLineEndingComboBox->addItem( tr( "LF (\\n)" ), QStringLiteral( "lf" ) );
+    comActionEditorLineEndingComboBox->addItem( tr( "CR (\\r)" ), QStringLiteral( "cr" ) );
 }
 
 void OptionsDialog::browseComLogPath()
@@ -430,6 +433,11 @@ void OptionsDialog::updateDialogFromConfig()
     comTimestampFormatEdit->setText( config.defaultComTimestampFormat() );
     comTimestampFormatEdit->setEnabled( config.defaultComTimestampEnabled() );
     comLogTxCheckBox->setChecked( config.defaultComLogTransmits() );
+    const auto lineEndingIndex
+        = comActionEditorLineEndingComboBox->findData( config.defaultActionEditorLineEnding() );
+    if ( lineEndingIndex >= 0 ) {
+        comActionEditorLineEndingComboBox->setCurrentIndex( lineEndingIndex );
+    }
 
     const auto& savedSearches = SavedSearches::get();
     searchHistorySpinBox->setValue( savedSearches.historySize() );
@@ -620,6 +628,8 @@ void OptionsDialog::updateConfigFromDialog()
     config.setDefaultComTimestampEnabled( comTimestampCheckBox->isChecked() );
     config.setDefaultComTimestampFormat( comTimestampFormatEdit->text().trimmed() );
     config.setDefaultComLogTransmits( comLogTxCheckBox->isChecked() );
+    config.setDefaultActionEditorLineEnding(
+        comActionEditorLineEndingComboBox->currentData().toString() );
 
     auto shortcuts = config.shortcuts();
     for ( auto shortcutRow = 0; shortcutRow < shortcutsTable->rowCount(); ++shortcutRow ) {

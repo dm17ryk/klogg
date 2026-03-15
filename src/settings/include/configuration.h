@@ -625,6 +625,15 @@ class Configuration final : public Persistable<Configuration> {
         comDefaultLogTransmits_ = enabled;
     }
 
+    QString defaultActionEditorLineEnding() const
+    {
+        return comDefaultActionEditorLineEnding_;
+    }
+    void setDefaultActionEditorLineEnding( const QString& lineEnding )
+    {
+        comDefaultActionEditorLineEnding_ = lineEnding;
+    }
+
     std::map<QString, QString> darkPalette() const {
         return darkPalette_;
     }
@@ -724,6 +733,7 @@ class Configuration final : public Persistable<Configuration> {
     bool comDefaultTimestampEnabled_ = false;
     QString comDefaultTimestampFormat_ = QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" );
     bool comDefaultLogTransmits_ = false;
+    QString comDefaultActionEditorLineEnding_ = QStringLiteral( "crlf" );
 
     bool qfIgnoreCase_ = false;
 

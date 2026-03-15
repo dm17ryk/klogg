@@ -20,6 +20,7 @@ class ActionEditDialog : public QDialog {
 
   protected:
     void accept() override;
+    bool eventFilter( QObject* watched, QEvent* event ) override;
 
   private:
     void populateFromAction( const ActionDefinition& action );
@@ -31,6 +32,7 @@ class ActionEditDialog : public QDialog {
     QLineEdit* nameEdit_ = nullptr;
     QPlainTextEdit* descriptionEdit_ = nullptr;
     QComboBox* sequenceTypeCombo_ = nullptr;
+    QComboBox* lineEndingCombo_ = nullptr;
     QPlainTextEdit* stringValueEdit_ = nullptr;
     QPlainTextEdit* hexValueEdit_ = nullptr;
     QSpinBox* delaySpin_ = nullptr;

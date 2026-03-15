@@ -23,6 +23,7 @@ class ResponseEditDialog : public QDialog {
 
   protected:
     void accept() override;
+    bool eventFilter( QObject* watched, QEvent* event ) override;
 
   private:
     void populateFromResponse( const ResponseDefinition& response );
@@ -42,6 +43,7 @@ class ResponseEditDialog : public QDialog {
     QLineEdit* nameEdit_ = nullptr;
     QPlainTextEdit* descriptionEdit_ = nullptr;
     QComboBox* matchTypeCombo_ = nullptr;
+    QComboBox* lineEndingCombo_ = nullptr;
     QStackedWidget* matchEditorStack_ = nullptr;
     QPlainTextEdit* stringValueEdit_ = nullptr;
     QPlainTextEdit* hexValueEdit_ = nullptr;

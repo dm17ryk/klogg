@@ -3,18 +3,119 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QFormLayout>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QSignalBlocker>
+#include <QTextCursor>
 #include <QtGlobal>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include "configuration.h"
 #include "previewdecodeutils.h"
 
 namespace {
+QByteArray displayedStringToBytes( const QString& text )
+{
+    QByteArray bytes;
+    bytes.reserve( text.size() );
+
+    for ( int index = 0; index < text.size(); ++index ) {
+        const auto ch = text.at( index );
+        if ( ch != QLatin1Char( '\\' ) ) {
+            bytes.push_back( static_cast<char>( ch.toLatin1() ) );
+            continue;
+        }
+
+        if ( index + 1 >= text.size() ) {
+            bytes.push_back( '\\' );
+            continue;
+        }
+
+        const auto next = text.at( index + 1 );
+        switch ( next.toLatin1() ) {
+        case '\\':
+            bytes.push_back( '\\' );
+            ++index;
+            break;
+        case 'r':
+            bytes.push_back( '\r' );
+            ++index;
+            break;
+        case 'n':
+            bytes.push_back( '\n' );
+            ++index;
+            break;
+        case 't':
+            bytes.push_back( '\t' );
+            ++index;
+            break;
+        case '0':
+            bytes.push_back( '\0' );
+            ++index;
+            break;
+        case 'x':
+            if ( index + 3 < text.size() ) {
+                bool ok = false;
+                const auto hexByte = text.mid( index + 2, 2 ).toUInt( &ok, 16 );
+                if ( ok ) {
+                    bytes.push_back( static_cast<char>( hexByte ) );
+                    index += 3;
+                    break;
+                }
+            }
+            bytes.push_back( '\\' );
+            break;
+        default:
+            bytes.push_back( '\\' );
+            break;
+        }
+    }
+
+    return bytes;
+}
+
+QString bytesToDisplayedString( const QByteArray& bytes )
+{
+    QString text;
+    text.reserve( bytes.size() );
+    for ( const auto rawByte : bytes ) {
+        const auto byte = static_cast<quint8>( rawByte );
+        switch ( byte ) {
+        case '\\':
+            text += QStringLiteral( "\\\\" );
+            break;
+        case '\r':
+            text += QStringLiteral( "\\r" );
+            break;
+        case '\n':
+            text += QStringLiteral( "\\n" );
+            break;
+        case '\t':
+            text += QStringLiteral( "\\t" );
+            break;
+        case '\0':
+            text += QStringLiteral( "\\0" );
+            break;
+        default:
+            if ( byte >= 0x20 && byte <= 0x7E ) {
+                text += QLatin1Char( static_cast<char>( byte ) );
+            }
+            else {
+                text += QStringLiteral( "\\x%1" )
+                            .arg( byte, 2, 16, QLatin1Char( '0' ) )
+                            .toUpper();
+            }
+            break;
+        }
+    }
+    return text;
+}
+
 QStringList splitCsvValues( const QString& text )
 {
     QStringList values;
@@ -39,6 +140,17 @@ QString bytesToHexString( const QByteArray& bytes )
     }
     return parts.join( QLatin1Char( ' ' ) );
 }
+
+QString lineEndingEscapeText( const QString& lineEndingMode )
+{
+    if ( lineEndingMode == QStringLiteral( "cr" ) ) {
+        return QStringLiteral( "\\r" );
+    }
+    if ( lineEndingMode == QStringLiteral( "lf" ) ) {
+        return QStringLiteral( "\\n" );
+    }
+    return QStringLiteral( "\\r\\n" );
+}
 } // namespace
 
 ActionEditDialog::ActionEditDialog( QWidget* parent )
@@ -55,9 +167,18 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     sequenceTypeCombo_->addItem( tr( "String" ), actionSequenceTypeToString( ActionSequenceType::String ) );
     sequenceTypeCombo_->addItem( tr( "Hex String" ), actionSequenceTypeToString( ActionSequenceType::HexString ) );
 
+    lineEndingCombo_ = new QComboBox( this );
+    lineEndingCombo_->addItem( tr( "CRLF (\\r\\n)" ), QStringLiteral( "crlf" ) );
+    lineEndingCombo_->addItem( tr( "LF (\\n)" ), QStringLiteral( "lf" ) );
+    lineEndingCombo_->addItem( tr( "CR (\\r)" ), QStringLiteral( "cr" ) );
+    const auto lineEndingIndex
+        = lineEndingCombo_->findData( Configuration::get().defaultActionEditorLineEnding() );
+    lineEndingCombo_->setCurrentIndex( lineEndingIndex >= 0 ? lineEndingIndex : 0 );
+
     stringValueEdit_ = new QPlainTextEdit( this );
     stringValueEdit_->setTabChangesFocus( true );
     stringValueEdit_->setMinimumHeight( 80 );
+    stringValueEdit_->installEventFilter( this );
 
     hexValueEdit_ = new QPlainTextEdit( this );
     hexValueEdit_->setTabChangesFocus( true );
@@ -88,6 +209,7 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     formLayout->addRow( tr( "Name" ), nameEdit_ );
     formLayout->addRow( tr( "Description" ), descriptionEdit_ );
     formLayout->addRow( tr( "Sequence type" ), sequenceTypeCombo_ );
+    formLayout->addRow( tr( "Enter inserts" ), lineEndingCombo_ );
     formLayout->addRow( tr( "String value" ), stringValueEdit_ );
     formLayout->addRow( tr( "Hex string value" ), hexValueEdit_ );
     formLayout->addRow( tr( "Initial delay" ), delaySpin_ );
@@ -122,6 +244,23 @@ ActionDefinition ActionEditDialog::action() const
     return action_;
 }
 
+bool ActionEditDialog::eventFilter( QObject* watched, QEvent* event )
+{
+    if ( watched == stringValueEdit_ && event->type() == QEvent::KeyPress ) {
+        const auto* keyEvent = static_cast<QKeyEvent*>( event );
+        if ( ( keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter )
+             && keyEvent->modifiers() == Qt::NoModifier ) {
+            auto cursor = stringValueEdit_->textCursor();
+            cursor.insertText(
+                lineEndingEscapeText( lineEndingCombo_->currentData().toString() ) );
+            stringValueEdit_->setTextCursor( cursor );
+            return true;
+        }
+    }
+
+    return QDialog::eventFilter( watched, event );
+}
+
 void ActionEditDialog::accept()
 {
     action_.name = nameEdit_->text().trimmed();
@@ -132,9 +271,12 @@ void ActionEditDialog::accept()
     if ( !ok ) {
         action_.sequence.type = ActionSequenceType::String;
     }
-    const auto stringValue = stringValueEdit_->toPlainText();
+    const auto stringBytes = displayedStringToBytes( stringValueEdit_->toPlainText() );
     const auto hexValue = hexValueEdit_->toPlainText().trimmed();
-    action_.sequence.value = action_.sequence.type == ActionSequenceType::HexString ? hexValue : stringValue;
+    action_.sequence.value
+        = action_.sequence.type == ActionSequenceType::HexString
+              ? hexValue
+              : QString::fromLatin1( stringBytes.constData(), stringBytes.size() );
     action_.parameters.delay = delaySpin_->value();
     action_.parameters.repeatCount = repeatCountSpin_->value();
     action_.parameters.repeat = action_.parameters.repeatCount > 1;
@@ -178,7 +320,7 @@ void ActionEditDialog::syncHexFromString()
 
     syncingSequenceEditors_ = true;
     const QSignalBlocker blocker( hexValueEdit_ );
-    hexValueEdit_->setPlainText( bytesToHexString( stringValueEdit_->toPlainText().toLatin1() ) );
+    hexValueEdit_->setPlainText( bytesToHexString( displayedStringToBytes( stringValueEdit_->toPlainText() ) ) );
     syncingSequenceEditors_ = false;
 }
 
@@ -195,7 +337,7 @@ void ActionEditDialog::syncStringFromHex()
 
     syncingSequenceEditors_ = true;
     const QSignalBlocker blocker( stringValueEdit_ );
-    stringValueEdit_->setPlainText( QString::fromLatin1( decoded.bytes ) );
+    stringValueEdit_->setPlainText( bytesToDisplayedString( decoded.bytes ) );
     syncingSequenceEditors_ = false;
 }
 
@@ -207,12 +349,14 @@ void ActionEditDialog::setSequenceEditors( const ActionSequence& sequence )
 
     if ( sequence.type == ActionSequenceType::HexString ) {
         const auto decoded = decodeHexStringToBytes( sequence.value );
-        stringValueEdit_->setPlainText( decoded.ok ? QString::fromLatin1( decoded.bytes ) : QString() );
+        stringValueEdit_->setPlainText( decoded.ok ? bytesToDisplayedString( decoded.bytes )
+                                                   : QString() );
         hexValueEdit_->setPlainText( decoded.ok ? bytesToHexString( decoded.bytes ) : sequence.value );
     }
     else {
-        stringValueEdit_->setPlainText( sequence.value );
-        hexValueEdit_->setPlainText( bytesToHexString( sequence.value.toLatin1() ) );
+        const auto bytes = sequence.value.toLatin1();
+        stringValueEdit_->setPlainText( bytesToDisplayedString( bytes ) );
+        hexValueEdit_->setPlainText( bytesToHexString( bytes ) );
     }
 
     syncingSequenceEditors_ = false;

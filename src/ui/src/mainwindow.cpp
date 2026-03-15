@@ -1682,8 +1682,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
         if ( !options.showErrors ) {
             return;
         }
-        showComPortMessage( this, QMessageBox::Warning, tr( "Open COM Port" ), message,
-                            options.nonBlockingErrors );
+        const auto icon = options.restoreMode ? QMessageBox::Information : QMessageBox::Warning;
+        showComPortMessage( this, icon, tr( "Open COM Port" ), message, options.nonBlockingErrors );
     };
 
     const auto showInformation = [ this, &options, errorMessage ]( const QString& message ) {
@@ -1728,7 +1728,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                                                            == 0;
                                          } );
     if ( !portExists ) {
-        showWarning( tr( "COM port %1 was not found. Capture will not be restored." )
+        showWarning( tr( "COM port %1 was not found. The capture file remains open, but the COM "
+                         "connection was not restored." )
                          .arg( settings.portName ) );
         return false;
     }
@@ -1782,21 +1783,31 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
-             [ this, filePath, safeSession, options ]( const QString& message ) {
+             [ this, filePath, safeSession, settings, options ]( const QString& message ) {
+                 const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
                  if ( options.showErrors ) {
-                     showComPortMessage(
-                         this, QMessageBox::Warning, tr( "COM port capture error" ),
-                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ),
-                         options.nonBlockingErrors );
+                     const auto title = options.restoreMode && startupFailure
+                                            ? tr( "Restore COM Port" )
+                                            : tr( "COM port capture error" );
+                     const auto text = options.restoreMode && startupFailure
+                                           ? tr( "Failed to restore COM port %1 for %2.\n"
+                                                "The capture file remains open.\n\n%3" )
+                                                 .arg( settings.portName, filePath, message )
+                                           : tr( "Capture stopped for %1:\n%2" )
+                                                 .arg( filePath, message );
+                     const auto icon = options.restoreMode && startupFailure
+                                           ? QMessageBox::Information
+                                           : QMessageBox::Warning;
+                     showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
                  }
                  else {
                      LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
                                  << message.toStdString();
                  }
-                   if ( safeSession ) {
-                       safeSession->closeConnection();
-                   }
-               } );
+                 if ( safeSession ) {
+                     safeSession->closeConnection();
+                 }
+             } );
     connect( session.get(), &StreamSession::dataObserved, this,
              [ this, filePath ]( const QByteArray& payloadBytes ) {
                  publishScriptReceiveEvent( filePath, payloadBytes );
