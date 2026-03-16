@@ -40,14 +40,19 @@ enum class CommanderAction {
     ClearComm,
     RunScript,
     RunGlobalScript,
+    RunScenario,
+    RunSuite,
     StopScript,
     StopGlobalScript,
+    StopScenarioRun,
     GetScriptStatus,
     GetGlobalScriptStatus,
+    GetScenarioStatus,
     GetScriptSubscriptions,
     GetGlobalScriptSubscriptions,
     ClearScriptSubscriptions,
     ClearGlobalScriptSubscriptions,
+    GetScenarioReport,
     FocusTab,
     SetFilter,
     CloseTab,
@@ -87,6 +92,8 @@ struct CommanderRequest {
     QString commentText;
     QString scriptFilePath;
     QString argsJsonFilePath;
+    QString scenarioFilePath;
+    QString suiteFilePath;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;

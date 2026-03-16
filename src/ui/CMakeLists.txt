@@ -22,6 +22,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfilterscombobox.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfiltersdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/infoline.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/labqueuewindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pathline.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
@@ -49,6 +50,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/recentfiles.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/responseeditdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/responsestablemodel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scenariorunner.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scenariorunnerwindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/savedsearches.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/selection.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/session.h
@@ -100,6 +103,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/predefinedfilterscombobox.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/predefinedfiltersdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/infoline.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/labqueuewindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
@@ -126,6 +130,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/recentfiles.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/responseeditdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/responsestablemodel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scenariorunner.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scenariorunnerwindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/savedsearches.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/session.cpp
@@ -163,12 +169,16 @@ if(KLOGG_USE_LTO)
   set_property(TARGET klogg_ui PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-target_include_directories(klogg_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(klogg_ui
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PRIVATE "${CMAKE_SOURCE_DIR}/src/app"
+)
 target_link_libraries(
   klogg_ui
   PUBLIC project_options
          project_warnings
          klogg_commander
+         klogg_lab
          klogg_logdata
          klogg_versioncheck
          klogg_karchive

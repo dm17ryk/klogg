@@ -147,6 +147,8 @@ class MainWindow : public QMainWindow {
     void showPreviewer();
     void showActionsResponses();
     void showScriptRunner();
+    void showScenarioRunner();
+    void showLabQueue();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
@@ -368,6 +370,8 @@ class MainWindow : public QMainWindow {
     QAction* showPreviewerAction;
     QAction* showActionsResponsesAction;
     QAction* showScriptRunnerAction;
+    QAction* showScenarioRunnerAction;
+    QAction* showLabQueueAction;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;

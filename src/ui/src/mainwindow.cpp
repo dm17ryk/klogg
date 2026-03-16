@@ -1066,6 +1066,10 @@ void MainWindow::reTranslateUI()
         transAction( action::showActionsResponsesStatusTip ) );
     showScriptRunnerAction->setText( transAction( action::showScriptRunnerText ) );
     showScriptRunnerAction->setStatusTip( transAction( action::showScriptRunnerStatusTip ) );
+    showScenarioRunnerAction->setText( transAction( action::showScenarioRunnerText ) );
+    showScenarioRunnerAction->setStatusTip( transAction( action::showScenarioRunnerStatusTip ) );
+    showLabQueueAction->setText( transAction( action::showLabQueueText ) );
+    showLabQueueAction->setStatusTip( transAction( action::showLabQueueStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -1330,7 +1334,17 @@ void MainWindow::createActions()
     showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
     showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
     connect( showScriptRunnerAction, &QAction::triggered, this,
-             [ this ]( auto ) { this->showScriptRunner(); } );
+              [ this ]( auto ) { this->showScriptRunner(); } );
+
+    showScenarioRunnerAction = new QAction( tr( action::showScenarioRunnerText ), this );
+    showScenarioRunnerAction->setStatusTip( tr( action::showScenarioRunnerStatusTip ) );
+    connect( showScenarioRunnerAction, &QAction::triggered, this,
+              [ this ]( auto ) { this->showScenarioRunner(); } );
+
+    showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
+    showLabQueueAction->setStatusTip( tr( action::showLabQueueStatusTip ) );
+    connect( showLabQueueAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showLabQueue(); } );
 
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
@@ -1528,6 +1542,8 @@ void MainWindow::createMenus()
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
     toolsMenu->addAction( showScriptRunnerAction );
+    toolsMenu->addAction( showScenarioRunnerAction );
+    toolsMenu->addAction( showLabQueueAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -2255,6 +2271,20 @@ void MainWindow::showScriptRunner()
     if ( applicationHasMethod( "showScriptRunnerWindow()" )
          || applicationHasMethod( "showScriptRunnerWindow(QString)" ) ) {
         QMetaObject::invokeMethod( qApp, "showScriptRunnerWindow", Qt::DirectConnection );
+    }
+}
+
+void MainWindow::showScenarioRunner()
+{
+    if ( applicationHasMethod( "showScenarioRunnerWindow()" ) ) {
+        QMetaObject::invokeMethod( qApp, "showScenarioRunnerWindow", Qt::DirectConnection );
+    }
+}
+
+void MainWindow::showLabQueue()
+{
+    if ( applicationHasMethod( "showLabQueueWindow()" ) ) {
+        QMetaObject::invokeMethod( qApp, "showLabQueueWindow", Qt::DirectConnection );
     }
 }
 

@@ -38,11 +38,27 @@
 
 #include "commander.h"
 #include "klogg_version.h"
+#include "labrequest.h"
 #include "log.h"
+#include "scenariobatchrequest.h"
 
 struct CliParameters {
     struct CommanderParseResult {
         std::optional<CommanderRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct ScenarioBatchParseResult {
+        std::optional<ScenarioBatchRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct LabParseResult {
+        std::optional<LabCliRequest> request;
         bool exit_requested = false;
         int exit_code = EXIT_FAILURE;
         QString output_message;
@@ -65,6 +81,8 @@ struct CliParameters {
 
     std::vector<QString> filenames;
     std::optional<CommanderRequest> commander_request;
+    std::optional<ScenarioBatchRequest> scenario_batch_request;
+    std::optional<LabCliRequest> lab_request;
 
     int window_width = 0;
     int window_height = 0;
@@ -86,6 +104,16 @@ struct CliParameters {
     bool isCommanderMode() const
     {
         return commander_request.has_value();
+    }
+
+    bool isScenarioBatchMode() const
+    {
+        return scenario_batch_request.has_value();
+    }
+
+    bool isLabMode() const
+    {
+        return lab_request.has_value();
     }
 
     static QString versionText()
@@ -111,6 +139,20 @@ struct CliParameters {
     {
         return QStringLiteral(
             "Klogg log viewer\n\n"
+            "Scenario batch mode:\n"
+            "  klogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
+            "  klogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  klogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
+            "  klogg scenario list-devices --suite-file <path>\n\n"
+            "Remote lab mode:\n"
+            "  klogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n"
+            "  klogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n"
+            "  klogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  klogg lab queue --controller-url <url> --token-file <path>\n"
+            "  klogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  klogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  klogg lab agents --controller-url <url> --token-file <path>\n"
+            "  klogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
             "Commander mode:\n"
             "  klogg command --action open_file --file <path> [--follow]\n"
             "  klogg command --action open_url --url <url>\n"
@@ -132,14 +174,19 @@ struct CliParameters {
             "  klogg command --action clear_comm [tab selector]\n"
             "  klogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
             "  klogg command --action run_global_script --script-file <path> [--args-json-file <path>]\n"
+            "  klogg command --action run_scenario --scenario-file <path> [--args-json-file <path>]\n"
+            "  klogg command --action run_suite --suite-file <path>\n"
             "  klogg command --action stop_script [tab selector | --all]\n"
             "  klogg command --action stop_global_script\n"
+            "  klogg command --action stop_scenario_run\n"
             "  klogg command --action get_script_status [tab selector | --all] [--pretty]\n"
             "  klogg command --action get_global_script_status [--pretty]\n"
+            "  klogg command --action get_scenario_status [--pretty]\n"
             "  klogg command --action get_script_subscriptions [tab selector | --all] [--pretty]\n"
             "  klogg command --action get_global_script_subscriptions [--pretty]\n"
             "  klogg command --action clear_script_subscriptions [tab selector | --all]\n"
             "  klogg command --action clear_global_script_subscriptions\n"
+            "  klogg command --action get_scenario_report [--pretty]\n"
             "  klogg command --action get_actions [--pretty]\n"
             "  klogg command --action get_responses [--pretty]\n"
             "  klogg command --action create_action --json-file <path>\n"
@@ -154,7 +201,55 @@ struct CliParameters {
             "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
             "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "Run `klogg scenario --help` for detailed scenario batch options.\n"
+            "Run `klogg lab --help`, `klogg lab-agent --help`, or `klogg lab-controller --help` for remote lab options.\n"
             "Run `klogg command --help` for detailed commander options." );
+    }
+
+    static QString scenarioHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg headless scenario runner\n\n"
+            "Usage:\n"
+            "  klogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
+            "  klogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  klogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
+            "  klogg scenario list-devices --suite-file <path>\n\n"
+            "The suite manifest declares logical device names. The optional device-map JSON\n"
+            "maps those logical device names to real COM ports and runtime serial overrides." );
+    }
+
+    static QString labControllerHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg remote lab controller\n\n"
+            "Usage:\n"
+            "  klogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n\n"
+            "The controller exposes HTTP JSON APIs for operators and a TCP agent channel on the\n"
+            "next port number after the HTTP listen port." );
+    }
+
+    static QString labAgentHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg remote lab agent\n\n"
+            "Usage:\n"
+            "  klogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n\n"
+            "The agent registers local COM inventory with the controller and executes queued jobs." );
+    }
+
+    static QString labHelpDescription()
+    {
+        return QStringLiteral(
+            "Klogg remote lab operator CLI\n\n"
+            "Usage:\n"
+            "  klogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  klogg lab queue --controller-url <url> --token-file <path>\n"
+            "  klogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  klogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  klogg lab agents --controller-url <url> --token-file <path>\n"
+            "  klogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
+            "The CLI uploads scenario bundles to the controller and fetches status, queue, and artifacts." );
     }
 
     static QString commanderHelpDescription()
@@ -182,14 +277,19 @@ struct CliParameters {
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  run_global_script --script-file <path> [--args-json-file <path>]\n"
+            "  run_scenario --scenario-file <path> [--args-json-file <path>]\n"
+            "  run_suite --suite-file <path>\n"
             "  stop_script [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
             "  stop_global_script\n"
+            "  stop_scenario_run\n"
             "  get_script_status [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
             "  get_global_script_status [--pretty|--preatty]\n"
+            "  get_scenario_status [--pretty|--preatty]\n"
             "  get_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
             "  get_global_script_subscriptions [--pretty|--preatty]\n"
             "  clear_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
             "  clear_global_script_subscriptions\n"
+            "  get_scenario_report [--pretty|--preatty]\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
             "  create_action --json-file <path>\n"
@@ -229,6 +329,65 @@ struct CliParameters {
             if ( !commander_request && !exit_requested ) {
                 parse_error = true;
                 parse_error_message = commanderResult.output_message;
+            }
+            return;
+        }
+
+        if ( !console && arguments.size() > 1
+             && arguments.at( 1 ).compare( QStringLiteral( "scenario" ), Qt::CaseInsensitive ) == 0 ) {
+            const auto scenarioResult = parseScenarioArguments( arguments );
+            scenario_batch_request = scenarioResult.request;
+            exit_requested = scenarioResult.exit_requested;
+            exit_code = scenarioResult.exit_code;
+            exit_message = scenarioResult.output_message;
+            if ( !scenario_batch_request && !exit_requested ) {
+                parse_error = true;
+                parse_error_message = scenarioResult.output_message;
+            }
+            return;
+        }
+
+        if ( !console && arguments.size() > 1
+             && arguments.at( 1 ).compare( QStringLiteral( "lab-controller" ),
+                                           Qt::CaseInsensitive )
+                    == 0 ) {
+            const auto labResult = parseLabControllerArguments( arguments );
+            lab_request = labResult.request;
+            exit_requested = labResult.exit_requested;
+            exit_code = labResult.exit_code;
+            exit_message = labResult.output_message;
+            if ( !lab_request && !exit_requested ) {
+                parse_error = true;
+                parse_error_message = labResult.output_message;
+            }
+            return;
+        }
+
+        if ( !console && arguments.size() > 1
+             && arguments.at( 1 ).compare( QStringLiteral( "lab-agent" ), Qt::CaseInsensitive )
+                    == 0 ) {
+            const auto labResult = parseLabAgentArguments( arguments );
+            lab_request = labResult.request;
+            exit_requested = labResult.exit_requested;
+            exit_code = labResult.exit_code;
+            exit_message = labResult.output_message;
+            if ( !lab_request && !exit_requested ) {
+                parse_error = true;
+                parse_error_message = labResult.output_message;
+            }
+            return;
+        }
+
+        if ( !console && arguments.size() > 1
+             && arguments.at( 1 ).compare( QStringLiteral( "lab" ), Qt::CaseInsensitive ) == 0 ) {
+            const auto labResult = parseLabArguments( arguments );
+            lab_request = labResult.request;
+            exit_requested = labResult.exit_requested;
+            exit_code = labResult.exit_code;
+            exit_message = labResult.output_message;
+            if ( !lab_request && !exit_requested ) {
+                parse_error = true;
+                parse_error_message = labResult.output_message;
             }
             return;
         }
@@ -477,6 +636,553 @@ struct CliParameters {
         return document.object().toVariantMap();
     }
 
+    static ScenarioBatchParseResult parseScenarioArguments( const QStringList& arguments )
+    {
+        ScenarioBatchParseResult result;
+        if ( arguments.size() <= 2 ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = scenarioHelpDescription();
+            return result;
+        }
+
+        const auto subcommand = arguments.at( 2 ).trimmed().toLower();
+        if ( subcommand == QStringLiteral( "--help" ) || subcommand == QStringLiteral( "-h" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = scenarioHelpDescription();
+            return result;
+        }
+        if ( subcommand == QStringLiteral( "--version" ) || subcommand == QStringLiteral( "-v" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        QStringList scenarioArguments;
+        scenarioArguments.reserve( arguments.size() - 1 );
+        scenarioArguments.push_back( arguments.value( 0 ) + QStringLiteral( " scenario " )
+                                     + arguments.at( 2 ) );
+        for ( int i = 3; i < arguments.size(); ++i ) {
+            scenarioArguments.push_back( arguments.at( i ) );
+        }
+
+        QCommandLineParser parser;
+        parser.setApplicationDescription( scenarioHelpDescription() );
+        const auto helpOption = parser.addHelpOption();
+        const auto versionOption = parser.addVersionOption();
+
+        const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
+                                                  QStringLiteral( "Scenario suite JSON file." ),
+                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
+                                                     QStringLiteral( "Python scenario file." ),
+                                                     QStringLiteral( "path" ) );
+        const QCommandLineOption argsJsonFileOption( QStringLiteral( "args-json-file" ),
+                                                     QStringLiteral( "Optional JSON args file." ),
+                                                     QStringLiteral( "path" ) );
+        const QCommandLineOption deviceMapFileOption(
+            QStringLiteral( "device-map-file" ),
+            QStringLiteral( "JSON file mapping logical devices to real COM ports." ),
+            QStringLiteral( "path" ) );
+        const QCommandLineOption reportDirOption( QStringLiteral( "report-dir" ),
+                                                  QStringLiteral( "Directory for scenario report artifacts." ),
+                                                  QStringLiteral( "path" ) );
+
+        parser.addOption( suiteFileOption );
+        parser.addOption( scenarioFileOption );
+        parser.addOption( argsJsonFileOption );
+        parser.addOption( deviceMapFileOption );
+        parser.addOption( reportDirOption );
+
+        if ( !parser.parse( scenarioArguments ) ) {
+            result.output_message = formatParserError( parser, parser.errorText() );
+            return result;
+        }
+
+        if ( parser.isSet( helpOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = parser.helpText();
+            return result;
+        }
+
+        if ( parser.isSet( versionOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        ScenarioBatchRequest request;
+        if ( subcommand == QStringLiteral( "run" ) ) {
+            request.action = ScenarioBatchAction::Run;
+        }
+        else if ( subcommand == QStringLiteral( "validate" ) ) {
+            request.action = ScenarioBatchAction::Validate;
+        }
+        else if ( subcommand == QStringLiteral( "list-devices" ) ) {
+            request.action = ScenarioBatchAction::ListDevices;
+        }
+        else {
+            result.output_message = QStringLiteral( "Unknown scenario subcommand \"%1\".\n\n%2" )
+                                        .arg( arguments.at( 2 ), scenarioHelpDescription() );
+            return result;
+        }
+
+        request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
+        request.scenarioFilePath = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
+        request.argsJsonFilePath = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
+        request.deviceMapFilePath = normalizeCommanderFilePath( parser.value( deviceMapFileOption ) );
+        request.reportDirPath = normalizeCommanderFilePath( parser.value( reportDirOption ) );
+
+        const auto hasSuite = !request.suiteFilePath.isEmpty();
+        const auto hasScenario = !request.scenarioFilePath.isEmpty();
+        const auto hasArgs = !request.argsJsonFilePath.isEmpty();
+        const auto hasReportDir = !request.reportDirPath.isEmpty();
+
+        switch ( request.action ) {
+        case ScenarioBatchAction::Run:
+            if ( hasSuite == hasScenario ) {
+                result.output_message
+                    = QStringLiteral( "Scenario run requires exactly one of --suite-file or --scenario-file." );
+                return result;
+            }
+            if ( hasSuite && hasArgs ) {
+                result.output_message
+                    = QStringLiteral( "--args-json-file is only supported with --scenario-file." );
+                return result;
+            }
+            break;
+        case ScenarioBatchAction::Validate:
+            if ( !hasSuite ) {
+                result.output_message = QStringLiteral( "Scenario validate requires --suite-file." );
+                return result;
+            }
+            if ( hasScenario || hasArgs || hasReportDir ) {
+                result.output_message = QStringLiteral(
+                    "Scenario validate only accepts --suite-file and optional --device-map-file." );
+                return result;
+            }
+            break;
+        case ScenarioBatchAction::ListDevices:
+            if ( !hasSuite ) {
+                result.output_message = QStringLiteral( "Scenario list-devices requires --suite-file." );
+                return result;
+            }
+            if ( hasScenario || hasArgs || !request.deviceMapFilePath.isEmpty() || hasReportDir ) {
+                result.output_message
+                    = QStringLiteral( "Scenario list-devices only accepts --suite-file." );
+                return result;
+            }
+            break;
+        case ScenarioBatchAction::None:
+            break;
+        }
+
+        result.request = request;
+        return result;
+    }
+
+    static bool parseListenValue( const QString& value, QString* host, quint16* port,
+                                  QString* errorMessage )
+    {
+        const auto trimmed = value.trimmed();
+        const auto separator = trimmed.lastIndexOf( ':' );
+        if ( separator <= 0 || separator + 1 >= trimmed.size() ) {
+            *errorMessage = QStringLiteral( "Expected --listen in host:port format." );
+            return false;
+        }
+
+        bool ok = false;
+        const auto parsedPort = trimmed.mid( separator + 1 ).toUShort( &ok );
+        if ( !ok || parsedPort == 0 ) {
+            *errorMessage = QStringLiteral( "Invalid listen port." );
+            return false;
+        }
+
+        *host = trimmed.left( separator ).trimmed();
+        *port = parsedPort;
+        if ( host->isEmpty() ) {
+            *errorMessage = QStringLiteral( "Listen host must not be empty." );
+            return false;
+        }
+
+        return true;
+    }
+
+    static LabParseResult parseLabControllerArguments( const QStringList& arguments )
+    {
+        LabParseResult result;
+        if ( arguments.size() <= 2 ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labControllerHelpDescription();
+            return result;
+        }
+
+        const auto subcommand = arguments.at( 2 ).trimmed().toLower();
+        if ( subcommand == QStringLiteral( "--help" ) || subcommand == QStringLiteral( "-h" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labControllerHelpDescription();
+            return result;
+        }
+        if ( subcommand == QStringLiteral( "--version" ) || subcommand == QStringLiteral( "-v" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        QStringList labArguments;
+        labArguments.reserve( arguments.size() - 1 );
+        labArguments.push_back( arguments.value( 0 ) + QStringLiteral( " lab-controller " )
+                                + arguments.at( 2 ) );
+        for ( int i = 3; i < arguments.size(); ++i ) {
+            labArguments.push_back( arguments.at( i ) );
+        }
+
+        QCommandLineParser parser;
+        parser.setApplicationDescription( labControllerHelpDescription() );
+        const auto helpOption = parser.addHelpOption();
+        const auto versionOption = parser.addVersionOption();
+        const QCommandLineOption listenOption( QStringLiteral( "listen" ),
+                                               QStringLiteral( "HTTP listen address in host:port format." ),
+                                               QStringLiteral( "host:port" ) );
+        const QCommandLineOption stateDirOption( QStringLiteral( "state-dir" ),
+                                                 QStringLiteral( "Controller state directory." ),
+                                                 QStringLiteral( "path" ) );
+        const QCommandLineOption tokenFileOption( QStringLiteral( "token-file" ),
+                                                  QStringLiteral( "Shared token file." ),
+                                                  QStringLiteral( "path" ) );
+        parser.addOption( listenOption );
+        parser.addOption( stateDirOption );
+        parser.addOption( tokenFileOption );
+
+        if ( !parser.parse( labArguments ) ) {
+            result.output_message = formatParserError( parser, parser.errorText() );
+            return result;
+        }
+        if ( parser.isSet( helpOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = parser.helpText();
+            return result;
+        }
+        if ( parser.isSet( versionOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        if ( subcommand != QStringLiteral( "serve" ) ) {
+            result.output_message = QStringLiteral( "Unknown lab-controller subcommand \"%1\".\n\n%2" )
+                                        .arg( arguments.at( 2 ), labControllerHelpDescription() );
+            return result;
+        }
+
+        LabCliRequest request;
+        request.mode = LabCliMode::ControllerServe;
+        request.stateDirPath = normalizeCommanderFilePath( parser.value( stateDirOption ) );
+        request.tokenFilePath = normalizeCommanderFilePath( parser.value( tokenFileOption ) );
+        QString errorMessage;
+        if ( request.stateDirPath.isEmpty() || request.tokenFilePath.isEmpty()
+             || !parseListenValue( parser.value( listenOption ), &request.listenAddress,
+                                   &request.listenPort, &errorMessage ) ) {
+            if ( request.stateDirPath.isEmpty() ) {
+                errorMessage = QStringLiteral( "--state-dir is required." );
+            }
+            else if ( request.tokenFilePath.isEmpty() ) {
+                errorMessage = QStringLiteral( "--token-file is required." );
+            }
+            result.output_message = formatParserError( parser, errorMessage );
+            return result;
+        }
+
+        result.request = request;
+        return result;
+    }
+
+    static LabParseResult parseLabAgentArguments( const QStringList& arguments )
+    {
+        LabParseResult result;
+        if ( arguments.size() <= 2 ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labAgentHelpDescription();
+            return result;
+        }
+
+        const auto subcommand = arguments.at( 2 ).trimmed().toLower();
+        if ( subcommand == QStringLiteral( "--help" ) || subcommand == QStringLiteral( "-h" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labAgentHelpDescription();
+            return result;
+        }
+        if ( subcommand == QStringLiteral( "--version" ) || subcommand == QStringLiteral( "-v" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        QStringList labArguments;
+        labArguments.reserve( arguments.size() - 1 );
+        labArguments.push_back( arguments.value( 0 ) + QStringLiteral( " lab-agent " )
+                                + arguments.at( 2 ) );
+        for ( int i = 3; i < arguments.size(); ++i ) {
+            labArguments.push_back( arguments.at( i ) );
+        }
+
+        QCommandLineParser parser;
+        parser.setApplicationDescription( labAgentHelpDescription() );
+        const auto helpOption = parser.addHelpOption();
+        const auto versionOption = parser.addVersionOption();
+        const QCommandLineOption controllerUrlOption( QStringLiteral( "controller-url" ),
+                                                      QStringLiteral( "Controller base URL." ),
+                                                      QStringLiteral( "url" ) );
+        const QCommandLineOption agentConfigOption( QStringLiteral( "agent-config" ),
+                                                    QStringLiteral( "Agent inventory JSON file." ),
+                                                    QStringLiteral( "path" ) );
+        const QCommandLineOption tokenFileOption( QStringLiteral( "token-file" ),
+                                                  QStringLiteral( "Shared token file." ),
+                                                  QStringLiteral( "path" ) );
+        parser.addOption( controllerUrlOption );
+        parser.addOption( agentConfigOption );
+        parser.addOption( tokenFileOption );
+
+        if ( !parser.parse( labArguments ) ) {
+            result.output_message = formatParserError( parser, parser.errorText() );
+            return result;
+        }
+        if ( parser.isSet( helpOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = parser.helpText();
+            return result;
+        }
+        if ( parser.isSet( versionOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        if ( subcommand != QStringLiteral( "run" ) ) {
+            result.output_message = QStringLiteral( "Unknown lab-agent subcommand \"%1\".\n\n%2" )
+                                        .arg( arguments.at( 2 ), labAgentHelpDescription() );
+            return result;
+        }
+
+        LabCliRequest request;
+        request.mode = LabCliMode::AgentRun;
+        request.controllerUrl = parser.value( controllerUrlOption ).trimmed();
+        request.agentConfigPath = normalizeCommanderFilePath( parser.value( agentConfigOption ) );
+        request.tokenFilePath = normalizeCommanderFilePath( parser.value( tokenFileOption ) );
+        QString errorMessage;
+        if ( request.controllerUrl.isEmpty() ) {
+            errorMessage = QStringLiteral( "--controller-url is required." );
+        }
+        else if ( request.agentConfigPath.isEmpty() ) {
+            errorMessage = QStringLiteral( "--agent-config is required." );
+        }
+        else if ( request.tokenFilePath.isEmpty() ) {
+            errorMessage = QStringLiteral( "--token-file is required." );
+        }
+        if ( !errorMessage.isEmpty() ) {
+            result.output_message = formatParserError( parser, errorMessage );
+            return result;
+        }
+
+        result.request = request;
+        return result;
+    }
+
+    static LabParseResult parseLabArguments( const QStringList& arguments )
+    {
+        LabParseResult result;
+        if ( arguments.size() <= 2 ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labHelpDescription();
+            return result;
+        }
+
+        const auto subcommand = arguments.at( 2 ).trimmed().toLower();
+        if ( subcommand == QStringLiteral( "--help" ) || subcommand == QStringLiteral( "-h" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = labHelpDescription();
+            return result;
+        }
+        if ( subcommand == QStringLiteral( "--version" ) || subcommand == QStringLiteral( "-v" ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        QStringList labArguments;
+        labArguments.reserve( arguments.size() - 1 );
+        labArguments.push_back( arguments.value( 0 ) + QStringLiteral( " lab " )
+                                + arguments.at( 2 ) );
+        for ( int i = 3; i < arguments.size(); ++i ) {
+            labArguments.push_back( arguments.at( i ) );
+        }
+
+        QCommandLineParser parser;
+        parser.setApplicationDescription( labHelpDescription() );
+        const auto helpOption = parser.addHelpOption();
+        const auto versionOption = parser.addVersionOption();
+        const QCommandLineOption controllerUrlOption( QStringLiteral( "controller-url" ),
+                                                      QStringLiteral( "Controller base URL." ),
+                                                      QStringLiteral( "url" ) );
+        const QCommandLineOption tokenFileOption( QStringLiteral( "token-file" ),
+                                                  QStringLiteral( "Shared token file." ),
+                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
+                                                  QStringLiteral( "Scenario suite JSON file." ),
+                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
+                                                     QStringLiteral( "Python scenario file." ),
+                                                     QStringLiteral( "path" ) );
+        const QCommandLineOption argsJsonFileOption( QStringLiteral( "args-json-file" ),
+                                                     QStringLiteral( "Optional JSON args file." ),
+                                                     QStringLiteral( "path" ) );
+        const QCommandLineOption reportDirOption( QStringLiteral( "report-dir" ),
+                                                  QStringLiteral( "Downloaded report directory." ),
+                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption outputDirOption( QStringLiteral( "output-dir" ),
+                                                  QStringLiteral( "Artifact output directory." ),
+                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption agentLabelOption( QStringLiteral( "agent-label" ),
+                                                   QStringLiteral( "Required agent label." ),
+                                                   QStringLiteral( "label" ) );
+        const QCommandLineOption jobIdOption( QStringLiteral( "job-id" ),
+                                              QStringLiteral( "Lab job identifier." ),
+                                              QStringLiteral( "id" ) );
+        const QCommandLineOption prettyOption(
+            QStringList() << QStringLiteral( "pretty" ) << QStringLiteral( "preatty" ),
+            QStringLiteral( "Pretty print JSON output." ) );
+        parser.addOption( controllerUrlOption );
+        parser.addOption( tokenFileOption );
+        parser.addOption( suiteFileOption );
+        parser.addOption( scenarioFileOption );
+        parser.addOption( argsJsonFileOption );
+        parser.addOption( reportDirOption );
+        parser.addOption( outputDirOption );
+        parser.addOption( agentLabelOption );
+        parser.addOption( jobIdOption );
+        parser.addOption( prettyOption );
+
+        if ( !parser.parse( labArguments ) ) {
+            result.output_message = formatParserError( parser, parser.errorText() );
+            return result;
+        }
+        if ( parser.isSet( helpOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = parser.helpText();
+            return result;
+        }
+        if ( parser.isSet( versionOption ) ) {
+            result.exit_requested = true;
+            result.exit_code = EXIT_SUCCESS;
+            result.output_message = versionText();
+            return result;
+        }
+
+        LabCliRequest request;
+        request.controllerUrl = parser.value( controllerUrlOption ).trimmed();
+        request.tokenFilePath = normalizeCommanderFilePath( parser.value( tokenFileOption ) );
+        request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
+        request.scenarioFilePath = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
+        request.argsJsonFilePath = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
+        request.reportDirPath = normalizeCommanderFilePath( parser.value( reportDirOption ) );
+        request.outputDirPath = normalizeCommanderFilePath( parser.value( outputDirOption ) );
+        request.agentLabel = parser.value( agentLabelOption ).trimmed();
+        request.jobId = parser.value( jobIdOption ).trimmed();
+        request.prettyOutput = parser.isSet( prettyOption );
+
+        const auto hasSuite = !request.suiteFilePath.isEmpty();
+        const auto hasScenario = !request.scenarioFilePath.isEmpty();
+        const auto hasArgs = !request.argsJsonFilePath.isEmpty();
+        QString errorMessage;
+
+        if ( subcommand == QStringLiteral( "submit" ) ) {
+            request.mode = LabCliMode::Submit;
+            if ( hasSuite == hasScenario ) {
+                errorMessage = QStringLiteral(
+                    "lab submit requires exactly one of --suite-file or --scenario-file." );
+            }
+            else if ( hasSuite && hasArgs ) {
+                errorMessage
+                    = QStringLiteral( "--args-json-file is only supported with --scenario-file." );
+            }
+        }
+        else if ( subcommand == QStringLiteral( "queue" ) ) {
+            request.mode = LabCliMode::Queue;
+            if ( hasSuite || hasScenario || hasArgs || !request.jobId.isEmpty()
+                 || !request.outputDirPath.isEmpty() || !request.reportDirPath.isEmpty()
+                 || !request.agentLabel.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab queue only accepts controller and token options." );
+            }
+        }
+        else if ( subcommand == QStringLiteral( "status" ) ) {
+            request.mode = LabCliMode::Status;
+            if ( request.jobId.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab status requires --job-id." );
+            }
+        }
+        else if ( subcommand == QStringLiteral( "cancel" ) ) {
+            request.mode = LabCliMode::Cancel;
+            if ( request.jobId.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab cancel requires --job-id." );
+            }
+        }
+        else if ( subcommand == QStringLiteral( "agents" ) ) {
+            request.mode = LabCliMode::Agents;
+            if ( hasSuite || hasScenario || hasArgs || !request.jobId.isEmpty()
+                 || !request.outputDirPath.isEmpty() || !request.reportDirPath.isEmpty()
+                 || !request.agentLabel.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab agents only accepts controller and token options." );
+            }
+        }
+        else if ( subcommand == QStringLiteral( "artifacts" ) ) {
+            request.mode = LabCliMode::Artifacts;
+            if ( request.jobId.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab artifacts requires --job-id." );
+            }
+            else if ( request.outputDirPath.isEmpty() ) {
+                errorMessage = QStringLiteral( "lab artifacts requires --output-dir." );
+            }
+        }
+        else {
+            result.output_message = QStringLiteral( "Unknown lab subcommand \"%1\".\n\n%2" )
+                                        .arg( arguments.at( 2 ), labHelpDescription() );
+            return result;
+        }
+
+        if ( request.controllerUrl.isEmpty() ) {
+            errorMessage = QStringLiteral( "--controller-url is required." );
+        }
+        else if ( request.tokenFilePath.isEmpty() ) {
+            errorMessage = QStringLiteral( "--token-file is required." );
+        }
+
+        if ( !errorMessage.isEmpty() ) {
+            result.output_message = formatParserError( parser, errorMessage );
+            return result;
+        }
+
+        result.request = request;
+        return result;
+    }
+
     static CommanderParseResult parseCommanderArguments( const QStringList& arguments )
     {
         CommanderParseResult result;
@@ -523,10 +1229,16 @@ struct CliParameters {
         const QCommandLineOption scriptFileOption( QStringLiteral( "script-file" ),
                                                    QStringLiteral( "Python script file to run." ),
                                                    QStringLiteral( "path" ) );
-        const QCommandLineOption argsJsonFileOption(
-            QStringLiteral( "args-json-file" ),
-            QStringLiteral( "Optional JSON file passed to the Python script." ),
-            QStringLiteral( "path" ) );
+          const QCommandLineOption argsJsonFileOption(
+              QStringLiteral( "args-json-file" ),
+              QStringLiteral( "Optional JSON file passed to the Python script." ),
+              QStringLiteral( "path" ) );
+          const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
+                                                       QStringLiteral( "Python scenario file to run." ),
+                                                       QStringLiteral( "path" ) );
+          const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
+                                                    QStringLiteral( "Scenario suite JSON file to run." ),
+                                                    QStringLiteral( "path" ) );
         const QCommandLineOption timestampOption(
             QStringLiteral( "timestamp" ),
             QStringLiteral( "Prefix add_comment output with a timestamp." ) );
@@ -612,9 +1324,11 @@ struct CliParameters {
         parser.addOption( filterIndexOption );
         parser.addOption( filterStringOption );
         parser.addOption( textOption );
-        parser.addOption( scriptFileOption );
-        parser.addOption( argsJsonFileOption );
-        parser.addOption( timestampOption );
+          parser.addOption( scriptFileOption );
+          parser.addOption( argsJsonFileOption );
+          parser.addOption( scenarioFileOption );
+          parser.addOption( suiteFileOption );
+          parser.addOption( timestampOption );
         parser.addOption( allOption );
         parser.addOption( idOption );
         parser.addOption( nameOption );
@@ -683,11 +1397,14 @@ struct CliParameters {
         request.rearmAutoRefresh = parser.isSet( autoRefreshOption );
         request.predefinedFilters = parser.isSet( predefinedOption );
         request.entityName = parser.value( nameOption ).trimmed();
-        request.commentText = parser.value( textOption );
-        request.scriptFilePath = normalizeCommanderFilePath( parser.value( scriptFileOption ) );
-        request.argsJsonFilePath
-            = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
-        request.allEntities = parser.isSet( allOption );
+          request.commentText = parser.value( textOption );
+          request.scriptFilePath = normalizeCommanderFilePath( parser.value( scriptFileOption ) );
+          request.argsJsonFilePath
+              = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
+          request.scenarioFilePath
+              = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
+          request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
+          request.allEntities = parser.isSet( allOption );
         request.timestampComment = parser.isSet( timestampOption );
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
@@ -948,6 +1665,30 @@ struct CliParameters {
                     return result;
                 }
                 break;
+            case CommanderAction::RunScenario:
+                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "run_scenario does not accept tab selectors or --all." ) );
+                    return result;
+                }
+                if ( request.scenarioFilePath.isEmpty() ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--scenario-file is required for run_scenario." ) );
+                    return result;
+                }
+                break;
+            case CommanderAction::RunSuite:
+                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "run_suite does not accept tab selectors or --all." ) );
+                    return result;
+                }
+                if ( request.suiteFilePath.isEmpty() ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--suite-file is required for run_suite." ) );
+                    return result;
+                }
+                break;
             case CommanderAction::StopScript:
             case CommanderAction::GetScriptStatus:
             case CommanderAction::GetScriptSubscriptions:
@@ -966,6 +1707,9 @@ struct CliParameters {
             case CommanderAction::GetGlobalScriptStatus:
             case CommanderAction::GetGlobalScriptSubscriptions:
             case CommanderAction::ClearGlobalScriptSubscriptions:
+            case CommanderAction::StopScenarioRun:
+            case CommanderAction::GetScenarioStatus:
+            case CommanderAction::GetScenarioReport:
                 if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
                     result.output_message = formatParserError(
                         parser, QStringLiteral( "%1 does not accept tab selectors or --all." )

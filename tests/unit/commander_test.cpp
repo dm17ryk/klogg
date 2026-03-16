@@ -79,11 +79,186 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "get_global_script_status" ) );
     REQUIRE( parameters.exit_message.contains( "get_global_script_subscriptions" ) );
     REQUIRE( parameters.exit_message.contains( "clear_global_script_subscriptions" ) );
+    REQUIRE( parameters.exit_message.contains( "run_scenario" ) );
+    REQUIRE( parameters.exit_message.contains( "run_suite" ) );
+    REQUIRE( parameters.exit_message.contains( "stop_scenario_run" ) );
+    REQUIRE( parameters.exit_message.contains( "get_scenario_status" ) );
+    REQUIRE( parameters.exit_message.contains( "get_scenario_report" ) );
     REQUIRE( parameters.exit_message.contains( "get_filters" ) );
     REQUIRE( parameters.exit_message.contains( "set_filter" ) );
     REQUIRE( parameters.exit_message.contains( "close_klogg" ) );
     REQUIRE( parameters.exit_message.contains( "close_tab" ) );
     REQUIRE( parameters.exit_message.contains( "--port <name>" ) );
+}
+
+TEST_CASE( "Scenario batch CLI parses run and utility requests", "[scenario][cli]" )
+{
+    CliParameters runSuite( { "klogg", "scenario", "run", "--suite-file", "suite.json",
+                              "--device-map-file", "devices.json", "--report-dir", "reports" } );
+    REQUIRE_FALSE( runSuite.parse_error );
+    REQUIRE( runSuite.scenario_batch_request.has_value() );
+    REQUIRE( runSuite.scenario_batch_request->action == ScenarioBatchAction::Run );
+    REQUIRE( runSuite.scenario_batch_request->suiteFilePath.endsWith( "suite.json" ) );
+    REQUIRE( runSuite.scenario_batch_request->deviceMapFilePath.endsWith( "devices.json" ) );
+    REQUIRE( runSuite.scenario_batch_request->reportDirPath.endsWith( "reports" ) );
+
+    CliParameters runScenario( { "klogg", "scenario", "run", "--scenario-file", "scenario.py",
+                                 "--args-json-file", "args.json" } );
+    REQUIRE_FALSE( runScenario.parse_error );
+    REQUIRE( runScenario.scenario_batch_request.has_value() );
+    REQUIRE( runScenario.scenario_batch_request->action == ScenarioBatchAction::Run );
+    REQUIRE( runScenario.scenario_batch_request->scenarioFilePath.endsWith( "scenario.py" ) );
+    REQUIRE( runScenario.scenario_batch_request->argsJsonFilePath.endsWith( "args.json" ) );
+
+    CliParameters validateSuite(
+        { "klogg", "scenario", "validate", "--suite-file", "suite.json", "--device-map-file",
+          "devices.json" } );
+    REQUIRE_FALSE( validateSuite.parse_error );
+    REQUIRE( validateSuite.scenario_batch_request.has_value() );
+    REQUIRE( validateSuite.scenario_batch_request->action == ScenarioBatchAction::Validate );
+
+    CliParameters listDevices(
+        { "klogg", "scenario", "list-devices", "--suite-file", "suite.json" } );
+    REQUIRE_FALSE( listDevices.parse_error );
+    REQUIRE( listDevices.scenario_batch_request.has_value() );
+    REQUIRE( listDevices.scenario_batch_request->action == ScenarioBatchAction::ListDevices );
+}
+
+TEST_CASE( "Scenario batch CLI rejects invalid combinations", "[scenario][cli]" )
+{
+    CliParameters missingTarget( { "klogg", "scenario", "run" } );
+    REQUIRE( missingTarget.parse_error );
+    REQUIRE( missingTarget.parse_error_message.contains( "exactly one" ) );
+
+    CliParameters conflictingTargets(
+        { "klogg", "scenario", "run", "--suite-file", "suite.json", "--scenario-file",
+          "scenario.py" } );
+    REQUIRE( conflictingTargets.parse_error );
+    REQUIRE( conflictingTargets.parse_error_message.contains( "exactly one" ) );
+
+    CliParameters suiteWithArgs(
+        { "klogg", "scenario", "run", "--suite-file", "suite.json", "--args-json-file",
+          "args.json" } );
+    REQUIRE( suiteWithArgs.parse_error );
+    REQUIRE( suiteWithArgs.parse_error_message.contains( "--args-json-file" ) );
+
+    CliParameters validateInvalid(
+        { "klogg", "scenario", "validate", "--suite-file", "suite.json", "--report-dir",
+          "reports" } );
+    REQUIRE( validateInvalid.parse_error );
+    REQUIRE( validateInvalid.parse_error_message.contains( "only accepts" ) );
+
+    CliParameters listInvalid(
+        { "klogg", "scenario", "list-devices", "--suite-file", "suite.json", "--device-map-file",
+          "devices.json" } );
+    REQUIRE( listInvalid.parse_error );
+    REQUIRE( listInvalid.parse_error_message.contains( "only accepts" ) );
+}
+
+TEST_CASE( "Main CLI exposes remote lab help", "[lab][cli]" )
+{
+    CliParameters parameters( { "klogg", "--help" } );
+
+    REQUIRE( parameters.exit_requested );
+    REQUIRE( parameters.exit_code == EXIT_SUCCESS );
+    REQUIRE( parameters.exit_message.contains( "lab-controller serve" ) );
+    REQUIRE( parameters.exit_message.contains( "lab-agent run" ) );
+    REQUIRE( parameters.exit_message.contains( "lab submit" ) );
+    REQUIRE( parameters.exit_message.contains( "lab artifacts" ) );
+}
+
+TEST_CASE( "Lab CLI parses controller and agent requests", "[lab][cli]" )
+{
+    CliParameters controller( { "klogg", "lab-controller", "serve", "--listen", "127.0.0.1:5091",
+                                "--state-dir", "lab-state", "--token-file", "token.txt" } );
+    REQUIRE_FALSE( controller.parse_error );
+    REQUIRE( controller.lab_request.has_value() );
+    REQUIRE( controller.lab_request->mode == LabCliMode::ControllerServe );
+    REQUIRE( controller.lab_request->listenAddress == "127.0.0.1" );
+    REQUIRE( controller.lab_request->listenPort == 5091 );
+    REQUIRE( controller.lab_request->stateDirPath.endsWith( "lab-state" ) );
+    REQUIRE( controller.lab_request->tokenFilePath.endsWith( "token.txt" ) );
+
+    CliParameters agent( { "klogg", "lab-agent", "run", "--controller-url", "http://127.0.0.1:5091",
+                           "--agent-config", "agent.json", "--token-file", "token.txt" } );
+    REQUIRE_FALSE( agent.parse_error );
+    REQUIRE( agent.lab_request.has_value() );
+    REQUIRE( agent.lab_request->mode == LabCliMode::AgentRun );
+    REQUIRE( agent.lab_request->controllerUrl == "http://127.0.0.1:5091" );
+    REQUIRE( agent.lab_request->agentConfigPath.endsWith( "agent.json" ) );
+    REQUIRE( agent.lab_request->tokenFilePath.endsWith( "token.txt" ) );
+}
+
+TEST_CASE( "Lab operator CLI parses requests", "[lab][cli]" )
+{
+    CliParameters submitSuite( { "klogg", "lab", "submit", "--controller-url", "http://127.0.0.1:5091",
+                                 "--token-file", "token.txt", "--suite-file", "suite.json",
+                                 "--agent-label", "rack-a", "--report-dir", "reports" } );
+    REQUIRE_FALSE( submitSuite.parse_error );
+    REQUIRE( submitSuite.lab_request.has_value() );
+    REQUIRE( submitSuite.lab_request->mode == LabCliMode::Submit );
+    REQUIRE( submitSuite.lab_request->suiteFilePath.endsWith( "suite.json" ) );
+    REQUIRE( submitSuite.lab_request->agentLabel == "rack-a" );
+    REQUIRE( submitSuite.lab_request->reportDirPath.endsWith( "reports" ) );
+
+    CliParameters queue( { "klogg", "lab", "queue", "--controller-url", "http://127.0.0.1:5091",
+                           "--token-file", "token.txt" } );
+    REQUIRE_FALSE( queue.parse_error );
+    REQUIRE( queue.lab_request.has_value() );
+    REQUIRE( queue.lab_request->mode == LabCliMode::Queue );
+
+    CliParameters status( { "klogg", "lab", "status", "--controller-url", "http://127.0.0.1:5091",
+                            "--token-file", "token.txt", "--job-id", "job-1" } );
+    REQUIRE_FALSE( status.parse_error );
+    REQUIRE( status.lab_request.has_value() );
+    REQUIRE( status.lab_request->mode == LabCliMode::Status );
+    REQUIRE( status.lab_request->jobId == "job-1" );
+
+    CliParameters cancel( { "klogg", "lab", "cancel", "--controller-url", "http://127.0.0.1:5091",
+                            "--token-file", "token.txt", "--job-id", "job-2" } );
+    REQUIRE_FALSE( cancel.parse_error );
+    REQUIRE( cancel.lab_request.has_value() );
+    REQUIRE( cancel.lab_request->mode == LabCliMode::Cancel );
+    REQUIRE( cancel.lab_request->jobId == "job-2" );
+
+    CliParameters agents( { "klogg", "lab", "agents", "--controller-url", "http://127.0.0.1:5091",
+                            "--token-file", "token.txt" } );
+    REQUIRE_FALSE( agents.parse_error );
+    REQUIRE( agents.lab_request.has_value() );
+    REQUIRE( agents.lab_request->mode == LabCliMode::Agents );
+
+    CliParameters artifacts( { "klogg", "lab", "artifacts", "--controller-url", "http://127.0.0.1:5091",
+                               "--token-file", "token.txt", "--job-id", "job-3", "--output-dir",
+                               "downloads" } );
+    REQUIRE_FALSE( artifacts.parse_error );
+    REQUIRE( artifacts.lab_request.has_value() );
+    REQUIRE( artifacts.lab_request->mode == LabCliMode::Artifacts );
+    REQUIRE( artifacts.lab_request->outputDirPath.endsWith( "downloads" ) );
+}
+
+TEST_CASE( "Lab operator CLI rejects invalid combinations", "[lab][cli]" )
+{
+    CliParameters missingToken( { "klogg", "lab", "queue", "--controller-url", "http://127.0.0.1:5091" } );
+    REQUIRE( missingToken.parse_error );
+    REQUIRE( missingToken.parse_error_message.contains( "--token-file" ) );
+
+    CliParameters invalidSubmit(
+        { "klogg", "lab", "submit", "--controller-url", "http://127.0.0.1:5091", "--token-file",
+          "token.txt", "--suite-file", "suite.json", "--scenario-file", "scenario.py" } );
+    REQUIRE( invalidSubmit.parse_error );
+    REQUIRE( invalidSubmit.parse_error_message.contains( "exactly one" ) );
+
+    CliParameters missingArtifactOutput(
+        { "klogg", "lab", "artifacts", "--controller-url", "http://127.0.0.1:5091",
+          "--token-file", "token.txt", "--job-id", "job-9" } );
+    REQUIRE( missingArtifactOutput.parse_error );
+    REQUIRE( missingArtifactOutput.parse_error_message.contains( "--output-dir" ) );
+
+    CliParameters missingAgentConfig(
+        { "klogg", "lab-agent", "run", "--controller-url", "http://127.0.0.1:5091",
+          "--token-file", "token.txt" } );
+    REQUIRE( missingAgentConfig.parse_error );
+    REQUIRE( missingAgentConfig.parse_error_message.contains( "--agent-config" ) );
 }
 
 TEST_CASE( "Commander CLI rejects missing required arguments", "[commander][cli]" )
@@ -302,6 +477,63 @@ TEST_CASE( "Commander CLI parses global script runner requests", "[commander][cl
     REQUIRE( clearGlobalSubscriptions.commander_request.has_value() );
     REQUIRE( clearGlobalSubscriptions.commander_request->action
              == CommanderAction::ClearGlobalScriptSubscriptions );
+}
+
+TEST_CASE( "Commander CLI parses scenario runner requests", "[commander][cli]" )
+{
+    CliParameters runScenario(
+        { "klogg", "command", "--action", "run_scenario", "--scenario-file", "scenario.py",
+          "--args-json-file", "args.json" } );
+    REQUIRE_FALSE( runScenario.parse_error );
+    REQUIRE( runScenario.commander_request.has_value() );
+    REQUIRE( runScenario.commander_request->action == CommanderAction::RunScenario );
+    REQUIRE( runScenario.commander_request->scenarioFilePath.endsWith( "scenario.py" ) );
+    REQUIRE( runScenario.commander_request->argsJsonFilePath.endsWith( "args.json" ) );
+
+    CliParameters runSuite(
+        { "klogg", "command", "--action", "run_suite", "--suite-file", "suite.json" } );
+    REQUIRE_FALSE( runSuite.parse_error );
+    REQUIRE( runSuite.commander_request.has_value() );
+    REQUIRE( runSuite.commander_request->action == CommanderAction::RunSuite );
+    REQUIRE( runSuite.commander_request->suiteFilePath.endsWith( "suite.json" ) );
+
+    CliParameters getStatus(
+        { "klogg", "command", "--action", "get_scenario_status", "--pretty" } );
+    REQUIRE_FALSE( getStatus.parse_error );
+    REQUIRE( getStatus.commander_request.has_value() );
+    REQUIRE( getStatus.commander_request->action == CommanderAction::GetScenarioStatus );
+    REQUIRE( getStatus.commander_request->prettyOutput );
+
+    CliParameters getReport(
+        { "klogg", "command", "--action", "get_scenario_report", "--pretty" } );
+    REQUIRE_FALSE( getReport.parse_error );
+    REQUIRE( getReport.commander_request.has_value() );
+    REQUIRE( getReport.commander_request->action == CommanderAction::GetScenarioReport );
+    REQUIRE( getReport.commander_request->prettyOutput );
+}
+
+TEST_CASE( "Commander CLI rejects invalid scenario selectors", "[commander][cli]" )
+{
+    CliParameters missingScenarioFile(
+        { "klogg", "command", "--action", "run_scenario" } );
+    REQUIRE( missingScenarioFile.parse_error );
+    REQUIRE( missingScenarioFile.parse_error_message.contains( "--scenario-file" ) );
+
+    CliParameters missingSuiteFile(
+        { "klogg", "command", "--action", "run_suite" } );
+    REQUIRE( missingSuiteFile.parse_error );
+    REQUIRE( missingSuiteFile.parse_error_message.contains( "--suite-file" ) );
+
+    CliParameters scenarioWithTab(
+        { "klogg", "command", "--action", "run_scenario", "--scenario-file", "scenario.py",
+          "--tab-id", "tab-1" } );
+    REQUIRE( scenarioWithTab.parse_error );
+    REQUIRE( scenarioWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+
+    CliParameters scenarioStatusWithAll(
+        { "klogg", "command", "--action", "get_scenario_status", "--all" } );
+    REQUIRE( scenarioStatusWithAll.parse_error );
+    REQUIRE( scenarioStatusWithAll.parse_error_message.contains( "does not accept tab selectors or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid global script selectors", "[commander][cli]" )

@@ -104,28 +104,38 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "reset_response_counter" );
     case CommanderAction::ClearComm:
         return QStringLiteral( "clear_comm" );
-    case CommanderAction::RunScript:
-        return QStringLiteral( "run_script" );
-    case CommanderAction::RunGlobalScript:
-        return QStringLiteral( "run_global_script" );
-    case CommanderAction::StopScript:
-        return QStringLiteral( "stop_script" );
-    case CommanderAction::StopGlobalScript:
-        return QStringLiteral( "stop_global_script" );
-    case CommanderAction::GetScriptStatus:
-        return QStringLiteral( "get_script_status" );
-    case CommanderAction::GetGlobalScriptStatus:
-        return QStringLiteral( "get_global_script_status" );
-    case CommanderAction::GetScriptSubscriptions:
-        return QStringLiteral( "get_script_subscriptions" );
-    case CommanderAction::GetGlobalScriptSubscriptions:
-        return QStringLiteral( "get_global_script_subscriptions" );
-    case CommanderAction::ClearScriptSubscriptions:
-        return QStringLiteral( "clear_script_subscriptions" );
-    case CommanderAction::ClearGlobalScriptSubscriptions:
-        return QStringLiteral( "clear_global_script_subscriptions" );
-    case CommanderAction::FocusTab:
-        return QStringLiteral( "focus_tab" );
+      case CommanderAction::RunScript:
+          return QStringLiteral( "run_script" );
+      case CommanderAction::RunGlobalScript:
+          return QStringLiteral( "run_global_script" );
+      case CommanderAction::RunScenario:
+          return QStringLiteral( "run_scenario" );
+      case CommanderAction::RunSuite:
+          return QStringLiteral( "run_suite" );
+      case CommanderAction::StopScript:
+          return QStringLiteral( "stop_script" );
+      case CommanderAction::StopGlobalScript:
+          return QStringLiteral( "stop_global_script" );
+      case CommanderAction::StopScenarioRun:
+          return QStringLiteral( "stop_scenario_run" );
+      case CommanderAction::GetScriptStatus:
+          return QStringLiteral( "get_script_status" );
+      case CommanderAction::GetGlobalScriptStatus:
+          return QStringLiteral( "get_global_script_status" );
+      case CommanderAction::GetScenarioStatus:
+          return QStringLiteral( "get_scenario_status" );
+      case CommanderAction::GetScriptSubscriptions:
+          return QStringLiteral( "get_script_subscriptions" );
+      case CommanderAction::GetGlobalScriptSubscriptions:
+          return QStringLiteral( "get_global_script_subscriptions" );
+      case CommanderAction::ClearScriptSubscriptions:
+          return QStringLiteral( "clear_script_subscriptions" );
+      case CommanderAction::ClearGlobalScriptSubscriptions:
+          return QStringLiteral( "clear_global_script_subscriptions" );
+      case CommanderAction::GetScenarioReport:
+          return QStringLiteral( "get_scenario_report" );
+      case CommanderAction::FocusTab:
+          return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
         return QStringLiteral( "set_filter" );
     case CommanderAction::CloseTab:
@@ -229,36 +239,51 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "run_script" ) ) {
         return CommanderAction::RunScript;
     }
-    if ( normalized == QStringLiteral( "run_global_script" ) ) {
-        return CommanderAction::RunGlobalScript;
-    }
-    if ( normalized == QStringLiteral( "stop_script" ) ) {
-        return CommanderAction::StopScript;
-    }
-    if ( normalized == QStringLiteral( "stop_global_script" ) ) {
-        return CommanderAction::StopGlobalScript;
-    }
-    if ( normalized == QStringLiteral( "get_script_status" ) ) {
-        return CommanderAction::GetScriptStatus;
-    }
-    if ( normalized == QStringLiteral( "get_global_script_status" ) ) {
-        return CommanderAction::GetGlobalScriptStatus;
-    }
-    if ( normalized == QStringLiteral( "get_script_subscriptions" ) ) {
-        return CommanderAction::GetScriptSubscriptions;
-    }
+      if ( normalized == QStringLiteral( "run_global_script" ) ) {
+          return CommanderAction::RunGlobalScript;
+      }
+      if ( normalized == QStringLiteral( "run_scenario" ) ) {
+          return CommanderAction::RunScenario;
+      }
+      if ( normalized == QStringLiteral( "run_suite" ) ) {
+          return CommanderAction::RunSuite;
+      }
+      if ( normalized == QStringLiteral( "stop_script" ) ) {
+          return CommanderAction::StopScript;
+      }
+      if ( normalized == QStringLiteral( "stop_global_script" ) ) {
+          return CommanderAction::StopGlobalScript;
+      }
+      if ( normalized == QStringLiteral( "stop_scenario_run" ) ) {
+          return CommanderAction::StopScenarioRun;
+      }
+      if ( normalized == QStringLiteral( "get_script_status" ) ) {
+          return CommanderAction::GetScriptStatus;
+      }
+      if ( normalized == QStringLiteral( "get_global_script_status" ) ) {
+          return CommanderAction::GetGlobalScriptStatus;
+      }
+      if ( normalized == QStringLiteral( "get_scenario_status" ) ) {
+          return CommanderAction::GetScenarioStatus;
+      }
+      if ( normalized == QStringLiteral( "get_script_subscriptions" ) ) {
+          return CommanderAction::GetScriptSubscriptions;
+      }
     if ( normalized == QStringLiteral( "get_global_script_subscriptions" ) ) {
         return CommanderAction::GetGlobalScriptSubscriptions;
     }
     if ( normalized == QStringLiteral( "clear_script_subscriptions" ) ) {
         return CommanderAction::ClearScriptSubscriptions;
     }
-    if ( normalized == QStringLiteral( "clear_global_script_subscriptions" ) ) {
-        return CommanderAction::ClearGlobalScriptSubscriptions;
-    }
-    if ( normalized == QStringLiteral( "focus_tab" ) ) {
-        return CommanderAction::FocusTab;
-    }
+      if ( normalized == QStringLiteral( "clear_global_script_subscriptions" ) ) {
+          return CommanderAction::ClearGlobalScriptSubscriptions;
+      }
+      if ( normalized == QStringLiteral( "get_scenario_report" ) ) {
+          return CommanderAction::GetScenarioReport;
+      }
+      if ( normalized == QStringLiteral( "focus_tab" ) ) {
+          return CommanderAction::FocusTab;
+      }
     if ( normalized == QStringLiteral( "set_filter" ) ) {
         return CommanderAction::SetFilter;
     }
@@ -351,9 +376,15 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.scriptFilePath.isEmpty() ) {
         map.insert( QStringLiteral( "scriptFilePath" ), request.scriptFilePath );
     }
-    if ( !request.argsJsonFilePath.isEmpty() ) {
-        map.insert( QStringLiteral( "argsJsonFilePath" ), request.argsJsonFilePath );
-    }
+      if ( !request.argsJsonFilePath.isEmpty() ) {
+          map.insert( QStringLiteral( "argsJsonFilePath" ), request.argsJsonFilePath );
+      }
+      if ( !request.scenarioFilePath.isEmpty() ) {
+          map.insert( QStringLiteral( "scenarioFilePath" ), request.scenarioFilePath );
+      }
+      if ( !request.suiteFilePath.isEmpty() ) {
+          map.insert( QStringLiteral( "suiteFilePath" ), request.suiteFilePath );
+      }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -445,9 +476,11 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.filterId = map.value( QStringLiteral( "filterId" ) ).toString();
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
     request.entityName = map.value( QStringLiteral( "entityName" ) ).toString();
-    request.commentText = map.value( QStringLiteral( "commentText" ) ).toString();
-    request.scriptFilePath = map.value( QStringLiteral( "scriptFilePath" ) ).toString();
-    request.argsJsonFilePath = map.value( QStringLiteral( "argsJsonFilePath" ) ).toString();
+      request.commentText = map.value( QStringLiteral( "commentText" ) ).toString();
+      request.scriptFilePath = map.value( QStringLiteral( "scriptFilePath" ) ).toString();
+      request.argsJsonFilePath = map.value( QStringLiteral( "argsJsonFilePath" ) ).toString();
+      request.scenarioFilePath = map.value( QStringLiteral( "scenarioFilePath" ) ).toString();
+      request.suiteFilePath = map.value( QStringLiteral( "suiteFilePath" ) ).toString();
     request.allEntities = map.value( QStringLiteral( "allEntities" ) ).toBool();
     request.timestampComment = map.value( QStringLiteral( "timestampComment" ) ).toBool();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();

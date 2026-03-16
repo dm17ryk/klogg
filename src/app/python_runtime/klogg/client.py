@@ -22,6 +22,10 @@ def _load_script_args() -> Any:
         return json.load(handle)
 
 
+def _set_script_args(value: Any) -> None:
+    _get_client()._script_args = value
+
+
 @dataclass
 class ReceiveEvent:
     tab_id: str

@@ -70,6 +70,9 @@
 
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "labqueuewindow.h"
+#include "scenariorunner.h"
+#include "scenariorunnerwindow.h"
 #include "scriptrunnerwindow.h"
 #include "scriptsupervisor.h"
 #include "startupprogress.h"
@@ -88,7 +91,11 @@ class KloggApp : public QApplication {
         QNetworkProxyFactory::setUseSystemConfiguration( true );
         scriptSupervisor_.setCommanderExecutor(
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
+        scenarioRunner_.setCommanderExecutor(
+            [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
         scriptRunnerWindow_.setWindowTitle( tr( "klogg - script runner" ) );
+        scenarioRunnerWindow_.setWindowTitle( tr( "klogg - scenario runner" ) );
+        labQueueWindow_.setWindowTitle( tr( "klogg - lab queue" ) );
         connect( &scriptSupervisor_, &ScriptSupervisor::statusChanged, this,
                  [ this ]() {
                      for ( const auto& [ windowSession, window ] : mainWindows_ ) {
@@ -516,6 +523,26 @@ class KloggApp : public QApplication {
             return commanderSuccess( {}, payload );
         }
 
+        if ( request.action == CommanderAction::RunScenario ) {
+            return scenarioRunner_.runScenario( request );
+        }
+
+        if ( request.action == CommanderAction::RunSuite ) {
+            return scenarioRunner_.runSuite( request );
+        }
+
+        if ( request.action == CommanderAction::StopScenarioRun ) {
+            return scenarioRunner_.stopRun();
+        }
+
+        if ( request.action == CommanderAction::GetScenarioStatus ) {
+            return scenarioRunner_.status();
+        }
+
+        if ( request.action == CommanderAction::GetScenarioReport ) {
+            return scenarioRunner_.report();
+        }
+
         if ( request.action == CommanderAction::RunScript ) {
             return scriptSupervisor_.runScript( request );
         }
@@ -875,9 +902,30 @@ class KloggApp : public QApplication {
         scriptRunnerWindow_.activateWindow();
     }
 
+    Q_INVOKABLE void showScenarioRunnerWindow()
+    {
+        auto state = scenarioRunnerWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        scenarioRunnerWindow_.setWindowState( state );
+        scenarioRunnerWindow_.show();
+        scenarioRunnerWindow_.raise();
+        scenarioRunnerWindow_.activateWindow();
+    }
+
+    Q_INVOKABLE void showLabQueueWindow()
+    {
+        auto state = labQueueWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        labQueueWindow_.setWindowState( state );
+        labQueueWindow_.show();
+        labQueueWindow_.raise();
+        labQueueWindow_.activateWindow();
+    }
+
     Q_INVOKABLE void publishScriptEvent( const QVariantMap& event )
     {
         scriptSupervisor_.publishEvent( event );
+        scenarioRunner_.publishEvent( event );
     }
 
     void startBackgroundTasks()
@@ -1120,6 +1168,9 @@ class KloggApp : public QApplication {
     MessageReceiver messageReceiver_;
     ScriptSupervisor scriptSupervisor_;
     ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
+    ScenarioRunner scenarioRunner_;
+    ScenarioRunnerWindow scenarioRunnerWindow_{ &scenarioRunner_ };
+    LabQueueWindow labQueueWindow_{};
     bool globalScriptRestoreAttempted_ = false;
 
     std::shared_ptr<Session> session_;
