@@ -140,7 +140,8 @@ QByteArray applyChecksum( const ActionDefinition& action,
             crc ^= static_cast<quint8>( byte ) << 8;
             for ( int i = 0; i < 8; ++i ) {
                 if ( ( crc & 0x8000 ) != 0u ) {
-                    crc = static_cast<quint16>( ( crc << 1 ) ^ 0x1021u );
+                    crc = static_cast<quint16>( static_cast<quint16>( crc << 1 )
+                                                ^ static_cast<quint16>( 0x1021u ) );
                 }
                 else {
                     crc = static_cast<quint16>( crc << 1 );

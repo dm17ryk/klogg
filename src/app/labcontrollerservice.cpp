@@ -78,18 +78,6 @@ QVariantMap queryRowToMap( const QSqlQuery& query )
     return result;
 }
 
-QStringList stringListFromVariant( const QVariant& value )
-{
-    QStringList result;
-    for ( const auto& item : value.toList() ) {
-        const auto text = item.toString().trimmed();
-        if ( !text.isEmpty() ) {
-            result.push_back( text );
-        }
-    }
-    return result;
-}
-
 } // namespace
 
 struct LabControllerService::AgentConnectionState {

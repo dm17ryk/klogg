@@ -183,7 +183,7 @@ bool ActionsManager::createAction( ActionDefinition action, QString* errorMessag
     if ( action.id <= 0 ) {
         action.id = nextActionId();
     }
-    action.order = actions_.size();
+    action.order = static_cast<int>( actions_.size() );
     if ( !validateActionDefinition( action, errorMessage ) ) {
         return false;
     }
@@ -310,7 +310,7 @@ bool ActionsManager::createResponse( ResponseDefinition response, QString* error
     if ( response.id <= 0 ) {
         response.id = nextResponseId();
     }
-    response.order = responses_.size();
+    response.order = static_cast<int>( responses_.size() );
     if ( !validateResponseDefinition( response, errorMessage ) ) {
         return false;
     }
