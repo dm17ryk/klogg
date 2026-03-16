@@ -604,8 +604,9 @@ void ResponseEditDialog::updateMatchEditorMode()
 
 void ResponseEditDialog::refreshStepTable()
 {
-    stepsTable_->setRowCount( steps_.size() );
-    for ( int row = 0; row < steps_.size(); ++row ) {
+    const auto stepCount = static_cast<int>( steps_.size() );
+    stepsTable_->setRowCount( stepCount );
+    for ( int row = 0; row < stepCount; ++row ) {
         const auto& step = steps_.at( row );
         auto* actionItem = new QTableWidgetItem( actionLabel( actions_, step.actionId ) );
         actionItem->setData( Qt::UserRole, step.actionId );
@@ -620,7 +621,7 @@ void ResponseEditDialog::refreshStepTable()
     deleteStepButton_->setEnabled( hasSelection );
     moveStepUpButton_->setEnabled( hasSelection && selectedStepRow() > 0 );
     moveStepDownButton_->setEnabled( hasSelection && selectedStepRow() >= 0
-                                     && selectedStepRow() < steps_.size() - 1 );
+                                     && selectedStepRow() < stepCount - 1 );
 }
 
 int ResponseEditDialog::selectedStepRow() const
@@ -647,7 +648,7 @@ void ResponseEditDialog::addStep()
 
     steps_.push_back( dialog.step() );
     refreshStepTable();
-    stepsTable_->selectRow( steps_.size() - 1 );
+    stepsTable_->selectRow( static_cast<int>( steps_.size() ) - 1 );
 }
 
 void ResponseEditDialog::editSelectedStep()
@@ -677,11 +678,11 @@ void ResponseEditDialog::deleteSelectedStep()
 
     steps_.removeAt( row );
     refreshStepTable();
-    if ( row < steps_.size() ) {
+    if ( row < static_cast<int>( steps_.size() ) ) {
         stepsTable_->selectRow( row );
     }
     else if ( !steps_.isEmpty() ) {
-        stepsTable_->selectRow( steps_.size() - 1 );
+        stepsTable_->selectRow( static_cast<int>( steps_.size() ) - 1 );
     }
 }
 
@@ -692,7 +693,7 @@ void ResponseEditDialog::moveSelectedStep( int offset )
         return;
     }
 
-    const auto targetRow = qBound( 0, row + offset, steps_.size() - 1 );
+    const auto targetRow = qBound( 0, row + offset, static_cast<int>( steps_.size() ) - 1 );
     if ( targetRow == row ) {
         return;
     }

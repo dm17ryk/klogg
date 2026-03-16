@@ -800,7 +800,7 @@ void ScenarioRunner::appendOutputChunk( const QString& chunk, bool stderrStream 
     QString* pending = stderrStream ? &pendingStderr_ : &pendingStdout_;
     pending->append( chunk );
 
-    int newlineIndex = -1;
+    qsizetype newlineIndex = -1;
     while ( ( newlineIndex = pending->indexOf( '\n' ) ) >= 0 ) {
         const auto line = pending->left( newlineIndex + 1 );
         pending->remove( 0, newlineIndex + 1 );
