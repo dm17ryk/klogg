@@ -67,6 +67,7 @@ xcopy %KLOGG_WORKSPACE%\COPYING %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\NOTICE %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\README.md %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\DOCUMENTATION.md %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\output\python_runtime %KLOGG_WORKSPACE%\release\python_runtime\ /e /i /y
 
 echo "Copying vc runtime..."
 xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\msvcp140.dll" %KLOGG_WORKSPACE%\release\ /y
@@ -96,12 +97,9 @@ xcopy %QTDIR%\bin\%KLOGG_QT%Core5Compat.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %QTDIR%\bin\%KLOGG_QT%SerialPort.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %QTDIR%\bin\%KLOGG_QT%Svg.dll %KLOGG_WORKSPACE%\release\ /y
 
-md %KLOGG_WORKSPACE%\release\platforms
-xcopy %QTDIR%\plugins\platforms\qwindows.dll %KLOGG_WORKSPACE%\release\platforms\ /y
-
-md %KLOGG_WORKSPACE%\release\styles
-xcopy %QTDIR%\plugins\styles\qwindowsvistastyle.dll %KLOGG_WORKSPACE%\release\styles /y
-xcopy %QTDIR%\plugins\styles\qmodernwindowsstyle.dll %KLOGG_WORKSPACE%\release\styles /y
+echo "Deploying Qt runtime..."
+"%QTDIR%\bin\windeployqt.exe" --force --no-compiler-runtime --dir %KLOGG_WORKSPACE%\release %KLOGG_WORKSPACE%\release\klogg.exe
+if errorlevel 1 exit /b 1
 
 echo "Copying packaging files..."
 md %KLOGG_WORKSPACE%\chocolately
@@ -114,7 +112,9 @@ xcopy %KLOGG_WORKSPACE%\packaging\windows\klogg.nsi  /y
 xcopy %KLOGG_WORKSPACE%\packaging\windows\FileAssociation.nsh  /y
 
 echo "Making portable archive..."
-7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_klogg_listfile.txt
+pushd %KLOGG_WORKSPACE%
+7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip .\release\* -xr!*.pdb
+popd
 
 set "PDB_ARCHIVE=%KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip"
 set "PDB_LIST=%KLOGG_WORKSPACE%\release\pdb_file_list.txt"

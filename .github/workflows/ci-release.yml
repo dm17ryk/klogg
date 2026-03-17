@@ -11,7 +11,73 @@ permissions:
   contents: write
 
 jobs:
+  validate-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts for last successful CI workflow
+      if: ${{ !github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: ci-build.yml
+        workflow_conclusion: success
+    - name: Download artifacts for CI workflow with provided run id
+      if: ${{ github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        workflow: ci-build.yml
+        run_id: ${{ github.event.inputs.ci-run-id }}
+    - name: Install validation tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y rpm
+    - name: Validate Linux artifacts
+      run: bash ./scripts/validate_release_linux.sh
+
+  validate-windows:
+    runs-on: windows-2022
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts for last successful CI workflow
+      if: ${{ !github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: ci-build.yml
+        workflow_conclusion: success
+    - name: Download artifacts for CI workflow with provided run id
+      if: ${{ github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        workflow: ci-build.yml
+        run_id: ${{ github.event.inputs.ci-run-id }}
+    - name: Validate Windows artifacts
+      shell: pwsh
+      run: ./scripts/validate_release_windows.ps1
+
+  validate-macos:
+    runs-on: macos-14
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts for last successful CI workflow
+      if: ${{ !github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v2
+      with:
+        workflow: ci-build.yml
+        workflow_conclusion: success
+    - name: Download artifacts for CI workflow with provided run id
+      if: ${{ github.event.inputs.ci-run-id }}
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        workflow: ci-build.yml
+        run_id: ${{ github.event.inputs.ci-run-id }}
+    - name: Validate macOS artifacts
+      run: bash ./scripts/validate_release_macos.sh
+
   release:
+    needs:
+      - validate-linux
+      - validate-windows
+      - validate-macos
     runs-on: ubuntu-latest
     env:
       SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
