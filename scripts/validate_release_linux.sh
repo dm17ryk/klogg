@@ -30,15 +30,17 @@ validate_rpm() {
 
 validate_appimage() {
   local pkg="$1"
+  local pkg_abs
   local workdir
 
   echo "Validating AppImage: $pkg"
+  pkg_abs="$(realpath "$pkg")"
   workdir="$(mktemp -d)"
 
-  chmod +x "$pkg"
+  chmod +x "$pkg_abs"
   (
     cd "$workdir"
-    "$pkg" --appimage-extract >/dev/null
+    "$pkg_abs" --appimage-extract >/dev/null
   )
 
   test -f "$workdir/squashfs-root/usr/bin/klogg" || fail "AppImage missing klogg binary: $pkg"
