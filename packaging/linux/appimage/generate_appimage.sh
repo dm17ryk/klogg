@@ -13,8 +13,66 @@ if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 fi
 
 QT_SQL_DRIVER_EXCLUDES="libqsqlibase.so,libqsqlmimer.so,libqsqlmysql.so,libqsqloci.so,libqsqlodbc.so,libqsqlpsql.so"
+QT_SQL_DRIVER_FILES=(libqsqlibase.so libqsqlmimer.so libqsqlmysql.so libqsqloci.so libqsqlodbc.so libqsqlpsql.so)
+QT_PLUGIN_DIR=""
+QT_SQL_DRIVER_BACKUP_DIR=""
+
+for qtpaths_bin in qtpaths qtpaths6; do
+  if command -v "${qtpaths_bin}" >/dev/null 2>&1; then
+    QT_PLUGIN_DIR="$(${qtpaths_bin} --plugin-dir 2>/dev/null || true)"
+    if [ -n "${QT_PLUGIN_DIR}" ]; then
+      break
+    fi
+  fi
+done
+
+if [ -z "${QT_PLUGIN_DIR}" ] && [ -d "/opt/Qt/6.10.1/current/plugins" ]; then
+  QT_PLUGIN_DIR="/opt/Qt/6.10.1/current/plugins"
+fi
+
+hide_optional_sql_drivers() {
+  local sql_driver_dir
+  sql_driver_dir="${QT_PLUGIN_DIR}/sqldrivers"
+
+  if [ ! -d "${sql_driver_dir}" ]; then
+    return
+  fi
+
+  QT_SQL_DRIVER_BACKUP_DIR="$(mktemp -d)"
+
+  local driver
+  for driver in "${QT_SQL_DRIVER_FILES[@]}"; do
+    if [ -f "${sql_driver_dir}/${driver}" ]; then
+      mv "${sql_driver_dir}/${driver}" "${QT_SQL_DRIVER_BACKUP_DIR}/${driver}"
+    fi
+  done
+}
+
+restore_optional_sql_drivers() {
+  local sql_driver_dir
+  sql_driver_dir="${QT_PLUGIN_DIR}/sqldrivers"
+
+  if [ -z "${QT_SQL_DRIVER_BACKUP_DIR}" ] || [ ! -d "${QT_SQL_DRIVER_BACKUP_DIR}" ]; then
+    return
+  fi
+
+  mkdir -p "${sql_driver_dir}"
+
+  local driver
+  for driver in "${QT_SQL_DRIVER_FILES[@]}"; do
+    if [ -f "${QT_SQL_DRIVER_BACKUP_DIR}/${driver}" ]; then
+      mv "${QT_SQL_DRIVER_BACKUP_DIR}/${driver}" "${sql_driver_dir}/${driver}"
+    fi
+  done
+
+  rmdir "${QT_SQL_DRIVER_BACKUP_DIR}" 2>/dev/null || true
+  QT_SQL_DRIVER_BACKUP_DIR=""
+}
+
+trap restore_optional_sql_drivers EXIT
 
 DESTDIR=$(readlink -f appdir) ninja install
+hide_optional_sql_drivers
 
 run_linuxdeployqt() {
   local args=("$@")
