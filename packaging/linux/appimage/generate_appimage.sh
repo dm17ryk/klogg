@@ -12,6 +12,8 @@ if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
   LIB_DIR="/lib/aarch64-linux-gnu"
 fi
 
+QT_SQL_DRIVER_EXCLUDES="libqsqlibase.so,libqsqlmimer.so,libqsqlmysql.so,libqsqloci.so,libqsqlodbc.so,libqsqlpsql.so"
+
 DESTDIR=$(readlink -f appdir) ninja install
 
 run_linuxdeployqt() {
@@ -40,7 +42,7 @@ run_linuxdeployqt() {
 
 if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
   -bundle-non-qt-libs \
-  -exclude-libs=libqsqlibase.so; then
+  "-exclude-libs=${QT_SQL_DRIVER_EXCLUDES}"; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64, skipping AppImage generation." >&2
     mkdir -p ./packages
@@ -56,7 +58,7 @@ cp "${LIB_DIR}"/libssl* appdir/usr/lib
 
 if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
   -appimage \
-  -exclude-libs=libqsqlibase.so; then
+  "-exclude-libs=${QT_SQL_DRIVER_EXCLUDES}"; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64 during AppImage stage, skipping." >&2
     mkdir -p ./packages
