@@ -98,8 +98,13 @@ xcopy %QTDIR%\bin\%KLOGG_QT%SerialPort.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %QTDIR%\bin\%KLOGG_QT%Svg.dll %KLOGG_WORKSPACE%\release\ /y
 
 echo "Deploying Qt runtime..."
-"%QTDIR%\bin\windeployqt.exe" --force --no-compiler-runtime --dir %KLOGG_WORKSPACE%\release %KLOGG_WORKSPACE%\release\klogg.exe
-if errorlevel 1 exit /b 1
+if /i "%KLOGG_ARCH%"=="arm64" (
+  call :manual_qt_deploy
+  if errorlevel 1 exit /b 1
+) else (
+  "%QTDIR%\bin\windeployqt.exe" --force --no-compiler-runtime --dir %KLOGG_WORKSPACE%\release %KLOGG_WORKSPACE%\release\klogg.exe
+  if errorlevel 1 exit /b 1
+)
 
 echo "Copying packaging files..."
 md %KLOGG_WORKSPACE%\chocolately
@@ -132,3 +137,23 @@ if exist "%PDB_LIST%" (
 if exist "%PDB_LIST%" del "%PDB_LIST%"
 
 echo "Done!"
+goto :eof
+
+:manual_qt_deploy
+echo "Using manual Qt deploy for %KLOGG_ARCH%"
+xcopy %QTDIR%\bin\Qt6*.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\icu*.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\D3Dcompiler_47.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\dxcompiler.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\dxil.dll %KLOGG_WORKSPACE%\release\ /y
+
+if exist %QTDIR%\plugins\platforms xcopy %QTDIR%\plugins\platforms %KLOGG_WORKSPACE%\release\platforms\ /e /i /y
+if exist %QTDIR%\plugins\generic xcopy %QTDIR%\plugins\generic %KLOGG_WORKSPACE%\release\generic\ /e /i /y
+if exist %QTDIR%\plugins\iconengines xcopy %QTDIR%\plugins\iconengines %KLOGG_WORKSPACE%\release\iconengines\ /e /i /y
+if exist %QTDIR%\plugins\imageformats xcopy %QTDIR%\plugins\imageformats %KLOGG_WORKSPACE%\release\imageformats\ /e /i /y
+if exist %QTDIR%\plugins\networkinformation xcopy %QTDIR%\plugins\networkinformation %KLOGG_WORKSPACE%\release\networkinformation\ /e /i /y
+if exist %QTDIR%\plugins\sqldrivers xcopy %QTDIR%\plugins\sqldrivers %KLOGG_WORKSPACE%\release\sqldrivers\ /e /i /y
+if exist %QTDIR%\plugins\styles xcopy %QTDIR%\plugins\styles %KLOGG_WORKSPACE%\release\styles\ /e /i /y
+if exist %QTDIR%\plugins\tls xcopy %QTDIR%\plugins\tls %KLOGG_WORKSPACE%\release\tls\ /e /i /y
+if exist %QTDIR%\translations xcopy %QTDIR%\translations %KLOGG_WORKSPACE%\release\translations\ /e /i /y
+exit /b 0
