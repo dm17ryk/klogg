@@ -29,13 +29,13 @@ for dir in ./packages-macos-*; do
 
   validate_app_bundle "$app"
 
-  mount_point="$(mktemp -d /tmp/klogg-dmg-XXXXXX)"
-  hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse -readonly >/dev/null
+  attach_output="$(hdiutil attach "$dmg" -nobrowse -readonly)"
+  mount_point="$(printf '%s\n' "$attach_output" | awk 'END { print substr($0, index($0, $3)) }')"
+  [[ -n "$mount_point" && -d "$mount_point" ]] || { echo "Failed to resolve mount point for $dmg" >&2; exit 1; }
   mounted_app="$(find "$mount_point" -maxdepth 1 -name '*.app' -print -quit)"
   [[ -n "$mounted_app" ]] || { echo "No .app found inside DMG $dmg" >&2; hdiutil detach "$mount_point" -quiet || true; exit 1; }
   assert_path "$mounted_app/Contents/MacOS/klogg" "Mounted DMG app is missing executable for $dmg"
   hdiutil detach "$mount_point" -quiet
-  rmdir "$mount_point"
 done
 
 echo "macOS release validation passed."

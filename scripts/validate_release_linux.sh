@@ -3,9 +3,13 @@ set -euo pipefail
 
 validate_deb() {
   local pkg="$1"
-  dpkg-deb -c "$pkg" | grep -q './usr/bin/klogg$'
-  dpkg-deb -I "$pkg" | grep -q 'libqt6sql6'
-  dpkg-deb -I "$pkg" | grep -q 'libqt6serialport6'
+  local contents
+  local metadata
+  contents="$(dpkg-deb -c "$pkg")"
+  metadata="$(dpkg-deb -I "$pkg")"
+  grep -q './usr/bin/klogg$' <<<"$contents"
+  grep -q 'libqt6sql6' <<<"$metadata"
+  grep -q 'libqt6serialport6' <<<"$metadata"
 }
 
 validate_rpm() {

@@ -41,6 +41,32 @@ function Assert-KloggDeployment {
     Assert-PathExists (Join-Path $Root "platforms\\qwindows.dll") "$Context is missing qwindows.dll"
 }
 
+function Resolve-KloggRoot {
+    param(
+        [string]$ExtractedRoot,
+        [string]$Context
+    )
+
+    $candidates = @(
+        $ExtractedRoot,
+        (Join-Path $ExtractedRoot "release")
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath (Join-Path $candidate "klogg.exe")) {
+            return $candidate
+        }
+    }
+
+    $nested = Get-ChildItem -Path $ExtractedRoot -Recurse -Filter "klogg.exe" -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty DirectoryName
+    if ($nested) {
+        return $nested
+    }
+
+    throw "$Context is missing klogg.exe"
+}
+
 $packageDirs = Get-ChildItem -Path "." -Directory -Filter "packages-windows-*"
 if (-not $packageDirs) {
     throw "No Windows package directories found"
@@ -59,7 +85,8 @@ foreach ($packageDir in $packageDirs) {
 
     $portableExtractDir = Join-Path $env:RUNNER_TEMP ("portable_" + $packageDir.Name)
     Expand-ArchiveWith7Zip -Archive $portableZip.FullName -Destination $portableExtractDir
-    Assert-KloggDeployment -Root (Join-Path $portableExtractDir "release") -Context "$($portableZip.Name) portable package"
+    $portableRoot = Resolve-KloggRoot -ExtractedRoot $portableExtractDir -Context "$($portableZip.Name) portable package"
+    Assert-KloggDeployment -Root $portableRoot -Context "$($portableZip.Name) portable package"
 
     $installDir = Join-Path $env:RUNNER_TEMP ("install_" + $packageDir.Name)
     if (Test-Path -LiteralPath $installDir) {
