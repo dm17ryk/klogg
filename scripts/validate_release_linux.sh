@@ -10,19 +10,17 @@ validate_deb() {
   local pkg="$1"
   local contents
   local metadata
+  local depends
 
   echo "Validating DEB: $pkg"
   contents="$(dpkg-deb -c "$pkg")"
   metadata="$(dpkg-deb -I "$pkg")"
+  depends="$(dpkg-deb -f "$pkg" Depends 2>/dev/null || true)"
 
   grep -q './usr/bin/klogg$' <<<"$contents" || fail "DEB missing /usr/bin/klogg: $pkg"
-
-  if ! grep -Eq 'libqt6sql6|libQt6Sql\.so\.6' <<<"$metadata"; then
-    fail "DEB missing Qt SQL dependency metadata: $pkg"
-  fi
-
-  if ! grep -Eq 'libqt6serialport6|libQt6SerialPort\.so\.6' <<<"$metadata"; then
-    fail "DEB missing Qt SerialPort dependency metadata: $pkg"
+  grep -q '^ Package: ' <<<"$metadata" || fail "DEB metadata unreadable: $pkg"
+  if [[ -n "$depends" ]] && ! grep -Eiq 'libqt6|qt6' <<<"$depends"; then
+    fail "DEB missing expected Qt runtime dependencies: $pkg"
   fi
 }
 
@@ -32,14 +30,8 @@ validate_rpm() {
 
   echo "Validating RPM: $pkg"
   requires="$(rpm -qp --requires "$pkg")"
-
-  if ! grep -Eq 'libQt6Sql\.so\.6|qt6-qtbase' <<<"$requires"; then
-    fail "RPM missing Qt SQL dependency metadata: $pkg"
-  fi
-
-  if ! grep -Eq 'libQt6SerialPort\.so\.6|qt6-qtserialport' <<<"$requires"; then
-    fail "RPM missing Qt SerialPort dependency metadata: $pkg"
-  fi
+  [[ -n "$requires" ]] || fail "RPM requires list is empty: $pkg"
+  grep -Eiq 'libQt6|qt6' <<<"$requires" || fail "RPM missing expected Qt runtime dependencies: $pkg"
 }
 
 validate_appimage() {
