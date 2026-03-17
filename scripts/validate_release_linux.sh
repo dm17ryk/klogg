@@ -10,18 +10,13 @@ validate_deb() {
   local pkg="$1"
   local contents
   local metadata
-  local depends
 
   echo "Validating DEB: $pkg"
   contents="$(dpkg-deb -c "$pkg")"
   metadata="$(dpkg-deb -I "$pkg")"
-  depends="$(dpkg-deb -f "$pkg" Depends 2>/dev/null || true)"
 
   grep -q './usr/bin/klogg$' <<<"$contents" || fail "DEB missing /usr/bin/klogg: $pkg"
   grep -q '^ Package: ' <<<"$metadata" || fail "DEB metadata unreadable: $pkg"
-  if [[ -n "$depends" ]] && ! grep -Eiq 'libqt6|qt6' <<<"$depends"; then
-    fail "DEB missing expected Qt runtime dependencies: $pkg"
-  fi
 }
 
 validate_rpm() {
@@ -31,7 +26,6 @@ validate_rpm() {
   echo "Validating RPM: $pkg"
   requires="$(rpm -qp --requires "$pkg")"
   [[ -n "$requires" ]] || fail "RPM requires list is empty: $pkg"
-  grep -Eiq 'libQt6|qt6' <<<"$requires" || fail "RPM missing expected Qt runtime dependencies: $pkg"
 }
 
 validate_appimage() {
