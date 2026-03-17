@@ -13,6 +13,7 @@ RUN rm -rf /var/lib/apt/lists/* && \
         libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
         libglib2.0-dev \
         libdbus-1-dev \
+        libfbclient2 \
         libtiff5 \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
