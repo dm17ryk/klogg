@@ -38,7 +38,9 @@ run_linuxdeployqt() {
   return 1
 }
 
-if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop -bundle-non-qt-libs; then
+if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
+  -bundle-non-qt-libs \
+  -exclude-libs=libqsqlibase.so; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64, skipping AppImage generation." >&2
     mkdir -p ./packages
@@ -52,7 +54,9 @@ fi
 mkdir -p appdir/usr/lib
 cp "${LIB_DIR}"/libssl* appdir/usr/lib
 
-if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop -appimage; then
+if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
+  -appimage \
+  -exclude-libs=libqsqlibase.so; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64 during AppImage stage, skipping." >&2
     mkdir -p ./packages
