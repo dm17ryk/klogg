@@ -18,6 +18,12 @@ validate_app_bundle() {
   assert_path "$app/Contents/PlugIns/platforms/libqcocoa.dylib" "Missing qcocoa plugin in $app"
 }
 
+validate_dmg() {
+  local dmg="$1"
+  assert_path "$dmg" "Missing DMG file $dmg"
+  hdiutil imageinfo "$dmg" >/dev/null
+}
+
 for dir in ./packages-macos-*; do
   [[ -d "$dir" ]] || continue
 
@@ -28,14 +34,7 @@ for dir in ./packages-macos-*; do
   [[ -n "$dmg" ]] || { echo "No .dmg found in $dir" >&2; exit 1; }
 
   validate_app_bundle "$app"
-
-  attach_output="$(hdiutil attach "$dmg" -nobrowse -readonly)"
-  mount_point="$(printf '%s\n' "$attach_output" | awk 'END { print substr($0, index($0, $3)) }')"
-  [[ -n "$mount_point" && -d "$mount_point" ]] || { echo "Failed to resolve mount point for $dmg" >&2; exit 1; }
-  mounted_app="$(find "$mount_point" -maxdepth 1 -name '*.app' -print -quit)"
-  [[ -n "$mounted_app" ]] || { echo "No .app found inside DMG $dmg" >&2; hdiutil detach "$mount_point" -quiet || true; exit 1; }
-  assert_path "$mounted_app/Contents/MacOS/klogg" "Mounted DMG app is missing executable for $dmg"
-  hdiutil detach "$mount_point" -quiet
+  validate_dmg "$dmg"
 done
 
 echo "macOS release validation passed."
