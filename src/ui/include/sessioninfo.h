@@ -58,11 +58,13 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
     struct OpenFile {
         OpenFile( const QString& file, uint64_t top, const QString& context,
-                  const QString& streamContextValue = {} )
+                  const QString& streamContextValue = {},
+                  const QString& scriptContextValue = {} )
             : fileName{ file }
             , topLine{ top }
             , viewContext{ context }
             , streamContext{ streamContextValue }
+            , scriptContext{ scriptContextValue }
         {
         }
 
@@ -75,6 +77,9 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
         // Optional stream context for special sources (e.g. COM sessions).
         QString streamContext;
+
+        // Optional script binding context for tab-owned automation.
+        QString scriptContext;
     };
 
     struct Window {
@@ -150,6 +155,16 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
         }
     }
 
+    QString globalScriptContext() const
+    {
+        return globalScriptContext_;
+    }
+
+    void setGlobalScriptContext( const QString& context )
+    {
+        globalScriptContext_ = context;
+    }
+
     // Reads/writes the current config in the QSettings object passed
     void saveToStorage( QSettings& settings ) const;
     void retrieveFromStorage( QSettings& settings );
@@ -171,6 +186,7 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
   private:
     mutable std::vector<Window> windows_;
+    QString globalScriptContext_;
 };
 
 #endif

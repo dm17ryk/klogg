@@ -59,6 +59,7 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
@@ -67,13 +68,18 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSerialPortInfo>
 #include <QMimeData>
+#include <QPainter>
 #include <QPointer>
 #include <QProgressDialog>
+#include <QPixmap>
 #include <QResource>
 #include <QScreen>
 #include <QShortcut>
@@ -97,6 +103,7 @@
 #include "dispatch_to.h"
 #include "downloader.h"
 #include "actionsmanager.h"
+#include "actionruntime.h"
 #include "comportutils.h"
 #include "encodings.h"
 #include "favoritefiles.h"
@@ -126,6 +133,30 @@
 #include "tabbedcrawlerwidget.h"
 
 namespace {
+
+QIcon makePythonScriptRunnerIcon() {
+    constexpr auto iconSize = 20;
+
+    QPixmap pixmap( iconSize, iconSize );
+    pixmap.fill( Qt::transparent );
+
+    QPainter painter( &pixmap );
+    painter.setRenderHint( QPainter::Antialiasing, true );
+
+    auto font = painter.font();
+    font.setBold( true );
+    font.setPixelSize( 11 );
+    painter.setFont( font );
+    painter.setPen( qApp->palette().color( QPalette::WindowText ) );
+    painter.drawText( pixmap.rect(), Qt::AlignCenter, QStringLiteral( "py" ) );
+
+    return QIcon( pixmap );
+}
+
+bool applicationHasMethod( const char* signature )
+{
+    return qApp != nullptr && qApp->metaObject()->indexOfMethod( signature ) >= 0;
+}
 
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
 {
@@ -400,6 +431,7 @@ MainWindow::MainWindow( WindowSession session )
     updateTitleBar( "" );
     loadIcons();
     reTranslateUI();
+    refreshScriptStatusIndicators();
 }
 
 void MainWindow::reloadGeometry()
@@ -427,6 +459,7 @@ void MainWindow::reloadSession()
 
         if ( crawler_widget ) {
             mainTabWidget_.addCrawler( crawler_widget, file_name );
+            publishScriptLifecycleEvent( file_name, QStringLiteral( "tab_open" ) );
 
             if ( !open_file.streamContext.trimmed().isEmpty() ) {
                 auto streamSettings = deserializeSerialCaptureSettings( open_file.streamContext );
@@ -450,9 +483,16 @@ void MainWindow::reloadSession()
                 signalCrawlerToFollowFile( crawler_widget );
             }
 
+            if ( !open_file.scriptContext.trimmed().isEmpty() ) {
+                restoreScriptContextForTab( mainTabWidget_.indexOf( crawler_widget ),
+                                            open_file.scriptContext );
+            }
+
             waitForCrawlerStartupPreparation( crawler_widget, file_name );
         }
     }
+
+    restoreGlobalScriptContext();
 
     if ( current_file_index >= 0 ) {
         mainTabWidget_.setCurrentIndex( current_file_index );
@@ -540,6 +580,28 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSuccess( {}, commanderWindowInfo() );
     case CommanderAction::GetFilters:
         return commanderFilters( request );
+    case CommanderAction::SendAction:
+        return commanderSendAction( request );
+    case CommanderAction::WaitResponse:
+        return commanderWaitResponse( request );
+    case CommanderAction::StartComm:
+        return commanderStartComm( request );
+    case CommanderAction::StopComm:
+        return commanderStopComm( request );
+    case CommanderAction::GetCommStatus:
+        return commanderGetCommStatus( request );
+    case CommanderAction::StartLogging:
+        return commanderSetLogging( request, true );
+    case CommanderAction::StopLogging:
+        return commanderSetLogging( request, false );
+    case CommanderAction::AddComment:
+        return commanderAddComment( request );
+    case CommanderAction::GetResponseCounter:
+        return commanderGetResponseCounter( request );
+    case CommanderAction::ResetResponseCounter:
+        return commanderResetResponseCounter( request );
+    case CommanderAction::ClearComm:
+        return commanderClearComm( request );
     case CommanderAction::FocusTab:
         if ( !request.tabId.isEmpty() ) {
             return focusTabById( request.tabId );
@@ -561,6 +623,14 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "close_tab requires a tab selector." ) );
     case CommanderAction::CloseKlogg:
+    case CommanderAction::GetActions:
+    case CommanderAction::GetResponses:
+    case CommanderAction::CreateAction:
+    case CommanderAction::UpdateAction:
+    case CommanderAction::DeleteAction:
+    case CommanderAction::CreateResponse:
+    case CommanderAction::UpdateResponse:
+    case CommanderAction::DeleteResponse:
     case CommanderAction::None:
     default:
         return commanderFailure( CommanderResultCode::InvalidRequest,
@@ -584,7 +654,8 @@ QVariantMap MainWindow::commanderWindowInfo() const
         }
 
         QVariantMap tabInfo;
-        tabInfo.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        const auto tabId = mainTabWidget_.tabIdAt( index );
+        tabInfo.insert( QStringLiteral( "tabId" ), tabId );
         tabInfo.insert( QStringLiteral( "tabIndex" ), index );
         tabInfo.insert( QStringLiteral( "filePath" ), filePath );
         tabInfo.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
@@ -596,8 +667,11 @@ QVariantMap MainWindow::commanderWindowInfo() const
             comInfo.insert( QStringLiteral( "portName" ), settings.portName );
             comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
             comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+            comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
             comInfo.insert( QStringLiteral( "isActionsPort" ),
                             isActionsStreamSession( streamSession ) );
+            comInfo.insert( QStringLiteral( "responseCounters" ),
+                            commanderResponseCounters( streamSession ) );
             tabInfo.insert( QStringLiteral( "com" ), comInfo );
         }
         else {
@@ -611,15 +685,262 @@ QVariantMap MainWindow::commanderWindowInfo() const
             }
         }
 
+        QVariantMap scriptStatus;
+        if ( applicationHasMethod( "scriptStatusForTab(QString)" )
+             && QMetaObject::invokeMethod( qApp, "scriptStatusForTab", Qt::DirectConnection,
+                                        Q_RETURN_ARG( QVariantMap, scriptStatus ),
+                                        Q_ARG( QString, tabId ) )
+             && !scriptStatus.isEmpty() ) {
+            tabInfo.insert( QStringLiteral( "script" ), scriptStatus );
+        }
+
         tabs.push_back( tabInfo );
     }
 
     QVariantMap windowInfo;
+    const auto currentTabIndex = mainTabWidget_.currentIndex();
     windowInfo.insert( QStringLiteral( "windowId" ), session_.windowId() );
     windowInfo.insert( QStringLiteral( "windowIndex" ),
                        static_cast<int>( session_.windowIndex() ) );
+    windowInfo.insert( QStringLiteral( "currentTabIndex" ), currentTabIndex );
+    windowInfo.insert( QStringLiteral( "currentTabId" ),
+                       currentTabIndex >= 0 ? mainTabWidget_.tabIdAt( currentTabIndex )
+                                            : QString{} );
     windowInfo.insert( QStringLiteral( "tabs" ), tabs );
     return windowInfo;
+}
+
+QVariantMap MainWindow::scriptEventContextForFile( const QString& filePath ) const
+{
+    if ( filePath.isEmpty() ) {
+        return {};
+    }
+
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        if ( widget == nullptr || session_.getFilename( widget ) != filePath ) {
+            continue;
+        }
+
+        QVariantMap context;
+        context.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        context.insert( QStringLiteral( "tabIndex" ), index );
+        context.insert( QStringLiteral( "windowId" ), session_.windowId() );
+        context.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+        context.insert( QStringLiteral( "filePath" ), filePath );
+        context.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
+        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+            context.insert( QStringLiteral( "portName" ),
+                            streamSession->captureSettings().portName );
+        }
+        return context;
+    }
+
+    return {};
+}
+
+void MainWindow::publishScriptEvent( const QVariantMap& event ) const
+{
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    if ( !applicationHasMethod( "publishScriptEvent(QVariantMap)" ) ) {
+        return;
+    }
+
+    const auto invoked = QMetaObject::invokeMethod( qApp, "publishScriptEvent",
+                                                    Qt::DirectConnection,
+                                                    Q_ARG( QVariantMap, event ) );
+    if ( !invoked ) {
+        LOG_WARNING << "Failed to publish script event";
+    }
+}
+
+void MainWindow::publishScriptLifecycleEvent( const QString& filePath,
+                                              const QString& eventType ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), eventType );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptReceiveEvent( const QString& filePath,
+                                            const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "receive" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptResponseEvent( const QString& filePath,
+                                             int responseId,
+                                             const QString& responseName,
+                                             int counter,
+                                             const QByteArray& lineBytes,
+                                             const QString& matchedText ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "response" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "responseId" ), responseId );
+    event.insert( QStringLiteral( "responseName" ), responseName );
+    event.insert( QStringLiteral( "counter" ), counter );
+    event.insert( QStringLiteral( "matchedText" ), matchedText );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( lineBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( lineBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptTxEvent( const QString& filePath, const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "tx" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::publishScriptActionSendEvent( const QString& filePath,
+                                               int actionId,
+                                               const QString& actionName,
+                                               int stepIndex,
+                                               const QByteArray& payloadBytes ) const
+{
+    auto event = scriptEventContextForFile( filePath );
+    if ( event.isEmpty() ) {
+        return;
+    }
+
+    event.insert( QStringLiteral( "eventType" ), QStringLiteral( "action_send" ) );
+    event.insert( QStringLiteral( "timestamp" ),
+                  QDateTime::currentDateTimeUtc().toString( Qt::ISODateWithMs ) );
+    event.insert( QStringLiteral( "actionId" ), actionId );
+    event.insert( QStringLiteral( "actionName" ), actionName );
+    if ( stepIndex >= 0 ) {
+        event.insert( QStringLiteral( "stepIndex" ), stepIndex );
+    }
+    event.insert( QStringLiteral( "text" ), QString::fromLatin1( payloadBytes ) );
+    event.insert( QStringLiteral( "hexString" ), QString::fromLatin1( payloadBytes.toHex() ) );
+    event.insert( QStringLiteral( "rawBase64" ), QString::fromLatin1( payloadBytes.toBase64() ) );
+    publishScriptEvent( event );
+}
+
+void MainWindow::refreshScriptStatusIndicators()
+{
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        const auto tabId = mainTabWidget_.tabIdAt( index );
+        bool active = false;
+        if ( applicationHasMethod( "hasActiveScriptForTab(QString)" ) ) {
+            QMetaObject::invokeMethod( qApp, "hasActiveScriptForTab", Qt::DirectConnection,
+                                       Q_RETURN_ARG( bool, active ),
+                                       Q_ARG( QString, tabId ) );
+        }
+        mainTabWidget_.setTabScriptActive( tabId, active );
+    }
+}
+
+QString MainWindow::scriptContextForTab( int index ) const
+{
+    if ( index < 0 || index >= mainTabWidget_.count() ) {
+        return {};
+    }
+
+    QVariantMap scriptBinding;
+    const auto tabId = mainTabWidget_.tabIdAt( index );
+    if ( !applicationHasMethod( "scriptBindingForTab(QString)" )
+         || !QMetaObject::invokeMethod( qApp, "scriptBindingForTab", Qt::DirectConnection,
+                                      Q_RETURN_ARG( QVariantMap, scriptBinding ),
+                                      Q_ARG( QString, tabId ) )
+         || scriptBinding.isEmpty() ) {
+        return {};
+    }
+
+    return QString::fromUtf8(
+        QJsonDocument::fromVariant( scriptBinding ).toJson( QJsonDocument::Compact ) );
+}
+
+QString MainWindow::globalScriptContext() const
+{
+    QVariantMap scriptBinding;
+    if ( !applicationHasMethod( "globalScriptBinding()" )
+         || !QMetaObject::invokeMethod( qApp, "globalScriptBinding", Qt::DirectConnection,
+                                        Q_RETURN_ARG( QVariantMap, scriptBinding ) )
+         || scriptBinding.isEmpty() ) {
+        return {};
+    }
+
+    return QString::fromUtf8(
+        QJsonDocument::fromVariant( scriptBinding ).toJson( QJsonDocument::Compact ) );
+}
+
+void MainWindow::restoreScriptContextForTab( int index, const QString& scriptContext )
+{
+    if ( index < 0 || index >= mainTabWidget_.count() || scriptContext.trimmed().isEmpty() ) {
+        return;
+    }
+
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson( scriptContext.toUtf8(), &parseError );
+    if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+        LOG_WARNING << "Invalid script context for restored tab";
+        return;
+    }
+
+    auto scriptBinding = document.object().toVariantMap();
+    scriptBinding.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+    scriptBinding.insert( QStringLiteral( "tabIndex" ), index );
+    scriptBinding.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    scriptBinding.insert( QStringLiteral( "windowIndex" ),
+                          static_cast<int>( session_.windowIndex() ) );
+    scriptBinding.insert( QStringLiteral( "displayName" ),
+                          mainTabWidget_.tabDisplayNameAt( index ) );
+    const auto filePath = mainTabWidget_.tabPathAt( index );
+    scriptBinding.insert( QStringLiteral( "filePath" ), filePath );
+    if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+        scriptBinding.insert( QStringLiteral( "portName" ),
+                              streamSession->captureSettings().portName );
+    }
+
+    if ( applicationHasMethod( "restoreScriptBindingVariant(QVariant)" ) ) {
+        QMetaObject::invokeMethod( qApp, "restoreScriptBindingVariant", Qt::DirectConnection,
+                                   Q_ARG( QVariant, QVariant::fromValue( scriptBinding ) ) );
+    }
+}
+
+void MainWindow::restoreGlobalScriptContext()
+{
+    if ( applicationHasMethod( "restoreGlobalScriptBindingFromSession()" ) ) {
+        QMetaObject::invokeMethod( qApp, "restoreGlobalScriptBindingFromSession",
+                                   Qt::DirectConnection );
+    }
 }
 
 void MainWindow::reTranslateUI()
@@ -743,6 +1064,12 @@ void MainWindow::reTranslateUI()
     showActionsResponsesAction->setText( transAction( action::showActionsResponsesText ) );
     showActionsResponsesAction->setStatusTip(
         transAction( action::showActionsResponsesStatusTip ) );
+    showScriptRunnerAction->setText( transAction( action::showScriptRunnerText ) );
+    showScriptRunnerAction->setStatusTip( transAction( action::showScriptRunnerStatusTip ) );
+    showScenarioRunnerAction->setText( transAction( action::showScenarioRunnerText ) );
+    showScenarioRunnerAction->setStatusTip( transAction( action::showScenarioRunnerStatusTip ) );
+    showLabQueueAction->setText( transAction( action::showLabQueueText ) );
+    showLabQueueAction->setStatusTip( transAction( action::showLabQueueStatusTip ) );
 
     auto curFavoritesIconText = addToFavoritesAction->data().toBool()
                                     ? transAction( action::addToFavoritesText )
@@ -1004,6 +1331,21 @@ void MainWindow::createActions()
     connect( showActionsResponsesAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showActionsResponses(); } );
 
+    showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
+    showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
+    connect( showScriptRunnerAction, &QAction::triggered, this,
+              [ this ]( auto ) { this->showScriptRunner(); } );
+
+    showScenarioRunnerAction = new QAction( tr( action::showScenarioRunnerText ), this );
+    showScenarioRunnerAction->setStatusTip( tr( action::showScenarioRunnerStatusTip ) );
+    connect( showScenarioRunnerAction, &QAction::triggered, this,
+              [ this ]( auto ) { this->showScenarioRunner(); } );
+
+    showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
+    showLabQueueAction->setStatusTip( tr( action::showLabQueueStatusTip ) );
+    connect( showLabQueueAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showLabQueue(); } );
+
     encodingGroup = new QActionGroup( this );
     connect( encodingGroup, &QActionGroup::triggered, this, &MainWindow::encodingChanged );
 
@@ -1117,6 +1459,7 @@ void MainWindow::loadIcons()
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
     showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
     showActionsResponsesAction->setIcon( iconLoader_.load( "icons8-venn-diagram" ) );
+    showScriptRunnerAction->setIcon( makePythonScriptRunnerIcon() );
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -1198,6 +1541,9 @@ void MainWindow::createMenus()
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
+    toolsMenu->addAction( showScriptRunnerAction );
+    toolsMenu->addAction( showScenarioRunnerAction );
+    toolsMenu->addAction( showLabQueueAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -1270,6 +1616,7 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
     toolBar->addAction( showActionsResponsesAction );
+    toolBar->addAction( showScriptRunnerAction );
     toolBar->addAction( showScratchPadAction );
 
     showInfoLabels( false );
@@ -1390,8 +1737,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
         if ( !options.showErrors ) {
             return;
         }
-        showComPortMessage( this, QMessageBox::Warning, tr( "Open COM Port" ), message,
-                            options.nonBlockingErrors );
+        const auto icon = options.restoreMode ? QMessageBox::Information : QMessageBox::Warning;
+        showComPortMessage( this, icon, tr( "Open COM Port" ), message, options.nonBlockingErrors );
     };
 
     const auto showInformation = [ this, &options, errorMessage ]( const QString& message ) {
@@ -1436,7 +1783,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                                                            == 0;
                                          } );
     if ( !portExists ) {
-        showWarning( tr( "COM port %1 was not found. Capture will not be restored." )
+        showWarning( tr( "COM port %1 was not found. The capture file remains open, but the COM "
+                         "connection was not restored." )
                          .arg( settings.portName ) );
         return false;
     }
@@ -1462,6 +1810,12 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
+    connect( session.get(), &StreamSession::connectionOpened, this,
+             [ this, filePath, session ] {
+                 mainTabWidget_.setStreamSessionForPath( filePath, session );
+                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_start" ) );
+                 updateActionsSendState();
+             } );
     connect( session.get(), &StreamSession::connectionClosed, this,
              [ this, filePath, session, safeSession ] {
                  bool tabStillOpen = false;
@@ -1482,15 +1836,26 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  if ( actionsStreamSession_ == safeSession ) {
                      actionsStreamSession_.clear();
                  }
+                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_stop" ) );
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
-             [ this, filePath, safeSession, options ]( const QString& message ) {
+             [ this, filePath, safeSession, settings, options ]( const QString& message ) {
+                 const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
                  if ( options.showErrors ) {
-                     showComPortMessage(
-                         this, QMessageBox::Warning, tr( "COM port capture error" ),
-                         tr( "Capture stopped for %1:\n%2" ).arg( filePath, message ),
-                         options.nonBlockingErrors );
+                     const auto title = options.restoreMode && startupFailure
+                                            ? tr( "Restore COM Port" )
+                                            : tr( "COM port capture error" );
+                     const auto text = options.restoreMode && startupFailure
+                                           ? tr( "Failed to restore COM port %1 for %2.\n"
+                                                "The capture file remains open.\n\n%3" )
+                                                 .arg( settings.portName, filePath, message )
+                                           : tr( "Capture stopped for %1:\n%2" )
+                                                 .arg( filePath, message );
+                     const auto icon = options.restoreMode && startupFailure
+                                           ? QMessageBox::Information
+                                           : QMessageBox::Warning;
+                     showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
                  }
                  else {
                      LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
@@ -1499,6 +1864,26 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  if ( safeSession ) {
                      safeSession->closeConnection();
                  }
+             } );
+    connect( session.get(), &StreamSession::dataObserved, this,
+             [ this, filePath ]( const QByteArray& payloadBytes ) {
+                 publishScriptReceiveEvent( filePath, payloadBytes );
+             } );
+    connect( session.get(), &StreamSession::dataTransmitted, this,
+             [ this, filePath ]( const QByteArray& payloadBytes ) {
+                 publishScriptTxEvent( filePath, payloadBytes );
+             } );
+    connect( session.get(), &StreamSession::actionSent, this,
+             [ this, filePath ]( int actionId, const QString& actionName, int stepIndex,
+                                 const QByteArray& payloadBytes ) {
+                 publishScriptActionSendEvent( filePath, actionId, actionName, stepIndex,
+                                               payloadBytes );
+             } );
+    connect( session.get(), &StreamSession::responseMatched, this,
+             [ this, filePath ]( int responseId, const QString& responseName, int counter,
+                                 const QByteArray& lineBytes, const QString& matchedText ) {
+                 publishScriptResponseEvent( filePath, responseId, responseName, counter,
+                                             lineBytes, matchedText );
              } );
     session->start();
     mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
@@ -1522,6 +1907,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     }
 
     updateActionsSendState();
+    refreshScriptStatusIndicators();
     return true;
 }
 
@@ -1879,6 +2265,29 @@ void MainWindow::showActionsResponses()
     actionsResponsesWindow_.show();
     actionsResponsesWindow_.activateWindow();
 }
+
+void MainWindow::showScriptRunner()
+{
+    if ( applicationHasMethod( "showScriptRunnerWindow()" )
+         || applicationHasMethod( "showScriptRunnerWindow(QString)" ) ) {
+        QMetaObject::invokeMethod( qApp, "showScriptRunnerWindow", Qt::DirectConnection );
+    }
+}
+
+void MainWindow::showScenarioRunner()
+{
+    if ( applicationHasMethod( "showScenarioRunnerWindow()" ) ) {
+        QMetaObject::invokeMethod( qApp, "showScenarioRunnerWindow", Qt::DirectConnection );
+    }
+}
+
+void MainWindow::showLabQueue()
+{
+    if ( applicationHasMethod( "showLabQueueWindow()" ) ) {
+        QMetaObject::invokeMethod( qApp, "showLabQueueWindow", Qt::DirectConnection );
+    }
+}
+
 void MainWindow::sendToScratchpad( QString newData )
 {
     scratchPad_.addData( newData );
@@ -1921,14 +2330,13 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
 
-    const auto result = actionSequenceToBytes( action->sequence );
-    if ( !result.ok ) {
+    QString errorMessage;
+    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
-                              tr( "Failed to encode action: %1" ).arg( result.error ) );
+                              errorMessage.isEmpty() ? tr( "Failed to send action." )
+                                                     : errorMessage );
         return;
     }
-
-    streamSession->sendBytes( result.bytes );
 }
 void MainWindow::encodingChanged( QAction* action )
 {
@@ -2098,6 +2506,8 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
+    publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_close" ) );
+    const auto tabId = mainTabWidget_.tabIdAt( index );
     remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
         if ( session->isConnectionOpen() ) {
@@ -2109,6 +2519,12 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     }
 
     widget->stopLoading();
+    if ( !tabId.isEmpty() ) {
+        if ( applicationHasMethod( "forgetScriptTab(QString)" ) ) {
+            QMetaObject::invokeMethod( qApp, "forgetScriptTab", Qt::DirectConnection,
+                                       Q_ARG( QString, tabId ) );
+        }
+    }
     mainTabWidget_.removeCrawler( index );
 
     if ( initiator == ActionInitiator::User ) {
@@ -2119,6 +2535,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
     updateOpenedFilesMenu();
     updateActionsSendState();
+    refreshScriptStatusIndicators();
 
     widget->deleteLater();
 }
@@ -2147,6 +2564,89 @@ CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
     }
 
     return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
+}
+
+CrawlerWidget* MainWindow::commanderTargetCrawler( const CommanderRequest& request ) const
+{
+    if ( !request.tabId.isEmpty() ) {
+        return crawlerWidgetByTabId( request.tabId );
+    }
+    if ( request.tabIndex ) {
+        return crawlerWidgetByIndex( *request.tabIndex );
+    }
+    return currentCrawlerWidget();
+}
+
+StreamSession* MainWindow::streamSessionForCrawler( const CrawlerWidget* crawler ) const
+{
+    if ( crawler == nullptr ) {
+        return nullptr;
+    }
+
+    const auto filePath = session_.getFilename( crawler );
+    if ( filePath.isEmpty() ) {
+        return nullptr;
+    }
+
+    return mainTabWidget_.streamSessionForPath( filePath );
+}
+
+StreamSession* MainWindow::commanderTargetStreamSession( const CommanderRequest& request,
+                                                        bool requireOpen ) const
+{
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return nullptr;
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr ) {
+        return nullptr;
+    }
+    if ( requireOpen && !streamSession->isConnectionOpen() ) {
+        return nullptr;
+    }
+
+    return streamSession;
+}
+
+QVariantList MainWindow::commanderResponseCounters( StreamSession* streamSession,
+                                                    const CommanderRequest* request ) const
+{
+    if ( streamSession == nullptr ) {
+        return {};
+    }
+
+    auto counters = streamSession->responseCounters();
+    if ( request == nullptr ) {
+        return counters;
+    }
+
+    if ( request->allEntities ) {
+        return counters;
+    }
+
+    const auto matchesRequestedCounter = [ request ]( const QVariant& value ) {
+        const auto map = value.toMap();
+        if ( request->entityId ) {
+            return map.value( QStringLiteral( "responseId" ) ).toInt() == *request->entityId;
+        }
+        if ( !request->entityName.isEmpty() ) {
+            return map.value( QStringLiteral( "responseName" ) )
+                       .toString()
+                       .compare( request->entityName, Qt::CaseInsensitive )
+                   == 0;
+        }
+        return true;
+    };
+
+    QVariantList filtered;
+    for ( const auto& counter : counters ) {
+        if ( matchesRequestedCounter( counter ) ) {
+            filtered.push_back( counter );
+        }
+    }
+    return filtered;
 }
 
 CommanderResult MainWindow::closeTabByIndex( int tabIndex )
@@ -2192,18 +2692,288 @@ CommanderResult MainWindow::closeAllTabsCommander()
     return commanderSuccess();
 }
 
+CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request )
+{
+    if ( !request.entityId ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "send_action requires an action id." ) );
+    }
+
+    const auto* action = ActionsManager::instance().findActionById( *request.entityId );
+    if ( action == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Action %1 was not found." ).arg( *request.entityId ) );
+    }
+
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QString errorMessage;
+    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 errorMessage.isEmpty() ? tr( "Failed to send action." )
+                                                        : errorMessage );
+    }
+
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& request )
+{
+    if ( !request.timeoutMs || *request.timeoutMs <= 0 ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "wait_response requires a positive timeout." ) );
+    }
+
+    const ResponseDefinition* response = nullptr;
+    if ( request.entityId ) {
+        response = ActionsManager::instance().findResponseById( *request.entityId );
+    }
+    else if ( !request.entityName.isEmpty() ) {
+        response = ActionsManager::instance().findResponseByName( request.entityName );
+    }
+
+    if ( response == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response was not found." ) );
+    }
+
+    auto* crawler = commanderTargetCrawler( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    auto* streamSession = streamSessionForCrawler( crawler );
+    if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot( true );
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "responseId" ), response->id );
+    payload.insert( QStringLiteral( "responseName" ), response->name );
+
+    CommanderResult result = commanderFailure( CommanderResultCode::ExecutionFailed,
+                                               tr( "wait_response did not complete." ) );
+
+    QMetaObject::Connection lineConnection;
+    QMetaObject::Connection disconnectConnection;
+    QObject::connect( &timer, &QTimer::timeout, &loop, [ & ]() {
+        result = commanderFailure( CommanderResultCode::NotFound,
+                                   tr( "Timed out waiting for response %1." ).arg( response->name ) );
+        loop.quit();
+    } );
+    disconnectConnection = QObject::connect( streamSession, &QObject::destroyed, &loop, [ & ]() {
+        result = commanderFailure( CommanderResultCode::ExecutionFailed,
+                                   tr( "COM session closed while waiting for response." ) );
+        loop.quit();
+    } );
+    lineConnection = QObject::connect( streamSession, &StreamSession::lineObserved, &loop,
+                                       [ & ]( const QByteArray& lineBytes ) {
+                                           const auto match = matchResponseDefinition( *response, lineBytes );
+                                           if ( !match.matched ) {
+                                               return;
+                                           }
+
+                                           QVariantMap captures;
+                                           for ( auto it = match.captures.cbegin();
+                                                 it != match.captures.cend(); ++it ) {
+                                               captures.insert( it.key(), it.value() );
+                                           }
+                                           payload.insert( QStringLiteral( "matchedLine" ), match.lineText );
+                                           if ( !captures.isEmpty() ) {
+                                               payload.insert( QStringLiteral( "captures" ), captures );
+                                           }
+                                           result = commanderSuccess( {}, payload );
+                                           loop.quit();
+                                       } );
+
+    timer.start( *request.timeoutMs );
+    loop.exec();
+    QObject::disconnect( lineConnection );
+    QObject::disconnect( disconnectConnection );
+    return result;
+}
+
+CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    if ( streamSession->isConnectionOpen() ) {
+        return commanderSuccess();
+    }
+
+    streamSession->start();
+    updateActionsSendState();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderStopComm( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    streamSession->closeConnection();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& request ) const
+{
+    auto* crawler = commanderTargetCrawler( request );
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( crawler == nullptr || streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "tabId" ),
+                    mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) ) );
+    payload.insert( QStringLiteral( "tabIndex" ), mainTabWidget_.indexOf( crawler ) );
+    payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
+    payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+    payload.insert( QStringLiteral( "filePath" ), session_.getFilename( crawler ) );
+    payload.insert( QStringLiteral( "displayName" ),
+                    mainTabWidget_.tabDisplayNameAt( mainTabWidget_.indexOf( crawler ) ) );
+
+    const auto& settings = streamSession->captureSettings();
+    QVariantMap comInfo;
+    comInfo.insert( QStringLiteral( "portName" ), settings.portName );
+    comInfo.insert( QStringLiteral( "baudRate" ), settings.baudRate );
+    comInfo.insert( QStringLiteral( "connected" ), streamSession->isConnectionOpen() );
+    comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
+    comInfo.insert( QStringLiteral( "isActionsPort" ), isActionsStreamSession( streamSession ) );
+    comInfo.insert( QStringLiteral( "responseCounters" ),
+                    commanderResponseCounters( streamSession ) );
+    payload.insert( QStringLiteral( "com" ), comInfo );
+
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderSetLogging( const CommanderRequest& request, bool enabled )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    streamSession->setLoggingEnabled( enabled );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderAddComment( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    QString text = request.commentText.trimmed();
+    if ( request.timestampComment ) {
+        const auto timestamp = QDateTime::currentDateTime().toString( Qt::ISODateWithMs );
+        text = text.isEmpty() ? timestamp : QStringLiteral( "%1 %2" ).arg( timestamp, text );
+    }
+    if ( text.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "add_comment requires text." ) );
+    }
+
+    QByteArray output = text.toUtf8();
+    output.append( "\r\n" );
+    streamSession->appendToFile( output );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderGetResponseCounter( const CommanderRequest& request ) const
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    const auto counters = commanderResponseCounters( streamSession, &request );
+    if ( counters.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response counter was not found." ) );
+    }
+
+    QVariantMap payload;
+    payload.insert( QStringLiteral( "responseCounters" ), counters );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderResetResponseCounter( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    if ( request.allEntities ) {
+        streamSession->resetAllResponseCounters();
+        return commanderSuccess();
+    }
+
+    const ResponseDefinition* response = nullptr;
+    if ( request.entityId ) {
+        response = ActionsManager::instance().findResponseById( *request.entityId );
+    }
+    else if ( !request.entityName.isEmpty() ) {
+        response = ActionsManager::instance().findResponseByName( request.entityName );
+    }
+
+    if ( response == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested response was not found." ) );
+    }
+
+    streamSession->resetResponseCounter( response->id );
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderClearComm( const CommanderRequest& request )
+{
+    auto* crawler = commanderTargetCrawler( request );
+    auto* streamSession = commanderTargetStreamSession( request, true );
+    if ( crawler == nullptr || streamSession == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    mainTabWidget_.setCurrentWidget( crawler );
+    crawler->reload();
+    return commanderSuccess(
+        tr( "Live communication view reloaded. Non-destructive clear is not yet separate from reload." ) );
+}
+
 CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
 {
-    CrawlerWidget* crawler = nullptr;
-    if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
-    }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
-    }
+    auto* crawler = commanderTargetCrawler( request );
 
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
@@ -2249,16 +3019,7 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
 
 CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request )
 {
-    CrawlerWidget* crawler = nullptr;
-    if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
-    }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
-    }
+    auto* crawler = commanderTargetCrawler( request );
 
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
@@ -2695,6 +3456,7 @@ bool MainWindow::loadFile( const QString& fileName, bool followFile )
             // mainTabWidget_.setEnabled( false );
 
             int index = mainTabWidget_.addCrawler( crawler_widget, fileName );
+            publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_open" ) );
 
             // Setting the new tab, the user will see a blank page for the duration
             // of the loading, with no way to switch to another tab
@@ -3198,13 +3960,16 @@ void MainWindow::writeSettings()
         }
 
         QString streamContext;
+        QString scriptContext;
         const auto fileName = session_.getFilename( view );
         if ( auto* streamSession = mainTabWidget_.streamSessionForPath( fileName ) ) {
             streamContext = serializeSerialCaptureSettings( streamSession->captureSettings() );
         }
+        scriptContext = scriptContextForTab( i );
 
-        widget_list.emplace_back( view, 0UL, std::move( context ), streamContext );
+        widget_list.emplace_back( view, 0UL, std::move( context ), streamContext, scriptContext );
     }
+    SessionInfo::getSynced().setGlobalScriptContext( globalScriptContext() );
     session_.save( widget_list, saveGeometry() );
 }
 

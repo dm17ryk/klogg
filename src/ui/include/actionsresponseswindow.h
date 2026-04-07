@@ -6,6 +6,7 @@ class ActionsTableModel;
 class ResponsesTableModel;
 class QCheckBox;
 class QLineEdit;
+class QPushButton;
 class QSortFilterProxyModel;
 class QTableView;
 
@@ -22,6 +23,18 @@ class ActionsResponsesWindow : public QWidget {
   private Q_SLOTS:
     void refreshActions();
     void refreshResponses();
+    void addAction();
+    void editSelectedAction();
+    void duplicateSelectedAction();
+    void deleteSelectedAction();
+    void moveSelectedActionUp();
+    void moveSelectedActionDown();
+    void addResponse();
+    void editSelectedResponse();
+    void duplicateSelectedResponse();
+    void deleteSelectedResponse();
+    void moveSelectedResponseUp();
+    void moveSelectedResponseDown();
 
   private:
     ActionsTableModel* actionsModel_ = nullptr;
@@ -33,7 +46,21 @@ class ActionsResponsesWindow : public QWidget {
     QTableView* actionsTable_ = nullptr;
     QTableView* responsesTable_ = nullptr;
     QCheckBox* autoResponsesCheck_ = nullptr;
+    QPushButton* editActionButton_ = nullptr;
+    QPushButton* duplicateActionButton_ = nullptr;
+    QPushButton* deleteActionButton_ = nullptr;
+    QPushButton* moveActionUpButton_ = nullptr;
+    QPushButton* moveActionDownButton_ = nullptr;
+    QPushButton* editResponseButton_ = nullptr;
+    QPushButton* duplicateResponseButton_ = nullptr;
+    QPushButton* deleteResponseButton_ = nullptr;
+    QPushButton* moveResponseUpButton_ = nullptr;
+    QPushButton* moveResponseDownButton_ = nullptr;
 
     void updateWindowSize();
+    void updateActionButtons();
+    void updateResponseButtons();
+    int selectedActionRow() const;
+    int selectedResponseRow() const;
     bool sizeInitialized_ = false;
 };

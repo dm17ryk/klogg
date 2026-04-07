@@ -67,6 +67,7 @@ xcopy %KLOGG_WORKSPACE%\COPYING %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\NOTICE %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\README.md %KLOGG_WORKSPACE%\release\ /y
 xcopy %KLOGG_WORKSPACE%\DOCUMENTATION.md %KLOGG_WORKSPACE%\release\ /y
+xcopy %KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\output\python_runtime %KLOGG_WORKSPACE%\release\python_runtime\ /e /i /y
 
 echo "Copying vc runtime..."
 xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\msvcp140.dll" %KLOGG_WORKSPACE%\release\ /y
@@ -96,12 +97,14 @@ xcopy %QTDIR%\bin\%KLOGG_QT%Core5Compat.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %QTDIR%\bin\%KLOGG_QT%SerialPort.dll %KLOGG_WORKSPACE%\release\ /y
 xcopy %QTDIR%\bin\%KLOGG_QT%Svg.dll %KLOGG_WORKSPACE%\release\ /y
 
-md %KLOGG_WORKSPACE%\release\platforms
-xcopy %QTDIR%\plugins\platforms\qwindows.dll %KLOGG_WORKSPACE%\release\platforms\ /y
-
-md %KLOGG_WORKSPACE%\release\styles
-xcopy %QTDIR%\plugins\styles\qwindowsvistastyle.dll %KLOGG_WORKSPACE%\release\styles /y
-xcopy %QTDIR%\plugins\styles\qmodernwindowsstyle.dll %KLOGG_WORKSPACE%\release\styles /y
+echo "Deploying Qt runtime..."
+if /i "%KLOGG_ARCH%"=="arm64" (
+  call :manual_qt_deploy
+  if errorlevel 1 exit /b 1
+) else (
+  "%QTDIR%\bin\windeployqt.exe" --force --no-compiler-runtime --dir %KLOGG_WORKSPACE%\release %KLOGG_WORKSPACE%\release\klogg.exe
+  if errorlevel 1 exit /b 1
+)
 
 echo "Copying packaging files..."
 md %KLOGG_WORKSPACE%\chocolately
@@ -114,7 +117,9 @@ xcopy %KLOGG_WORKSPACE%\packaging\windows\klogg.nsi  /y
 xcopy %KLOGG_WORKSPACE%\packaging\windows\FileAssociation.nsh  /y
 
 echo "Making portable archive..."
-7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip @%KLOGG_WORKSPACE%\packaging\windows\7z_klogg_listfile.txt
+pushd %KLOGG_WORKSPACE%
+7z a -r %KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip .\release\* -xr!*.pdb
+popd
 
 set "PDB_ARCHIVE=%KLOGG_WORKSPACE%\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip"
 set "PDB_LIST=%KLOGG_WORKSPACE%\release\pdb_file_list.txt"
@@ -132,3 +137,23 @@ if exist "%PDB_LIST%" (
 if exist "%PDB_LIST%" del "%PDB_LIST%"
 
 echo "Done!"
+goto :eof
+
+:manual_qt_deploy
+echo "Using manual Qt deploy for %KLOGG_ARCH%"
+xcopy %QTDIR%\bin\Qt6*.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\icu*.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\D3Dcompiler_47.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\dxcompiler.dll %KLOGG_WORKSPACE%\release\ /y
+xcopy %QTDIR%\bin\dxil.dll %KLOGG_WORKSPACE%\release\ /y
+
+if exist %QTDIR%\plugins\platforms xcopy %QTDIR%\plugins\platforms %KLOGG_WORKSPACE%\release\platforms\ /e /i /y
+if exist %QTDIR%\plugins\generic xcopy %QTDIR%\plugins\generic %KLOGG_WORKSPACE%\release\generic\ /e /i /y
+if exist %QTDIR%\plugins\iconengines xcopy %QTDIR%\plugins\iconengines %KLOGG_WORKSPACE%\release\iconengines\ /e /i /y
+if exist %QTDIR%\plugins\imageformats xcopy %QTDIR%\plugins\imageformats %KLOGG_WORKSPACE%\release\imageformats\ /e /i /y
+if exist %QTDIR%\plugins\networkinformation xcopy %QTDIR%\plugins\networkinformation %KLOGG_WORKSPACE%\release\networkinformation\ /e /i /y
+if exist %QTDIR%\plugins\sqldrivers xcopy %QTDIR%\plugins\sqldrivers %KLOGG_WORKSPACE%\release\sqldrivers\ /e /i /y
+if exist %QTDIR%\plugins\styles xcopy %QTDIR%\plugins\styles %KLOGG_WORKSPACE%\release\styles\ /e /i /y
+if exist %QTDIR%\plugins\tls xcopy %QTDIR%\plugins\tls %KLOGG_WORKSPACE%\release\tls\ /e /i /y
+if exist %QTDIR%\translations xcopy %QTDIR%\translations %KLOGG_WORKSPACE%\release\translations\ /e /i /y
+exit /b 0

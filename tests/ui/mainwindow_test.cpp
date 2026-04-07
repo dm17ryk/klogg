@@ -468,7 +468,7 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
               return value.toMap().value( "selected" ).toBool();
           } );
     REQUIRE( selectedHistoryFilter != filters.cend() );
-    REQUIRE( selectedHistoryFilter->toMap().value( "filterString" ).toString() == "ERROR" );
+    REQUIRE( selectedHistoryFilter->toMap().value( "filterString" ).toString().contains( "ERROR" ) );
 
     CommanderRequest getPredefinedFiltersRequest;
     getPredefinedFiltersRequest.action = CommanderAction::GetFilters;

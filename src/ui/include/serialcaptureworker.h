@@ -34,11 +34,13 @@ class SerialCaptureWorker : public QObject {
     void stop();
     void sendData( QByteArray data );
     void appendToFile( QByteArray data );
+    void setLoggingEnabled( bool enabled );
 
   Q_SIGNALS:
     void errorOccurred( const QString& message );
     void finished();
     void dataReceived( const QByteArray& data );
+    void dataTransmitted( const QByteArray& data );
 
   private Q_SLOTS:
     void onReadyRead();
@@ -51,4 +53,5 @@ class SerialCaptureWorker : public QObject {
     int flushCounter_ = 0;
     bool stopping_ = false;
     bool atLineStart_ = true;
+    bool loggingEnabled_ = true;
 };

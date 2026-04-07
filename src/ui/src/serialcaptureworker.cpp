@@ -202,8 +202,11 @@ void SerialCaptureWorker::sendData( QByteArray data )
         Q_EMIT errorOccurred(
             tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
+    else {
+        Q_EMIT dataTransmitted( data.left( qMax<qint64>( 0, written ) ) );
+    }
 
-    if ( settings_.logTransmits && file_.isOpen() ) {
+    if ( loggingEnabled_ && settings_.logTransmits && file_.isOpen() ) {
         QByteArray toWrite;
         toWrite.reserve( data.size() + 64 );
         if ( settings_.addTimestamps ) {
@@ -242,6 +245,14 @@ void SerialCaptureWorker::appendToFile( QByteArray data )
     file_.flush();
 }
 
+void SerialCaptureWorker::setLoggingEnabled( bool enabled )
+{
+    loggingEnabled_ = enabled;
+    if ( file_.isOpen() ) {
+        file_.flush();
+    }
+}
+
 void SerialCaptureWorker::onReadyRead()
 {
     if ( stopping_ || !port_ ) {
@@ -274,15 +285,17 @@ void SerialCaptureWorker::onReadyRead()
     }
 
     const bool hasNewline = data.contains( '\n' );
-    const auto written = file_.write( toWrite );
-    if ( written != toWrite.size() ) {
-        Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
-        stop();
-        return;
-    }
-    if ( hasNewline || ++flushCounter_ >= 8 ) {
-        file_.flush();
-        flushCounter_ = 0;
+    if ( loggingEnabled_ ) {
+        const auto written = file_.write( toWrite );
+        if ( written != toWrite.size() ) {
+            Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+            stop();
+            return;
+        }
+        if ( hasNewline || ++flushCounter_ >= 8 ) {
+            file_.flush();
+            flushCounter_ = 0;
+        }
     }
 
     Q_EMIT dataReceived( data );

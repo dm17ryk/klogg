@@ -395,6 +395,7 @@ find_package(
              Concurrent
              Network
              SerialPort
+             Sql
              Xml
   REQUIRED
 )
@@ -405,6 +406,7 @@ find_package(
              Concurrent
              Network
              SerialPort
+             Sql
              Xml
   REQUIRED
 )
@@ -548,7 +550,7 @@ if(UNIX)
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Dmitry Kokotov <${CPACK_PACKAGE_CONTACT}>")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS YES)
     set(_klogg_qt_private_dirs "")
-    foreach(_qt_component Core Widgets Gui Network SerialPort Xml Core5Compat)
+    foreach(_qt_component Core Widgets Gui Network SerialPort Sql Xml Core5Compat)
       if(TARGET Qt${QT_VERSION_MAJOR}::${_qt_component})
         set(_qt_lib_location "")
         foreach(_qt_location_prop

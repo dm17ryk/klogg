@@ -73,6 +73,7 @@ class Session;
 class RecentFiles;
 class HighlightersMenu;
 class StreamSession;
+class ScriptSupervisor;
 struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
@@ -93,6 +94,7 @@ class MainWindow : public QMainWindow {
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
     QVariantMap commanderWindowInfo() const;
+    void refreshScriptStatusIndicators();
 
     void reTranslateUI();
 
@@ -144,6 +146,9 @@ class MainWindow : public QMainWindow {
     void showScratchPad();
     void showPreviewer();
     void showActionsResponses();
+    void showScriptRunner();
+    void showScenarioRunner();
+    void showLabQueue();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
@@ -210,12 +215,13 @@ class MainWindow : public QMainWindow {
 
   private:
     struct ComCaptureStartOptions {
-        static ComCaptureStartOptions interactive() { return { true, true, false }; }
-        static ComCaptureStartOptions restore() { return { false, true, true }; }
+        static ComCaptureStartOptions interactive() { return { true, true, false, false }; }
+        static ComCaptureStartOptions restore() { return { false, true, true, true }; }
 
         bool allowActionsPrompt = true;
         bool showErrors = true;
         bool nonBlockingErrors = false;
+        bool restoreMode = false;
     };
 
     void createActions();
@@ -235,6 +241,16 @@ class MainWindow : public QMainWindow {
     CommanderResult closeUrlBySource( const QString& url );
     CommanderResult commanderFilters( const CommanderRequest& request ) const;
     CommanderResult commanderSetFilter( const CommanderRequest& request );
+    CommanderResult commanderSendAction( const CommanderRequest& request );
+    CommanderResult commanderWaitResponse( const CommanderRequest& request );
+    CommanderResult commanderStartComm( const CommanderRequest& request );
+    CommanderResult commanderStopComm( const CommanderRequest& request );
+    CommanderResult commanderGetCommStatus( const CommanderRequest& request ) const;
+    CommanderResult commanderSetLogging( const CommanderRequest& request, bool enabled );
+    CommanderResult commanderAddComment( const CommanderRequest& request );
+    CommanderResult commanderGetResponseCounter( const CommanderRequest& request ) const;
+    CommanderResult commanderResetResponseCounter( const CommanderRequest& request );
+    CommanderResult commanderClearComm( const CommanderRequest& request );
     bool loadFile( const QString& fileName, bool followFile = false );
     bool extractAndLoadFile( const QString& fileName );
     CommanderResult openRemoteFile( const QUrl& url, bool interactiveErrors = true,
@@ -271,6 +287,32 @@ class MainWindow : public QMainWindow {
     void registerRemoteFileSource( const QString& filePath, const QString& normalizedSourceUrl );
     CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
+    CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
+    StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
+      StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
+                                                  bool requireOpen ) const;
+      QVariantList commanderResponseCounters( StreamSession* streamSession,
+                                              const CommanderRequest* request = nullptr ) const;
+        QVariantMap scriptEventContextForFile( const QString& filePath ) const;
+        void publishScriptEvent( const QVariantMap& event ) const;
+        void publishScriptLifecycleEvent( const QString& filePath, const QString& eventType ) const;
+        void publishScriptReceiveEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
+      void publishScriptResponseEvent( const QString& filePath,
+                                       int responseId,
+                                       const QString& responseName,
+                                       int counter,
+                                       const QByteArray& lineBytes,
+                                       const QString& matchedText ) const;
+      void publishScriptTxEvent( const QString& filePath, const QByteArray& payloadBytes ) const;
+      void publishScriptActionSendEvent( const QString& filePath,
+                                         int actionId,
+                                         const QString& actionName,
+                                         int stepIndex,
+                                         const QByteArray& payloadBytes ) const;
+        QString scriptContextForTab( int index ) const;
+        void restoreScriptContextForTab( int index, const QString& scriptContext );
+        QString globalScriptContext() const;
+        void restoreGlobalScriptContext();
 
     WindowSession session_;
     QString loadingFileName;
@@ -327,6 +369,9 @@ class MainWindow : public QMainWindow {
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
     QAction* showActionsResponsesAction;
+    QAction* showScriptRunnerAction;
+    QAction* showScenarioRunnerAction;
+    QAction* showLabQueueAction;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;

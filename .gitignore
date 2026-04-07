@@ -65,3 +65,6 @@ website/resources/
 # Local debug/backups
 config/klogg_session_bak.conf
 tmp_abc.txt
+
+# python
+__pycache__/
