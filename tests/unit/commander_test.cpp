@@ -124,6 +124,19 @@ TEST_CASE( "Commander CLI parses get_info action", "[commander][cli]" )
     REQUIRE( parameters.commander_request->action == CommanderAction::GetInfo );
 }
 
+TEST_CASE( "Main CLI parses dump_ui_tree automation mode", "[cli][automation]" )
+{
+    CliParameters parameters(
+        { "klogg", "--dump-ui-tree", "--window-width", "1440", "--window-height", "900" } );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE_FALSE( parameters.commander_request.has_value() );
+    REQUIRE( parameters.dump_ui_tree );
+    REQUIRE( parameters.multi_instance );
+    REQUIRE( parameters.window_width == 1440 );
+    REQUIRE( parameters.window_height == 900 );
+}
+
 TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
 {
     CliParameters getInfoPretty(

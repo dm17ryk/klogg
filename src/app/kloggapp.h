@@ -261,7 +261,7 @@ class KloggApp : public QApplication {
         for ( auto&& windowSession : session_->windowSessions() ) {
             try {
                 auto* window = newWindow( std::move( windowSession ) );
-                if ( !startupBootstrapEnabled_ ) {
+                if ( !automationModeEnabled_ && !startupBootstrapEnabled_ ) {
                     window->reloadGeometry();
                 }
                 StartupProgress::advance( QObject::tr( "Restoring window" ),
@@ -301,7 +301,10 @@ class KloggApp : public QApplication {
 
             for ( auto* window : restoredWindows ) {
                 StartupProgress::advance( QObject::tr( "Showing window" ) );
-                if ( startupBootstrapEnabled_ ) {
+                if ( automationModeEnabled_ ) {
+                    applyAutomationGeometry( window );
+                }
+                else if ( startupBootstrapEnabled_ ) {
                     applyStartupBootstrapGeometry( window );
                 }
                 window->show();
@@ -434,7 +437,10 @@ class KloggApp : public QApplication {
         }
 
         auto window = newWindow( { session_, generateIdFromUuid(), nextWindowIndex() } );
-        if ( startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( window );
+        }
+        else if ( startupBootstrapEnabled_ ) {
             applyStartupBootstrapGeometry( window );
         }
         else {
@@ -450,6 +456,19 @@ class KloggApp : public QApplication {
         startupBootstrapTopLeft_ = topLeft;
     }
 
+    void setAutomationMode( bool enabled, const QPoint& topLeft = {}, const QSize& size = {} )
+    {
+        automationModeEnabled_ = enabled;
+        if ( topLeft != QPoint() ) {
+            automationTopLeft_ = topLeft;
+        }
+        if ( size.isValid() ) {
+            automationWindowSize_ = size;
+        }
+    }
+
+    bool automationModeEnabled() const { return automationModeEnabled_; }
+
     void finalizeStartupBootstrapGeometry()
     {
         if ( !startupBootstrapEnabled_ ) {
@@ -460,7 +479,12 @@ class KloggApp : public QApplication {
         for ( auto& [ session, window ] : mainWindows_ ) {
             Q_UNUSED( session );
             if ( window != nullptr ) {
-                window->reloadGeometry();
+                if ( automationModeEnabled_ ) {
+                    applyAutomationGeometry( window );
+                }
+                else {
+                    window->reloadGeometry();
+                }
             }
         }
     }
@@ -631,7 +655,10 @@ class KloggApp : public QApplication {
 
         LOG_WARNING << "No visible main window after startup, opening fallback window";
         auto* fallbackWindow = newWindow();
-        if ( !startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( fallbackWindow );
+        }
+        else if ( !startupBootstrapEnabled_ ) {
             fallbackWindow->reloadGeometry();
         }
         else {
@@ -665,7 +692,10 @@ class KloggApp : public QApplication {
         mainWindows_.emplace_back( session, new MainWindow( session ) );
 
         auto& window = mainWindows_.back().second;
-        if ( startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( window );
+        }
+        else if ( startupBootstrapEnabled_ ) {
             applyStartupBootstrapGeometry( window );
         }
 
@@ -767,6 +797,17 @@ class KloggApp : public QApplication {
         window->setGeometry( QRect( bootstrapTopLeft, bootstrapSize ) );
     }
 
+    void applyAutomationGeometry( MainWindow* window ) const
+    {
+        if ( window == nullptr ) {
+            return;
+        }
+
+        const auto automationSize = automationWindowSize_.isValid() ? automationWindowSize_
+                                                                    : QSize( 1600, 1000 );
+        window->setGeometry( QRect( automationTopLeft_, automationSize ) );
+    }
+
     MainWindow* activeWindowOrCreate()
     {
         auto* activeWindow = activeWindowIfAny();
@@ -854,6 +895,9 @@ class KloggApp : public QApplication {
     std::stack<QPointer<MainWindow>> activeWindows_;
     bool startupBootstrapEnabled_ = false;
     QPoint startupBootstrapTopLeft_;
+    bool automationModeEnabled_ = false;
+    QPoint automationTopLeft_ = QPoint( 40, 40 );
+    QSize automationWindowSize_ = QSize( 1600, 1000 );
 
     VersionChecker versionChecker_;
 };

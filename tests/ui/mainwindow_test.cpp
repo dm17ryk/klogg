@@ -22,11 +22,14 @@
 #include <algorithm>
 #include <iterator>
 #include <mutex>
+#include <QAction>
 #include <QDir>
 #include <QFile>
+#include <QMenu>
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QVariantMap>
 #include <QWidget>
 
 #include <QToolBar>
@@ -133,6 +136,18 @@ bool hasVisibleTopLevelWindowWithTitle( const QString& titlePart )
     return std::any_of( widgets.cbegin(), widgets.cend(), [ &titlePart ]( const QWidget* widget ) {
         return widget != nullptr && widget->isVisible()
                && widget->windowTitle().contains( titlePart, Qt::CaseInsensitive );
+    } );
+}
+
+bool automationTreeContainsObjectName( const QVariantMap& node, const QString& objectName )
+{
+    if ( node.value( "objectName" ).toString() == objectName ) {
+        return true;
+    }
+
+    const auto children = node.value( "children" ).toList();
+    return std::any_of( children.cbegin(), children.cend(), [ &objectName ]( const auto& child ) {
+        return automationTreeContainsObjectName( child.toMap(), objectName );
     } );
 }
 } // namespace
@@ -726,4 +741,34 @@ SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 0; } ) );
     REQUIRE( tabArea->currentIndex() == -1 );
+}
+
+TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][automation]" )
+{
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Automation", 0 };
+
+    std::unique_ptr<MainWindow> mainWindow{ new MainWindow( windowSession ) };
+    mainWindow->show();
+
+    REQUIRE( mainWindow->objectName() == "mainWindow" );
+    REQUIRE( mainWindow->findChild<QMenu*>( "toolsMenu" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QMenu*>( "highlightersMenu" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QMenu*>( "favoritesMenu" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QMenu*>( "helpMenu" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "optionsAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "showDocumentationAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "generateDumpAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "showScratchPadAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "showPreviewerAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "showActionsResponsesAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "openClipboardAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "openUrlAction" ) != nullptr );
+
+    const auto uiTree = mainWindow->automationUiTree();
+    REQUIRE( uiTree.value( "objectName" ).toString() == "mainWindow" );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "toolsMenu" ) );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "helpMenu" ) );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "optionsAction" ) );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "showScratchPadAction" ) );
 }

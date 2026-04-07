@@ -49,6 +49,7 @@ struct CliParameters {
     bool multi_instance = false;
     bool log_to_file = false;
     bool follow_file = false;
+    bool dump_ui_tree = false;
 
     bool enable_logging = false;
     int log_level = 3;
@@ -121,6 +122,8 @@ struct CliParameters {
             "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
             "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "Automation:\n"
+            "  klogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
             "Run `klogg command --help` for detailed commander options." );
     }
 
@@ -215,6 +218,8 @@ struct CliParameters {
                                                         "1024" );
             const QCommandLineOption windowHeightOption( "window-height", "new window height",
                                                          "768" );
+            const QCommandLineOption dumpUiTreeOption(
+                "dump-ui-tree", "dump the automation UI tree as JSON and exit" );
             parser.addOption( multiInstanceOption );
             parser.addOption( loadSessionOption );
             parser.addOption( newSessionOption );
@@ -222,6 +227,7 @@ struct CliParameters {
             parser.addOption( followOption );
             parser.addOption( windowWidthOption );
             parser.addOption( windowHeightOption );
+            parser.addOption( dumpUiTreeOption );
         }
         else {
             parser.addOption( patternOption );
@@ -276,6 +282,10 @@ struct CliParameters {
 
             window_width = parser.value( QStringLiteral( "window-width" ) ).toInt();
             window_height = parser.value( QStringLiteral( "window-height" ) ).toInt();
+            dump_ui_tree = parser.isSet( QStringLiteral( "dump-ui-tree" ) );
+            if ( dump_ui_tree ) {
+                multi_instance = true;
+            }
         }
         else if ( parser.isSet( patternOption ) ) {
             pattern = parser.value( patternOption );

@@ -93,6 +93,7 @@ class MainWindow : public QMainWindow {
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
     QVariantMap commanderWindowInfo() const;
+    QVariantMap automationUiTree() const;
 
     void reTranslateUI();
 

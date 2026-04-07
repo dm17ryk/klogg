@@ -260,6 +260,74 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
 static constexpr auto ClipboardMaxTry = 5;
 static const auto ActionsPortSuffix = QStringLiteral( " (actions)" );
 
+QString automationDisplayText( const QObject* object )
+{
+    if ( object == nullptr ) {
+        return {};
+    }
+
+    if ( const auto* action = qobject_cast<const QAction*>( object ) ) {
+        auto text = action->text();
+        text.remove( '&' );
+        return text;
+    }
+
+    if ( const auto* menu = qobject_cast<const QMenu*>( object ) ) {
+        auto title = menu->title();
+        title.remove( '&' );
+        return title;
+    }
+
+    const auto textPropertyIndex = object->metaObject()->indexOfProperty( "text" );
+    if ( textPropertyIndex >= 0 ) {
+        auto text = object->property( "text" ).toString();
+        text.remove( '&' );
+        if ( !text.isEmpty() ) {
+            return text;
+        }
+    }
+
+    if ( const auto* widget = qobject_cast<const QWidget*>( object ) ) {
+        auto windowTitle = widget->windowTitle();
+        windowTitle.remove( '&' );
+        return windowTitle;
+    }
+
+    return {};
+}
+
+QVariantMap automationObjectTree( const QObject* object )
+{
+    QVariantMap node;
+    if ( object == nullptr ) {
+        return node;
+    }
+
+    node.insert( QStringLiteral( "className" ), object->metaObject()->className() );
+    node.insert( QStringLiteral( "objectName" ), object->objectName() );
+
+    const auto text = automationDisplayText( object );
+    if ( !text.isEmpty() ) {
+        node.insert( QStringLiteral( "text" ), text );
+    }
+
+    if ( const auto* widget = qobject_cast<const QWidget*>( object ) ) {
+        if ( !widget->accessibleName().isEmpty() ) {
+            node.insert( QStringLiteral( "accessibleName" ), widget->accessibleName() );
+        }
+    }
+
+    QVariantList children;
+    const auto objectChildren = object->children();
+    children.reserve( objectChildren.size() );
+    for ( const auto* child : objectChildren ) {
+        children.push_back( automationObjectTree( child ) );
+    }
+    node.insert( QStringLiteral( "children" ), children );
+
+    return node;
+}
+
 } // namespace
 
 QTranslator MainWindow::mTranslator;
@@ -274,6 +342,7 @@ MainWindow::MainWindow( WindowSession session )
     , mainTabWidget_()
     , tempDir_( QDir::temp().filePath( "klogg_temp_" ) )
 {
+    setObjectName( QStringLiteral( "mainWindow" ) );
     createActions();
     createMenus();
     createToolBars();
@@ -622,6 +691,13 @@ QVariantMap MainWindow::commanderWindowInfo() const
     return windowInfo;
 }
 
+QVariantMap MainWindow::automationUiTree() const
+{
+    auto payload = automationObjectTree( this );
+    payload.insert( QStringLiteral( "windowTitle" ), windowTitle() );
+    return payload;
+}
+
 void MainWindow::reTranslateUI()
 {
     using namespace klogg::mainwindow;
@@ -888,11 +964,13 @@ void MainWindow::createActions()
              [ this ]( auto ) { this->copyFullPath(); } );
 
     openClipboardAction = new QAction( tr( action::openClipboardText ), this );
+    openClipboardAction->setObjectName( QStringLiteral( "openClipboardAction" ) );
     openClipboardAction->setStatusTip( tr( action::openClipboardStatusTip ) );
     connect( openClipboardAction, &QAction::triggered, this,
              [ this ]( auto ) { this->openClipboard(); } );
 
     openUrlAction = new QAction( tr( action::openUrlText ), this );
+    openUrlAction->setObjectName( QStringLiteral( "openUrlAction" ) );
     openUrlAction->setStatusTip( tr( action::openUrlStatusTip ) );
     connect( openUrlAction, &QAction::triggered, this, [ this ]( auto ) { this->openUrl(); } );
 
@@ -942,6 +1020,7 @@ void MainWindow::createActions()
     signalMux_.connect( stopAction, SIGNAL( triggered() ), SLOT( stopLoading() ) );
 
     optionsAction = new QAction( tr( action::optionsText ), this );
+    optionsAction->setObjectName( QStringLiteral( "optionsAction" ) );
     optionsAction->setMenuRole( QAction::PreferencesRole );
     optionsAction->setStatusTip( tr( action::optionsStatusTip ) );
     connect( optionsAction, &QAction::triggered, this, [ this ]( auto ) { this->options(); } );
@@ -953,6 +1032,7 @@ void MainWindow::createActions()
              [ this ]( auto ) { this->editHighlighters(); } );
 
     showDocumentationAction = new QAction( tr( action::showDocumentationText ), this );
+    showDocumentationAction->setObjectName( QStringLiteral( "showDocumentationAction" ) );
     showDocumentationAction->setStatusTip( tr( action::showDocumentationStatusTip ) );
     connect( showDocumentationAction, &QAction::triggered, this,
              [ this ]( auto ) { this->documentation(); } );
@@ -985,21 +1065,25 @@ void MainWindow::createActions()
     } );
 
     generateDumpAction = new QAction( tr( action::generateDumpText ), this );
+    generateDumpAction->setObjectName( QStringLiteral( "generateDumpAction" ) );
     generateDumpAction->setStatusTip( tr( action::generateDumpStatusTip ) );
     connect( generateDumpAction, &QAction::triggered, this,
              [ this ]( auto ) { this->generateDump(); } );
 
     showScratchPadAction = new QAction( tr( action::showScratchPadText ), this );
+    showScratchPadAction->setObjectName( QStringLiteral( "showScratchPadAction" ) );
     showScratchPadAction->setStatusTip( tr( action::showScratchPadStatusTip ) );
     connect( showScratchPadAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScratchPad(); } );
 
     showPreviewerAction = new QAction( tr( action::showPreviewerText ), this );
+    showPreviewerAction->setObjectName( QStringLiteral( "showPreviewerAction" ) );
     showPreviewerAction->setStatusTip( tr( action::showPreviewerStatusTip ) );
     connect( showPreviewerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showPreviewer(); } );
 
     showActionsResponsesAction = new QAction( tr( action::showActionsResponsesText ), this );
+    showActionsResponsesAction->setObjectName( QStringLiteral( "showActionsResponsesAction" ) );
     showActionsResponsesAction->setStatusTip( tr( action::showActionsResponsesStatusTip ) );
     connect( showActionsResponsesAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showActionsResponses(); } );
@@ -1182,8 +1266,10 @@ void MainWindow::createMenus()
     viewMenu->addAction( reloadAction );
 
     toolsMenu = menuBar()->addMenu( tr( menu::toolsTitle ) );
+    toolsMenu->setObjectName( QStringLiteral( "toolsMenu" ) );
 
     highlightersMenu = new HighlightersMenu( tr( menu::highlightersTitle ), menuBar() );
+    highlightersMenu->setObjectName( QStringLiteral( "highlightersMenu" ) );
     menuBar()->addMenu( highlightersMenu );
     highlightersMenu->setApplyChange( [ this ]() {
         auto crawler = currentCrawlerWidget();
@@ -1204,9 +1290,11 @@ void MainWindow::createMenus()
     menuBar()->addSeparator();
 
     favoritesMenu = menuBar()->addMenu( tr( menu::favoritesTitle ) );
+    favoritesMenu->setObjectName( QStringLiteral( "favoritesMenu" ) );
     favoritesMenu->setToolTipsVisible( true );
 
     helpMenu = menuBar()->addMenu( tr( menu::helpTitle ) );
+    helpMenu->setObjectName( QStringLiteral( "helpMenu" ) );
     helpMenu->addAction( showDocumentationAction );
     helpMenu->addSeparator();
     helpMenu->addAction( reportIssueAction );

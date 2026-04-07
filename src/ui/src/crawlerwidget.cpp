@@ -1249,6 +1249,8 @@ void CrawlerWidget::setup()
     // visibilityView->setMinimumWidth( 170 ); // Only needed with custom style-sheet
 
     visibilityBox_ = new QComboBox();
+    visibilityBox_->setObjectName( QStringLiteral( "visibilityComboBox" ) );
+    visibilityBox_->setAccessibleName( tr( "Filtered view visibility" ) );
     visibilityBox_->setModel( visibilityModel_ );
     visibilityBox_->setView( visibilityView );
 
@@ -1278,6 +1280,7 @@ void CrawlerWidget::setup()
 
     // Construct the Search Info line
     searchInfoLine_ = new InfoLine();
+    searchInfoLine_->setObjectName( QStringLiteral( "searchInfoLine" ) );
     searchInfoLine_->setFrameStyle( QFrame::StyledPanel );
     searchInfoLine_->setFrameShadow( QFrame::Sunken );
     searchInfoLine_->setLineWidth( 1 );
@@ -1289,30 +1292,40 @@ void CrawlerWidget::setup()
     searchInfoLine_->setContentsMargins( 2, 2, 2, 2 );
 
     matchCaseButton_ = new QToolButton();
+    matchCaseButton_->setObjectName( QStringLiteral( "matchCaseButton" ) );
+    matchCaseButton_->setAccessibleName( tr( "Match case" ) );
     matchCaseButton_->setToolTip( tr( "Match case" ) );
     matchCaseButton_->setCheckable( true );
     matchCaseButton_->setFocusPolicy( Qt::NoFocus );
     matchCaseButton_->setContentsMargins( 2, 2, 2, 2 );
 
     useRegexpButton_ = new QToolButton();
+    useRegexpButton_->setObjectName( QStringLiteral( "useRegexpButton" ) );
+    useRegexpButton_->setAccessibleName( tr( "Use regex" ) );
     useRegexpButton_->setToolTip( tr( "Use regex" ) );
     useRegexpButton_->setCheckable( true );
     useRegexpButton_->setFocusPolicy( Qt::NoFocus );
     useRegexpButton_->setContentsMargins( 2, 2, 2, 2 );
 
     inverseButton_ = new QToolButton();
+    inverseButton_->setObjectName( QStringLiteral( "inverseMatchButton" ) );
+    inverseButton_->setAccessibleName( tr( "Inverse match" ) );
     inverseButton_->setToolTip( tr( "Inverse match" ) );
     inverseButton_->setCheckable( true );
     inverseButton_->setFocusPolicy( Qt::NoFocus );
     inverseButton_->setContentsMargins( 2, 2, 2, 2 );
 
     booleanButton_ = new QToolButton();
+    booleanButton_->setObjectName( QStringLiteral( "booleanSearchButton" ) );
+    booleanButton_->setAccessibleName( tr( "Boolean search" ) );
     booleanButton_->setToolTip( tr( "Enable regular expression logical combining" ) );
     booleanButton_->setCheckable( true );
     booleanButton_->setFocusPolicy( Qt::NoFocus );
     booleanButton_->setContentsMargins( 2, 2, 2, 2 );
 
     searchRefreshButton_ = new QToolButton();
+    searchRefreshButton_->setObjectName( QStringLiteral( "searchRefreshButton" ) );
+    searchRefreshButton_->setAccessibleName( tr( "Auto-refresh" ) );
     searchRefreshButton_->setToolTip( tr( "Auto-refresh" ) );
     searchRefreshButton_->setCheckable( true );
     searchRefreshButton_->setFocusPolicy( Qt::NoFocus );
@@ -1321,6 +1334,8 @@ void CrawlerWidget::setup()
     // Construct the Search line
     searchLineCompleter_ = new QCompleter( savedSearches_->recentSearches(), this );
     searchLineEdit_ = new QComboBox;
+    searchLineEdit_->setObjectName( QStringLiteral( "searchLineEdit" ) );
+    searchLineEdit_->setAccessibleName( tr( "Search pattern history" ) );
     searchLineEdit_->setEditable( true );
     searchLineEdit_->setCompleter( searchLineCompleter_ );
     searchLineEdit_->addItems( savedSearches_->recentSearches() );
@@ -1328,6 +1343,8 @@ void CrawlerWidget::setup()
     searchLineEdit_->clearEditText();
     searchLineEdit_->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Minimum );
     searchLineEdit_->setSizeAdjustPolicy( QComboBox::AdjustToMinimumContentsLengthWithIcon );
+    searchLineEdit_->lineEdit()->setObjectName( QStringLiteral( "searchLineEditInner" ) );
+    searchLineEdit_->lineEdit()->setAccessibleName( tr( "Search pattern" ) );
     searchLineEdit_->lineEdit()->setMaxLength( std::numeric_limits<int>::max() / 1024 );
     searchLineEdit_->setContentsMargins( 2, 2, 2, 2 );
 
@@ -1346,16 +1363,22 @@ void CrawlerWidget::setup()
     setFocusProxy( searchLineEdit_ );
 
     clearButton_ = new QToolButton();
+    clearButton_->setObjectName( QStringLiteral( "clearSearchButton" ) );
+    clearButton_->setAccessibleName( tr( "Clear search text" ) );
     clearButton_->setText( tr( "Clear search text" ) );
     clearButton_->setAutoRaise( true );
     clearButton_->setContentsMargins( 2, 2, 2, 2 );
 
     searchButton_ = new QToolButton();
+    searchButton_->setObjectName( QStringLiteral( "searchButton" ) );
+    searchButton_->setAccessibleName( tr( "Search" ) );
     searchButton_->setText( tr( "Search" ) );
     searchButton_->setAutoRaise( true );
     searchButton_->setContentsMargins( 2, 2, 2, 2 );
 
     keepSearchResultsButton_ = new QToolButton();
+    keepSearchResultsButton_->setObjectName( QStringLiteral( "keepSearchResultsButton" ) );
+    keepSearchResultsButton_->setAccessibleName( tr( "Keep results" ) );
     keepSearchResultsButton_->setText( tr( "Keep Results" ) );
     keepSearchResultsButton_->setToolTip(
         tr( "Keep these results and show subsequent results in a new window" ) );
@@ -1363,12 +1386,16 @@ void CrawlerWidget::setup()
     keepSearchResultsButton_->setContentsMargins( 2, 2, 2, 2 );
 
     stopButton_ = new QToolButton();
+    stopButton_->setObjectName( QStringLiteral( "stopSearchButton" ) );
+    stopButton_->setAccessibleName( tr( "Stop search" ) );
     stopButton_->setAutoRaise( true );
     stopButton_->setEnabled( false );
     stopButton_->setVisible( false );
     stopButton_->setContentsMargins( 2, 2, 2, 2 );
 
     predefinedFilters_ = new PredefinedFiltersComboBox( this );
+    predefinedFilters_->setObjectName( QStringLiteral( "predefinedFiltersComboBox" ) );
+    predefinedFilters_->setAccessibleName( tr( "Predefined filters" ) );
 
     auto* searchLineLayout = new QHBoxLayout;
     searchLineLayout->setContentsMargins( 2, 2, 2, 2 );
