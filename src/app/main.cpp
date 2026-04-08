@@ -49,6 +49,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPoint>
+#include <QSaveFile>
 #include <QScopedValueRollback>
 #include <QSize>
 #include <QSplashScreen>
@@ -460,6 +461,30 @@ void writeCliPayload( const QVariantMap& payload, bool pretty = false )
     bytes.append( '\n' );
     writeCliBytes( bytes, false, true );
 }
+
+bool writeCliPayloadToFile( const QString& path, const QVariantMap& payload, bool pretty = false )
+{
+    if ( path.isEmpty() ) {
+        return false;
+    }
+
+    QByteArray bytes;
+    appendJsonObject( bytes, payload, pretty, 0 );
+    bytes.append( '\n' );
+
+    QSaveFile outputFile{ path };
+    if ( !outputFile.open( QIODevice::WriteOnly ) ) {
+        return false;
+    }
+
+    const auto written = outputFile.write( bytes );
+    if ( written != bytes.size() ) {
+        outputFile.cancelWriting();
+        return false;
+    }
+
+    return outputFile.commit();
+}
 } // namespace
 
 int main( int argc, char* argv[] )
@@ -485,8 +510,10 @@ int main( int argc, char* argv[] )
         return EXIT_FAILURE;
     }
 
+    const bool automationDumpRequested
+        = parameters.dump_ui_tree || !parameters.dump_state_json_path.isEmpty();
     const bool automationMode
-        = parameters.dump_ui_tree || qEnvironmentVariableIntValue( "KLOGG_AUTOMATION" ) > 0;
+        = automationDumpRequested || qEnvironmentVariableIntValue( "KLOGG_AUTOMATION" ) > 0;
     const QSize automationWindowSize
         = ( parameters.window_width > 0 && parameters.window_height > 0 )
               ? QSize( parameters.window_width, parameters.window_height )
@@ -540,6 +567,29 @@ int main( int argc, char* argv[] )
 
             writeCliMessage( result.message, true );
             return EXIT_FAILURE;
+        }
+
+        if ( !parameters.dump_state_json_path.isEmpty() ) {
+            CommanderRequest request;
+            request.action = CommanderAction::DumpState;
+
+            const auto result = app.sendCommandToPrimaryInstance( request );
+            if ( result.ok() ) {
+                if ( !writeCliPayloadToFile( parameters.dump_state_json_path, result.payload, true ) ) {
+                    writeCliMessage( QObject::tr( "Failed to write automation state to %1." )
+                                         .arg( parameters.dump_state_json_path ),
+                                     true );
+                    return EXIT_FAILURE;
+                }
+                return EXIT_SUCCESS;
+            }
+
+            if ( result.code != CommanderResultCode::TransportError ) {
+                writeCliMessage( result.message, true );
+                return EXIT_FAILURE;
+            }
+
+            LOG_WARNING << "Failed to contact primary instance for automation state dump, starting a new window";
         }
 
         if ( app.sendFilesToPrimaryInstance( parameters.filenames ) ) {
@@ -604,7 +654,7 @@ int main( int argc, char* argv[] )
 
         writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
     }
-    else if ( !parameters.dump_ui_tree ) {
+    else if ( !automationDumpRequested ) {
         for ( const auto& filename : parameters.filenames ) {
             StartupProgress::advance( QObject::tr( "Opening startup file" ),
                                       QFileInfo( filename ).fileName() );
@@ -634,6 +684,23 @@ int main( int argc, char* argv[] )
                                              | QEventLoop::ExcludeSocketNotifiers );
         }
         writeCliPayload( mw->automationUiTree(), true );
+        return EXIT_SUCCESS;
+    }
+
+    if ( !parameters.dump_state_json_path.isEmpty() ) {
+        for ( auto attempt = 0; attempt < 5; ++attempt ) {
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
+                                             | QEventLoop::ExcludeSocketNotifiers );
+        }
+
+        if ( !writeCliPayloadToFile( parameters.dump_state_json_path, mw->automationSnapshot(),
+                                     true ) ) {
+            writeCliMessage( QObject::tr( "Failed to write automation state to %1." )
+                                 .arg( parameters.dump_state_json_path ),
+                             true );
+            return EXIT_FAILURE;
+        }
+
         return EXIT_SUCCESS;
     }
 

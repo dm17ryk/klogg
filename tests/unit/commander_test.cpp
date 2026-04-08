@@ -137,6 +137,19 @@ TEST_CASE( "Main CLI parses dump_ui_tree automation mode", "[cli][automation]" )
     REQUIRE( parameters.window_height == 900 );
 }
 
+TEST_CASE( "Main CLI parses dump_state_json automation mode", "[cli][automation]" )
+{
+    CliParameters parameters(
+        { "klogg", "--dump-state-json", "state.json", "--window-width", "1280", "--window-height", "720" } );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE_FALSE( parameters.commander_request.has_value() );
+    REQUIRE( parameters.dump_state_json_path == "state.json" );
+    REQUIRE_FALSE( parameters.multi_instance );
+    REQUIRE( parameters.window_width == 1280 );
+    REQUIRE( parameters.window_height == 720 );
+}
+
 TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
 {
     CliParameters getInfoPretty(
@@ -243,6 +256,38 @@ TEST_CASE( "Commander CLI parses filter actions", "[commander][cli]" )
     REQUIRE( setFilter.commander_request->rearmAutoRefresh );
 }
 
+TEST_CASE( "Commander CLI parses automation actions", "[commander][cli]" )
+{
+    CliParameters search(
+        { "klogg", "command", "--action", "search", "--text", "ERROR", "--regex",
+          "--case-sensitive", "--inverse", "--boolean", "--auto-refresh", "--keep-results" } );
+    REQUIRE_FALSE( search.parse_error );
+    REQUIRE( search.commander_request.has_value() );
+    REQUIRE( search.commander_request->action == CommanderAction::Search );
+    REQUIRE( search.commander_request->searchText == "ERROR" );
+    REQUIRE( search.commander_request->searchUseRegex );
+    REQUIRE( search.commander_request->searchCaseSensitive );
+    REQUIRE( search.commander_request->searchInverseMatch );
+    REQUIRE( search.commander_request->searchUseBoolean );
+    REQUIRE( search.commander_request->searchAutoRefresh );
+    REQUIRE( search.commander_request->searchKeepResults );
+
+    CliParameters follow(
+        { "klogg", "command", "--action", "set_follow_mode", "--enabled" } );
+    REQUIRE_FALSE( follow.parse_error );
+    REQUIRE( follow.commander_request.has_value() );
+    REQUIRE( follow.commander_request->action == CommanderAction::SetFollowMode );
+    REQUIRE( follow.commander_request->enabled.has_value() );
+    REQUIRE( *follow.commander_request->enabled );
+
+    CliParameters invoke(
+        { "klogg", "command", "--action", "invoke_action", "--object-name", "followAction" } );
+    REQUIRE_FALSE( invoke.parse_error );
+    REQUIRE( invoke.commander_request.has_value() );
+    REQUIRE( invoke.commander_request->action == CommanderAction::InvokeAction );
+    REQUIRE( invoke.commander_request->objectName == "followAction" );
+}
+
 TEST_CASE( "Commander CLI rejects invalid set_filter selectors", "[commander][cli]" )
 {
     CliParameters missingFilter( { "klogg", "command", "--action", "set_filter" } );
@@ -316,6 +361,22 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->comSettings.addTimestamps == request.comSettings.addTimestamps );
     REQUIRE( restored->comSettings.useForActions.has_value() );
     REQUIRE( restored->comSettings.useForActions == request.comSettings.useForActions );
+}
+
+TEST_CASE( "Commander dump_state variant roundtrip", "[commander][ipc]" )
+{
+    CommanderRequest request;
+    request.action = CommanderAction::DumpState;
+    request.windowIndex = 2;
+
+    QString errorMessage;
+    const auto restored
+        = commanderRequestFromVariantMap( commanderRequestToVariantMap( request ), &errorMessage );
+
+    REQUIRE( restored.has_value() );
+    REQUIRE( errorMessage.isEmpty() );
+    REQUIRE( restored->action == CommanderAction::DumpState );
+    REQUIRE( restored->windowIndex == 2 );
 }
 
 TEST_CASE( "Commander result file roundtrip", "[commander][ipc]" )

@@ -22,6 +22,7 @@
 #include <QComboBox>
 #include <QLineEdit>
 #include <QSignalSpy>
+#include <QTabWidget>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QTimer>
@@ -470,4 +471,41 @@ TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automa
     REQUIRE( crawler->findChild<PredefinedFiltersComboBox*>( "predefinedFiltersComboBox" )
              != nullptr );
     REQUIRE( crawler->findChild<InfoLine*>( "searchInfoLine" ) != nullptr );
+    REQUIRE( crawler->findChild<LogMainView*>( "logMainView" ) != nullptr );
+    REQUIRE( crawler->findChild<FilteredView*>( "filteredView" ) != nullptr );
+    REQUIRE( crawler->findChild<QTabWidget*>( "filteredViewsTabWidget" ) != nullptr );
+}
+
+TEST_CASE( "Crawler widget exposes semantic automation state", "[ui][automation]" )
+{
+    QTemporaryFile file{ "crawler_automation_state_test_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor crawlerVisitor;
+    crawlerVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } ) );
+    crawlerVisitor.disableBooleanCombinationMode();
+    crawlerVisitor.setSearchPattern( "this is line" );
+    crawlerVisitor.runSearch();
+
+    REQUIRE( waitUiState( [ & ]() {
+        return crawlerVisitor.crawler->matchCount() == SL_NB_LINES
+               && !crawlerVisitor.crawler->isSearchInProgress();
+    } ) );
+
+    auto* crawler = crawlerVisitor.crawler.get();
+    REQUIRE( crawler != nullptr );
+
+    const auto visibleRange = crawler->visibleLineRange();
+    REQUIRE( crawler->searchText() == "this is line" );
+    REQUIRE( crawler->matchCount() == SL_NB_LINES );
+    REQUIRE_FALSE( crawler->isSearchInProgress() );
+    REQUIRE_FALSE( crawler->isLoadingInProgress() );
+    REQUIRE( visibleRange.value( "start" ).toULongLong() >= 1 );
+    REQUIRE( visibleRange.value( "end" ).toULongLong() >= visibleRange.value( "start" ).toULongLong() );
+    REQUIRE( crawler->currentLineNumber().get() <= SL_NB_LINES );
+    REQUIRE( crawler->lastErrorText().isEmpty() );
 }

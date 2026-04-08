@@ -76,6 +76,7 @@
 #include <QCryptographicHash>
 
 #include "configuration.h"
+#include "commander.h"
 #include "dispatch_to.h"
 #include "fontutils.h"
 #include "infoline.h"
@@ -278,6 +279,93 @@ bool CrawlerWidget::isStartupPreparationPending() const
     return loadingInProgress_ || restoreSearchPending_ || startupFilterSearchInProgress_;
 }
 
+bool CrawlerWidget::isLoadingInProgress() const
+{
+    return loadingInProgress_;
+}
+
+bool CrawlerWidget::isSearchInProgress() const
+{
+    return startupFilterSearchInProgress_;
+}
+
+QString CrawlerWidget::searchText() const
+{
+    return searchLineEdit_ != nullptr ? searchLineEdit_->currentText() : QString{};
+}
+
+int CrawlerWidget::matchCount() const
+{
+    return static_cast<int>( nbMatches_.get() );
+}
+
+LineNumber CrawlerWidget::currentLineNumber() const
+{
+    return currentLineNumber_;
+}
+
+LineColumn CrawlerWidget::currentColumnNumber() const
+{
+    return currentColumnNumber_;
+}
+
+QVariantMap CrawlerWidget::visibleLineRange() const
+{
+    QVariantMap range;
+    const auto* view = activeView();
+    if ( view == nullptr ) {
+        range.insert( QStringLiteral( "start" ), QVariant{} );
+        range.insert( QStringLiteral( "end" ), QVariant{} );
+        return range;
+    }
+
+    range.insert( QStringLiteral( "start" ),
+                  static_cast<qulonglong>( view->visibleLineStart().get() + 1 ) );
+    range.insert( QStringLiteral( "end" ),
+                  static_cast<qulonglong>( view->visibleLineEnd().get() + 1 ) );
+    return range;
+}
+
+QString CrawlerWidget::lastErrorText() const
+{
+    return lastSearchErrorText_;
+}
+
+QString CrawlerWidget::searchStatusText() const
+{
+    return searchInfoLine_ != nullptr ? searchInfoLine_->text() : QString{};
+}
+
+bool CrawlerWidget::isRegexEnabled() const
+{
+    return useRegexpButton_ != nullptr && useRegexpButton_->isChecked();
+}
+
+bool CrawlerWidget::isCaseSensitiveSearchEnabled() const
+{
+    return matchCaseButton_ != nullptr && matchCaseButton_->isChecked();
+}
+
+bool CrawlerWidget::isInverseSearchEnabled() const
+{
+    return inverseButton_ != nullptr && inverseButton_->isChecked();
+}
+
+bool CrawlerWidget::isBooleanSearchEnabled() const
+{
+    return booleanButton_ != nullptr && booleanButton_->isChecked();
+}
+
+bool CrawlerWidget::isAutoRefreshSearchEnabled() const
+{
+    return searchRefreshButton_ != nullptr && searchRefreshButton_->isChecked();
+}
+
+bool CrawlerWidget::isKeepSearchResultsEnabled() const
+{
+    return keepSearchResultsButton_ != nullptr && keepSearchResultsButton_->isChecked();
+}
+
 void CrawlerWidget::reloadPredefinedFilters() const
 {
     predefinedFilters_->populatePredefinedFilters();
@@ -457,6 +545,19 @@ void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filt
     applyCommanderSearchPattern( searchPattern, runSearch, rearmAutoRefresh );
 }
 
+void CrawlerWidget::applyCommanderAutomationSearch( const CommanderRequest& request )
+{
+    matchCaseButton_->setChecked( request.searchCaseSensitive );
+    useRegexpButton_->setChecked( request.searchUseRegex );
+    inverseButton_->setChecked( request.searchInverseMatch );
+    booleanButton_->setChecked( request.searchUseBoolean );
+    searchRefreshButton_->setChecked( request.searchAutoRefresh );
+    keepSearchResultsButton_->setChecked( request.searchKeepResults );
+    lastSearchErrorText_.clear();
+    setSearchPattern( request.searchText, false );
+    startNewSearch();
+}
+
 void CrawlerWidget::goToLine()
 {
     bool isLineSelected = true;
@@ -576,6 +677,7 @@ std::shared_ptr<const ViewContextInterface> CrawlerWidget::doGetViewContext() co
 
 void CrawlerWidget::startNewSearch()
 {
+    lastSearchErrorText_.clear();
     if ( keepSearchResultsButton_->isChecked() ) {
         keepSearchResultsButton_->setChecked( false );
 
@@ -774,6 +876,7 @@ void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
                                              LineColumn startCol, LineLength nSymbols )
 {
     currentLineNumber_ = line;
+    currentColumnNumber_ = startCol;
     Q_EMIT newSelection( line, nLines, startCol, nSymbols );
 }
 
@@ -1212,11 +1315,14 @@ void CrawlerWidget::setup()
     bottomWindow->setContentsMargins( 2, 0, 2, 0 );
 
     overviewWidget_ = new OverviewWidget();
+    overviewWidget_->setObjectName( QStringLiteral( "overviewWidget" ) );
     logMainView_
         = new LogMainView( logData_.get(), quickFindPattern_.get(), &overview_, overviewWidget_ );
+    logMainView_->setObjectName( QStringLiteral( "logMainView" ) );
     logMainView_->setContentsMargins( 2, 0, 2, 0 );
 
     filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+    filteredView_->setObjectName( QStringLiteral( "filteredView" ) );
     filteredViewsData_[ filteredView_ ] = logFilteredData_;
     filteredView_->setContentsMargins( 2, 0, 2, 0 );
 
@@ -1416,7 +1522,11 @@ void CrawlerWidget::setup()
 
     // Construct the bottom window
     tabbedFilteredView_ = new QTabWidget;
+    tabbedFilteredView_->setObjectName( QStringLiteral( "filteredViewsTabWidget" ) );
     tabbedFilteredView_->setTabsClosable( true );
+    if ( auto* tabBar = tabbedFilteredView_->tabBar(); tabBar != nullptr ) {
+        tabBar->setObjectName( QStringLiteral( "filteredViewsTabBar" ) );
+    }
     tabbedFilteredView_->addTab( filteredView_, "" );
     tabbedFilteredView_->setDocumentMode( true );
     tabbedFilteredView_->setTabBarAutoHide( true );
@@ -1859,6 +1969,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         searchInfoLine_->setPalette( ErrorPalette );
         searchInfoLine_->setText( errorMessage );
         searchInfoLine_->show();
+        lastSearchErrorText_ = errorMessage;
 
         logMainView_->setSearchPattern( {} );
         filteredView_->setSearchPattern( {} );
@@ -1892,6 +2003,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             filteredView_->updateData();
             searchState_.resetState();
             startupFilterSearchInProgress_ = false;
+            lastSearchErrorText_.clear();
             printSearchInfoMessage();
             return;
         }
@@ -2017,6 +2129,7 @@ void CrawlerWidget::printSearchInfoMessage( LinesCount nbMatches )
     searchInfoLine_->setPalette( searchInfoLineDefaultPalette_ );
     searchInfoLine_->setText( text );
     searchInfoLine_->setVisible( !text.isEmpty() );
+    lastSearchErrorText_.clear();
 }
 
 // Change the data status and, if needed, advise upstream.

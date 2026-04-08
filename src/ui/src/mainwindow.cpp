@@ -57,6 +57,8 @@
 #endif // Q_OS_WIN
 
 #include <QClipboard>
+#include <QComboBox>
+#include <QAbstractButton>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
@@ -67,6 +69,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QLabel>
+#include <QLineEdit>
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -77,7 +81,10 @@
 #include <QResource>
 #include <QScreen>
 #include <QShortcut>
+#include <QSplitter>
 #include <QSortFilterProxyModel>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QRegularExpression>
 #include <QStringListModel>
 #include <QTemporaryFile>
@@ -296,7 +303,61 @@ QString automationDisplayText( const QObject* object )
     return {};
 }
 
-QVariantMap automationObjectTree( const QObject* object )
+QString automationRole( const QObject* object )
+{
+    if ( qobject_cast<const QAction*>( object ) != nullptr ) {
+        return QStringLiteral( "action" );
+    }
+    if ( qobject_cast<const QMenu*>( object ) != nullptr ) {
+        return QStringLiteral( "menu" );
+    }
+    if ( qobject_cast<const QToolBar*>( object ) != nullptr ) {
+        return QStringLiteral( "toolbar" );
+    }
+    if ( qobject_cast<const QTabBar*>( object ) != nullptr ) {
+        return QStringLiteral( "tabbar" );
+    }
+    if ( qobject_cast<const QTabWidget*>( object ) != nullptr ) {
+        return QStringLiteral( "tabwidget" );
+    }
+    if ( qobject_cast<const QComboBox*>( object ) != nullptr ) {
+        return QStringLiteral( "combobox" );
+    }
+    if ( qobject_cast<const QLineEdit*>( object ) != nullptr ) {
+        return QStringLiteral( "lineedit" );
+    }
+    if ( qobject_cast<const QLabel*>( object ) != nullptr ) {
+        return QStringLiteral( "label" );
+    }
+    if ( qobject_cast<const QSplitter*>( object ) != nullptr ) {
+        return QStringLiteral( "splitter" );
+    }
+    if ( qobject_cast<const AbstractLogView*>( object ) != nullptr ) {
+        return QStringLiteral( "logview" );
+    }
+    if ( qobject_cast<const QWidget*>( object ) != nullptr ) {
+        return QStringLiteral( "widget" );
+    }
+
+    return QString::fromLatin1( object->metaObject()->className() ).toLower();
+}
+
+QVariantMap automationBounds( const QWidget* widget, const QWidget* rootWidget )
+{
+    QVariantMap bounds;
+    if ( widget == nullptr || rootWidget == nullptr ) {
+        return bounds;
+    }
+
+    const auto topLeft = ( widget == rootWidget ) ? QPoint{} : widget->mapTo( rootWidget, QPoint{} );
+    bounds.insert( QStringLiteral( "x" ), topLeft.x() );
+    bounds.insert( QStringLiteral( "y" ), topLeft.y() );
+    bounds.insert( QStringLiteral( "width" ), widget->width() );
+    bounds.insert( QStringLiteral( "height" ), widget->height() );
+    return bounds;
+}
+
+QVariantMap automationObjectTree( const QObject* object, const QWidget* rootWidget )
 {
     QVariantMap node;
     if ( object == nullptr ) {
@@ -305,15 +366,30 @@ QVariantMap automationObjectTree( const QObject* object )
 
     node.insert( QStringLiteral( "className" ), object->metaObject()->className() );
     node.insert( QStringLiteral( "objectName" ), object->objectName() );
+    node.insert( QStringLiteral( "role" ), automationRole( object ) );
 
     const auto text = automationDisplayText( object );
     if ( !text.isEmpty() ) {
         node.insert( QStringLiteral( "text" ), text );
     }
 
+    if ( const auto* action = qobject_cast<const QAction*>( object ) ) {
+        node.insert( QStringLiteral( "enabled" ), action->isEnabled() );
+        if ( action->isCheckable() ) {
+            node.insert( QStringLiteral( "checked" ), action->isChecked() );
+        }
+    }
+
     if ( const auto* widget = qobject_cast<const QWidget*>( object ) ) {
+        node.insert( QStringLiteral( "enabled" ), widget->isEnabled() );
+        node.insert( QStringLiteral( "visible" ), widget->isVisible() );
+        node.insert( QStringLiteral( "bounds" ), automationBounds( widget, rootWidget ) );
         if ( !widget->accessibleName().isEmpty() ) {
             node.insert( QStringLiteral( "accessibleName" ), widget->accessibleName() );
+        }
+        if ( const auto* button = qobject_cast<const QAbstractButton*>( widget );
+             button != nullptr && button->isCheckable() ) {
+            node.insert( QStringLiteral( "checked" ), button->isChecked() );
         }
     }
 
@@ -321,11 +397,33 @@ QVariantMap automationObjectTree( const QObject* object )
     const auto objectChildren = object->children();
     children.reserve( objectChildren.size() );
     for ( const auto* child : objectChildren ) {
-        children.push_back( automationObjectTree( child ) );
+        children.push_back( automationObjectTree( child, rootWidget ) );
     }
     node.insert( QStringLiteral( "children" ), children );
 
     return node;
+}
+
+QVariantMap automationActionPayload( const QAction* action )
+{
+    QVariantMap payload;
+    if ( action == nullptr ) {
+        return payload;
+    }
+
+    auto text = action->text();
+    text.remove( '&' );
+
+    payload.insert( QStringLiteral( "className" ), action->metaObject()->className() );
+    payload.insert( QStringLiteral( "objectName" ), action->objectName() );
+    payload.insert( QStringLiteral( "role" ), QStringLiteral( "action" ) );
+    payload.insert( QStringLiteral( "text" ), text );
+    payload.insert( QStringLiteral( "enabled" ), action->isEnabled() );
+    if ( action->isCheckable() ) {
+        payload.insert( QStringLiteral( "checked" ), action->isChecked() );
+    }
+
+    return payload;
 }
 
 } // namespace
@@ -629,6 +727,14 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         }
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "close_tab requires a tab selector." ) );
+    case CommanderAction::Search:
+        return commanderSearch( request );
+    case CommanderAction::SetFollowMode:
+        return commanderSetFollowMode( request );
+    case CommanderAction::InvokeAction:
+        return commanderInvokeAction( request );
+    case CommanderAction::DumpState:
+        return commanderSuccess( {}, automationSnapshot() );
     case CommanderAction::CloseKlogg:
     case CommanderAction::None:
     default:
@@ -691,11 +797,112 @@ QVariantMap MainWindow::commanderWindowInfo() const
     return windowInfo;
 }
 
+QVariantMap MainWindow::automationSnapshot() const
+{
+    auto payload = automationTree();
+    payload.insert( QStringLiteral( "schemaVersion" ), 1 );
+    payload.insert( QStringLiteral( "windowTitle" ), windowTitle() );
+    payload.insert( QStringLiteral( "windowInfo" ), commanderWindowInfo() );
+    payload.insert( QStringLiteral( "actions" ), automationActions() );
+    payload.insert( QStringLiteral( "kloggState" ), automationState() );
+    return payload;
+}
+
+QVariantMap MainWindow::automationTree() const
+{
+    return automationObjectTree( this, this );
+}
+
+QVariantList MainWindow::automationActions() const
+{
+    QVariantList actions;
+    const auto knownActions = findChildren<QAction*>( QString{}, Qt::FindChildrenRecursively );
+    for ( const auto* action : knownActions ) {
+        if ( action == nullptr || action->objectName().isEmpty() ) {
+            continue;
+        }
+        actions.push_back( automationActionPayload( action ) );
+    }
+    return actions;
+}
+
+QVariantMap MainWindow::automationState() const
+{
+    const auto windowInfo = commanderWindowInfo();
+    const auto tabs = windowInfo.value( QStringLiteral( "tabs" ) ).toList();
+    const auto activeTabIndex = mainTabWidget_.currentIndex();
+    const auto* crawler = currentCrawlerWidget();
+
+    QVariantMap scratchPad;
+    scratchPad.insert( QStringLiteral( "visible" ), scratchPad_.isVisible() );
+    scratchPad.insert( QStringLiteral( "hasContent" ), scratchPad_.hasContent() );
+
+    QVariantMap state;
+    state.insert( QStringLiteral( "startupReady" ), isStartupReadyForDisplay() );
+    state.insert( QStringLiteral( "windowId" ), windowInfo.value( QStringLiteral( "windowId" ) ) );
+    state.insert( QStringLiteral( "windowIndex" ), windowInfo.value( QStringLiteral( "windowIndex" ) ) );
+    state.insert( QStringLiteral( "activeTabIndex" ), activeTabIndex );
+    state.insert( QStringLiteral( "activeTabTitle" ),
+                  activeTabIndex >= 0 ? mainTabWidget_.tabDisplayNameAt( activeTabIndex ) : QString{} );
+    state.insert( QStringLiteral( "activeFile" ),
+                  crawler != nullptr ? session_.getFilename( crawler ) : QString{} );
+    state.insert( QStringLiteral( "sourceType" ), QStringLiteral( "file" ) );
+    state.insert( QStringLiteral( "cursorLine" ),
+                  crawler != nullptr ? QVariant::fromValue(
+                                           static_cast<qulonglong>( crawler->currentLineNumber().get() + 1 ) )
+                                     : QVariant{} );
+    state.insert( QStringLiteral( "cursorColumn" ),
+                  crawler != nullptr ? QVariant::fromValue(
+                                           static_cast<qulonglong>( crawler->currentColumnNumber().get() + 1 ) )
+                                     : QVariant{} );
+    state.insert( QStringLiteral( "visibleLineStart" ), QVariant{} );
+    state.insert( QStringLiteral( "visibleLineEnd" ), QVariant{} );
+    state.insert( QStringLiteral( "searchText" ), crawler != nullptr ? crawler->searchText() : QString{} );
+    state.insert( QStringLiteral( "matchCount" ), crawler != nullptr ? crawler->matchCount() : 0 );
+    state.insert( QStringLiteral( "searchInProgress" ),
+                  crawler != nullptr ? crawler->isSearchInProgress() : false );
+    state.insert( QStringLiteral( "followMode" ),
+                  crawler != nullptr ? crawler->isFollowEnabled() : false );
+    state.insert( QStringLiteral( "loadingInProgress" ),
+                  !loadingFileName.isEmpty()
+                      || ( crawler != nullptr && crawler->isLoadingInProgress() ) );
+    state.insert( QStringLiteral( "encoding" ),
+                  crawler != nullptr ? crawler->encodingText() : QString{} );
+    state.insert( QStringLiteral( "parserMode" ), QString{} );
+    state.insert( QStringLiteral( "scratchPad" ), scratchPad );
+    state.insert( QStringLiteral( "previewerVisible" ), previewWindow_.isVisible() );
+    state.insert( QStringLiteral( "actionsResponsesVisible" ), actionsResponsesWindow_.isVisible() );
+    state.insert( QStringLiteral( "statusBarText" ), infoLine != nullptr ? infoLine->text() : QString{} );
+    state.insert( QStringLiteral( "lastErrorText" ),
+                  crawler != nullptr ? crawler->lastErrorText() : QString{} );
+
+    if ( crawler != nullptr ) {
+        const auto visibleRange = crawler->visibleLineRange();
+        state.insert( QStringLiteral( "visibleLineStart" ), visibleRange.value( QStringLiteral( "start" ) ) );
+        state.insert( QStringLiteral( "visibleLineEnd" ), visibleRange.value( QStringLiteral( "end" ) ) );
+    }
+
+    if ( activeTabIndex >= 0 ) {
+        const auto match = std::find_if( tabs.cbegin(), tabs.cend(), [ activeTabIndex ]( const auto& tabValue ) {
+            return tabValue.toMap().value( QStringLiteral( "tabIndex" ) ).toInt() == activeTabIndex;
+        } );
+        if ( match != tabs.cend() ) {
+            const auto activeTab = match->toMap();
+            state.insert( QStringLiteral( "sourceType" ),
+                          activeTab.value( QStringLiteral( "sourceType" ) ).toString() );
+            if ( state.value( QStringLiteral( "activeFile" ) ).toString().isEmpty() ) {
+                state.insert( QStringLiteral( "activeFile" ),
+                              activeTab.value( QStringLiteral( "filePath" ) ).toString() );
+            }
+        }
+    }
+
+    return state;
+}
+
 QVariantMap MainWindow::automationUiTree() const
 {
-    auto payload = automationObjectTree( this );
-    payload.insert( QStringLiteral( "windowTitle" ), windowTitle() );
-    return payload;
+    return automationSnapshot();
 }
 
 void MainWindow::reTranslateUI()
@@ -995,6 +1202,7 @@ void MainWindow::createActions()
              &MainWindow::toggleFilteredLineNumbersVisibility );
 
     followAction = new QAction( tr( action::followText ), this );
+    followAction->setObjectName( QStringLiteral( "followAction" ) );
     followAction->setCheckable( true );
     followAction->setEnabled( config.anyFileWatchEnabled() );
     connect( followAction, &QAction::toggled, this, &MainWindow::followSet );
@@ -1210,6 +1418,7 @@ void MainWindow::createMenus()
     using namespace klogg::mainwindow;
 
     fileMenu = menuBar()->addMenu( tr( menu::fileTitle ) );
+    fileMenu->setObjectName( QStringLiteral( "fileMenu" ) );
     fileMenu->setToolTipsVisible( true );
     fileMenu->addAction( newWindowAction );
     fileMenu->addAction( openAction );
@@ -1236,6 +1445,7 @@ void MainWindow::createMenus()
     fileMenu->addAction( exitAction );
 
     editMenu = menuBar()->addMenu( tr( menu::editTitle ) );
+    editMenu->setObjectName( QStringLiteral( "editMenu" ) );
     editMenu->addAction( copyAction );
     editMenu->addAction( selectAllAction );
     editMenu->addSeparator();
@@ -1251,7 +1461,9 @@ void MainWindow::createMenus()
     editMenu->setEnabled( false );
 
     viewMenu = menuBar()->addMenu( tr( menu::viewTitle ) );
+    viewMenu->setObjectName( QStringLiteral( "viewMenu" ) );
     openedFilesMenu = viewMenu->addMenu( tr( menu::openedFilesTitle ) );
+    openedFilesMenu->setObjectName( QStringLiteral( "openedFilesMenu" ) );
     viewMenu->addSeparator();
     viewMenu->addAction( overviewVisibleAction );
     viewMenu->addSeparator();
@@ -1310,29 +1522,36 @@ void MainWindow::createMenus()
 void MainWindow::createToolBars()
 {
     infoLine = new PathLine();
+    infoLine->setObjectName( QStringLiteral( "infoLine" ) );
     infoLine->setFrameStyle( QFrame::StyledPanel );
     infoLine->setFrameShadow( QFrame::Sunken );
     infoLine->setLineWidth( 0 );
     infoLine->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Minimum );
 
     sizeField = new QLabel();
+    sizeField->setObjectName( QStringLiteral( "sizeField" ) );
     sizeField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     dateField = new QLabel();
+    dateField->setObjectName( QStringLiteral( "dateField" ) );
     dateField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     encodingField = new QLabel();
+    encodingField->setObjectName( QStringLiteral( "encodingField" ) );
     encodingField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     comPortField = new QLabel();
+    comPortField->setObjectName( QStringLiteral( "comPortField" ) );
     comPortField->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter );
 
     lineNbField = new QLabel();
+    lineNbField->setObjectName( QStringLiteral( "lineNumberField" ) );
     lineNbField->setAlignment( Qt::AlignRight | Qt::AlignVCenter );
     lineNbField->setContentsMargins( 2, 0, 2, 0 );
 
     toolBar = addToolBar( QApplication::translate( "klogg::mainwindow::toolbar",
                                                    klogg::mainwindow::toolbar::toolbarTitle ) );
+    toolBar->setObjectName( QStringLiteral( "mainToolBar" ) );
     toolBar->setIconSize( QSize( 16, 16 ) );
     toolBar->setMovable( false );
     toolBar->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Minimum );
@@ -2280,19 +2499,21 @@ CommanderResult MainWindow::closeAllTabsCommander()
     return commanderSuccess();
 }
 
-CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
+CrawlerWidget* MainWindow::crawlerWidgetForCommanderRequest( const CommanderRequest& request ) const
 {
-    CrawlerWidget* crawler = nullptr;
     if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
+        return crawlerWidgetByTabId( request.tabId );
     }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
+    if ( request.tabIndex ) {
+        return crawlerWidgetByIndex( *request.tabIndex );
     }
 
+    return currentCrawlerWidget();
+}
+
+CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
+{
+    auto* crawler = crawlerWidgetForCommanderRequest( request );
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested tab was not found." ) );
@@ -2337,17 +2558,7 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
 
 CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request )
 {
-    CrawlerWidget* crawler = nullptr;
-    if ( !request.tabId.isEmpty() ) {
-        crawler = crawlerWidgetByTabId( request.tabId );
-    }
-    else if ( request.tabIndex ) {
-        crawler = crawlerWidgetByIndex( *request.tabIndex );
-    }
-    else {
-        crawler = currentCrawlerWidget();
-    }
-
+    auto* crawler = crawlerWidgetForCommanderRequest( request );
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested tab was not found." ) );
@@ -2387,6 +2598,70 @@ CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request 
 
     return commanderFailure( CommanderResultCode::InvalidRequest,
                              tr( "set_filter requires a filter selector." ) );
+}
+
+CommanderResult MainWindow::commanderSearch( const CommanderRequest& request )
+{
+    auto* crawler = crawlerWidgetForCommanderRequest( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+
+    if ( request.searchText.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "search requires a search expression." ) );
+    }
+
+    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    if ( targetTabIndex >= 0 ) {
+        mainTabWidget_.setCurrentIndex( targetTabIndex );
+    }
+
+    crawler->applyCommanderAutomationSearch( request );
+    return commanderSuccess( {}, automationState() );
+}
+
+CommanderResult MainWindow::commanderSetFollowMode( const CommanderRequest& request )
+{
+    auto* crawler = crawlerWidgetForCommanderRequest( request );
+    if ( crawler == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab was not found." ) );
+    }
+    if ( !request.enabled.has_value() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "set_follow_mode requires an explicit state." ) );
+    }
+
+    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    if ( targetTabIndex >= 0 ) {
+        mainTabWidget_.setCurrentIndex( targetTabIndex );
+    }
+
+    followAction->setChecked( *request.enabled );
+    return commanderSuccess( {}, automationState() );
+}
+
+CommanderResult MainWindow::commanderInvokeAction( const CommanderRequest& request )
+{
+    if ( request.objectName.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "invoke_action requires an object name." ) );
+    }
+
+    auto* action = findChild<QAction*>( request.objectName, Qt::FindChildrenRecursively );
+    if ( action == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Action %1 was not found." ).arg( request.objectName ) );
+    }
+    if ( !action->isEnabled() ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "Action %1 is disabled." ).arg( request.objectName ) );
+    }
+
+    action->trigger();
+    return commanderSuccess( {}, automationState() );
 }
 
 CommanderResult MainWindow::closeFileByPath( const QString& filePath )

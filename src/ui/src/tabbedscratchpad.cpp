@@ -71,6 +71,12 @@ TabbedScratchPad::TabbedScratchPad( QWidget* parent )
     this->setLayout( layout.release() );
 }
 
+bool TabbedScratchPad::hasContent() const
+{
+    const auto* currentScratchPad = qobject_cast<ScratchPad*>( tabWidget_->currentWidget() );
+    return currentScratchPad != nullptr && currentScratchPad->hasContent();
+}
+
 void TabbedScratchPad::keyPressEvent( QKeyEvent* event )
 {
     const auto mod = event->modifiers();
@@ -114,16 +120,16 @@ void TabbedScratchPad::addTab()
 
 void TabbedScratchPad::addData( QString newData )
 {
-    auto curretScratchPad = qobject_cast<ScratchPad*>( tabWidget_->currentWidget() );
-    if ( curretScratchPad ) {
-        curretScratchPad->addData( std::move(newData) );
+    auto currentScratchPad = qobject_cast<ScratchPad*>( tabWidget_->currentWidget() );
+    if ( currentScratchPad ) {
+        currentScratchPad->addData( std::move(newData) );
     }
 }
 
 void TabbedScratchPad::replaceData( QString newData )
 {
-    auto curretScratchPad = qobject_cast<ScratchPad*>( tabWidget_->currentWidget() );
-    if ( curretScratchPad ) {
-        curretScratchPad->replaceData( std::move(newData) );
+    auto currentScratchPad = qobject_cast<ScratchPad*>( tabWidget_->currentWidget() );
+    if ( currentScratchPad ) {
+        currentScratchPad->replaceData( std::move(newData) );
     }
 }

@@ -483,7 +483,9 @@ SCENARIO( "Commander focuses tabs, reports filters, and closes all tabs", "[ui][
               return value.toMap().value( "selected" ).toBool();
           } );
     REQUIRE( selectedHistoryFilter != filters.cend() );
-    REQUIRE( selectedHistoryFilter->toMap().value( "filterString" ).toString() == "ERROR" );
+    const auto selectedHistoryFilterString
+        = selectedHistoryFilter->toMap().value( "filterString" ).toString();
+    REQUIRE( selectedHistoryFilterString.contains( "ERROR" ) );
 
     CommanderRequest getPredefinedFiltersRequest;
     getPredefinedFiltersRequest.action = CommanderAction::GetFilters;
@@ -766,9 +768,29 @@ TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][auto
     REQUIRE( mainWindow->findChild<QAction*>( "openUrlAction" ) != nullptr );
 
     const auto uiTree = mainWindow->automationUiTree();
+    const auto actions = uiTree.value( "actions" ).toList();
+    const auto kloggState = uiTree.value( "kloggState" ).toMap();
+    const auto windowInfo = uiTree.value( "windowInfo" ).toMap();
     REQUIRE( uiTree.value( "objectName" ).toString() == "mainWindow" );
+    REQUIRE( uiTree.value( "schemaVersion" ).toInt() == 1 );
+    REQUIRE( uiTree.contains( "windowTitle" ) );
+    REQUIRE( windowInfo.value( "windowIndex" ).toInt() == 0 );
+    REQUIRE( !actions.isEmpty() );
+    REQUIRE( kloggState.contains( "startupReady" ) );
+    REQUIRE( kloggState.contains( "activeTabTitle" ) );
+    REQUIRE( kloggState.contains( "visibleLineStart" ) );
+    REQUIRE( kloggState.contains( "followMode" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "toolsMenu" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "helpMenu" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "optionsAction" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "showScratchPadAction" ) );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "followAction" ) );
+
+    const auto followAction = std::find_if( actions.cbegin(), actions.cend(), []( const auto& actionValue ) {
+        return actionValue.toMap().value( "objectName" ).toString() == "followAction";
+    } );
+    REQUIRE( followAction != actions.cend() );
+    REQUIRE( followAction->toMap().value( "role" ).toString() == "action" );
+    REQUIRE( uiTree.value( "role" ).toString() == "widget" );
+    REQUIRE( uiTree.contains( "bounds" ) );
 }

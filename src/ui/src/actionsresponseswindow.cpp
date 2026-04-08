@@ -345,6 +345,7 @@ class ActionSendDelegate : public QStyledItemDelegate {
 ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     : QWidget( parent )
 {
+    setObjectName( QStringLiteral( "actionsResponsesWindow" ) );
     actionsModel_ = new ActionsTableModel( this );
     responsesModel_ = new ResponsesTableModel( this );
 
@@ -357,16 +358,19 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesProxy_ = responsesProxy;
 
     actionsFilter_ = new QLineEdit( this );
+    actionsFilter_->setObjectName( QStringLiteral( "actionsFilterLineEdit" ) );
     actionsFilter_->setPlaceholderText( tr( "Filter actions..." ) );
     connect( actionsFilter_, &QLineEdit::textChanged, actionsProxy,
              &ActionsFilterProxyModel::setFilterText );
 
     responsesFilter_ = new QLineEdit( this );
+    responsesFilter_->setObjectName( QStringLiteral( "responsesFilterLineEdit" ) );
     responsesFilter_->setPlaceholderText( tr( "Filter responses..." ) );
     connect( responsesFilter_, &QLineEdit::textChanged, responsesProxy,
              &ResponsesFilterProxyModel::setFilterText );
 
     actionsTable_ = new QTableView( this );
+    actionsTable_->setObjectName( QStringLiteral( "actionsTableView" ) );
     actionsTable_->setModel( actionsProxy );
     actionsTable_->setSelectionBehavior( QAbstractItemView::SelectRows );
     actionsTable_->setSelectionMode( QAbstractItemView::SingleSelection );
@@ -395,6 +399,7 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsTable_->setItemDelegateForColumn( 1, sendDelegate );
 
     responsesTable_ = new QTableView( this );
+    responsesTable_->setObjectName( QStringLiteral( "responsesTableView" ) );
     responsesTable_->setModel( responsesProxy );
     responsesTable_->setSelectionBehavior( QAbstractItemView::SelectRows );
     responsesTable_->setSelectionMode( QAbstractItemView::SingleSelection );
@@ -422,10 +427,12 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesLayout->addWidget( responsesFilter_ );
     responsesLayout->addWidget( responsesTable_ );
     autoResponsesCheck_ = new QCheckBox( tr( "Auto response enabled" ), this );
+    autoResponsesCheck_->setObjectName( QStringLiteral( "autoResponsesCheckBox" ) );
     autoResponsesCheck_->setChecked( ActionsManager::instance().autoResponsesEnabled() );
     responsesLayout->addWidget( autoResponsesCheck_ );
 
     auto* splitter = new QSplitter( Qt::Vertical, this );
+    splitter->setObjectName( QStringLiteral( "actionsResponsesSplitter" ) );
     splitter->addWidget( actionsPanel );
     splitter->addWidget( responsesPanel );
     splitter->setStretchFactor( 0, 1 );

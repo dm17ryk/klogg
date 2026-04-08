@@ -132,6 +132,8 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     void updateDisplaySize();
     // Return the line number of the top line of the view
     LineNumber getTopLine() const;
+    LineNumber visibleLineStart() const;
+    LineNumber visibleLineEnd() const;
     // Return the text of the current selection.
     QString getSelectedText() const;
     // True for partial selection

@@ -1660,6 +1660,22 @@ LineNumber AbstractLogView::getTopLine() const
     return firstLine_;
 }
 
+LineNumber AbstractLogView::visibleLineStart() const
+{
+    return firstLine_;
+}
+
+LineNumber AbstractLogView::visibleLineEnd() const
+{
+    if ( logData_ == nullptr || logData_->getNbLine() == 0_lcount ) {
+        return 0_lnum;
+    }
+
+    const auto lastVisible = firstLine_ + getNbVisibleLines() - 1_lcount;
+    const auto maxLine = LineNumber( logData_->getNbLine().get() - 1 );
+    return qMin( lastVisible, maxLine );
+}
+
 QString AbstractLogView::getSelectedText() const
 {
     return selection_.getSelectedText( logData_ );

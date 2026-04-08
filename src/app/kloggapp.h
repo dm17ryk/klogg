@@ -553,7 +553,10 @@ class KloggApp : public QApplication {
             = request.action == CommanderAction::CloseTab
               || request.action == CommanderAction::FocusTab
               || request.action == CommanderAction::GetFilters
-              || request.action == CommanderAction::SetFilter;
+              || request.action == CommanderAction::SetFilter
+              || request.action == CommanderAction::Search
+              || request.action == CommanderAction::SetFollowMode
+              || request.action == CommanderAction::DumpState;
 
         if ( targetSpecificWindow && request.windowIndex ) {
             auto* window = windowByIndex( *request.windowIndex );
@@ -565,16 +568,24 @@ class KloggApp : public QApplication {
             return window->executeCommanderRequest( request );
         }
 
-        if ( ( request.action == CommanderAction::GetFilters
-               || request.action == CommanderAction::SetFilter )
-             && request.tabId.isEmpty() && !request.tabIndex ) {
+        const auto preferActiveWindow
+            = ( request.action == CommanderAction::GetFilters
+                || request.action == CommanderAction::SetFilter
+                || request.action == CommanderAction::Search
+                || request.action == CommanderAction::SetFollowMode
+                || request.action == CommanderAction::DumpState )
+              && request.tabId.isEmpty() && !request.tabIndex;
+
+        if ( preferActiveWindow ) {
             auto* window = activeWindowIfAny();
-            if ( window == nullptr ) {
+            if ( window != nullptr ) {
+                return window->executeCommanderRequest( request );
+            }
+
+            if ( request.action != CommanderAction::DumpState ) {
                 return commanderFailure( CommanderResultCode::NotFound,
                                          QStringLiteral( "No active klogg window was found." ) );
             }
-
-            return window->executeCommanderRequest( request );
         }
 
         CommanderResult lastNotFound = commanderFailure(

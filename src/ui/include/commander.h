@@ -22,6 +22,10 @@ enum class CommanderAction {
     FocusTab,
     SetFilter,
     CloseTab,
+    Search,
+    SetFollowMode,
+    InvokeAction,
+    DumpState,
 };
 
 enum class CommanderResultCode {
@@ -54,14 +58,23 @@ struct CommanderRequest {
     QString tabId;
     QString filterId;
     QString filterString;
+    QString searchText;
+    QString objectName;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
+    std::optional<bool> enabled;
     bool followFile = false;
     bool predefinedFilters = false;
     bool prettyOutput = false;
     bool runSearch = false;
     bool rearmAutoRefresh = false;
+    bool searchUseRegex = false;
+    bool searchCaseSensitive = false;
+    bool searchInverseMatch = false;
+    bool searchUseBoolean = false;
+    bool searchAutoRefresh = false;
+    bool searchKeepResults = false;
     CommanderComSettings comSettings;
 };
 

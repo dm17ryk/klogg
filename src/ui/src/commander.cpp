@@ -72,6 +72,14 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "set_filter" );
     case CommanderAction::CloseTab:
         return QStringLiteral( "close_tab" );
+    case CommanderAction::Search:
+        return QStringLiteral( "search" );
+    case CommanderAction::SetFollowMode:
+        return QStringLiteral( "set_follow_mode" );
+    case CommanderAction::InvokeAction:
+        return QStringLiteral( "invoke_action" );
+    case CommanderAction::DumpState:
+        return QStringLiteral( "dump_state" );
     case CommanderAction::None:
     default:
         return {};
@@ -119,6 +127,18 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "close_tab" ) ) {
         return CommanderAction::CloseTab;
+    }
+    if ( normalized == QStringLiteral( "search" ) ) {
+        return CommanderAction::Search;
+    }
+    if ( normalized == QStringLiteral( "set_follow_mode" ) ) {
+        return CommanderAction::SetFollowMode;
+    }
+    if ( normalized == QStringLiteral( "invoke_action" ) ) {
+        return CommanderAction::InvokeAction;
+    }
+    if ( normalized == QStringLiteral( "dump_state" ) ) {
+        return CommanderAction::DumpState;
     }
 
     return std::nullopt;
@@ -197,6 +217,12 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.filterString.isEmpty() ) {
         map.insert( QStringLiteral( "filterString" ), request.filterString );
     }
+    if ( !request.searchText.isEmpty() ) {
+        map.insert( QStringLiteral( "searchText" ), request.searchText );
+    }
+    if ( !request.objectName.isEmpty() ) {
+        map.insert( QStringLiteral( "objectName" ), request.objectName );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -220,6 +246,27 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( request.rearmAutoRefresh ) {
         map.insert( QStringLiteral( "rearmAutoRefresh" ), true );
+    }
+    if ( request.enabled ) {
+        map.insert( QStringLiteral( "enabled" ), *request.enabled );
+    }
+    if ( request.searchUseRegex ) {
+        map.insert( QStringLiteral( "searchUseRegex" ), true );
+    }
+    if ( request.searchCaseSensitive ) {
+        map.insert( QStringLiteral( "searchCaseSensitive" ), true );
+    }
+    if ( request.searchInverseMatch ) {
+        map.insert( QStringLiteral( "searchInverseMatch" ), true );
+    }
+    if ( request.searchUseBoolean ) {
+        map.insert( QStringLiteral( "searchUseBoolean" ), true );
+    }
+    if ( request.searchAutoRefresh ) {
+        map.insert( QStringLiteral( "searchAutoRefresh" ), true );
+    }
+    if ( request.searchKeepResults ) {
+        map.insert( QStringLiteral( "searchKeepResults" ), true );
     }
 
     QVariantMap comMap;
@@ -272,11 +319,24 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.tabId = map.value( QStringLiteral( "tabId" ) ).toString();
     request.filterId = map.value( QStringLiteral( "filterId" ) ).toString();
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
+    request.searchText = map.value( QStringLiteral( "searchText" ) ).toString();
+    request.objectName = map.value( QStringLiteral( "objectName" ) ).toString();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
     request.predefinedFilters = map.value( QStringLiteral( "predefinedFilters" ) ).toBool();
     request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();
     request.runSearch = map.value( QStringLiteral( "runSearch" ) ).toBool();
     request.rearmAutoRefresh = map.value( QStringLiteral( "rearmAutoRefresh" ) ).toBool();
+    request.searchUseRegex = map.value( QStringLiteral( "searchUseRegex" ) ).toBool();
+    request.searchCaseSensitive = map.value( QStringLiteral( "searchCaseSensitive" ) ).toBool();
+    request.searchInverseMatch = map.value( QStringLiteral( "searchInverseMatch" ) ).toBool();
+    request.searchUseBoolean = map.value( QStringLiteral( "searchUseBoolean" ) ).toBool();
+    request.searchAutoRefresh = map.value( QStringLiteral( "searchAutoRefresh" ) ).toBool();
+    request.searchKeepResults = map.value( QStringLiteral( "searchKeepResults" ) ).toBool();
+
+    const auto enabledIt = map.find( QStringLiteral( "enabled" ) );
+    if ( enabledIt != map.end() ) {
+        request.enabled = enabledIt->toBool();
+    }
 
     const auto windowIndexIt = map.find( QStringLiteral( "windowIndex" ) );
     if ( windowIndexIt != map.end() ) {

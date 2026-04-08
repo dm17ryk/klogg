@@ -93,6 +93,10 @@ class MainWindow : public QMainWindow {
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
     QVariantMap commanderWindowInfo() const;
+    QVariantMap automationSnapshot() const;
+    QVariantMap automationTree() const;
+    QVariantList automationActions() const;
+    QVariantMap automationState() const;
     QVariantMap automationUiTree() const;
 
     void reTranslateUI();
@@ -236,6 +240,9 @@ class MainWindow : public QMainWindow {
     CommanderResult closeUrlBySource( const QString& url );
     CommanderResult commanderFilters( const CommanderRequest& request ) const;
     CommanderResult commanderSetFilter( const CommanderRequest& request );
+    CommanderResult commanderSearch( const CommanderRequest& request );
+    CommanderResult commanderSetFollowMode( const CommanderRequest& request );
+    CommanderResult commanderInvokeAction( const CommanderRequest& request );
     bool loadFile( const QString& fileName, bool followFile = false );
     bool extractAndLoadFile( const QString& fileName );
     CommanderResult openRemoteFile( const QUrl& url, bool interactiveErrors = true,
@@ -253,6 +260,7 @@ class MainWindow : public QMainWindow {
                                  QString* errorMessage = nullptr );
     QString strippedName( const QString& fullFileName ) const;
     CrawlerWidget* currentCrawlerWidget() const;
+    CrawlerWidget* crawlerWidgetForCommanderRequest( const CommanderRequest& request ) const;
     StreamSession* currentStreamSession() const;
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
     void updateMenuBarFromDocument( const CrawlerWidget* crawler );
