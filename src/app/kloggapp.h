@@ -218,14 +218,17 @@ class KloggApp : public QApplication {
         data.insert( QLatin1String( "resultPath" ), resultPath );
         data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
 
+        constexpr int CommanderConnectTimeoutMs = 5000;
+        constexpr int CommanderResponseTimeoutMs = 30000;
+
         const QCborValue cbor( data );
-        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 ) ) {
+        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), CommanderConnectTimeoutMs ) ) {
             QFile::remove( resultPath );
             return commanderFailure( CommanderResultCode::TransportError,
                                      QStringLiteral( "Failed to contact the primary klogg instance." ) );
         }
 
-        if ( !waitForResponseFile( resultPath, 5000 ) ) {
+        if ( !waitForResponseFile( resultPath, CommanderResponseTimeoutMs ) ) {
             QFile::remove( resultPath );
             return commanderFailure( CommanderResultCode::TransportError,
                                      QStringLiteral( "Timed out waiting for commander response." ) );
@@ -343,8 +346,7 @@ class KloggApp : public QApplication {
             while ( *processedCount < targetCount
                     && probeTimer.elapsed() < StartupProbeTimeoutMs
                     && startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
-                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                                 | QEventLoop::ExcludeSocketNotifiers );
+                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
             }
 
             return *processedCount == targetCount;
@@ -376,8 +378,7 @@ class KloggApp : public QApplication {
                         idleStableTimer.restart();
                     }
 
-                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                                     | QEventLoop::ExcludeSocketNotifiers );
+                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
                 }
             }
 
@@ -389,15 +390,13 @@ class KloggApp : public QApplication {
                                               .arg( elapsedSeconds ) );
             }
 
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
 
         LOG_WARNING << "Timed out waiting for restored windows to finish startup preparation";
         StartupProgress::advance( QObject::tr( "Preparing windows" ),
                                   QObject::tr( "Startup readiness timeout" ) );
-        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                         | QEventLoop::ExcludeSocketNotifiers );
+        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
 
         return lastShownWindow;
     }
@@ -638,10 +637,24 @@ class KloggApp : public QApplication {
 
     void handleCommanderRequest( const CommanderRequest& request, const QString& resultPath )
     {
+        if ( !startupCommanderReady_ ) {
+            constexpr int StartupCommandRetryDelayMs = 50;
+            QTimer::singleShot( StartupCommandRetryDelayMs, this,
+                                [ this, request, resultPath ]() {
+                                    handleCommanderRequest( request, resultPath );
+                                } );
+            return;
+        }
+
         const auto result = executeCommanderRequest( request );
         if ( !writeCommanderResult( resultPath, result ) ) {
             LOG_WARNING << "Failed to write commander result to " << resultPath;
         }
+    }
+
+    void setStartupCommanderReady( bool ready = true )
+    {
+        startupCommanderReady_ = ready;
     }
 
     void startBackgroundTasks()
@@ -907,6 +920,7 @@ class KloggApp : public QApplication {
     bool startupBootstrapEnabled_ = false;
     QPoint startupBootstrapTopLeft_;
     bool automationModeEnabled_ = false;
+    bool startupCommanderReady_ = false;
     QPoint automationTopLeft_ = QPoint( 40, 40 );
     QSize automationWindowSize_ = QSize( 1600, 1000 );
 

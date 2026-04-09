@@ -766,6 +766,7 @@ TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][auto
     REQUIRE( mainWindow->findChild<QAction*>( "showActionsResponsesAction" ) != nullptr );
     REQUIRE( mainWindow->findChild<QAction*>( "openClipboardAction" ) != nullptr );
     REQUIRE( mainWindow->findChild<QAction*>( "openUrlAction" ) != nullptr );
+    REQUIRE( mainWindow->findChild<QAction*>( "textWrapAction" ) != nullptr );
 
     const auto uiTree = mainWindow->automationUiTree();
     const auto actions = uiTree.value( "actions" ).toList();
@@ -780,11 +781,18 @@ TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][auto
     REQUIRE( kloggState.contains( "activeTabTitle" ) );
     REQUIRE( kloggState.contains( "visibleLineStart" ) );
     REQUIRE( kloggState.contains( "followMode" ) );
+    REQUIRE( kloggState.contains( "textWrapEnabled" ) );
+    REQUIRE( kloggState.contains( "focusedViewObjectName" ) );
+    REQUIRE( kloggState.contains( "mainVisibleLineStart" ) );
+    REQUIRE( kloggState.contains( "mainVisibleLineEnd" ) );
+    REQUIRE( kloggState.contains( "filteredVisibleLineStart" ) );
+    REQUIRE( kloggState.contains( "filteredVisibleLineEnd" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "toolsMenu" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "helpMenu" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "optionsAction" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "showScratchPadAction" ) );
     REQUIRE( automationTreeContainsObjectName( uiTree, "followAction" ) );
+    REQUIRE( automationTreeContainsObjectName( uiTree, "textWrapAction" ) );
 
     const auto followAction = std::find_if( actions.cbegin(), actions.cend(), []( const auto& actionValue ) {
         return actionValue.toMap().value( "objectName" ).toString() == "followAction";

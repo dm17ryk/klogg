@@ -311,8 +311,28 @@ LineColumn CrawlerWidget::currentColumnNumber() const
 
 QVariantMap CrawlerWidget::visibleLineRange() const
 {
-    QVariantMap range;
+    return visibleLineRangeForView( activeView() );
+}
+
+QVariantMap CrawlerWidget::mainVisibleLineRange() const
+{
+    return visibleLineRangeForView( logMainView_ );
+}
+
+QVariantMap CrawlerWidget::filteredVisibleLineRange() const
+{
+    return visibleLineRangeForView( filteredView_ );
+}
+
+QString CrawlerWidget::focusedViewObjectName() const
+{
     const auto* view = activeView();
+    return view != nullptr ? view->objectName() : QString{};
+}
+
+QVariantMap CrawlerWidget::visibleLineRangeForView( const AbstractLogView* view ) const
+{
+    QVariantMap range;
     if ( view == nullptr ) {
         range.insert( QStringLiteral( "start" ), QVariant{} );
         range.insert( QStringLiteral( "end" ), QVariant{} );

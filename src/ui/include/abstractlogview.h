@@ -377,6 +377,11 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
       size_t wrappedLineIndex;
       WrappedString wrappedString;
     };
+    struct VisibleLayoutInfo {
+        LinesCount logicalLines = 0_lcount;
+        LinesCount visualLines = 0_lcount;
+        OptionalLineNumber lastVisibleLine;
+    };
     klogg::vector<WrappedLineData> wrappedLinesInfo_;
 
     LineNumber searchStart_;
@@ -446,6 +451,9 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     LinesCount getNbVisibleLines() const;
     LinesCount getNbBottomWrappedVisibleLines() const;
     LineLength getNbVisibleCols() const;
+    LinesCount visualRowsForLine( LineNumber line ) const;
+    LinesCount visualRowsForRange( LineNumber startLine, LinesCount logicalLines ) const;
+    VisibleLayoutInfo visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines ) const;
 
     FilePosition convertCoordToFilePos( const QPoint& pos ) const;
     OptionalLineNumber convertCoordToLine( int yPos ) const;

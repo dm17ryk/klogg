@@ -151,8 +151,10 @@ class StartupSplashScreen final : public QSplashScreen {
         // event set so queued splash updates are rendered.
         if ( !processingEvents_ ) {
             QScopedValueRollback<bool> guard( processingEvents_, true );
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            // Keep local IPC responsive during bootstrap so automation and
+            // commander requests can reach the primary instance before the
+            // main event loop starts.
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
     }
 
@@ -663,6 +665,7 @@ int main( int argc, char* argv[] )
     }
 
     app.ensureMainWindowVisible();
+    app.setStartupCommanderReady();
     StartupProgress::advance( QObject::tr( "Finalizing startup" ) );
 
     if ( startNewSession ) {
@@ -680,8 +683,7 @@ int main( int argc, char* argv[] )
 
     if ( parameters.dump_ui_tree ) {
         for ( auto attempt = 0; attempt < 5; ++attempt ) {
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
         writeCliPayload( mw->automationUiTree(), true );
         return EXIT_SUCCESS;
@@ -689,8 +691,7 @@ int main( int argc, char* argv[] )
 
     if ( !parameters.dump_state_json_path.isEmpty() ) {
         for ( auto attempt = 0; attempt < 5; ++attempt ) {
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
 
         if ( !writeCliPayloadToFile( parameters.dump_state_json_path, mw->automationSnapshot(),

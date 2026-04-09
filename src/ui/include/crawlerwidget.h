@@ -120,6 +120,9 @@ class CrawlerWidget : public QSplitter,
     LineNumber currentLineNumber() const;
     LineColumn currentColumnNumber() const;
     QVariantMap visibleLineRange() const;
+    QVariantMap mainVisibleLineRange() const;
+    QVariantMap filteredVisibleLineRange() const;
+    QString focusedViewObjectName() const;
     QString lastErrorText() const;
     QString searchStatusText() const;
     bool isRegexEnabled() const;
@@ -360,6 +363,7 @@ class CrawlerWidget : public QSplitter,
                                bool forceRecompile = false );
     void updateSearchCombo();
     AbstractLogView* activeView() const;
+    QVariantMap visibleLineRangeForView( const AbstractLogView* view ) const;
     void printSearchInfoMessage( LinesCount nbMatches = 0_lcount );
     void changeDataStatus( DataStatus status );
     void updateEncoding();

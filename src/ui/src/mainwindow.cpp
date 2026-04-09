@@ -857,6 +857,14 @@ QVariantMap MainWindow::automationState() const
                                      : QVariant{} );
     state.insert( QStringLiteral( "visibleLineStart" ), QVariant{} );
     state.insert( QStringLiteral( "visibleLineEnd" ), QVariant{} );
+    state.insert( QStringLiteral( "mainVisibleLineStart" ), QVariant{} );
+    state.insert( QStringLiteral( "mainVisibleLineEnd" ), QVariant{} );
+    state.insert( QStringLiteral( "filteredVisibleLineStart" ), QVariant{} );
+    state.insert( QStringLiteral( "filteredVisibleLineEnd" ), QVariant{} );
+    state.insert( QStringLiteral( "textWrapEnabled" ),
+                  crawler != nullptr ? crawler->isTextWrapEnabled() : false );
+    state.insert( QStringLiteral( "focusedViewObjectName" ),
+                  crawler != nullptr ? crawler->focusedViewObjectName() : QString{} );
     state.insert( QStringLiteral( "searchText" ), crawler != nullptr ? crawler->searchText() : QString{} );
     state.insert( QStringLiteral( "matchCount" ), crawler != nullptr ? crawler->matchCount() : 0 );
     state.insert( QStringLiteral( "searchInProgress" ),
@@ -878,8 +886,18 @@ QVariantMap MainWindow::automationState() const
 
     if ( crawler != nullptr ) {
         const auto visibleRange = crawler->visibleLineRange();
+        const auto mainVisibleRange = crawler->mainVisibleLineRange();
+        const auto filteredVisibleRange = crawler->filteredVisibleLineRange();
         state.insert( QStringLiteral( "visibleLineStart" ), visibleRange.value( QStringLiteral( "start" ) ) );
         state.insert( QStringLiteral( "visibleLineEnd" ), visibleRange.value( QStringLiteral( "end" ) ) );
+        state.insert( QStringLiteral( "mainVisibleLineStart" ),
+                      mainVisibleRange.value( QStringLiteral( "start" ) ) );
+        state.insert( QStringLiteral( "mainVisibleLineEnd" ),
+                      mainVisibleRange.value( QStringLiteral( "end" ) ) );
+        state.insert( QStringLiteral( "filteredVisibleLineStart" ),
+                      filteredVisibleRange.value( QStringLiteral( "start" ) ) );
+        state.insert( QStringLiteral( "filteredVisibleLineEnd" ),
+                      filteredVisibleRange.value( QStringLiteral( "end" ) ) );
     }
 
     if ( activeTabIndex >= 0 ) {
@@ -1208,6 +1226,7 @@ void MainWindow::createActions()
     connect( followAction, &QAction::toggled, this, &MainWindow::followSet );
 
     textWrapAction = new QAction( tr( action::wrapText ), this );
+    textWrapAction->setObjectName( QStringLiteral( "textWrapAction" ) );
     textWrapAction->setCheckable( true );
     textWrapAction->setEnabled( true );
     connect( textWrapAction, &QAction::toggled, this, &MainWindow::textWrapSet );
@@ -2660,7 +2679,14 @@ CommanderResult MainWindow::commanderInvokeAction( const CommanderRequest& reque
                                  tr( "Action %1 is disabled." ).arg( request.objectName ) );
     }
 
-    action->trigger();
+    if ( action->isCheckable() ) {
+        action->toggle();
+    }
+    else {
+        action->trigger();
+    }
+
+    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
     return commanderSuccess( {}, automationState() );
 }
 
