@@ -25,6 +25,7 @@ class ResponsesTableModel : public QAbstractTableModel {
     bool setData( const QModelIndex& index, const QVariant& value, int role ) override;
 
     void refresh();
+    const ResponseDefinition* responseAt( int row ) const;
 
   private:
     QString previewMatch( const ResponseMatchDefinition& match ) const;

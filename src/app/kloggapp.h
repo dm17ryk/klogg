@@ -39,6 +39,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QJsonDocument>
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
 #include <QElapsedTimer>
@@ -56,17 +57,24 @@
 #endif
 
 #include "configuration.h"
+#include "actionsmanager.h"
 #include "commander.h"
 #include "crashhandler.h"
 #include "klogg_version.h"
 #include "log.h"
 #include "session.h"
+#include "sessioninfo.h"
 #include "uuid.h"
 
 #include <kdsingleapplication.h>
 
 #include "mainwindow.h"
 #include "messagereceiver.h"
+#include "labqueuewindow.h"
+#include "scenariorunner.h"
+#include "scenariorunnerwindow.h"
+#include "scriptrunnerwindow.h"
+#include "scriptsupervisor.h"
 #include "startupprogress.h"
 #include "versionchecker.h"
 
@@ -81,6 +89,22 @@ class KloggApp : public QApplication {
         QFontDatabase::addApplicationFont( ":/fonts/DejaVuSansMono.ttf" );
 
         QNetworkProxyFactory::setUseSystemConfiguration( true );
+        scriptSupervisor_.setCommanderExecutor(
+            [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
+        scenarioRunner_.setCommanderExecutor(
+            [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
+        scriptRunnerWindow_.setWindowTitle( tr( "klogg - script runner" ) );
+        scenarioRunnerWindow_.setWindowTitle( tr( "klogg - scenario runner" ) );
+        labQueueWindow_.setWindowTitle( tr( "klogg - lab queue" ) );
+        connect( &scriptSupervisor_, &ScriptSupervisor::statusChanged, this,
+                 [ this ]() {
+                     for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+                         Q_UNUSED( windowSession );
+                         if ( window != nullptr ) {
+                             window->refreshScriptStatusIndicators();
+                         }
+                     }
+                 } );
 
         qRegisterMetaType<LoadingStatus>( "LoadingStatus" );
         qRegisterMetaType<LinesCount>( "LinesCount" );
@@ -504,6 +528,7 @@ class KloggApp : public QApplication {
     CommanderResult executeCommanderRequest( const CommanderRequest& request )
     {
         if ( request.action == CommanderAction::GetInfo ) {
+            auto* activeWindow = activeWindowIfAny();
             QVariantList windows;
             for ( const auto& [ windowSession, window ] : mainWindows_ ) {
                 Q_UNUSED( windowSession );
@@ -511,12 +536,170 @@ class KloggApp : public QApplication {
                     continue;
                 }
 
-                windows.push_back( window->commanderWindowInfo() );
+                auto windowInfo = window->commanderWindowInfo();
+                windowInfo.insert( QStringLiteral( "isActiveWindow" ), window == activeWindow );
+                windows.push_back( windowInfo );
             }
 
             QVariantMap payload;
             payload.insert( QStringLiteral( "windows" ), windows );
             return commanderSuccess( {}, payload );
+        }
+
+        if ( request.action == CommanderAction::RunScenario ) {
+            return scenarioRunner_.runScenario( request );
+        }
+
+        if ( request.action == CommanderAction::RunSuite ) {
+            return scenarioRunner_.runSuite( request );
+        }
+
+        if ( request.action == CommanderAction::StopScenarioRun ) {
+            return scenarioRunner_.stopRun();
+        }
+
+        if ( request.action == CommanderAction::GetScenarioStatus ) {
+            return scenarioRunner_.status();
+        }
+
+        if ( request.action == CommanderAction::GetScenarioReport ) {
+            return scenarioRunner_.report();
+        }
+
+        if ( request.action == CommanderAction::RunScript ) {
+            return scriptSupervisor_.runScript( request );
+        }
+
+        if ( request.action == CommanderAction::RunGlobalScript ) {
+            return scriptSupervisor_.runGlobalScript( request );
+        }
+
+        if ( request.action == CommanderAction::StopScript ) {
+            return scriptSupervisor_.stopScript( request );
+        }
+
+        if ( request.action == CommanderAction::StopGlobalScript ) {
+            return scriptSupervisor_.stopGlobalScript();
+        }
+
+        if ( request.action == CommanderAction::GetScriptStatus ) {
+            return scriptSupervisor_.scriptStatus( request );
+        }
+
+        if ( request.action == CommanderAction::GetGlobalScriptStatus ) {
+            return scriptSupervisor_.globalScriptStatus();
+        }
+
+        if ( request.action == CommanderAction::GetScriptSubscriptions ) {
+            return scriptSupervisor_.scriptSubscriptions( request );
+        }
+
+        if ( request.action == CommanderAction::GetGlobalScriptSubscriptions ) {
+            return scriptSupervisor_.globalScriptSubscriptions();
+        }
+
+        if ( request.action == CommanderAction::ClearScriptSubscriptions ) {
+            return scriptSupervisor_.clearScriptSubscriptions( request );
+        }
+
+        if ( request.action == CommanderAction::ClearGlobalScriptSubscriptions ) {
+            return scriptSupervisor_.clearGlobalScriptSubscriptions();
+        }
+
+        if ( request.action == CommanderAction::GetActions ) {
+            QVariantList actions;
+            for ( const auto& action : ActionsManager::instance().actions() ) {
+                actions.push_back( actionDefinitionToVariantMap( action ) );
+            }
+            return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "actions" ), actions } } );
+        }
+
+        if ( request.action == CommanderAction::GetResponses ) {
+            QVariantList responses;
+            for ( const auto& response : ActionsManager::instance().responses() ) {
+                responses.push_back( responseDefinitionToVariantMap( response ) );
+            }
+            return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "responses" ), responses } } );
+        }
+
+        if ( request.action == CommanderAction::CreateAction ) {
+            QString errorMessage;
+            const auto action = actionDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().createAction( action, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::UpdateAction ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing action id." ) );
+            }
+            QString errorMessage;
+            const auto action = actionDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().updateAction( *request.entityId, action, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::DeleteAction ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing action id." ) );
+            }
+            QString errorMessage;
+            if ( !ActionsManager::instance().deleteAction( *request.entityId, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::CreateResponse ) {
+            QString errorMessage;
+            const auto response = responseDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().createResponse( response, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::UpdateResponse ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing response id." ) );
+            }
+            QString errorMessage;
+            const auto response = responseDefinitionFromVariantMap( request.definitionPayload, &errorMessage );
+            if ( !errorMessage.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest, errorMessage );
+            }
+            if ( !ActionsManager::instance().updateResponse( *request.entityId, response, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
+        }
+
+        if ( request.action == CommanderAction::DeleteResponse ) {
+            if ( !request.entityId ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Missing response id." ) );
+            }
+            QString errorMessage;
+            if ( !ActionsManager::instance().deleteResponse( *request.entityId, &errorMessage ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess();
         }
 
         if ( isCommanderOpenAction( request.action ) ) {
@@ -555,7 +738,18 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::SetFilter
               || request.action == CommanderAction::Search
               || request.action == CommanderAction::SetFollowMode
-              || request.action == CommanderAction::DumpState;
+              || request.action == CommanderAction::DumpState
+              || request.action == CommanderAction::SendAction
+              || request.action == CommanderAction::WaitResponse
+              || request.action == CommanderAction::StartComm
+              || request.action == CommanderAction::StopComm
+              || request.action == CommanderAction::GetCommStatus
+              || request.action == CommanderAction::StartLogging
+              || request.action == CommanderAction::StopLogging
+              || request.action == CommanderAction::AddComment
+              || request.action == CommanderAction::GetResponseCounter
+              || request.action == CommanderAction::ResetResponseCounter
+              || request.action == CommanderAction::ClearComm;
 
         if ( targetSpecificWindow && request.windowIndex ) {
             auto* window = windowByIndex( *request.windowIndex );
@@ -572,7 +766,18 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::SetFilter
                 || request.action == CommanderAction::Search
                 || request.action == CommanderAction::SetFollowMode
-                || request.action == CommanderAction::DumpState )
+                || request.action == CommanderAction::DumpState
+                || request.action == CommanderAction::SendAction
+                || request.action == CommanderAction::WaitResponse
+                || request.action == CommanderAction::StartComm
+                || request.action == CommanderAction::StopComm
+                || request.action == CommanderAction::GetCommStatus
+                || request.action == CommanderAction::StartLogging
+                || request.action == CommanderAction::StopLogging
+                || request.action == CommanderAction::AddComment
+                || request.action == CommanderAction::GetResponseCounter
+                || request.action == CommanderAction::ResetResponseCounter
+                || request.action == CommanderAction::ClearComm )
               && request.tabId.isEmpty() && !request.tabIndex;
 
         if ( preferActiveWindow ) {
@@ -650,6 +855,120 @@ class KloggApp : public QApplication {
         if ( !writeCommanderResult( resultPath, result ) ) {
             LOG_WARNING << "Failed to write commander result to " << resultPath;
         }
+    }
+
+    ScriptSupervisor* scriptSupervisor()
+    {
+        return &scriptSupervisor_;
+    }
+
+    Q_INVOKABLE QVariantMap scriptStatusForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.scriptStatusForTab( tabId );
+    }
+
+    Q_INVOKABLE QVariantMap globalScriptStatus() const
+    {
+        return scriptSupervisor_.globalScriptStatusPayload();
+    }
+
+    Q_INVOKABLE QVariantMap scriptBindingForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.scriptBindingForTab( tabId );
+    }
+
+    Q_INVOKABLE QVariantMap globalScriptBinding() const
+    {
+        return scriptSupervisor_.globalScriptBinding();
+    }
+
+    Q_INVOKABLE bool hasActiveScriptForTab( const QString& tabId ) const
+    {
+        return scriptSupervisor_.hasActiveScriptForTab( tabId );
+    }
+
+    Q_INVOKABLE void restoreScriptBinding( const QVariantMap& binding )
+    {
+        scriptSupervisor_.restoreScriptBinding( binding );
+    }
+
+    Q_INVOKABLE void restoreScriptBindingVariant( const QVariant& binding )
+    {
+        scriptSupervisor_.restoreScriptBinding( binding.toMap() );
+    }
+
+    Q_INVOKABLE void restoreGlobalScriptBinding( const QVariantMap& binding )
+    {
+        scriptSupervisor_.restoreGlobalScriptBinding( binding );
+    }
+
+    Q_INVOKABLE void restoreGlobalScriptBindingVariant( const QVariant& binding )
+    {
+        scriptSupervisor_.restoreGlobalScriptBinding( binding.toMap() );
+    }
+
+    Q_INVOKABLE void forgetScriptTab( const QString& tabId )
+    {
+        scriptSupervisor_.forgetTab( tabId );
+    }
+
+    Q_INVOKABLE void restoreGlobalScriptBindingFromSession()
+    {
+        if ( globalScriptRestoreAttempted_ ) {
+            return;
+        }
+
+        globalScriptRestoreAttempted_ = true;
+        const auto binding = SessionInfo::getSynced().globalScriptContext();
+        if ( binding.trimmed().isEmpty() ) {
+            return;
+        }
+
+        const auto document = QJsonDocument::fromJson( binding.toUtf8() );
+        if ( !document.isObject() ) {
+            return;
+        }
+
+        scriptSupervisor_.restoreGlobalScriptBinding( document.object().toVariantMap() );
+    }
+
+    Q_INVOKABLE void showScriptRunnerWindow( const QString& scriptPath = {} )
+    {
+        if ( !scriptPath.isEmpty() ) {
+            scriptRunnerWindow_.setScriptPath( scriptPath );
+        }
+        auto state = scriptRunnerWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        scriptRunnerWindow_.setWindowState( state );
+        scriptRunnerWindow_.show();
+        scriptRunnerWindow_.raise();
+        scriptRunnerWindow_.activateWindow();
+    }
+
+    Q_INVOKABLE void showScenarioRunnerWindow()
+    {
+        auto state = scenarioRunnerWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        scenarioRunnerWindow_.setWindowState( state );
+        scenarioRunnerWindow_.show();
+        scenarioRunnerWindow_.raise();
+        scenarioRunnerWindow_.activateWindow();
+    }
+
+    Q_INVOKABLE void showLabQueueWindow()
+    {
+        auto state = labQueueWindow_.windowState();
+        state.setFlag( Qt::WindowMinimized, false );
+        labQueueWindow_.setWindowState( state );
+        labQueueWindow_.show();
+        labQueueWindow_.raise();
+        labQueueWindow_.activateWindow();
+    }
+
+    Q_INVOKABLE void publishScriptEvent( const QVariantMap& event )
+    {
+        scriptSupervisor_.publishEvent( event );
+        scenarioRunner_.publishEvent( event );
     }
 
     void setStartupCommanderReady( bool ready = true )
@@ -912,6 +1231,12 @@ class KloggApp : public QApplication {
     std::unique_ptr<CrashHandler> crashHandler_;
 
     MessageReceiver messageReceiver_;
+    ScriptSupervisor scriptSupervisor_;
+    ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
+    ScenarioRunner scenarioRunner_;
+    ScenarioRunnerWindow scenarioRunnerWindow_{ &scenarioRunner_ };
+    LabQueueWindow labQueueWindow_{};
+    bool globalScriptRestoreAttempted_ = false;
 
     std::shared_ptr<Session> session_;
 

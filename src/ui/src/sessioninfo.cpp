@@ -25,8 +25,8 @@
 
 #include "log.h"
 
-constexpr int OPENFILES_VERSION = 1;
-constexpr int SESSION_VERSION = 1;
+constexpr int OPENFILES_VERSION = 2;
+constexpr int SESSION_VERSION = 2;
 constexpr int MAX_WINDOWS_IN_SESSION = 64;
 constexpr int MAX_FILES_PER_WINDOW = 4096;
 
@@ -36,8 +36,15 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
 
     settings.beginGroup( "Window" );
 
-    if ( settings.value( "version", 0 ).toInt() == SESSION_VERSION ) {
+    const auto sessionVersion = settings.value( "version", 0 ).toInt();
+    if ( sessionVersion == 1 || sessionVersion == SESSION_VERSION ) {
         windows_.clear();
+        if ( sessionVersion >= 2 ) {
+            globalScriptContext_ = settings.value( "globalScriptContext" ).toString();
+        }
+        else {
+            globalScriptContext_.clear();
+        }
         const auto windowsCount = settings.beginReadArray( "windows" );
         if ( windowsCount > MAX_WINDOWS_IN_SESSION ) {
             LOG_WARNING << "Session contains too many windows (" << windowsCount
@@ -58,7 +65,8 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
 
             if ( settings.contains( "OpenFiles/version" ) ) {
                 settings.beginGroup( "OpenFiles" );
-                if ( settings.value( "version" ).toInt() == OPENFILES_VERSION ) {
+                const auto openFilesVersion = settings.value( "version" ).toInt();
+                if ( openFilesVersion == 1 || openFilesVersion == OPENFILES_VERSION ) {
                     int size = settings.beginReadArray( "openFiles" );
                     if ( size > MAX_FILES_PER_WINDOW ) {
                         LOG_WARNING << "Window session " << windowId << " has too many files ("
@@ -76,8 +84,12 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
                         uint64_t top_line = settings.value( "topLine" ).toULongLong();
                         QString view_context = settings.value( "viewContext" ).toString();
                         QString stream_context = settings.value( "streamContext" ).toString();
+                        QString script_context;
+                        if ( openFilesVersion >= 2 ) {
+                            script_context = settings.value( "scriptContext" ).toString();
+                        }
                         window.openFiles.emplace_back( file_name, top_line, view_context,
-                                                       stream_context );
+                                                       stream_context, script_context );
                     }
                     settings.endArray();
                 }
@@ -105,6 +117,7 @@ void SessionInfo::saveToStorage( QSettings& settings ) const
 
     settings.beginGroup( "Window" );
     settings.setValue( "version", SESSION_VERSION );
+    settings.setValue( "globalScriptContext", globalScriptContext_ );
 
     settings.remove( "windows" );
     settings.beginWriteArray( "windows" );
@@ -122,11 +135,12 @@ void SessionInfo::saveToStorage( QSettings& settings ) const
         for ( unsigned i = 0; i < window.openFiles.size(); ++i ) {
             settings.setArrayIndex( static_cast<int>( i ) );
             const OpenFile* open_file = &( window.openFiles.at( i ) );
-            settings.setValue( "fileName", open_file->fileName );
-            settings.setValue( "topLine", qint64( open_file->topLine ) );
-            settings.setValue( "viewContext", open_file->viewContext );
-            settings.setValue( "streamContext", open_file->streamContext );
-        }
+                settings.setValue( "fileName", open_file->fileName );
+                settings.setValue( "topLine", qint64( open_file->topLine ) );
+                settings.setValue( "viewContext", open_file->viewContext );
+                settings.setValue( "streamContext", open_file->streamContext );
+                settings.setValue( "scriptContext", open_file->scriptContext );
+            }
         settings.endArray();
         settings.endGroup(); // OpenFiles
     }

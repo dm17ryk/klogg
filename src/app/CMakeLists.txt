@@ -57,18 +57,30 @@ set(MAIN_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/cli.h
 set(KLOGG_UI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/messagereceiver.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kloggapp.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/labagentrunner.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/labagentrunner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/labbundleutils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/labbundleutils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/labcontrollerservice.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/labcontrollerservice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/labrequest.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/scenariobatchrequest.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/scenarioheadlessrunner.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/scenarioheadlessrunner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
     ${DOCUMENTATION_RESOURCE}
     ${ICON_FILE}
 )
 
 set(KLOGG_GREP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/klogg_grep.cpp)
+set(KLOGG_PYTHON_RUNTIME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/python_runtime)
 
 set(MAIN_LIBS
     klogg_logdata
     klogg_crash_handler
     roaring
     kdsingleapp
+    Qt${QT_VERSION_MAJOR}::Sql
 )
 
 add_library(
@@ -77,12 +89,34 @@ add_library(
   ${CMAKE_SOURCE_DIR}/src/ui/src/commander.cpp
 )
 
+add_library(
+  klogg_lab STATIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/labclient.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/labclient.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/labtypes.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/labtypes.cpp
+)
+
 target_include_directories(klogg_commander PUBLIC ${CMAKE_SOURCE_DIR}/src/ui/include)
+target_include_directories(
+  klogg_lab
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+         ${CMAKE_SOURCE_DIR}/src/ui/include
+)
 target_link_libraries(
   klogg_commander
   PUBLIC project_options
          project_warnings
          Qt${QT_VERSION_MAJOR}::Core
+         Qt${QT_VERSION_MAJOR}::Sql
+         Qt${QT_VERSION_MAJOR}::SerialPort
+)
+target_link_libraries(
+  klogg_lab
+  PUBLIC project_options
+         project_warnings
+         Qt${QT_VERSION_MAJOR}::Core
+         Qt${QT_VERSION_MAJOR}::Network
          Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
@@ -109,8 +143,8 @@ if(KLOGG_USE_LTO)
   set_property(TARGET klogg_grep PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui)
-target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui)
+target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab)
+target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab)
 target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS} klogg_commander)
 
 target_compile_definitions(klogg_portable PUBLIC -DKLOGG_PORTABLE)
@@ -173,6 +207,22 @@ if(WIN32)
       COMMENT "Copy tbbmalloc_proxy"
     )
   endif()
+
+  add_custom_command(
+    TARGET klogg
+    POST_BUILD
+    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg>/python_runtime
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Copy Python runtime files"
+  )
+
+  add_custom_command(
+    TARGET klogg_portable
+    POST_BUILD
+    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg_portable>/python_runtime
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Copy Python runtime files"
+  )
 endif()
 
 if(KLOGG_USE_SENTRY)

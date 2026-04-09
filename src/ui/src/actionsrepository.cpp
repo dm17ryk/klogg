@@ -23,6 +23,7 @@ QJsonObject actionToJson( const ActionDefinition& action )
 {
     QJsonObject obj;
     obj.insert( "id", action.id );
+    obj.insert( "order", action.order );
     obj.insert( "enabled", action.enabled );
     obj.insert( "hidden", action.hidden );
     obj.insert( "name", action.name );
@@ -32,7 +33,16 @@ QJsonObject actionToJson( const ActionDefinition& action )
     QJsonObject params;
     params.insert( "repeat", action.parameters.repeat );
     params.insert( "delay", action.parameters.delay );
+    params.insert( "repeat_count", action.parameters.repeatCount );
+    params.insert( "repeat_interval", action.parameters.repeatInterval );
+    params.insert( "variable_names", QJsonArray::fromStringList( action.parameters.variableNames ) );
     obj.insert( "parameters", params );
+
+    QJsonObject checksum;
+    checksum.insert( "enabled", action.checksum.enabled );
+    checksum.insert( "algorithm", action.checksum.algorithm );
+    checksum.insert( "placeholder", action.checksum.placeholder );
+    obj.insert( "checksum", checksum );
     return obj;
 }
 
@@ -46,6 +56,16 @@ QJsonObject responseToJson( const ResponseDefinition& response )
     if ( response.response.hasActionId ) {
         responseObj.insert( "action_id", response.response.actionId );
     }
+    if ( !response.response.steps.isEmpty() ) {
+        QJsonArray stepsArray;
+        for ( const auto& step : response.response.steps ) {
+            QJsonObject stepObj;
+            stepObj.insert( "action_id", step.actionId );
+            stepObj.insert( "delay_ms", step.delayMs );
+            stepsArray.append( stepObj );
+        }
+        responseObj.insert( "steps", stepsArray );
+    }
     if ( response.response.hasInlineAction ) {
         responseObj.insert( "action", sequenceToJson( response.response.inlineAction ) );
     }
@@ -57,6 +77,7 @@ QJsonObject responseToJson( const ResponseDefinition& response )
 
     QJsonObject obj;
     obj.insert( "id", response.id );
+    obj.insert( "order", response.order );
     obj.insert( "enabled", response.enabled );
     obj.insert( "hidden", response.hidden );
     obj.insert( "name", response.name );
@@ -91,7 +112,7 @@ bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
     }
 
     QJsonObject root;
-    root.insert( "version", 1 );
+    root.insert( "version", 3 );
     root.insert( "actions", actionsArray );
     root.insert( "responses", responsesArray );
 

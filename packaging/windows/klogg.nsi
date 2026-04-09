@@ -80,6 +80,8 @@ Section "klogg" klogg
     File README.md
     File DOCUMENTATION.md
     File release\documentation.html
+    SetOutPath $INSTDIR\python_runtime
+    File /nonfatal /r release\python_runtime\*
 
     ; Create the 'sendto' link
     CreateShortCut "$SENDTO\klogg.lnk" "$INSTDIR\klogg.exe" "" "$INSTDIR\klogg.exe" 0
@@ -110,26 +112,30 @@ SectionEnd
 
 Section "Qt Runtime libraries" qtlibs
     SetOutPath $INSTDIR
-    File release\${QT_MAJOR}Core.dll
-    File release\${QT_MAJOR}Gui.dll
-    File release\${QT_MAJOR}Network.dll
-    File release\${QT_MAJOR}Widgets.dll
-    File release\${QT_MAJOR}Concurrent.dll
-    File release\${QT_MAJOR}Xml.dll
-    File release\${QT_MAJOR}SerialPort.dll
-    File release\${QT_MAJOR}Svg.dll
-!if ${QT_MAJOR} == "Qt6"
-    File release\${QT_MAJOR}Core5Compat.dll
-!endif
+    File /nonfatal release\Qt*.dll
+    File /nonfatal release\icu*.dll
+    File /nonfatal release\D3Dcompiler_47.dll
+    File /nonfatal release\dxcompiler.dll
+    File /nonfatal release\dxil.dll
 
     SetOutPath $INSTDIR\platforms
-    File release\platforms\qwindows.dll
+    File /nonfatal /r release\platforms\*
+    SetOutPath $INSTDIR\generic
+    File /nonfatal /r release\generic\*
+    SetOutPath $INSTDIR\iconengines
+    File /nonfatal /r release\iconengines\*
+    SetOutPath $INSTDIR\imageformats
+    File /nonfatal /r release\imageformats\*
+    SetOutPath $INSTDIR\networkinformation
+    File /nonfatal /r release\networkinformation\*
+    SetOutPath $INSTDIR\sqldrivers
+    File /nonfatal /r release\sqldrivers\*
     SetOutPath $INSTDIR\styles
-!if ${QT_MAJOR} == "Qt6"
-    File release\styles\qmodernwindowsstyle.dll
-!else
-    File release\styles\qwindowsvistastyle.dll
-!endif
+    File /nonfatal /r release\styles\*
+    SetOutPath $INSTDIR\tls
+    File /nonfatal /r release\tls\*
+    SetOutPath $INSTDIR\translations
+    File /nonfatal /r release\translations\*
 
 SectionEnd
 
@@ -224,6 +230,17 @@ Section "Uninstall"
     Delete "$INSTDIR\mimalloc_redirect32.dll"
     Delete "$INSTDIR\mimalloc-redirect.dll"
     Delete "$INSTDIR\mimalloc-redirect32.dll"
+    Delete "$INSTDIR\*.dll"
+    RMDir /r "$INSTDIR\python_runtime"
+    RMDir /r "$INSTDIR\platforms"
+    RMDir /r "$INSTDIR\generic"
+    RMDir /r "$INSTDIR\iconengines"
+    RMDir /r "$INSTDIR\imageformats"
+    RMDir /r "$INSTDIR\networkinformation"
+    RMDir /r "$INSTDIR\sqldrivers"
+    RMDir /r "$INSTDIR\styles"
+    RMDir /r "$INSTDIR\tls"
+    RMDir /r "$INSTDIR\translations"
     RMDir "$INSTDIR"
 
     ; Remove settings in %appdata%

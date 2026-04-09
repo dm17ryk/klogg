@@ -114,9 +114,9 @@ bool parseAction( const QJsonObject& object,
         return false;
     }
 
-    const QSet<QString> knownKeys = { "id",       "enabled", "hidden", "hiden",
-                                      "name",     "description",
-                                      "sequence", "parameters" };
+    const QSet<QString> knownKeys = { "id",       "order",      "enabled", "hidden",
+                                      "hiden",    "name",       "description",
+                                      "sequence", "parameters", "checksum" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -143,6 +143,9 @@ bool parseAction( const QJsonObject& object,
             warnings->push_back(
                 QString( "Invalid action id for '%1'." ).arg( out->name ) );
         }
+    }
+    if ( object.contains( "order" ) ) {
+        out->order = object.value( "order" ).toInt( index );
     }
 
     if ( object.contains( "enabled" ) ) {
@@ -184,6 +187,31 @@ bool parseAction( const QJsonObject& object,
         if ( paramsObj.contains( "delay" ) ) {
             out->parameters.delay = paramsObj.value( "delay" ).toInt();
         }
+        if ( paramsObj.contains( "repeat_count" ) ) {
+            out->parameters.repeatCount = paramsObj.value( "repeat_count" ).toInt( 1 );
+        }
+        if ( paramsObj.contains( "repeat_interval" ) ) {
+            out->parameters.repeatInterval = paramsObj.value( "repeat_interval" ).toInt();
+        }
+        if ( paramsObj.contains( "variable_names" ) && paramsObj.value( "variable_names" ).isArray() ) {
+            const auto variableArray = paramsObj.value( "variable_names" ).toArray();
+            for ( const auto& item : variableArray ) {
+                const auto value = item.toString().trimmed();
+                if ( !value.isEmpty() ) {
+                    out->parameters.variableNames.push_back( value );
+                }
+            }
+        }
+    }
+
+    const auto checksumValue = object.value( "checksum" );
+    if ( checksumValue.isObject() ) {
+        const auto checksumObj = checksumValue.toObject();
+        out->checksum.enabled = checksumObj.value( "enabled" ).toBool( false );
+        out->checksum.algorithm
+            = checksumObj.value( "algorithm" ).toString( out->checksum.algorithm );
+        out->checksum.placeholder
+            = checksumObj.value( "placeholder" ).toString( out->checksum.placeholder );
     }
 
     return true;
@@ -199,8 +227,8 @@ bool parseResponse( const QJsonObject& object,
         return false;
     }
 
-    const QSet<QString> knownKeys = { "id",       "enabled", "hidden", "hiden",
-                                      "name",     "description",
+    const QSet<QString> knownKeys = { "id",       "order",      "enabled", "hidden",
+                                      "hiden",    "name",       "description",
                                       "match",    "response" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
@@ -229,6 +257,9 @@ bool parseResponse( const QJsonObject& object,
             warnings->push_back(
                 QString( "Invalid response id for '%1'." ).arg( out->name ) );
         }
+    }
+    if ( object.contains( "order" ) ) {
+        out->order = object.value( "order" ).toInt( index );
     }
 
     if ( object.contains( "enabled" ) ) {
@@ -289,6 +320,11 @@ bool parseResponse( const QJsonObject& object,
             return false;
         }
     }
+    else if ( out->match.type == ResponseMatchType::Wildcard ) {
+        out->match.compiled = QRegularExpression(
+            QRegularExpression::wildcardToRegularExpression( out->match.value ),
+            QRegularExpression::CaseInsensitiveOption );
+    }
 
     const auto responseValue = object.value( "response" );
     if ( !responseValue.isObject() ) {
@@ -299,7 +335,8 @@ bool parseResponse( const QJsonObject& object,
     }
     const auto responseObj = responseValue.toObject();
     const QSet<QString> responseKeys = { "action_id", "action", "comment", "linebreak",
-                                         "timestamp", "snapshot", "stop_communication" };
+                                         "timestamp", "snapshot", "stop_communication",
+                                         "steps" };
     const auto responseExtraKeys = unknownKeys( responseObj, responseKeys );
     for ( const auto& key : responseExtraKeys ) {
         if ( warnings ) {
@@ -317,6 +354,46 @@ bool parseResponse( const QJsonObject& object,
         else if ( warnings ) {
             warnings->push_back(
                 QString( "Invalid action_id for response '%1'." ).arg( out->name ) );
+        }
+    }
+
+    if ( responseObj.contains( "steps" ) ) {
+        const auto stepsValue = responseObj.value( "steps" );
+        if ( !stepsValue.isArray() ) {
+            if ( warnings ) {
+                warnings->push_back(
+                    QString( "Invalid steps array for response '%1'." ).arg( out->name ) );
+            }
+        }
+        else {
+            const auto stepsArray = stepsValue.toArray();
+            for ( qsizetype stepIndex = 0; stepIndex < stepsArray.size(); ++stepIndex ) {
+                const auto stepValue = stepsArray.at( stepIndex );
+                if ( !stepValue.isObject() ) {
+                    if ( warnings ) {
+                        warnings->push_back(
+                            QString( "Invalid response step %1 for '%2'." )
+                                .arg( stepIndex )
+                                .arg( out->name ) );
+                    }
+                    continue;
+                }
+
+                const auto stepObj = stepValue.toObject();
+                ResponseActionStep step;
+                if ( stepObj.value( "action_id" ).isDouble() ) {
+                    step.actionId = stepObj.value( "action_id" ).toInt();
+                }
+                else if ( warnings ) {
+                    warnings->push_back(
+                        QString( "Invalid action_id in response step %1 for '%2'." )
+                            .arg( stepIndex )
+                            .arg( out->name ) );
+                    continue;
+                }
+                step.delayMs = stepObj.value( "delay_ms" ).toInt( 0 );
+                out->response.steps.push_back( step );
+            }
         }
     }
 
@@ -351,6 +428,11 @@ bool parseResponse( const QJsonObject& object,
     if ( responseObj.contains( "stop_communication" ) ) {
         out->response.stopCommunication
             = responseObj.value( "stop_communication" ).toBool( false );
+    }
+
+    if ( out->response.steps.isEmpty() && out->response.hasActionId
+         && out->response.actionId >= 0 ) {
+        out->response.steps.push_back( { out->response.actionId, 0 } );
     }
 
     return true;
@@ -433,6 +515,9 @@ ActionsParseResult ActionsConfigParser::parseJson( const QByteArray& jsonBytes )
         }
         ++responseIndex;
     }
+
+    normalizeActionDefinitions( &result.actions );
+    normalizeResponseDefinitions( &result.responses );
 
     return result;
 }

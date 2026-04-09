@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPersistentModelIndex>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QScreen>
 #include <QSignalBlocker>
@@ -16,12 +17,17 @@
 #include <QStyle>
 #include <QStyleOptionButton>
 #include <QTableView>
+#include <QHBoxLayout>
+#include <QItemSelectionModel>
+#include <QMessageBox>
 #include <QVBoxLayout>
 #include <functional>
 
+#include "actioneditdialog.h"
 #include "actionstablemodel.h"
 #include "actionsmanager.h"
 #include "previewdecodeutils.h"
+#include "responseeditdialog.h"
 #include "responsestablemodel.h"
 
 namespace {
@@ -418,13 +424,43 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     auto* actionsPanel = new QWidget( this );
     auto* actionsLayout = new QVBoxLayout( actionsPanel );
     actionsLayout->setContentsMargins( 0, 0, 0, 0 );
+    auto* actionsButtonsLayout = new QHBoxLayout;
+    auto* addActionButton = new QPushButton( tr( "Add" ), actionsPanel );
+    editActionButton_ = new QPushButton( tr( "Edit" ), actionsPanel );
+    duplicateActionButton_ = new QPushButton( tr( "Duplicate" ), actionsPanel );
+    deleteActionButton_ = new QPushButton( tr( "Delete" ), actionsPanel );
+    moveActionUpButton_ = new QPushButton( tr( "Move Up" ), actionsPanel );
+    moveActionDownButton_ = new QPushButton( tr( "Move Down" ), actionsPanel );
+    actionsButtonsLayout->addWidget( addActionButton );
+    actionsButtonsLayout->addWidget( editActionButton_ );
+    actionsButtonsLayout->addWidget( duplicateActionButton_ );
+    actionsButtonsLayout->addWidget( deleteActionButton_ );
+    actionsButtonsLayout->addWidget( moveActionUpButton_ );
+    actionsButtonsLayout->addWidget( moveActionDownButton_ );
+    actionsButtonsLayout->addStretch();
     actionsLayout->addWidget( actionsFilter_ );
+    actionsLayout->addLayout( actionsButtonsLayout );
     actionsLayout->addWidget( actionsTable_ );
 
     auto* responsesPanel = new QWidget( this );
     auto* responsesLayout = new QVBoxLayout( responsesPanel );
     responsesLayout->setContentsMargins( 0, 0, 0, 0 );
+    auto* responsesButtonsLayout = new QHBoxLayout;
+    auto* addResponseButton = new QPushButton( tr( "Add" ), responsesPanel );
+    editResponseButton_ = new QPushButton( tr( "Edit" ), responsesPanel );
+    duplicateResponseButton_ = new QPushButton( tr( "Duplicate" ), responsesPanel );
+    deleteResponseButton_ = new QPushButton( tr( "Delete" ), responsesPanel );
+    moveResponseUpButton_ = new QPushButton( tr( "Move Up" ), responsesPanel );
+    moveResponseDownButton_ = new QPushButton( tr( "Move Down" ), responsesPanel );
+    responsesButtonsLayout->addWidget( addResponseButton );
+    responsesButtonsLayout->addWidget( editResponseButton_ );
+    responsesButtonsLayout->addWidget( duplicateResponseButton_ );
+    responsesButtonsLayout->addWidget( deleteResponseButton_ );
+    responsesButtonsLayout->addWidget( moveResponseUpButton_ );
+    responsesButtonsLayout->addWidget( moveResponseDownButton_ );
+    responsesButtonsLayout->addStretch();
     responsesLayout->addWidget( responsesFilter_ );
+    responsesLayout->addLayout( responsesButtonsLayout );
     responsesLayout->addWidget( responsesTable_ );
     autoResponsesCheck_ = new QCheckBox( tr( "Auto response enabled" ), this );
     autoResponsesCheck_->setObjectName( QStringLiteral( "autoResponsesCheckBox" ) );
@@ -452,6 +488,39 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
              &ActionsResponsesWindow::refreshResponses );
     connect( autoResponsesCheck_, &QCheckBox::toggled, this,
              []( bool enabled ) { ActionsManager::instance().setAutoResponsesEnabled( enabled ); } );
+    connect( addActionButton, &QPushButton::clicked, this, &ActionsResponsesWindow::addAction );
+    connect( editActionButton_, &QPushButton::clicked, this, &ActionsResponsesWindow::editSelectedAction );
+    connect( duplicateActionButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::duplicateSelectedAction );
+    connect( deleteActionButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::deleteSelectedAction );
+    connect( moveActionUpButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::moveSelectedActionUp );
+    connect( moveActionDownButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::moveSelectedActionDown );
+    connect( addResponseButton, &QPushButton::clicked, this, &ActionsResponsesWindow::addResponse );
+    connect( editResponseButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::editSelectedResponse );
+    connect( duplicateResponseButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::duplicateSelectedResponse );
+    connect( deleteResponseButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::deleteSelectedResponse );
+    connect( moveResponseUpButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::moveSelectedResponseUp );
+    connect( moveResponseDownButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::moveSelectedResponseDown );
+    connect( actionsTable_, &QTableView::doubleClicked, this,
+             [ this ]( const QModelIndex& index ) {
+                 if ( index.column() != 1 ) {
+                     editSelectedAction();
+                 }
+             } );
+    connect( responsesTable_, &QTableView::doubleClicked, this,
+             [ this ]( const QModelIndex& ) { editSelectedResponse(); } );
+    connect( actionsTable_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+             [ this ] { updateActionButtons(); } );
+    connect( responsesTable_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+             [ this ] { updateResponseButtons(); } );
     connect( &ActionsManager::instance(), &ActionsManager::autoResponsesEnabledChanged,
              this, [ this ]( bool enabled ) {
                  if ( autoResponsesCheck_ && autoResponsesCheck_->isChecked() != enabled ) {
@@ -459,6 +528,8 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
                      autoResponsesCheck_->setChecked( enabled );
                  }
              } );
+    updateActionButtons();
+    updateResponseButtons();
 }
 
 void ActionsResponsesWindow::setSendAvailable( bool available )
@@ -480,6 +551,7 @@ void ActionsResponsesWindow::refreshActions()
         capColumnWidth( actionsTable_, 2, 350 );
         capColumnWidth( actionsTable_, 3, 600 );
     }
+    updateActionButtons();
 }
 
 void ActionsResponsesWindow::refreshResponses()
@@ -493,6 +565,7 @@ void ActionsResponsesWindow::refreshResponses()
         capColumnWidth( responsesTable_, 2, 350 );
         capColumnWidth( responsesTable_, 3, 600 );
     }
+    updateResponseButtons();
 }
 
 void ActionsResponsesWindow::updateWindowSize()
@@ -519,5 +592,278 @@ void ActionsResponsesWindow::updateWindowSize()
     if ( !sizeInitialized_ ) {
         resize( desiredWidth, desiredHeight );
         sizeInitialized_ = true;
+    }
+}
+
+int ActionsResponsesWindow::selectedActionRow() const
+{
+    if ( actionsTable_ == nullptr || actionsProxy_ == nullptr || actionsTable_->selectionModel() == nullptr ) {
+        return -1;
+    }
+
+    const auto rows = actionsTable_->selectionModel()->selectedRows();
+    if ( rows.isEmpty() ) {
+        return -1;
+    }
+
+    return actionsProxy_->mapToSource( rows.front() ).row();
+}
+
+int ActionsResponsesWindow::selectedResponseRow() const
+{
+    if ( responsesTable_ == nullptr || responsesProxy_ == nullptr
+         || responsesTable_->selectionModel() == nullptr ) {
+        return -1;
+    }
+
+    const auto rows = responsesTable_->selectionModel()->selectedRows();
+    if ( rows.isEmpty() ) {
+        return -1;
+    }
+
+    return responsesProxy_->mapToSource( rows.front() ).row();
+}
+
+void ActionsResponsesWindow::updateActionButtons()
+{
+    const auto hasSelection = selectedActionRow() >= 0;
+    if ( editActionButton_ != nullptr ) {
+        editActionButton_->setEnabled( hasSelection );
+    }
+    if ( duplicateActionButton_ != nullptr ) {
+        duplicateActionButton_->setEnabled( hasSelection );
+    }
+    if ( deleteActionButton_ != nullptr ) {
+        deleteActionButton_->setEnabled( hasSelection );
+    }
+    if ( moveActionUpButton_ != nullptr ) {
+        moveActionUpButton_->setEnabled( hasSelection );
+    }
+    if ( moveActionDownButton_ != nullptr ) {
+        moveActionDownButton_->setEnabled( hasSelection );
+    }
+}
+
+void ActionsResponsesWindow::updateResponseButtons()
+{
+    const auto hasSelection = selectedResponseRow() >= 0;
+    if ( editResponseButton_ != nullptr ) {
+        editResponseButton_->setEnabled( hasSelection );
+    }
+    if ( duplicateResponseButton_ != nullptr ) {
+        duplicateResponseButton_->setEnabled( hasSelection );
+    }
+    if ( deleteResponseButton_ != nullptr ) {
+        deleteResponseButton_->setEnabled( hasSelection );
+    }
+    if ( moveResponseUpButton_ != nullptr ) {
+        moveResponseUpButton_->setEnabled( hasSelection );
+    }
+    if ( moveResponseDownButton_ != nullptr ) {
+        moveResponseDownButton_->setEnabled( hasSelection );
+    }
+}
+
+void ActionsResponsesWindow::addAction()
+{
+    ActionEditDialog dialog( this );
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    dialog.setAction( action );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().createAction( dialog.action(), &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Add Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::editSelectedAction()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    ActionEditDialog dialog( this );
+    dialog.setAction( *action );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().updateAction( action->id, dialog.action(), &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Edit Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::duplicateSelectedAction()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    auto duplicate = *action;
+    duplicate.id = ActionsManager::instance().nextActionId();
+    duplicate.name = duplicate.name.isEmpty() ? tr( "Action %1" ).arg( duplicate.id )
+                                              : tr( "%1 Copy" ).arg( duplicate.name );
+    QString errorMessage;
+    if ( !ActionsManager::instance().createAction( duplicate, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Duplicate Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::deleteSelectedAction()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    if ( QMessageBox::question( this, tr( "Delete Action" ),
+                                tr( "Delete action \"%1\"?" ).arg( action->name ) )
+         != QMessageBox::Yes ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().deleteAction( action->id, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Delete Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::moveSelectedActionUp()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().moveAction( action->id, -1, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Move Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::moveSelectedActionDown()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().moveAction( action->id, 1, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Move Action" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::addResponse()
+{
+    ResponseEditDialog dialog( this );
+    ResponseDefinition response;
+    response.id = ActionsManager::instance().nextResponseId();
+    dialog.setResponse( response, ActionsManager::instance().actions() );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().createResponse( dialog.response(), &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Add Response" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::editSelectedResponse()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr ) {
+        return;
+    }
+
+    ResponseEditDialog dialog( this );
+    dialog.setResponse( *response, ActionsManager::instance().actions() );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().updateResponse( response->id, dialog.response(), &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Edit Response" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::duplicateSelectedResponse()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr ) {
+        return;
+    }
+
+    auto duplicate = *response;
+    duplicate.id = ActionsManager::instance().nextResponseId();
+    duplicate.name = duplicate.name.isEmpty() ? tr( "Response %1" ).arg( duplicate.id )
+                                              : tr( "%1 Copy" ).arg( duplicate.name );
+    QString errorMessage;
+    if ( !ActionsManager::instance().createResponse( duplicate, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Duplicate Response" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::deleteSelectedResponse()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr ) {
+        return;
+    }
+
+    if ( QMessageBox::question( this, tr( "Delete Response" ),
+                                tr( "Delete response \"%1\"?" ).arg( response->name ) )
+         != QMessageBox::Yes ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().deleteResponse( response->id, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Delete Response" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::moveSelectedResponseUp()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().moveResponse( response->id, -1, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Move Response" ), errorMessage );
+    }
+}
+
+void ActionsResponsesWindow::moveSelectedResponseDown()
+{
+    const auto row = selectedResponseRow();
+    const auto* response = responsesModel_ ? responsesModel_->responseAt( row ) : nullptr;
+    if ( response == nullptr ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().moveResponse( response->id, 1, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Move Response" ), errorMessage );
     }
 }

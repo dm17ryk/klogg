@@ -7,6 +7,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsrepository.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsresponseswindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionstablemodel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actioneditdialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionruntime.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/comportutils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filteredview.h
@@ -20,6 +22,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfilterscombobox.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfiltersdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/infoline.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/labqueuewindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pathline.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
@@ -45,13 +48,18 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfindpattern.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/quickfindwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/recentfiles.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/responseeditdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/responsestablemodel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scenariorunner.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scenariorunnerwindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/savedsearches.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/selection.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/session.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/sessioninfo.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/signalmux.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/serialcaptureworker.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scriptrunnerwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/scriptsupervisor.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsourceregistry.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/startupprogress.h
@@ -81,6 +89,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsresponseswindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionstablemodel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actioneditdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionruntime.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/comportutils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
@@ -93,6 +103,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/predefinedfilterscombobox.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/predefinedfiltersdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/infoline.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/labqueuewindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
@@ -117,13 +128,18 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindpattern.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/quickfindwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/recentfiles.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/responseeditdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/responsestablemodel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scenariorunner.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scenariorunnerwindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/savedsearches.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/session.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/sessioninfo.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/signalmux.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptrunnerwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptsupervisor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/startupprogress.cpp
@@ -153,17 +169,22 @@ if(KLOGG_USE_LTO)
   set_property(TARGET klogg_ui PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-target_include_directories(klogg_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(klogg_ui
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PRIVATE "${CMAKE_SOURCE_DIR}/src/app"
+)
 target_link_libraries(
   klogg_ui
   PUBLIC project_options
          project_warnings
          klogg_commander
+         klogg_lab
          klogg_logdata
          klogg_versioncheck
          klogg_karchive
          Qt${QT_VERSION_MAJOR}::Widgets
          Qt${QT_VERSION_MAJOR}::Concurrent
+         Qt${QT_VERSION_MAJOR}::Network
          Qt${QT_VERSION_MAJOR}::SerialPort
          Qt${QT_VERSION_MAJOR}::Xml
 )

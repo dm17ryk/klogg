@@ -19,6 +19,40 @@ enum class CommanderAction {
     CloseAll,
     GetInfo,
     GetFilters,
+    GetActions,
+    GetResponses,
+    CreateAction,
+    UpdateAction,
+    DeleteAction,
+    CreateResponse,
+    UpdateResponse,
+    DeleteResponse,
+    SendAction,
+    WaitResponse,
+    StartComm,
+    StopComm,
+    GetCommStatus,
+    StartLogging,
+    StopLogging,
+    AddComment,
+    GetResponseCounter,
+    ResetResponseCounter,
+    ClearComm,
+    RunScript,
+    RunGlobalScript,
+    RunScenario,
+    RunSuite,
+    StopScript,
+    StopGlobalScript,
+    StopScenarioRun,
+    GetScriptStatus,
+    GetGlobalScriptStatus,
+    GetScenarioStatus,
+    GetScriptSubscriptions,
+    GetGlobalScriptSubscriptions,
+    ClearScriptSubscriptions,
+    ClearGlobalScriptSubscriptions,
+    GetScenarioReport,
     FocusTab,
     SetFilter,
     CloseTab,
@@ -60,10 +94,20 @@ struct CommanderRequest {
     QString filterString;
     QString searchText;
     QString objectName;
+    QString entityName;
+    QString commentText;
+    QString scriptFilePath;
+    QString argsJsonFilePath;
+    QString scenarioFilePath;
+    QString suiteFilePath;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
+    std::optional<int> entityId;
+    std::optional<int> timeoutMs;
     std::optional<bool> enabled;
+    bool allEntities = false;
+    bool timestampComment = false;
     bool followFile = false;
     bool predefinedFilters = false;
     bool prettyOutput = false;
@@ -76,6 +120,7 @@ struct CommanderRequest {
     bool searchAutoRefresh = false;
     bool searchKeepResults = false;
     CommanderComSettings comSettings;
+    QVariantMap definitionPayload;
 };
 
 struct CommanderResult {

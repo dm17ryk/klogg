@@ -335,6 +335,11 @@ void Configuration::retrieveFromStorage( QSettings& settings )
     comDefaultLogTransmits_ = settings.value(
         "com.defaultLogTransmits", DefaultConfiguration.comDefaultLogTransmits_ )
                                   .toBool();
+    comDefaultActionEditorLineEnding_
+        = settings
+              .value( "com.defaultActionEditorLineEnding",
+                      DefaultConfiguration.comDefaultActionEditorLineEnding_ )
+              .toString();
 
     style_ = settings.value( "view.style", DefaultConfiguration.style_ ).toString();
 
@@ -494,6 +499,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "com.defaultTimestampEnabled", comDefaultTimestampEnabled_ );
     settings.setValue( "com.defaultTimestampFormat", comDefaultTimestampFormat_ );
     settings.setValue( "com.defaultLogTransmits", comDefaultLogTransmits_ );
+    settings.setValue( "com.defaultActionEditorLineEnding", comDefaultActionEditorLineEnding_ );
 
     settings.setValue( "defaultView.searchAutoRefresh", searchAutoRefresh_ );
     settings.setValue( "defaultView.searchIgnoreCase", searchIgnoreCase_ );

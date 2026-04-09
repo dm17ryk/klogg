@@ -206,7 +206,7 @@ std::vector<WindowSession> Session::windowSessions()
 
 void WindowSession::save(
     const std::vector<std::tuple<const ViewInterface*, uint64_t,
-                                 std::shared_ptr<const ViewContextInterface>, QString>>& view_list,
+                                 std::shared_ptr<const ViewContextInterface>, QString, QString>>& view_list,
     const QByteArray& geometry )
 {
     LOG_DEBUG << "Session::save";
@@ -217,8 +217,9 @@ void WindowSession::save(
         uint64_t top_line;
         std::shared_ptr<const ViewContextInterface> view_context;
         QString stream_context;
+        QString script_context;
 
-        std::tie( view_object, top_line, view_context, stream_context ) = view;
+        std::tie( view_object, top_line, view_context, stream_context, script_context ) = view;
 
         if ( view_object == nullptr ) {
             LOG_WARNING << "Skipping invalid session save entry: null view";
@@ -235,7 +236,7 @@ void WindowSession::save(
 
         LOG_DEBUG << "Saving " << file->fileName.toLocal8Bit().data() << " in session.";
         session_files.emplace_back( file->fileName, top_line, view_context->toString(),
-                                    stream_context );
+                                    stream_context, script_context );
     }
 
     auto& session = SessionInfo::getSynced();
@@ -303,7 +304,7 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
                 LOG_ERROR << "Failed to create view for " << fileName;
                 continue;
             }
-            result.emplace_back( OpenedFileData{ fileName, view, streamContext } );
+            result.emplace_back( OpenedFileData{ fileName, view, streamContext, file.scriptContext } );
             openedFiles_.emplace_back( fileName );
         } catch ( const std::exception& e ) {
             LOG_ERROR << "Failed to restore file " << fileName << ": " << e.what();

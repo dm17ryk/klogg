@@ -79,6 +79,11 @@
 
 #include "cli.h"
 #include "kloggapp.h"
+#include "labagentrunner.h"
+#include "labbundleutils.h"
+#include "labclient.h"
+#include "labcontrollerservice.h"
+#include "scenarioheadlessrunner.h"
 
 #ifdef KLOGG_PORTABLE
 const bool PersistentInfo::ForcePortable = true;
@@ -487,6 +492,31 @@ bool writeCliPayloadToFile( const QString& path, const QVariantMap& payload, boo
 
     return outputFile.commit();
 }
+
+bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath, QString* errorMessage )
+{
+    QDir().mkpath( outputDirPath );
+    for ( const auto& artifactValue : payload.value( QStringLiteral( "artifacts" ) ).toList() ) {
+        const auto artifact = artifactValue.toMap();
+        const auto name = artifact.value( QStringLiteral( "name" ) ).toString();
+        if ( name.isEmpty() ) {
+            continue;
+        }
+
+        QFile file( QDir( outputDirPath ).filePath( name ) );
+        if ( !file.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
+            if ( errorMessage != nullptr ) {
+                *errorMessage = QObject::tr( "Failed to write artifact %1: %2" )
+                                    .arg( file.fileName(), file.errorString() );
+            }
+            return false;
+        }
+        file.write( QByteArray::fromBase64(
+            artifact.value( QStringLiteral( "dataBase64" ) ).toByteArray(),
+            QByteArray::Base64Encoding ) );
+    }
+    return true;
+}
 } // namespace
 
 int main( int argc, char* argv[] )
@@ -512,6 +542,96 @@ int main( int argc, char* argv[] )
         return EXIT_FAILURE;
     }
 
+    if ( parameters.lab_request ) {
+        StyleManager::applyStyle( config.style() );
+
+        if ( parameters.lab_request->mode == LabCliMode::ControllerServe ) {
+            LabControllerService controller;
+            QString errorMessage;
+            if ( !controller.start( *parameters.lab_request, &errorMessage ) ) {
+                writeCliMessage( errorMessage, true );
+                return EXIT_FAILURE;
+            }
+            writeCliMessage(
+                QObject::tr( "Lab controller listening on %1:%2" )
+                    .arg( parameters.lab_request->listenAddress )
+                    .arg( parameters.lab_request->listenPort ) );
+            return app.exec();
+        }
+
+        if ( parameters.lab_request->mode == LabCliMode::AgentRun ) {
+            LabAgentRunner agent( app );
+            QString errorMessage;
+            if ( !agent.start( *parameters.lab_request, &errorMessage ) ) {
+                writeCliMessage( errorMessage, true );
+                return EXIT_FAILURE;
+            }
+            writeCliMessage(
+                QObject::tr( "Lab agent %1 connected to %2" )
+                    .arg( QFileInfo( parameters.lab_request->agentConfigPath ).completeBaseName(),
+                          parameters.lab_request->controllerUrl ) );
+            return app.exec();
+        }
+
+        LabClient client;
+        QString errorMessage;
+        if ( !client.loadToken( parameters.lab_request->tokenFilePath, &errorMessage ) ) {
+            writeCliMessage( errorMessage, true );
+            return EXIT_FAILURE;
+        }
+
+        QVariantMap payload;
+        switch ( parameters.lab_request->mode ) {
+        case LabCliMode::Submit: {
+            const auto bundle = loadLabJobBundle( *parameters.lab_request, &errorMessage );
+            if ( !bundle ) {
+                writeCliMessage( errorMessage, true );
+                return 2;
+            }
+            payload = client.submit( parameters.lab_request->controllerUrl, *bundle, &errorMessage );
+            break;
+        }
+        case LabCliMode::Queue:
+            payload = client.queue( parameters.lab_request->controllerUrl, &errorMessage );
+            break;
+        case LabCliMode::Status:
+            payload = client.status( parameters.lab_request->controllerUrl, parameters.lab_request->jobId,
+                                     &errorMessage );
+            break;
+        case LabCliMode::Cancel:
+            payload = client.cancel( parameters.lab_request->controllerUrl, parameters.lab_request->jobId,
+                                     &errorMessage );
+            break;
+        case LabCliMode::Agents:
+            payload = client.agents( parameters.lab_request->controllerUrl, &errorMessage );
+            break;
+        case LabCliMode::Artifacts:
+            payload = client.artifacts( parameters.lab_request->controllerUrl,
+                                        parameters.lab_request->jobId, &errorMessage );
+            if ( errorMessage.isEmpty()
+                 && !writeLabArtifacts( payload, parameters.lab_request->outputDirPath, &errorMessage ) ) {
+                payload.clear();
+            }
+            else if ( errorMessage.isEmpty() ) {
+                payload.insert( QStringLiteral( "outputDir" ),
+                                QFileInfo( parameters.lab_request->outputDirPath ).absoluteFilePath() );
+            }
+            break;
+        case LabCliMode::None:
+        case LabCliMode::ControllerServe:
+        case LabCliMode::AgentRun:
+            break;
+        }
+
+        if ( payload.isEmpty() && !errorMessage.isEmpty() ) {
+            writeCliMessage( errorMessage, true );
+            return 2;
+        }
+
+        writeCliPayload( payload, parameters.lab_request->prettyOutput );
+        return EXIT_SUCCESS;
+    }
+
     const bool automationDumpRequested
         = parameters.dump_ui_tree || !parameters.dump_state_json_path.isEmpty();
     const bool automationMode
@@ -528,6 +648,20 @@ int main( int argc, char* argv[] )
     logging::enableFileLogging( parameters.log_to_file || config.enableLogging(), logLevel );
 
     app.initCrashHandler();
+
+    if ( parameters.scenario_batch_request ) {
+        StyleManager::applyStyle( config.style() );
+
+        ScenarioHeadlessRunner runner( app );
+        const auto batchResult = runner.run( *parameters.scenario_batch_request );
+        if ( batchResult.hasPayload() ) {
+            writeCliPayload( batchResult.payload, true );
+        }
+        else {
+            writeCliMessage( batchResult.message, batchResult.outputToStderr );
+        }
+        return batchResult.exitCode;
+    }
 
     auto maxConcurrency
         = tbb::global_control::active_value( tbb::global_control::max_allowed_parallelism );
@@ -624,7 +758,8 @@ int main( int argc, char* argv[] )
     StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
                                QObject::tr( "Preparing application state" ) );
 
-    if ( parameters.commander_request && !isCommanderOpenAction( parameters.commander_request->action ) ) {
+    if ( parameters.commander_request
+         && !isCommanderOpenAction( parameters.commander_request->action ) ) {
         writeCliMessage( QObject::tr( "No running klogg instance." ), true );
         return EXIT_FAILURE;
     }

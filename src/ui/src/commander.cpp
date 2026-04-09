@@ -66,8 +66,76 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "get_info" );
     case CommanderAction::GetFilters:
         return QStringLiteral( "get_filters" );
-    case CommanderAction::FocusTab:
-        return QStringLiteral( "focus_tab" );
+    case CommanderAction::GetActions:
+        return QStringLiteral( "get_actions" );
+    case CommanderAction::GetResponses:
+        return QStringLiteral( "get_responses" );
+    case CommanderAction::CreateAction:
+        return QStringLiteral( "create_action" );
+    case CommanderAction::UpdateAction:
+        return QStringLiteral( "update_action" );
+    case CommanderAction::DeleteAction:
+        return QStringLiteral( "delete_action" );
+    case CommanderAction::CreateResponse:
+        return QStringLiteral( "create_response" );
+    case CommanderAction::UpdateResponse:
+        return QStringLiteral( "update_response" );
+    case CommanderAction::DeleteResponse:
+        return QStringLiteral( "delete_response" );
+    case CommanderAction::SendAction:
+        return QStringLiteral( "send_action" );
+    case CommanderAction::WaitResponse:
+        return QStringLiteral( "wait_response" );
+    case CommanderAction::StartComm:
+        return QStringLiteral( "start_comm" );
+    case CommanderAction::StopComm:
+        return QStringLiteral( "stop_comm" );
+    case CommanderAction::GetCommStatus:
+        return QStringLiteral( "get_comm_status" );
+    case CommanderAction::StartLogging:
+        return QStringLiteral( "start_logging" );
+    case CommanderAction::StopLogging:
+        return QStringLiteral( "stop_logging" );
+    case CommanderAction::AddComment:
+        return QStringLiteral( "add_comment" );
+    case CommanderAction::GetResponseCounter:
+        return QStringLiteral( "get_response_counter" );
+    case CommanderAction::ResetResponseCounter:
+        return QStringLiteral( "reset_response_counter" );
+    case CommanderAction::ClearComm:
+        return QStringLiteral( "clear_comm" );
+      case CommanderAction::RunScript:
+          return QStringLiteral( "run_script" );
+      case CommanderAction::RunGlobalScript:
+          return QStringLiteral( "run_global_script" );
+      case CommanderAction::RunScenario:
+          return QStringLiteral( "run_scenario" );
+      case CommanderAction::RunSuite:
+          return QStringLiteral( "run_suite" );
+      case CommanderAction::StopScript:
+          return QStringLiteral( "stop_script" );
+      case CommanderAction::StopGlobalScript:
+          return QStringLiteral( "stop_global_script" );
+      case CommanderAction::StopScenarioRun:
+          return QStringLiteral( "stop_scenario_run" );
+      case CommanderAction::GetScriptStatus:
+          return QStringLiteral( "get_script_status" );
+      case CommanderAction::GetGlobalScriptStatus:
+          return QStringLiteral( "get_global_script_status" );
+      case CommanderAction::GetScenarioStatus:
+          return QStringLiteral( "get_scenario_status" );
+      case CommanderAction::GetScriptSubscriptions:
+          return QStringLiteral( "get_script_subscriptions" );
+      case CommanderAction::GetGlobalScriptSubscriptions:
+          return QStringLiteral( "get_global_script_subscriptions" );
+      case CommanderAction::ClearScriptSubscriptions:
+          return QStringLiteral( "clear_script_subscriptions" );
+      case CommanderAction::ClearGlobalScriptSubscriptions:
+          return QStringLiteral( "clear_global_script_subscriptions" );
+      case CommanderAction::GetScenarioReport:
+          return QStringLiteral( "get_scenario_report" );
+      case CommanderAction::FocusTab:
+          return QStringLiteral( "focus_tab" );
     case CommanderAction::SetFilter:
         return QStringLiteral( "set_filter" );
     case CommanderAction::CloseTab:
@@ -119,9 +187,111 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "get_filters" ) ) {
         return CommanderAction::GetFilters;
     }
-    if ( normalized == QStringLiteral( "focus_tab" ) ) {
-        return CommanderAction::FocusTab;
+    if ( normalized == QStringLiteral( "get_actions" ) ) {
+        return CommanderAction::GetActions;
     }
+    if ( normalized == QStringLiteral( "get_responses" ) ) {
+        return CommanderAction::GetResponses;
+    }
+    if ( normalized == QStringLiteral( "create_action" ) ) {
+        return CommanderAction::CreateAction;
+    }
+    if ( normalized == QStringLiteral( "update_action" ) ) {
+        return CommanderAction::UpdateAction;
+    }
+    if ( normalized == QStringLiteral( "delete_action" ) ) {
+        return CommanderAction::DeleteAction;
+    }
+    if ( normalized == QStringLiteral( "create_response" ) ) {
+        return CommanderAction::CreateResponse;
+    }
+    if ( normalized == QStringLiteral( "update_response" ) ) {
+        return CommanderAction::UpdateResponse;
+    }
+    if ( normalized == QStringLiteral( "delete_response" ) ) {
+        return CommanderAction::DeleteResponse;
+    }
+    if ( normalized == QStringLiteral( "send_action" ) ) {
+        return CommanderAction::SendAction;
+    }
+    if ( normalized == QStringLiteral( "wait_response" ) ) {
+        return CommanderAction::WaitResponse;
+    }
+    if ( normalized == QStringLiteral( "start_comm" ) ) {
+        return CommanderAction::StartComm;
+    }
+    if ( normalized == QStringLiteral( "stop_comm" ) ) {
+        return CommanderAction::StopComm;
+    }
+    if ( normalized == QStringLiteral( "get_comm_status" ) ) {
+        return CommanderAction::GetCommStatus;
+    }
+    if ( normalized == QStringLiteral( "start_logging" ) ) {
+        return CommanderAction::StartLogging;
+    }
+    if ( normalized == QStringLiteral( "stop_logging" ) ) {
+        return CommanderAction::StopLogging;
+    }
+    if ( normalized == QStringLiteral( "add_comment" ) ) {
+        return CommanderAction::AddComment;
+    }
+    if ( normalized == QStringLiteral( "get_response_counter" ) ) {
+        return CommanderAction::GetResponseCounter;
+    }
+    if ( normalized == QStringLiteral( "reset_response_counter" ) ) {
+        return CommanderAction::ResetResponseCounter;
+    }
+    if ( normalized == QStringLiteral( "clear_comm" ) ) {
+        return CommanderAction::ClearComm;
+    }
+    if ( normalized == QStringLiteral( "run_script" ) ) {
+        return CommanderAction::RunScript;
+    }
+      if ( normalized == QStringLiteral( "run_global_script" ) ) {
+          return CommanderAction::RunGlobalScript;
+      }
+      if ( normalized == QStringLiteral( "run_scenario" ) ) {
+          return CommanderAction::RunScenario;
+      }
+      if ( normalized == QStringLiteral( "run_suite" ) ) {
+          return CommanderAction::RunSuite;
+      }
+      if ( normalized == QStringLiteral( "stop_script" ) ) {
+          return CommanderAction::StopScript;
+      }
+      if ( normalized == QStringLiteral( "stop_global_script" ) ) {
+          return CommanderAction::StopGlobalScript;
+      }
+      if ( normalized == QStringLiteral( "stop_scenario_run" ) ) {
+          return CommanderAction::StopScenarioRun;
+      }
+      if ( normalized == QStringLiteral( "get_script_status" ) ) {
+          return CommanderAction::GetScriptStatus;
+      }
+      if ( normalized == QStringLiteral( "get_global_script_status" ) ) {
+          return CommanderAction::GetGlobalScriptStatus;
+      }
+      if ( normalized == QStringLiteral( "get_scenario_status" ) ) {
+          return CommanderAction::GetScenarioStatus;
+      }
+      if ( normalized == QStringLiteral( "get_script_subscriptions" ) ) {
+          return CommanderAction::GetScriptSubscriptions;
+      }
+    if ( normalized == QStringLiteral( "get_global_script_subscriptions" ) ) {
+        return CommanderAction::GetGlobalScriptSubscriptions;
+    }
+    if ( normalized == QStringLiteral( "clear_script_subscriptions" ) ) {
+        return CommanderAction::ClearScriptSubscriptions;
+    }
+      if ( normalized == QStringLiteral( "clear_global_script_subscriptions" ) ) {
+          return CommanderAction::ClearGlobalScriptSubscriptions;
+      }
+      if ( normalized == QStringLiteral( "get_scenario_report" ) ) {
+          return CommanderAction::GetScenarioReport;
+      }
+      if ( normalized == QStringLiteral( "focus_tab" ) ) {
+          return CommanderAction::FocusTab;
+      }
     if ( normalized == QStringLiteral( "set_filter" ) ) {
         return CommanderAction::SetFilter;
     }
@@ -223,6 +393,24 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.objectName.isEmpty() ) {
         map.insert( QStringLiteral( "objectName" ), request.objectName );
     }
+    if ( !request.entityName.isEmpty() ) {
+        map.insert( QStringLiteral( "entityName" ), request.entityName );
+    }
+    if ( !request.commentText.isEmpty() ) {
+        map.insert( QStringLiteral( "commentText" ), request.commentText );
+    }
+    if ( !request.scriptFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "scriptFilePath" ), request.scriptFilePath );
+    }
+    if ( !request.argsJsonFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "argsJsonFilePath" ), request.argsJsonFilePath );
+    }
+    if ( !request.scenarioFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "scenarioFilePath" ), request.scenarioFilePath );
+    }
+    if ( !request.suiteFilePath.isEmpty() ) {
+        map.insert( QStringLiteral( "suiteFilePath" ), request.suiteFilePath );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -231,6 +419,18 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( request.filterIndex ) {
         map.insert( QStringLiteral( "filterIndex" ), *request.filterIndex );
+    }
+    if ( request.entityId ) {
+        map.insert( QStringLiteral( "entityId" ), *request.entityId );
+    }
+    if ( request.timeoutMs ) {
+        map.insert( QStringLiteral( "timeoutMs" ), *request.timeoutMs );
+    }
+    if ( request.allEntities ) {
+        map.insert( QStringLiteral( "allEntities" ), true );
+    }
+    if ( request.timestampComment ) {
+        map.insert( QStringLiteral( "timestampComment" ), true );
     }
     if ( request.followFile ) {
         map.insert( QStringLiteral( "followFile" ), true );
@@ -298,6 +498,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !comMap.isEmpty() ) {
         map.insert( QStringLiteral( "comSettings" ), comMap );
     }
+    if ( !request.definitionPayload.isEmpty() ) {
+        map.insert( QStringLiteral( "definitionPayload" ), request.definitionPayload );
+    }
 
     return map;
 }
@@ -321,6 +524,14 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.filterString = map.value( QStringLiteral( "filterString" ) ).toString();
     request.searchText = map.value( QStringLiteral( "searchText" ) ).toString();
     request.objectName = map.value( QStringLiteral( "objectName" ) ).toString();
+    request.entityName = map.value( QStringLiteral( "entityName" ) ).toString();
+    request.commentText = map.value( QStringLiteral( "commentText" ) ).toString();
+    request.scriptFilePath = map.value( QStringLiteral( "scriptFilePath" ) ).toString();
+    request.argsJsonFilePath = map.value( QStringLiteral( "argsJsonFilePath" ) ).toString();
+    request.scenarioFilePath = map.value( QStringLiteral( "scenarioFilePath" ) ).toString();
+    request.suiteFilePath = map.value( QStringLiteral( "suiteFilePath" ) ).toString();
+    request.allEntities = map.value( QStringLiteral( "allEntities" ) ).toBool();
+    request.timestampComment = map.value( QStringLiteral( "timestampComment" ) ).toBool();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
     request.predefinedFilters = map.value( QStringLiteral( "predefinedFilters" ) ).toBool();
     request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();
@@ -369,6 +580,28 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
             return std::nullopt;
         }
         request.filterIndex = value;
+    }
+
+    const auto entityIdIt = map.find( QStringLiteral( "entityId" ) );
+    if ( entityIdIt != map.end() ) {
+        bool ok = false;
+        const auto value = entityIdIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander entity id." ) );
+            return std::nullopt;
+        }
+        request.entityId = value;
+    }
+
+    const auto timeoutMsIt = map.find( QStringLiteral( "timeoutMs" ) );
+    if ( timeoutMsIt != map.end() ) {
+        bool ok = false;
+        const auto value = timeoutMsIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander timeout." ) );
+            return std::nullopt;
+        }
+        request.timeoutMs = value;
     }
 
     const auto comSettingsValue = map.value( QStringLiteral( "comSettings" ) );
@@ -420,6 +653,15 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
         if ( useForActionsIt != comMap.end() ) {
             request.comSettings.useForActions = useForActionsIt->toBool();
         }
+    }
+
+    const auto definitionPayloadIt = map.find( QStringLiteral( "definitionPayload" ) );
+    if ( definitionPayloadIt != map.end() ) {
+        if ( !definitionPayloadIt->canConvert<QVariantMap>() ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander definition payload." ) );
+            return std::nullopt;
+        }
+        request.definitionPayload = definitionPayloadIt->toMap();
     }
 
     return request;
