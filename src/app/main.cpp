@@ -266,6 +266,8 @@ void writeCliMessage( const QString& message, bool toStderr = false )
 
 void writeCliBytes( const QByteArray& bytes, bool toStderr = false, bool mirrorStdoutToStderr = false )
 {
+    Q_UNUSED( mirrorStdoutToStderr );
+
     if ( bytes.isEmpty() ) {
         return;
     }
