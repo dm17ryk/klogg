@@ -160,6 +160,14 @@ to `security@filimonov.dev`.
 - Prefer minimal diffs. Keep changes localized.
 - If you need to run commands, show them first; don't guess paths.
 
+## Codex GUI Automation
+
+- Repo-scoped Codex defaults live in `.codex/config.toml`; Win GUI MCP server registration stays user-local and is not committed here.
+- Use `scripts/codex/build-windows.ps1`, `scripts/codex/run-tests.ps1`, `scripts/codex/run-klogg-debug.ps1`, and `scripts/codex/collect-artifacts.ps1` for repeatable automation flows.
+- Prefer Qt `objectName` and `accessibleName` targets first; only fall back to UIA or screen coordinates for custom-rendered panes.
+- For deterministic GUI runs, set `KLOGG_AUTOMATION=1` or use `run-klogg-debug.ps1`.
+- Collect screenshots, logs, and dumps after GUI repros before changing behavior.
+
 ## Debugging & Troubleshooting
 
 ```bash

@@ -69,6 +69,8 @@ struct CliParameters {
     bool multi_instance = false;
     bool log_to_file = false;
     bool follow_file = false;
+    bool dump_ui_tree = false;
+    QString dump_state_json_path;
 
     bool enable_logging = false;
     int log_level = 3;
@@ -201,6 +203,9 @@ struct CliParameters {
             "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
             "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "Automation:\n"
+            "  klogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
+            "  klogg --dump-state-json <path> [--window-width <n> --window-height <n>]\n\n"
             "Run `klogg scenario --help` for detailed scenario batch options.\n"
             "Run `klogg lab --help`, `klogg lab-agent --help`, or `klogg lab-controller --help` for remote lab options.\n"
             "Run `klogg command --help` for detailed commander options." );
@@ -303,7 +308,10 @@ struct CliParameters {
             "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> | --filter-index <n>] [--predefined] [--pretty|--preatty]\n"
             "  focus_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  set_filter [--tab-id <id> | --window-index <n> --tab-index <n>] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
-            "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  search     [--tab-id <id> | --window-index <n> --tab-index <n>] --text <expr> [--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] [--keep-results]\n"
+            "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | --disabled)\n"
+            "  invoke_action --object-name <name>\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
 
@@ -436,6 +444,11 @@ struct CliParameters {
                                                         "1024" );
             const QCommandLineOption windowHeightOption( "window-height", "new window height",
                                                          "768" );
+            const QCommandLineOption dumpUiTreeOption(
+                "dump-ui-tree", "dump the automation UI tree as JSON and exit" );
+            const QCommandLineOption dumpStateJsonOption(
+                "dump-state-json", "dump the automation state snapshot as JSON to the given path and exit",
+                "path" );
             parser.addOption( multiInstanceOption );
             parser.addOption( loadSessionOption );
             parser.addOption( newSessionOption );
@@ -443,6 +456,8 @@ struct CliParameters {
             parser.addOption( followOption );
             parser.addOption( windowWidthOption );
             parser.addOption( windowHeightOption );
+            parser.addOption( dumpUiTreeOption );
+            parser.addOption( dumpStateJsonOption );
         }
         else {
             parser.addOption( patternOption );
@@ -497,6 +512,11 @@ struct CliParameters {
 
             window_width = parser.value( QStringLiteral( "window-width" ) ).toInt();
             window_height = parser.value( QStringLiteral( "window-height" ) ).toInt();
+            dump_ui_tree = parser.isSet( QStringLiteral( "dump-ui-tree" ) );
+            dump_state_json_path = parser.value( QStringLiteral( "dump-state-json" ) ).trimmed();
+            if ( dump_ui_tree ) {
+                multi_instance = true;
+            }
         }
         else if ( parser.isSet( patternOption ) ) {
             pattern = parser.value( patternOption );
@@ -1224,21 +1244,24 @@ struct CliParameters {
             QStringLiteral( "Literal filter/search expression to apply." ),
             QStringLiteral( "expr" ) );
         const QCommandLineOption textOption( QStringLiteral( "text" ),
-                                             QStringLiteral( "Comment text for add_comment." ),
+                                             QStringLiteral( "Search text expression or comment text." ),
                                              QStringLiteral( "text" ) );
+        const QCommandLineOption objectNameOption( QStringLiteral( "object-name" ),
+                                                   QStringLiteral( "Target automation object name." ),
+                                                   QStringLiteral( "name" ) );
         const QCommandLineOption scriptFileOption( QStringLiteral( "script-file" ),
                                                    QStringLiteral( "Python script file to run." ),
                                                    QStringLiteral( "path" ) );
-          const QCommandLineOption argsJsonFileOption(
-              QStringLiteral( "args-json-file" ),
-              QStringLiteral( "Optional JSON file passed to the Python script." ),
-              QStringLiteral( "path" ) );
-          const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
-                                                       QStringLiteral( "Python scenario file to run." ),
-                                                       QStringLiteral( "path" ) );
-          const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
-                                                    QStringLiteral( "Scenario suite JSON file to run." ),
-                                                    QStringLiteral( "path" ) );
+        const QCommandLineOption argsJsonFileOption(
+            QStringLiteral( "args-json-file" ),
+            QStringLiteral( "Optional JSON file passed to the Python script." ),
+            QStringLiteral( "path" ) );
+        const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
+                                                     QStringLiteral( "Python scenario file to run." ),
+                                                     QStringLiteral( "path" ) );
+        const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
+                                                  QStringLiteral( "Scenario suite JSON file to run." ),
+                                                  QStringLiteral( "path" ) );
         const QCommandLineOption timestampOption(
             QStringLiteral( "timestamp" ),
             QStringLiteral( "Prefix add_comment output with a timestamp." ) );
@@ -1277,6 +1300,22 @@ struct CliParameters {
         const QCommandLineOption autoRefreshOption(
             QStringLiteral( "auto-refresh" ),
             QStringLiteral( "Rearm auto-refresh after applying the filter." ) );
+        const QCommandLineOption regexOption( QStringLiteral( "regex" ),
+                                              QStringLiteral( "Use regex search semantics." ) );
+        const QCommandLineOption caseSensitiveOption(
+            QStringLiteral( "case-sensitive" ),
+            QStringLiteral( "Use case-sensitive search semantics." ) );
+        const QCommandLineOption inverseOption( QStringLiteral( "inverse" ),
+                                                QStringLiteral( "Invert the search match." ) );
+        const QCommandLineOption booleanOption( QStringLiteral( "boolean" ),
+                                                QStringLiteral( "Use boolean search semantics." ) );
+        const QCommandLineOption keepResultsOption(
+            QStringLiteral( "keep-results" ),
+            QStringLiteral( "Keep the current search results in a separate filtered view." ) );
+        const QCommandLineOption enabledOption( QStringLiteral( "enabled" ),
+                                                QStringLiteral( "Enable the requested toggle action." ) );
+        const QCommandLineOption disabledOption( QStringLiteral( "disabled" ),
+                                                 QStringLiteral( "Disable the requested toggle action." ) );
         const QCommandLineOption baudOption( QStringLiteral( "baud" ),
                                              QStringLiteral( "COM baud rate." ),
                                              QStringLiteral( "baud" ) );
@@ -1324,11 +1363,12 @@ struct CliParameters {
         parser.addOption( filterIndexOption );
         parser.addOption( filterStringOption );
         parser.addOption( textOption );
-          parser.addOption( scriptFileOption );
-          parser.addOption( argsJsonFileOption );
-          parser.addOption( scenarioFileOption );
-          parser.addOption( suiteFileOption );
-          parser.addOption( timestampOption );
+        parser.addOption( objectNameOption );
+        parser.addOption( scriptFileOption );
+        parser.addOption( argsJsonFileOption );
+        parser.addOption( scenarioFileOption );
+        parser.addOption( suiteFileOption );
+        parser.addOption( timestampOption );
         parser.addOption( allOption );
         parser.addOption( idOption );
         parser.addOption( nameOption );
@@ -1341,6 +1381,13 @@ struct CliParameters {
         parser.addOption( prettyOption );
         parser.addOption( searchOption );
         parser.addOption( autoRefreshOption );
+        parser.addOption( regexOption );
+        parser.addOption( caseSensitiveOption );
+        parser.addOption( inverseOption );
+        parser.addOption( booleanOption );
+        parser.addOption( keepResultsOption );
+        parser.addOption( enabledOption );
+        parser.addOption( disabledOption );
         parser.addOption( baudOption );
         parser.addOption( dataBitsOption );
         parser.addOption( parityOption );
@@ -1377,7 +1424,9 @@ struct CliParameters {
              || !validateExclusiveBooleanOptions( parser, logTransmitsOption, noLogTransmitsOption,
                                                   &result.output_message )
              || !validateExclusiveBooleanOptions( parser, useForActionsOption,
-                                                  noUseForActionsOption, &result.output_message ) ) {
+                                                  noUseForActionsOption, &result.output_message )
+             || !validateExclusiveBooleanOptions( parser, enabledOption, disabledOption,
+                                                  &result.output_message ) ) {
             result.output_message = formatParserError( parser, result.output_message );
             return result;
         }
@@ -1726,6 +1775,43 @@ struct CliParameters {
                 return result;
             }
             break;
+        case CommanderAction::Search:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            request.searchText = parser.value( textOption );
+            if ( request.searchText.isEmpty() ) {
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "--text is required for search." ) );
+                return result;
+            }
+            request.searchUseRegex = parser.isSet( regexOption );
+            request.searchCaseSensitive = parser.isSet( caseSensitiveOption );
+            request.searchInverseMatch = parser.isSet( inverseOption );
+            request.searchUseBoolean = parser.isSet( booleanOption );
+            request.searchAutoRefresh = parser.isSet( autoRefreshOption );
+            request.searchKeepResults = parser.isSet( keepResultsOption );
+            break;
+        case CommanderAction::SetFollowMode:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                return result;
+            }
+            request.enabled = parseOptionalBoolean( parser, enabledOption, disabledOption );
+            if ( !request.enabled.has_value() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "set_follow_mode requires --enabled or --disabled." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::InvokeAction:
+            request.objectName = parser.value( objectNameOption ).trimmed();
+            if ( request.objectName.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--object-name is required for invoke_action." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::DumpState:
         case CommanderAction::GetInfo:
             break;
         case CommanderAction::None:

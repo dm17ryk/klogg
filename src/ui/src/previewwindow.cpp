@@ -1,5 +1,6 @@
 #include "previewwindow.h"
 
+#include <QTabBar>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
@@ -9,9 +10,14 @@
 PreviewWindow::PreviewWindow( QWidget* parent )
     : QWidget( parent )
 {
+    setObjectName( QStringLiteral( "previewWindow" ) );
     tabWidget_ = new QTabWidget( this );
+    tabWidget_->setObjectName( QStringLiteral( "previewTabs" ) );
     tabWidget_->setTabsClosable( true );
     tabWidget_->setDocumentMode( true );
+    if ( auto* tabBar = tabWidget_->tabBar(); tabBar != nullptr ) {
+        tabBar->setObjectName( QStringLiteral( "previewTabBar" ) );
+    }
 
     auto* layout = new QVBoxLayout();
     layout->addWidget( tabWidget_ );

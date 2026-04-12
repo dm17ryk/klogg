@@ -68,6 +68,7 @@
 #include "viewinterface.h"
 
 class InfoLine;
+struct CommanderRequest;
 class QuickFindPattern;
 class SavedSearches;
 class QStandardItemModel;
@@ -112,6 +113,24 @@ class CrawlerWidget : public QSplitter,
 
     bool isTextWrapEnabled() const;
     bool isStartupPreparationPending() const;
+    bool isLoadingInProgress() const;
+    bool isSearchInProgress() const;
+    QString searchText() const;
+    int matchCount() const;
+    LineNumber currentLineNumber() const;
+    LineColumn currentColumnNumber() const;
+    QVariantMap visibleLineRange() const;
+    QVariantMap mainVisibleLineRange() const;
+    QVariantMap filteredVisibleLineRange() const;
+    QString focusedViewObjectName() const;
+    QString lastErrorText() const;
+    QString searchStatusText() const;
+    bool isRegexEnabled() const;
+    bool isCaseSensitiveSearchEnabled() const;
+    bool isInverseSearchEnabled() const;
+    bool isBooleanSearchEnabled() const;
+    bool isAutoRefreshSearchEnabled() const;
+    bool isKeepSearchResultsEnabled() const;
 
     void registerShortcuts();
 
@@ -141,6 +160,7 @@ class CrawlerWidget : public QSplitter,
                                       bool rearmAutoRefresh );
     void applyCommanderPredefinedFilter( const PredefinedFilter& filter, bool runSearch,
                                          bool rearmAutoRefresh );
+    void applyCommanderAutomationSearch( const CommanderRequest& request );
     template <class T>
     struct access_by;
 
@@ -343,6 +363,7 @@ class CrawlerWidget : public QSplitter,
                                bool forceRecompile = false );
     void updateSearchCombo();
     AbstractLogView* activeView() const;
+    QVariantMap visibleLineRangeForView( const AbstractLogView* view ) const;
     void printSearchInfoMessage( LinesCount nbMatches = 0_lcount );
     void changeDataStatus( DataStatus status );
     void updateEncoding();
@@ -427,7 +448,8 @@ class CrawlerWidget : public QSplitter,
     DataStatus dataStatus_ = DataStatus::OLD_DATA;
 
     // Last main line number received
-    LineNumber currentLineNumber_;
+    LineNumber currentLineNumber_ = 0_lnum;
+    LineColumn currentColumnNumber_ = 0_lcol;
 
     // Current number of matches
     LinesCount nbMatches_;
@@ -441,6 +463,7 @@ class CrawlerWidget : public QSplitter,
     bool restoreSearchPending_ = false;
     bool startupFilterSearchInProgress_ = false;
     bool firstLoadDone_ = false;
+    QString lastSearchErrorText_;
 
     klogg::vector<LineNumber> savedMarkedLines_;
 

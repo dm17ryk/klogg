@@ -37,6 +37,7 @@ class ScratchPad : public QWidget {
     Q_OBJECT
   public:
     explicit ScratchPad( QWidget* parent = nullptr );
+    bool hasContent() const;
 
     ~ScratchPad() = default;
     ScratchPad( const ScratchPad& ) = delete;

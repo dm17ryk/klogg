@@ -19,10 +19,14 @@
 
 #include <catch2/catch.hpp>
 
+#include <QComboBox>
+#include <QLineEdit>
 #include <QSignalSpy>
+#include <QTabWidget>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
 #include <qglobal.h>
 #include <qnamespace.h>
 #include <qtestmouse.h>
@@ -179,6 +183,46 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     QString searchInfoText() const
     {
         return crawler->searchInfoLine_->text();
+    }
+
+    void enableTextWrap()
+    {
+        crawler->textWrapSet( true );
+        waitUiState( [ this ]() { return crawler->isTextWrapEnabled(); } );
+    }
+
+    void disableTextWrap()
+    {
+        crawler->textWrapSet( false );
+        waitUiState( [ this ]() { return !crawler->isTextWrapEnabled(); } );
+    }
+
+    void resizeAndShow( int width, int height )
+    {
+        crawler->resize( width, height );
+        crawler->show();
+        QTest::qWait( 100 );
+    }
+
+    void focusFilteredView()
+    {
+        crawler->filteredView_->setFocus();
+        waitUiState( [ this ]() { return crawler->focusedViewObjectName() == "filteredView"; } );
+    }
+
+    QVariantMap filteredVisibleLineRange() const
+    {
+        return crawler->filteredVisibleLineRange();
+    }
+
+    QVariantMap mainVisibleLineRange() const
+    {
+        return crawler->mainVisibleLineRange();
+    }
+
+    QString focusedViewObjectName() const
+    {
+        return crawler->focusedViewObjectName();
     }
 
     void render()
@@ -425,4 +469,136 @@ SCENARIO( "Crawler restore with invalid saved expressions", "[ui][startup]" )
             REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 0 );
         }
     }
+}
+
+TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automation]" )
+{
+    QTemporaryFile file{ "crawler_automation_test_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor crawlerVisitor;
+    crawlerVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } ) );
+    crawlerVisitor.render();
+
+    auto* crawler = crawlerVisitor.crawler.get();
+    REQUIRE( crawler != nullptr );
+
+    auto* visibilityCombo = crawler->findChild<QComboBox*>( "visibilityComboBox" );
+    REQUIRE( visibilityCombo != nullptr );
+    REQUIRE( visibilityCombo->accessibleName() == "Filtered view visibility" );
+
+    auto* searchLineEdit = crawler->findChild<QComboBox*>( "searchLineEdit" );
+    REQUIRE( searchLineEdit != nullptr );
+    REQUIRE( searchLineEdit->accessibleName() == "Search pattern history" );
+
+    auto* searchLineEditInner = crawler->findChild<QLineEdit*>( "searchLineEditInner" );
+    REQUIRE( searchLineEditInner != nullptr );
+    REQUIRE( searchLineEditInner->accessibleName() == "Search pattern" );
+
+    REQUIRE( crawler->findChild<QToolButton*>( "matchCaseButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "useRegexpButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "inverseMatchButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "booleanSearchButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "searchRefreshButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "clearSearchButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "searchButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "keepSearchResultsButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "stopSearchButton" ) != nullptr );
+    REQUIRE( crawler->findChild<PredefinedFiltersComboBox*>( "predefinedFiltersComboBox" )
+             != nullptr );
+    REQUIRE( crawler->findChild<InfoLine*>( "searchInfoLine" ) != nullptr );
+    REQUIRE( crawler->findChild<LogMainView*>( "logMainView" ) != nullptr );
+    REQUIRE( crawler->findChild<FilteredView*>( "filteredView" ) != nullptr );
+    REQUIRE( crawler->findChild<QTabWidget*>( "filteredViewsTabWidget" ) != nullptr );
+}
+
+TEST_CASE( "Crawler widget exposes semantic automation state", "[ui][automation]" )
+{
+    QTemporaryFile file{ "crawler_automation_state_test_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor crawlerVisitor;
+    crawlerVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } ) );
+    crawlerVisitor.disableBooleanCombinationMode();
+    crawlerVisitor.disableTextWrap();
+    crawlerVisitor.setSearchPattern( "this is line" );
+    crawlerVisitor.runSearch();
+
+    REQUIRE( waitUiState( [ & ]() {
+        return crawlerVisitor.crawler->matchCount() == SL_NB_LINES
+               && !crawlerVisitor.crawler->isSearchInProgress();
+    } ) );
+
+    auto* crawler = crawlerVisitor.crawler.get();
+    REQUIRE( crawler != nullptr );
+
+    const auto visibleRange = crawler->visibleLineRange();
+    const auto mainVisibleRange = crawler->mainVisibleLineRange();
+    const auto filteredVisibleRange = crawler->filteredVisibleLineRange();
+    REQUIRE( crawler->searchText() == "this is line" );
+    REQUIRE( crawler->matchCount() == SL_NB_LINES );
+    REQUIRE_FALSE( crawler->isSearchInProgress() );
+    REQUIRE_FALSE( crawler->isLoadingInProgress() );
+    REQUIRE_FALSE( crawler->focusedViewObjectName().isEmpty() );
+    REQUIRE( crawler->isTextWrapEnabled() == false );
+    REQUIRE( visibleRange.value( "start" ).toULongLong() >= 1 );
+    REQUIRE( visibleRange.value( "end" ).toULongLong() >= visibleRange.value( "start" ).toULongLong() );
+    REQUIRE( mainVisibleRange.value( "start" ).toULongLong() >= 1 );
+    REQUIRE( mainVisibleRange.value( "end" ).toULongLong()
+             >= mainVisibleRange.value( "start" ).toULongLong() );
+    REQUIRE( filteredVisibleRange.value( "start" ).toULongLong() >= 1 );
+    REQUIRE( filteredVisibleRange.value( "end" ).toULongLong()
+             >= filteredVisibleRange.value( "start" ).toULongLong() );
+    REQUIRE( crawler->currentLineNumber().get() <= SL_NB_LINES );
+    REQUIRE( crawler->lastErrorText().isEmpty() );
+}
+
+TEST_CASE( "Filtered visible range tracks wrapped rows", "[ui][wrap]" )
+{
+    QTemporaryFile file{ "crawler_wrap_range_test_XXXXXX.log" };
+    REQUIRE( file.open() );
+
+    const QString longPayload
+        = "MATCH "
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "
+          "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "
+          "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "
+          "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+    const QString fileContents
+        = "MATCH short one\n"
+          + longPayload + "\n"
+          + "MATCH short two\n"
+          + "MATCH short three\n";
+
+    REQUIRE( file.write( fileContents.toUtf8() ) == fileContents.toUtf8().size() );
+    file.flush();
+
+    Session session;
+    CrawlerWidgetVisitor crawlerVisitor;
+    crawlerVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.isLoadingFinished(); } ) );
+    crawlerVisitor.disableBooleanCombinationMode();
+    crawlerVisitor.resizeAndShow( 520, 180 );
+    crawlerVisitor.enableTextWrap();
+    crawlerVisitor.setSearchPattern( "MATCH" );
+    crawlerVisitor.runSearch();
+    crawlerVisitor.focusFilteredView();
+    crawlerVisitor.render();
+
+    REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.getLogFilteredNbLines().get() == 4; } ) );
+
+    const auto filteredVisibleRange = crawlerVisitor.filteredVisibleLineRange();
+    REQUIRE( filteredVisibleRange.value( "start" ).toULongLong() == 1 );
+    REQUIRE( filteredVisibleRange.value( "end" ).toULongLong() >= 2 );
+    REQUIRE( crawlerVisitor.focusedViewObjectName() == "filteredView" );
 }

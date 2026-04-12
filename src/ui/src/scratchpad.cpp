@@ -90,8 +90,10 @@ qint64 windowsTickToUnixSeconds( qint64 windowsTicks )
 ScratchPad::ScratchPad( QWidget* parent )
     : QWidget( parent )
 {
+    setObjectName( QStringLiteral( "scratchPadWindow" ) );
     this->hide();
     auto textEdit = std::make_unique<QPlainTextEdit>();
+    textEdit->setObjectName( QStringLiteral( "scratchPadTextEdit" ) );
     textEdit->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );
     textEdit->setMinimumSize( 300, 300 );
     textEdit->setUndoRedoEnabled( true );
@@ -172,6 +174,11 @@ ScratchPad::ScratchPad( QWidget* parent )
     connect( textEdit_, &QPlainTextEdit::textChanged, this, &ScratchPad::updateTransformation );
     connect( textEdit_, &QPlainTextEdit::selectionChanged, this,
              &ScratchPad::updateTransformation );
+}
+
+bool ScratchPad::hasContent() const
+{
+    return textEdit_ != nullptr && !textEdit_->document()->isEmpty();
 }
 
 void ScratchPad::addData( QString newData )

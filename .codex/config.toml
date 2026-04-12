@@ -1,0 +1,11 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+approval_policy = "on-request"
+sandbox_mode = "danger-full-access"
+
+[windows]
+sandbox = "elevated"
+sandbox_private_desktop = false
+
+[sandbox_workspace_write]
+network_access = true

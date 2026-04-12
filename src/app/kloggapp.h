@@ -242,14 +242,17 @@ class KloggApp : public QApplication {
         data.insert( QLatin1String( "resultPath" ), resultPath );
         data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
 
+        constexpr int CommanderConnectTimeoutMs = 5000;
+        constexpr int CommanderResponseTimeoutMs = 30000;
+
         const QCborValue cbor( data );
-        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), 5000 ) ) {
+        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), CommanderConnectTimeoutMs ) ) {
             QFile::remove( resultPath );
             return commanderFailure( CommanderResultCode::TransportError,
                                      QStringLiteral( "Failed to contact the primary klogg instance." ) );
         }
 
-        if ( !waitForResponseFile( resultPath, 5000 ) ) {
+        if ( !waitForResponseFile( resultPath, CommanderResponseTimeoutMs ) ) {
             QFile::remove( resultPath );
             return commanderFailure( CommanderResultCode::TransportError,
                                      QStringLiteral( "Timed out waiting for commander response." ) );
@@ -285,7 +288,7 @@ class KloggApp : public QApplication {
         for ( auto&& windowSession : session_->windowSessions() ) {
             try {
                 auto* window = newWindow( std::move( windowSession ) );
-                if ( !startupBootstrapEnabled_ ) {
+                if ( !automationModeEnabled_ && !startupBootstrapEnabled_ ) {
                     window->reloadGeometry();
                 }
                 StartupProgress::advance( QObject::tr( "Restoring window" ),
@@ -325,7 +328,10 @@ class KloggApp : public QApplication {
 
             for ( auto* window : restoredWindows ) {
                 StartupProgress::advance( QObject::tr( "Showing window" ) );
-                if ( startupBootstrapEnabled_ ) {
+                if ( automationModeEnabled_ ) {
+                    applyAutomationGeometry( window );
+                }
+                else if ( startupBootstrapEnabled_ ) {
                     applyStartupBootstrapGeometry( window );
                 }
                 window->show();
@@ -364,8 +370,7 @@ class KloggApp : public QApplication {
             while ( *processedCount < targetCount
                     && probeTimer.elapsed() < StartupProbeTimeoutMs
                     && startupReadyTimer.elapsed() < StartupUiReadyTimeoutMs ) {
-                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                                 | QEventLoop::ExcludeSocketNotifiers );
+                QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
             }
 
             return *processedCount == targetCount;
@@ -397,8 +402,7 @@ class KloggApp : public QApplication {
                         idleStableTimer.restart();
                     }
 
-                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                                     | QEventLoop::ExcludeSocketNotifiers );
+                    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
                 }
             }
 
@@ -410,15 +414,13 @@ class KloggApp : public QApplication {
                                               .arg( elapsedSeconds ) );
             }
 
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
 
         LOG_WARNING << "Timed out waiting for restored windows to finish startup preparation";
         StartupProgress::advance( QObject::tr( "Preparing windows" ),
                                   QObject::tr( "Startup readiness timeout" ) );
-        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                         | QEventLoop::ExcludeSocketNotifiers );
+        QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
 
         return lastShownWindow;
     }
@@ -458,7 +460,10 @@ class KloggApp : public QApplication {
         }
 
         auto window = newWindow( { session_, generateIdFromUuid(), nextWindowIndex() } );
-        if ( startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( window );
+        }
+        else if ( startupBootstrapEnabled_ ) {
             applyStartupBootstrapGeometry( window );
         }
         else {
@@ -474,6 +479,19 @@ class KloggApp : public QApplication {
         startupBootstrapTopLeft_ = topLeft;
     }
 
+    void setAutomationMode( bool enabled, const QPoint& topLeft = {}, const QSize& size = {} )
+    {
+        automationModeEnabled_ = enabled;
+        if ( topLeft != QPoint() ) {
+            automationTopLeft_ = topLeft;
+        }
+        if ( size.isValid() ) {
+            automationWindowSize_ = size;
+        }
+    }
+
+    bool automationModeEnabled() const { return automationModeEnabled_; }
+
     void finalizeStartupBootstrapGeometry()
     {
         if ( !startupBootstrapEnabled_ ) {
@@ -484,7 +502,12 @@ class KloggApp : public QApplication {
         for ( auto& [ session, window ] : mainWindows_ ) {
             Q_UNUSED( session );
             if ( window != nullptr ) {
-                window->reloadGeometry();
+                if ( automationModeEnabled_ ) {
+                    applyAutomationGeometry( window );
+                }
+                else {
+                    window->reloadGeometry();
+                }
             }
         }
     }
@@ -713,6 +736,9 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::FocusTab
               || request.action == CommanderAction::GetFilters
               || request.action == CommanderAction::SetFilter
+              || request.action == CommanderAction::Search
+              || request.action == CommanderAction::SetFollowMode
+              || request.action == CommanderAction::DumpState
               || request.action == CommanderAction::SendAction
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
@@ -735,27 +761,35 @@ class KloggApp : public QApplication {
             return window->executeCommanderRequest( request );
         }
 
-        if ( ( request.action == CommanderAction::GetFilters
-               || request.action == CommanderAction::SetFilter
-               || request.action == CommanderAction::SendAction
-               || request.action == CommanderAction::WaitResponse
-               || request.action == CommanderAction::StartComm
-               || request.action == CommanderAction::StopComm
-               || request.action == CommanderAction::GetCommStatus
-               || request.action == CommanderAction::StartLogging
-               || request.action == CommanderAction::StopLogging
-               || request.action == CommanderAction::AddComment
-               || request.action == CommanderAction::GetResponseCounter
-               || request.action == CommanderAction::ResetResponseCounter
-               || request.action == CommanderAction::ClearComm )
-             && request.tabId.isEmpty() && !request.tabIndex ) {
+        const auto preferActiveWindow
+            = ( request.action == CommanderAction::GetFilters
+                || request.action == CommanderAction::SetFilter
+                || request.action == CommanderAction::Search
+                || request.action == CommanderAction::SetFollowMode
+                || request.action == CommanderAction::DumpState
+                || request.action == CommanderAction::SendAction
+                || request.action == CommanderAction::WaitResponse
+                || request.action == CommanderAction::StartComm
+                || request.action == CommanderAction::StopComm
+                || request.action == CommanderAction::GetCommStatus
+                || request.action == CommanderAction::StartLogging
+                || request.action == CommanderAction::StopLogging
+                || request.action == CommanderAction::AddComment
+                || request.action == CommanderAction::GetResponseCounter
+                || request.action == CommanderAction::ResetResponseCounter
+                || request.action == CommanderAction::ClearComm )
+              && request.tabId.isEmpty() && !request.tabIndex;
+
+        if ( preferActiveWindow ) {
             auto* window = activeWindowIfAny();
-            if ( window == nullptr ) {
+            if ( window != nullptr ) {
+                return window->executeCommanderRequest( request );
+            }
+
+            if ( request.action != CommanderAction::DumpState ) {
                 return commanderFailure( CommanderResultCode::NotFound,
                                          QStringLiteral( "No active klogg window was found." ) );
             }
-
-            return window->executeCommanderRequest( request );
         }
 
         CommanderResult lastNotFound = commanderFailure(
@@ -808,6 +842,15 @@ class KloggApp : public QApplication {
 
     void handleCommanderRequest( const CommanderRequest& request, const QString& resultPath )
     {
+        if ( !startupCommanderReady_ ) {
+            constexpr int StartupCommandRetryDelayMs = 50;
+            QTimer::singleShot( StartupCommandRetryDelayMs, this,
+                                [ this, request, resultPath ]() {
+                                    handleCommanderRequest( request, resultPath );
+                                } );
+            return;
+        }
+
         const auto result = executeCommanderRequest( request );
         if ( !writeCommanderResult( resultPath, result ) ) {
             LOG_WARNING << "Failed to write commander result to " << resultPath;
@@ -928,6 +971,11 @@ class KloggApp : public QApplication {
         scenarioRunner_.publishEvent( event );
     }
 
+    void setStartupCommanderReady( bool ready = true )
+    {
+        startupCommanderReady_ = ready;
+    }
+
     void startBackgroundTasks()
     {
         LOG_DEBUG << "startBackgroundTasks";
@@ -950,7 +998,10 @@ class KloggApp : public QApplication {
 
         LOG_WARNING << "No visible main window after startup, opening fallback window";
         auto* fallbackWindow = newWindow();
-        if ( !startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( fallbackWindow );
+        }
+        else if ( !startupBootstrapEnabled_ ) {
             fallbackWindow->reloadGeometry();
         }
         else {
@@ -984,7 +1035,10 @@ class KloggApp : public QApplication {
         mainWindows_.emplace_back( session, new MainWindow( session ) );
 
         auto& window = mainWindows_.back().second;
-        if ( startupBootstrapEnabled_ ) {
+        if ( automationModeEnabled_ ) {
+            applyAutomationGeometry( window );
+        }
+        else if ( startupBootstrapEnabled_ ) {
             applyStartupBootstrapGeometry( window );
         }
 
@@ -1086,6 +1140,17 @@ class KloggApp : public QApplication {
         window->setGeometry( QRect( bootstrapTopLeft, bootstrapSize ) );
     }
 
+    void applyAutomationGeometry( MainWindow* window ) const
+    {
+        if ( window == nullptr ) {
+            return;
+        }
+
+        const auto automationSize = automationWindowSize_.isValid() ? automationWindowSize_
+                                                                    : QSize( 1600, 1000 );
+        window->setGeometry( QRect( automationTopLeft_, automationSize ) );
+    }
+
     MainWindow* activeWindowOrCreate()
     {
         auto* activeWindow = activeWindowIfAny();
@@ -1179,6 +1244,10 @@ class KloggApp : public QApplication {
     std::stack<QPointer<MainWindow>> activeWindows_;
     bool startupBootstrapEnabled_ = false;
     QPoint startupBootstrapTopLeft_;
+    bool automationModeEnabled_ = false;
+    bool startupCommanderReady_ = false;
+    QPoint automationTopLeft_ = QPoint( 40, 40 );
+    QSize automationWindowSize_ = QSize( 1600, 1000 );
 
     VersionChecker versionChecker_;
 };

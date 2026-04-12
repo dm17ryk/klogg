@@ -94,6 +94,11 @@ class MainWindow : public QMainWindow {
     bool isStartupReadyForDisplay() const;
     CommanderResult executeCommanderRequest( const CommanderRequest& request );
     QVariantMap commanderWindowInfo() const;
+    QVariantMap automationSnapshot() const;
+    QVariantMap automationTree() const;
+    QVariantList automationActions() const;
+    QVariantMap automationState() const;
+    QVariantMap automationUiTree() const;
     void refreshScriptStatusIndicators();
 
     void reTranslateUI();
@@ -241,6 +246,9 @@ class MainWindow : public QMainWindow {
     CommanderResult closeUrlBySource( const QString& url );
     CommanderResult commanderFilters( const CommanderRequest& request ) const;
     CommanderResult commanderSetFilter( const CommanderRequest& request );
+    CommanderResult commanderSearch( const CommanderRequest& request );
+    CommanderResult commanderSetFollowMode( const CommanderRequest& request );
+    CommanderResult commanderInvokeAction( const CommanderRequest& request );
     CommanderResult commanderSendAction( const CommanderRequest& request );
     CommanderResult commanderWaitResponse( const CommanderRequest& request );
     CommanderResult commanderStartComm( const CommanderRequest& request );

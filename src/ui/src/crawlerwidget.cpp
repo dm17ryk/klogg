@@ -76,6 +76,7 @@
 #include <QCryptographicHash>
 
 #include "configuration.h"
+#include "commander.h"
 #include "dispatch_to.h"
 #include "fontutils.h"
 #include "infoline.h"
@@ -278,6 +279,113 @@ bool CrawlerWidget::isStartupPreparationPending() const
     return loadingInProgress_ || restoreSearchPending_ || startupFilterSearchInProgress_;
 }
 
+bool CrawlerWidget::isLoadingInProgress() const
+{
+    return loadingInProgress_;
+}
+
+bool CrawlerWidget::isSearchInProgress() const
+{
+    return startupFilterSearchInProgress_;
+}
+
+QString CrawlerWidget::searchText() const
+{
+    return searchLineEdit_ != nullptr ? searchLineEdit_->currentText() : QString{};
+}
+
+int CrawlerWidget::matchCount() const
+{
+    return static_cast<int>( nbMatches_.get() );
+}
+
+LineNumber CrawlerWidget::currentLineNumber() const
+{
+    return currentLineNumber_;
+}
+
+LineColumn CrawlerWidget::currentColumnNumber() const
+{
+    return currentColumnNumber_;
+}
+
+QVariantMap CrawlerWidget::visibleLineRange() const
+{
+    return visibleLineRangeForView( activeView() );
+}
+
+QVariantMap CrawlerWidget::mainVisibleLineRange() const
+{
+    return visibleLineRangeForView( logMainView_ );
+}
+
+QVariantMap CrawlerWidget::filteredVisibleLineRange() const
+{
+    return visibleLineRangeForView( filteredView_ );
+}
+
+QString CrawlerWidget::focusedViewObjectName() const
+{
+    const auto* view = activeView();
+    return view != nullptr ? view->objectName() : QString{};
+}
+
+QVariantMap CrawlerWidget::visibleLineRangeForView( const AbstractLogView* view ) const
+{
+    QVariantMap range;
+    if ( view == nullptr ) {
+        range.insert( QStringLiteral( "start" ), QVariant{} );
+        range.insert( QStringLiteral( "end" ), QVariant{} );
+        return range;
+    }
+
+    range.insert( QStringLiteral( "start" ),
+                  static_cast<qulonglong>( view->visibleLineStart().get() + 1 ) );
+    range.insert( QStringLiteral( "end" ),
+                  static_cast<qulonglong>( view->visibleLineEnd().get() + 1 ) );
+    return range;
+}
+
+QString CrawlerWidget::lastErrorText() const
+{
+    return lastSearchErrorText_;
+}
+
+QString CrawlerWidget::searchStatusText() const
+{
+    return searchInfoLine_ != nullptr ? searchInfoLine_->text() : QString{};
+}
+
+bool CrawlerWidget::isRegexEnabled() const
+{
+    return useRegexpButton_ != nullptr && useRegexpButton_->isChecked();
+}
+
+bool CrawlerWidget::isCaseSensitiveSearchEnabled() const
+{
+    return matchCaseButton_ != nullptr && matchCaseButton_->isChecked();
+}
+
+bool CrawlerWidget::isInverseSearchEnabled() const
+{
+    return inverseButton_ != nullptr && inverseButton_->isChecked();
+}
+
+bool CrawlerWidget::isBooleanSearchEnabled() const
+{
+    return booleanButton_ != nullptr && booleanButton_->isChecked();
+}
+
+bool CrawlerWidget::isAutoRefreshSearchEnabled() const
+{
+    return searchRefreshButton_ != nullptr && searchRefreshButton_->isChecked();
+}
+
+bool CrawlerWidget::isKeepSearchResultsEnabled() const
+{
+    return keepSearchResultsButton_ != nullptr && keepSearchResultsButton_->isChecked();
+}
+
 void CrawlerWidget::reloadPredefinedFilters() const
 {
     predefinedFilters_->populatePredefinedFilters();
@@ -457,6 +565,19 @@ void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filt
     applyCommanderSearchPattern( searchPattern, runSearch, rearmAutoRefresh );
 }
 
+void CrawlerWidget::applyCommanderAutomationSearch( const CommanderRequest& request )
+{
+    matchCaseButton_->setChecked( request.searchCaseSensitive );
+    useRegexpButton_->setChecked( request.searchUseRegex );
+    inverseButton_->setChecked( request.searchInverseMatch );
+    booleanButton_->setChecked( request.searchUseBoolean );
+    searchRefreshButton_->setChecked( request.searchAutoRefresh );
+    keepSearchResultsButton_->setChecked( request.searchKeepResults );
+    lastSearchErrorText_.clear();
+    setSearchPattern( request.searchText, false );
+    startNewSearch();
+}
+
 void CrawlerWidget::goToLine()
 {
     bool isLineSelected = true;
@@ -576,6 +697,7 @@ std::shared_ptr<const ViewContextInterface> CrawlerWidget::doGetViewContext() co
 
 void CrawlerWidget::startNewSearch()
 {
+    lastSearchErrorText_.clear();
     if ( keepSearchResultsButton_->isChecked() ) {
         keepSearchResultsButton_->setChecked( false );
 
@@ -774,6 +896,7 @@ void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
                                              LineColumn startCol, LineLength nSymbols )
 {
     currentLineNumber_ = line;
+    currentColumnNumber_ = startCol;
     Q_EMIT newSelection( line, nLines, startCol, nSymbols );
 }
 
@@ -1212,11 +1335,14 @@ void CrawlerWidget::setup()
     bottomWindow->setContentsMargins( 2, 0, 2, 0 );
 
     overviewWidget_ = new OverviewWidget();
+    overviewWidget_->setObjectName( QStringLiteral( "overviewWidget" ) );
     logMainView_
         = new LogMainView( logData_.get(), quickFindPattern_.get(), &overview_, overviewWidget_ );
+    logMainView_->setObjectName( QStringLiteral( "logMainView" ) );
     logMainView_->setContentsMargins( 2, 0, 2, 0 );
 
     filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+    filteredView_->setObjectName( QStringLiteral( "filteredView" ) );
     filteredViewsData_[ filteredView_ ] = logFilteredData_;
     filteredView_->setContentsMargins( 2, 0, 2, 0 );
 
@@ -1249,6 +1375,8 @@ void CrawlerWidget::setup()
     // visibilityView->setMinimumWidth( 170 ); // Only needed with custom style-sheet
 
     visibilityBox_ = new QComboBox();
+    visibilityBox_->setObjectName( QStringLiteral( "visibilityComboBox" ) );
+    visibilityBox_->setAccessibleName( tr( "Filtered view visibility" ) );
     visibilityBox_->setModel( visibilityModel_ );
     visibilityBox_->setView( visibilityView );
 
@@ -1278,6 +1406,7 @@ void CrawlerWidget::setup()
 
     // Construct the Search Info line
     searchInfoLine_ = new InfoLine();
+    searchInfoLine_->setObjectName( QStringLiteral( "searchInfoLine" ) );
     searchInfoLine_->setFrameStyle( QFrame::StyledPanel );
     searchInfoLine_->setFrameShadow( QFrame::Sunken );
     searchInfoLine_->setLineWidth( 1 );
@@ -1289,30 +1418,40 @@ void CrawlerWidget::setup()
     searchInfoLine_->setContentsMargins( 2, 2, 2, 2 );
 
     matchCaseButton_ = new QToolButton();
+    matchCaseButton_->setObjectName( QStringLiteral( "matchCaseButton" ) );
+    matchCaseButton_->setAccessibleName( tr( "Match case" ) );
     matchCaseButton_->setToolTip( tr( "Match case" ) );
     matchCaseButton_->setCheckable( true );
     matchCaseButton_->setFocusPolicy( Qt::NoFocus );
     matchCaseButton_->setContentsMargins( 2, 2, 2, 2 );
 
     useRegexpButton_ = new QToolButton();
+    useRegexpButton_->setObjectName( QStringLiteral( "useRegexpButton" ) );
+    useRegexpButton_->setAccessibleName( tr( "Use regex" ) );
     useRegexpButton_->setToolTip( tr( "Use regex" ) );
     useRegexpButton_->setCheckable( true );
     useRegexpButton_->setFocusPolicy( Qt::NoFocus );
     useRegexpButton_->setContentsMargins( 2, 2, 2, 2 );
 
     inverseButton_ = new QToolButton();
+    inverseButton_->setObjectName( QStringLiteral( "inverseMatchButton" ) );
+    inverseButton_->setAccessibleName( tr( "Inverse match" ) );
     inverseButton_->setToolTip( tr( "Inverse match" ) );
     inverseButton_->setCheckable( true );
     inverseButton_->setFocusPolicy( Qt::NoFocus );
     inverseButton_->setContentsMargins( 2, 2, 2, 2 );
 
     booleanButton_ = new QToolButton();
+    booleanButton_->setObjectName( QStringLiteral( "booleanSearchButton" ) );
+    booleanButton_->setAccessibleName( tr( "Boolean search" ) );
     booleanButton_->setToolTip( tr( "Enable regular expression logical combining" ) );
     booleanButton_->setCheckable( true );
     booleanButton_->setFocusPolicy( Qt::NoFocus );
     booleanButton_->setContentsMargins( 2, 2, 2, 2 );
 
     searchRefreshButton_ = new QToolButton();
+    searchRefreshButton_->setObjectName( QStringLiteral( "searchRefreshButton" ) );
+    searchRefreshButton_->setAccessibleName( tr( "Auto-refresh" ) );
     searchRefreshButton_->setToolTip( tr( "Auto-refresh" ) );
     searchRefreshButton_->setCheckable( true );
     searchRefreshButton_->setFocusPolicy( Qt::NoFocus );
@@ -1321,6 +1460,8 @@ void CrawlerWidget::setup()
     // Construct the Search line
     searchLineCompleter_ = new QCompleter( savedSearches_->recentSearches(), this );
     searchLineEdit_ = new QComboBox;
+    searchLineEdit_->setObjectName( QStringLiteral( "searchLineEdit" ) );
+    searchLineEdit_->setAccessibleName( tr( "Search pattern history" ) );
     searchLineEdit_->setEditable( true );
     searchLineEdit_->setCompleter( searchLineCompleter_ );
     searchLineEdit_->addItems( savedSearches_->recentSearches() );
@@ -1328,6 +1469,8 @@ void CrawlerWidget::setup()
     searchLineEdit_->clearEditText();
     searchLineEdit_->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Minimum );
     searchLineEdit_->setSizeAdjustPolicy( QComboBox::AdjustToMinimumContentsLengthWithIcon );
+    searchLineEdit_->lineEdit()->setObjectName( QStringLiteral( "searchLineEditInner" ) );
+    searchLineEdit_->lineEdit()->setAccessibleName( tr( "Search pattern" ) );
     searchLineEdit_->lineEdit()->setMaxLength( std::numeric_limits<int>::max() / 1024 );
     searchLineEdit_->setContentsMargins( 2, 2, 2, 2 );
 
@@ -1346,16 +1489,22 @@ void CrawlerWidget::setup()
     setFocusProxy( searchLineEdit_ );
 
     clearButton_ = new QToolButton();
+    clearButton_->setObjectName( QStringLiteral( "clearSearchButton" ) );
+    clearButton_->setAccessibleName( tr( "Clear search text" ) );
     clearButton_->setText( tr( "Clear search text" ) );
     clearButton_->setAutoRaise( true );
     clearButton_->setContentsMargins( 2, 2, 2, 2 );
 
     searchButton_ = new QToolButton();
+    searchButton_->setObjectName( QStringLiteral( "searchButton" ) );
+    searchButton_->setAccessibleName( tr( "Search" ) );
     searchButton_->setText( tr( "Search" ) );
     searchButton_->setAutoRaise( true );
     searchButton_->setContentsMargins( 2, 2, 2, 2 );
 
     keepSearchResultsButton_ = new QToolButton();
+    keepSearchResultsButton_->setObjectName( QStringLiteral( "keepSearchResultsButton" ) );
+    keepSearchResultsButton_->setAccessibleName( tr( "Keep results" ) );
     keepSearchResultsButton_->setText( tr( "Keep Results" ) );
     keepSearchResultsButton_->setToolTip(
         tr( "Keep these results and show subsequent results in a new window" ) );
@@ -1363,12 +1512,16 @@ void CrawlerWidget::setup()
     keepSearchResultsButton_->setContentsMargins( 2, 2, 2, 2 );
 
     stopButton_ = new QToolButton();
+    stopButton_->setObjectName( QStringLiteral( "stopSearchButton" ) );
+    stopButton_->setAccessibleName( tr( "Stop search" ) );
     stopButton_->setAutoRaise( true );
     stopButton_->setEnabled( false );
     stopButton_->setVisible( false );
     stopButton_->setContentsMargins( 2, 2, 2, 2 );
 
     predefinedFilters_ = new PredefinedFiltersComboBox( this );
+    predefinedFilters_->setObjectName( QStringLiteral( "predefinedFiltersComboBox" ) );
+    predefinedFilters_->setAccessibleName( tr( "Predefined filters" ) );
 
     auto* searchLineLayout = new QHBoxLayout;
     searchLineLayout->setContentsMargins( 2, 2, 2, 2 );
@@ -1389,7 +1542,11 @@ void CrawlerWidget::setup()
 
     // Construct the bottom window
     tabbedFilteredView_ = new QTabWidget;
+    tabbedFilteredView_->setObjectName( QStringLiteral( "filteredViewsTabWidget" ) );
     tabbedFilteredView_->setTabsClosable( true );
+    if ( auto* tabBar = tabbedFilteredView_->tabBar(); tabBar != nullptr ) {
+        tabBar->setObjectName( QStringLiteral( "filteredViewsTabBar" ) );
+    }
     tabbedFilteredView_->addTab( filteredView_, "" );
     tabbedFilteredView_->setDocumentMode( true );
     tabbedFilteredView_->setTabBarAutoHide( true );
@@ -1832,6 +1989,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         searchInfoLine_->setPalette( ErrorPalette );
         searchInfoLine_->setText( errorMessage );
         searchInfoLine_->show();
+        lastSearchErrorText_ = errorMessage;
 
         logMainView_->setSearchPattern( {} );
         filteredView_->setSearchPattern( {} );
@@ -1865,6 +2023,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             filteredView_->updateData();
             searchState_.resetState();
             startupFilterSearchInProgress_ = false;
+            lastSearchErrorText_.clear();
             printSearchInfoMessage();
             return;
         }
@@ -1990,6 +2149,7 @@ void CrawlerWidget::printSearchInfoMessage( LinesCount nbMatches )
     searchInfoLine_->setPalette( searchInfoLineDefaultPalette_ );
     searchInfoLine_->setText( text );
     searchInfoLine_->setVisible( !text.isEmpty() );
+    lastSearchErrorText_.clear();
 }
 
 // Change the data status and, if needed, advise upstream.

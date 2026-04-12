@@ -56,6 +56,10 @@ enum class CommanderAction {
     FocusTab,
     SetFilter,
     CloseTab,
+    Search,
+    SetFollowMode,
+    InvokeAction,
+    DumpState,
 };
 
 enum class CommanderResultCode {
@@ -88,6 +92,8 @@ struct CommanderRequest {
     QString tabId;
     QString filterId;
     QString filterString;
+    QString searchText;
+    QString objectName;
     QString entityName;
     QString commentText;
     QString scriptFilePath;
@@ -99,6 +105,7 @@ struct CommanderRequest {
     std::optional<int> filterIndex;
     std::optional<int> entityId;
     std::optional<int> timeoutMs;
+    std::optional<bool> enabled;
     bool allEntities = false;
     bool timestampComment = false;
     bool followFile = false;
@@ -106,6 +113,12 @@ struct CommanderRequest {
     bool prettyOutput = false;
     bool runSearch = false;
     bool rearmAutoRefresh = false;
+    bool searchUseRegex = false;
+    bool searchCaseSensitive = false;
+    bool searchInverseMatch = false;
+    bool searchUseBoolean = false;
+    bool searchAutoRefresh = false;
+    bool searchKeepResults = false;
     CommanderComSettings comSettings;
     QVariantMap definitionPayload;
 };

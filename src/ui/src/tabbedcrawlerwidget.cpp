@@ -58,6 +58,8 @@ TabbedCrawlerWidget::TabbedCrawlerWidget()
     , newdata_icon_( ":/images/newdata_icon.png" )
     , newfiltered_icon_( ":/images/newfiltered_icon.png" )
 {
+    setObjectName( QStringLiteral( "mainTabWidget" ) );
+    myTabBar_.setObjectName( QStringLiteral( "mainTabBar" ) );
 
     QString tabStyle = "QTabBar::tab { height: 24px; }";
     QString tabCloseButtonStyle = " QTabBar::close-button {\

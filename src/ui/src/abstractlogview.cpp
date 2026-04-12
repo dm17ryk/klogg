@@ -1660,6 +1660,25 @@ LineNumber AbstractLogView::getTopLine() const
     return firstLine_;
 }
 
+LineNumber AbstractLogView::visibleLineStart() const
+{
+    return firstLine_;
+}
+
+LineNumber AbstractLogView::visibleLineEnd() const
+{
+    if ( logData_ == nullptr || logData_->getNbLine() == 0_lcount ) {
+        return 0_lnum;
+    }
+
+    const auto layout = visibleLayoutFor( firstLine_, getNbVisibleLines() );
+    if ( layout.lastVisibleLine.has_value() ) {
+        return *layout.lastVisibleLine;
+    }
+
+    return firstLine_;
+}
+
 QString AbstractLogView::getSelectedText() const
 {
     return selection_.getSelectedText( logData_ );
@@ -2166,28 +2185,17 @@ void AbstractLogView::considerMouseHovering( int xPos, int yPos )
 LinesCount AbstractLogView::getNbBottomWrappedVisibleLines() const
 {
     const LinesCount visibleLines = getNbVisibleLines();
-    const LineLength visibleColumns = getNbVisibleCols();
-    if ( useTextWrap_ ) {
-        const auto totalLines = logData_->getNbLine();
-        LinesCount wrappedVisibleLines;
-        LinesCount unwrappedLines;
-        LineNumber unwrappedLineNumber{ logData_->getNbLine().get() - 1 };
-        while ( unwrappedLines < totalLines && unwrappedLines < visibleLines ) {
-            QString expandedLine = logData_->getExpandedLineString( unwrappedLineNumber );
-            WrappedString wrapped{ expandedLine, visibleColumns };
-            wrappedVisibleLines += LinesCount(
-                type_safe::narrow_cast<LinesCount::UnderlyingType>( wrapped.wrappedLinesCount() ) );
-            unwrappedLines++;
-            unwrappedLineNumber--;
-        }
-
-        LOG_INFO << "Bottom visible lines " << visibleLines.get() << " wrapped "
-                 << wrappedVisibleLines.get();
-        return wrappedVisibleLines;
-    }
-    else {
+    if ( !useTextWrap_ || logData_ == nullptr || logData_->getNbLine() == 0_lcount ) {
         return visibleLines;
     }
+
+    const auto totalLines = logData_->getNbLine();
+    const auto tailStartLine = totalLines > visibleLines
+                                   ? LineNumber{ totalLines.get() - visibleLines.get() }
+                                   : 0_lnum;
+    const auto tailLogicalLines = LinesCount{
+        type_safe::narrow_cast<LinesCount::UnderlyingType>( totalLines.get() - tailStartLine.get() ) };
+    return visualRowsForRange( tailStartLine, tailLogicalLines );
 }
 
 void AbstractLogView::updateScrollBars()
@@ -2259,9 +2267,10 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     if ( firstLine_ >= linesInFile )
         firstLine_ = LineNumber( linesInFile.get() ? linesInFile.get() - 1 : 0 );
 
-    const auto nbLines = qMin( getNbVisibleLines(), linesInFile - LinesCount( firstLine_.get() ) );
+    const auto visibleLayout = visibleLayoutFor( firstLine_, getNbVisibleLines() );
+    const auto nbLines = visibleLayout.logicalLines;
 
-    const int bottomOfTextPx = static_cast<int>( nbLines.get() ) * fontHeight;
+    const int bottomOfTextPx = static_cast<int>( visibleLayout.visualLines.get() ) * fontHeight;
 
     LOG_DEBUG << "drawing lines from " << firstLine_ << " (" << nbLines << " lines)";
     LOG_DEBUG << "bottomOfTextPx: " << bottomOfTextPx;
@@ -2593,6 +2602,58 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
             break;
         }
     } // For each line
+}
+
+LinesCount AbstractLogView::visualRowsForLine( LineNumber line ) const
+{
+    if ( !useTextWrap_ || logData_ == nullptr ) {
+        return 1_lcount;
+    }
+
+    const WrappedString wrapped{ logData_->getExpandedLineString( line ), getNbVisibleCols() };
+    return LinesCount(
+        type_safe::narrow_cast<LinesCount::UnderlyingType>( wrapped.wrappedLinesCount() ) );
+}
+
+LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine, LinesCount logicalLines ) const
+{
+    if ( logData_ == nullptr || logicalLines <= 0_lcount ) {
+        return 0_lcount;
+    }
+
+    const auto totalLines = logData_->getNbLine();
+    auto currentLine = startLine;
+    LinesCount remainingLines = logicalLines;
+    LinesCount visualRows;
+
+    while ( currentLine < totalLines && remainingLines > 0_lcount ) {
+        visualRows += visualRowsForLine( currentLine );
+        currentLine += 1_lcount;
+        remainingLines -= 1_lcount;
+    }
+
+    return visualRows;
+}
+
+AbstractLogView::VisibleLayoutInfo AbstractLogView::visibleLayoutFor( LineNumber startLine,
+                                                                      LinesCount maxVisualLines ) const
+{
+    VisibleLayoutInfo layout;
+
+    if ( logData_ == nullptr || maxVisualLines <= 0_lcount ) {
+        return layout;
+    }
+
+    const auto totalLines = logData_->getNbLine();
+    auto currentLine = startLine;
+    while ( currentLine < totalLines && layout.visualLines < maxVisualLines ) {
+        layout.logicalLines += 1_lcount;
+        layout.visualLines += visualRowsForLine( currentLine );
+        layout.lastVisibleLine = currentLine;
+        currentLine += 1_lcount;
+    }
+
+    return layout;
 }
 
 // Draw the "pull to follow" bar and return a pixmap.

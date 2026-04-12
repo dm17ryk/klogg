@@ -45,11 +45,13 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFont>
-#include <QJsonDocument>
 #include <QMetaObject>
 #include <QPainter>
 #include <QPixmap>
+#include <QPoint>
+#include <QSaveFile>
 #include <QScopedValueRollback>
+#include <QSize>
 #include <QSplashScreen>
 #include <QThread>
 #include <algorithm>
@@ -154,8 +156,10 @@ class StartupSplashScreen final : public QSplashScreen {
         // event set so queued splash updates are rendered.
         if ( !processingEvents_ ) {
             QScopedValueRollback<bool> guard( processingEvents_, true );
-            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents
-                                             | QEventLoop::ExcludeSocketNotifiers );
+            // Keep local IPC responsive during bootstrap so automation and
+            // commander requests can reach the primary instance before the
+            // main event loop starts.
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
         }
     }
 
@@ -209,9 +213,22 @@ namespace {
 void ensureCliConsoleAttached()
 {
 #ifdef Q_OS_WIN
+    const auto hasUsableStdHandle = []( DWORD handleId ) {
+        const HANDLE handle = GetStdHandle( handleId );
+        if ( handle == nullptr || handle == INVALID_HANDLE_VALUE ) {
+            return false;
+        }
+
+        return GetFileType( handle ) != FILE_TYPE_UNKNOWN;
+    };
+
     static bool consoleInitialized = false;
     if ( !consoleInitialized ) {
         consoleInitialized = true;
+        if ( hasUsableStdHandle( STD_OUTPUT_HANDLE ) || hasUsableStdHandle( STD_ERROR_HANDLE ) ) {
+            return;
+        }
+
         if ( GetConsoleWindow() == nullptr && AttachConsole( ATTACH_PARENT_PROCESS ) ) {
             FILE* stream = nullptr;
             freopen_s( &stream, "CONOUT$", "w", stdout );
@@ -247,19 +264,235 @@ void writeCliMessage( const QString& message, bool toStderr = false )
 #endif
 }
 
+void writeCliBytes( const QByteArray& bytes, bool toStderr = false, bool mirrorStdoutToStderr = false )
+{
+    Q_UNUSED( mirrorStdoutToStderr );
+
+    if ( bytes.isEmpty() ) {
+        return;
+    }
+
+    ensureCliConsoleAttached();
+
+#ifdef Q_OS_WIN
+    const auto writeToHandle = [ &bytes ]( DWORD stdHandleId ) {
+        const HANDLE handle = GetStdHandle( stdHandleId );
+        if ( handle == nullptr || handle == INVALID_HANDLE_VALUE ) {
+            return false;
+        }
+
+        DWORD bytesWritten = 0;
+        return WriteFile( handle, bytes.constData(), static_cast<DWORD>( bytes.size() ), &bytesWritten,
+                          nullptr )
+               != FALSE;
+    };
+
+    const bool wroteToPrimaryHandle = writeToHandle( toStderr ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE );
+    if ( mirrorStdoutToStderr && !toStderr ) {
+        writeToHandle( STD_ERROR_HANDLE );
+    }
+    if ( wroteToPrimaryHandle ) {
+        return;
+    }
+#endif
+
+    auto* stream = toStderr ? stderr : stdout;
+    std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stream );
+    std::fflush( stream );
+#ifdef Q_OS_WIN
+    if ( mirrorStdoutToStderr && !toStderr ) {
+        std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stderr );
+        std::fflush( stderr );
+    }
+#endif
+}
+
+QByteArray jsonIndent( int depth )
+{
+    return QByteArray( depth * 2, ' ' );
+}
+
+QByteArray jsonString( const QString& value )
+{
+    QByteArray result;
+    result.reserve( value.size() + 2 );
+    result.append( '"' );
+
+    for ( const auto ch : value ) {
+        switch ( ch.unicode() ) {
+        case '\"':
+            result.append( "\\\"" );
+            break;
+        case '\\':
+            result.append( "\\\\" );
+            break;
+        case '\b':
+            result.append( "\\b" );
+            break;
+        case '\f':
+            result.append( "\\f" );
+            break;
+        case '\n':
+            result.append( "\\n" );
+            break;
+        case '\r':
+            result.append( "\\r" );
+            break;
+        case '\t':
+            result.append( "\\t" );
+            break;
+        default:
+            if ( ch.unicode() < 0x20 ) {
+                result.append( QStringLiteral( "\\u%1" )
+                                   .arg( static_cast<unsigned int>( ch.unicode() ), 4, 16,
+                                         QLatin1Char( '0' ) )
+                                   .toLatin1() );
+            }
+            else {
+                result.append( QString( ch ).toUtf8() );
+            }
+            break;
+        }
+    }
+
+    result.append( '"' );
+    return result;
+}
+
+void appendJsonValue( QByteArray& output, const QVariant& value, bool pretty, int depth );
+
+void appendJsonObject( QByteArray& output, const QVariantMap& object, bool pretty, int depth )
+{
+    output.append( '{' );
+    if ( object.isEmpty() ) {
+        output.append( '}' );
+        return;
+    }
+
+    bool first = true;
+    for ( auto it = object.cbegin(); it != object.cend(); ++it ) {
+        if ( first ) {
+            first = false;
+        }
+        else {
+            output.append( ',' );
+        }
+
+        if ( pretty ) {
+            output.append( '\n' );
+            output.append( jsonIndent( depth + 1 ) );
+        }
+
+        output.append( jsonString( it.key() ) );
+        output.append( pretty ? ": " : ":" );
+        appendJsonValue( output, it.value(), pretty, depth + 1 );
+    }
+
+    if ( pretty ) {
+        output.append( '\n' );
+        output.append( jsonIndent( depth ) );
+    }
+    output.append( '}' );
+}
+
+void appendJsonArray( QByteArray& output, const QVariantList& array, bool pretty, int depth )
+{
+    output.append( '[' );
+    if ( array.isEmpty() ) {
+        output.append( ']' );
+        return;
+    }
+
+    for ( qsizetype i = 0; i < array.size(); ++i ) {
+        if ( i > 0 ) {
+            output.append( ',' );
+        }
+
+        if ( pretty ) {
+            output.append( '\n' );
+            output.append( jsonIndent( depth + 1 ) );
+        }
+
+        appendJsonValue( output, array.at( i ), pretty, depth + 1 );
+    }
+
+    if ( pretty ) {
+        output.append( '\n' );
+        output.append( jsonIndent( depth ) );
+    }
+    output.append( ']' );
+}
+
+void appendJsonValue( QByteArray& output, const QVariant& value, bool pretty, int depth )
+{
+    if ( !value.isValid() || value.isNull() ) {
+        output.append( "null" );
+        return;
+    }
+
+    switch ( value.typeId() ) {
+    case QMetaType::Bool:
+        output.append( value.toBool() ? "true" : "false" );
+        return;
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+        output.append( QByteArray::number( value.toLongLong() ) );
+        return;
+    case QMetaType::Float:
+    case QMetaType::Double:
+        output.append( QByteArray::number( value.toDouble(), 'g', 16 ) );
+        return;
+    case QMetaType::QString:
+        output.append( jsonString( value.toString() ) );
+        return;
+    case QMetaType::QVariantList:
+        appendJsonArray( output, value.toList(), pretty, depth );
+        return;
+    case QMetaType::QVariantMap:
+        appendJsonObject( output, value.toMap(), pretty, depth );
+        return;
+    default:
+        output.append( jsonString( value.toString() ) );
+        return;
+    }
+}
+
 void writeCliPayload( const QVariantMap& payload, bool pretty = false )
 {
     if ( payload.isEmpty() ) {
         return;
     }
 
-    ensureCliConsoleAttached();
-
-    auto bytes = QJsonDocument::fromVariant( payload ).toJson( pretty ? QJsonDocument::Indented
-                                                                      : QJsonDocument::Compact );
+    QByteArray bytes;
+    appendJsonObject( bytes, payload, pretty, 0 );
     bytes.append( '\n' );
-    std::fwrite( bytes.constData(), 1, static_cast<size_t>( bytes.size() ), stdout );
-    std::fflush( stdout );
+    writeCliBytes( bytes, false, true );
+}
+
+bool writeCliPayloadToFile( const QString& path, const QVariantMap& payload, bool pretty = false )
+{
+    if ( path.isEmpty() ) {
+        return false;
+    }
+
+    QByteArray bytes;
+    appendJsonObject( bytes, payload, pretty, 0 );
+    bytes.append( '\n' );
+
+    QSaveFile outputFile{ path };
+    if ( !outputFile.open( QIODevice::WriteOnly ) ) {
+        return false;
+    }
+
+    const auto written = outputFile.write( bytes );
+    if ( written != bytes.size() ) {
+        outputFile.cancelWriting();
+        return false;
+    }
+
+    return outputFile.commit();
 }
 
 bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath, QString* errorMessage )
@@ -401,6 +634,16 @@ int main( int argc, char* argv[] )
         return EXIT_SUCCESS;
     }
 
+    const bool automationDumpRequested
+        = parameters.dump_ui_tree || !parameters.dump_state_json_path.isEmpty();
+    const bool automationMode
+        = automationDumpRequested || qEnvironmentVariableIntValue( "KLOGG_AUTOMATION" ) > 0;
+    const QSize automationWindowSize
+        = ( parameters.window_width > 0 && parameters.window_height > 0 )
+              ? QSize( parameters.window_width, parameters.window_height )
+              : QSize( 1600, 1000 );
+    app.setAutomationMode( automationMode, QPoint( 40, 40 ), automationWindowSize );
+
     const auto logLevel
         = static_cast<logging::LogLevel>( std::max( parameters.log_level, config.loggingLevel() ) );
     logging::enableLogging( parameters.enable_logging || config.enableLogging(), logLevel );
@@ -464,6 +707,29 @@ int main( int argc, char* argv[] )
             return EXIT_FAILURE;
         }
 
+        if ( !parameters.dump_state_json_path.isEmpty() ) {
+            CommanderRequest request;
+            request.action = CommanderAction::DumpState;
+
+            const auto result = app.sendCommandToPrimaryInstance( request );
+            if ( result.ok() ) {
+                if ( !writeCliPayloadToFile( parameters.dump_state_json_path, result.payload, true ) ) {
+                    writeCliMessage( QObject::tr( "Failed to write automation state to %1." )
+                                         .arg( parameters.dump_state_json_path ),
+                                     true );
+                    return EXIT_FAILURE;
+                }
+                return EXIT_SUCCESS;
+            }
+
+            if ( result.code != CommanderResultCode::TransportError ) {
+                writeCliMessage( result.message, true );
+                return EXIT_FAILURE;
+            }
+
+            LOG_WARNING << "Failed to contact primary instance for automation state dump, starting a new window";
+        }
+
         if ( app.sendFilesToPrimaryInstance( parameters.filenames ) ) {
             return EXIT_SUCCESS;
         }
@@ -506,8 +772,10 @@ int main( int argc, char* argv[] )
         mw = app.newWindow();
         mw->show();
     }
-    else if ( parameters.load_session
-         || ( parameters.filenames.empty() && !parameters.new_session && config.loadLastSession() ) ) {
+    else if ( !automationMode
+         && ( parameters.load_session
+              || ( parameters.filenames.empty() && !parameters.new_session
+                   && config.loadLastSession() ) ) ) {
         mw = app.reloadSession();
         startNewSession = false;
     }
@@ -525,7 +793,7 @@ int main( int argc, char* argv[] )
 
         writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
     }
-    else {
+    else if ( !automationDumpRequested ) {
         for ( const auto& filename : parameters.filenames ) {
             StartupProgress::advance( QObject::tr( "Opening startup file" ),
                                       QFileInfo( filename ).fileName() );
@@ -534,6 +802,7 @@ int main( int argc, char* argv[] )
     }
 
     app.ensureMainWindowVisible();
+    app.setStartupCommanderReady();
     StartupProgress::advance( QObject::tr( "Finalizing startup" ) );
 
     if ( startNewSession ) {
@@ -545,8 +814,32 @@ int main( int argc, char* argv[] )
     splash.finish( mw );
     app.finalizeStartupBootstrapGeometry();
 
-    if ( parameters.window_width > 0 && parameters.window_height > 0 ) {
+    if ( !automationMode && parameters.window_width > 0 && parameters.window_height > 0 ) {
         mw->resize( parameters.window_width, parameters.window_height );
+    }
+
+    if ( parameters.dump_ui_tree ) {
+        for ( auto attempt = 0; attempt < 5; ++attempt ) {
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+        }
+        writeCliPayload( mw->automationUiTree(), true );
+        return EXIT_SUCCESS;
+    }
+
+    if ( !parameters.dump_state_json_path.isEmpty() ) {
+        for ( auto attempt = 0; attempt < 5; ++attempt ) {
+            QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+        }
+
+        if ( !writeCliPayloadToFile( parameters.dump_state_json_path, mw->automationSnapshot(),
+                                     true ) ) {
+            writeCliMessage( QObject::tr( "Failed to write automation state to %1." )
+                                 .arg( parameters.dump_state_json_path ),
+                             true );
+            return EXIT_FAILURE;
+        }
+
+        return EXIT_SUCCESS;
     }
 
     app.startBackgroundTasks();
