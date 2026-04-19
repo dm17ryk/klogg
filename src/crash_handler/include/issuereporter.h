@@ -27,8 +27,10 @@ enum class IssueTemplate { Crash, Exception, Bug };
 class IssueReporter {
   public:
     static void askUserAndReportIssue( IssueTemplate issueTemplate,
-                                       const QString& information = {} );
-    static void reportIssue( IssueTemplate issueTemplate, const QString& information = {} );
+                                       const QString& information = {},
+                                       const QString& localReportPath = {} );
+    static void reportIssue( IssueTemplate issueTemplate, const QString& information = {},
+                             const QString& localReportPath = {} );
 };
 
 #endif

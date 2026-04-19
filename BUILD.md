@@ -2,239 +2,236 @@
 
 ## Overview
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
-Local builds can be faster because code can be optimized for current CPU instead of generic x86-64. Support for wider SIMD code paths
-will be enabled when the selected backend and toolchain support them.
+Klogg is actively developed and validated on Windows with Visual Studio 2022 and Qt 6.
+This document keeps the practical build flow in one place and aligns it with the repo-local
+instructions in `AGENTS.md`.
 
-## Getting the Source
+Rules that matter:
 
-This project is [hosted on GitHub](https://github.com/dm17ryk/klogg). You can clone this project directly using this command:
+- Run CMake from `build_root`, never from the repository root.
+- Prefer a clean Visual Studio developer shell without custom PowerShell profile state.
+- For repeatable local automation, use the scripts under `scripts/codex`.
 
-```
-git clone https://github.com/dm17ryk/klogg
-```
+## Current Recommended Windows Setup
 
-## Dependencies
+The current repo workflow assumes:
 
-To build Klogg:
+- Windows x64
+- Visual Studio 2022 with MSVC tools
+- Qt `6.10.1`
+- an out-of-tree build directory at `build_root`
 
-- cmake 3.12 or later to generate build files
-- C++ compiler with decent C++17 support (at least gcc 7.5, clang 7, msvc 19.14)
-- Qt libraries 5.9 or later (CI builds use Qt 5.9.5/5.12.5/5.15.2):
-  - QtCore
-  - QtGui
-  - QtWidgets
-  - QtConcurrent
-  - QtNetwork
-  - QtXml
-  - QtTools
-  - QtSerialPort
+Open a clean Visual Studio 2022 developer shell:
 
-To build accelerated regular expression backends:
-
-- CPU with support for [SSSE3](https://en.wikipedia.org/wiki/SSSE3) instructions (for Hyperscan backend)
-- Boost (1.58 or later, header-only part)
-- Ragel (6.8 or later; precompiled binary is provided for Windows; has to be installed from package managers on Linux or Homebrew on Mac)
-
-To build installer for Windows:
-
-- nsis to build installer for Windows
-- Precompiled OpenSSl library to enable https support on Windows
-
-Building tests:
-
-- QtTest
-
-All other dependencies are provided by [CPM](https://github.com/cpm-cmake/CPM.cmake) during cmake configuration stage (see 3rdparty directory).
-
-CPM will try to find Hyperscan or Vectorscan, TBB, uchardet and xxhash installed on build host.
-If a library can't be found, the one provided by CPM will be used.
-
-## Building
-
-### Configuration options
-
-By default Klogg is built without support for reporting crash dumps. This can be enabled via cmake option `-DKLOGG_USE_SENTRY=ON`.
-
-Klogg selects the accelerated regex backend by target OS and architecture:
-
-- Windows x64: Hyperscan
-- Linux x64: Hyperscan
-- Linux arm64: Vectorscan
-- macOS x64: Hyperscan
-- macOS arm64: Vectorscan
-- Windows arm64: Vectorscan
-
-Fat runtime is requested only on Linux accelerated builds:
-
-- Linux x64 + Hyperscan: fat runtime requested, with AVX-512 and AVX-512VBMI enabled only when the toolchain supports them
-- Linux arm64 + Vectorscan: fat runtime requested, with SVE/SVE2/SVE2_BITPERM requested and left to Vectorscan to degrade gracefully if the compiler does not support the strongest variant
-- Windows arm64 + Vectorscan: non-fat by design
-- Windows x64 and macOS accelerated builds: non-fat by design
-
-Backend selection remains build-time. Manual overrides are supported with:
-
-- `-DKLOGG_USE_HYPERSCAN=ON|OFF`
-- `-DKLOGG_USE_VECTORSCAN=ON|OFF`
-
-Only one accelerated backend can be enabled at a time. If both are disabled, klogg uses Qt regular expressions only. Windows arm64 now defaults to Vectorscan, while explicit Qt-only mode remains supported by setting both accelerated backends to OFF.
-
-Klogg can use custom memory allocator. By default it uses TBB memory allocator for Windows, mimalloc on Linux and default system allocator on MacOS.
-Memory allocator override can be turned off by passing `-DKLOGG_OVERRIDE_MALLOC`. If you want to use TBB allocator on Linux then pass
-`-DKLOGG_USE_MIMALLOC=OFF`.
-
-### Building on Linux
-
-Here is how to build klogg on Ubuntu.
-
-Install dependencies:
-
-```
-sudo apt-get install build-essential cmake qtbase5-dev libboost-all-dev ragel
+```bat
+cmd.exe /d /k "d:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -startdir=none -arch=x64 -host_arch=x64
 ```
 
-Configure and build klogg:
+Or from PowerShell:
 
+```powershell
+pwsh.exe -NoExit -NoProfile -Command "&{Import-Module 'd:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 3487df70 -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'}"
 ```
-cd <path_to_klogg_repository_clone>
+
+Set the environment expected by the repo:
+
+```bat
+set QTDIR=C:\qt6.10.1
+set PATH=%QTDIR%\bin;%PATH%
+set CMAKE_PREFIX_PATH=%QTDIR%
+set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
+set KLOGG_BUILD_ROOT=build_root
+set platform=x64
+set KLOGG_QT=Qt6
+set KLOGG_QT_DIR=%QTDIR%
+set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
+set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
+set PATH=%USERPROFILE%\.pyenv\pyenv-win\shims;%PATH%
+set PATH=%ProgramFiles(x86)%\Windows Kits\10\Debuggers\x64;%PATH%
+d:
+cd %KLOGG_WORKSPACE%
+```
+
+## Fast Path: Repo Scripts
+
+For the current Windows workflow, prefer the repo helper scripts:
+
+- `scripts/codex/build-windows.ps1`
+- `scripts/codex/run-tests.ps1`
+- `scripts/codex/run-klogg-debug.ps1`
+- `scripts/codex/collect-artifacts.ps1`
+
+Examples:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\build-windows.ps1 -Config RelWithDebInfo
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-tests.ps1 -Config RelWithDebInfo
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-klogg-debug.ps1 -Config RelWithDebInfo
+```
+
+The build script configures and builds from `build_root`.
+The test and run scripts also deploy the required Qt runtime files.
+
+## Manual Windows Build
+
+Create the build directory once:
+
+```bat
 mkdir build_root
 cd build_root
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-cmake --build .
 ```
 
-**_If cmake gives error about missing "Qt5LinguistTools" configuration files, try running:_**
+Configure with Visual Studio 2022:
 
-```bash
-sudo apt-get install qttools5-dev
-```
-
-Binaries are placed into `build_root/output`.
-
-See `.github/workflows/ci-build.yml` for more information on build process.
-
-### Building on Windows
-
-Install Microsoft Visual Studio 2022 with C++ support.
-Community edition can be downloaded from [Microsoft](https://visualstudio.microsoft.com/vs/).
-
-Intall latest Qt version using [online installer](https://www.qt.io/download-qt-installer).
-Make sure to select version matching Visual Studio installation. 64-bit libraries are recommended.
-
-Install CMake from [Kitware](https://cmake.org/download/).
-Use version 3.14 or later for Visual Studio 2022 support.
-
-Download the Boost source code from http://www.boost.org/users/download/.
-Extract to some folder. Directory structure should be something like `C:\Boost\boost_1_63_0`.
-Then add `BOOST_ROOT` environment variable pointing to main directory of Boost sources so CMake is able to fine it.
-
-Prepare the build environment for CMake. Open a Visual Studio 2022 developer command prompt and select the target architecture you want to build:
-
-```
-call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64
-```
-
-For Windows arm64 builds, use the ARM64 MSVC toolchain or the matching cross toolchain:
-
-```
-call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=arm64
-```
-
-or
-
-```
-call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64_arm64
-```
-
-Next setup Qt paths:
-
-```
-<path_to_qt_installation>\bin\qtenv2.bat
-```
-
-Then add CMake to PATH:
-
-```
-set PATH=<path_to_cmake_bin>:$PATH
-```
-
-Configure the klogg solution with a Visual Studio 2022 generator:
-
-```
-cd <path_to_project_root>
-md build_root
-cd build_root
+```bat
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
 cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Debug ..
 ```
 
-For Windows arm64 builds use the ARM64 platform explicitly:
+Build:
 
-```
-cmake -G "Visual Studio 17 2022" -A ARM64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-```
-
-CMake should generate `klogg.sln` file in `<path_to_project_root>\build_root` directory. Open solution and build it.
-
-Binaries are placed into `build_root/output`.
-
-Windows arm64 now uses Vectorscan by default in a non-fat configuration. CI currently cross-compiles this target and verifies compilation and packaging, but does not execute Windows arm64 binaries during CI. Runtime verification should be done on real Windows arm64 hardware or Windows-on-Arm emulation.
-
-For https network urls support download precompiled openssl library https://mirror.firedaemon.com/OpenSSL/openssl-1.1.1l-dev.zip.
-Put libcrypto-1_1 and libssl-1_1 for desired architecture near klogg binaries.
-
-### Building on Mac OS
-
-Klogg requires macOS High Sierra (10.13) or higher.
-
-Install [Homebrew](https://brew.sh/) using terminal:
-
-```
-/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```bat
+cmake --build . --config Release
+cmake --build . --config RelWithDebInfo
+cmake --build . --config Debug
 ```
 
-Homebrew installer should also install xcode command line tools.
+Output binaries are placed under `build_root/output/<Config>`.
 
-Download and install build dependencies:
+## Deploy Qt Runtime on Windows
 
-```
-brew install cmake ninja qt boost ragel
-```
+Before running `klogg.exe` or the test executables, deploy the Qt runtime next to them:
 
-Usually path to qt installation looks like `/usr/local/Cellar/qt/5.14.0/lib/cmake/Qt5`
-
-Configure and build klogg:
-
-```
-cd <path_to_klogg_repository_clone>
-mkdir build_root
-cd build_root
-cmake -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQt5_DIR=<path_to_qt_install> ..
-cmake --build .
-```
-
-Binaries are placed into `build_root/output`.
-
-By default, klogg will rely on cmake to figure out target MacOS version. Usually it uses build host version.
-To override default cmake value pass an option `-DKLOGG_OSX_DEPLOYMENT_TARGET=<target>` to cmake during configuration step,
-`<target>` is one of `10.14`, `10.15`, `11`, `12`. Klogg's target must be greater or equal to target used by Qt libraries.
-
-## Deploy QT libs
-
-From build_root:
-
-```bash
+```bat
 "%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
 "%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
 "%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
 ```
 
-## Running tests
+For tests:
 
-Tests are built by default. To turn them off pass `-DBUILD_TESTS:BOOL=OFF` to cmake.
-Tests use catch2 (bundled with klogg sources) and require Qt5Test module. Tests can be run using ctest tool provider by CMake:
-
+```bat
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_tests.exe"
 ```
-cd <path_to_klogg_repository_clone>
-cd build_root
+
+## Running Tests
+
+Tests are enabled by default. To disable them, pass:
+
+```bat
+-DKLOGG_BUILD_TESTS=OFF
+```
+
+Run tests from `build_root`:
+
+```bat
+ctest --build-config Release --verbose
 ctest --build-config RelWithDebInfo --verbose
+ctest --build-config Debug --verbose
+```
+
+For the current Windows flow, `scripts/codex/run-tests.ps1` is the easiest option because it
+deploys Qt first and copies the `qoffscreen` platform plugin required by the UI tests.
+
+## Running Klogg
+
+After deploying Qt:
+
+```bat
+output\RelWithDebInfo\klogg.exe
+```
+
+For deterministic GUI automation runs, set:
+
+```bat
+set KLOGG_AUTOMATION=1
+```
+
+Or use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-klogg-debug.ps1 -Config RelWithDebInfo
+```
+
+## Important CMake Options
+
+Backend selection:
+
+- `-DKLOGG_USE_HYPERSCAN=ON|OFF`
+- `-DKLOGG_USE_VECTORSCAN=ON|OFF`
+
+Only one accelerated backend can be enabled at a time. If both are disabled, klogg uses Qt
+regular expressions only.
+
+Current defaults by target:
+
+- Windows x64: Hyperscan
+- Windows arm64: Vectorscan
+- Linux x64: Hyperscan
+- Linux arm64: Vectorscan
+- macOS x64: Hyperscan
+- macOS arm64: Vectorscan
+
+Other useful options:
+
+- `-DKLOGG_BUILD_TESTS=OFF` to skip tests
+- `-DKLOGG_BUILD_DOCUMENTATION=OFF` to skip generated docs
+- `-DKLOGG_USE_SENTRY=ON` to enable crash dump collection support
+- `-DKLOGG_USE_MIMALLOC=OFF` to disable mimalloc where applicable
+- `-DKLOGG_USE_LTO=OFF` to disable link-time optimization
+- `-DKLOGG_GENERIC_CPU=ON` for more conservative CPU targeting
+
+## Linux and macOS Notes
+
+Klogg still supports Linux and macOS builds, and CI covers those paths. The current repo
+documentation and helper scripts are Windows-first because that is the active development
+environment.
+
+Common requirements across non-Windows platforms:
+
+- CMake
+- C++17-capable compiler
+- Qt 5.9+ or Qt 6
+- Ragel for accelerated regex builds
+- optional system installs of Hyperscan or Vectorscan, TBB, uchardet, and xxHash
+
+Typical non-Windows configure flow:
+
+```bash
+mkdir build_root
+cd build_root
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+cmake --build .
+ctest --build-config RelWithDebInfo --verbose
+```
+
+For exact platform matrices and package settings, use `.github/workflows/ci-build.yml` as the
+source of truth.
+
+## Project Layout
+
+- `src/`: application, UI, scripting, crash handling, version, and lab features
+- `tests/unit` and `tests/ui`: unit and UI test suites
+- `test_data/`: fixtures and sample logs
+- `Resources/`: icons, resources, translations
+- `cmake/`: shared CMake helpers and version/resource generation
+- `3rdparty/`: vendored/build-time dependencies
+- `packaging/`: release packaging assets
+- `scripts/codex/`: repeatable Windows build/test/run automation
+
+## Troubleshooting
+
+- If CMake or MSVC tools are missing, confirm you are running from a VS 2022 developer shell.
+- If Qt DLLs are missing at runtime, run `windeployqt` again for the target executable.
+- If GUI automation is flaky, use `KLOGG_AUTOMATION=1` and collect screenshots/logs/artifacts before changing behavior.
+- If you need Windows crash investigation, use:
+
+```bat
+cdb "output\Debug\klogg.exe"
 ```

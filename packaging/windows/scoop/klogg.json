@@ -1,7 +1,7 @@
 {
     "version": "20.12.0.813",
     "description": "A faster, advanced log explorer",
-    "homepage": "https://klogg.filimonov.dev",
+    "homepage": "https://github.com/dm17ryk/klogg",
     "license": "GPL-3.0-only",
     "architecture": {
         "64bit": {
