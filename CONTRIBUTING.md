@@ -41,7 +41,8 @@ In order to determine whether you are dealing with a security issue, ask yoursel
 
  If the answer to either of those two questions are "yes", then you're probably dealing with a security issue.
  Note that even if you answer "no" to both questions, you may still be dealing with a security issue,
- so if you're unsure, just email us at klogg@filimonov.dev.
+ so if you're unsure, follow the private reporting guidance in [SECURITY.md](SECURITY.md) or open a GitHub Security Advisory at
+ `https://github.com/dm17ryk/klogg/security/advisories/new`.
 
 When filing an issue, make sure to answer these five questions:
 

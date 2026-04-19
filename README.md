@@ -1,4 +1,4 @@
-![media_small](https://user-images.githubusercontent.com/1620716/119145300-2d98b800-ba52-11eb-8d87-abe72cf65dd1.png)
+![media_small](https://github.com/dm17ryk/klogg/blob/master/Resources/logo.png)
 
 [![GitHub license](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](https://github.com/dm17ryk/klogg/blob/master/COPYING)
 [![C++](https://img.shields.io/github/languages/top/dm17ryk/klogg?style=flat)]()
@@ -19,7 +19,7 @@ Development status
 [![Next milestone](https://img.shields.io/github/milestones/progress-percent/dm17ryk/klogg/4?style=flat&)](https://github.com/dm17ryk/klogg/milestone/4)
 [![Ready for testing](https://img.shields.io/github/issues-raw/dm17ryk/klogg/status:%20ready%20for%20testing?color=green&label=issues%20ready%20for%20testing&style=flat)](https://github.com/dm17ryk/klogg/issues?q=is%3Aopen+is%3Aissue+label%3A%22status%3A+ready+for+testing%22)
 [![Need documentation](https://img.shields.io/github/issues-search/dm17ryk/klogg?color=yellow&label=features%20need%20documentation&query=is%3Aissue%20label%3A%22status%3A%20need%20documentation%22&style=flat)](https://github.com/dm17ryk/klogg/issues?q=is%3Aissue+label%3A%22status%3A+need+documentation%22)
-[![GitHub commits](https://img.shields.io/github/commits-since/dm17ryk/klogg/v22.06.svg?style=flat)](https://github.com/dm17ryk/klogg/commits/)
+[![GitHub commits](https://img.shields.io/github/commits-since/dm17ryk/klogg/v26.04.svg?style=flat)](https://github.com/dm17ryk/klogg/commits/)
 [![CI Build and Release](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml/badge.svg)](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml)
 
 [![Chat on Discord](https://img.shields.io/discord/838452586944266260?label=Discord&style=flat)](https://discord.gg/DruNyQftzB) [![Join the chat at https://gitter.im/klogg_log_viewer/community](https://badges.gitter.im/klogg_log_viewer/community.svg)](https://gitter.im/klogg_log_viewer/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
@@ -52,6 +52,7 @@ I try to keep a [changelog](CHANGELOG.md) with monthly changes.
 - [Table of Contents](#table-of-contents)
 - [About the Project](#about-the-project)
   - [Comparing with glogg](#comparing-with-glogg)
+  - [Current Functionality](#current-functionality)
 - [Installation](#installation)
   - [Current stable release builds](#current-stable-release-builds)
     - [Windows](#windows)
@@ -72,9 +73,9 @@ Since then it has evolved from fixing small annoying bugs to rewriting core comp
 make it faster and smarter that predecessor.
 
 Development of klogg is driven by features my colleagues and I need
-to stay productive as well as feature requests from users on Github and in glogg mailing list.
+to stay productive as well as feature requests from users on GitHub and in GitHub Discussions.
 
-Latest news about klogg development can be found at https://klogg.filimonov.dev.
+Latest development updates can be found in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions) and [GitHub Releases](https://github.com/dm17ryk/klogg/releases).
 
 ### Comparing with glogg
 
@@ -105,6 +106,28 @@ And on top of that klogg:
 * Has configurable shortcuts
 * Has a scratchpad window for taking notes and doing basic data transformations
 * Provides lots of small features that make life easier (closing tabs, copying file paths, favorite files menu, etc.)
+
+### Current Functionality
+
+Current klogg builds include the following major capabilities:
+
+* Open logs from files, clipboard contents, URLs, and COM port streams
+* Follow actively changing files, reload files manually, wrap lines, and show line numbers independently in main and filtered views
+* Search with accelerated regular expressions, combine expressions with boolean operators, and restrict filtering/search to selected file regions
+* Maintain predefined filters, reusable highlighter sets, quick highlights, and color labels for visual triage
+* Detect encodings automatically, switch encodings manually, and work with common UTF and legacy code pages
+* Keep multiple documents open at once with recent files, favorites, and fast switching between tabs and windows
+* Use the scratchpad, previewer, and actions/responses tools for local analysis workflows
+* Run Python scripts, scenario runs, and remote lab workflows through the built-in scripting and lab tooling
+* Generate diagnostic crash dumps and open prefilled GitHub issues for crash reporting
+* Drive the app from automation-oriented CLI commands, including commander actions and UI/state dump output
+
+Klogg is no longer just a desktop log viewer. In the current codebase it also provides:
+
+* Headless scenario execution via `klogg scenario`
+* Remote lab controller, agent, and operator flows via `klogg lab-controller`, `klogg lab-agent`, and `klogg lab`
+* Automation inspection helpers such as `klogg --dump-ui-tree` and `klogg --dump-state-json`
+* Commander actions for opening files, URLs, COM ports, managing scripts, filters, actions, responses, and tab state
 
 Here is a small demo showing how much faster klogg is (searching in ~1Gb file stored on tmpfs):
 
@@ -141,42 +164,8 @@ Package for Mac can be installed from Homebrew
 #### Linux
 It is recommended to use klogg package from distribution-specific [repositories](https://repology.org/project/klogg/versions).
 
-Generic packages are available from klogg DEB and RPM repositories hosted at GitHub Pages.
-They are built to run on Ubuntu 18.04/20.04/22.04 and Oracle Linux 7/8 (x86-64 only).
-
-For DEB packages first download the gpg key:
-```
-curl -sS https://klogg.filimonov.dev/klogg.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/klogg.gpg
-```
-
-You might need to manually create `/etc/apt/keyrings` directory.
-
-Then download the repository list file for you distribution (replace `<ubuntu_release>` with one of `bionic`, `focal`, `jammy`):
-```
-curl -sS https://klogg.filimonov.dev/deb/klogg.<ubuntu_release>.list | sudo tee /etc/apt/sources.list.d/klogg.list
-```
-
-Finally, install using apt
-```
-sudo apt-get update
-sudo apt install klogg
-```
-
-If there is already an entry for JFrogg hosted klogg repository in `/etc/apt/sources.list`, then remove this line from it:
-```
-deb [trusted=yes] https://favpackage.jfrog.io/artifactory/klogg_deb/ <ubuntu_release> utils
-```
-
-For RPM download klogg repo file (replace `<oracle_release>` with one of `7`, `8`):
-```
-curl -sS https://klogg.filimonov.dev/rpm/klogg-oracle-<oracle_release>.repo | sudo tee /etc/yum.repos.d/klogg-rpm.repo
-```
-
-Then install using yum
-```
-sudo yum update
-sudo yum install klogg
-```
+Generic packages are published through [GitHub Releases](https://github.com/dm17ryk/klogg/releases/latest).
+If your distribution does not already package klogg, use the release artifacts directly or the AppImage package described below.
 
 There is also an AppImage package that can be used without installation. To run klogg from AppImage, download the package and make in executable with either a file manager or terminal command `chmod +x <path_to_klogg_AppImage>` and then run the AppImage file.
 
@@ -196,9 +185,18 @@ As indicated by this link from the official appimage documentation: https://docs
 
 ## Building
 
-Please review
-[BUILD.md](BUILD.md)
-for how to setup Klogg on your local machine for development and testing purposes.
+The current recommended development environment is Windows x64 with Visual Studio 2022 and Qt 6.10.1.
+Please review [BUILD.md](BUILD.md) for the exact current setup, environment variables, `build_root`
+workflow, and the repo helper scripts under `scripts/codex`.
+
+Typical Windows local flow:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\build-windows.ps1 -Config RelWithDebInfo
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-tests.ps1 -Config RelWithDebInfo
+```
+
+If you build manually, keep all CMake configure/build steps inside `build_root`, not the repo root.
 
 ## How to Get Help
 
@@ -206,8 +204,8 @@ First, please refer to the
 [documentation](DOCUMENTATION.md)
 page.
 
-You can open issues using [klogg issues page](https://github.com/dm17ryk/klogg/issues)
-or post questions to glogg development [mailing list](http://groups.google.co.uk/group/glogg-devel).
+You can open issues using the [klogg issues page](https://github.com/dm17ryk/klogg/issues)
+or ask questions in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions).
 
 ## Contributing
 
@@ -223,6 +221,6 @@ This project is licensed under the GPLv3 or later - see [COPYING](COPYING) file 
 * *Initial work* - **[Anton Filimonov](https://github.com/variar)**
 * *Initial work* - **[Nicolas Bonnefon](https://github.com/nickbnf)**
 
-See also the list of [contributors](https://klogg.filimonov.dev/docs/getting_involved/#contributors) who participated in this project.
+See also the list of [contributors](https://github.com/dm17ryk/klogg/graphs/contributors) who participated in this project.
 
 **[Back to top](#table-of-contents)**

@@ -11,12 +11,8 @@ Versions of Klogg that are currently supported with security updates:
 
 ## Reporting a Vulnerability
 
-To report security issues send an email to security@filimonov.dev (not for support).
+Please do not open public issues for security vulnerabilities.
 
-The following keys may be used to communicate sensitive information to developers:
+Report security issues privately through GitHub Security Advisories:
 
-| Name | Fingerprint |
-|------|-------------|
-| Anton Filimonov | 11F1 008C FA5F 4ABC A16C  8053 D489 608D 8DB6 0642 |
-
-You can import a key by running the following command with that individual’s fingerprint: `gpg --recv-keys "<fingerprint>"` Ensure that you put quotes around fingerprints containing spaces.
+`https://github.com/dm17ryk/klogg/security/advisories/new`

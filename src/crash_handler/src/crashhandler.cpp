@@ -23,17 +23,16 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProcess>
-#include <QProgressDialog>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QTimer>
-#include <QUrlQuery>
 #include <QVBoxLayout>
 #include <cstdint>
 #include <cstdlib>
@@ -56,8 +55,8 @@
 
 namespace {
 
-constexpr const char* DSN
-    = "https://aad3b270e5ba4ec2915eb5caf6e6d929@o453796.ingest.sentry.io/5442855";
+constexpr auto PrivacyPolicyUrl
+    = "https://github.com/dm17ryk/klogg/blob/master/website/content/docs/privacy_policy/_index.md";
 
 QString sentryDatabasePath()
 {
@@ -68,6 +67,29 @@ QString sentryDatabasePath()
 #endif
 
     return basePath.append( "/klogg_dump" );
+}
+
+QString processedReportMarkerPath( const QString& reportPath )
+{
+    return reportPath + ".github-reported";
+}
+
+bool isReportAlreadyProcessed( const QString& reportPath )
+{
+    return QFile::exists( processedReportMarkerPath( reportPath ) );
+}
+
+void markReportProcessed( const QString& reportPath )
+{
+    QFile marker{ processedReportMarkerPath( reportPath ) };
+    if ( marker.open( QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text ) ) {
+        marker.write( "reported-on-github\n" );
+    }
+}
+
+void clearProcessedMarker( const QString& reportPath )
+{
+    QFile::remove( processedReportMarkerPath( reportPath ) );
 }
 
 void logSentry( sentry_level_t level, const char* message, va_list args, void* userdata )
@@ -115,12 +137,11 @@ QDialog::DialogCode askUserConfirmation( const QString& formattedReport, const Q
     report->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );
 
     auto sendReportLabel = std::make_unique<QLabel>();
-    sendReportLabel->setText( "Application can send this report to sentry.io for developers to "
-                              "analyze and fix the issue" );
+    sendReportLabel->setText( "Application can open a prefilled GitHub issue so you can report "
+                              "this crash to the maintainer." );
 
     auto privacyPolicy = std::make_unique<QLabel>();
-    privacyPolicy->setText(
-        "<a href=\"https://klogg.filimonov.dev/docs/privacy_policy\">Privacy policy</a>" );
+    privacyPolicy->setText( QString( "<a href=\"%1\">Privacy policy</a>" ).arg( PrivacyPolicyUrl ) );
 
     privacyPolicy->setTextFormat( Qt::RichText );
     privacyPolicy->setTextInteractionFlags( Qt::TextBrowserInteraction );
@@ -138,7 +159,7 @@ QDialog::DialogCode askUserConfirmation( const QString& formattedReport, const Q
     privacyLayout->addWidget( exploreButton.release() );
 
     auto buttonBox = std::make_unique<QDialogButtonBox>();
-    buttonBox->addButton( "Send report", QDialogButtonBox::AcceptRole );
+    buttonBox->addButton( "Report on GitHub", QDialogButtonBox::AcceptRole );
     buttonBox->addButton( "Discard report", QDialogButtonBox::RejectRole );
 
     auto confirmationDialog = std::make_unique<QDialog>();
@@ -162,11 +183,9 @@ QDialog::DialogCode askUserConfirmation( const QString& formattedReport, const Q
     return static_cast<QDialog::DialogCode>( confirmationDialog->exec() );
 }
 
-bool checkCrashpadReports( const QString& databasePath )
+void checkCrashpadReports( const QString& databasePath )
 {
     using namespace crashpad;
-
-    bool needWaitForUpload = false;
 
 #ifdef Q_OS_WIN
     auto database = CrashReportDatabase::InitializeWithoutCreating(
@@ -197,6 +216,10 @@ bool checkCrashpadReports( const QString& databasePath )
         const auto reportFile = QString::fromStdString( report.file_path.value() );
 #endif
 
+        if ( isReportAlreadyProcessed( reportFile ) ) {
+            continue;
+        }
+
         QProcess stackProcess;
         stackProcess.start( stackwalker, QStringList() << reportFile );
         stackProcess.waitForFinished();
@@ -206,17 +229,15 @@ bool checkCrashpadReports( const QString& databasePath )
             .append( QString::fromUtf8( stackProcess.readAllStandardOutput() ) );
 
         if ( QDialog::Accepted == askUserConfirmation( formattedReport, reportFile ) ) {
-            database->RequestUpload( report.uuid );
-            needWaitForUpload = true;
+            IssueReporter::reportIssue( IssueTemplate::Crash, report.uuid.ToString().c_str(),
+                                        reportFile );
+            markReportProcessed( reportFile );
         }
         else {
             database->DeleteReport( report.uuid );
+            clearProcessedMarker( reportFile );
         }
-
-        IssueReporter::askUserAndReportIssue( IssueTemplate::Crash,
-                                              report.uuid.ToString().c_str() );
     }
-    return needWaitForUpload;
 }
 } // namespace
 
@@ -225,7 +246,9 @@ CrashHandler::CrashHandler()
     const auto dumpPath = sentryDatabasePath();
     const auto hasDumpDir = QDir{ dumpPath }.mkpath( "." );
 
-    const auto needWaitForUpload = hasDumpDir ? checkCrashpadReports( dumpPath ) : false;
+    if ( hasDumpDir ) {
+        checkCrashpadReports( dumpPath );
+    }
 
     sentry_options_t* sentryOptions = sentry_options_new();
 
@@ -242,9 +265,7 @@ CrashHandler::CrashHandler()
     sentry_options_set_handler_path( sentryOptions, handlerPath.toStdString().c_str() );
 #endif
 
-    sentry_options_set_dsn( sentryOptions, DSN );
-
-    // klogg asks confirmation and sends reports using crashpad
+    // No DSN is configured: crash dumps stay local and reporting goes through GitHub.
     sentry_options_set_require_user_consent( sentryOptions, true );
 
     sentry_options_set_auto_session_tracking( sentryOptions, false );
@@ -293,15 +314,6 @@ CrashHandler::CrashHandler()
 #endif
     } );
     memoryUsageTimer_->start( 10000 );
-
-    if ( needWaitForUpload ) {
-        QProgressDialog progressDialog;
-        progressDialog.setLabelText( "Uploading crash reports" );
-        progressDialog.setRange( 0, 0 );
-
-        QTimer::singleShot( 30 * 1000, &progressDialog, &QProgressDialog::cancel );
-        progressDialog.exec();
-    }
 }
 
 CrashHandler::~CrashHandler()

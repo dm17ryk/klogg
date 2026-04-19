@@ -46,7 +46,7 @@ Caption "klogg ${VERSION} Setup"
 , a fast, advanced log explorer.$\r$\n$\r$\n\
 klogg and the Qt libraries are released under the GPL, see \
 the COPYING and NOTICE files.$\r$\n$\r$\n$_CLICK"
-;MUI_FINISHPAGE_LINK_LOCATION "https://klogg.filimonov.dev/"
+;MUI_FINISHPAGE_LINK_LOCATION "https://github.com/dm17ryk/klogg"
 
 !insertmacro MUI_PAGE_WELCOME
 ;!insertmacro MUI_PAGE_LICENSE "COPYING"

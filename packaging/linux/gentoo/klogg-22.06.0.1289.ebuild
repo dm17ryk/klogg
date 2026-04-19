@@ -6,7 +6,7 @@ EAPI=7
 inherit xdg cmake
 
 DESCRIPTION="A GUI application to browse and search through long and complex log files"
-HOMEPAGE="https://klogg.filimonov.dev"
+HOMEPAGE="https://github.com/dm17ryk/klogg"
 MAJOR_VERSION=22.06
 SRC_URI="
 	https://github.com/dm17ryk/klogg/archive/refs/tags/v${MAJOR_VERSION}.tar.gz -> ${P}.tar.gz

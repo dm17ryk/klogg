@@ -6,7 +6,7 @@ endif()
 
 project(
   klogg
-  VERSION 24.11.2
+  VERSION 26.04.0
   DESCRIPTION "klogg log viewer"
   LANGUAGES C CXX ASM
 )
@@ -21,7 +21,7 @@ set(PROJECT_DESCRIPTION "${PROJECT_NAME} log viewer")
 
 option(KLOGG_BUILD_TESTS "Build tests" ON)
 option(KLOGG_USE_LTO "Use link time optimization" ON)
-option(KLOGG_USE_SENTRY "Use Sentry" OFF)
+option(KLOGG_USE_SENTRY "Enable crash dump collection" OFF)
 option(KLOGG_GENERIC_CPU "Build for generic CPU" OFF)
 option(KLOGG_BUILD_DOCUMENTATION "Build generated HTML documentation" ON)
 option(KLOGG_OSX_DEPLOYMENT_TARGET "Override target MacOS version" "")

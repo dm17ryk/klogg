@@ -42,11 +42,17 @@ static constexpr auto LibraryVersionsFooter = "> Qt %1, tbb %2";
 static constexpr auto DetailsHeader = "Details for the issue\n"
                                       "--------------------\n\n";
 
-static constexpr auto CrashTemplate = "#### What did you do?\n\n\n"
+static constexpr auto CrashTemplate = "#### What were you doing when klogg crashed?\n\n\n"
 
                                       "-------------------------\n"
                                       "Crash id:\n"
                                       "%1\n";
+
+static constexpr auto CrashReportFooter
+    = "\n#### Local crash report\n\n"
+      "A local crash report was generated at:\n"
+      "`%1`\n\n"
+      "Please review that report locally and paste any relevant stack trace snippets below.\n";
 
 static constexpr auto ExceptionTemplate = "#### What did you do?\n\n\n"
 
@@ -59,11 +65,12 @@ static constexpr auto BugTemplate = "#### What did you do?\n\n\n"
                                     "#### What did you see instead?\n\n\n";
 
 static constexpr auto ExceptionAskUserAction
-    = "Ooops! Something unexpected happend. Create issue on Github?";
+    = "Ooops! Something unexpected happened. Create an issue on GitHub?";
 
-static constexpr auto AskUserAction = "Create issue on Github?";
+static constexpr auto AskUserAction = "Create an issue on GitHub?";
 
-void IssueReporter::askUserAndReportIssue( IssueTemplate issueTemplate, const QString& information )
+void IssueReporter::askUserAndReportIssue( IssueTemplate issueTemplate, const QString& information,
+                                           const QString& localReportPath )
 {
     const auto askAction
         = issueTemplate == IssueTemplate::Exception ? ExceptionAskUserAction : AskUserAction;
@@ -71,23 +78,28 @@ void IssueReporter::askUserAndReportIssue( IssueTemplate issueTemplate, const QS
     if ( QMessageBox::Yes
          == QMessageBox::question( nullptr, "Klogg", askAction, QMessageBox::Yes,
                                    QMessageBox::No ) ) {
-        IssueReporter::reportIssue( issueTemplate, information );
+        IssueReporter::reportIssue( issueTemplate, information, localReportPath );
     }
 }
 
-void IssueReporter::reportIssue( IssueTemplate issueTemplate, const QString& information )
+void IssueReporter::reportIssue( IssueTemplate issueTemplate, const QString& information,
+                                 const QString& localReportPath )
 {
 
     QString body = DetailsHeader;
+    QString title;
     switch ( issueTemplate ) {
     case IssueTemplate::Bug:
         body.append( BugTemplate );
+        title = "Bug report";
         break;
     case IssueTemplate::Crash:
         body.append( QString( CrashTemplate ).arg( information ) );
+        title = QString( "Crash report: %1" ).arg( information );
         break;
     case IssueTemplate::Exception:
         body.append( QString( ExceptionTemplate ).arg( information ) );
+        title = "Exception report";
         break;
     }
 
@@ -100,15 +112,21 @@ void IssueReporter::reportIssue( IssueTemplate issueTemplate, const QString& inf
     const auto kernelVersion = QSysInfo::kernelVersion();
     const auto arch = QSysInfo::currentCpuArchitecture();
     const auto builtAbi = QSysInfo::buildAbi();
-    
+
     const auto concurrency = QThreadPool::globalInstance()->maxThreadCount();
 
     body.append( QString( DetailsFooter )
                      .arg( version, buildDate, commit, builtAbi, os, kernelType, kernelVersion,
-                           arch, std::to_string(concurrency).c_str() ) );
+                           arch, std::to_string( concurrency ).c_str() ) );
     body.append( QString( LibraryVersionsFooter ).arg( qVersion(), TBB_runtime_version() ) );
+    body.append( '\n' );
+
+    if ( issueTemplate == IssueTemplate::Crash && !localReportPath.isEmpty() ) {
+        body.append( QString( CrashReportFooter ).arg( localReportPath ) );
+    }
 
     QUrlQuery query;
+    query.addQueryItem( "title", title );
     query.addQueryItem( "body", body );
 
     QUrl url( "https://github.com/dm17ryk/klogg/issues/new" );

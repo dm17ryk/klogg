@@ -14,15 +14,11 @@ To the extent that klogg app and website can provide their functionality without
 In the cases where we do collect data, we try to be clear about why we're collecting it, tell you how long we keep it, delete it when we no longer need it, and give you the ability to opt out of collection whenever possible.
 
 ### Crash Logs
-By default, if klogg crashes while you're using it, anonymized data about the crash will be collected to help us identify the cause of the crash and hopefully fix it in a future update. These "crash logs" contain technical information about the state of the app during the crash (processor information, operating system version, process and thread information, stack traces for each thread, the list of loaded modules)
+If klogg crashes while you're using it, a local crash report can be generated to help identify the cause of the crash. These crash reports contain technical information about the state of the app during the crash (processor information, operating system version, process and thread information, stack traces for each thread, the list of loaded modules).
 
-Whenever possible, klogg will allow you to review the entire contents of the crash log before you decide whether or not to send it.
+Whenever possible, klogg will allow you to review the entire contents of the crash log before deciding whether to open a GitHub issue about it.
 
-No data is sent from klogg without explicit user confirmation.
-
-These data is sent for processing to [Sentry](https://sentry.io). Please read their [privacy policy](https://sentry.io/privacy/) and [security](https://sentry.io/security/).
-
-We retain crash logs for 30 days.
+No crash data is uploaded automatically. If you choose to report a crash, klogg opens a prefilled GitHub issue and you decide what information to include.
 
 Apple may also collect crash logs if the privacy settings of your device allow it.
 
@@ -49,7 +45,7 @@ Except as described above, and as required to perform the application's core fun
 ### Questions and Feedback
 Our privacy policies might change or be edited for clarity over time. Up-to-date information will always be available from this page.
 
-Please [contact us](https://github.com/vairar) if you have any questions about our data collection or privacy policies. We'll be more than happy to discuss them with you.
+Please [contact us](https://github.com/dm17ryk/klogg/discussions) if you have any questions about our data collection or privacy policies. We'll be more than happy to discuss them with you.
  
  
 
