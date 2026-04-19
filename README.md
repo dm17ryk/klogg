@@ -1,4 +1,4 @@
-![media_small](https://user-images.githubusercontent.com/1620716/119145300-2d98b800-ba52-11eb-8d87-abe72cf65dd1.png)
+<img width="1024" height="360" alt="logo" src="https://github.com/user-attachments/assets/c0ee8045-078a-4fe1-a422-dc3c8565664f" />
 
 [![GitHub license](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](https://github.com/dm17ryk/klogg/blob/master/COPYING)
 [![C++](https://img.shields.io/github/languages/top/dm17ryk/klogg?style=flat)]()
