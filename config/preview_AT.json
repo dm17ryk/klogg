@@ -1,0 +1,1853 @@
+{
+  "$schema": "../schemas/klogg-previews.schema.json",
+  "version": 1,
+  "blocks": [
+    {
+      "name": "at_log_header_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<date>\\d{2}/\\d{2}/\\d{4})\\s+(?<time>\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+\\[(?<direction>RX|TX)\\]$",
+      "fields": [
+        {
+          "name": "date",
+          "source": "capture",
+          "capture": "date",
+          "format": "string"
+        },
+        {
+          "name": "time",
+          "source": "capture",
+          "capture": "time",
+          "format": "string"
+        },
+        {
+          "name": "direction",
+          "source": "capture",
+          "capture": "direction",
+          "format": "enum",
+          "enumMap": {
+            "RX": "received / modem-originated log line",
+            "TX": "transmitted / host-originated log line"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "hdr"
+    },
+    {
+      "name": "at_command_CCID_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_CFVR_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_GMM_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_GMR_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_HWREV_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_MONI_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_RFSTS_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_SWPKGV_block",
+      "width": 0
+    },
+    {
+      "name": "at_command_BND_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_DTMFCFG_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        {
+          "name": "profile",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_DVI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_DVICLK_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_LPURCMODE_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_QDNS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:\"(?<host_name>[^\"]+)\",(?:\\s*)?(?<userIpType>[0-2]))?$",
+      "fields": [
+        {
+          "name": "host_name",
+          "source": "capture",
+          "capture": "host_name",
+          "format": "string"
+        },
+        {
+          "name": "requested_ip_type",
+          "source": "capture",
+          "capture": "userIpType",
+          "format": "enum",
+          "enumMap": {
+            "0": "IPv4v6 / automatic",
+            "1": "IPv4",
+            "2": "IPv6"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SD_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+),(?<txProt>\\d+),(?<rPort>\\d+),\"(?<IPaddr>[^\"]+)\"(?:,(?<closureType>\\d+)(?:,(?<lPort>\\d+)(?:,(?<connMode>\\d+)(?:,(?<txTime>\\d+)(?:,(?<userIpType>\\d+))?)?)?)?)?)?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "transport",
+          "source": "capture",
+          "capture": "txProt",
+          "format": "enum",
+          "enumMap": {
+            "0": "TCP",
+            "1": "UDP"
+          }
+        },
+        {
+          "name": "remote_port",
+          "source": "capture",
+          "capture": "rPort",
+          "format": "string"
+        },
+        {
+          "name": "remote_address",
+          "source": "capture",
+          "capture": "IPaddr",
+          "format": "string"
+        },
+        {
+          "name": "closure_type",
+          "source": "capture",
+          "capture": "closureType",
+          "format": "string"
+        },
+        {
+          "name": "local_port",
+          "source": "capture",
+          "capture": "lPort",
+          "format": "string"
+        },
+        {
+          "name": "connection_mode",
+          "source": "capture",
+          "capture": "connMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "online mode",
+            "1": "command mode"
+          }
+        },
+        {
+          "name": "udp_tx_time_ms",
+          "source": "capture",
+          "capture": "txTime",
+          "format": "string"
+        },
+        {
+          "name": "preferred_ip_type",
+          "source": "capture",
+          "capture": "userIpType",
+          "format": "enum",
+          "enumMap": {
+            "0": "IPv4v6 / automatic",
+            "1": "IPv4",
+            "2": "IPv6"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+))?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SH_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+))?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SGACT_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<cid>\\d+),(?<stat>\\d+)(?:,\"(?<userId>[^\"]*)\",\"(?<pwd>[^\"]*)\")?)?$",
+      "fields": [
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        },
+        {
+          "name": "state",
+          "source": "capture",
+          "capture": "stat",
+          "format": "enum",
+          "enumMap": {
+            "0": "deactivate / unbind PDP context",
+            "1": "activate / bind PDP context"
+          }
+        },
+        {
+          "name": "user_id",
+          "source": "capture",
+          "capture": "userId",
+          "format": "string"
+        },
+        {
+          "name": "password",
+          "source": "capture",
+          "capture": "pwd",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SCFG_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+),(?<cid>\\d+),(?<pktSz>\\d+),(?<maxTo>\\d+),(?<connTo>\\d+),(?<txTo>\\d+))?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        },
+        {
+          "name": "packet_size",
+          "source": "capture",
+          "capture": "pktSz",
+          "format": "string"
+        },
+        {
+          "name": "max_timeout",
+          "source": "capture",
+          "capture": "maxTo",
+          "format": "string"
+        },
+        {
+          "name": "connect_timeout",
+          "source": "capture",
+          "capture": "connTo",
+          "format": "string"
+        },
+        {
+          "name": "tx_timeout",
+          "source": "capture",
+          "capture": "txTo",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SCFGEXT_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+),(?<srMode>\\d+),(?<dataMode>\\d+),(?<keepalive>\\d+)(?:,(?<ListenAutoRsp>\\d+)(?:,(?<sendDataMode>\\d+))?)?)?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "sring_mode",
+          "source": "capture",
+          "capture": "srMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "normal SRING mode",
+            "1": "SRING reports amount of data",
+            "2": "SRING reports amount + data view",
+            "3": "SRING reports UDP source info + data view"
+          }
+        },
+        {
+          "name": "data_view_format",
+          "source": "capture",
+          "capture": "dataMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "text / IRA representation",
+            "1": "hex octets"
+          }
+        },
+        {
+          "name": "tcp_keepalive_minutes",
+          "source": "capture",
+          "capture": "keepalive",
+          "format": "string"
+        },
+        {
+          "name": "listen_auto_response",
+          "source": "capture",
+          "capture": "ListenAutoRsp",
+          "format": "enum",
+          "enumMap": {
+            "0": "listen auto-response disabled",
+            "1": "listen auto-response enabled"
+          }
+        },
+        {
+          "name": "ssend_data_mode",
+          "source": "capture",
+          "capture": "sendDataMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "text / IRA representation",
+            "1": "hex octets"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SCFGEXT2_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+),(?<bufferStart>\\d+)(?:,(?<abortConnAttempt>\\d+)(?:,(?<unused_B>\\d+)(?:,(?<unused_C>\\d+)(?:,(?<noCarrierMode>\\d+))?)?)?)?)?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "tx_timer_mode",
+          "source": "capture",
+          "capture": "bufferStart",
+          "format": "enum",
+          "enumMap": {
+            "0": "old tx timer behavior",
+            "1": "new tx timer behavior (restart timer on new data)"
+          }
+        },
+        {
+          "name": "abort_connect_attempt",
+          "source": "capture",
+          "capture": "abortConnAttempt",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled / off",
+            "1": "enabled / on"
+          }
+        },
+        {
+          "name": "unused_b",
+          "source": "capture",
+          "capture": "unused_B",
+          "format": "string"
+        },
+        {
+          "name": "unused_c",
+          "source": "capture",
+          "capture": "unused_C",
+          "format": "string"
+        },
+        {
+          "name": "no_carrier_format",
+          "source": "capture",
+          "capture": "noCarrierMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "plain NO CARRIER",
+            "1": "NO CARRIER: <connId>",
+            "2": "NO CARRIER: <connId>, <cause>"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SCFGEXT3_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+),(?<immRsp>\\d+)(?:,(?<closureTypeCmdModeEnabling>\\d+)(?:,(?<fastsring>\\d+)(?:,(?<lingerTime>\\d+)(?:,(?<UDPSocketMode>\\d+)(?:,(?<ssendTimeout>\\d+))?)?)?)?)?)?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "immediate_command_mode_response",
+          "source": "capture",
+          "capture": "immRsp",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled / off",
+            "1": "enabled / on"
+          }
+        },
+        {
+          "name": "closure_type_cmd_mode_enabling",
+          "source": "capture",
+          "capture": "closureTypeCmdModeEnabling",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled / off",
+            "1": "enabled / on"
+          }
+        },
+        {
+          "name": "fast_sring",
+          "source": "capture",
+          "capture": "fastsring",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled / off",
+            "1": "enabled / on"
+          }
+        },
+        {
+          "name": "linger_time_seconds",
+          "source": "capture",
+          "capture": "lingerTime",
+          "format": "string"
+        },
+        {
+          "name": "udp_socket_mode",
+          "source": "capture",
+          "capture": "UDPSocketMode",
+          "format": "enum",
+          "enumMap": {
+            "1": "DL any remote, UL fixed remote only",
+            "2": "DL any remote, UL remote follows last used peer",
+            "3": "connected UDP mode; fixed remote only"
+          }
+        },
+        {
+          "name": "ssend_timeout",
+          "source": "capture",
+          "capture": "ssendTimeout",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SSEND_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<connId>\\d+))?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SSLEN_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<SSId>\\d+),(?<Enable>\\d+))?$",
+      "fields": [
+        {
+          "name": "ssl_socket_id",
+          "source": "capture",
+          "capture": "SSId",
+          "format": "string"
+        },
+        {
+          "name": "enable",
+          "source": "capture",
+          "capture": "Enable",
+          "format": "enum",
+          "enumMap": {
+            "0": "deactivate SSL socket",
+            "1": "activate SSL socket"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SSLSECDATA_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<SSId>\\d+),(?<Action>\\d+),(?<DataType>\\d+)(?:,(?<Size>\\d+)(?:,(?<Password>.*))?)?)?$",
+      "fields": [
+        {
+          "name": "ssl_socket_id",
+          "source": "capture",
+          "capture": "SSId",
+          "format": "string"
+        },
+        {
+          "name": "action",
+          "source": "capture",
+          "capture": "Action",
+          "format": "enum",
+          "enumMap": {
+            "0": "delete from NVM",
+            "1": "store to NVM",
+            "2": "read from NVM"
+          }
+        },
+        {
+          "name": "data_type",
+          "source": "capture",
+          "capture": "DataType",
+          "format": "enum",
+          "enumMap": {
+            "0": "certificate",
+            "1": "CA certificate",
+            "2": "RSA private key"
+          }
+        },
+        {
+          "name": "size_bytes",
+          "source": "capture",
+          "capture": "Size",
+          "format": "string"
+        },
+        {
+          "name": "password",
+          "source": "capture",
+          "capture": "Password",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_QSS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "URC disabled; query with AT#QSS?",
+            "1": "URC enabled; status range 0..1",
+            "2": "URC enabled; status range 0..3"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_STIA_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+)(?:,(?<timeout>\\d+))?)?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "disable SAT/USAT",
+            "1": "enable SAT/USAT without #STN URC",
+            "2": "enable SAT/USAT and extended #STN URC",
+            "3": "enable SAT/USAT and reduced #STN URC",
+            "17": "enable SAT/USAT without #STN URC and alphabet handling"
+          }
+        },
+        {
+          "name": "timeout_seconds",
+          "source": "capture",
+          "capture": "timeout",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_DIALMODE_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "voice call only; OK on remote ringing",
+            "1": "voice call only; OK after answer",
+            "2": "voice + data style progress notifications"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_ISMSCFG_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "outgoing_sms_transport",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "SMS not invoked over IP / IMS",
+            "1": "SMS preferred over IP / IMS"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_E2SMSRI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<n>\\d+))?$",
+      "fields": [
+        {
+          "name": "ri_pulse_ms",
+          "source": "capture",
+          "capture": "n",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_PSMRI_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<n>\\d+))?$",
+      "fields": [
+        {
+          "name": "ri_pulse_ms",
+          "source": "capture",
+          "capture": "n",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_SMSMODE_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "1": "disable SCA-in-FDN check",
+            "2": "enable SCA-in-FDN check when FDN is enabled"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_CODEC_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<codec>\\d+))?$",
+      "fields": [
+        {
+          "name": "codec_mask",
+          "source": "capture",
+          "capture": "codec",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_CACHEDNS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled and cache cleared",
+            "1": "enabled"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_FTPCFG_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<tout>\\d+),(?<IPPignoring>\\d+)(?:,(?<FTPSEn>\\d+)(?:,(?<FTPext>\\d+))?)?)?$",
+      "fields": [
+        {
+          "name": "timeout_x100ms",
+          "source": "capture",
+          "capture": "tout",
+          "format": "string"
+        },
+        {
+          "name": "ip_private_ignoring",
+          "source": "capture",
+          "capture": "IPPignoring",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled",
+            "1": "enabled"
+          }
+        },
+        {
+          "name": "ftps_security",
+          "source": "capture",
+          "capture": "FTPSEn",
+          "format": "enum",
+          "enumMap": {
+            "0": "plain FTP",
+            "1": "FTPS enabled"
+          }
+        },
+        {
+          "name": "ftp_extension_mode",
+          "source": "capture",
+          "capture": "FTPext",
+          "format": "enum",
+          "enumMap": {
+            "0": "always EPRT/EPSV",
+            "1": "PORT/PASV for IPv4 when possible"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_PSEL_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<prof>\\d+))?$",
+      "fields": [
+        {
+          "name": "audio_profile",
+          "source": "capture",
+          "capture": "prof",
+          "format": "enum",
+          "enumMap": {
+            "0": "LEGACY / standard profile",
+            "1": "SPEAKERPHONE",
+            "2": "HEADSET",
+            "3": "HANDSET",
+            "4": "reserved",
+            "5": "reserved",
+            "6": "reserved",
+            "7": "reserved",
+            "8": "reserved",
+            "9": "reserved",
+            "10": "reserved",
+            "11": "reserved"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_DTMF_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "disable DTMF decoder",
+            "1": "enable DTMF decoder",
+            "2": "enable decoder without URC notify"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_CFLO_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<enable>\\d+))?$",
+      "fields": [
+        {
+          "name": "enable",
+          "source": "capture",
+          "capture": "enable",
+          "format": "enum",
+          "enumMap": {
+            "0": "disable command-mode flow control",
+            "1": "enable command-mode flow control"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_M2MATP_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mode>\\d+))?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "enum",
+          "enumMap": {
+            "0": "disable M2M AT parser",
+            "1": "enable M2M AT parser"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_TEMPMON_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<mod>\\d+)(?:,(?<urcMode>\\d+)(?:,(?<action>\\d+)(?:,(?<GPIO>\\d+))?)?)?)?$",
+      "fields": [
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mod",
+          "format": "enum",
+          "enumMap": {
+            "0": "set monitor parameters",
+            "1": "trigger temperature measurement"
+          }
+        },
+        {
+          "name": "urc_mode",
+          "source": "capture",
+          "capture": "urcMode",
+          "format": "enum",
+          "enumMap": {
+            "0": "disabled / off",
+            "1": "enabled / on"
+          }
+        },
+        {
+          "name": "action_mask",
+          "source": "capture",
+          "capture": "action",
+          "format": "string"
+        },
+        {
+          "name": "gpio",
+          "source": "capture",
+          "capture": "GPIO",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_WS46_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<n>\\d+))?$",
+      "fields": [
+        {
+          "name": "wireless_stack",
+          "source": "capture",
+          "capture": "n",
+          "format": "enum",
+          "enumMap": {
+            "12": "GERAN only",
+            "22": "UTRAN only",
+            "25": "GERAN + UTRAN + E-UTRAN",
+            "28": "E-UTRAN only",
+            "29": "GERAN + UTRAN",
+            "30": "GERAN + E-UTRAN",
+            "31": "UTRAN + E-UTRAN",
+            "32": "TDSCDMA only",
+            "33": "GERAN + TDSCDMA",
+            "34": "TDSCDMA + E-UTRAN",
+            "35": "GERAN + TDSCDMA + E-UTRAN",
+            "36": "GERAN + TDSCDMA + UTRAN + E-UTRAN",
+            "37": "GERAN + TDSCDMA + UTRAN",
+            "38": "TDSCDMA + UTRAN",
+            "39": "TDSCDMA + UTRAN + E-UTRAN"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_CEVDP_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<domain>\\d+))?$",
+      "fields": [
+        {
+          "name": "voice_domain_preference",
+          "source": "capture",
+          "capture": "domain",
+          "format": "enum",
+          "enumMap": {
+            "1": "CS voice only",
+            "2": "CS preferred, IMS as secondary",
+            "3": "IMS preferred, CS as secondary",
+            "4": "IMS only"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_QDNS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^\"(?<host_name>[^\"]+)\",\"(?<ip_address>[^\"]+)\"$",
+      "fields": [
+        {
+          "name": "host_name",
+          "source": "capture",
+          "capture": "host_name",
+          "format": "string"
+        },
+        {
+          "name": "resolved_address",
+          "source": "capture",
+          "capture": "ip_address",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_SGACT_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<cid>\\d+),(?<state>\\d+)|(?<ip_addr_v4v6>[^,]+)(?:,(?<ip_addr_v6>[^,]+))?)$",
+      "fields": [
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        },
+        {
+          "name": "state",
+          "source": "capture",
+          "capture": "state",
+          "format": "enum",
+          "enumMap": {
+            "0": "deactivated / not bound",
+            "1": "activated / bound"
+          }
+        },
+        {
+          "name": "ip_address",
+          "source": "capture",
+          "capture": "ip_addr_v4v6",
+          "format": "string"
+        },
+        {
+          "name": "secondary_ip_address",
+          "source": "capture",
+          "capture": "ip_addr_v6",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_SS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<connId>\\d+),(?<state>\\d+)(?:,(?<locIP>[^,]*),(?<locPort>[^,]*),(?<remIP>[^,]*),(?<remPort>[^,]*))?$",
+      "fields": [
+        {
+          "name": "conn_id",
+          "source": "capture",
+          "capture": "connId",
+          "format": "string"
+        },
+        {
+          "name": "state",
+          "source": "capture",
+          "capture": "state",
+          "format": "enum",
+          "enumMap": {
+            "0": "socket closed",
+            "1": "active data transfer connection",
+            "2": "socket suspended",
+            "3": "socket suspended with pending data",
+            "4": "socket listening",
+            "5": "incoming connection pending user accept / shutdown",
+            "6": "socket opening in progress"
+          }
+        },
+        {
+          "name": "local_ip",
+          "source": "capture",
+          "capture": "locIP",
+          "format": "string"
+        },
+        {
+          "name": "local_port",
+          "source": "capture",
+          "capture": "locPort",
+          "format": "string"
+        },
+        {
+          "name": "remote_ip",
+          "source": "capture",
+          "capture": "remIP",
+          "format": "string"
+        },
+        {
+          "name": "remote_port",
+          "source": "capture",
+          "capture": "remPort",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_QSS_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<status>\\d+)$",
+      "fields": [
+        {
+          "name": "sim_status",
+          "source": "capture",
+          "capture": "status",
+          "format": "enum",
+          "enumMap": {
+            "0": "SIM not inserted",
+            "1": "SIM inserted",
+            "2": "SIM inserted and PIN unlocked",
+            "3": "SIM inserted and READY"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_CFVR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<value>.*)$",
+      "fields": [
+        {
+          "name": "value",
+          "source": "capture",
+          "capture": "value",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_SSLEN_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<SSId>\\d+),(?<Enable>\\d+)$",
+      "fields": [
+        {
+          "name": "ssl_socket_id",
+          "source": "capture",
+          "capture": "SSId",
+          "format": "string"
+        },
+        {
+          "name": "enable",
+          "source": "capture",
+          "capture": "Enable",
+          "format": "enum",
+          "enumMap": {
+            "0": "deactivate SSL socket",
+            "1": "activate SSL socket"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_CGDCONT_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<cid>\\d+),\"(?<pdp_type>[^\"]+)\",\"(?<apn>[^\"]*)\",\"(?<pdp_addr>[^\"]*)\",(?<d_comp>\\d+),(?<h_comp>\\d+),(?<ipv4addralloc>\\d+),(?<request_type>\\d+)$",
+      "fields": [
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        },
+        {
+          "name": "pdp_type",
+          "source": "capture",
+          "capture": "pdp_type",
+          "format": "enum",
+          "enumMap": {
+            "IP": "IPv4 PDP context",
+            "IPV6": "IPv6 PDP context",
+            "IPV4V6": "dual-stack PDP context"
+          }
+        },
+        {
+          "name": "apn",
+          "source": "capture",
+          "capture": "apn",
+          "format": "string"
+        },
+        {
+          "name": "pdp_address",
+          "source": "capture",
+          "capture": "pdp_addr",
+          "format": "string"
+        },
+        {
+          "name": "data_compression",
+          "source": "capture",
+          "capture": "d_comp",
+          "format": "string"
+        },
+        {
+          "name": "header_compression",
+          "source": "capture",
+          "capture": "h_comp",
+          "format": "string"
+        },
+        {
+          "name": "ipv4_addr_alloc",
+          "source": "capture",
+          "capture": "ipv4addralloc",
+          "format": "string"
+        },
+        {
+          "name": "request_type",
+          "source": "capture",
+          "capture": "request_type",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_CGPADDR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<cid>\\d+),\"(?<addr>[^\"]+)\"$",
+      "fields": [
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        },
+        {
+          "name": "address",
+          "source": "capture",
+          "capture": "addr",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_WS46_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<n>\\d+)$",
+      "fields": [
+        {
+          "name": "wireless_stack",
+          "source": "capture",
+          "capture": "n",
+          "format": "enum",
+          "enumMap": {
+            "12": "GERAN only",
+            "22": "UTRAN only",
+            "25": "GERAN + UTRAN + E-UTRAN",
+            "28": "E-UTRAN only",
+            "29": "GERAN + UTRAN",
+            "30": "GERAN + E-UTRAN",
+            "31": "UTRAN + E-UTRAN",
+            "32": "TDSCDMA only",
+            "33": "GERAN + TDSCDMA",
+            "34": "TDSCDMA + E-UTRAN",
+            "35": "GERAN + TDSCDMA + E-UTRAN",
+            "36": "GERAN + TDSCDMA + UTRAN + E-UTRAN",
+            "37": "GERAN + TDSCDMA + UTRAN",
+            "38": "TDSCDMA + UTRAN",
+            "39": "TDSCDMA + UTRAN + E-UTRAN"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_CEVDP_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<domain>\\d+)$",
+      "fields": [
+        {
+          "name": "voice_domain_preference",
+          "source": "capture",
+          "capture": "domain",
+          "format": "enum",
+          "enumMap": {
+            "1": "CS voice only",
+            "2": "CS preferred, IMS as secondary",
+            "3": "IMS preferred, CS as secondary",
+            "4": "IMS only"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_CGEV_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<event>[^,]+?)(?:,\\s*\"?(?<address>[^\",]+)\"?)?(?:,\\s*(?<cid>\\d+))?$",
+      "fields": [
+        {
+          "name": "event",
+          "source": "capture",
+          "capture": "event",
+          "format": "string"
+        },
+        {
+          "name": "address",
+          "source": "capture",
+          "capture": "address",
+          "format": "string"
+        },
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_payload_known_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#])(?<command_key>(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|M2MATP|SWPKGV|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|BND|DVI|GMM|GMR|QSS|SD|SH|SS)))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:\\r?#\\d+\\s*)?$",
+      "fields": [
+        {
+          "name": "channel",
+          "source": "capture",
+          "capture": "channel",
+          "format": "string"
+        },
+        {
+          "name": "token",
+          "source": "capture",
+          "capture": "token",
+          "format": "string"
+        },
+        {
+          "name": "meaning",
+          "source": "capture",
+          "capture": "command_key",
+          "format": "enum",
+          "enumMap": {
+            "BND": "Select Band",
+            "CACHEDNS": "DNS Response Caching",
+            "CCID": "Read ICCID",
+            "CFLO": "Command Flow Control",
+            "CFVR": "Vendor-specific / undocumented CFVR query",
+            "CODEC": "GSM and UMTS Audio Codec",
+            "DIALMODE": "Set Dialing Mode",
+            "DTMF": "Embedded DTMF Decoder Enabling",
+            "DTMFCFG": "Embedded DTMF Decoder Configuration",
+            "DVI": "Digital Voiceband Interface",
+            "DVICLK": "Digital Voiceband Interface Clock",
+            "E2SMSRI": "SMS Ring Indicator",
+            "FTPCFG": "FTP Configuration",
+            "HWREV": "Hardware Identification",
+            "ISMSCFG": "SMS Transport Configuration",
+            "LPURCMODE": "Vendor-specific / likely low-power URC mode",
+            "M2MATP": "M2M AT Parser",
+            "MONI": "Cell Monitor",
+            "PSEL": "Audio Profile Selection",
+            "PSMRI": "Power Saving Mode Ring Indicator",
+            "QDNS": "Query DNS",
+            "QSS": "Query SIM Status",
+            "RFSTS": "Read Current Network Status",
+            "SCFG": "Socket Configuration",
+            "SCFGEXT": "Socket Configuration Extended",
+            "SCFGEXT2": "Socket Configuration Extended 2",
+            "SCFGEXT3": "Socket Configuration Extended 3",
+            "SD": "Socket Dial",
+            "SGACT": "PDP Context Activation",
+            "SH": "Socket Shutdown",
+            "SMSMODE": "SMS Commands Operation Mode",
+            "SS": "Socket Status",
+            "SSEND": "Send Data in Command Mode",
+            "SSLEN": "Enable a SSL Socket",
+            "SSLSECDATA": "Manage the Security Data",
+            "STIA": "SIM/USIM Toolkit Interface Action",
+            "SWPKGV": "Request Software Package Version",
+            "TEMPMON": "Temperature Monitor",
+            "CEVDP": "Voice Domain Preference",
+            "CGDCONT": "Define PDP Context",
+            "GMM": "Model Identification",
+            "GMR": "Revision Identification",
+            "WS46": "PCCA STD-101 Select Wireless Network"
+          }
+        },
+        {
+          "name": "operation",
+          "source": "capture",
+          "capture": "op",
+          "format": "enum",
+          "enumMap": {
+            "": "execute",
+            "=": "set",
+            "?": "read",
+            "=?": "test"
+          }
+        },
+        {
+          "name": "details",
+          "source": "block",
+          "block": "at_command_{command_key}_block"
+        }
+      ],
+      "bufferCapture": "args"
+    },
+    {
+      "name": "at_command_payload_generic_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#])(?<command_key>[A-Z0-9]+))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:\\r?#\\d+\\s*)?$",
+      "fields": [
+        {
+          "name": "channel",
+          "source": "capture",
+          "capture": "channel",
+          "format": "string"
+        },
+        {
+          "name": "token",
+          "source": "capture",
+          "capture": "token",
+          "format": "string"
+        },
+        {
+          "name": "command_key",
+          "source": "capture",
+          "capture": "command_key",
+          "format": "string"
+        },
+        {
+          "name": "operation",
+          "source": "capture",
+          "capture": "op",
+          "format": "enum",
+          "enumMap": {
+            "": "execute",
+            "=": "set",
+            "?": "read",
+            "=?": "test"
+          }
+        },
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "args",
+          "format": "string"
+        }
+      ]
+    },
+    {
+      "name": "at_response_payload_known_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>(?:CGDCONT|CGPADDR|CEVDP|SGACT|SSLEN|CFVR|CGEV|QDNS|WS46|QSS|SS)))\\s*:\\s*(?<args>.*)$",
+      "fields": [
+        {
+          "name": "channel",
+          "source": "capture",
+          "capture": "channel",
+          "format": "string"
+        },
+        {
+          "name": "token",
+          "source": "capture",
+          "capture": "token",
+          "format": "string"
+        },
+        {
+          "name": "meaning",
+          "source": "capture",
+          "capture": "response_key",
+          "format": "enum",
+          "enumMap": {
+            "QDNS": "DNS query result",
+            "SGACT": "PDP context state / activation result",
+            "SS": "Socket status",
+            "QSS": "SIM status indication / report",
+            "CFVR": "Vendor-specific CFVR response",
+            "SSLEN": "SSL socket enable status",
+            "CGDCONT": "PDP context definition",
+            "CGPADDR": "PDP address report",
+            "WS46": "Selected wireless stack / RAT family",
+            "CEVDP": "Voice domain preference",
+            "CGEV": "Packet domain event URC"
+          }
+        },
+        {
+          "name": "details",
+          "source": "block",
+          "block": "at_response_{response_key}_block"
+        }
+      ],
+      "bufferCapture": "args"
+    },
+    {
+      "name": "at_response_payload_generic_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>[A-Z0-9 ]+))\\s*:\\s*(?<args>.*)$",
+      "fields": [
+        {
+          "name": "channel",
+          "source": "capture",
+          "capture": "channel",
+          "format": "string"
+        },
+        {
+          "name": "token",
+          "source": "capture",
+          "capture": "token",
+          "format": "string"
+        },
+        {
+          "name": "response_key",
+          "source": "capture",
+          "capture": "response_key",
+          "format": "string"
+        },
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "args",
+          "format": "string"
+        }
+      ]
+    }
+  ],
+  "previews": [
+    {
+      "name": "AT command (known)",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT(?:#|\\+)(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|M2MATP|SWPKGV|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|BND|DVI|GMM|GMR|QSS|SD|SH|SS).*)$",
+      "type": "string",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "command",
+          "source": "block",
+          "block": "at_command_payload_known_block"
+        }
+      ]
+    },
+    {
+      "name": "AT command (generic fallback)",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT(?:#|\\+)[A-Z0-9]+.*)$",
+      "type": "string",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "command",
+          "source": "block",
+          "block": "at_command_payload_generic_block"
+        }
+      ]
+    },
+    {
+      "name": "AT CME error",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+\\+CME ERROR:\\s*(?<code>\\d+)\\s*$",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "code",
+          "source": "capture",
+          "capture": "code",
+          "format": "string"
+        },
+        {
+          "name": "meaning",
+          "source": "capture",
+          "capture": "code",
+          "format": "enum",
+          "enumMap": {
+            "323": "parameter error",
+            "550": "generic undocumented error",
+            "551": "wrong state",
+            "552": "wrong mode",
+            "553": "context already activated",
+            "554": "stack already active",
+            "555": "activation failed",
+            "556": "context not opened",
+            "557": "can not setup socket",
+            "558": "can not resolve DN",
+            "559": "time-out in opening socket",
+            "560": "can not open socket",
+            "561": "remote disconnected or time-out",
+            "562": "connection failed",
+            "563": "tx error",
+            "564": "already listening",
+            "565": "socket disconnection",
+            "566": "can not resume socket",
+            "567": "ip version type incompatible",
+            "568": "ipv6 not enabled",
+            "600": "generic undocumented FTP error",
+            "601": "wrong state",
+            "602": "can not activate",
+            "603": "can not resolve name",
+            "604": "can not allocate control socket",
+            "605": "can not connect control socket",
+            "606": "bad or no response from server",
+            "607": "not connected",
+            "608": "already connected",
+            "609": "context down",
+            "612": "resource used by other instance",
+            "613": "data socket yet opened in cmdmode",
+            "614": "FTP cmdmode data socket closed",
+            "615": "FTP not connected",
+            "616": "FTP disconnected",
+            "681": "network search aborted",
+            "682": "PTM mode",
+            "683": "network search terminated",
+            "684": "CSG search processing",
+            "690": "active call state",
+            "691": "RR connection established",
+            "770": "SIM invalid",
+            "900": "no response for AT command",
+            "1000": "SSL not activated",
+            "1001": "SSL certs and keys wrong or not stored",
+            "1002": "SSL generic error",
+            "1003": "SSL already activated",
+            "1004": "SSL error during handshake",
+            "1005": "SSL socket error",
+            "1006": "SSL invalid state",
+            "1007": "SSL cannot activate",
+            "1008": "SSL not connected",
+            "1009": "SSL already connected",
+            "1010": "SSL error enc/dec data",
+            "1011": "SSL disconnected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "AT final result code",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<result>OK|ERROR)\\s*$",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "result",
+          "source": "capture",
+          "capture": "result",
+          "format": "enum",
+          "enumMap": {
+            "OK": "success / command accepted",
+            "ERROR": "generic failure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "AT response / URC (known)",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)(?:CGDCONT|CGPADDR|CEVDP|SGACT|SSLEN|CFVR|CGEV|QDNS|WS46|QSS|SS)\\s*:.*)$",
+      "type": "string",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "response",
+          "source": "block",
+          "block": "at_response_payload_known_block"
+        }
+      ]
+    },
+    {
+      "name": "AT response / URC (generic fallback)",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)[A-Z0-9 ]+\\s*:.*)$",
+      "type": "string",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "response",
+          "source": "block",
+          "block": "at_response_payload_generic_block"
+        }
+      ]
+    },
+    {
+      "name": "AT socket send payload",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+>\\s*(?:(?<channel>#\\d+)\\s+)?\"(?<data>[^\"]*)\"\\s*$",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "channel",
+          "source": "capture",
+          "capture": "channel",
+          "format": "string"
+        },
+        {
+          "name": "socket_payload",
+          "source": "capture",
+          "capture": "data",
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
