@@ -892,11 +892,13 @@ QVariantMap MainWindow::commanderWindowInfo() const
 QVariantMap MainWindow::automationSnapshot() const
 {
     auto payload = automationTree();
+    const auto state = automationState();
     payload.insert( QStringLiteral( "schemaVersion" ), 1 );
     payload.insert( QStringLiteral( "windowTitle" ), windowTitle() );
     payload.insert( QStringLiteral( "windowInfo" ), commanderWindowInfo() );
     payload.insert( QStringLiteral( "actions" ), automationActions() );
-    payload.insert( QStringLiteral( "ciloggState" ), automationState() );
+    payload.insert( QStringLiteral( "kloggState" ), state );
+    payload.insert( QStringLiteral( "ciloggState" ), state );
     return payload;
 }
 
