@@ -10,7 +10,7 @@
 [![Github all releases](https://img.shields.io/github/downloads/dm17ryk/klogg/total?style=flat)](https://github.com/dm17ryk/klogg/releases/)
 [ ![Github](https://img.shields.io/github/v/release/dm17ryk/klogg?style=flat&label=Stable%20release&)](https://github.com/dm17ryk/klogg/releases/latest)
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/klogg.svg)](https://repology.org/project/klogg/versions)
+[![Packaging status](https://repology.org/badge/vertical-allrepos/cilogg.svg)](https://repology.org/project/cilogg/versions)
 
 Check [GitHub releases](https://github.com/dm17ryk/klogg/releases/latest) for Windows installers and Linux/Mac packages.
 
@@ -26,16 +26,16 @@ Development status
 
 ## Overview
 
-Klogg is a multi-platform GUI application that helps browse and search
+CILogg is a multi-platform GUI application that helps browse and search
 through long and complex log files. It is designed with programmers and
 system administrators in mind and can be seen as a graphical, interactive
 combination of grep, less, and tail.
 
-![Klogg main window](website/static/screenshots/mainwindow.png)
+![CILogg main window](website/static/screenshots/mainwindow.png)
 
 Please refer to the
 [documentation](DOCUMENTATION.md)
-page for how to use Klogg.
+page for how to use CILogg.
 
 ### Latest testing builds
 
@@ -67,19 +67,19 @@ I try to keep a [changelog](CHANGELOG.md) with monthly changes.
 
 ## About the Project
 
-Klogg started as a fork of [glogg](https://github.com/nickbnf/glogg) - the fast, smart log explorer in 2016.
+CILogg started as a fork of [glogg](https://github.com/nickbnf/glogg) - the fast, smart log explorer in 2016.
 
 Since then it has evolved from fixing small annoying bugs to rewriting core components to
-make it faster and smarter that predecessor.
+make it faster and smarter than its predecessor.
 
-Development of klogg is driven by features my colleagues and I need
+Development of CILogg is driven by features my colleagues and I need
 to stay productive as well as feature requests from users on GitHub and in GitHub Discussions.
 
 Latest development updates can be found in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions) and [GitHub Releases](https://github.com/dm17ryk/klogg/releases).
 
 ### Comparing with glogg
 
-Klogg has all best features of glogg:
+CILogg has all best features of glogg:
 
 * Runs on Unix-like systems, Windows and Mac thanks to Qt5
 * Is fast and reads the file directly from disk, without loading it into memory
@@ -91,7 +91,7 @@ Klogg has all best features of glogg:
 * Watches for file changes on disk and reloads it (kind of like tail)
 * Is open source, released under the GPL
 
-And on top of that klogg:
+And on top of that CILogg:
 
 * Is heavily optimized using multi-threading and SIMD
 * Supports files with more than 2147483647 lines
@@ -109,7 +109,7 @@ And on top of that klogg:
 
 ### Current Functionality
 
-Current klogg builds include the following major capabilities:
+Current CILogg builds include the following major capabilities:
 
 * Open logs from files, clipboard contents, URLs, and COM port streams
 * Follow actively changing files, reload files manually, wrap lines, and show line numbers independently in main and filtered views
@@ -122,18 +122,18 @@ Current klogg builds include the following major capabilities:
 * Generate diagnostic crash dumps and open prefilled GitHub issues for crash reporting
 * Drive the app from automation-oriented CLI commands, including commander actions and UI/state dump output
 
-Klogg is no longer just a desktop log viewer. In the current codebase it also provides:
+CILogg is no longer just a desktop log viewer. In the current codebase it also provides:
 
-* Headless scenario execution via `klogg scenario`
-* Remote lab controller, agent, and operator flows via `klogg lab-controller`, `klogg lab-agent`, and `klogg lab`
-* Automation inspection helpers such as `klogg --dump-ui-tree` and `klogg --dump-state-json`
+* Headless scenario execution via `cilogg scenario`
+* Remote lab controller, agent, and operator flows via `cilogg lab-controller`, `cilogg lab-agent`, and `cilogg lab`
+* Automation inspection helpers such as `cilogg --dump-ui-tree` and `cilogg --dump-state-json`
 * Commander actions for opening files, URLs, COM ports, managing scripts, filters, actions, responses, and tab state
 
-Here is a small demo showing how much faster klogg is (searching in ~1Gb file stored on tmpfs):
+Here is a small demo showing how much faster CILogg is (searching in ~1Gb file stored on tmpfs):
 
 https://user-images.githubusercontent.com/1620716/117588567-bea39100-b12c-11eb-990a-90a667bcaeaa.mp4
 
-List of glogg issues that have been fixed/implemented in klogg can be found [here](https://github.com/dm17ryk/klogg/discussions/302).
+List of glogg issues that have been fixed/implemented in CILogg can be found [here](https://github.com/dm17ryk/klogg/discussions/302).
 
 List of all changes can be found [here](https://github.com/dm17ryk/klogg/milestone/8?closed=1).
 
@@ -152,22 +152,22 @@ Binaries for all platforms can be downloaded from GitHub releases.
 #### Windows
 Windows installer is also available from:
 
-* [ ![Chocolatey](https://img.shields.io/chocolatey/v/klogg?style=flat)](https://chocolatey.org/packages/klogg)
-* [ ![Scoop Extras bucket](https://img.shields.io/scoop/v/klogg?bucket=extras)](https://scoopsearch.github.io/#/apps?q=klogg)
+* [ ![Chocolatey](https://img.shields.io/chocolatey/v/cilogg?style=flat)](https://chocolatey.org/packages/cilogg)
+* [ ![Scoop Extras bucket](https://img.shields.io/scoop/v/cilogg?bucket=extras)](https://scoopsearch.github.io/#/apps?q=cilogg)
 * [Winget package](https://winget.run/pkg/dm17ryk/klogg) 
 
 #### Mac OS
 Package for Mac can be installed from Homebrew
 
-[ ![homebrew cask](https://img.shields.io/homebrew/cask/v/klogg?style=flat)](https://formulae.brew.sh/cask/klogg)
+[ ![homebrew cask](https://img.shields.io/homebrew/cask/v/cilogg?style=flat)](https://formulae.brew.sh/cask/cilogg)
 
 #### Linux
-It is recommended to use klogg package from distribution-specific [repositories](https://repology.org/project/klogg/versions).
+It is recommended to use CILogg package from distribution-specific [repositories](https://repology.org/project/cilogg/versions).
 
 Generic packages are published through [GitHub Releases](https://github.com/dm17ryk/klogg/releases/latest).
-If your distribution does not already package klogg, use the release artifacts directly or the AppImage package described below.
+If your distribution does not already package CILogg, use the release artifacts directly or the AppImage package described below.
 
-There is also an AppImage package that can be used without installation. To run klogg from AppImage, download the package and make in executable with either a file manager or terminal command `chmod +x <path_to_klogg_AppImage>` and then run the AppImage file.
+There is also an AppImage package that can be used without installation. To run CILogg from AppImage, download the package and make in executable with either a file manager or terminal command `chmod +x <path_to_cilogg_AppImage>` and then run the AppImage file.
 
 AppImage uses FUSE2 and Ubuntu 22.04 has moved away from FUSE2 into FUSE3 and therefore you need to install the necessary package to enable compatibility with FUSE2 `sudo apt install libfuse2`.
 
@@ -204,7 +204,7 @@ First, please refer to the
 [documentation](DOCUMENTATION.md)
 page.
 
-You can open issues using the [klogg issues page](https://github.com/dm17ryk/klogg/issues)
+You can open issues using the [CILogg issues page](https://github.com/dm17ryk/klogg/issues)
 or ask questions in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions).
 
 ## Contributing

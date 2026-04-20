@@ -93,9 +93,9 @@ class KloggApp : public QApplication {
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
         scenarioRunner_.setCommanderExecutor(
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
-        scriptRunnerWindow_.setWindowTitle( tr( "klogg - script runner" ) );
-        scenarioRunnerWindow_.setWindowTitle( tr( "klogg - scenario runner" ) );
-        labQueueWindow_.setWindowTitle( tr( "klogg - lab queue" ) );
+        scriptRunnerWindow_.setWindowTitle( tr( "CILogg - script runner" ) );
+        scenarioRunnerWindow_.setWindowTitle( tr( "CILogg - scenario runner" ) );
+        labQueueWindow_.setWindowTitle( tr( "CILogg - lab queue" ) );
         connect( &scriptSupervisor_, &ScriptSupervisor::statusChanged, this,
                  [ this ]() {
                      for ( const auto& [ windowSession, window ] : mainWindows_ ) {
@@ -249,7 +249,7 @@ class KloggApp : public QApplication {
         if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), CommanderConnectTimeoutMs ) ) {
             QFile::remove( resultPath );
             return commanderFailure( CommanderResultCode::TransportError,
-                                     QStringLiteral( "Failed to contact the primary klogg instance." ) );
+                                     QStringLiteral( "Failed to contact the primary CILogg instance." ) );
         }
 
         if ( !waitForResponseFile( resultPath, CommanderResponseTimeoutMs ) ) {
@@ -706,7 +706,7 @@ class KloggApp : public QApplication {
             auto* window = activeWindowOrCreate();
             if ( window == nullptr ) {
                 return commanderFailure( CommanderResultCode::ExecutionFailed,
-                                         QStringLiteral( "Failed to create a klogg window." ) );
+                                         QStringLiteral( "Failed to create a CILogg window." ) );
             }
 
             const auto result = window->executeCommanderRequest( request );
@@ -788,7 +788,7 @@ class KloggApp : public QApplication {
 
             if ( request.action != CommanderAction::DumpState ) {
                 return commanderFailure( CommanderResultCode::NotFound,
-                                         QStringLiteral( "No active klogg window was found." ) );
+                                         QStringLiteral( "No active CILogg window was found." ) );
             }
         }
 
@@ -1091,7 +1091,7 @@ class KloggApp : public QApplication {
     {
         LOG_DEBUG << "newVersionNotification( " << new_version << " from " << url << " )";
 
-        QString message = QString( "<p> A new version of klogg (%1) is available for download </p>"
+        QString message = QString( "<p> A new version of CILogg (%1) is available for download </p>"
                                    "<a href=\"%2\">%2</a>" )
                               .arg( new_version, url );
 

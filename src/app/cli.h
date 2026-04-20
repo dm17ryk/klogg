@@ -1,20 +1,20 @@
 /*
  * Copyright (C) 2021 Anton Filimonov and other contributors
  *
- * This file is part of klogg.
+ * This file is part of cilogg.
  *
- * klogg is free software: you can redistribute it and/or modify
+ * cilogg is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * klogg is distributed in the hope that it will be useful,
+ * cilogg is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
+ * along with cilogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef KLOGG_CLI_H
@@ -121,7 +121,7 @@ struct CliParameters {
     static QString versionText()
     {
         QString output;
-        output += QStringLiteral( "klogg %1\n" ).arg( QString::fromLatin1( kloggVersion() ) );
+        output += QStringLiteral( "cilogg %1\n" ).arg( QString::fromLatin1( kloggVersion() ) );
         output += QStringLiteral( "Built %1 from %2(%3)\n" )
                       .arg( QString::fromLatin1( kloggBuildDate() ),
                             QString::fromLatin1( kloggCommit() ),
@@ -140,86 +140,86 @@ struct CliParameters {
     static QString mainHelpDescription()
     {
         return QStringLiteral(
-            "Klogg log viewer\n\n"
+            "CILogg log viewer\n\n"
             "Scenario batch mode:\n"
-            "  klogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
-            "  klogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
-            "  klogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
-            "  klogg scenario list-devices --suite-file <path>\n\n"
+            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
+            "  cilogg scenario list-devices --suite-file <path>\n\n"
             "Remote lab mode:\n"
-            "  klogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n"
-            "  klogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n"
-            "  klogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
-            "  klogg lab queue --controller-url <url> --token-file <path>\n"
-            "  klogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
-            "  klogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
-            "  klogg lab agents --controller-url <url> --token-file <path>\n"
-            "  klogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
+            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n"
+            "  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n"
+            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  cilogg lab queue --controller-url <url> --token-file <path>\n"
+            "  cilogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  cilogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  cilogg lab agents --controller-url <url> --token-file <path>\n"
+            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
             "Commander mode:\n"
-            "  klogg command --action open_file --file <path> [--follow]\n"
-            "  klogg command --action open_url --url <url>\n"
-            "  klogg command --action open_com --port <name> [serial options]\n"
-            "  klogg command --action close_file --file <path>\n"
-            "  klogg command --action close_url --url <url>\n"
-            "  klogg command --action close_com --port <name>\n"
-            "  klogg command --action close_klogg\n"
-            "  klogg command --action close_all\n"
-            "  klogg command --action get_info [--pretty]\n"
-            "  klogg command --action start_comm [tab selector]\n"
-            "  klogg command --action stop_comm [tab selector]\n"
-            "  klogg command --action get_comm_status [tab selector] [--pretty]\n"
-            "  klogg command --action start_logging [tab selector]\n"
-            "  klogg command --action stop_logging [tab selector]\n"
-            "  klogg command --action add_comment --text <value> [--timestamp] [tab selector]\n"
-            "  klogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
-            "  klogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
-            "  klogg command --action clear_comm [tab selector]\n"
-            "  klogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
-            "  klogg command --action run_global_script --script-file <path> [--args-json-file <path>]\n"
-            "  klogg command --action run_scenario --scenario-file <path> [--args-json-file <path>]\n"
-            "  klogg command --action run_suite --suite-file <path>\n"
-            "  klogg command --action stop_script [tab selector | --all]\n"
-            "  klogg command --action stop_global_script\n"
-            "  klogg command --action stop_scenario_run\n"
-            "  klogg command --action get_script_status [tab selector | --all] [--pretty]\n"
-            "  klogg command --action get_global_script_status [--pretty]\n"
-            "  klogg command --action get_scenario_status [--pretty]\n"
-            "  klogg command --action get_script_subscriptions [tab selector | --all] [--pretty]\n"
-            "  klogg command --action get_global_script_subscriptions [--pretty]\n"
-            "  klogg command --action clear_script_subscriptions [tab selector | --all]\n"
-            "  klogg command --action clear_global_script_subscriptions\n"
-            "  klogg command --action get_scenario_report [--pretty]\n"
-            "  klogg command --action get_actions [--pretty]\n"
-            "  klogg command --action get_responses [--pretty]\n"
-            "  klogg command --action create_action --json-file <path>\n"
-            "  klogg command --action update_action --id <id> --json-file <path>\n"
-            "  klogg command --action delete_action --id <id>\n"
-            "  klogg command --action create_response --json-file <path>\n"
-            "  klogg command --action update_response --id <id> --json-file <path>\n"
-            "  klogg command --action delete_response --id <id>\n"
-            "  klogg command --action send_action --id <id> [tab selector]\n"
-            "  klogg command --action wait_response (--id <id> | --name <name>) [tab selector] --timeout-ms <n>\n"
-            "  klogg command --action get_filters [tab selector] [filter selector] [--predefined] [--pretty]\n"
-            "  klogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
-            "  klogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
-            "  klogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "  cilogg command --action open_file --file <path> [--follow]\n"
+            "  cilogg command --action open_url --url <url>\n"
+            "  cilogg command --action open_com --port <name> [serial options]\n"
+            "  cilogg command --action close_file --file <path>\n"
+            "  cilogg command --action close_url --url <url>\n"
+            "  cilogg command --action close_com --port <name>\n"
+            "  cilogg command --action close_cilogg\n"
+            "  cilogg command --action close_all\n"
+            "  cilogg command --action get_info [--pretty]\n"
+            "  cilogg command --action start_comm [tab selector]\n"
+            "  cilogg command --action stop_comm [tab selector]\n"
+            "  cilogg command --action get_comm_status [tab selector] [--pretty]\n"
+            "  cilogg command --action start_logging [tab selector]\n"
+            "  cilogg command --action stop_logging [tab selector]\n"
+            "  cilogg command --action add_comment --text <value> [--timestamp] [tab selector]\n"
+            "  cilogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
+            "  cilogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
+            "  cilogg command --action clear_comm [tab selector]\n"
+            "  cilogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
+            "  cilogg command --action run_global_script --script-file <path> [--args-json-file <path>]\n"
+            "  cilogg command --action run_scenario --scenario-file <path> [--args-json-file <path>]\n"
+            "  cilogg command --action run_suite --suite-file <path>\n"
+            "  cilogg command --action stop_script [tab selector | --all]\n"
+            "  cilogg command --action stop_global_script\n"
+            "  cilogg command --action stop_scenario_run\n"
+            "  cilogg command --action get_script_status [tab selector | --all] [--pretty]\n"
+            "  cilogg command --action get_global_script_status [--pretty]\n"
+            "  cilogg command --action get_scenario_status [--pretty]\n"
+            "  cilogg command --action get_script_subscriptions [tab selector | --all] [--pretty]\n"
+            "  cilogg command --action get_global_script_subscriptions [--pretty]\n"
+            "  cilogg command --action clear_script_subscriptions [tab selector | --all]\n"
+            "  cilogg command --action clear_global_script_subscriptions\n"
+            "  cilogg command --action get_scenario_report [--pretty]\n"
+            "  cilogg command --action get_actions [--pretty]\n"
+            "  cilogg command --action get_responses [--pretty]\n"
+            "  cilogg command --action create_action --json-file <path>\n"
+            "  cilogg command --action update_action --id <id> --json-file <path>\n"
+            "  cilogg command --action delete_action --id <id>\n"
+            "  cilogg command --action create_response --json-file <path>\n"
+            "  cilogg command --action update_response --id <id> --json-file <path>\n"
+            "  cilogg command --action delete_response --id <id>\n"
+            "  cilogg command --action send_action --id <id> [tab selector]\n"
+            "  cilogg command --action wait_response (--id <id> | --name <name>) [tab selector] --timeout-ms <n>\n"
+            "  cilogg command --action get_filters [tab selector] [filter selector] [--predefined] [--pretty]\n"
+            "  cilogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  cilogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
+            "  cilogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
             "Automation:\n"
-            "  klogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
-            "  klogg --dump-state-json <path> [--window-width <n> --window-height <n>]\n\n"
-            "Run `klogg scenario --help` for detailed scenario batch options.\n"
-            "Run `klogg lab --help`, `klogg lab-agent --help`, or `klogg lab-controller --help` for remote lab options.\n"
-            "Run `klogg command --help` for detailed commander options." );
+            "  cilogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
+            "  cilogg --dump-state-json <path> [--window-width <n> --window-height <n>]\n\n"
+            "Run `cilogg scenario --help` for detailed scenario batch options.\n"
+            "Run `cilogg lab --help`, `cilogg lab-agent --help`, or `cilogg lab-controller --help` for remote lab options.\n"
+            "Run `cilogg command --help` for detailed commander options." );
     }
 
     static QString scenarioHelpDescription()
     {
         return QStringLiteral(
-            "Klogg headless scenario runner\n\n"
+            "CILogg headless scenario runner\n\n"
             "Usage:\n"
-            "  klogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
-            "  klogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
-            "  klogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
-            "  klogg scenario list-devices --suite-file <path>\n\n"
+            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
+            "  cilogg scenario list-devices --suite-file <path>\n\n"
             "The suite manifest declares logical device names. The optional device-map JSON\n"
             "maps those logical device names to real COM ports and runtime serial overrides." );
     }
@@ -227,9 +227,9 @@ struct CliParameters {
     static QString labControllerHelpDescription()
     {
         return QStringLiteral(
-            "Klogg remote lab controller\n\n"
+            "CILogg remote lab controller\n\n"
             "Usage:\n"
-            "  klogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n\n"
+            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n\n"
             "The controller exposes HTTP JSON APIs for operators and a TCP agent channel on the\n"
             "next port number after the HTTP listen port." );
     }
@@ -237,30 +237,30 @@ struct CliParameters {
     static QString labAgentHelpDescription()
     {
         return QStringLiteral(
-            "Klogg remote lab agent\n\n"
+            "CILogg remote lab agent\n\n"
             "Usage:\n"
-            "  klogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n\n"
+            "  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n\n"
             "The agent registers local COM inventory with the controller and executes queued jobs." );
     }
 
     static QString labHelpDescription()
     {
         return QStringLiteral(
-            "Klogg remote lab operator CLI\n\n"
+            "CILogg remote lab operator CLI\n\n"
             "Usage:\n"
-            "  klogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
-            "  klogg lab queue --controller-url <url> --token-file <path>\n"
-            "  klogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
-            "  klogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
-            "  klogg lab agents --controller-url <url> --token-file <path>\n"
-            "  klogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
+            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  cilogg lab queue --controller-url <url> --token-file <path>\n"
+            "  cilogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  cilogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
+            "  cilogg lab agents --controller-url <url> --token-file <path>\n"
+            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
             "The CLI uploads scenario bundles to the controller and fetches status, queue, and artifacts." );
     }
 
     static QString commanderHelpDescription()
     {
         return QStringLiteral(
-            "Klogg commander\n\n"
+            "CILogg commander\n\n"
             "Actions:\n"
             "  open_file  --file <path> [--follow]\n"
             "  open_url   --url <url>\n"
@@ -268,7 +268,7 @@ struct CliParameters {
             "  close_file --file <path>\n"
             "  close_url  --url <url>\n"
             "  close_com  --port <name>\n"
-            "  close_klogg\n"
+            "  close_cilogg\n"
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -408,7 +408,7 @@ struct CliParameters {
         const QCommandLineOption multiInstanceOption(
             QStringList() << "m"
                           << "multi",
-            "allow multiple instance of klogg to run simultaneously (use together with -s)" );
+            "allow multiple instance of cilogg to run simultaneously (use together with -s)" );
 
         const QCommandLineOption loadSessionOption(
             QStringList() << "s"

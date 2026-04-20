@@ -6,9 +6,9 @@ runs:
     - name: configure
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM --env KLOGG_VERSION=$KLOGG_VERSION --env KLOGG_BUILD_ROOT=$KLOGG_BUILD_ROOT --env KLOGG_CMAKE_OPTS="$KLOGG_CMAKE_OPTS" -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cmake -B /usr/local/$KLOGG_BUILD_ROOT $KLOGG_CMAKE_OPTS -DCPM_SOURCE_CACHE=/usr/local/cpm_cache /usr/local"
+        docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_VERSION=$CILOGG_VERSION --env CILOGG_BUILD_ROOT=$CILOGG_BUILD_ROOT --env CILOGG_CMAKE_OPTS="$CILOGG_CMAKE_OPTS" -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cmake -B /usr/local/$CILOGG_BUILD_ROOT $CILOGG_CMAKE_OPTS -DCPM_SOURCE_CACHE=/usr/local/cpm_cache /usr/local"
 
     - name: build
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM --env KLOGG_BUILD_ROOT=$KLOGG_BUILD_ROOT -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cmake --build /usr/local/$KLOGG_BUILD_ROOT --target ci_build"
+        docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_BUILD_ROOT=$CILOGG_BUILD_ROOT -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cmake --build /usr/local/$CILOGG_BUILD_ROOT --target ci_build"

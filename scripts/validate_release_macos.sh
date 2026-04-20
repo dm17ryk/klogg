@@ -12,7 +12,7 @@ assert_path() {
 
 validate_app_bundle() {
   local app="$1"
-  assert_path "$app/Contents/MacOS/klogg" "Missing app executable in $app"
+  assert_path "$app/Contents/MacOS/cilogg" "Missing app executable in $app"
   assert_path "$app/Contents/Frameworks/QtSql.framework" "Missing QtSql.framework in $app"
   assert_path "$app/Contents/Frameworks/QtSerialPort.framework" "Missing QtSerialPort.framework in $app"
   assert_path "$app/Contents/PlugIns/platforms/libqcocoa.dylib" "Missing qcocoa plugin in $app"

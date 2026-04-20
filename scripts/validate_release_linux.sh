@@ -15,7 +15,7 @@ validate_deb() {
   contents="$(dpkg-deb -c "$pkg")"
   metadata="$(dpkg-deb -I "$pkg")"
 
-  grep -q './usr/bin/klogg$' <<<"$contents" || fail "DEB missing /usr/bin/klogg: $pkg"
+  grep -q './usr/bin/cilogg$' <<<"$contents" || fail "DEB missing /usr/bin/cilogg: $pkg"
   grep -q '^ Package: ' <<<"$metadata" || fail "DEB metadata unreadable: $pkg"
 }
 
@@ -43,7 +43,7 @@ validate_appimage() {
     "$pkg_abs" --appimage-extract >/dev/null
   )
 
-  test -f "$workdir/squashfs-root/usr/bin/klogg" || fail "AppImage missing klogg binary: $pkg"
+  test -f "$workdir/squashfs-root/usr/bin/cilogg" || fail "AppImage missing cilogg binary: $pkg"
   find "$workdir/squashfs-root" -name 'libQt6Sql*.so*' | grep -q . || fail "AppImage missing Qt SQL runtime: $pkg"
   find "$workdir/squashfs-root" -path '*/sqldrivers/*qsqlite*' | grep -q . || fail "AppImage missing qsqlite plugin: $pkg"
 

@@ -88,7 +88,7 @@ run_linuxdeployqt() {
       continue
     fi
 
-    if VERSION=$KLOGG_VERSION "./${appimage}" "${args[@]}"; then
+    if VERSION=$CILOGG_VERSION "./${appimage}" "${args[@]}"; then
       return 0
     fi
 
@@ -105,7 +105,7 @@ if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
     echo "WARNING: linuxdeployqt failed on ARM64, skipping AppImage generation." >&2
     mkdir -p ./packages
     echo "AppImage generation skipped on ARM64 due linuxdeployqt incompatibility." \
-      > "./packages/klogg-${KLOGG_VERSION}-appimage-arm64-skip.txt"
+      > "./packages/cilogg-${CILOGG_VERSION}-appimage-arm64-skip.txt"
     exit 0
   fi
   exit 1
@@ -121,12 +121,12 @@ if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
     echo "WARNING: linuxdeployqt failed on ARM64 during AppImage stage, skipping." >&2
     mkdir -p ./packages
     echo "AppImage generation skipped on ARM64 due linuxdeployqt incompatibility." \
-      > "./packages/klogg-${KLOGG_VERSION}-appimage-arm64-skip.txt"
+      > "./packages/cilogg-${CILOGG_VERSION}-appimage-arm64-skip.txt"
     exit 0
   fi
   exit 1
 fi
 
 mkdir -p ./packages
-APPIMAGE_FILE="$(ls ./klogg-$KLOGG_VERSION-*.AppImage | head -n 1)"
+APPIMAGE_FILE="$(ls ./cilogg-$CILOGG_VERSION-*.AppImage | head -n 1)"
 cp "${APPIMAGE_FILE}" "./packages/$(basename "${APPIMAGE_FILE}")"

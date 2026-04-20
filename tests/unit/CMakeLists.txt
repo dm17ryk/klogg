@@ -13,11 +13,15 @@ add_executable(klogg_tests
 
 target_link_libraries(klogg_tests klogg_ui klogg_utils klogg_logging Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(klogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
-set_target_properties(klogg_tests PROPERTIES AUTOMOC ON)
+set_target_properties(
+    klogg_tests
+    PROPERTIES AUTOMOC ON
+               OUTPUT_NAME "${PRODUCT_UNIT_TEST_EXECUTABLE_NAME}"
+)
 
 add_test(
-    NAME klogg_tests
-    COMMAND klogg_tests -platform offscreen
+    NAME cilogg_tests
+    COMMAND $<TARGET_FILE:klogg_tests> -platform offscreen
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
 # set_tests_properties(klogg_tests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_tests>")

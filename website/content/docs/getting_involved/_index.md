@@ -15,12 +15,12 @@ and [Gitter community](https://gitter.im/klogg_log_viewer/community).
 Project questions and future development topics are discussed in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions).
 
 ## Sponsors
-Big thanks to everyone sponsoring _klogg_. This helps running code-signing infrastructure
+Big thanks to everyone sponsoring _CILogg_. This helps running code-signing infrastructure
  - PetbkA
 
 ## Contributors
 
-Thanks to all people who help develop _klogg_
+Thanks to all people who help develop _CILogg_
 
  - Alexander Hirsch
  - Alexei Colin

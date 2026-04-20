@@ -7,29 +7,29 @@ runs:
       if: ${{ matrix.config.cpack_gen }}
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cpack -G ${{ matrix.config.cpack_gen }} "
-        docker run $KLOGG_DOCKER_PLATFORM --env KLOGG_VERSION=$KLOGG_VERSION -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && mv ./packages/klogg-$KLOGG_VERSION-Linux.${{ matrix.config.package_suffix }} ./packages/klogg-$KLOGG_VERSION-${{ matrix.config.artifacts_id }}.${{ matrix.config.package_suffix }}"
+        docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cpack -G ${{ matrix.config.cpack_gen }} "
+        docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_VERSION=$CILOGG_VERSION -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && mv ./packages/cilogg-$CILOGG_VERSION-Linux.${{ matrix.config.package_suffix }} ./packages/cilogg-$CILOGG_VERSION-${{ matrix.config.artifacts_id }}.${{ matrix.config.package_suffix }}"
 
     - name: Check package
       if: ${{ matrix.config.check_command }}
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM --rm -v "$KLOGG_WORKSPACE/$KLOGG_BUILD_ROOT/packages":/usr/local ${{ matrix.config.check_container }} /bin/bash -c "${{ matrix.config.check_command }}"
+        docker run $CILOGG_DOCKER_PLATFORM --rm -v "$CILOGG_WORKSPACE/$CILOGG_BUILD_ROOT/packages":/usr/local ${{ matrix.config.check_container }} /bin/bash -c "${{ matrix.config.check_command }}"
 
     - name: Linux AppImage
       if: ${{ contains(matrix.config.artifacts_id, 'appimage') }}
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM --device /dev/fuse --privileged --env KLOGG_VERSION=$KLOGG_VERSION -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && ../packaging/linux/appimage/generate_appimage.sh"
+        docker run $CILOGG_DOCKER_PLATFORM --device /dev/fuse --privileged --env CILOGG_VERSION=$CILOGG_VERSION -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && ../packaging/linux/appimage/generate_appimage.sh"
 
     - name: Copy sym
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && if [ -f ./output/klogg.debug ]; then xz ./output/klogg.debug && mv ./output/klogg.debug.xz ./packages/klogg_${{ matrix.config.artifacts_id }}.debug.xz; else echo 'klogg.debug is not present, skipping symbol archive'; fi"
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cp ./output/klogg ./packages/klogg_${{ matrix.config.artifacts_id }}"
+        docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && if [ -f ./output/cilogg.debug ]; then xz ./output/cilogg.debug && mv ./output/cilogg.debug.xz ./packages/cilogg_${{ matrix.config.artifacts_id }}.debug.xz; else echo 'cilogg.debug is not present, skipping symbol archive'; fi"
+        docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cp ./output/cilogg ./packages/cilogg_${{ matrix.config.artifacts_id }}"
 
     - name: Copy deps
       if: ${{ contains(matrix.config.artifacts_id, 'appimage') }}
       shell: sh
       run: |
-        docker run $KLOGG_DOCKER_PLATFORM -v "$KLOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local && tar -cJf ./build_root/packages/klogg_deps.tar.xz ./cpm_cache"
+        docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local && tar -cJf ./build_root/packages/cilogg_deps.tar.xz ./cpm_cache"

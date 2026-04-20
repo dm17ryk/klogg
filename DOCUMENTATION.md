@@ -1,4 +1,4 @@
-# Klogg documentation
+# CILogg documentation
 
 ## Table of Contents
 
@@ -11,9 +11,9 @@
 
 ## Getting started
 
-*klogg* can be started from the command line, optionally passing the
+*CILogg* can be started from the command line, optionally passing the
 file to open as an argument, or via the desktop environment's menu or
-file association. If no file name is passed, *klogg* will initially open
+file association. If no file name is passed, *CILogg* will initially open
 the most recent file.
 
 The main window is divided into three parts: the top displays the log
@@ -29,7 +29,7 @@ marked with a red circle in both windows.
 ## Exploring log files
 
 Regular expressions are a powerful way to extract the information you
-want from the log file. *klogg* uses *extended regular
+want from the log file. *CILogg* uses *extended regular
 expressions*.
 
 One of the most useful regexp features when exploring logs is the
@@ -49,12 +49,12 @@ been opened:
 
 `Entering (Open|Close)Connection|Created a .* connection`
 
-`.*` will match any sequence of characters on a single line, but *klogg*
+`.*` will match any sequence of characters on a single line, but *CILogg*
 will only display lines with a space and the word `connection` somewhere
 after `Created a`
 
 Sometimes alternation using regular expression syntax is cumbersome.
-For such cases *klogg* can do logical search pattern combinations using
+For such cases *CILogg* can do logical search pattern combinations using
 `and`, `or`, and `not` operators. This mode can be enabled using button
 from search input panel. In this mode all patterns must be enclosed in `"`.
 Following logic operations are supported:
@@ -67,7 +67,7 @@ Following logic operations are supported:
 |`\|`             |Similar to OR but with left to right expression short circuiting optimization   |
 |`not`           |Logical NOT, Negate the logical sense of the input. Input must be enclosed in `()` (eg: `not("x")`)|
 
-*klogg* keeps track of used search patterns and provides autocomplete
+*CILogg* keeps track of used search patterns and provides autocomplete
 for them. This history can be edited or cleared from the search text box context menu.
 Autocomplete is case-sensitive if this option is selected for matching 
 regular expressions. The size of autocomplete history is configured in general options.
@@ -76,7 +76,7 @@ In addition to the filtered window, the match overview on the right-hand
 side of the screen offers a view of the position of matches in the log
 file. Matches are shown as small red lines.
 
-In addition to regexp matches, *klogg* enables its users to mark any
+In addition to regexp matches, *CILogg* enables its users to mark any
 interesting line in the log. To do this, click on the round bullet in
 the left margin in front of the line that needs to be marked. Or, select
 the line and press the `'m'` hotkey.
@@ -89,15 +89,15 @@ Marks also appear as blue lines in the match overview.
 
 It is possible to quickly jump to a specific line using `Ctrl+L` shortcut.
 
-*klogg* uses Hyperscan library to perform regular expressions search. Hyperscan is very
+*CILogg* uses Hyperscan library to perform regular expressions search. Hyperscan is very
 fast, but it doesn't support some patterns, most notably any lookahead is not supported 
 (check [hyperscan documentation](https://intel.github.io/hyperscan/dev-reference/compilation.html#pattern-support) for 
-supported syntax). To overcome this *klogg* will switch to Qt regular expression engine with full PCRE syntax support
+supported syntax). To overcome this *CILogg* will switch to Qt regular expression engine with full PCRE syntax support
 if Hyperscan can't handle the search pattern. However, in this case search will be significantly slower.
 
 ### Opening files
 
-*klogg* provides several options for opening files:
+*CILogg* provides several options for opening files:
 
 * using dedicated open file item in `File` menu or toolbar
 * dragging files from the file manager
@@ -105,28 +105,28 @@ if Hyperscan can't handle the search pattern. However, in this case search will 
 * providing one or many files via the command line
 * using recent files or favorite menu items.
 
-On Windows and Mac OS, the *klogg* installer configures the operating system to open `.log` files by
+On Windows and Mac OS, the *CILogg* installer configures the operating system to open `.log` files by
 clicking them in the file manager.
 
 #### Archives
 
-*klogg* can open archives (`zip`, `7z`, and `tar`). The archive is extracted
+*CILogg* can open archives (`zip`, `7z`, and `tar`). The archive is extracted
 to a temporary directory and standard open file dialog is presented to
 select files. The type of archive is determined automatically by file
 content or extension.
 
-*klogg* can open compressed files (`gzip`, `bzip2`, `xz`, `lzma`). Such files are
+*CILogg* can open compressed files (`gzip`, `bzip2`, `xz`, `lzma`). Such files are
 decompressed to a temporary folder and then opened. The compression type is
 determined automatically by file content or extension.
 
 #### Remote URLs
 
-*klogg* can open files from remote URLs. In that case, *klogg* will
+*CILogg* can open files from remote URLs. In that case, *CILogg* will
 download the file to a temporary directory and open it from there.
 
 #### Recent files
 
-*klogg* saves a history of recent opened files. Up to 5 recent files are
+*CILogg* saves a history of recent opened files. Up to 5 recent files are
 available from the `File` menu.
 
 #### Favorites
@@ -139,7 +139,7 @@ often and don't end up in the recent files section.
 
 #### Clipboard
 
-Pasting text from the clipboard to *klogg* also works. In this case, *klogg*
+Pasting text from the clipboard to *CILogg* also works. In this case, *CILogg*
 will save pasted text to a temporary file and open that file for
 exploring.
 
@@ -151,7 +151,7 @@ which displays special dialogue to choose between opened files.
 
 ### Encodings
 
-*klogg* tries to guess the encoding of an opened file. If that guess happens to
+*CILogg* tries to guess the encoding of an opened file. If that guess happens to
 be wrong, then the desired encoding can be selected from the `Encoding` menu.
 
 ### Predefined filters
@@ -203,12 +203,12 @@ highlighter overrides colors for the current line.
 Highlighter configuration can be exported to a file and 
 imported on another machine. Each set is identified
 by unique id. Only new sets are imported from the file. Please export the file
-with a `.conf` extension to ensure *klogg* will be able to import it.
+with a `.conf` extension to ensure *CILogg* will be able to import it.
 
 ### Color labels
 
 In addition to predefined highlighters sets it is possible to create quick highlight rules
-from selected text. These are called color labels. By default, *klogg* has 9
+from selected text. These are called color labels. By default, *CILogg* has 9
 color labels enabled. Adding color label to selected text is done either
 via context menu or with shortcuts `Ctrl+Shift+1-9`. Any number of 
 strings can be marked with a single color label. Also the is `Ctrl+D` shortcut
@@ -223,7 +223,7 @@ tab of highlighters configuration dialog.
 
 ### Browsing changing log files
 
-*klogg* can display and search through logs while they are written to
+*CILogg* can display and search through logs while they are written to
 a disk. This might be the case when debugging a running program or
 server. The log is automatically updated when it grows, but the
 'Auto-refresh' option must be enabled if you want the search results to
@@ -232,12 +232,12 @@ be automatically refreshed.
 The `'f'` key may be used to follow the end of the file as it grows (a
 la `tail -f`).
 
-*klogg* detects if new lines have been appended to the file or if the file has
+*CILogg* detects if new lines have been appended to the file or if the file has
 been overwritten. In the former case, search results will be updated as new
 matching lines appear in the file. If the file is overwritten, then
 search results will be cleared. 
 
-*klogg* has two options to distinguish appends from overwrites.
+*CILogg* has two options to distinguish appends from overwrites.
 The general and more stable option is to recalculate the hash of the 
 indexed part of the file and check if it matches current file on disk. 
 This is reliable but can be slow for large files and for slow file systems
@@ -253,7 +253,7 @@ following file mode is also disabled.
 ### Scratchpad
 
 Sometimes in log files there are text in base64 encoding, unformatted
-xml/json, etc. For such cases *klogg* provides Scratchpad tool. Text can
+xml/json, etc. For such cases *CILogg* provides Scratchpad tool. Text can
 be copied to this window and transformed to human-readable form.
 Use context menu to either add data to the current scratchpad tab or 
 replace its content with selected text. There are shortcuts `Ctrl+Z` and `Ctrl+Shit+Z` for these actions.
@@ -266,7 +266,7 @@ New tabs can be opened in Scratchpad using the `Ctrl+N` hotkey.
 
 #### Search options
 
-Determines which type of regular expression *klogg* will use when
+Determines which type of regular expression *CILogg* will use when
 filtering lines for the bottom window, and when using QuickFind.
 
 *   Extended Regexp. The default, uses regular expressions similar to
@@ -274,7 +274,7 @@ filtering lines for the bottom window, and when using QuickFind.
 *   Fixed Strings. Searches for the text exactly as it is written, no
     character is special
 
-If incremental quickfind is selected, *klogg* will automatically restart
+If incremental quickfind is selected, *CILogg* will automatically restart
 quickfind search when the search pattern changes.
 
 Turning on highlight of matched text will cause the text that matched the
@@ -285,28 +285,28 @@ that match the same pattern be slightly different.
 Search size history controls the number of patterns that are saved for autocompletion
 in the search input box.
 
-Turning on option to run search on add or replace pattern will cause *klogg* to
+Turning on option to run search on add or replace pattern will cause *CILogg* to
 immediately perform search when pattern is update from context menu.
 
 #### Session options
 
-*   Load last session -- if enabled, *klogg* will reopen files that were
-    opened when *klogg* was closed. View configuration, marked lines and
+*   Load last session -- if enabled, *CILogg* will reopen files that were
+    opened when *CILogg* was closed. View configuration, marked lines and
     `follow` mode settings are restored for each file.
-*   Follow file on load -- if enabled, *klogg* will enter `follow` mode
+*   Follow file on load -- if enabled, *CILogg* will enter `follow` mode
     for for all new opened files.
-*   Minimize to tray -- if enabled, *klogg* will minimize to tray instead
+*   Minimize to tray -- if enabled, *CILogg* will minimize to tray instead
     of closing main window. Use tray icon context menu of `File->Exit`
     to exit application. This option is not available on Mac OS.
-*   Enable multiple windows -- if enabled *klogg* will allow opening
+*   Enable multiple windows -- if enabled *CILogg* will allow opening
     more than one main window using `File->New window`. In this mode last
-    closed windows will be saved to open session on next *klogg* start.
-    When exiting *klogg* using `File->Exit` all windows are saved and
+    closed windows will be saved to open session on next *CILogg* start.
+    When exiting *CILogg* using `File->Exit` all windows are saved and
     will be reopened.
 
 #### Version checking options
 
-If version checking is enabled then *klogg* will try to grab a version
+If version checking is enabled then *CILogg* will try to grab a version
 information file from the GitHub repository and see if a new version has been released
 once per week.
 
@@ -330,18 +330,18 @@ to zoom in/out.
 #### Style
 
 Qt usually comes with several options for drawing application widgets.
-By default, *klogg* uses a style that matches current operating systems.
+By default, *CILogg* uses a style that matches current operating systems.
 Other styles can be chosen from the dropdown menu.
 
-*klogg* will try to respect current display manager theme and to
+*CILogg* will try to respect current display manager theme and to
 use white icons for dark themes. 
 
-Another option is to select Dark or Windows Dark style. In this case *klogg*
+Another option is to select Dark or Windows Dark style. In this case *CILogg*
 will use a custom dark mode stylesheet. 
 
 #### High DPI
 
-Options in this group can be used in case *klogg* window looks 
+Options in this group can be used in case *CILogg* window looks 
 bad on High DPI monitors. Usually, Qt detects the correct settings.
 However, these options may be useful, especially for non-integer
 scale factors manual overrides.
@@ -349,7 +349,7 @@ scale factors manual overrides.
 #### Miscellaneous
 
 Some log files contain ANSI color codes to be displayed by terminals with
-color support. These color codes create visual noise, so *klogg* provides
+color support. These color codes create visual noise, so *CILogg* provides
 an option to hide them from both main and filtered view. However, enabling
 this option will cause regular expression search to be slower.
 
@@ -357,18 +357,18 @@ this option will cause regular expression search to be slower.
 
 #### File change monitoring
 
-If file change monitoring is enabled, *klogg* will use facilities
+If file change monitoring is enabled, *CILogg* will use facilities
 provided by the operating system to reload the file when data is changed on the
 disk.
 
 Sometimes this kind of monitoring is unreliable on
 network shares or directories mounted via sftp. In that case, polling can
-be enabled to make *klogg* check for changes.
+be enabled to make *CILogg* check for changes.
 
-*klogg* tries to detect if the file was changed in the already indexed
+*CILogg* tries to detect if the file was changed in the already indexed
 area. This mechanism involves hash recalculation and can be slow for
 large files and network filesystems. If fast modification detection
-is enabled *klogg* will check hash for the first and last parts of
+is enabled *CILogg* will check hash for the first and last parts of
 changed files. This is faster but can skip over changes in the middle of
 the file. This feature should be used with caution.
 
@@ -377,66 +377,66 @@ This behavior can be disabled.
 
 #### Encoding
 
-*klogg* tries to detect file encoding automatically. If encoding detection
+*CILogg* tries to detect file encoding automatically. If encoding detection
 is not required then it is possible to specify the encoding that will be
 used for all new opened files.
 
 #### Archives
 
-If extract archives is selected then *klogg* will detect if opened file
+If extract archives is selected then *CILogg* will detect if opened file
 is of one of supported archives type or a single compressed file and
 will ask user permission to extract archives content to a temporary folder.
 
-If you do not want *klogg* to ask for permission, check 
+If you do not want *CILogg* to ask for permission, check 
 "extract archives without confirmation" option.
 
 #### File download
 
-By default, *klogg* will not download files using HTTPS if certificates
+By default, *CILogg* will not download files using HTTPS if certificates
 can't be checked. In some development environments self-signed 
-certificates are used. In this case, *klogg* can be instructed to ignore
+certificates are used. In this case, *CILogg* can be instructed to ignore
 SSL errors.
 
 ### Advanced options
 
 These options refer to the customization of performance related settings.
 
-If parallel search is enabled, *klogg* will try to use several CPU cores
+If parallel search is enabled, *CILogg* will try to use several CPU cores
 for regular expression matching. This does not work with quickfind.
 
-*klogg* has several strategies for regular expression search based on file 
+*CILogg* has several strategies for regular expression search based on file 
 encoding. By default, it is optimized for files with UTF8 or single-byte
 encodings. If most of the files are in multi-byte encodings then enabling
 search optimization for non-latin encodings could improve performance.
 
-If search results cache is enabled, *klogg* will store numbers of lines
+If search results cache is enabled, *CILogg* will store numbers of lines
 that matched the search pattern in its memory. Repeating searches for the same
 pattern will not go through all files but will use cached line numbers
 instead.
 
-In case there is an issue with *klogg*, logging can be enabled with
+In case there is an issue with *CILogg*, logging can be enabled with
 a desired level of verbosity. Log files are saved to a temporary directory.
 A log level of 4 or 5 is usually enough. Enabling logging can slow down 
 regular expressions search.
 
 ## Crash reporting
 
-*klogg* uses Crashpad crash handler to collect minidump files in case of 
-unexpected crashes. At startup, *klogg* checks for new minidumps and asks  the user
+*CILogg* uses Crashpad crash handler to collect minidump files in case of 
+unexpected crashes. At startup, *CILogg* checks for new minidumps and asks  the user
 if these files should be sent to developers.
 
 Crash report provides information about:
 
 * operating system: name, version, architecture, cpu features, system memory
 * Qt version
-* modules that were loaded into *klogg* process: filename, size and hashes for symbols
-* stacktraces for all running threads in *klogg* process
+* modules that were loaded into *CILogg* process: filename, size and hashes for symbols
+* stacktraces for all running threads in *CILogg* process
 
-These minidumps do not include the full content of *klogg* process memory during the crash.
+These minidumps do not include the full content of *CILogg* process memory during the crash.
 
 ## Keyboard commands
 
-*klogg* keyboard commands try to approximately emulate the default
+*CILogg* keyboard commands try to approximately emulate the default
 bindings used by the classic Unix utilities *vi* and *less*.
 
 The main commands are:
@@ -481,10 +481,11 @@ Holding `Shift` while scrolling will scroll faster.
 |-------------------|----------------------------------------------------------|
 |-h, --help         |print help message and exit                               |
 |-v, --version      |print version information                                 |
-|-m,--multi         |allow multiple instance of klogg to run simultaneously (use together with -s)|                                    |
+|-m,--multi         |allow multiple instances of cilogg to run simultaneously (use together with -s)|                                    |
 |-s,--load-session  |load the previous session (default when no file is passed)|
 |-n,--new-session   |do not load the previous session (default when a file is passed) |
 |-l,--log           |save the log to a file                                    |
 |-f,--follow        |follow initial opened files                               |
 |-d,--debug         |output more debug (include multiple times for more verbosity e.g. -dddd) |
+
 

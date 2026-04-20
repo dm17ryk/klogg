@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
-      KLOGG_GITHUB_TOKEN: ${{ secrets.KLOGG_GITHUB_TOKEN || github.token }}
+      CILOGG_GITHUB_TOKEN: ${{ secrets.CILOGG_GITHUB_TOKEN || github.token }}
       DISCORD_NEW_VERSIONS_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
     steps:
     - uses: actions/checkout@v3
@@ -100,7 +100,7 @@ jobs:
         run_id: ${{ github.event.inputs.ci-run-id }}
 
     - name: Initialize version
-      run: echo "KLOGG_VERSION=`cat klogg_version/klogg_version.txt`" >> $GITHUB_ENV
+      run: echo "CILOGG_VERSION=`cat cilogg_version/cilogg_version.txt`" >> $GITHUB_ENV
 
     - name: Display structure of downloaded files
       run: ls -R ./packages-*
@@ -109,13 +109,13 @@ jobs:
       shell: sh
       run: |
         mkdir ./linux-debug
-        for debug_archive in ./packages-*/klogg_*.debug.xz; do
+        for debug_archive in ./packages-*/cilogg_*.debug.xz; do
           if [ -f "$debug_archive" ]; then
             xz -d "$debug_archive"
           fi
         done
 
-        for linux_binary_copy in ./packages-*/klogg_*; do
+        for linux_binary_copy in ./packages-*/cilogg_*; do
           if [ -f "$linux_binary_copy" ]; then
             case "$linux_binary_copy" in
               *.debug|*.debug.xz) ;;
@@ -124,42 +124,42 @@ jobs:
           fi
         done
 
-        rm -rf ./packages-macos-intel-qt6/klogg-x64.app || true
-        rm -rf ./packages-macos-arm-qt6/klogg-arm64.app || true
+        rm -rf ./packages-macos-intel-qt6/cilogg-x64.app || true
+        rm -rf ./packages-macos-arm-qt6/cilogg-arm64.app || true
 
-        for debug_file in ./packages-*/klogg_*.debug; do
+        for debug_file in ./packages-*/cilogg_*.debug; do
           if [ -f "$debug_file" ]; then
             mv "$debug_file" ./linux-debug
           fi
         done
 
         if ls ./linux-debug/*.debug >/dev/null 2>&1; then
-          tar -cJf ./linux-debug/klogg-$KLOGG_VERSION-symbols.tar.xz ./linux-debug/*
+          tar -cJf ./linux-debug/cilogg-$CILOGG_VERSION-symbols.tar.xz ./linux-debug/*
           rm ./linux-debug/*.debug
         fi
-      # rm -rf ./packages-oracle/klogg_oracle
-      # mv ./packages-oracle/klogg_oracle.debug ./linux-debug
+      # rm -rf ./packages-oracle/cilogg_oracle
+      # mv ./packages-oracle/cilogg_oracle.debug ./linux-debug
 
     - name: Prepare binary artifacts
       shell: sh
       run: |
         mkdir ./packages-bin
 
-        if [ -f ./packages-appimage/klogg_deps.tar.xz ]; then
-          mv ./packages-appimage/klogg_deps.tar.xz ./packages-bin/klogg-$KLOGG_VERSION-deps-x64.tar.xz
+        if [ -f ./packages-appimage/cilogg_deps.tar.xz ]; then
+          mv ./packages-appimage/cilogg_deps.tar.xz ./packages-bin/cilogg-$CILOGG_VERSION-deps-x64.tar.xz
         fi
-        if [ -f ./packages-appimage-arm64/klogg_deps.tar.xz ]; then
-          mv ./packages-appimage-arm64/klogg_deps.tar.xz ./packages-bin/klogg-$KLOGG_VERSION-deps-arm64.tar.xz
-        fi
-
-        if [ -f ./packages-focal/klogg-$KLOGG_VERSION-focal.deb ]; then
-          ar p ./packages-focal/klogg-$KLOGG_VERSION-focal.deb data.tar.gz > ./packages-bin/klogg-$KLOGG_VERSION-bin-x64.tar.gz
-        fi
-        if [ -f ./packages-focal-arm64/klogg-$KLOGG_VERSION-focal-arm64.deb ]; then
-          ar p ./packages-focal-arm64/klogg-$KLOGG_VERSION-focal-arm64.deb data.tar.gz > ./packages-bin/klogg-$KLOGG_VERSION-bin-arm64.tar.gz
+        if [ -f ./packages-appimage-arm64/cilogg_deps.tar.xz ]; then
+          mv ./packages-appimage-arm64/cilogg_deps.tar.xz ./packages-bin/cilogg-$CILOGG_VERSION-deps-arm64.tar.xz
         fi
 
-        mv ./klogg_version/klogg_version.txt ./packages-bin
+        if [ -f ./packages-focal/cilogg-$CILOGG_VERSION-focal.deb ]; then
+          ar p ./packages-focal/cilogg-$CILOGG_VERSION-focal.deb data.tar.gz > ./packages-bin/cilogg-$CILOGG_VERSION-bin-x64.tar.gz
+        fi
+        if [ -f ./packages-focal-arm64/cilogg-$CILOGG_VERSION-focal-arm64.deb ]; then
+          ar p ./packages-focal-arm64/cilogg-$CILOGG_VERSION-focal-arm64.deb data.tar.gz > ./packages-bin/cilogg-$CILOGG_VERSION-bin-arm64.tar.gz
+        fi
+
+        mv ./cilogg_version/cilogg_version.txt ./packages-bin
 
     - name: Prepare checksums
       shell: sh
@@ -172,15 +172,15 @@ jobs:
               find "$package_dir" -maxdepth 1 -type f
             fi
           done
-        } | sort | xargs sha256sum --binary > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
-      # sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/klogg-$KLOGG_VERSION-sha256.txt
+        } | sort | xargs sha256sum --binary > ./packages-bin/cilogg-$CILOGG_VERSION-sha256.txt
+      # sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/cilogg-$CILOGG_VERSION-sha256.txt
 
     - name: Release continuous
-      if: ${{ env.KLOGG_GITHUB_TOKEN != '' }}
+      if: ${{ env.CILOGG_GITHUB_TOKEN != '' }}
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
-        repo_token: ${{ env.KLOGG_GITHUB_TOKEN }}
-        automatic_release_tag: continuous-${{ env.KLOGG_VERSION }}
+        repo_token: ${{ env.CILOGG_GITHUB_TOKEN }}
+        automatic_release_tag: continuous-${{ env.CILOGG_VERSION }}
         prerelease: true
         files: |
           ./packages-windows-x64-qt6/*
@@ -211,7 +211,7 @@ jobs:
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
       env:
         DISCORD_WEBHOOK: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK }}
-        DISCORD_EMBEDS: '[{"title": "Continuous", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-${{ env.KLOGG_VERSION }}"}]'
+        DISCORD_EMBEDS: '[{"title": "Continuous", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-${{ env.CILOGG_VERSION }}"}]'
       uses: Ilshidur/action-discord@master
       with:
-        args: 'New CI build {{KLOGG_VERSION}} has been released!'
+        args: 'New CI build {{CILOGG_VERSION}} has been released!'

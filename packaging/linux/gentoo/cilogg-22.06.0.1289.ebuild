@@ -54,7 +54,7 @@ src_prepare() {
 }
 
 src_configure() {
-	export KLOGG_VERSION=${PV}
+	export CILOGG_VERSION=${PV}
 	local mycmakeargs=(
 		-DCPM_SOURCE_CACHE=${WORKDIR}/cpm_cache
 		-DCPM_USE_LOCAL_PACKAGES=ON

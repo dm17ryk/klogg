@@ -29,15 +29,15 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - uses: ./.github/actions/klogg-version
+      - uses: ./.github/actions/cilogg-version
 
       - name: Save version
-        run: echo $KLOGG_VERSION > klogg_version.txt
+        run: echo $CILOGG_VERSION > cilogg_version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: klogg_version
-          path: 'klogg_version.txt'
+          name: cilogg_version
+          path: 'cilogg_version.txt'
           if-no-files-found: error
 
   Linux:
@@ -50,7 +50,7 @@ jobs:
           #- os: oraclelinux
           #  os_version: 7
           #  arch: x64
-          #  check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
+          #  check_command: yum install -y --setopt tsflags=test /usr/local/cilogg*.rpm
           #  cpack_gen: RPM
           #  artifacts_id: oracle7
           #  package_suffix: rpm
@@ -62,7 +62,7 @@ jobs:
           # - os: oraclelinux
           #   os_version: 8
           #   arch: x64
-          #   check_command: yum install -y --setopt tsflags=test /usr/local/klogg*.rpm
+          #   check_command: yum install -y --setopt tsflags=test /usr/local/cilogg*.rpm
           #   cpack_gen: RPM
           #   artifacts_id: oracle
           #   package_suffix: rpm
@@ -75,7 +75,7 @@ jobs:
             os_version: 22.04
             arch: x64
             backend: hyperscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: focal
             package_suffix: deb
@@ -89,7 +89,7 @@ jobs:
             os_version: 22.04
             arch: x64
             backend: hyperscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: jammy
             package_suffix: deb
@@ -103,7 +103,7 @@ jobs:
             os_version: 24.04
             arch: x64
             backend: hyperscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: noble
             package_suffix: deb
@@ -128,7 +128,7 @@ jobs:
             os_version: 22.04
             arch: arm64
             backend: vectorscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: focal-arm64
             package_suffix: deb
@@ -142,7 +142,7 @@ jobs:
             os_version: 22.04
             arch: arm64
             backend: vectorscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: jammy-arm64
             package_suffix: deb
@@ -156,7 +156,7 @@ jobs:
             os_version: 24.04
             arch: arm64
             backend: vectorscan
-            check_command: apt-get update && apt install --dry-run /usr/local/klogg*.deb
+            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
             artifacts_id: noble-arm64
             package_suffix: deb
@@ -181,7 +181,7 @@ jobs:
             os_version: 22.04
             arch: x64
             backend: hyperscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora40
             package_suffix: rpm
@@ -195,7 +195,7 @@ jobs:
             os_version: 22.04
             arch: x64
             backend: hyperscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora41
             package_suffix: rpm
@@ -209,7 +209,7 @@ jobs:
             os_version: 22.04
             arch: x64
             backend: hyperscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora42
             package_suffix: rpm
@@ -223,7 +223,7 @@ jobs:
             os_version: 22.04
             arch: arm64
             backend: vectorscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora40-arm64
             package_suffix: rpm
@@ -237,7 +237,7 @@ jobs:
             os_version: 22.04
             arch: arm64
             backend: vectorscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora41-arm64
             package_suffix: rpm
@@ -251,7 +251,7 @@ jobs:
             os_version: 22.04
             arch: arm64
             backend: vectorscan
-            check_command: rpm -K /usr/local/klogg*.rpm && rpm -qp --requires /usr/local/klogg*.rpm > /dev/null
+            check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
             artifacts_id: fedora42-arm64
             package_suffix: rpm
@@ -284,7 +284,7 @@ jobs:
       - name: Configure safe Git directory
         run: git config --global --add safe.directory /usr/local
 
-      - uses: ./.github/actions/klogg-version
+      - uses: ./.github/actions/cilogg-version
       - uses: ./.github/actions/prepare-workspace-env
       - uses: ./.github/actions/docker-build
       - uses: ./.github/actions/docker-run-tests
@@ -294,7 +294,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.config.artifacts_id }}
-          path: '${{ env.KLOGG_BUILD_ROOT }}/packages/*'
+          path: '${{ env.CILOGG_BUILD_ROOT }}/packages/*'
           if-no-files-found: error
 
   Mac:
@@ -354,7 +354,7 @@ jobs:
           brew install ragel
 
       - uses: ./.github/actions/agent-setup
-      - uses: ./.github/actions/klogg-version
+      - uses: ./.github/actions/cilogg-version
       - uses: ./.github/actions/prepare-workspace-env
       - uses: ./.github/actions/agent-build
       - uses: ./.github/actions/agent-run-tests
@@ -369,7 +369,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.config.artifacts_id }}
-          path: '${{ env.KLOGG_BUILD_ROOT }}/packages/*'
+          path: '${{ env.CILOGG_BUILD_ROOT }}/packages/*'
           if-no-files-found: error
 
   Windows:
@@ -475,7 +475,7 @@ jobs:
           Split-Path $ragel -Parent | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - uses: ./.github/actions/agent-setup
-      - uses: ./.github/actions/klogg-version
+      - uses: ./.github/actions/cilogg-version
       - uses: ./.github/actions/prepare-workspace-env
 
       - name: Prepare dev cmd
@@ -496,5 +496,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.config.artifacts_id }}
-          path: '${{ env.KLOGG_BUILD_ROOT }}/packages/*'
+          path: '${{ env.CILOGG_BUILD_ROOT }}/packages/*'
           if-no-files-found: error

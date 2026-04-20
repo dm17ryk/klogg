@@ -4,9 +4,13 @@
     <file>images/arrowdown.png</file>
     <file>images/arrowup.png</file>
     <file>images/darkclosebutton.png</file>
-    <file>images/hicolor/16x16/klogg.png</file>
-    <file>images/hicolor/32x32/klogg.png</file>
-    <file>images/hicolor/48x48/klogg.png</file>
+    <file>images/hicolor/16x16/cilogg.png</file>
+    <file>images/hicolor/32x32/cilogg.png</file>
+    <file>images/hicolor/48x48/cilogg.png</file>
+    <file>images/hicolor/64x64/cilogg.png</file>
+    <file>images/hicolor/128x128/cilogg.png</file>
+    <file>images/hicolor/256x256/cilogg.png</file>
+    <file>images/hicolor/512x512/cilogg.png</file>
     <file>images/icons8-add-file-16.png</file>
     <file>images/icons8-cancel-16.png</file>
     <file>images/icons8-close-window-16.png</file>

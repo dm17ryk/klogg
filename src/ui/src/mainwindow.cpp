@@ -20,20 +20,20 @@
 /*
  * Copyright (C) 2016 -- 2019 Anton Filimonov and other contributors
  *
- * This file is part of klogg.
+ * This file is part of cilogg.
  *
- * klogg is free software: you can redistribute it and/or modify
+ * cilogg is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * klogg is distributed in the hope that it will be useful,
+ * cilogg is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
+ * along with cilogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 // This file implements MainWindow. It is responsible for creating and
@@ -469,7 +469,7 @@ MainWindow::MainWindow( WindowSession session )
     , signalMux_()
     , quickFindMux_( session_.getQuickFindPattern() )
     , mainTabWidget_()
-    , tempDir_( QDir::temp().filePath( "klogg_temp_" ) )
+    , tempDir_( QDir::temp().filePath( "cilogg_temp_" ) )
 {
     setObjectName( QStringLiteral( "mainWindow" ) );
     createActions();
@@ -483,10 +483,14 @@ MainWindow::MainWindow( WindowSession session )
     setGeometry( geometry.x() + 20, geometry.y() + 40, geometry.width() - 140,
                  geometry.height() - 140 );
 
-    mainIcon_.addFile( ":/images/hicolor/16x16/klogg.png" );
-    // mainIcon_.addFile( ":/images/hicolor/24x24/klogg.png" );
-    mainIcon_.addFile( ":/images/hicolor/32x32/klogg.png" );
-    mainIcon_.addFile( ":/images/hicolor/48x48/klogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/16x16/cilogg.png" );
+    // mainIcon_.addFile( ":/images/hicolor/24x24/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/32x32/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/48x48/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/64x64/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/128x128/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/256x256/cilogg.png" );
+    mainIcon_.addFile( ":/images/hicolor/512x512/cilogg.png" );
 
     setWindowIcon( mainIcon_ );
     StartupProgress::advance( tr( "Initializing main window" ),
@@ -539,16 +543,16 @@ MainWindow::MainWindow( WindowSession session )
     mainTabWidget_.setTabsClosable( true );
 
     scratchPad_.setWindowIcon( mainIcon_ );
-    scratchPad_.setWindowTitle( tr( "klogg - scratchpad" ) );
+    scratchPad_.setWindowTitle( tr( "CILogg - scratchpad" ) );
 
     previewWindow_.setWindowIcon( mainIcon_ );
-    previewWindow_.setWindowTitle( tr( "klogg - previewer" ) );
+    previewWindow_.setWindowTitle( tr( "CILogg - previewer" ) );
     if ( const auto scratchSize = scratchPad_.sizeHint(); scratchSize.isValid() ) {
         previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
     }
 
     actionsResponsesWindow_.setWindowIcon( mainIcon_ );
-    actionsResponsesWindow_.setWindowTitle( tr( "klogg - actions/responses" ) );
+    actionsResponsesWindow_.setWindowTitle( tr( "CILogg - actions/responses" ) );
     connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
              &MainWindow::sendActionById );
 
@@ -892,7 +896,7 @@ QVariantMap MainWindow::automationSnapshot() const
     payload.insert( QStringLiteral( "windowTitle" ), windowTitle() );
     payload.insert( QStringLiteral( "windowInfo" ), commanderWindowInfo() );
     payload.insert( QStringLiteral( "actions" ), automationActions() );
-    payload.insert( QStringLiteral( "kloggState" ), automationState() );
+    payload.insert( QStringLiteral( "ciloggState" ), automationState() );
     return payload;
 }
 
@@ -2045,7 +2049,7 @@ void MainWindow::openComPort()
             session->closeConnection();
         }
         QMessageBox::warning( this, tr( "Open COM Port" ),
-                              tr( "Failed to open capture file in klogg." ) );
+                              tr( "Failed to open capture file in CILogg." ) );
         return;
     }
 
@@ -2268,17 +2272,17 @@ CommanderResult MainWindow::openRemoteFile( const QUrl& url, bool interactiveErr
 
             const auto message = tr( "Failed to open downloaded file %1." ).arg( tempFile->fileName() );
             if ( interactiveErrors ) {
-                QMessageBox::critical( this, tr( "Klogg - File download" ), message );
+                QMessageBox::critical( this, tr( "CILogg - File download" ), message );
             }
             return commanderFailure( CommanderResultCode::ExecutionFailed, message );
         }
         else if ( interactiveErrors ) {
-            QMessageBox::critical( this, tr( "Klogg - File download" ), downloader.lastError() );
+            QMessageBox::critical( this, tr( "CILogg - File download" ), downloader.lastError() );
         }
         return commanderFailure( CommanderResultCode::ExecutionFailed, downloader.lastError() );
     }
     else if ( interactiveErrors ) {
-        QMessageBox::critical( this, tr( "Klogg - File download" ),
+        QMessageBox::critical( this, tr( "CILogg - File download" ),
                                tr( "Failed to create temp file" ) );
     }
     return commanderFailure( CommanderResultCode::ExecutionFailed,
@@ -2306,7 +2310,7 @@ void MainWindow::openFileFromRecent( QAction* action )
     }
     else {
         const auto userAction = QMessageBox::question(
-            this, tr( "klogg - remove from recent" ),
+            this, tr( "CILogg - remove from recent" ),
             tr( "Could not read file %1. Remove it from recent files?" ).arg( filename ),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
 
@@ -2328,7 +2332,7 @@ void MainWindow::openFileFromFavorites( QAction* action )
     }
     else {
         const auto userAction = QMessageBox::question(
-            this, tr( "klogg - remove from favorites" ),
+            this, tr( "CILogg - remove from favorites" ),
             tr( "Could not read file %1. Remove it from favorites?" ).arg( filename ),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
 
@@ -2400,7 +2404,7 @@ void MainWindow::clearLog()
 {
     const auto current_file = session_.getFilename( currentCrawlerWidget() );
     if ( QMessageBox::warning(
-             this, tr( "klogg - clear file" ),
+             this, tr( "CILogg - clear file" ),
              tr( "Clear file %1? File content will be removed from disk, this is irreversible" )
                  .arg( current_file ) )
          == QMessageBox::Yes ) {
@@ -2433,7 +2437,7 @@ void MainWindow::tryOpenClipboard( int tryTimes )
         QTimer::singleShot( 50, [ tryTimes, this ]() { tryOpenClipboard( tryTimes - 1 ); } );
     }
     else {
-        auto tempFile = new QTemporaryFile( tempDir_.filePath( "klogg_clipboard" ), this );
+        auto tempFile = new QTemporaryFile( tempDir_.filePath( "cilogg_clipboard" ), this );
         if ( tempFile->open() ) {
             tempFile->write( text.toUtf8() );
             tempFile->flush();
@@ -2523,8 +2527,8 @@ void MainWindow::options()
 void MainWindow::about()
 {
     QMessageBox::about(
-        this, tr( "About klogg" ),
-        tr( "<h2>klogg %1</h2>"
+        this, tr( "About CILogg" ),
+        tr( "<h2>CILogg %1</h2>"
             "<p>A fast, advanced log explorer.</p>"
             "<p>Built %2 from %3</p>"
             "<p><a href=\"https://github.com/dm17ryk/klogg\">https://github.com/dm17ryk/klogg</a></p>"
@@ -2552,7 +2556,7 @@ void MainWindow::documentation()
         tb->setHtml( text );
         tb->setWindowFlags( Qt::Window );
         tb->setAttribute( Qt::WA_DeleteOnClose );
-        tb->setWindowTitle( tr( "klogg documentation" ) );
+        tb->setWindowTitle( tr( "CILogg documentation" ) );
         tb->resize( this->width() / 2, this->height() );
         tb->show();
     }
@@ -3717,7 +3721,7 @@ bool MainWindow::extractAndLoadFile( const QString& fileName )
 
     if ( !config.extractArchivesAlways() ) {
         const auto userChoice
-            = QMessageBox::question( this, tr( "klogg" ), tr( "Extract archive to temp folder?" ) );
+            = QMessageBox::question( this, tr( "CILogg" ), tr( "Extract archive to temp folder?" ) );
         if ( userChoice == QMessageBox::No ) {
             return false;
         }
@@ -3756,7 +3760,7 @@ bool MainWindow::extractAndLoadFile( const QString& fileName )
         }
         else {
             QMessageBox::warning(
-                this, tr( "klogg" ),
+                this, tr( "CILogg" ),
                 tr( "Failed to decompress %1" ).arg( QDir::toNativeSeparators( fileName ) ) );
         }
     }
@@ -3781,7 +3785,7 @@ bool MainWindow::extractAndLoadFile( const QString& fileName )
         }
         else {
             QMessageBox::warning(
-                this, tr( "klogg" ),
+                this, tr( "CILogg" ),
                 tr( "Failed to extract %1" ).arg( QDir::toNativeSeparators( fileName ) ) );
         }
     }
@@ -3980,7 +3984,7 @@ void MainWindow::updateTitleBar( const QString& file_name )
         indexPart = QString( " #%1" ).arg( session_.windowIndex() + 1 );
     }
 
-    setWindowTitle( tr( "%1 - %2%3" ).arg( shownName, tr( "klogg" ), indexPart ) + tr( " (build " )
+    setWindowTitle( tr( "%1 - %2%3" ).arg( shownName, tr( "CILogg" ), indexPart ) + tr( " (build " )
                     + kloggVersion() + ")" );
 }
 
@@ -4250,7 +4254,7 @@ void MainWindow::selectOpenedFile()
                     []( const auto& f ) { return f.nativeFullPath(); } );
 
     auto selectFileDialog = std::make_unique<QDialog>( this );
-    selectFileDialog->setWindowTitle( tr( "klogg -- switch to file" ) );
+    selectFileDialog->setWindowTitle( tr( "CILogg -- switch to file" ) );
     selectFileDialog->setMinimumWidth( 800 );
     selectFileDialog->setMinimumHeight( 600 );
 
@@ -4462,8 +4466,8 @@ void MainWindow::logScreenInfo( QScreen* screen )
 void MainWindow::generateDump()
 {
     const auto userAction = QMessageBox::warning(
-        this, tr( "klogg - generate crash dump" ),
-        tr( "This will shutdown klogg and generate diagnostic crash dump. Continue?" ),
+        this, tr( "CILogg - generate crash dump" ),
+        tr( "This will shutdown CILogg and generate diagnostic crash dump. Continue?" ),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
 
     if ( userAction == QMessageBox::Yes ) {

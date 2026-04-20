@@ -12,13 +12,17 @@ endif()
 add_executable(klogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE})
 
 target_link_libraries(klogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
-set_target_properties(klogg_itests PROPERTIES AUTOMOC ON)
+set_target_properties(
+    klogg_itests
+    PROPERTIES AUTOMOC ON
+               OUTPUT_NAME "${PRODUCT_UI_TEST_EXECUTABLE_NAME}"
+)
 
 add_backward(klogg_itests)
 
 add_test(
-    NAME klogg_itests
-    COMMAND klogg_itests -platform offscreen
+    NAME cilogg_itests
+    COMMAND $<TARGET_FILE:klogg_itests> -platform offscreen
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
 # set_tests_properties(klogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_itests>")

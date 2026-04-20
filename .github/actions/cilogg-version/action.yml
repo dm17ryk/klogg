@@ -1,0 +1,9 @@
+name: "Prepare CILogg version env var"
+description: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Set CILogg version
+      shell: sh
+      run: |
+        echo "CILOGG_VERSION=26.04.0.$((${{ github.run_number }} + 717))" >> $GITHUB_ENV

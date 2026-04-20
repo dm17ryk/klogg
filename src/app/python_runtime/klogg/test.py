@@ -100,7 +100,7 @@ def _load_device_bindings() -> Dict[str, Dict[str, Any]]:
     if _DEVICE_BINDINGS is not None:
         return _DEVICE_BINDINGS
 
-    raw = os.environ.get("KLOGG_SCENARIO_DEVICE_BINDINGS_JSON", "").strip()
+    raw = os.environ.get("CILOGG_SCENARIO_DEVICE_BINDINGS_JSON", "").strip()
     if not raw:
         _DEVICE_BINDINGS = {}
         return _DEVICE_BINDINGS

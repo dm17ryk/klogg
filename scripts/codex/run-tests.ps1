@@ -9,9 +9,9 @@ function Get-RepoRoot {
 }
 
 function Get-QtDir {
-    if ($env:KLOGG_QT_DIR) { return $env:KLOGG_QT_DIR }
+    if ($env:CILOGG_QT_DIR) { return $env:CILOGG_QT_DIR }
     if ($env:QTDIR) { return $env:QTDIR }
-    throw "Set KLOGG_QT_DIR or QTDIR before running tests."
+    throw "Set CILOGG_QT_DIR or QTDIR before running tests."
 }
 
 function Copy-OffscreenPlatformPlugin {
@@ -41,9 +41,9 @@ if (-not (Test-Path $windeployqt)) {
     throw "windeployqt.exe not found under $qtDir."
 }
 
-$appExe = Join-Path $buildDir "output\$Config\klogg.exe"
-$uiTests = Join-Path $buildDir "output\$Config\klogg_itests.exe"
-$unitTests = Join-Path $buildDir "output\$Config\klogg_tests.exe"
+$appExe = Join-Path $buildDir "output\$Config\cilogg.exe"
+$uiTests = Join-Path $buildDir "output\$Config\cilogg_itests.exe"
+$unitTests = Join-Path $buildDir "output\$Config\cilogg_tests.exe"
 $outputDir = Split-Path -Path $uiTests -Parent
 
 foreach ($exe in @($appExe, $uiTests, $unitTests)) {

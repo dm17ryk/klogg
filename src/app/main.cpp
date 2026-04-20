@@ -637,7 +637,7 @@ int main( int argc, char* argv[] )
     const bool automationDumpRequested
         = parameters.dump_ui_tree || !parameters.dump_state_json_path.isEmpty();
     const bool automationMode
-        = automationDumpRequested || qEnvironmentVariableIntValue( "KLOGG_AUTOMATION" ) > 0;
+        = automationDumpRequested || qEnvironmentVariableIntValue( "CILOGG_AUTOMATION" ) > 0;
     const QSize automationWindowSize
         = ( parameters.window_width > 0 && parameters.window_height > 0 )
               ? QSize( parameters.window_width, parameters.window_height )
@@ -757,12 +757,12 @@ int main( int argc, char* argv[] )
             Qt::QueuedConnection );
     } );
     StartupProgress::setRange( 0, 100 );
-    StartupProgress::setValue( 1, QObject::tr( "Starting klogg" ),
+    StartupProgress::setValue( 1, QObject::tr( "Starting CILogg" ),
                                QObject::tr( "Preparing application state" ) );
 
     if ( parameters.commander_request
          && !isCommanderOpenAction( parameters.commander_request->action ) ) {
-        writeCliMessage( QObject::tr( "No running klogg instance." ), true );
+        writeCliMessage( QObject::tr( "No running CILogg instance." ), true );
         return EXIT_FAILURE;
     }
 

@@ -53,8 +53,9 @@
 constexpr uint8_t AppSettingsVersion = 1;
 constexpr uint8_t SessionSettingsVersion = 2;
 
-constexpr const char ApplicationSessionFile[] = "klogg";
-constexpr const char SessionSettingsFile[] = "klogg_session";
+constexpr const char ApplicationSessionFile[] = "cilogg";
+constexpr const char SessionSettingsFile[] = "cilogg_session";
+constexpr const char LegacySettingsNamespace[] = "klogg";
 constexpr const char PortableExtension[] = ".conf";
 
 namespace {
@@ -63,6 +64,20 @@ QString makeSessionSettingsPath( const QString& appConfigPath )
     return QFileInfo( appConfigPath )
         .absoluteDir()
         .filePath( QString( SessionSettingsFile ) + PortableExtension );
+}
+
+QString makeLegacySessionSettingsPath( const QString& appConfigPath )
+{
+    return QFileInfo( appConfigPath )
+        .absoluteDir()
+        .filePath( QStringLiteral( "klogg_session" ) + PortableExtension );
+}
+
+void copySettings( QSettings& destination, QSettings& source )
+{
+    for ( const auto& key : source.allKeys() ) {
+        destination.setValue( key, source.value( key ) );
+    }
 }
 } // namespace
 
@@ -80,12 +95,18 @@ PersistentInfo::PersistentInfo()
 
     const auto portableConfigPath
         = executablePath + QDir::separator() + ApplicationSessionFile + PortableExtension;
+    const auto legacyPortableConfigPath = executablePath + QDir::separator() + "klogg.conf";
 
     LOG_INFO << "Portable config path " << portableConfigPath;
 
-    const auto usePortableConfiguration = ForcePortable || QFileInfo::exists( portableConfigPath );
+    const auto usePortableConfiguration
+        = ForcePortable || QFileInfo::exists( portableConfigPath )
+          || QFileInfo::exists( legacyPortableConfigPath );
 
     if ( usePortableConfiguration ) {
+        if ( !QFileInfo::exists( portableConfigPath ) && QFileInfo::exists( legacyPortableConfigPath ) ) {
+            QFile::copy( legacyPortableConfigPath, portableConfigPath );
+        }
         PreparePortableSettings( portableConfigPath );
     }
     else {
@@ -98,9 +119,13 @@ PersistentInfo::PersistentInfo()
 void PersistentInfo::PreparePortableSettings( const QString& portableConfigPath )
 {
     const auto sessionSettingsPath = makeSessionSettingsPath( portableConfigPath );
+    const auto legacySessionSettingsPath = makeLegacySessionSettingsPath( portableConfigPath );
 
     if ( !QFileInfo::exists( sessionSettingsPath ) && QFileInfo::exists( portableConfigPath ) ) {
         QFile::copy( portableConfigPath, sessionSettingsPath );
+    }
+    else if ( !QFileInfo::exists( sessionSettingsPath ) && QFileInfo::exists( legacySessionSettingsPath ) ) {
+        QFile::copy( legacySessionSettingsPath, sessionSettingsPath );
     }
 
     appSettings_ = std::make_unique<QSettings>( portableConfigPath, QSettings::IniFormat );
@@ -115,10 +140,21 @@ void PersistentInfo::PrepareOsSettings()
     const auto format = QSettings::NativeFormat;
 #endif
 
-    appSettings_ = std::make_unique<QSettings>( format, QSettings::UserScope, "klogg",
+    appSettings_ = std::make_unique<QSettings>( format, QSettings::UserScope, "cilogg",
                                                 ApplicationSessionFile );
     sessionSettings_
-        = std::make_unique<QSettings>( format, QSettings::UserScope, "klogg", SessionSettingsFile );
+        = std::make_unique<QSettings>( format, QSettings::UserScope, "cilogg", SessionSettingsFile );
+
+    if ( appSettings_->allKeys().isEmpty() ) {
+        QSettings legacyAppSettings{ format, QSettings::UserScope, LegacySettingsNamespace,
+                                     QStringLiteral( "klogg" ) };
+        copySettings( *appSettings_, legacyAppSettings );
+    }
+    if ( sessionSettings_->allKeys().isEmpty() ) {
+        QSettings legacySessionSettings{ format, QSettings::UserScope, LegacySettingsNamespace,
+                                         QStringLiteral( "klogg_session" ) };
+        copySettings( *sessionSettings_, legacySessionSettings );
+    }
 
 #ifndef Q_OS_MAC
     const auto sessionSettingsPath = makeSessionSettingsPath( appSettings_->fileName() );

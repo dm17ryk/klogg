@@ -7,17 +7,28 @@ endif()
 project(
   klogg
   VERSION 26.04.0
-  DESCRIPTION "klogg log viewer"
+  DESCRIPTION "CILogg log viewer"
   LANGUAGES C CXX ASM
 )
 
 set(PROJECT_HOMEPAGE_URL "https://github.com/dm17ryk/klogg")
+set(PRODUCT_DISPLAY_NAME "CILogg")
+set(PRODUCT_EXECUTABLE_NAME "cilogg")
+set(PRODUCT_PORTABLE_EXECUTABLE_NAME "cilogg_portable")
+set(PRODUCT_GREP_EXECUTABLE_NAME "cilogg_grep")
+set(PRODUCT_UNIT_TEST_EXECUTABLE_NAME "cilogg_tests")
+set(PRODUCT_UI_TEST_EXECUTABLE_NAME "cilogg_itests")
+set(PRODUCT_CRASHPAD_HANDLER_NAME "cilogg_crashpad_handler")
+set(PRODUCT_MINIDUMP_DUMP_NAME "cilogg_minidump_dump")
+set(PRODUCT_SETTINGS_NAMESPACE "cilogg")
+set(PRODUCT_PORTABLE_SETTINGS_BASENAME "cilogg")
+set(PRODUCT_SESSION_SETTINGS_BASENAME "cilogg_session")
 
 string(TIMESTAMP PRODUCT_CURRENT_YEAR "%Y")
 set(COMPANY "Dmitry Kokotov")
 set(COPYRIGHT "Copyright (c) ${PRODUCT_CURRENT_YEAR} Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors.")
-set(IDENTIFIER "com.github.dm17ryk.klogg")
-set(PROJECT_DESCRIPTION "${PROJECT_NAME} log viewer")
+set(IDENTIFIER "com.github.dm17ryk.cilogg")
+set(PROJECT_DESCRIPTION "${PRODUCT_DISPLAY_NAME} log viewer")
 
 option(KLOGG_BUILD_TESTS "Build tests" ON)
 option(KLOGG_USE_LTO "Use link time optimization" ON)
@@ -171,11 +182,11 @@ endif()
 
 message(
   STATUS
-    "klogg backend selection: os=${KLOGG_TARGET_OS}, arch=${KLOGG_TARGET_ARCH} (${KLOGG_TARGET_ARCH_SOURCE}), backend=${KLOGG_REGEX_BACKEND}, fat-runtime=${KLOGG_FAT_RUNTIME_MODE}"
+    "CILogg backend selection: os=${KLOGG_TARGET_OS}, arch=${KLOGG_TARGET_ARCH} (${KLOGG_TARGET_ARCH_SOURCE}), backend=${KLOGG_REGEX_BACKEND}, fat-runtime=${KLOGG_FAT_RUNTIME_MODE}"
 )
 
 set(BUILD_VERSION
-    $ENV{KLOGG_VERSION}
+    $ENV{CILOGG_VERSION}
     CACHE STRING "build version"
 )
 set(BUILD_NUMBER
@@ -193,9 +204,9 @@ set(DOCUMENTATION_HTML ${CMAKE_BINARY_DIR}/generated/documentation.html)
 set(DOCUMENTATION_RESOURCE ${CMAKE_BINARY_DIR}/generated/documentation.qrc)
 
 if(WIN32)
-  set(ICON_NAME klogg.ico)
+  set(ICON_NAME cilogg.ico)
 elseif(APPLE)
-  set(ICON_NAME klogg.icns)
+  set(ICON_NAME cilogg.icns)
 endif()
 
 if(NOT
@@ -462,7 +473,7 @@ add_subdirectory(website)
 
 enable_testing()
 if(NOT (WIN32 AND KLOGG_TARGET_IS_ARM64))
-  add_test(NAME klogg_smoke COMMAND klogg -platform offscreen -v
+  add_test(NAME cilogg_smoke COMMAND $<TARGET_FILE:klogg> -platform offscreen -v
           WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
   )
 endif()
@@ -477,6 +488,7 @@ set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
 set(CPACK_SOURCE_IGNORE_FILES "build_root;.git")
 
 set(CPACK_OUTPUT_FILE_PREFIX "packages")
+set(CPACK_PACKAGE_NAME "${PRODUCT_EXECUTABLE_NAME}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_DESCRIPTION})
 set(CPACK_PACKAGE_VENDOR ${COMPANY})
 set(CPACK_PACKAGE_CONTACT "dm17ryk@gmail.com")
@@ -490,31 +502,50 @@ set(CPACK_PACKAGE_ICON "${ICON_FILE}")
 if(UNIX)
   include(InstallRequiredSystemLibraries)
 
-  set(CPACK_STRIP_FILES "bin/klogg")
+  set(CPACK_STRIP_FILES "bin/${PRODUCT_EXECUTABLE_NAME}")
 
   if(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
     set(CPACK_DMG_FORMAT "UDBZ")
-    set(CPACK_DMG_VOLUME_NAME "${PROJECT_NAME}")
+    set(CPACK_DMG_VOLUME_NAME "${PRODUCT_DISPLAY_NAME}")
     set(CPACK_SYSTEM_NAME "OSX")
     set(CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/osx/dmg_background.tif")
     set(CPACK_DMG_DS_STORE_SETUP_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/packaging/osx/dmg_setup.scpt")
 
   else()
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/16x16/klogg.png
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/16x16/cilogg.png
             DESTINATION share/icons/hicolor/16x16/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
     )
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/32x32/klogg.png
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/32x32/cilogg.png
             DESTINATION share/icons/hicolor/32x32/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
     )
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/48x48/klogg.png
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/48x48/cilogg.png
             DESTINATION share/icons/hicolor/48x48/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
     )
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/scalable/klogg.svg
-            DESTINATION share/icons/hicolor/scalable/apps
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/64x64/cilogg.png
+            DESTINATION share/icons/hicolor/64x64/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
+    )
+
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/128x128/cilogg.png
+            DESTINATION share/icons/hicolor/128x128/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
+    )
+
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/256x256/cilogg.png
+            DESTINATION share/icons/hicolor/256x256/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
+    )
+
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/app/images/hicolor/512x512/cilogg.png
+            DESTINATION share/icons/hicolor/512x512/apps
+            RENAME ${PRODUCT_EXECUTABLE_NAME}.png
     )
 
     install(
@@ -526,7 +557,7 @@ if(UNIX)
       DESTINATION ${CMAKE_INSTALL_DOCDIR}
     )
 
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/klogg.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/cilogg.desktop DESTINATION share/applications)
 
     set(CPACK_GENERATOR DEB)
 
@@ -601,9 +632,17 @@ if(UNIX)
         /usr/share/icons/hicolor/16x16/apps
         /usr/share/icons/hicolor/32x32
         /usr/share/icons/hicolor/32x32/apps
-        /usr/share/icons/hicolor/scalable
-        /usr/share/icons/hicolor/scalable/apps
-    )
+        /usr/share/icons/hicolor/48x48
+        /usr/share/icons/hicolor/48x48/apps
+        /usr/share/icons/hicolor/64x64
+        /usr/share/icons/hicolor/64x64/apps
+        /usr/share/icons/hicolor/128x128
+        /usr/share/icons/hicolor/128x128/apps
+        /usr/share/icons/hicolor/256x256
+        /usr/share/icons/hicolor/256x256/apps
+        /usr/share/icons/hicolor/512x512
+        /usr/share/icons/hicolor/512x512/apps
+      )
   endif()
   include(CPack)
 endif()
@@ -611,8 +650,8 @@ endif()
 # for IDE grouping
 add_custom_target(
   installation
-  SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/klogg.nsi
-          ${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/klogg.desktop
+  SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/cilogg.nsi
+          ${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/cilogg.desktop
           ${CMAKE_CURRENT_SOURCE_DIR}/cmake/MacOSXBundleInfo.plist.in
 )
 

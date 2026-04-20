@@ -59,7 +59,7 @@ QString commanderActionToString( CommanderAction action )
     case CommanderAction::CloseCom:
         return QStringLiteral( "close_com" );
     case CommanderAction::CloseKlogg:
-        return QStringLiteral( "close_klogg" );
+        return QStringLiteral( "close_cilogg" );
     case CommanderAction::CloseAll:
         return QStringLiteral( "close_all" );
     case CommanderAction::GetInfo:
@@ -175,7 +175,8 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "close_com" ) ) {
         return CommanderAction::CloseCom;
     }
-    if ( normalized == QStringLiteral( "close_klogg" ) ) {
+    if ( normalized == QStringLiteral( "close_cilogg" )
+         || normalized == QStringLiteral( "close_klogg" ) ) {
         return CommanderAction::CloseKlogg;
     }
     if ( normalized == QStringLiteral( "close_all" ) ) {

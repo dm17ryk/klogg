@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Klogg log viewer</title>
+    <title>CILogg log viewer</title>
     <license file="COPYING"/>
     <welcome file="description.txt"/>
     
-    <pkg-ref id="com.github.variar.klogg"/>
+    <pkg-ref id="com.github.dm17ryk.cilogg"/>
     <options customize="never" require-scripts="false"/>
     <choices-outline>
         <line choice="default">
-            <line choice="com.github.variar.klogg"/>
+            <line choice="com.github.dm17ryk.cilogg"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="com.github.variar.klogg" visible="false">
-        <pkg-ref id="com.github.variar.klogg"/>
+    <choice id="com.github.dm17ryk.cilogg" visible="false">
+        <pkg-ref id="com.github.dm17ryk.cilogg"/>
     </choice>
-    <pkg-ref id="com.github.variar.klogg" version="%klogg_version%" onConclusion="none">%klogg_pkg%</pkg-ref>
+    <pkg-ref id="com.github.dm17ryk.cilogg" version="%klogg_version%" onConclusion="none">%klogg_pkg%</pkg-ref>
 </installer-gui-script>

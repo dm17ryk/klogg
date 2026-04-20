@@ -50,7 +50,7 @@ ScenarioRunnerWindow::ScenarioRunnerWindow( ScenarioRunner* runner, QWidget* par
     , openJsonButton_( new QPushButton( tr( "Open JSON Report" ), this ) )
     , openJunitButton_( new QPushButton( tr( "Open JUnit Report" ), this ) )
 {
-    setWindowTitle( tr( "klogg - scenario runner" ) );
+    setWindowTitle( tr( "CILogg - scenario runner" ) );
     resize( 980, 720 );
 
     auto* rootLayout = new QVBoxLayout( this );

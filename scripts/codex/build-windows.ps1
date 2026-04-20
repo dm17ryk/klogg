@@ -9,9 +9,9 @@ function Get-RepoRoot {
 }
 
 function Get-QtDir {
-    if ($env:KLOGG_QT_DIR) { return $env:KLOGG_QT_DIR }
+    if ($env:CILOGG_QT_DIR) { return $env:CILOGG_QT_DIR }
     if ($env:QTDIR) { return $env:QTDIR }
-    throw "Set KLOGG_QT_DIR or QTDIR before building."
+    throw "Set CILOGG_QT_DIR or QTDIR before building."
 }
 
 function Get-VsDevCmd {
@@ -55,7 +55,7 @@ $quotedVsDevCmd = '"' + $vsDevCmd + '"'
 $command = @(
     "call $quotedVsDevCmd -startdir=none -arch=x64 -host_arch=x64",
     "set QTDIR=$quotedQtDir",
-    "set KLOGG_QT_DIR=$quotedQtDir",
+    "set CILOGG_QT_DIR=$quotedQtDir",
     "set CMAKE_PREFIX_PATH=$quotedQtDir",
     "set PATH=%QTDIR%\bin;%PATH%",
     "cd /d $quotedBuildDir",

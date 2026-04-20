@@ -825,7 +825,7 @@ ScenarioHeadlessRunner::Result ScenarioHeadlessRunner::run( const ScenarioBatchR
 
     std::vector<std::unique_ptr<QLockFile>> locks;
     const auto lockRoot = QDir( QStandardPaths::writableLocation( QStandardPaths::TempLocation ) )
-                              .filePath( QStringLiteral( "klogg-scenario-locks" ) );
+                              .filePath( QStringLiteral( "cilogg-scenario-locks" ) );
     QDir().mkpath( lockRoot );
     for ( const auto& binding : resolvedBindings ) {
         auto lock = std::make_unique<QLockFile>(
@@ -906,12 +906,12 @@ ScenarioHeadlessRunner::Result ScenarioHeadlessRunner::run( const ScenarioBatchR
         deviceBindingsList.push_back( payload );
     }
 
-    const auto previousReportJson = qgetenv( "KLOGG_SCENARIO_REPORT_JSON" );
-    const auto previousReportJunit = qgetenv( "KLOGG_SCENARIO_REPORT_JUNIT" );
-    const auto previousBindings = qgetenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
-    qputenv( "KLOGG_SCENARIO_REPORT_JSON", reportJsonPath.toUtf8() );
-    qputenv( "KLOGG_SCENARIO_REPORT_JUNIT", reportJunitPath.toUtf8() );
-    qputenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON",
+    const auto previousReportJson = qgetenv( "CILOGG_SCENARIO_REPORT_JSON" );
+    const auto previousReportJunit = qgetenv( "CILOGG_SCENARIO_REPORT_JUNIT" );
+    const auto previousBindings = qgetenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
+    qputenv( "CILOGG_SCENARIO_REPORT_JSON", reportJsonPath.toUtf8() );
+    qputenv( "CILOGG_SCENARIO_REPORT_JUNIT", reportJunitPath.toUtf8() );
+    qputenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON",
              QJsonDocument::fromVariant( deviceBindingsMap ).toJson( QJsonDocument::Compact ) );
 
     CommanderRequest runRequest;
@@ -925,22 +925,22 @@ ScenarioHeadlessRunner::Result ScenarioHeadlessRunner::run( const ScenarioBatchR
     if ( !runResult.ok() ) {
         headlessWindow->close();
         if ( previousReportJson.isEmpty() ) {
-            qunsetenv( "KLOGG_SCENARIO_REPORT_JSON" );
+            qunsetenv( "CILOGG_SCENARIO_REPORT_JSON" );
         }
         else {
-            qputenv( "KLOGG_SCENARIO_REPORT_JSON", previousReportJson );
+            qputenv( "CILOGG_SCENARIO_REPORT_JSON", previousReportJson );
         }
         if ( previousReportJunit.isEmpty() ) {
-            qunsetenv( "KLOGG_SCENARIO_REPORT_JUNIT" );
+            qunsetenv( "CILOGG_SCENARIO_REPORT_JUNIT" );
         }
         else {
-            qputenv( "KLOGG_SCENARIO_REPORT_JUNIT", previousReportJunit );
+            qputenv( "CILOGG_SCENARIO_REPORT_JUNIT", previousReportJunit );
         }
         if ( previousBindings.isEmpty() ) {
-            qunsetenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
+            qunsetenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
         }
         else {
-            qputenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON", previousBindings );
+            qputenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON", previousBindings );
         }
         return failInfrastructure( runResult.message );
     }
@@ -964,22 +964,22 @@ ScenarioHeadlessRunner::Result ScenarioHeadlessRunner::run( const ScenarioBatchR
     }
 
     if ( previousReportJson.isEmpty() ) {
-        qunsetenv( "KLOGG_SCENARIO_REPORT_JSON" );
+        qunsetenv( "CILOGG_SCENARIO_REPORT_JSON" );
     }
     else {
-        qputenv( "KLOGG_SCENARIO_REPORT_JSON", previousReportJson );
+        qputenv( "CILOGG_SCENARIO_REPORT_JSON", previousReportJson );
     }
     if ( previousReportJunit.isEmpty() ) {
-        qunsetenv( "KLOGG_SCENARIO_REPORT_JUNIT" );
+        qunsetenv( "CILOGG_SCENARIO_REPORT_JUNIT" );
     }
     else {
-        qputenv( "KLOGG_SCENARIO_REPORT_JUNIT", previousReportJunit );
+        qputenv( "CILOGG_SCENARIO_REPORT_JUNIT", previousReportJunit );
     }
     if ( previousBindings.isEmpty() ) {
-        qunsetenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
+        qunsetenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON" );
     }
     else {
-        qputenv( "KLOGG_SCENARIO_DEVICE_BINDINGS_JSON", previousBindings );
+        qputenv( "CILOGG_SCENARIO_DEVICE_BINDINGS_JSON", previousBindings );
     }
 
     CommanderRequest reportRequest;

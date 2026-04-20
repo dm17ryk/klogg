@@ -5,4 +5,4 @@ podman --rm --ti -v .:/klogg docker.io/ubuntu:jammy
 
 apt install reprepro
 gpg --import private.pgp
-reprepro --basedir /klogg/website/public/deb/focal/ includedeb focal klogg-22.06.0.1289-Linux-amd64-focal.deb
+reprepro --basedir /klogg/website/public/deb/focal/ includedeb focal cilogg-22.06.0.1289-Linux-amd64-focal.deb

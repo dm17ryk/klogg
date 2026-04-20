@@ -10,19 +10,19 @@ function Get-RepoRoot {
 }
 
 function Get-QtDir {
-    if ($env:KLOGG_QT_DIR) { return $env:KLOGG_QT_DIR }
+    if ($env:CILOGG_QT_DIR) { return $env:CILOGG_QT_DIR }
     if ($env:QTDIR) { return $env:QTDIR }
-    throw "Set KLOGG_QT_DIR or QTDIR before launching klogg."
+    throw "Set CILOGG_QT_DIR or QTDIR before launching cilogg."
 }
 
 $repoRoot = Get-RepoRoot
 $buildDir = Join-Path $repoRoot "build_root"
 $qtDir = Get-QtDir
 $windeployqt = Join-Path $qtDir "bin\windeployqt.exe"
-$exe = Join-Path $buildDir "output\$Config\klogg.exe"
+$exe = Join-Path $buildDir "output\$Config\cilogg.exe"
 
 if (-not (Test-Path $exe)) {
-    throw "klogg.exe not found: $exe"
+    throw "cilogg.exe not found: $exe"
 }
 
 if ([string]::IsNullOrWhiteSpace($LogFile)) {
@@ -42,12 +42,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $arguments = @("-n", "-m", "-l", "-dddd", $LogFile)
-$previousAutomation = $env:KLOGG_AUTOMATION
-$env:KLOGG_AUTOMATION = "1"
+$previousAutomation = $env:CILOGG_AUTOMATION
+$env:CILOGG_AUTOMATION = "1"
 
 try {
     Start-Process -FilePath $exe -WorkingDirectory $repoRoot -ArgumentList $arguments
 }
 finally {
-    $env:KLOGG_AUTOMATION = $previousAutomation
+    $env:CILOGG_AUTOMATION = $previousAutomation
 }
