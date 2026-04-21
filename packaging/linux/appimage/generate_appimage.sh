@@ -128,5 +128,18 @@ if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
 fi
 
 mkdir -p ./packages
-APPIMAGE_FILE="$(ls ./cilogg-$CILOGG_VERSION-*.AppImage | head -n 1)"
+APPIMAGE_FILE=""
+for candidate in ./cilogg-"$CILOGG_VERSION"-*.AppImage ./CILogg-"$CILOGG_VERSION"-*.AppImage; do
+  if [ -f "${candidate}" ]; then
+    APPIMAGE_FILE="${candidate}"
+    break
+  fi
+done
+
+if [ -z "${APPIMAGE_FILE}" ]; then
+  echo "ERROR: generated AppImage for version ${CILOGG_VERSION} was not found." >&2
+  ls -1 ./*.AppImage 2>/dev/null || true
+  exit 1
+fi
+
 cp "${APPIMAGE_FILE}" "./packages/$(basename "${APPIMAGE_FILE}")"
