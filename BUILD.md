@@ -1,8 +1,8 @@
-# How to Build Klogg
+# How to Build CILogg
 
 ## Overview
 
-Klogg is actively developed and validated on Windows with Visual Studio 2022 and Qt 6.
+CILogg is actively developed and validated on Windows with Visual Studio 2022 and Qt 6.
 This document keeps the practical build flow in one place and aligns it with the repo-local
 instructions in `AGENTS.md`.
 
@@ -39,17 +39,17 @@ Set the environment expected by the repo:
 set QTDIR=C:\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
-set KLOGG_BUILD_ROOT=build_root
+set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
+set CILOGG_BUILD_ROOT=build_root
 set platform=x64
-set KLOGG_QT=Qt6
-set KLOGG_QT_DIR=%QTDIR%
+set CILOGG_QT=Qt6
+set CILOGG_QT_DIR=%QTDIR%
 set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
 set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
 set PATH=%USERPROFILE%\.pyenv\pyenv-win\shims;%PATH%
 set PATH=%ProgramFiles(x86)%\Windows Kits\10\Debuggers\x64;%PATH%
 d:
-cd %KLOGG_WORKSPACE%
+cd %CILOGG_WORKSPACE%
 ```
 
 ## Fast Path: Repo Scripts
@@ -58,7 +58,7 @@ For the current Windows workflow, prefer the repo helper scripts:
 
 - `scripts/codex/build-windows.ps1`
 - `scripts/codex/run-tests.ps1`
-- `scripts/codex/run-klogg-debug.ps1`
+- `scripts/codex/run-cilogg-debug.ps1`
 - `scripts/codex/collect-artifacts.ps1`
 
 Examples:
@@ -66,7 +66,7 @@ Examples:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\codex\build-windows.ps1 -Config RelWithDebInfo
 powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-tests.ps1 -Config RelWithDebInfo
-powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-klogg-debug.ps1 -Config RelWithDebInfo
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-cilogg-debug.ps1 -Config RelWithDebInfo
 ```
 
 The build script configures and builds from `build_root`.
@@ -101,23 +101,23 @@ Output binaries are placed under `build_root/output/<Config>`.
 
 ## Deploy Qt Runtime on Windows
 
-Before running `klogg.exe` or the test executables, deploy the Qt runtime next to them:
+Before running `cilogg.exe` or the test executables, deploy the Qt runtime next to them:
 
 ```bat
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg.exe"
 ```
 
 For tests:
 
 ```bat
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_itests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_itests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_itests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_tests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_tests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg_tests.exe"
 ```
 
 ## Running Tests
@@ -139,24 +139,24 @@ ctest --build-config Debug --verbose
 For the current Windows flow, `scripts/codex/run-tests.ps1` is the easiest option because it
 deploys Qt first and copies the `qoffscreen` platform plugin required by the UI tests.
 
-## Running Klogg
+## Running CILogg
 
 After deploying Qt:
 
 ```bat
-output\RelWithDebInfo\klogg.exe
+output\RelWithDebInfo\cilogg.exe
 ```
 
 For deterministic GUI automation runs, set:
 
 ```bat
-set KLOGG_AUTOMATION=1
+set CILOGG_AUTOMATION=1
 ```
 
 Or use:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-klogg-debug.ps1 -Config RelWithDebInfo
+powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-cilogg-debug.ps1 -Config RelWithDebInfo
 ```
 
 ## Important CMake Options
@@ -166,7 +166,7 @@ Backend selection:
 - `-DKLOGG_USE_HYPERSCAN=ON|OFF`
 - `-DKLOGG_USE_VECTORSCAN=ON|OFF`
 
-Only one accelerated backend can be enabled at a time. If both are disabled, klogg uses Qt
+Only one accelerated backend can be enabled at a time. If both are disabled, CILogg uses Qt
 regular expressions only.
 
 Current defaults by target:
@@ -189,7 +189,7 @@ Other useful options:
 
 ## Linux and macOS Notes
 
-Klogg still supports Linux and macOS builds, and CI covers those paths. The current repo
+CILogg still supports Linux and macOS builds, and CI covers those paths. The current repo
 documentation and helper scripts are Windows-first because that is the active development
 environment.
 
@@ -229,9 +229,9 @@ source of truth.
 
 - If CMake or MSVC tools are missing, confirm you are running from a VS 2022 developer shell.
 - If Qt DLLs are missing at runtime, run `windeployqt` again for the target executable.
-- If GUI automation is flaky, use `KLOGG_AUTOMATION=1` and collect screenshots/logs/artifacts before changing behavior.
+- If GUI automation is flaky, use `CILOGG_AUTOMATION=1` and collect screenshots/logs/artifacts before changing behavior.
 - If you need Windows crash investigation, use:
 
 ```bat
-cdb "output\Debug\klogg.exe"
+cdb "output\Debug\cilogg.exe"
 ```

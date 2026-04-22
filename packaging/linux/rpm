@@ -4,7 +4,7 @@ podman run -v .:/klogg --rm -ti docker.io/oraclelinux:8
 yum install createrepo rpm-sign
 gpg --import private.pgp
 echo "%_gpg_name FE39EDA4B8A34571" >> ~/.rpmmacros
-mv ../klogg-22.06.0.1289-Linux-amd64-oracle8.rpm oracle/8/amd64/RPMS
-rpm --addsign oracle/8/amd64/RPMS/klogg-22.06.0.1289-Linux-amd64-oracle8.rpm
+mv ../cilogg-22.06.0.1289-Linux-amd64-oracle8.rpm oracle/8/amd64/RPMS
+rpm --addsign oracle/8/amd64/RPMS/cilogg-22.06.0.1289-Linux-amd64-oracle8.rpm
 createrepo oracle/8/amd64
 gpg --pinentry-mode loopback --detach-sign --armor --default-key FE39EDA4B8A34571 oracle/8/amd64/repodata/repomd.xml

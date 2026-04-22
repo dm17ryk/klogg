@@ -30,7 +30,7 @@ def _load_json_file(path: str) -> Any:
 
 
 def _load_device_bindings() -> Dict[str, Any]:
-    raw = os.environ.get("KLOGG_SCENARIO_DEVICE_BINDINGS_JSON", "").strip()
+    raw = os.environ.get("CILOGG_SCENARIO_DEVICE_BINDINGS_JSON", "").strip()
     if not raw:
         return {}
     try:
@@ -68,10 +68,10 @@ def _run_scenario_file(file_path: str, args_json_file: str = "") -> Dict[str, An
     scenario_name = scenario_path.stem
 
     if args_json_file:
-        os.environ["KLOGG_SCRIPT_ARGS_JSON_FILE"] = args_json_file
+        os.environ["CILOGG_SCRIPT_ARGS_JSON_FILE"] = args_json_file
         _set_script_args(_load_json_file(args_json_file))
     else:
-        os.environ.pop("KLOGG_SCRIPT_ARGS_JSON_FILE", None)
+        os.environ.pop("CILOGG_SCRIPT_ARGS_JSON_FILE", None)
         _set_script_args(None)
 
     _begin_scenario_run(scenario_name, str(scenario_path), args_json_file)
@@ -171,18 +171,18 @@ def _write_junit_report(path: str, report: Dict[str, Any]) -> None:
 
 
 def _run_single_scenario() -> Dict[str, Any]:
-    scenario_file = os.environ.get("KLOGG_SCENARIO_FILE", "")
+    scenario_file = os.environ.get("CILOGG_SCENARIO_FILE", "")
     if not scenario_file:
-        raise RuntimeError("Missing KLOGG_SCENARIO_FILE")
-    args_json_file = os.environ.get("KLOGG_SCENARIO_ARGS_JSON_FILE", "")
+        raise RuntimeError("Missing CILOGG_SCENARIO_FILE")
+    args_json_file = os.environ.get("CILOGG_SCENARIO_ARGS_JSON_FILE", "")
     result = _run_scenario_file(scenario_file, args_json_file)
     return _summarize_report(Path(scenario_file).stem, "single-scenario", [result])
 
 
 def _run_suite() -> Dict[str, Any]:
-    suite_file = os.environ.get("KLOGG_SUITE_FILE", "")
+    suite_file = os.environ.get("CILOGG_SUITE_FILE", "")
     if not suite_file:
-        raise RuntimeError("Missing KLOGG_SUITE_FILE")
+        raise RuntimeError("Missing CILOGG_SUITE_FILE")
 
     suite_path = Path(suite_file).resolve()
     suite_document = _load_json_file(str(suite_path))
@@ -234,11 +234,11 @@ def _run_suite() -> Dict[str, Any]:
 
 
 def main() -> int:
-    report_json = os.environ.get("KLOGG_SCENARIO_REPORT_JSON", "")
-    report_junit = os.environ.get("KLOGG_SCENARIO_REPORT_JUNIT", "")
+    report_json = os.environ.get("CILOGG_SCENARIO_REPORT_JSON", "")
+    report_junit = os.environ.get("CILOGG_SCENARIO_REPORT_JUNIT", "")
 
     try:
-        report = _run_suite() if os.environ.get("KLOGG_SUITE_FILE", "") else _run_single_scenario()
+        report = _run_suite() if os.environ.get("CILOGG_SUITE_FILE", "") else _run_single_scenario()
         report["reportJsonFile"] = report_json
         report["reportJunitFile"] = report_junit
         _write_json_report(report_json, report)

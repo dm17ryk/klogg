@@ -22,13 +22,13 @@ runs:
     #  if: ${{ github.event_name != 'pull_request' }}
     #  shell: cmd
     #  run: |
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\klogg.exe
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\klogg_portable.exe
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\klogg_crashpad_handler.exe
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\klogg_minidump_dump.exe
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbb12.dll
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbbmalloc.dll
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\output\tbbmalloc_proxy.dll
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\cilogg.exe
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\cilogg_portable.exe
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\cilogg_crashpad_handler.exe
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\cilogg_minidump_dump.exe
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\tbb12.dll
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\tbbmalloc.dll
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\output\tbbmalloc_proxy.dll
 
     - name: Win portable
       shell: cmd
@@ -38,19 +38,19 @@ runs:
     - name: Win installer
       uses: joncloud/makensis-action@v3.3
       with:
-        script-file: klogg.nsi
-        arguments: "-DVERSION=%KLOGG_VERSION% -DPLATFORM=%KLOGG_ARCH% -DQT_MAJOR=%KLOGG_QT%"
+        script-file: cilogg.nsi
+        arguments: "-DVERSION=%CILOGG_VERSION% -DPLATFORM=%CILOGG_ARCH% -DQT_MAJOR=%CILOGG_QT%"
 
     - name: Win package
       shell: cmd
       run: |
-        md %KLOGG_BUILD_ROOT%\packages
-        xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip %KLOGG_BUILD_ROOT%\packages /y
-        xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip %KLOGG_BUILD_ROOT%\packages /y
-        xcopy klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-setup.exe %KLOGG_BUILD_ROOT%\packages /y
+        md %CILOGG_BUILD_ROOT%\packages
+        xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-portable.zip %CILOGG_BUILD_ROOT%\packages /y
+        xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-pdb.zip %CILOGG_BUILD_ROOT%\packages /y
+        xcopy cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-setup.exe %CILOGG_BUILD_ROOT%\packages /y
 
     #- name: Win codesign installer
     #  if: ${{ github.event_name != 'pull_request' }}
     #  shell: cmd
     #  run: |
-    #    packaging\windows\codesign_client.exe --debug %KLOGG_BUILD_ROOT%\packages\klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-setup.exe
+    #    packaging\windows\codesign_client.exe --debug %CILOGG_BUILD_ROOT%\packages\cilogg-%CILOGG_VERSION%-%CILOGG_ARCH%-%CILOGG_QT%-setup.exe

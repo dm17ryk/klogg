@@ -13,15 +13,15 @@ runs:
     - name: configure
       shell: sh
       run: |
-        mkdir $KLOGG_BUILD_ROOT
-        cd $KLOGG_BUILD_ROOT
+        mkdir $CILOGG_BUILD_ROOT
+        cd $CILOGG_BUILD_ROOT
         EXTRA_CMAKE_OPTS=""
         if [ -n "$QT_TOOLCHAIN_FILE" ]; then
           EXTRA_CMAKE_OPTS="$EXTRA_CMAKE_OPTS -DCMAKE_TOOLCHAIN_FILE=$QT_TOOLCHAIN_FILE"
         fi
-        cmake $KLOGG_CMAKE_OPTS $EXTRA_CMAKE_OPTS -DCPM_SOURCE_CACHE=$KLOGG_WORKSPACE/cpm_cache -DKLOGG_OVERRIDE_MALLOC=OFF $KLOGG_WORKSPACE
+        cmake $CILOGG_CMAKE_OPTS $EXTRA_CMAKE_OPTS -DCPM_SOURCE_CACHE=$CILOGG_WORKSPACE/cpm_cache -DKLOGG_OVERRIDE_MALLOC=OFF $CILOGG_WORKSPACE
 
     - name: build
       shell: sh
       run: |
-        cmake --build $KLOGG_BUILD_ROOT -t ci_build
+        cmake --build $CILOGG_BUILD_ROOT -t ci_build

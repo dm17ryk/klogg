@@ -1,6 +1,6 @@
 # Maintainer: dm17ryk <dm17ryk@gmail.com>
 
-pkgname=klogg
+pkgname=cilogg
 pkgver=22.06
 _subversion=0.1289
 pkgrel=1
@@ -8,8 +8,8 @@ pkgdesc="A multi-platform GUI application that helps browse and search through l
 arch=('x86_64')
 url='https://github.com/dm17ryk/klogg'
 license=('GPL3')
-provides=('klogg')
-conflicts=('klogg-bin')
+provides=('cilogg')
+conflicts=('cilogg-bin')
 depends=('qt5-base' 'hicolor-icon-theme' 'hyperscan' 'xxhash' 'uchardet' 'tbb')
 makedepends=('cmake' 'git')
 
@@ -30,7 +30,7 @@ build() {
         -DKLOGG_USE_SENTRY=OFF \
         -DKLOGG_BUILD_TESTS=OFF
 
-    make -C "${pkgname}-${pkgver}/build" klogg
+    make -C "${pkgname}-${pkgver}/build" cilogg
 }
 
 package() {

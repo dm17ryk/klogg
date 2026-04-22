@@ -15,7 +15,7 @@ from .exceptions import KloggError
 
 
 def _load_script_args() -> Any:
-    path = os.environ.get("KLOGG_SCRIPT_ARGS_JSON_FILE", "")
+    path = os.environ.get("CILOGG_SCRIPT_ARGS_JSON_FILE", "")
     if not path:
         return None
     with open(path, "r", encoding="utf-8") as handle:
@@ -124,8 +124,8 @@ class _RpcClient:
     MAX_EVENT_QUEUE = 1000
 
     def __init__(self) -> None:
-        port = os.environ.get("KLOGG_SCRIPT_PORT", "")
-        token = os.environ.get("KLOGG_SCRIPT_TOKEN", "")
+        port = os.environ.get("CILOGG_SCRIPT_PORT", "")
+        token = os.environ.get("CILOGG_SCRIPT_TOKEN", "")
         if not port or not token:
             raise RuntimeError("klogg scripting environment is not initialized")
 
@@ -156,7 +156,7 @@ class _RpcClient:
         self._comm_stop_handlers: List[Callable[[CommLifecycleEvent], Any]] = []
         self._timers: Dict[int, Dict[str, Any]] = {}
         self._next_timer_id = 1
-        self._reader_thread = threading.Thread(target=self._reader_loop, name="klogg-rpc-reader", daemon=True)
+        self._reader_thread = threading.Thread(target=self._reader_loop, name="cilogg-rpc-reader", daemon=True)
         self._reader_thread.start()
 
     @property

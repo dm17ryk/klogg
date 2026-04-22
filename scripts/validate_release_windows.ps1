@@ -34,7 +34,7 @@ function Assert-KloggDeployment {
         [string]$Context
     )
 
-    Assert-PathExists (Join-Path $Root "klogg.exe") "$Context is missing klogg.exe"
+    Assert-PathExists (Join-Path $Root "cilogg.exe") "$Context is missing cilogg.exe"
     Assert-PathExists (Join-Path $Root "Qt6Sql.dll") "$Context is missing Qt6Sql.dll"
     Assert-PathExists (Join-Path $Root "sqldrivers\\qsqlite.dll") "$Context is missing qsqlite.dll"
     Assert-PathExists (Join-Path $Root "python_runtime\\klogg\\__init__.py") "$Context is missing python_runtime"
@@ -53,18 +53,18 @@ function Resolve-KloggRoot {
     ) | Where-Object { Test-Path -LiteralPath $_ }
 
     foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath (Join-Path $candidate "klogg.exe")) {
+        if (Test-Path -LiteralPath (Join-Path $candidate "cilogg.exe")) {
             return $candidate
         }
     }
 
-    $nested = Get-ChildItem -Path $ExtractedRoot -Recurse -Filter "klogg.exe" -File -ErrorAction SilentlyContinue |
+    $nested = Get-ChildItem -Path $ExtractedRoot -Recurse -Filter "cilogg.exe" -File -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty DirectoryName
     if ($nested) {
         return $nested
     }
 
-    throw "$Context is missing klogg.exe"
+    throw "$Context is missing cilogg.exe"
 }
 
 $packageDirs = Get-ChildItem -Path "." -Directory -Filter "packages-windows-*"

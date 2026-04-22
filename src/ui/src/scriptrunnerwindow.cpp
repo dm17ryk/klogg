@@ -45,7 +45,7 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     , rerunButton_( new QPushButton( tr( "Rerun Selected" ), this ) )
     , stopButton_( new QPushButton( tr( "Stop Selected" ), this ) )
 {
-    setWindowTitle( tr( "klogg - script runner" ) );
+    setWindowTitle( tr( "CILogg - script runner" ) );
     resize( 960, 620 );
 
     auto* rootLayout = new QVBoxLayout( this );

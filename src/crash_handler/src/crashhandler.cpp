@@ -66,7 +66,7 @@ QString sentryDatabasePath()
     auto basePath = QStandardPaths::writableLocation( QStandardPaths::AppDataLocation );
 #endif
 
-    return basePath.append( "/klogg_dump" );
+    return basePath.append( "/cilogg_dump" );
 }
 
 QString processedReportMarkerPath( const QString& reportPath )
@@ -200,9 +200,9 @@ void checkCrashpadReports( const QString& databasePath )
     LOG_INFO << "Pending reports " << pendingReports.size();
 
 #ifdef Q_OS_WIN
-    const auto stackwalker = QCoreApplication::applicationDirPath() + "/klogg_minidump_dump.exe";
+    const auto stackwalker = QCoreApplication::applicationDirPath() + "/cilogg_minidump_dump.exe";
 #else
-    const auto stackwalker = QCoreApplication::applicationDirPath() + "/klogg_minidump_dump";
+    const auto stackwalker = QCoreApplication::applicationDirPath() + "/cilogg_minidump_dump";
 #endif
 
     for ( const auto& report : pendingReports ) {
@@ -256,11 +256,11 @@ CrashHandler::CrashHandler()
     sentry_options_set_debug( sentryOptions, 1 );
 
 #ifdef Q_OS_WIN
-    const auto handlerPath = QCoreApplication::applicationDirPath() + "/klogg_crashpad_handler.exe";
+    const auto handlerPath = QCoreApplication::applicationDirPath() + "/cilogg_crashpad_handler.exe";
     sentry_options_set_database_pathw( sentryOptions, dumpPath.toStdWString().c_str() );
     sentry_options_set_handler_pathw( sentryOptions, handlerPath.toStdWString().c_str() );
 #else
-    const auto handlerPath = QCoreApplication::applicationDirPath() + "/klogg_crashpad_handler";
+    const auto handlerPath = QCoreApplication::applicationDirPath() + "/cilogg_crashpad_handler";
     sentry_options_set_database_path( sentryOptions, dumpPath.toStdString().c_str() );
     sentry_options_set_handler_path( sentryOptions, handlerPath.toStdString().c_str() );
 #endif

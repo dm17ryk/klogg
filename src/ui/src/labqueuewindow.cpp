@@ -33,7 +33,7 @@ LabQueueWindow::LabQueueWindow( QWidget* parent )
     , refreshButton_( new QPushButton( tr( "Refresh" ), this ) )
     , openArtifactsButton_( new QPushButton( tr( "Open Artifacts" ), this ) )
 {
-    setWindowTitle( tr( "klogg - lab queue" ) );
+    setWindowTitle( tr( "CILogg - lab queue" ) );
     resize( 1100, 720 );
 
     auto* rootLayout = new QVBoxLayout( this );

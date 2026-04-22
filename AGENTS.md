@@ -1,4 +1,4 @@
-# Repository Guidelines for Klogg (Windows / VS2022 / Qt6) - Codex Instructions
+# Repository Guidelines for CILogg (Windows / VS2022 / Qt6) - Codex Instructions
 
 ## Environment
 
@@ -10,17 +10,17 @@ Before any CMake/build steps, ensure these env vars are set:
 set QTDIR=C:\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
-set KLOGG_BUILD_ROOT=build_root
+set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
+set CILOGG_BUILD_ROOT=build_root
 set platform=x64
-set KLOGG_QT=Qt6
-set KLOGG_QT_DIR=%QTDIR%
+set CILOGG_QT=Qt6
+set CILOGG_QT_DIR=%QTDIR%
 set PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%
 set PATH=%VSINSTALLDIR%VC\vcpkg;%PATH%
 set PATH=%USERPROFILE%\.pyenv\pyenv-win\shims;%PATH%
 set PATH=%ProgramFiles(x86)%\Windows Kits\10\Debuggers\x64;%PATH%
 d:
-cd %KLOGG_WORKSPACE%
+cd %CILOGG_WORKSPACE%
 ```
 
 ## Agents Terminal Setup
@@ -54,7 +54,7 @@ out-of-tree build directory like `build_root/` for local builds.
 ## Configure, Build, Test, Run, and Development Commands
 
 Common CMake flow (see `BUILD.md` for OS-specific options and dependencies):
-All builds happen inside: `%KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%`
+All builds happen inside: `%CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%`
 (i.e. build_root)
 
 ```bash
@@ -87,9 +87,9 @@ cmake --build . --config Debug
 From build_root:
 
 ```bash
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg.exe"
 ```
 
 ## Test
@@ -97,16 +97,16 @@ From build_root:
 Tests are enabled by default; to disable: `-DBUILD_TESTS:BOOL=OFF`.
 Run tests from the build directory:
 
-Before you can run klogg.exe, need to deploy Qt dlls to same directory.
+Before you can run cilogg.exe, need to deploy Qt dlls to same directory.
 
 ```bash
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_itests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_itests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg_itests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg_itests.exe"
 
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg_tests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg_tests.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg_tests.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg_tests.exe"
 ```
 
 From build_root:
@@ -119,12 +119,12 @@ ctest --build-config Debug --verbose
 
 ## Run
 
-Before you can run klogg.exe, need to deploy Qt dlls to same directory.
+Before you can run cilogg.exe, need to deploy Qt dlls to same directory.
 
 ```bash
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\klogg.exe"
-"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\klogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Release\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\RelWithDebInfo\cilogg.exe"
+"%QTDIR%\bin\windeployqt.exe" "%CD%\output\Debug\cilogg.exe"
 ```
 
 ## Coding Style & Naming Conventions
@@ -152,7 +152,8 @@ description, steps to test, and screenshots for UI changes.
 ## Security
 
 Do not file public issues for vulnerabilities. Follow `SECURITY.md` and report
-to `security@filimonov.dev`.
+through GitHub Security Advisories:
+`https://github.com/dm17ryk/klogg/security/advisories/new`
 
 ## Rules of engagement
 
@@ -163,13 +164,13 @@ to `security@filimonov.dev`.
 ## Codex GUI Automation
 
 - Repo-scoped Codex defaults live in `.codex/config.toml`; Win GUI MCP server registration stays user-local and is not committed here.
-- Use `scripts/codex/build-windows.ps1`, `scripts/codex/run-tests.ps1`, `scripts/codex/run-klogg-debug.ps1`, and `scripts/codex/collect-artifacts.ps1` for repeatable automation flows.
+- Use `scripts/codex/build-windows.ps1`, `scripts/codex/run-tests.ps1`, `scripts/codex/run-cilogg-debug.ps1`, and `scripts/codex/collect-artifacts.ps1` for repeatable automation flows.
 - Prefer Qt `objectName` and `accessibleName` targets first; only fall back to UIA or screen coordinates for custom-rendered panes.
-- For deterministic GUI runs, set `KLOGG_AUTOMATION=1` or use `run-klogg-debug.ps1`.
+- For deterministic GUI runs, set `CILOGG_AUTOMATION=1` or use `run-cilogg-debug.ps1`.
 - Collect screenshots, logs, and dumps after GUI repros before changing behavior.
 
 ## Debugging & Troubleshooting
 
 ```bash
-cdb "output\Debug\klogg.exe"
+cdb "output\Debug\cilogg.exe"
 ```

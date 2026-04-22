@@ -30,6 +30,6 @@ foreach ($sourceDir in $sourceDirs) {
     }
 
     Get-ChildItem -Path $sourceDir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in @(".log", ".dmp", ".txt") -or $_.Name -like "klogg*" } |
+        Where-Object { $_.Extension -in @(".log", ".dmp", ".txt") -or $_.Name -like "cilogg*" } |
         Copy-Item -Destination $OutDir -Force
 }

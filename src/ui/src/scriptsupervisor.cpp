@@ -48,7 +48,7 @@ QStringList pythonExecutableCandidates( const QString& runtimeRoot )
         candidates << QDir( runtimeRoot ).filePath( "python/bin/python3" );
 #endif
     }
-    candidates << qEnvironmentVariable( "KLOGG_SCRIPT_PYTHON" );
+    candidates << qEnvironmentVariable( "CILOGG_SCRIPT_PYTHON" );
     candidates << QStandardPaths::findExecutable( QStringLiteral( "python3" ) );
     candidates << QStandardPaths::findExecutable( QStringLiteral( "python" ) );
     candidates.removeAll( QString{} );
@@ -1082,15 +1082,15 @@ void ScriptSupervisor::startRunProcess( ScriptRun* run )
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     const auto runtime = runtimeRoot();
-    environment.insert( QStringLiteral( "KLOGG_SCRIPT_PORT" ),
+    environment.insert( QStringLiteral( "CILOGG_SCRIPT_PORT" ),
                         QString::number( run->server.serverPort() ) );
-    environment.insert( QStringLiteral( "KLOGG_SCRIPT_TOKEN" ), run->authToken );
-    environment.insert( QStringLiteral( "KLOGG_SCRIPT_FILE" ), run->scriptFilePath );
+    environment.insert( QStringLiteral( "CILOGG_SCRIPT_TOKEN" ), run->authToken );
+    environment.insert( QStringLiteral( "CILOGG_SCRIPT_FILE" ), run->scriptFilePath );
     if ( !run->argsJsonFilePath.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_SCRIPT_ARGS_JSON_FILE" ), run->argsJsonFilePath );
+        environment.insert( QStringLiteral( "CILOGG_SCRIPT_ARGS_JSON_FILE" ), run->argsJsonFilePath );
     }
     if ( !runtime.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_PYTHON_RUNTIME_ROOT" ), runtime );
+        environment.insert( QStringLiteral( "CILOGG_PYTHON_RUNTIME_ROOT" ), runtime );
     }
 
     QString pythonPath = QFileInfo( bootstrapPath ).absolutePath();

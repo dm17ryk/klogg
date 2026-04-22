@@ -5,9 +5,9 @@ import traceback
 
 
 def main() -> int:
-    script_file = os.environ.get("KLOGG_SCRIPT_FILE", "")
+    script_file = os.environ.get("CILOGG_SCRIPT_FILE", "")
     if not script_file:
-        sys.stderr.write("Missing KLOGG_SCRIPT_FILE\n")
+        sys.stderr.write("Missing CILOGG_SCRIPT_FILE\n")
         return 2
 
     try:

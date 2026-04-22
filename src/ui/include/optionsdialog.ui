@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Klogg preferences</string>
+   <string>CILogg preferences</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>

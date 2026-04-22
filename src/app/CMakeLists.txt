@@ -136,6 +136,18 @@ set_target_properties(klogg_portable PROPERTIES AUTORCC ON)
 set_target_properties(klogg_portable PROPERTIES AUTOMOC ON)
 set_target_properties(klogg_grep PROPERTIES AUTORCC ON)
 set_target_properties(klogg_grep PROPERTIES AUTOMOC ON)
+set_target_properties(
+  klogg
+  PROPERTIES OUTPUT_NAME "${PRODUCT_EXECUTABLE_NAME}"
+)
+set_target_properties(
+  klogg_portable
+  PROPERTIES OUTPUT_NAME "${PRODUCT_PORTABLE_EXECUTABLE_NAME}"
+)
+set_target_properties(
+  klogg_grep
+  PROPERTIES OUTPUT_NAME "${PRODUCT_GREP_EXECUTABLE_NAME}"
+)
 
 if(KLOGG_USE_LTO)
   set_property(TARGET klogg PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
@@ -164,8 +176,8 @@ elseif(APPLE)
   set_source_files_properties(${DOCUMENTATION_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION SharedSupport)
   set_source_files_properties(${DOCUMENTATION_HTML} PROPERTIES MACOSX_PACKAGE_LOCATION SharedSupport)
 
-  set(MACOSX_BUNDLE_BUNDLE_DISPLAY_NAME ${PROJECT_DESCRIPTION})
-  set(MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME})
+  set(MACOSX_BUNDLE_BUNDLE_DISPLAY_NAME ${PRODUCT_DISPLAY_NAME})
+  set(MACOSX_BUNDLE_BUNDLE_NAME ${PRODUCT_DISPLAY_NAME})
   set(MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})
   set(MACOSX_BUNDLE_LONG_VERSION_STRING ${PROJECT_VERSION})
   set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
@@ -232,7 +244,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg
         POST_BUILD
-        COMMAND ${DSYMUTIL} --out=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg.dSym $<TARGET_FILE:klogg>
+        COMMAND ${DSYMUTIL} --out=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_EXECUTABLE_NAME}.dSym $<TARGET_FILE:klogg>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Generating symbols for $<TARGET_FILE:klogg>"
       )
@@ -240,7 +252,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg_portable
         POST_BUILD
-        COMMAND ${DSYMUTIL} --out=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg_portable.dSym $<TARGET_FILE:klogg_portable>
+        COMMAND ${DSYMUTIL} --out=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_PORTABLE_EXECUTABLE_NAME}.dSym $<TARGET_FILE:klogg_portable>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Generating symbols for $<TARGET_FILE:klogg_portable>"
       )
@@ -250,7 +262,7 @@ if(KLOGG_USE_SENTRY)
         TARGET klogg
         POST_BUILD
         COMMAND ${OBJCOPY} --only-keep-debug --compress-debug-sections=zlib $<TARGET_FILE:klogg>
-                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg.debug
+                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_EXECUTABLE_NAME}.debug
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Generating symbols for $<TARGET_FILE:klogg>"
       )
@@ -264,7 +276,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg
         POST_BUILD
-        COMMAND ${OBJCOPY} --add-gnu-debuglink=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg.debug $<TARGET_FILE:klogg>
+        COMMAND ${OBJCOPY} --add-gnu-debuglink=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_EXECUTABLE_NAME}.debug $<TARGET_FILE:klogg>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Linking symbols for $<TARGET_FILE:klogg>"
       )
@@ -273,7 +285,7 @@ if(KLOGG_USE_SENTRY)
         TARGET klogg_portable
         POST_BUILD
         COMMAND ${OBJCOPY} --only-keep-debug $<TARGET_FILE:klogg_portable>
-                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg_portable.debug
+                ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_PORTABLE_EXECUTABLE_NAME}.debug
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Generating symbols for $<TARGET_FILE:klogg>"
       )
@@ -287,7 +299,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg_portable
         POST_BUILD
-        COMMAND ${OBJCOPY} --add-gnu-debuglink=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/klogg_portable.debug
+        COMMAND ${OBJCOPY} --add-gnu-debuglink=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${PRODUCT_PORTABLE_EXECUTABLE_NAME}.debug
                 $<TARGET_FILE:klogg_portable>
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Linking symbols for $<TARGET_FILE:klogg_portable>"
@@ -297,7 +309,7 @@ if(KLOGG_USE_SENTRY)
     add_custom_command(
       TARGET klogg
       POST_BUILD
-      COMMAND cmake -E copy $<TARGET_FILE:crashpad_handler> $<TARGET_FILE_DIR:klogg>/klogg_crashpad_handler
+      COMMAND cmake -E copy $<TARGET_FILE:crashpad_handler> $<TARGET_FILE_DIR:klogg>/${PRODUCT_CRASHPAD_HANDLER_NAME}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       COMMENT "Copy crash_handler"
     )
@@ -305,7 +317,7 @@ if(KLOGG_USE_SENTRY)
     add_custom_command(
       TARGET klogg
       POST_BUILD
-      COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump $<TARGET_FILE_DIR:klogg>/klogg_minidump_dump
+      COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump $<TARGET_FILE_DIR:klogg>/${PRODUCT_MINIDUMP_DUMP_NAME}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       COMMENT "Copy stackwalk"
     )
@@ -313,7 +325,7 @@ if(KLOGG_USE_SENTRY)
     add_custom_command(
       TARGET klogg
       POST_BUILD
-      COMMAND cmake -E copy $<TARGET_FILE:crashpad_handler> $<TARGET_FILE_DIR:klogg>/klogg_crashpad_handler.exe
+      COMMAND cmake -E copy $<TARGET_FILE:crashpad_handler> $<TARGET_FILE_DIR:klogg>/${PRODUCT_CRASHPAD_HANDLER_NAME}.exe
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       COMMENT "Copy crash_handler"
     )
@@ -322,7 +334,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg
         POST_BUILD
-        COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump_x64.exe $<TARGET_FILE_DIR:klogg>/klogg_minidump_dump.exe
+        COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump_x64.exe $<TARGET_FILE_DIR:klogg>/${PRODUCT_MINIDUMP_DUMP_NAME}.exe
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Copy stackwalk"
       )
@@ -330,7 +342,7 @@ if(KLOGG_USE_SENTRY)
       add_custom_command(
         TARGET klogg
         POST_BUILD
-        COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump_x86.exe $<TARGET_FILE_DIR:klogg>/klogg_minidump_dump.exe
+        COMMAND cmake -E copy ${SYMS_TOOLS}/minidump_dump_x86.exe $<TARGET_FILE_DIR:klogg>/${PRODUCT_MINIDUMP_DUMP_NAME}.exe
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Copy stackwalk"
       )
@@ -338,11 +350,11 @@ if(KLOGG_USE_SENTRY)
   endif()
 
   if(APPLE)
-    install(PROGRAMS $<TARGET_FILE_DIR:klogg>/klogg_minidump_dump $<TARGET_FILE_DIR:klogg>/klogg_crashpad_handler
+    install(PROGRAMS $<TARGET_FILE_DIR:klogg>/${PRODUCT_MINIDUMP_DUMP_NAME} $<TARGET_FILE_DIR:klogg>/${PRODUCT_CRASHPAD_HANDLER_NAME}
             DESTINATION $<TARGET_BUNDLE_CONTENT_DIR:klogg>/MacOS
     )
   elseif(NOT WIN32)
-    install(PROGRAMS $<TARGET_FILE_DIR:klogg>/klogg_minidump_dump $<TARGET_FILE_DIR:klogg>/klogg_crashpad_handler
+    install(PROGRAMS $<TARGET_FILE_DIR:klogg>/${PRODUCT_MINIDUMP_DUMP_NAME} $<TARGET_FILE_DIR:klogg>/${PRODUCT_CRASHPAD_HANDLER_NAME}
             DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
   endif()

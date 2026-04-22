@@ -59,7 +59,7 @@ QStringList pythonExecutableCandidates( const QString& runtimeRoot )
         candidates << QDir( runtimeRoot ).filePath( "python/bin/python3" );
 #endif
     }
-    candidates << qEnvironmentVariable( "KLOGG_SCRIPT_PYTHON" );
+    candidates << qEnvironmentVariable( "CILOGG_SCRIPT_PYTHON" );
     candidates << QStandardPaths::findExecutable( QStringLiteral( "python3" ) );
     candidates << QStandardPaths::findExecutable( QStringLiteral( "python" ) );
     candidates.removeAll( QString{} );
@@ -139,10 +139,10 @@ CommanderResult ScenarioRunner::runScenario( const CommanderRequest& request )
                             ? QString{}
                             : QFileInfo( request.argsJsonFilePath ).absoluteFilePath();
     reportJsonPath_
-        = scenarioReportPath( QStringLiteral( "KLOGG_SCENARIO_REPORT_JSON" ),
+        = scenarioReportPath( QStringLiteral( "CILOGG_SCENARIO_REPORT_JSON" ),
                               QStringLiteral( "scenario-report.json" ) );
     reportJunitPath_
-        = scenarioReportPath( QStringLiteral( "KLOGG_SCENARIO_REPORT_JUNIT" ),
+        = scenarioReportPath( QStringLiteral( "CILOGG_SCENARIO_REPORT_JUNIT" ),
                               QStringLiteral( "scenario-report.junit.xml" ) );
 
     if ( !startProcess( scenarioBootstrapPath() ) ) {
@@ -172,10 +172,10 @@ CommanderResult ScenarioRunner::runSuite( const CommanderRequest& request )
     hasRun_ = true;
     suiteFilePath_ = suiteInfo.absoluteFilePath();
     reportJsonPath_
-        = scenarioReportPath( QStringLiteral( "KLOGG_SCENARIO_REPORT_JSON" ),
+        = scenarioReportPath( QStringLiteral( "CILOGG_SCENARIO_REPORT_JSON" ),
                               QStringLiteral( "scenario-report.json" ) );
     reportJunitPath_
-        = scenarioReportPath( QStringLiteral( "KLOGG_SCENARIO_REPORT_JUNIT" ),
+        = scenarioReportPath( QStringLiteral( "CILOGG_SCENARIO_REPORT_JUNIT" ),
                               QStringLiteral( "scenario-report.junit.xml" ) );
 
     if ( !startProcess( scenarioBootstrapPath() ) ) {
@@ -453,23 +453,23 @@ bool ScenarioRunner::startProcess( const QString& bootstrapPath )
 
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     const auto runtime = runtimeRoot();
-    environment.insert( QStringLiteral( "KLOGG_SCRIPT_PORT" ),
+    environment.insert( QStringLiteral( "CILOGG_SCRIPT_PORT" ),
                         QString::number( server_->serverPort() ) );
-    environment.insert( QStringLiteral( "KLOGG_SCRIPT_TOKEN" ), authToken_ );
+    environment.insert( QStringLiteral( "CILOGG_SCRIPT_TOKEN" ), authToken_ );
     if ( !scenarioFilePath_.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_SCENARIO_FILE" ), scenarioFilePath_ );
+        environment.insert( QStringLiteral( "CILOGG_SCENARIO_FILE" ), scenarioFilePath_ );
     }
     if ( !suiteFilePath_.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_SUITE_FILE" ), suiteFilePath_ );
+        environment.insert( QStringLiteral( "CILOGG_SUITE_FILE" ), suiteFilePath_ );
     }
     if ( !argsJsonFilePath_.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_SCENARIO_ARGS_JSON_FILE" ), argsJsonFilePath_ );
-        environment.insert( QStringLiteral( "KLOGG_SCRIPT_ARGS_JSON_FILE" ), argsJsonFilePath_ );
+        environment.insert( QStringLiteral( "CILOGG_SCENARIO_ARGS_JSON_FILE" ), argsJsonFilePath_ );
+        environment.insert( QStringLiteral( "CILOGG_SCRIPT_ARGS_JSON_FILE" ), argsJsonFilePath_ );
     }
-    environment.insert( QStringLiteral( "KLOGG_SCENARIO_REPORT_JSON" ), reportJsonPath_ );
-    environment.insert( QStringLiteral( "KLOGG_SCENARIO_REPORT_JUNIT" ), reportJunitPath_ );
+    environment.insert( QStringLiteral( "CILOGG_SCENARIO_REPORT_JSON" ), reportJsonPath_ );
+    environment.insert( QStringLiteral( "CILOGG_SCENARIO_REPORT_JUNIT" ), reportJunitPath_ );
     if ( !runtime.isEmpty() ) {
-        environment.insert( QStringLiteral( "KLOGG_PYTHON_RUNTIME_ROOT" ), runtime );
+        environment.insert( QStringLiteral( "CILOGG_PYTHON_RUNTIME_ROOT" ), runtime );
     }
 
     QString pythonPath = QFileInfo( bootstrapPath ).absolutePath();

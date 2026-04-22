@@ -1,4 +1,4 @@
-Klogg is a multi-platform GUI application that helps browse and search
+CILogg is a multi-platform GUI application that helps browse and search
 through long and complex log files. It is designed with programmers and
 system administrators in mind and can be seen as a graphical, interactive
 combination of grep, less, and tail.
