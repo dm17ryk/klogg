@@ -144,6 +144,7 @@ class MainWindow : public QMainWindow {
     void editPredefinedFilters( const QString& newFilter = {} );
     void openImportPreviewsDialog();
     void openImportActionsDialog();
+    void openExportActionsDialog();
     void options();
     void about();
     void aboutQt();
@@ -382,6 +383,7 @@ class MainWindow : public QMainWindow {
     QAction* showLabQueueAction;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
+    QAction* exportActionsAction;
     QAction* showDocumentationAction;
     QAction* aboutAction;
     QAction* aboutQtAction;

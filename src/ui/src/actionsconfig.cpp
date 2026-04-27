@@ -344,7 +344,8 @@ bool validateActionDefinition( const ActionDefinition& action, QString* errorMes
         setError( errorMessage, QStringLiteral( "Action name is required." ) );
         return false;
     }
-    if ( action.sequence.value.trimmed().isEmpty() ) {
+    if ( action.sequence.value.trimmed().isEmpty()
+         && action.sequence.type != ActionSequenceType::HexString ) {
         setError( errorMessage, QStringLiteral( "Action sequence is required." ) );
         return false;
     }

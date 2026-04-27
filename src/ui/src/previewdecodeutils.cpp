@@ -129,6 +129,12 @@ HexParseResult parseHexToU64AllowOddDigits( const QString& input )
 HexDecodeResult decodeHexStringToBytes( const QString& input )
 {
     HexDecodeResult result;
+    if ( input.trimmed().isEmpty() ) {
+        result.ok = true;
+        result.digitCount = 0;
+        return result;
+    }
+
     const auto normalized = normalizeHexInput( input );
     if ( !normalized.ok ) {
         result.error = normalized.error;

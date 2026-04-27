@@ -2,6 +2,7 @@ add_library(
   klogg_ui STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include/abstractlogview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfig.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsimportexport.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfigparser.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsmanager.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsrepository.h
@@ -84,6 +85,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfig.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsimportexport.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfigparser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsmanager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsrepository.cpp

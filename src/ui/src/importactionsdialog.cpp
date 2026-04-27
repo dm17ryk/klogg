@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "actionsconfigparser.h"
+#include "actionsimportexport.h"
 #include "actionsmanager.h"
 #include "iconloader.h"
 
@@ -510,14 +511,14 @@ ImportActionsDialog::ImportActionsDialog( QWidget* parent )
 
 void ImportActionsDialog::importActions()
 {
-    const auto file = QFileDialog::getOpenFileName( this, tr( "Select actions JSON" ), "",
-                                                    tr( "Actions (*.json);;All files (*)" ) );
+    const auto file = QFileDialog::getOpenFileName(
+        this, tr( "Select actions file" ), "",
+        tr( "Actions JSON (*.json);;Docklight Project (*.ptp);;All files (*)" ) );
     if ( file.isEmpty() ) {
         return;
     }
 
-    ActionsConfigParser parser;
-    const auto parsed = parser.parseFile( file );
+    const auto parsed = parseActionsConfigFile( file, ActionsImportFormat::Auto );
     if ( !parsed.errors.isEmpty() ) {
         QMessageBox::warning( this, tr( "Import actions" ), parsed.errors.join( "\n" ) );
         return;
@@ -526,9 +527,64 @@ void ImportActionsDialog::importActions()
         QMessageBox::information( this, tr( "Import actions" ), parsed.warnings.join( "\n" ) );
     }
 
+    auto mergeResult = mergeActionsConfig( actions_,
+                                           responses_,
+                                           parsed.actions,
+                                           parsed.responses,
+                                           ActionsConflictPolicy::Fail );
+    if ( !mergeResult.conflicts.isEmpty() ) {
+        QMessageBox conflictBox( QMessageBox::Question,
+                                 tr( "Import actions" ),
+                                 tr( "%1 conflicts were found while importing actions.\n\n%2" )
+                                     .arg( mergeResult.conflicts.size() )
+                                     .arg( actionConflictSummaries( mergeResult.conflicts )
+                                               .join( "\n" ) ),
+                                 QMessageBox::Cancel,
+                                 this );
+        auto* keepButton = conflictBox.addButton( tr( "Use Existing" ),
+                                                  QMessageBox::AcceptRole );
+        auto* importedButton = conflictBox.addButton( tr( "Use Imported" ),
+                                                      QMessageBox::DestructiveRole );
+        conflictBox.exec();
+
+        if ( conflictBox.clickedButton() == keepButton ) {
+            mergeResult = mergeActionsConfig( actions_,
+                                              responses_,
+                                              parsed.actions,
+                                              parsed.responses,
+                                              ActionsConflictPolicy::KeepExisting );
+        }
+        else if ( conflictBox.clickedButton() == importedButton ) {
+            mergeResult = mergeActionsConfig( actions_,
+                                              responses_,
+                                              parsed.actions,
+                                              parsed.responses,
+                                              ActionsConflictPolicy::UseImported );
+        }
+        else {
+            return;
+        }
+    }
+
+    if ( !mergeResult.errors.isEmpty() ) {
+        QMessageBox::warning( this, tr( "Import actions" ), mergeResult.errors.join( "\n" ) );
+        return;
+    }
+
+    if ( QMessageBox::question(
+             this, tr( "Import actions" ),
+             tr( "Apply imported actions?\n\nAdded: %1\nUpdated: %2\nSkipped: %3\nConflicts: %4" )
+                 .arg( mergeResult.added )
+                 .arg( mergeResult.updated )
+                 .arg( mergeResult.skipped )
+                 .arg( mergeResult.conflicts.size() ) )
+         != QMessageBox::Yes ) {
+        return;
+    }
+
     suppressPersist_ = true;
-    actions_ = parsed.actions;
-    responses_ = parsed.responses;
+    actions_ = mergeResult.actions;
+    responses_ = mergeResult.responses;
     actionsModel_->setActions( &actions_ );
     responsesModel_->setResponses( &responses_ );
     suppressPersist_ = false;

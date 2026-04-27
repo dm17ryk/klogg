@@ -1394,6 +1394,8 @@ void MainWindow::reTranslateUI()
     importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
     importActionsAction->setText( transAction( action::importActionsDialogText ) );
     importActionsAction->setStatusTip( transAction( action::importActionsDialogStatusTip ) );
+    exportActionsAction->setText( transAction( action::exportActionsDialogText ) );
+    exportActionsAction->setStatusTip( transAction( action::exportActionsDialogStatusTip ) );
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -1702,6 +1704,11 @@ void MainWindow::createActions()
     connect( importActionsAction, &QAction::triggered, this,
              [ this ]( auto ) { this->openImportActionsDialog(); } );
 
+    exportActionsAction = new QAction( tr( action::exportActionsDialogText ), this );
+    exportActionsAction->setStatusTip( tr( action::exportActionsDialogStatusTip ) );
+    connect( exportActionsAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openExportActionsDialog(); } );
+
     updateShortcuts();
 }
 
@@ -1859,6 +1866,7 @@ void MainWindow::createMenus()
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
     toolsMenu->addAction( importActionsAction );
+    toolsMenu->addAction( exportActionsAction );
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
@@ -2500,6 +2508,23 @@ void MainWindow::openImportActionsDialog()
 {
     ImportActionsDialog dialog( this );
     dialog.exec();
+}
+
+void MainWindow::openExportActionsDialog()
+{
+    const auto file = QFileDialog::getSaveFileName( this, tr( "Export actions" ), "",
+                                                    tr( "Actions JSON (*.json);;All files (*)" ) );
+    if ( file.isEmpty() ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !ActionsManager::instance().exportToFile( file, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Export actions" ), errorMessage );
+        return;
+    }
+
+    QMessageBox::information( this, tr( "Export actions" ), tr( "Actions exported." ) );
 }
 
 // Opens the 'Options' modal dialog box

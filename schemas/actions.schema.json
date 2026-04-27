@@ -16,7 +16,7 @@
         },
         "version": {
             "type": "integer",
-            "const": 1,
+            "const": 3,
             "description": "Config format version."
         },
         "actions": {
@@ -72,6 +72,22 @@
                         },
                         "value": {
                             "$ref": "#/$defs/hexString"
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "wildcard"
+                        },
+                        "value": {
+                            "type": "string"
                         }
                     }
                 }
@@ -143,6 +159,45 @@
                     "type": "integer",
                     "minimum": 0,
                     "default": 0
+                },
+                "repeat_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1
+                },
+                "repeat_interval": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
+                },
+                "variable_names": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "checksum": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "algorithm": {
+                    "type": "string",
+                    "enum": [
+                        "sum8",
+                        "crc16_ccitt"
+                    ],
+                    "default": "sum8"
+                },
+                "placeholder": {
+                    "type": "string",
+                    "default": "${CHECKSUM}"
                 }
             }
         },
@@ -160,6 +215,11 @@
                 "id": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "order": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
                 },
                 "enabled": {
                     "type": "boolean",
@@ -182,6 +242,27 @@
                 },
                 "parameters": {
                     "$ref": "#/$defs/actionParameters"
+                },
+                "checksum": {
+                    "$ref": "#/$defs/checksum"
+                }
+            }
+        },
+        "responseStep": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "action_id"
+            ],
+            "properties": {
+                "action_id": {
+                    "type": "integer",
+                    "minimum": -1
+                },
+                "delay_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
                 }
             }
         },
@@ -198,6 +279,13 @@
                 "action": {
                     "$ref": "#/$defs/sequence",
                     "description": "Inline action payload to send."
+                },
+                "steps": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/$defs/responseStep"
+                    }
                 },
                 "comment": {
                     "type": "string",
@@ -247,6 +335,11 @@
                 "id": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "order": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
                 },
                 "enabled": {
                     "type": "boolean",

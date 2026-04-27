@@ -116,6 +116,9 @@ const char* action::importPreviewsDialogStatusTip
 const char* action::importActionsDialogText = QT_TR_NOOP( "Import actions..." );
 const char* action::importActionsDialogStatusTip
     = QT_TR_NOOP( "Import actions and responses definitions" );
+const char* action::exportActionsDialogText = QT_TR_NOOP( "Export actions..." );
+const char* action::exportActionsDialogStatusTip
+    = QT_TR_NOOP( "Export actions and responses definitions" );
 const char* action::autoEncodingText = QT_TR_NOOP( "Auto" );
 const char* action::autoEncodingStatusTip
     = QT_TR_NOOP( "Automatically detect the file's encoding" );

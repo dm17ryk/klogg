@@ -109,21 +109,49 @@ ActionsImportResult ActionsManager::importFromDefinitions(
     return result;
 }
 
-ActionsImportResult ActionsManager::importFromFile( const QString& path )
+ActionsImportResult ActionsManager::importFromFile( const QString& path,
+                                                    ActionsImportFormat format,
+                                                    ActionsConflictPolicy conflictPolicy )
 {
     ActionsImportResult result;
-    ActionsConfigParser parser;
-    const auto parsed = parser.parseFile( path );
+    const auto parsed = parseActionsConfigFile( path, format );
     result.errors = parsed.errors;
     result.warnings = parsed.warnings;
     if ( !parsed.errors.isEmpty() ) {
         return result;
     }
 
-    auto imported = importFromDefinitions( std::move( parsed.actions ),
-                                           std::move( parsed.responses ) );
-    imported.warnings = result.warnings;
-    return imported;
+    auto merged = mergeActionsConfig( actions_,
+                                      responses_,
+                                      parsed.actions,
+                                      parsed.responses,
+                                      conflictPolicy );
+    result.added = merged.added;
+    result.updated = merged.updated;
+    result.skipped = merged.skipped;
+    result.conflicts = merged.conflicts;
+    result.warnings += merged.warnings;
+    result.errors += merged.errors;
+    if ( !merged.ok ) {
+        return result;
+    }
+
+    if ( !repository_.save( merged.actions, merged.responses ) ) {
+        result.errors.push_back( tr( "Failed to save actions to settings." ) );
+        return result;
+    }
+
+    actions_ = std::move( merged.actions );
+    responses_ = std::move( merged.responses );
+    result.ok = true;
+    Q_EMIT actionsChanged();
+    Q_EMIT responsesChanged();
+    return result;
+}
+
+bool ActionsManager::exportToFile( const QString& path, QString* errorMessage, bool pretty ) const
+{
+    return writeActionsConfigFile( path, actions_, responses_, errorMessage, pretty );
 }
 
 const QVector<ActionDefinition>& ActionsManager::actions() const

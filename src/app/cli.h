@@ -191,6 +191,8 @@ struct CliParameters {
             "  cilogg command --action get_scenario_report [--pretty]\n"
             "  cilogg command --action get_actions [--pretty]\n"
             "  cilogg command --action get_responses [--pretty]\n"
+            "  cilogg command --action export_actions --file <path> [--pretty]\n"
+            "  cilogg command --action import_actions --file <path> [--format auto|json|docklight-ptp] [--conflict fail|keep-existing|use-imported]\n"
             "  cilogg command --action create_action --json-file <path>\n"
             "  cilogg command --action update_action --id <id> --json-file <path>\n"
             "  cilogg command --action delete_action --id <id>\n"
@@ -297,6 +299,8 @@ struct CliParameters {
             "  get_scenario_report [--pretty|--preatty]\n"
             "  get_actions [--pretty|--preatty]\n"
             "  get_responses [--pretty|--preatty]\n"
+            "  export_actions --file <path> [--pretty|--preatty]\n"
+            "  import_actions --file <path> [--format auto|json|docklight-ptp] [--conflict fail|keep-existing|use-imported]\n"
             "  create_action --json-file <path>\n"
             "  update_action --id <id> --json-file <path>\n"
             "  delete_action --id <id>\n"
@@ -1277,6 +1281,14 @@ struct CliParameters {
         const QCommandLineOption jsonFileOption( QStringLiteral( "json-file" ),
                                                  QStringLiteral( "Path to a JSON object payload." ),
                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption formatOption(
+            QStringLiteral( "format" ),
+            QStringLiteral( "Actions import format (auto, json, docklight-ptp)." ),
+            QStringLiteral( "format" ) );
+        const QCommandLineOption conflictOption(
+            QStringLiteral( "conflict" ),
+            QStringLiteral( "Actions import conflict policy (fail, keep-existing, use-imported)." ),
+            QStringLiteral( "policy" ) );
         const QCommandLineOption timeoutMsOption( QStringLiteral( "timeout-ms" ),
                                                   QStringLiteral( "Timeout in milliseconds." ),
                                                   QStringLiteral( "ms" ) );
@@ -1373,6 +1385,8 @@ struct CliParameters {
         parser.addOption( idOption );
         parser.addOption( nameOption );
         parser.addOption( jsonFileOption );
+        parser.addOption( formatOption );
+        parser.addOption( conflictOption );
         parser.addOption( timeoutMsOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
@@ -1453,6 +1467,8 @@ struct CliParameters {
           request.scenarioFilePath
               = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
           request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
+          request.actionsImportFormat = parser.value( formatOption ).trimmed();
+          request.actionsConflictPolicy = parser.value( conflictOption ).trimmed();
           request.allEntities = parser.isSet( allOption );
         request.timestampComment = parser.isSet( timestampOption );
         if ( request.rearmAutoRefresh ) {
@@ -1540,6 +1556,8 @@ struct CliParameters {
         switch ( *action ) {
         case CommanderAction::OpenFile:
         case CommanderAction::CloseFile:
+        case CommanderAction::ExportActions:
+        case CommanderAction::ImportActions:
             request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );
             if ( request.filePath.isEmpty() ) {
                 result.output_message
@@ -1816,6 +1834,26 @@ struct CliParameters {
             break;
         case CommanderAction::None:
             break;
+        }
+
+        if ( *action == CommanderAction::ImportActions ) {
+            const auto format = request.actionsImportFormat.trimmed().toLower();
+            if ( !format.isEmpty() && format != QStringLiteral( "auto" )
+                 && format != QStringLiteral( "json" )
+                 && format != QStringLiteral( "docklight-ptp" ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Invalid --format value." ) );
+                return result;
+            }
+
+            const auto conflictPolicy = request.actionsConflictPolicy.trimmed().toLower();
+            if ( !conflictPolicy.isEmpty() && conflictPolicy != QStringLiteral( "fail" )
+                 && conflictPolicy != QStringLiteral( "keep-existing" )
+                 && conflictPolicy != QStringLiteral( "use-imported" ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Invalid --conflict value." ) );
+                return result;
+            }
         }
 
         if ( *action == CommanderAction::GetFilters ) {

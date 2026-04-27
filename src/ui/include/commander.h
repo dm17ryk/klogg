@@ -21,6 +21,8 @@ enum class CommanderAction {
     GetFilters,
     GetActions,
     GetResponses,
+    ExportActions,
+    ImportActions,
     CreateAction,
     UpdateAction,
     DeleteAction,
@@ -100,6 +102,8 @@ struct CommanderRequest {
     QString argsJsonFilePath;
     QString scenarioFilePath;
     QString suiteFilePath;
+    QString actionsImportFormat;
+    QString actionsConflictPolicy;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;

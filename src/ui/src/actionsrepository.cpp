@@ -2,91 +2,10 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QSaveFile>
 
+#include "actionsimportexport.h"
 #include "actionsconfigparser.h"
 #include "persistentinfo.h"
-
-namespace {
-QJsonObject sequenceToJson( const ActionSequence& sequence )
-{
-    QJsonObject obj;
-    obj.insert( "type", actionSequenceTypeToString( sequence.type ) );
-    obj.insert( "value", sequence.value );
-    return obj;
-}
-
-QJsonObject actionToJson( const ActionDefinition& action )
-{
-    QJsonObject obj;
-    obj.insert( "id", action.id );
-    obj.insert( "order", action.order );
-    obj.insert( "enabled", action.enabled );
-    obj.insert( "hidden", action.hidden );
-    obj.insert( "name", action.name );
-    obj.insert( "description", action.description );
-    obj.insert( "sequence", sequenceToJson( action.sequence ) );
-
-    QJsonObject params;
-    params.insert( "repeat", action.parameters.repeat );
-    params.insert( "delay", action.parameters.delay );
-    params.insert( "repeat_count", action.parameters.repeatCount );
-    params.insert( "repeat_interval", action.parameters.repeatInterval );
-    params.insert( "variable_names", QJsonArray::fromStringList( action.parameters.variableNames ) );
-    obj.insert( "parameters", params );
-
-    QJsonObject checksum;
-    checksum.insert( "enabled", action.checksum.enabled );
-    checksum.insert( "algorithm", action.checksum.algorithm );
-    checksum.insert( "placeholder", action.checksum.placeholder );
-    obj.insert( "checksum", checksum );
-    return obj;
-}
-
-QJsonObject responseToJson( const ResponseDefinition& response )
-{
-    QJsonObject matchObj;
-    matchObj.insert( "type", responseMatchTypeToString( response.match.type ) );
-    matchObj.insert( "value", response.match.value );
-
-    QJsonObject responseObj;
-    if ( response.response.hasActionId ) {
-        responseObj.insert( "action_id", response.response.actionId );
-    }
-    if ( !response.response.steps.isEmpty() ) {
-        QJsonArray stepsArray;
-        for ( const auto& step : response.response.steps ) {
-            QJsonObject stepObj;
-            stepObj.insert( "action_id", step.actionId );
-            stepObj.insert( "delay_ms", step.delayMs );
-            stepsArray.append( stepObj );
-        }
-        responseObj.insert( "steps", stepsArray );
-    }
-    if ( response.response.hasInlineAction ) {
-        responseObj.insert( "action", sequenceToJson( response.response.inlineAction ) );
-    }
-    responseObj.insert( "comment", response.response.comment );
-    responseObj.insert( "linebreak", response.response.linebreak );
-    responseObj.insert( "timestamp", response.response.timestamp );
-    responseObj.insert( "snapshot", response.response.snapshot );
-    responseObj.insert( "stop_communication", response.response.stopCommunication );
-
-    QJsonObject obj;
-    obj.insert( "id", response.id );
-    obj.insert( "order", response.order );
-    obj.insert( "enabled", response.enabled );
-    obj.insert( "hidden", response.hidden );
-    obj.insert( "name", response.name );
-    obj.insert( "description", response.description );
-    obj.insert( "match", matchObj );
-    obj.insert( "response", responseObj );
-    return obj;
-}
-} // namespace
 
 ActionsParseResult ActionsRepository::load() const
 {
@@ -101,28 +20,7 @@ ActionsParseResult ActionsRepository::load() const
 bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
                               const QVector<ResponseDefinition>& responses ) const
 {
-    QJsonArray actionsArray;
-    for ( const auto& action : actions ) {
-        actionsArray.append( actionToJson( action ) );
-    }
-
-    QJsonArray responsesArray;
-    for ( const auto& response : responses ) {
-        responsesArray.append( responseToJson( response ) );
-    }
-
-    QJsonObject root;
-    root.insert( "version", 3 );
-    root.insert( "actions", actionsArray );
-    root.insert( "responses", responsesArray );
-
-    const QJsonDocument doc( root );
-    QSaveFile file( storagePath() );
-    if ( !file.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
-        return false;
-    }
-    file.write( doc.toJson( QJsonDocument::Indented ) );
-    return file.commit();
+    return writeActionsConfigFile( storagePath(), actions, responses );
 }
 
 QString ActionsRepository::storagePath() const

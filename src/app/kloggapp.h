@@ -57,6 +57,7 @@
 #endif
 
 #include "configuration.h"
+#include "actionsimportexport.h"
 #include "actionsmanager.h"
 #include "commander.h"
 #include "crashhandler.h"
@@ -620,6 +621,48 @@ class KloggApp : public QApplication {
                 responses.push_back( responseDefinitionToVariantMap( response ) );
             }
             return commanderSuccess( {}, QVariantMap{ { QStringLiteral( "responses" ), responses } } );
+        }
+
+        if ( request.action == CommanderAction::ExportActions ) {
+            QString errorMessage;
+            if ( !ActionsManager::instance().exportToFile(
+                     request.filePath, &errorMessage, request.prettyOutput ) ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, errorMessage );
+            }
+            return commanderSuccess(
+                {}, QVariantMap{ { QStringLiteral( "file" ), request.filePath } } );
+        }
+
+        if ( request.action == CommanderAction::ImportActions ) {
+            bool formatOk = false;
+            const auto format = actionsImportFormatFromString( request.actionsImportFormat,
+                                                               &formatOk );
+            bool conflictOk = false;
+            const auto conflictPolicy
+                = actionsConflictPolicyFromString( request.actionsConflictPolicy, &conflictOk );
+            if ( !formatOk || !conflictOk ) {
+                return commanderFailure( CommanderResultCode::InvalidRequest,
+                                         QStringLiteral( "Invalid import options." ) );
+            }
+
+            const auto importResult
+                = ActionsManager::instance().importFromFile( request.filePath,
+                                                             format,
+                                                             conflictPolicy );
+            QVariantMap payload;
+            payload.insert( QStringLiteral( "added" ), importResult.added );
+            payload.insert( QStringLiteral( "updated" ), importResult.updated );
+            payload.insert( QStringLiteral( "skipped" ), importResult.skipped );
+            payload.insert( QStringLiteral( "conflicts" ),
+                            actionConflictsToVariantList( importResult.conflicts ) );
+            payload.insert( QStringLiteral( "warnings" ), importResult.warnings );
+            if ( !importResult.ok ) {
+                payload.insert( QStringLiteral( "errors" ), importResult.errors );
+                return CommanderResult{ CommanderResultCode::ExecutionFailed,
+                                        importResult.errors.join( QStringLiteral( "\n" ) ),
+                                        payload };
+            }
+            return commanderSuccess( {}, payload );
         }
 
         if ( request.action == CommanderAction::CreateAction ) {

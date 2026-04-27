@@ -3,10 +3,15 @@
 #include <QObject>
 
 #include "actionsconfig.h"
+#include "actionsimportexport.h"
 #include "actionsrepository.h"
 
 struct ActionsImportResult {
     bool ok = false;
+    int added = 0;
+    int updated = 0;
+    int skipped = 0;
+    QVector<ActionsImportConflict> conflicts;
     QStringList errors;
     QStringList warnings;
 };
@@ -19,7 +24,13 @@ class ActionsManager : public QObject {
     void loadFromRepository();
     ActionsImportResult importFromDefinitions( QVector<ActionDefinition> actions,
                                                QVector<ResponseDefinition> responses );
-    ActionsImportResult importFromFile( const QString& path );
+    ActionsImportResult importFromFile( const QString& path,
+                                        ActionsImportFormat format = ActionsImportFormat::Json,
+                                        ActionsConflictPolicy conflictPolicy
+                                        = ActionsConflictPolicy::Fail );
+    bool exportToFile( const QString& path,
+                       QString* errorMessage = nullptr,
+                       bool pretty = true ) const;
 
     const QVector<ActionDefinition>& actions() const;
     const QVector<ResponseDefinition>& responses() const;

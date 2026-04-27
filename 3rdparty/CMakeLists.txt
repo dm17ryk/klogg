@@ -479,6 +479,10 @@ cpmaddpackage(
   "TBB_STRICT OFF"
 )
 
+if(MSVC AND TARGET tbb)
+  target_link_directories(tbb INTERFACE "$<TARGET_FILE_DIR:tbb>")
+endif()
+
 if(WIN32)
   set(BUILD_SHARED_LIBS OFF)
 endif()

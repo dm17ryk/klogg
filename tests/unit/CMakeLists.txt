@@ -1,6 +1,7 @@
 # Add test cpp file
 add_executable(klogg_tests
     actionsconfig_test.cpp
+    actionsimportexport_test.cpp
     commander_test.cpp
     linepositionarray_test.cpp
     patternmatcher_test.cpp
@@ -13,6 +14,7 @@ add_executable(klogg_tests
 
 target_link_libraries(klogg_tests klogg_ui klogg_utils klogg_logging Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(klogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
+target_compile_definitions(klogg_tests PRIVATE CILOGG_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 set_target_properties(
     klogg_tests
     PROPERTIES AUTOMOC ON

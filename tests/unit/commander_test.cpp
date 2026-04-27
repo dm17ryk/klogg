@@ -384,6 +384,28 @@ TEST_CASE( "Commander CLI parses actions CRUD requests", "[commander][cli]" )
     REQUIRE( deleteParameters.commander_request->entityId == 9 );
 }
 
+TEST_CASE( "Commander CLI parses actions import and export requests", "[commander][cli]" )
+{
+    CliParameters exportParameters(
+        { "cilogg", "command", "--action", "export_actions", "--file", "actions.json",
+          "--pretty" } );
+    REQUIRE_FALSE( exportParameters.parse_error );
+    REQUIRE( exportParameters.commander_request.has_value() );
+    REQUIRE( exportParameters.commander_request->action == CommanderAction::ExportActions );
+    REQUIRE( exportParameters.commander_request->filePath.endsWith( "actions.json" ) );
+    REQUIRE( exportParameters.commander_request->prettyOutput );
+
+    CliParameters importParameters(
+        { "cilogg", "command", "--action", "import_actions", "--file", "program.ptp",
+          "--format", "docklight-ptp", "--conflict", "use-imported" } );
+    REQUIRE_FALSE( importParameters.parse_error );
+    REQUIRE( importParameters.commander_request.has_value() );
+    REQUIRE( importParameters.commander_request->action == CommanderAction::ImportActions );
+    REQUIRE( importParameters.commander_request->filePath.endsWith( "program.ptp" ) );
+    REQUIRE( importParameters.commander_request->actionsImportFormat == "docklight-ptp" );
+    REQUIRE( importParameters.commander_request->actionsConflictPolicy == "use-imported" );
+}
+
 TEST_CASE( "Commander CLI parses send and wait response requests", "[commander][cli]" )
 {
     CliParameters sendParameters(

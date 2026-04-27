@@ -107,6 +107,8 @@ extern const char* importPreviewsDialogText;
 extern const char* importPreviewsDialogStatusTip;
 extern const char* importActionsDialogText;
 extern const char* importActionsDialogStatusTip;
+extern const char* exportActionsDialogText;
+extern const char* exportActionsDialogStatusTip;
 extern const char* autoEncodingText;
 extern const char* autoEncodingStatusTip;
 } // namespace action

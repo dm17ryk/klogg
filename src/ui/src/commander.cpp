@@ -70,6 +70,10 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "get_actions" );
     case CommanderAction::GetResponses:
         return QStringLiteral( "get_responses" );
+    case CommanderAction::ExportActions:
+        return QStringLiteral( "export_actions" );
+    case CommanderAction::ImportActions:
+        return QStringLiteral( "import_actions" );
     case CommanderAction::CreateAction:
         return QStringLiteral( "create_action" );
     case CommanderAction::UpdateAction:
@@ -193,6 +197,12 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "get_responses" ) ) {
         return CommanderAction::GetResponses;
+    }
+    if ( normalized == QStringLiteral( "export_actions" ) ) {
+        return CommanderAction::ExportActions;
+    }
+    if ( normalized == QStringLiteral( "import_actions" ) ) {
+        return CommanderAction::ImportActions;
     }
     if ( normalized == QStringLiteral( "create_action" ) ) {
         return CommanderAction::CreateAction;
@@ -412,6 +422,12 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.suiteFilePath.isEmpty() ) {
         map.insert( QStringLiteral( "suiteFilePath" ), request.suiteFilePath );
     }
+    if ( !request.actionsImportFormat.isEmpty() ) {
+        map.insert( QStringLiteral( "actionsImportFormat" ), request.actionsImportFormat );
+    }
+    if ( !request.actionsConflictPolicy.isEmpty() ) {
+        map.insert( QStringLiteral( "actionsConflictPolicy" ), request.actionsConflictPolicy );
+    }
     if ( request.windowIndex ) {
         map.insert( QStringLiteral( "windowIndex" ), *request.windowIndex );
     }
@@ -531,6 +547,9 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.argsJsonFilePath = map.value( QStringLiteral( "argsJsonFilePath" ) ).toString();
     request.scenarioFilePath = map.value( QStringLiteral( "scenarioFilePath" ) ).toString();
     request.suiteFilePath = map.value( QStringLiteral( "suiteFilePath" ) ).toString();
+    request.actionsImportFormat = map.value( QStringLiteral( "actionsImportFormat" ) ).toString();
+    request.actionsConflictPolicy
+        = map.value( QStringLiteral( "actionsConflictPolicy" ) ).toString();
     request.allEntities = map.value( QStringLiteral( "allEntities" ) ).toBool();
     request.timestampComment = map.value( QStringLiteral( "timestampComment" ) ).toBool();
     request.followFile = map.value( QStringLiteral( "followFile" ) ).toBool();
