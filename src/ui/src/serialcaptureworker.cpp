@@ -108,6 +108,43 @@ SerialCaptureWorker::SerialCaptureWorker( SerialCaptureSettings settings, QObjec
 {
 }
 
+bool SerialCaptureWorker::switchCaptureFile( const QString& filePath, QString* errorMessage )
+{
+    if ( filePath.trimmed().isEmpty() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "No capture file path selected." );
+        }
+        return false;
+    }
+
+    QFile nextFile( filePath );
+    if ( !nextFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = nextFile.errorString();
+        }
+        return false;
+    }
+    nextFile.close();
+
+    if ( file_.isOpen() ) {
+        file_.flush();
+        file_.close();
+    }
+
+    file_.setFileName( filePath );
+    if ( !file_.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = file_.errorString();
+        }
+        return false;
+    }
+
+    settings_.filePath = filePath;
+    atLineStart_ = true;
+    flushCounter_ = 0;
+    return true;
+}
+
 void SerialCaptureWorker::start()
 {
     if ( stopping_ ) {

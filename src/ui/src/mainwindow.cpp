@@ -563,6 +563,8 @@ MainWindow::MainWindow( WindowSession session )
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
+    connect( &mainTabWidget_, &TabbedCrawlerWidget::startNewStreamFileRequested, this,
+             &MainWindow::startNewStreamFileForTab );
     connect( &mainTabWidget_, &TabbedCrawlerWidget::currentChanged, this,
              &MainWindow::currentTabChanged );
 
@@ -2141,37 +2143,40 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
     connect( session.get(), &StreamSession::connectionOpened, this,
-             [ this, filePath, session ] {
-                 mainTabWidget_.setStreamSessionForPath( filePath, session );
-                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_start" ) );
+             [ this, session ] {
+                 const auto currentFilePath = session->filePath();
+                 mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
+                 publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_start" ) );
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, filePath, session, safeSession ] {
+             [ this, session, safeSession ] {
+                 const auto currentFilePath = session->filePath();
                  bool tabStillOpen = false;
                  for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
                      auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
-                     if ( widget != nullptr && session_.getFilename( widget ) == filePath ) {
+                     if ( widget != nullptr && session_.getFilename( widget ) == currentFilePath ) {
                          tabStillOpen = true;
                          break;
                      }
                  }
 
                  if ( tabStillOpen ) {
-                     mainTabWidget_.setStreamSessionForPath( filePath, session );
+                     mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
                  }
                  else {
-                     mainTabWidget_.clearStreamSessionForPath( filePath );
+                     mainTabWidget_.clearStreamSessionForPath( currentFilePath );
                  }
                  if ( actionsStreamSession_ == safeSession ) {
                      actionsStreamSession_.clear();
                  }
-                 publishScriptLifecycleEvent( filePath, QStringLiteral( "comm_stop" ) );
+                 publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_stop" ) );
                  updateActionsSendState();
              } );
     connect( session.get(), &StreamSession::errorOccurred, this,
              [ this, filePath, safeSession, settings, options ]( const QString& message ) {
                  const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
+                 const auto currentFilePath = safeSession ? safeSession->filePath() : filePath;
                  if ( options.showErrors ) {
                      const auto title = options.restoreMode && startupFailure
                                             ? tr( "Restore COM Port" )
@@ -2179,16 +2184,16 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                      const auto text = options.restoreMode && startupFailure
                                            ? tr( "Failed to restore COM port %1 for %2.\n"
                                                 "The capture file remains open.\n\n%3" )
-                                                 .arg( settings.portName, filePath, message )
+                                                 .arg( settings.portName, currentFilePath, message )
                                            : tr( "Capture stopped for %1:\n%2" )
-                                                 .arg( filePath, message );
+                                                 .arg( currentFilePath, message );
                      const auto icon = options.restoreMode && startupFailure
                                            ? QMessageBox::Information
                                            : QMessageBox::Warning;
                      showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
                  }
                  else {
-                     LOG_WARNING << "Capture stopped for " << filePath.toStdString() << ": "
+                     LOG_WARNING << "Capture stopped for " << currentFilePath.toStdString() << ": "
                                  << message.toStdString();
                  }
                  if ( safeSession ) {
@@ -2196,24 +2201,32 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  }
              } );
     connect( session.get(), &StreamSession::dataObserved, this,
-             [ this, filePath ]( const QByteArray& payloadBytes ) {
-                 publishScriptReceiveEvent( filePath, payloadBytes );
+             [ this, safeSession ]( const QByteArray& payloadBytes ) {
+                 if ( safeSession ) {
+                     publishScriptReceiveEvent( safeSession->filePath(), payloadBytes );
+                 }
              } );
     connect( session.get(), &StreamSession::dataTransmitted, this,
-             [ this, filePath ]( const QByteArray& payloadBytes ) {
-                 publishScriptTxEvent( filePath, payloadBytes );
+             [ this, safeSession ]( const QByteArray& payloadBytes ) {
+                 if ( safeSession ) {
+                     publishScriptTxEvent( safeSession->filePath(), payloadBytes );
+                 }
              } );
     connect( session.get(), &StreamSession::actionSent, this,
-             [ this, filePath ]( int actionId, const QString& actionName, int stepIndex,
-                                 const QByteArray& payloadBytes ) {
-                 publishScriptActionSendEvent( filePath, actionId, actionName, stepIndex,
-                                               payloadBytes );
+             [ this, safeSession ]( int actionId, const QString& actionName, int stepIndex,
+                                    const QByteArray& payloadBytes ) {
+                 if ( safeSession ) {
+                     publishScriptActionSendEvent( safeSession->filePath(), actionId, actionName,
+                                                   stepIndex, payloadBytes );
+                 }
              } );
     connect( session.get(), &StreamSession::responseMatched, this,
-             [ this, filePath ]( int responseId, const QString& responseName, int counter,
-                                 const QByteArray& lineBytes, const QString& matchedText ) {
-                 publishScriptResponseEvent( filePath, responseId, responseName, counter,
-                                             lineBytes, matchedText );
+             [ this, safeSession ]( int responseId, const QString& responseName, int counter,
+                                    const QByteArray& lineBytes, const QString& matchedText ) {
+                 if ( safeSession ) {
+                     publishScriptResponseEvent( safeSession->filePath(), responseId, responseName,
+                                                 counter, lineBytes, matchedText );
+                 }
              } );
     session->start();
     mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
@@ -2868,6 +2881,69 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
     refreshScriptStatusIndicators();
 
     widget->deleteLater();
+}
+
+void MainWindow::startNewStreamFileForTab( int tab )
+{
+    auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
+    if ( crawler == nullptr ) {
+        return;
+    }
+
+    const auto oldFilePath = session_.getFilename( crawler );
+    auto* streamSession = mainTabWidget_.streamSessionForPath( oldFilePath );
+    if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
+                            tr( "No active COM stream is available for this tab." ), false );
+        return;
+    }
+
+    const auto context = crawler->context();
+    const auto viewContext = context ? context->toString() : QString{};
+    auto newSettings = streamSession->captureSettings();
+    const auto newFilePath = suggestedNextComCapturePath( newSettings );
+
+    QString captureFileError;
+    if ( !ensureComCaptureFileWritable( newFilePath, &captureFileError ) ) {
+        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
+                            tr( "Failed to open new capture file: %1" ).arg( captureFileError ),
+                            false );
+        return;
+    }
+
+    if ( !loadFile( newFilePath, true ) ) {
+        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
+                            tr( "Failed to open new capture file in CILogg." ), false );
+        return;
+    }
+
+    auto* newCrawler = static_cast<CrawlerWidget*>( session_.getViewIfOpen( newFilePath ) );
+    if ( newCrawler != nullptr && !viewContext.isEmpty() ) {
+        newCrawler->setViewContext( viewContext );
+    }
+
+    QString switchError;
+    if ( !streamSession->startNewCaptureFile( newFilePath, &switchError ) ) {
+        if ( newCrawler != nullptr ) {
+            const auto newTab = mainTabWidget_.indexOf( newCrawler );
+            if ( newTab >= 0 ) {
+                closeTab( newTab, ActionInitiator::App );
+            }
+        }
+        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
+                            tr( "Failed to switch capture file: %1" ).arg( switchError ),
+                            false );
+        return;
+    }
+
+    mainTabWidget_.remapStreamSessionPath( oldFilePath, newFilePath );
+    publishScriptLifecycleEvent( oldFilePath, QStringLiteral( "comm_stop" ) );
+    publishScriptLifecycleEvent( newFilePath, QStringLiteral( "comm_start" ) );
+    updateActionsSendState();
+    updateComPortStatus();
+    refreshComTabIndicators();
+    refreshScriptStatusIndicators();
+    updateOpenedFilesMenu();
 }
 
 CommanderResult MainWindow::closeTabById( const QString& tabId )

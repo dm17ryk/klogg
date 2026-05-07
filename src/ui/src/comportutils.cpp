@@ -30,6 +30,21 @@ QString resolveComCaptureBaseDir( const QString& preferredPath )
 
     return defaultComLogDirectory();
 }
+
+QString buildComCaptureFileName( const SerialCaptureSettings& settings,
+                                 const QDateTime& timestamp,
+                                 int suffix = 0 )
+{
+    const auto portName
+        = settings.portName.isEmpty() ? QStringLiteral( "port" ) : settings.portName.toLower();
+    const auto baudRate = QString::number( settings.baudRate );
+    const auto timestampText = timestamp.toString( QStringLiteral( "yyyy-MM-dd_HH-mm-ss" ) );
+    auto stem = QString( "%1_%2_%3" ).arg( portName, baudRate, timestampText );
+    if ( suffix > 1 ) {
+        stem.append( QStringLiteral( "_%1" ).arg( suffix ) );
+    }
+    return stem.append( QStringLiteral( ".log" ) );
+}
 } // namespace
 
 QString defaultComLogDirectory()
@@ -74,13 +89,29 @@ QString suggestedComCapturePath( const SerialCaptureSettings& settings )
         dir.mkpath( "." );
     }
 
-    const auto portName
-        = settings.portName.isEmpty() ? QStringLiteral( "port" ) : settings.portName.toLower();
-    const auto baudRate = QString::number( settings.baudRate );
-    const auto timestamp
-        = QDateTime::currentDateTime().toString( QStringLiteral( "yyyy-MM-dd_HH-mm-ss" ) );
-    const auto fileName = QString( "%1_%2_%3.log" ).arg( portName, baudRate, timestamp );
+    const auto fileName = buildComCaptureFileName( settings, QDateTime::currentDateTime() );
     return dir.filePath( fileName );
+}
+
+QString suggestedNextComCapturePath( const SerialCaptureSettings& settings,
+                                     const QDateTime& timestamp )
+{
+    auto baseDir = resolveComCaptureBaseDir( settings.filePath );
+    QDir dir( baseDir );
+    if ( !dir.exists() && !dir.mkpath( "." ) ) {
+        dir.setPath( defaultComLogDirectory() );
+        dir.mkpath( "." );
+    }
+
+    const QFileInfo currentInfo{ settings.filePath };
+    const auto currentPath = currentInfo.absoluteFilePath();
+    for ( int suffix = 0;; suffix = suffix == 0 ? 2 : suffix + 1 ) {
+        const auto candidate = dir.absoluteFilePath(
+            buildComCaptureFileName( settings, timestamp, suffix ) );
+        if ( QFileInfo( candidate ).absoluteFilePath() != currentPath && !QFileInfo::exists( candidate ) ) {
+            return candidate;
+        }
+    }
 }
 
 SerialCaptureSettings resolveCommanderComSettings( const CommanderComSettings& overrides )

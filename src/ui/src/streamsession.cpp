@@ -116,6 +116,37 @@ const SerialCaptureSettings& StreamSession::captureSettings() const
     return settings_;
 }
 
+bool StreamSession::startNewCaptureFile( const QString& filePath, QString* errorMessage )
+{
+    if ( !started_ || !connectionOpen_ || worker_ == nullptr ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "No active stream connection." );
+        }
+        return false;
+    }
+
+    const auto oldFilePath = settings_.filePath;
+    QString switchError;
+    bool switched = false;
+    const auto invoked = QMetaObject::invokeMethod(
+        worker_,
+        [ this, filePath, &switchError, &switched ] {
+            switched = worker_->switchCaptureFile( filePath, &switchError );
+        },
+        Qt::BlockingQueuedConnection );
+    if ( !invoked || !switched ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = invoked ? switchError : tr( "Failed to invoke capture file switch." );
+        }
+        return false;
+    }
+
+    settings_.filePath = filePath;
+    lineBuffer_.clear();
+    Q_EMIT captureFileChanged( oldFilePath, filePath );
+    return true;
+}
+
 void StreamSession::sendBytes( const QByteArray& data )
 {
     if ( !worker_ || data.isEmpty() ) {

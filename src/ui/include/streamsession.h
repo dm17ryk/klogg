@@ -21,6 +21,7 @@ class StreamSession : public QObject {
     QString sourceDisplayName() const;
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
+    bool startNewCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
     void sendBytes( const QByteArray& data );
     void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
                            const QByteArray& data );
@@ -51,6 +52,7 @@ class StreamSession : public QObject {
                           int counter,
                           const QByteArray& lineBytes,
                           const QString& lineText );
+    void captureFileChanged( const QString& oldFilePath, const QString& newFilePath );
 
   private:
     void setupWorker();
