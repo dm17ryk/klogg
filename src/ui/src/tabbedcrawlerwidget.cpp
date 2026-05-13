@@ -380,16 +380,31 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
                                                           QString::number( settings.baudRate ) );
         auto closeConnection = menu.addAction( closeText );
         auto startNewFile = menu.addAction( tr( "Start new file" ) );
+        auto pauseOrPlay = menu.addAction( session->isPaused() ? tr( "Play" ) : tr( "Pause" ) );
         QPointer<StreamSession> safeSession = session;
-        closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
+        closeConnection->setEnabled( safeSession
+                                     && ( safeSession->isConnectionOpen()
+                                          || safeSession->isPaused() ) );
         startNewFile->setEnabled( safeSession && safeSession->isConnectionOpen() );
-        connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
-            if ( safeSession ) {
-                safeSession->closeConnection();
-            }
-        } );
+        pauseOrPlay->setEnabled( safeSession
+                                 && ( safeSession->isConnectionOpen()
+                                      || ( safeSession->isPaused()
+                                           && safeSession->canResume() ) ) );
+        connect( closeConnection, &QAction::triggered, this,
+                 [ this, tab ] { Q_EMIT closeStreamConnectionRequested( tab ); } );
         connect( startNewFile, &QAction::triggered, this,
                  [ this, tab ] { Q_EMIT startNewStreamFileRequested( tab ); } );
+        connect( pauseOrPlay, &QAction::triggered, this, [ this, tab, safeSession ] {
+            if ( !safeSession ) {
+                return;
+            }
+            if ( safeSession->isPaused() ) {
+                Q_EMIT resumeStreamConnectionRequested( tab );
+            }
+            else {
+                Q_EMIT pauseStreamConnectionRequested( tab );
+            }
+        } );
     }
     menu.addSeparator();
     auto renameTab = menu.addAction( tr( "Rename tab" ) );

@@ -1,7 +1,11 @@
 #include "streamsession.h"
+#include <algorithm>
 #include <QDateTime>
 
+#include <QDir>
+#include <QFileInfo>
 #include <QMetaObject>
+#include <QSerialPortInfo>
 #include <QVariantMap>
 
 #include "actionruntime.h"
@@ -29,6 +33,11 @@ StreamSession::~StreamSession()
 
 void StreamSession::start()
 {
+    startInternal( true );
+}
+
+void StreamSession::startInternal( bool resetResponseCounters )
+{
     if ( started_ ) {
         return;
     }
@@ -38,8 +47,11 @@ void StreamSession::start()
     stopping_ = false;
     started_ = true;
     connectionOpen_ = true;
+    paused_ = false;
     lineBuffer_.clear();
-    responseCounters_.clear();
+    if ( resetResponseCounters ) {
+        responseCounters_.clear();
+    }
     StreamSourceRegistry::get().registerSerialPort( settings_.portName );
     thread_.start();
     if ( worker_ ) {
@@ -93,12 +105,64 @@ void StreamSession::stop( bool waitForCompletion )
 
 void StreamSession::closeConnection()
 {
+    paused_ = false;
     stop( false );
+    setConnectionClosed();
+}
+
+bool StreamSession::pauseConnection( QString* errorMessage )
+{
+    if ( !started_ || !connectionOpen_ ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "No active stream connection." );
+        }
+        return false;
+    }
+
+    paused_ = true;
+    lineBuffer_.clear();
+    stop( false );
+    setConnectionClosed();
+    return true;
+}
+
+bool StreamSession::resumeConnection( QString* errorMessage )
+{
+    if ( !paused_ ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "Stream connection is not paused." );
+        }
+        return false;
+    }
+
+    if ( !canResume() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "The paused stream is still closing. Please try again in a moment." );
+        }
+        return false;
+    }
+
+    if ( !canOpenConfiguredCapture( errorMessage ) ) {
+        return false;
+    }
+
+    startInternal( false );
+    return true;
 }
 
 bool StreamSession::isConnectionOpen() const
 {
     return connectionOpen_;
+}
+
+bool StreamSession::isPaused() const
+{
+    return paused_;
+}
+
+bool StreamSession::canResume() const
+{
+    return paused_ && !started_ && !stopping_ && !thread_.isRunning() && worker_ == nullptr;
 }
 
 QString StreamSession::sourceDisplayName() const
@@ -202,6 +266,59 @@ void StreamSession::setConnectionClosed()
     lineBuffer_.clear();
     StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );     
     Q_EMIT connectionClosed();
+}
+
+bool StreamSession::canOpenConfiguredCapture( QString* errorMessage ) const
+{
+    if ( settings_.portName.trimmed().isEmpty() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "No COM port selected." );
+        }
+        return false;
+    }
+
+    if ( settings_.filePath.trimmed().isEmpty() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "No capture file path selected." );
+        }
+        return false;
+    }
+
+    const QFileInfo info( settings_.filePath );
+    if ( info.absoluteFilePath().isEmpty() || !QDir( info.absolutePath() ).exists() ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "Capture directory does not exist." );
+        }
+        return false;
+    }
+
+    const auto availablePorts = QSerialPortInfo::availablePorts();
+    const bool portExists = std::any_of( availablePorts.cbegin(), availablePorts.cend(),
+                                         [ this ]( const QSerialPortInfo& portInfo ) {
+                                             return portInfo.portName().compare(
+                                                        settings_.portName, Qt::CaseInsensitive )
+                                                        == 0
+                                                    || portInfo.systemLocation().compare(
+                                                           settings_.portName,
+                                                           Qt::CaseInsensitive )
+                                                           == 0;
+                                         } );
+    if ( !portExists ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "COM port %1 was not found." ).arg( settings_.portName );
+        }
+        return false;
+    }
+
+    QFile captureFile( settings_.filePath );
+    if ( !captureFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+        if ( errorMessage != nullptr ) {
+            *errorMessage = tr( "Failed to open capture file: %1" ).arg( captureFile.errorString() );
+        }
+        return false;
+    }
+
+    return true;
 }
 
 void StreamSession::handleDataReceived( const QByteArray& data )
