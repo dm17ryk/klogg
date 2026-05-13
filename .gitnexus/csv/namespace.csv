@@ -1,0 +1,767 @@
+id,name,filePath,startLine,endLine,content,description
+"Namespace:src/utils/include/containers.h:klogg","klogg","src/utils/include/containers.h",28,53,"#include <type_traits>
+
+namespace klogg {
+template <typename T>
+using vector = std::vector<T, mi_stl_allocator<T>>;
+
+template <class C>
+constexpr auto ssize( const C& c )
+    -> std::common_type_t<std::ptrdiff_t, std::make_signed_t<decltype( c.size() )>>
+{
+    using R = std::common_type_t<std::ptrdiff_t, std::make_signed_t<decltype( c.size() )>>;
+    return static_cast<R>( c.size() );
+}
+
+template <class C>
+constexpr int isize( const C& c )
+{
+    return type_safe::narrow_cast<int>( ssize( c ) );
+}
+
+
+template<class C>
+constexpr std::add_const_t<C>& as_const(C& c) noexcept
+{
+    return c;
+}
+
+} // namespace klogg
+
+#endif",""
+"Namespace:src/ui/src/scratchpad.cpp:klogg","klogg","src/ui/src/scratchpad.cpp",44,61,"#include ""clipboard.h""
+
+namespace klogg {
+
+class DateTimeBox : public QFormLayout {
+  public:
+    DateTimeBox();
+    ~DateTimeBox() = default;
+
+    QString displayTime( const QString& text );
+
+  private:
+    QString displayTime();
+
+  private:
+    std::optional<qint64> timestamp_;
+    QLineEdit* timeLine_;
+    QComboBox* tzComboBox_;
+};
+} // namespace klogg
+
+namespace {
+",""
+"Namespace:src/ui/include/scratchpad.h:klogg","klogg","src/ui/include/scratchpad.h",31,33,"class QLineEdit;
+
+namespace klogg {
+class DateTimeBox;
+} // namespace klogg
+
+class ScratchPad : public QWidget {
+",""
+"Namespace:src/ui/include/mainwindowtext.h:klogg","klogg","src/ui/include/mainwindowtext.h",5,115,"#pragma once
+
+namespace klogg {
+namespace mainwindow {
+namespace menu {
+extern const char* fileTitle;
+extern const char* editTitle;
+extern const char* viewTitle;
+// openedFilesTitle is the submenu of view menu
+extern const char* openedFilesTitle;
+extern const char* toolsTitle;
+extern const char* highlightersTitle;
+extern const char* favoritesTitle;
+extern const char* helpTitle;
+extern const char* encodingTitle;
+} // namespace menu
+
+namespace toolbar {
+extern const char* toolbarTitle;
+}
+
+namespace trayicon {
+extern const char* trayiconTip;
+}
+
+namespace action {
+extern const char* newWindowText;
+extern const char* newWindowStatusTip;
+extern const char* openText;
+extern const char* openStatusTip;
+extern const char* openComPortText;
+extern const char* openComPortStatusTip;
+extern const char* recentFilesCleanupText;
+extern const char* closeText;
+extern const char* closeStatusTip;
+extern const char* closeAllText;
+extern const char* closeAllStatusTip;
+extern const char* exitText;
+extern const char* exitStatusTip;
+extern const char* copyText;
+extern const char* copyStatusTip;
+extern const char* selectAllText;
+extern const char* selectAllStatusTip;
+extern const char* goToLineText;
+extern const char* goToLineStatusTip;
+extern const char* findText;
+extern const char* findStatusTip;
+extern const char* clearLogText;
+extern const char* clearLogStatusTip;
+extern const char* openContainingFolderText;
+extern const char* openContainingFolderStatusTip;
+extern const char* openInEditorText;
+extern const char* openInEditorStatusTip;
+extern const char* copyPathToClipboardText;
+extern const char* copyPathToClipboardStatusTip;
+extern const char* openClipboardText;
+extern const char* openClipboardStatusTip;
+extern const char* openUrlText;
+extern const char* openUrlStatusTip;
+extern const char* overviewVisibleText;
+extern const char* lineNumbersVisibleInMainText;
+extern const char* lineNumbersVisibleInFilteredText;
+extern const char* followText;
+extern const char* reloadText;
+extern const char* wrapText;
+extern const char* showTabsBarText;
+extern const char* stopText;
+extern const char* optionsText;
+extern const char* optionsStatusTip;
+extern const char* editHighlightersText;
+extern const char* editHighlightersStatusTip;
+extern const char* showDocumentationText;
+extern const char* showDocumentationStatusTip;
+extern const char* aboutText;
+extern const char* aboutStatusTip;
+extern const char* aboutQtText;
+extern const char* aboutQtStatusTip;
+extern const char* reportIssueText;
+extern const char* reportIssueStatusTip;
+extern const char* joinDiscordText;
+extern const char* joinDiscordStatusTip;
+extern const char* joinTelegramText;
+extern const char* joinTelegramStatusTip;
+extern const char* generateDumpText;
+extern const char* generateDumpStatusTip;
+extern const char* showScratchPadText;
+extern const char* showScratchPadStatusTip;
+extern const char* showPreviewerText;
+extern const char* showPreviewerStatusTip;
+extern const char* showActionsResponsesText;
+extern const char* showActionsResponsesStatusTip;
+extern const char* showScriptRunnerText;
+extern const char* showScriptRunnerStatusTip;
+extern const char* showScenarioRunnerText;
+extern const char* showScenarioRunnerStatusTip;
+extern const char* showLabQueueText;
+extern const char* showLabQueueStatusTip;
+extern const char* addToFavoritesText;
+extern const char* removeFromFavoritesText;
+extern const char* selectOpenFileText;
+extern const char* predefinedFiltersDialogText;
+extern const char* predefinedFiltersDialogStatusTip;
+extern const char* importPreviewsDialogText;
+extern const char* importPreviewsDialogStatusTip;
+extern const char* importActionsDialogText;
+extern const char* importActionsDialogStatusTip;
+extern const char* autoEncodingText;
+extern const char* autoEncodingStatusTip;
+} // namespace action
+
+} // namespace mainwindow
+
+} // namespace klogg
+                                                             
+",""
+"Namespace:src/ui/include/mainwindowtext.h:mainwindow","mainwindow","src/ui/include/mainwindowtext.h",6,113,"
+namespace klogg {
+namespace mainwindow {
+namespace menu {
+extern const char* fileTitle;
+extern const char* editTitle;
+extern const char* viewTitle;
+// openedFilesTitle is the submenu of view menu
+extern const char* openedFilesTitle;
+extern const char* toolsTitle;
+extern const char* highlightersTitle;
+extern const char* favoritesTitle;
+extern const char* helpTitle;
+extern const char* encodingTitle;
+} // namespace menu
+
+namespace toolbar {
+extern const char* toolbarTitle;
+}
+
+namespace trayicon {
+extern const char* trayiconTip;
+}
+
+namespace action {
+extern const char* newWindowText;
+extern const char* newWindowStatusTip;
+extern const char* openText;
+extern const char* openStatusTip;
+extern const char* openComPortText;
+extern const char* openComPortStatusTip;
+extern const char* recentFilesCleanupText;
+extern const char* closeText;
+extern const char* closeStatusTip;
+extern const char* closeAllText;
+extern const char* closeAllStatusTip;
+extern const char* exitText;
+extern const char* exitStatusTip;
+extern const char* copyText;
+extern const char* copyStatusTip;
+extern const char* selectAllText;
+extern const char* selectAllStatusTip;
+extern const char* goToLineText;
+extern const char* goToLineStatusTip;
+extern const char* findText;
+extern const char* findStatusTip;
+extern const char* clearLogText;
+extern const char* clearLogStatusTip;
+extern const char* openContainingFolderText;
+extern const char* openContainingFolderStatusTip;
+extern const char* openInEditorText;
+extern const char* openInEditorStatusTip;
+extern const char* copyPathToClipboardText;
+extern const char* copyPathToClipboardStatusTip;
+extern const char* openClipboardText;
+extern const char* openClipboardStatusTip;
+extern const char* openUrlText;
+extern const char* openUrlStatusTip;
+extern const char* overviewVisibleText;
+extern const char* lineNumbersVisibleInMainText;
+extern const char* lineNumbersVisibleInFilteredText;
+extern const char* followText;
+extern const char* reloadText;
+extern const char* wrapText;
+extern const char* showTabsBarText;
+extern const char* stopText;
+extern const char* optionsText;
+extern const char* optionsStatusTip;
+extern const char* editHighlightersText;
+extern const char* editHighlightersStatusTip;
+extern const char* showDocumentationText;
+extern const char* showDocumentationStatusTip;
+extern const char* aboutText;
+extern const char* aboutStatusTip;
+extern const char* aboutQtText;
+extern const char* aboutQtStatusTip;
+extern const char* reportIssueText;
+extern const char* reportIssueStatusTip;
+extern const char* joinDiscordText;
+extern const char* joinDiscordStatusTip;
+extern const char* joinTelegramText;
+extern const char* joinTelegramStatusTip;
+extern const char* generateDumpText;
+extern const char* generateDumpStatusTip;
+extern const char* showScratchPadText;
+extern const char* showScratchPadStatusTip;
+extern const char* showPreviewerText;
+extern const char* showPreviewerStatusTip;
+extern const char* showActionsResponsesText;
+extern const char* showActionsResponsesStatusTip;
+extern const char* showScriptRunnerText;
+extern const char* showScriptRunnerStatusTip;
+extern const char* showScenarioRunnerText;
+extern const char* showScenarioRunnerStatusTip;
+extern const char* showLabQueueText;
+extern const char* showLabQueueStatusTip;
+extern const char* addToFavoritesText;
+extern const char* removeFromFavoritesText;
+extern const char* selectOpenFileText;
+extern const char* predefinedFiltersDialogText;
+extern const char* predefinedFiltersDialogStatusTip;
+extern const char* importPreviewsDialogText;
+extern const char* importPreviewsDialogStatusTip;
+extern const char* importActionsDialogText;
+extern const char* importActionsDialogStatusTip;
+extern const char* autoEncodingText;
+extern const char* autoEncodingStatusTip;
+} // namespace action
+
+} // namespace mainwindow
+
+} // namespace klogg
+",""
+"Namespace:src/ui/include/mainwindowtext.h:menu","menu","src/ui/include/mainwindowtext.h",7,18,"namespace klogg {
+namespace mainwindow {
+namespace menu {
+extern const char* fileTitle;
+extern const char* editTitle;
+extern const char* viewTitle;
+// openedFilesTitle is the submenu of view menu
+extern const char* openedFilesTitle;
+extern const char* toolsTitle;
+extern const char* highlightersTitle;
+extern const char* favoritesTitle;
+extern const char* helpTitle;
+extern const char* encodingTitle;
+} // namespace menu
+
+namespace toolbar {
+",""
+"Namespace:src/ui/include/mainwindowtext.h:toolbar","toolbar","src/ui/include/mainwindowtext.h",20,22,"} // namespace menu
+
+namespace toolbar {
+extern const char* toolbarTitle;
+}
+
+namespace trayicon {
+",""
+"Namespace:src/ui/include/mainwindowtext.h:trayicon","trayicon","src/ui/include/mainwindowtext.h",24,26,"}
+
+namespace trayicon {
+extern const char* trayiconTip;
+}
+
+namespace action {
+",""
+"Namespace:src/ui/include/mainwindowtext.h:action","action","src/ui/include/mainwindowtext.h",28,111,"}
+
+namespace action {
+extern const char* newWindowText;
+extern const char* newWindowStatusTip;
+extern const char* openText;
+extern const char* openStatusTip;
+extern const char* openComPortText;
+extern const char* openComPortStatusTip;
+extern const char* recentFilesCleanupText;
+extern const char* closeText;
+extern const char* closeStatusTip;
+extern const char* closeAllText;
+extern const char* closeAllStatusTip;
+extern const char* exitText;
+extern const char* exitStatusTip;
+extern const char* copyText;
+extern const char* copyStatusTip;
+extern const char* selectAllText;
+extern const char* selectAllStatusTip;
+extern const char* goToLineText;
+extern const char* goToLineStatusTip;
+extern const char* findText;
+extern const char* findStatusTip;
+extern const char* clearLogText;
+extern const char* clearLogStatusTip;
+extern const char* openContainingFolderText;
+extern const char* openContainingFolderStatusTip;
+extern const char* openInEditorText;
+extern const char* openInEditorStatusTip;
+extern const char* copyPathToClipboardText;
+extern const char* copyPathToClipboardStatusTip;
+extern const char* openClipboardText;
+extern const char* openClipboardStatusTip;
+extern const char* openUrlText;
+extern const char* openUrlStatusTip;
+extern const char* overviewVisibleText;
+extern const char* lineNumbersVisibleInMainText;
+extern const char* lineNumbersVisibleInFilteredText;
+extern const char* followText;
+extern const char* reloadText;
+extern const char* wrapText;
+extern const char* showTabsBarText;
+extern const char* stopText;
+extern const char* optionsText;
+extern const char* optionsStatusTip;
+extern const char* editHighlightersText;
+extern const char* editHighlightersStatusTip;
+extern const char* showDocumentationText;
+extern const char* showDocumentationStatusTip;
+extern const char* aboutText;
+extern const char* aboutStatusTip;
+extern const char* aboutQtText;
+extern const char* aboutQtStatusTip;
+extern const char* reportIssueText;
+extern const char* reportIssueStatusTip;
+extern const char* joinDiscordText;
+extern const char* joinDiscordStatusTip;
+extern const char* joinTelegramText;
+extern const char* joinTelegramStatusTip;
+extern const char* generateDumpText;
+extern const char* generateDumpStatusTip;
+extern const char* showScratchPadText;
+extern const char* showScratchPadStatusTip;
+extern const char* showPreviewerText;
+extern const char* showPreviewerStatusTip;
+extern const char* showActionsResponsesText;
+extern const char* showActionsResponsesStatusTip;
+extern const char* showScriptRunnerText;
+extern const char* showScriptRunnerStatusTip;
+extern const char* showScenarioRunnerText;
+extern const char* showScenarioRunnerStatusTip;
+extern const char* showLabQueueText;
+extern const char* showLabQueueStatusTip;
+extern const char* addToFavoritesText;
+extern const char* removeFromFavoritesText;
+extern const char* selectOpenFileText;
+extern const char* predefinedFiltersDialogText;
+extern const char* predefinedFiltersDialogStatusTip;
+extern const char* importPreviewsDialogText;
+extern const char* importPreviewsDialogStatusTip;
+extern const char* importActionsDialogText;
+extern const char* importActionsDialogStatusTip;
+extern const char* autoEncodingText;
+extern const char* autoEncodingStatusTip;
+} // namespace action
+
+} // namespace mainwindow
+",""
+"Namespace:src/regex/src/regularexpression.cpp:matching","matching","src/regex/src/regularexpression.cpp",319,355,"}
+
+namespace matching {
+
+bool hasSingleMatch( std::string_view line, const MatcherVariant& matcher,
+                     BooleanExpressionEvaluator* )
+{
+    const auto result
+        = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
+
+    return std::any_of( result.cbegin(), result.cend(), []( auto value ) { return value > 0; } );
+}
+
+bool hasCombinedMatch( std::string_view line, const MatcherVariant& matcher,
+                       BooleanExpressionEvaluator* evaluator )
+{
+    auto result = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
+    if ( evaluator ) {
+        if ( result.size() > evaluator->variableCount() ) {
+            result.resize( evaluator->variableCount() );
+        }
+        return evaluator->evaluate( result );
+    }
+    return false;
+}
+
+bool hasInverseSingleMatch( std::string_view line, const MatcherVariant& matcher,
+                            BooleanExpressionEvaluator* evaluator )
+{
+    return !hasSingleMatch( line, matcher, evaluator );
+}
+
+bool hasInverseCombinedMatch( std::string_view line, const MatcherVariant& matcher,
+                              BooleanExpressionEvaluator* evaluator )
+{
+    return !hasCombinedMatch( line, matcher, evaluator );
+}
+
+} // namespace matching
+
+PatternMatcher::PatternMatcher( const RegularExpression& expression )
+",""
+"Namespace:src/logdata/src/logdataworker.cpp:parse_data_block","parse_data_block","src/logdata/src/logdataworker.cpp",313,423,"// Operations implementation
+//
+namespace parse_data_block {
+
+std::string_view::size_type findNextMultiByteDelimeter( EncodingParameters encodingParams,
+                                                        std::string_view data, char delimeter )
+{
+    auto nextDelimeter = data.find( delimeter );
+
+    if ( nextDelimeter == std::string_view::npos ) {
+        return nextDelimeter;
+    }
+
+    const auto isNotDelimeter = [ &encodingParams, data ]( std::string_view::size_type checkPos ) {
+        const auto lineFeedWidth
+            = static_cast<std::string_view::size_type>( encodingParams.lineFeedWidth );
+
+        const auto isCheckForward = encodingParams.lineFeedIndex == 0;
+
+        if ( isCheckForward && checkPos + lineFeedWidth > data.size() ) {
+            return true;
+        }
+        else if ( !isCheckForward && checkPos < lineFeedWidth - 1 ) {
+            return true;
+        }
+
+        for ( auto i = 1u; i < lineFeedWidth; ++i ) {
+            const auto nextByte = isCheckForward ? data[ checkPos + i ] : data[ checkPos - i ];
+            if ( nextByte != '\0' ) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    while ( nextDelimeter != std::string_view::npos && isNotDelimeter( nextDelimeter ) ) {
+        nextDelimeter = data.find( delimeter, nextDelimeter + 1 );
+    }
+
+    return nextDelimeter;
+}
+
+std::string_view::size_type findNextSingleByteDelimeter( EncodingParameters, std::string_view data,
+                                                         char delimeter )
+{
+    return data.find( delimeter );
+}
+
+int charOffsetWithinBlock( const char* blockStart, const char* pointer,
+                           const EncodingParameters& encodingParams )
+{
+    return type_safe::narrow_cast<int>( std::distance( blockStart, pointer ) )
+           - encodingParams.getBeforeCrOffset();
+}
+
+using FindDelimeter = std::string_view::size_type ( * )( EncodingParameters encodingParams,
+                                                         std::string_view, char );
+
+LineLength::UnderlyingType
+expandTabsInLine( const klogg::vector<char>& block, std::string_view blockToExpand,
+                  int posWithinBlock, EncodingParameters encodingParams,
+                  FindDelimeter findNextDelimeter,
+                  LineLength::UnderlyingType initialAdditionalSpaces = 0 )
+{
+    auto additionalSpaces = initialAdditionalSpaces;
+    while ( !blockToExpand.empty() ) {
+        const auto nextTab = findNextDelimeter( encodingParams, blockToExpand, '\t' );
+        if ( nextTab == std::string_view::npos ) {
+            break;
+        }
+
+        const auto tabPosWithinBlock
+            = charOffsetWithinBlock( block.data(), blockToExpand.data() + nextTab, encodingParams );
+
+        LOG_DEBUG << ""Tab at "" << tabPosWithinBlock;
+
+        const auto currentExpandedSize = tabPosWithinBlock - posWithinBlock + additionalSpaces;
+
+        additionalSpaces += TabStop - ( currentExpandedSize % TabStop ) - 1;
+        if ( nextTab >= blockToExpand.size() ) {
+            break;
+        }
+
+        blockToExpand.remove_prefix( nextTab + 1 );
+    }
+
+    return additionalSpaces;
+}
+
+std::tuple<bool, int, LineLength::UnderlyingType>
+findNextLineFeed( const klogg::vector<char>& block, int posWithinBlock, const IndexingState& state,
+                  FindDelimeter findNextDelimeter )
+{
+    const auto searchStart = block.data() + posWithinBlock;
+    const auto searchLineSize = static_cast<size_t>( klogg::ssize( block ) - posWithinBlock );
+
+    const auto blockView = std::string_view( searchStart, searchLineSize );
+    const auto nextLineFeed = findNextDelimeter( state.encodingParams, blockView, '\n' );
+
+    const auto isEndOfBlock = nextLineFeed == std::string_view::npos;
+    const auto nextLineSize = !isEndOfBlock ? nextLineFeed : searchLineSize;
+
+    posWithinBlock
+        = charOffsetWithinBlock( block.data(), searchStart + nextLineSize, state.encodingParams );
+
+    const auto additionalSpaces
+        = expandTabsInLine( block, blockView.substr( 0, nextLineSize ), posWithinBlock,
+                            state.encodingParams, findNextDelimeter, state.additional_spaces );
+
+    return std::make_tuple( isEndOfBlock, posWithinBlock, additionalSpaces );
+}
+} // namespace parse_data_block
+
+FastLinePositionArray IndexOperation::parseDataBlock( OffsetInFile::UnderlyingType blockBeginning,
+",""
+"Namespace:src/filewatch/include/filewatcher.h:KDToolBox","KDToolBox","src/filewatch/include/filewatcher.h",48,50,"class QTimer;
+
+namespace KDToolBox {
+class KDGenericSignalThrottler;
+}
+
+struct EfswFileWatcherDeleter {
+",""
+"Namespace:src/logging/src/logger.cpp:logging","logging","src/logging/src/logger.cpp",34,210,"#include <QTextStream>
+
+namespace logging {
+
+void kloggFileMessageHandler( QtMsgType type, const QMessageLogContext& context,
+                              const QString& msg );
+void kloggConsoleMessageHandler( QtMsgType type, const QMessageLogContext& context,
+                                 const QString& msg );
+void kloggNoopMessageHandler( QtMsgType, const QMessageLogContext&, const QString& ) {}
+
+class Logger {
+  public:
+    static Logger& instance()
+    {
+        static Logger l;
+        return l;
+    }
+
+    void fileMessageHandler( QtMsgType type, const QMessageLogContext& context, const QString& msg )
+    {
+        if ( !needLogging( type ) ) {
+            return;
+        }
+        
+        const auto formattedMessage = qFormatLogMessage( type, context, msg );
+        const auto messageToPrint = formattedMessage.toUtf8();
+
+        ScopedLock lock( mutex_ );
+        QTextStream ts( logFile_.get() );
+        ts << messageToPrint << '\n';
+
+        if ( isConsoleLogEnabled_ ) {
+            std::cout << messageToPrint.constData() << std::endl;
+        }
+    }
+
+    void consoleMessageHandler( QtMsgType type, const QMessageLogContext& context,
+                                const QString& msg )
+    {
+        if ( !needLogging( type ) ) {
+            return;
+        }
+
+        const auto formattedMessage = qFormatLogMessage( type, context, msg );
+        const auto messageToPrint = formattedMessage.toUtf8();
+
+        ScopedLock lock( mutex_ );
+        std::cout << messageToPrint.constData() << std::endl;
+    }
+
+    void enableLogging( bool isEnabled, uint8_t logLevel )
+    {
+        ScopedLock lock( mutex_ );
+
+        qSetMessagePattern( ""%{time} %{type} [%{threadid}] [%{function}@%{line}] %{message}"" );
+
+        isConsoleLogEnabled_ = isEnabled;
+        logLevel_ = logLevel;
+
+        setMessageHandler();
+    }
+
+    void enableFileLogging( bool isEnabled, uint8_t logLevel )
+    {
+        ScopedLock lock( mutex_ );
+
+        qSetMessagePattern( ""%{time} %{type} [%{threadid}] [%{function}@%{line}] %{message}"" );
+
+        isFileLogEnabled_ = isEnabled;
+        logLevel_ = logLevel;
+
+        if ( isEnabled && !logFile_ ) {
+            auto logFileName
+                = QString( ""klogg_%1_%2.log"" )
+                      .arg( QDateTime::currentDateTime().toString( ""yyyy-MM-dd_HH-mm-ss"" ) )
+                      .arg( QCoreApplication::applicationPid() );
+
+            logFile_ = std::make_unique<QFile>( QDir::temp().filePath( logFileName ) );
+            if ( !logFile_->open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+                logFile_.reset();
+            }
+        }
+        else if ( !isEnabled && logFile_ ) {
+            logFile_.reset();
+        }
+
+        setMessageHandler();
+    }
+
+    bool isAnyEnabled() const
+    {
+        return isConsoleLogEnabled_ || isFileLogEnabled_;
+    }
+
+    bool needLogging( QtMsgType type ) const
+    {
+        if ( !isAnyEnabled() || static_cast<uint8_t>( logLevel( type ) ) > logLevel_ ) {
+            return false;
+        }
+        return true;
+    }
+
+  private:
+    Logger() = default;
+
+    void setMessageHandler()
+    {
+        if ( !isAnyEnabled() ) {
+            qInstallMessageHandler( logging::kloggNoopMessageHandler );
+        }
+        else if ( logFile_ ) {
+            qInstallMessageHandler( logging::kloggFileMessageHandler );
+        }
+        else {
+            qInstallMessageHandler( logging::kloggConsoleMessageHandler );
+        }
+    }
+
+  private:
+    static LogLevel logLevel( QtMsgType type )
+    {
+        switch ( type ) {
+        case QtFatalMsg:
+            return LogLevel::Fatal;
+        case QtCriticalMsg:
+            return LogLevel::Error;
+
+        case QtWarningMsg:
+            return LogLevel::Warning;
+
+        case QtInfoMsg:
+            return LogLevel::Info;
+        case QtDebugMsg:
+            return LogLevel::Debug;
+        default:
+            return LogLevel::Info;
+        }
+    }
+
+  private:
+    mutable std::shared_mutex mutex_;
+    using ScopedLock = std::unique_lock<std::shared_mutex>;
+
+    std::atomic_bool isConsoleLogEnabled_ = false;
+    std::atomic_bool isFileLogEnabled_ = false;
+
+    std::atomic_int logLevel_ = 0;
+
+    std::unique_ptr<QFile> logFile_;
+};
+
+void enableLogging( bool isEnabled, LogLevel logLevel )
+{
+    Logger::instance().enableLogging( isEnabled, static_cast<uint8_t>( logLevel ) );
+}
+
+void enableFileLogging( bool isEnabled, LogLevel logLevel )
+{
+    Logger::instance().enableFileLogging( isEnabled, static_cast<uint8_t>( logLevel ) );
+}
+
+void kloggFileMessageHandler( QtMsgType type, const QMessageLogContext& context,
+                              const QString& msg )
+{
+    Logger::instance().fileMessageHandler( type, context, msg );
+}
+
+void kloggConsoleMessageHandler( QtMsgType type, const QMessageLogContext& context,
+                                 c
+... [truncated]",""
+"Namespace:src/logging/include/logger.h:logging","logging","src/logging/include/logger.h",26,32,"#include ""log.h""
+
+namespace logging {
+
+enum class LogLevel { None, Fatal, Error, Warning, Info, Debug };
+
+void enableLogging( bool enableLogging = true, LogLevel logLevel = LogLevel::Info);
+void enableFileLogging( bool enableLogging = true, LogLevel logLevel = LogLevel::Info);
+} // namespace logging
+
+#endif",""
+"Namespace:src/logging/include/log.h:logging","logging","src/logging/include/log.h",43,45,"#define LOG_ERROR LOG_IF_( QtCriticalMsg ) qCritical().nospace()
+
+namespace logging {
+bool needLogging( QtMsgType type );
+} // namespace logging
+
+template <typename T>
+",""

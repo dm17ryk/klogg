@@ -2918,10 +2918,6 @@ void MainWindow::startNewStreamFileForTab( int tab )
     }
 
     auto* newCrawler = static_cast<CrawlerWidget*>( session_.getViewIfOpen( newFilePath ) );
-    if ( newCrawler != nullptr && !viewContext.isEmpty() ) {
-        newCrawler->setViewContext( viewContext );
-    }
-
     QString switchError;
     if ( !streamSession->startNewCaptureFile( newFilePath, &switchError ) ) {
         if ( newCrawler != nullptr ) {
@@ -2944,6 +2940,11 @@ void MainWindow::startNewStreamFileForTab( int tab )
     refreshComTabIndicators();
     refreshScriptStatusIndicators();
     updateOpenedFilesMenu();
+
+    if ( newCrawler != nullptr && !viewContext.isEmpty() ) {
+        QTimer::singleShot( 0, newCrawler,
+                            [ newCrawler, viewContext ] { newCrawler->setViewContextLazy( viewContext ); } );
+    }
 }
 
 CommanderResult MainWindow::closeTabById( const QString& tabId )

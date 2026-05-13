@@ -1,0 +1,16 @@
+from,to,type,confidence,reason,step
+"Class:src/ui/include/menu.h:QPoint","proc_45_reloadsession","STEP_IN_PROCESS",1,"trace-detection",4
+"Class:src/ui/include/filteredview.h:FilteredView","proc_126_applycommanderpredef","STEP_IN_PROCESS",1,"trace-detection",4
+"Class:src/ui/include/quickfindwidget.h:QToolButton","proc_142_quickfindwidget","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/mainwindow.h:QAction","proc_147_mainwindow","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/mainwindow.h:HighlightersMenu","proc_150_mainwindow","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/pathline.h:PathLine","proc_153_mainwindow","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/mainwindow.h:QLabel","proc_154_mainwindow","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/abstractlogview.h:QAction","proc_156_abstractlogview","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/scenariorunnerwindow.h:QListWidgetItem","proc_160_highlightersdialog","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/src/predefinedfiltersdialog.cpp:CenteredCheckbox","proc_173_predefinedfiltersdia","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/mainwindow.h:MainWindow","proc_196_reloadsession","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/previewmessagetab.h:QComboBox","proc_210_previewmessagetab","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/quickfindwidget.h:QHBoxLayout","proc_211_previewmessagetab","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/previewmessagetab.h:QTreeWidget","proc_212_previewmessagetab","STEP_IN_PROCESS",1,"trace-detection",3
+"Class:src/ui/include/previewmessagetab.h:QGroupBox","proc_213_previewmessagetab","STEP_IN_PROCESS",1,"trace-detection",3

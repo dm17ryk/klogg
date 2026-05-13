@@ -65,6 +65,7 @@
 #include <QShortcut>
 #include <QStandardItemModel>
 #include <QStringListModel>
+#include <QTimer>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -620,7 +621,17 @@ void CrawlerWidget::doSetSavedSearches( SavedSearches* saved_searches )
     setup();
 }
 
+void CrawlerWidget::setViewContextLazy( const QString& viewContext )
+{
+    applyViewContext( viewContext, true );
+}
+
 void CrawlerWidget::doSetViewContext( const QString& view_context )
+{
+    applyViewContext( view_context, false );
+}
+
+void CrawlerWidget::applyViewContext( const QString& view_context, bool lazySearchRestore )
 {
     LOG_DEBUG << "CrawlerWidget::doSetViewContext: " << view_context.toLocal8Bit().data();
 
@@ -666,13 +677,9 @@ void CrawlerWidget::doSetViewContext( const QString& view_context )
                         []( const auto& l ) { return LineNumber( l ); } );
 
         restoreSearchPending_ = context.autoRefresh() && !context.searchPattern().isEmpty();
+        lazyRestoreSearchPending_ = lazySearchRestore && restoreSearchPending_;
         if ( restoreSearchPending_ && !loadingInProgress_ ) {
-            const auto restoredPattern = searchLineEdit_->currentText();
-            const auto progressDetail
-                = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
-            StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
-            replaceCurrentSearch( restoredPattern, true, true );
-            restoreSearchPending_ = false;
+            restorePendingSearchExpression( lazyRestoreSearchPending_ );
         }
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to restore crawler view context: " << e.what();
@@ -714,6 +721,8 @@ void CrawlerWidget::startNewSearch()
 
         connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
                  &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+        connect( logFilteredData_.get(), &LogFilteredData::searchFailed, this,
+                 &CrawlerWidget::searchFailedHandler, Qt::QueuedConnection );
 
         logMainView_->useNewFiltering( logFilteredData_.get() );
 
@@ -747,6 +756,11 @@ void CrawlerWidget::stopSearch()
     startupFilterSearchInProgress_ = false;
     searchState_.stopSearch();
     printSearchInfoMessage();
+}
+
+void CrawlerWidget::searchFailedHandler( const QString& errorMessage )
+{
+    showSearchExpressionError( errorMessage );
 }
 
 void CrawlerWidget::clearSearchHistory()
@@ -1046,12 +1060,7 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
     // searchButton_->setEnabled( true );
 
     if ( status == LoadingStatus::Successful && restoreSearchPending_ ) {
-        const auto restoredPattern = searchLineEdit_->currentText();
-        const auto progressDetail
-            = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
-        StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
-        replaceCurrentSearch( restoredPattern, true, true );
-        restoreSearchPending_ = false;
+        restorePendingSearchExpression( lazyRestoreSearchPending_ );
     }
     // See if we need to auto-refresh the search
     else if ( searchState_.isAutorefreshAllowed() ) {
@@ -1655,6 +1664,8 @@ void CrawlerWidget::setup()
 
     connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
              &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+    connect( logFilteredData_.get(), &LogFilteredData::searchFailed, this,
+             &CrawlerWidget::searchFailedHandler, Qt::QueuedConnection );
 
     // Sent load file update to MainWindow (for status update)
     connect( logData_.get(), &LogData::loadingProgressed, this, &CrawlerWidget::loadingProgressed );
@@ -1969,32 +1980,69 @@ void CrawlerWidget::loadIcons()
     stopButton_->setIcon( iconLoader_.load( "icons8-close-window" ) );
 }
 
+void CrawlerWidget::restorePendingSearchExpression( bool lazySearchRestore )
+{
+    if ( !restoreSearchPending_ ) {
+        return;
+    }
+
+    const auto restoredPattern = searchLineEdit_->currentText();
+    const auto progressDetail
+        = restoredPattern.isEmpty() ? tr( "<empty expression>" ) : restoredPattern.left( 96 );
+    StartupProgress::advance( tr( "Restoring filter expression" ), progressDetail );
+
+    const auto runRestore = [ this, restoredPattern ] {
+        if ( !restoreSearchPending_ || searchLineEdit_->currentText() != restoredPattern ) {
+            return;
+        }
+
+        replaceCurrentSearch( restoredPattern, true, true );
+        restoreSearchPending_ = false;
+        lazyRestoreSearchPending_ = false;
+    };
+
+    if ( lazySearchRestore ) {
+        QTimer::singleShot( 0, this, runRestore );
+    }
+    else {
+        runRestore();
+    }
+}
+
+void CrawlerWidget::showSearchExpressionError( const QString& details )
+{
+    logFilteredData_->clearSearch();
+    filteredView_->updateData();
+    searchState_.resetState();
+    startupFilterSearchInProgress_ = false;
+    restoreSearchPending_ = false;
+    lazyRestoreSearchPending_ = false;
+
+    stopButton_->setEnabled( false );
+    stopButton_->hide();
+    searchButton_->show();
+    clearButton_->show();
+
+    QString errorMessage = tr( "Error in expression" );
+    if ( !details.isEmpty() ) {
+        errorMessage += ": ";
+        errorMessage += details;
+    }
+
+    searchInfoLine_->setPalette( ErrorPalette );
+    searchInfoLine_->setText( errorMessage );
+    searchInfoLine_->show();
+    lastSearchErrorText_ = errorMessage;
+
+    logMainView_->setSearchPattern( {} );
+    filteredView_->setSearchPattern( {} );
+}
+
 // Create a new search using the text passed, replace the currently
 // used one and destroy the old one.
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceFullScan,
-                                        bool forceRecompile )
+                                          bool forceRecompile )
 {
-    const auto showExpressionError = [ this ]( const QString& details ) {
-        logFilteredData_->clearSearch();
-        filteredView_->updateData();
-        searchState_.resetState();
-        startupFilterSearchInProgress_ = false;
-
-        QString errorMessage = tr( "Error in expression" );
-        if ( !details.isEmpty() ) {
-            errorMessage += ": ";
-            errorMessage += details;
-        }
-
-        searchInfoLine_->setPalette( ErrorPalette );
-        searchInfoLine_->setText( errorMessage );
-        searchInfoLine_->show();
-        lastSearchErrorText_ = errorMessage;
-
-        logMainView_->setSearchPattern( {} );
-        filteredView_->setSearchPattern( {} );
-    };
-
     try {
         LOG_INFO << "replacing current search with " << searchText;
         // Interrupt the search if it's ongoing
@@ -2065,47 +2113,33 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             return;
         }
 
-        auto compiledExpression = std::make_shared<RegularExpression>( regexpPattern );
-        const auto isValidExpression = compiledExpression->isValid();
-        LOG_INFO << "Search pattern validation " << ( isValidExpression ? "ok" : "failed" );
+        // Clear and recompute the content of the filtered window only when expression changed.
+        logFilteredData_->clearSearch();
+        filteredView_->updateData();
 
-        if ( isValidExpression ) {
-            // Clear and recompute the content of the filtered window only when expression changed.
-            logFilteredData_->clearSearch();
-            filteredView_->updateData();
+        LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
+                 << searchStartLine_ << ", " << searchEndLine_ << "]";
 
-            LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
-                     << searchStartLine_ << ", " << searchEndLine_ << "]";
+        stopButton_->setEnabled( true );
+        stopButton_->show();
+        clearButton_->hide();
+        searchButton_->hide();
+        startupFilterSearchInProgress_ = true;
 
-            stopButton_->setEnabled( true );
-            stopButton_->show();
-            clearButton_->hide();
-            searchButton_->hide();
-            startupFilterSearchInProgress_ = true;
+        logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
 
-            logFilteredData_->runSearch( regexpPattern, std::move( compiledExpression ),
-                                         searchStartLine_, searchEndLine_ );
-
-            searchState_.startSearch();
-            searchInfoLine_->hide();
-            logMainView_->setSearchPattern( regexpPattern );
-            filteredView_->setSearchPattern( regexpPattern );
-        }
-        else {
-            LOG_WARNING << "Search pattern invalid: " << regexpPattern.pattern
-                        << " error: " << compiledExpression->errorString();
-
-            startupFilterSearchInProgress_ = false;
-            showExpressionError( compiledExpression->errorString() );
-        }
+        searchState_.startSearch();
+        searchInfoLine_->hide();
+        logMainView_->setSearchPattern( regexpPattern );
+        filteredView_->setSearchPattern( regexpPattern );
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Search update failed: " << e.what();
         startupFilterSearchInProgress_ = false;
-        showExpressionError( QString::fromLocal8Bit( e.what() ) );
+        showSearchExpressionError( QString::fromLocal8Bit( e.what() ) );
     } catch ( ... ) {
         LOG_ERROR << "Search update failed with unknown exception";
         startupFilterSearchInProgress_ = false;
-        showExpressionError( tr( "unknown error" ) );
+        showSearchExpressionError( tr( "unknown error" ) );
     }
 }
 

@@ -133,6 +133,7 @@ class CrawlerWidget : public QSplitter,
     bool isKeepSearchResultsEnabled() const;
 
     void registerShortcuts();
+    void setViewContextLazy( const QString& viewContext );
 
   public Q_SLOTS:
     // Stop the asynchoronous loading of the file if one is in progress
@@ -230,6 +231,7 @@ class CrawlerWidget : public QSplitter,
     void exitingQuickFind();
     // Called when new data must be displayed in the filtered window.
     void updateFilteredView( LinesCount nbMatches, int progress, LineNumber initialPosition );
+    void searchFailedHandler( const QString& errorMessage );
     // Called when a new line has been selected in the filtered view,
     // to instruct the main view to jump to the matching line.
     void jumpToMatchingLine( LineNumber filteredLineNb, LinesCount nLines, LineColumn startCol,
@@ -359,6 +361,9 @@ class CrawlerWidget : public QSplitter,
     // Private functions
     void setup();
     void setShortcuts();
+    void applyViewContext( const QString& viewContext, bool lazySearchRestore );
+    void restorePendingSearchExpression( bool lazySearchRestore );
+    void showSearchExpressionError( const QString& details );
     void replaceCurrentSearch( const QString& searchText, bool forceFullScan = false,
                                bool forceRecompile = false );
     void updateSearchCombo();
@@ -461,6 +466,7 @@ class CrawlerWidget : public QSplitter,
     // should consider we are loading something.
     bool loadingInProgress_ = true;
     bool restoreSearchPending_ = false;
+    bool lazyRestoreSearchPending_ = false;
     bool startupFilterSearchInProgress_ = false;
     bool firstLoadDone_ = false;
     QString lastSearchErrorText_;

@@ -1,0 +1,3 @@
+from,to,type,confidence,reason,step
+"Function:src/app/klogg_grep.cpp:main","Struct:src/logdata/include/linetypes.h:LinesCount","CALLS",0.9,"import-resolved",0
+"Function:src/logdata/include/linetypes.h:getUntabifiedLength","Struct:src/logdata/include/linetypes.h:LineLength","CALLS",0.95,"same-file",0

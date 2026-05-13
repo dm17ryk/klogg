@@ -1,0 +1,4 @@
+from,to,type,confidence,reason,step
+"Variable:src/regex/src/regularexpression.cpp:match","Method:src/regex/src/regularexpression.cpp:match#1","CALLS",0.95,"same-file",0
+"Variable:src/ui/src/mainwindow.cpp:event","Method:src/ui/src/mainwindow.cpp:logScreenInfo#1","CALLS",0.95,"same-file",0
+"Variable:src/ui/src/mainwindow.cpp:event","Method:src/ui/src/mainwindow.cpp:event#1","CALLS",0.95,"same-file",0

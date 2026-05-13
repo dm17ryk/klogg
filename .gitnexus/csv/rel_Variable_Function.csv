@@ -1,0 +1,5 @@
+from,to,type,confidence,reason,step
+"Variable:tools/run-clang-tidy.py:is_py2","Function:tools/run-clang-tidy.py:main","CALLS",0.85,"local-call",0
+"Variable:codex_tasks/fix_preview_ehcp_v3.py:RANGE_KEY_RE","Function:codex_tasks/fix_preview_ehcp_v3.py:main","CALLS",0.85,"local-call",0
+"Variable:codex_tasks/fix_preview_ehcp_v2.py:RANGE_RE","Function:codex_tasks/fix_preview_ehcp_v2.py:main","CALLS",0.85,"local-call",0
+"Variable:codex_tasks/fix_preview_ehcp.py:TIME_ENUM_NAMES","Function:codex_tasks/fix_preview_ehcp.py:main","CALLS",0.85,"local-call",0

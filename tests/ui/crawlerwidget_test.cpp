@@ -135,6 +135,11 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
         }
     }
 
+    void setViewContextLazy( const QString& context )
+    {
+        crawler->setViewContextLazy( context );
+    }
+
     void enableCaseSensitiveSearch()
     {
         if ( !crawler->matchCaseButton_->isChecked() ) {
@@ -387,6 +392,7 @@ SCENARIO( "Crawler widget search", "[ui]" )
         }
         WHEN( "auto-refresh is enabled with a pattern" )
         {
+            crawlerVisitor.setAutoRefresh( false );
             crawlerVisitor.setSearchPattern( "this is line" );
             crawlerVisitor.setAutoRefresh( true );
 
@@ -406,7 +412,9 @@ SCENARIO( "Crawler widget search", "[ui]" )
 
                 THEN( "manual search recompiles and applies the new pattern" )
                 {
-                    REQUIRE( crawlerVisitor.getLogFilteredNbLines().get() == 1 );
+                    REQUIRE( waitUiState( [ &crawlerVisitor ]() {
+                        return crawlerVisitor.getLogFilteredNbLines().get() == 1;
+                    } ) );
                 }
             }
 
@@ -566,6 +574,59 @@ TEST_CASE( "Crawler widget full view context can be copied to another stream tab
     REQUIRE( targetVisitor.isInverseMatchEnabled() );
     REQUIRE( targetVisitor.isBooleanCombinationModeEnabled() );
     REQUIRE( targetVisitor.isAutoRefreshEnabled() );
+}
+
+TEST_CASE( "Crawler widget lazy view context restores controls before running filter",
+           "[ui][context]" )
+{
+    QTemporaryFile targetFile{ "crawler_lazy_context_target_XXXXXX" };
+    REQUIRE( generateDataFiles( targetFile ) );
+
+    Session session;
+    CrawlerWidgetVisitor targetVisitor;
+    targetVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( targetFile.fileName(), []() { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ]() { return targetVisitor.isLoadingFinished(); } ) );
+
+    targetVisitor.setViewContextLazy(
+        "{\"S\":[321,123],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":false,"
+        "\"IR\":false,\"BC\":false,\"SP\":\"line 000010\"}" );
+
+    REQUIRE( targetVisitor.currentSearchText() == "line 000010" );
+    REQUIRE( targetVisitor.isAutoRefreshEnabled() );
+    REQUIRE( targetVisitor.isSearchStopped() );
+    REQUIRE( targetVisitor.getLogFilteredNbLines().get() == 0 );
+
+    REQUIRE( waitUiState( [ &targetVisitor ]() {
+        return targetVisitor.isSearchStopped()
+               && targetVisitor.getLogFilteredNbLines().get() == 1;
+    } ) );
+}
+
+TEST_CASE( "Crawler widget lazy view context reports invalid filters asynchronously",
+           "[ui][context]" )
+{
+    QTemporaryFile targetFile{ "crawler_lazy_invalid_context_XXXXXX" };
+    REQUIRE( generateDataFiles( targetFile ) );
+
+    Session session;
+    CrawlerWidgetVisitor targetVisitor;
+    targetVisitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( targetFile.fileName(), []() { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ]() { return targetVisitor.isLoadingFinished(); } ) );
+
+    targetVisitor.setViewContextLazy(
+        "{\"S\":[321,123],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,"
+        "\"IR\":false,\"BC\":false,\"SP\":\"((VOICE COMMAND)|(VOICE CMD)\"}" );
+
+    REQUIRE( targetVisitor.currentSearchText() == "((VOICE COMMAND)|(VOICE CMD)" );
+    REQUIRE( targetVisitor.isAutoRefreshEnabled() );
+    REQUIRE( targetVisitor.isSearchStopped() );
+
+    REQUIRE( waitUiState( [ &targetVisitor ]() {
+        return targetVisitor.searchInfoText().contains( "Error in expression" );
+    } ) );
+    REQUIRE( targetVisitor.getLogFilteredNbLines().get() == 0 );
 }
 
 TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automation]" )

@@ -1,0 +1,1856 @@
+id,name,filePath,startLine,endLine,content,description
+"Struct:tests/unit/commander_test.cpp:ComDefaultsRestoreGuard","ComDefaultsRestoreGuard","tests/unit/commander_test.cpp",17,41,"
+namespace {
+struct ComDefaultsRestoreGuard {
+    QSerialPort::BaudRate baudRate = Configuration::get().defaultComBaudRate();
+    QSerialPort::DataBits dataBits = Configuration::get().defaultComDataBits();
+    QSerialPort::Parity parity = Configuration::get().defaultComParity();
+    QSerialPort::StopBits stopBits = Configuration::get().defaultComStopBits();
+    QSerialPort::FlowControl flowControl = Configuration::get().defaultComFlowControl();
+    QString logPath = Configuration::get().defaultComLogPath();
+    bool timestamps = Configuration::get().defaultComTimestampEnabled();
+    QString timestampFormat = Configuration::get().defaultComTimestampFormat();
+    bool logTransmits = Configuration::get().defaultComLogTransmits();
+
+    ~ComDefaultsRestoreGuard()
+    {
+        auto& config = Configuration::getSynced();
+        config.setDefaultComBaudRate( baudRate );
+        config.setDefaultComDataBits( dataBits );
+        config.setDefaultComParity( parity );
+        config.setDefaultComStopBits( stopBits );
+        config.setDefaultComFlowControl( flowControl );
+        config.setDefaultComLogPath( logPath );
+        config.setDefaultComTimestampEnabled( timestamps );
+        config.setDefaultComTimestampFormat( timestampFormat );
+        config.setDefaultComLogTransmits( logTransmits );
+    }
+};
+} // namespace
+
+",""
+"Struct:tests/ui/mainwindow_test.cpp:SessionFilesRestoreGuard","SessionFilesRestoreGuard","tests/ui/mainwindow_test.cpp",47,57,"
+namespace {
+struct SessionFilesRestoreGuard {
+    SessionInfo& sessionInfo;
+    QString windowId;
+    std::vector<SessionInfo::OpenFile> openFiles;
+
+    ~SessionFilesRestoreGuard()
+    {
+        sessionInfo.setOpenFiles( windowId, openFiles );
+        sessionInfo.save();
+    }
+};
+
+struct MinimizeToTrayRestoreGuard {
+",""
+"Struct:tests/ui/mainwindow_test.cpp:MinimizeToTrayRestoreGuard","MinimizeToTrayRestoreGuard","tests/ui/mainwindow_test.cpp",59,72,"};
+
+struct MinimizeToTrayRestoreGuard {
+    bool previousValue = false;
+
+    explicit MinimizeToTrayRestoreGuard( bool value )
+        : previousValue( Configuration::get().minimizeToTray() )
+    {
+        Configuration::getSynced().setMinimizeToTray( value );
+    }
+
+    ~MinimizeToTrayRestoreGuard()
+    {
+        Configuration::getSynced().setMinimizeToTray( previousValue );
+    }
+};
+
+struct StartupProgressCallbackGuard {
+",""
+"Struct:tests/ui/mainwindow_test.cpp:StartupProgressCallbackGuard","StartupProgressCallbackGuard","tests/ui/mainwindow_test.cpp",74,76,"};
+
+struct StartupProgressCallbackGuard {
+    ~StartupProgressCallbackGuard() { StartupProgress::clearCallback(); }
+};
+
+struct PredefinedFiltersRestoreGuard {
+",""
+"Struct:tests/ui/mainwindow_test.cpp:PredefinedFiltersRestoreGuard","PredefinedFiltersRestoreGuard","tests/ui/mainwindow_test.cpp",78,86,"};
+
+struct PredefinedFiltersRestoreGuard {
+    PredefinedFiltersCollection::Collection filters
+        = PredefinedFiltersCollection::getSynced().getFilters();
+
+    ~PredefinedFiltersRestoreGuard()
+    {
+        PredefinedFiltersCollection::getSynced().saveToStorage( filters );
+    }
+};
+
+class StartupProgressRecorder {
+",""
+"Struct:tests/ui/logfiltereddata_test.cpp:LogDataLoader","LogDataLoader","tests/ui/logfiltereddata_test.cpp",115,131,"}
+
+struct LogDataLoader {
+    LogDataLoader()
+    {
+        static int counter = 0;
+        counter++;
+        LOG_INFO << ""Test run "" << counter;
+
+        REQUIRE( generateDataFiles( file ) );
+        SafeQSignalSpy loadEndSpy( &log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+
+        log_data.attachFile( file.fileName() );
+        REQUIRE( loadEndSpy.safeWait( 10000 ) );
+    }
+
+    QTemporaryFile file{ ""filtered_test_XXXXXX"" };
+    LogData log_data;
+};
+
+TEST_CASE( ""Log filtered data reports invalid search expressions asynchronously"",",""
+"Struct:tests/ui/crawlerwidget_test.cpp:CrawlerWidgetPrivate","CrawlerWidgetPrivate","tests/ui/crawlerwidget_test.cpp",72,73,"} // namespace
+
+struct CrawlerWidgetPrivate {
+};
+
+template <>
+",""
+"Struct:tests/ui/crawlerwidget_test.cpp:SavedSearchesRestoreGuard","SavedSearchesRestoreGuard","tests/ui/crawlerwidget_test.cpp",448,461,"    auto& savedSearches = session.savedSearches();
+
+    struct SavedSearchesRestoreGuard {
+        SavedSearches& searches;
+        QStringList history;
+        int historySize;
+
+        ~SavedSearchesRestoreGuard()
+        {
+            searches.clear();
+            searches.setHistorySize( historySize );
+            for ( auto it = history.crbegin(); it != history.crend(); ++it ) {
+                searches.addRecent( *it );
+            }
+        }
+    };
+
+    SavedSearchesRestoreGuard restoreGuard{ savedSearches, savedSearches.recentSearches(),
+",""
+"Struct:src/app/scenarioheadlessrunner.h:Result","Result","src/app/scenarioheadlessrunner.h",13,23,"class ScenarioHeadlessRunner {
+  public:
+    struct Result {
+        int exitCode = EXIT_FAILURE;
+        QString message;
+        bool outputToStderr = false;
+        QVariantMap payload;
+
+        bool hasPayload() const
+        {
+            return !payload.isEmpty();
+        }
+    };
+
+    explicit ScenarioHeadlessRunner( KloggApp& app );
+",""
+"Struct:src/app/scenarioheadlessrunner.cpp:LogicalDeviceDefinition","LogicalDeviceDefinition","src/app/scenarioheadlessrunner.cpp",32,35,"constexpr int DeviceOpenRetryDelayMs = 1000;
+
+struct LogicalDeviceDefinition {
+    QString name;
+    CommanderComSettings settings;
+};
+
+struct SuiteScenarioEntry {
+",""
+"Struct:src/app/scenarioheadlessrunner.cpp:SuiteScenarioEntry","SuiteScenarioEntry","src/app/scenarioheadlessrunner.cpp",37,42,"};
+
+struct SuiteScenarioEntry {
+    QString scenarioFilePath;
+    QString argsJsonFilePath;
+    bool enabled = true;
+    QStringList requiredDevices;
+};
+
+struct SuiteDefinition {
+",""
+"Struct:src/app/scenarioheadlessrunner.cpp:SuiteDefinition","SuiteDefinition","src/app/scenarioheadlessrunner.cpp",44,51,"};
+
+struct SuiteDefinition {
+    QString suiteFilePath;
+    QString suiteId;
+    QString suiteName;
+    QList<LogicalDeviceDefinition> devices;
+    QList<SuiteScenarioEntry> scenarios;
+    QStringList requiredDevices;
+};
+
+struct ResolvedDeviceBinding {
+",""
+"Struct:src/app/scenarioheadlessrunner.cpp:ResolvedDeviceBinding","ResolvedDeviceBinding","src/app/scenarioheadlessrunner.cpp",53,62,"};
+
+struct ResolvedDeviceBinding {
+    QString logicalName;
+    CommanderComSettings settings;
+    QString captureFilePath;
+    QString tabId;
+    int windowIndex = -1;
+    int tabIndex = -1;
+    QString displayName;
+    QString filePath;
+};
+
+struct LoadJsonResult {
+",""
+"Struct:src/app/scenarioheadlessrunner.cpp:LoadJsonResult","LoadJsonResult","src/app/scenarioheadlessrunner.cpp",64,67,"};
+
+struct LoadJsonResult {
+    QJsonObject object;
+    QString error;
+};
+
+QString absolutePath( const QString& baseDir, const QString& value )
+",""
+"Struct:src/app/scenariobatchrequest.h:ScenarioBatchRequest","ScenarioBatchRequest","src/app/scenariobatchrequest.h",11,18,"};
+
+struct ScenarioBatchRequest {
+    ScenarioBatchAction action = ScenarioBatchAction::None;
+    QString scenarioFilePath;
+    QString suiteFilePath;
+    QString argsJsonFilePath;
+    QString deviceMapFilePath;
+    QString reportDirPath;
+};
+",""
+"Struct:src/app/labtypes.h:LabLogicalDeviceDefinition","LabLogicalDeviceDefinition","src/app/labtypes.h",7,11,"#include ""commander.h""
+
+struct LabLogicalDeviceDefinition {
+    QString name;
+    QStringList capabilityTags;
+    CommanderComSettings settings;
+};
+
+struct LabAgentPortDefinition {
+",""
+"Struct:src/app/labtypes.h:LabAgentPortDefinition","LabAgentPortDefinition","src/app/labtypes.h",13,19,"};
+
+struct LabAgentPortDefinition {
+    QString portName;
+    QString displayName;
+    QStringList capabilityTags;
+    QStringList labels;
+    CommanderComSettings settings;
+};
+
+struct LabAgentConfig {
+",""
+"Struct:src/app/labtypes.h:LabAgentConfig","LabAgentConfig","src/app/labtypes.h",21,26,"};
+
+struct LabAgentConfig {
+    QString agentId;
+    QString displayName;
+    QStringList labels;
+    QList<LabAgentPortDefinition> ports;
+};
+
+struct LabBundleFile {
+",""
+"Struct:src/app/labtypes.h:LabBundleFile","LabBundleFile","src/app/labtypes.h",28,31,"};
+
+struct LabBundleFile {
+    QString relativePath;
+    QByteArray content;
+};
+
+struct LabJobBundle {
+",""
+"Struct:src/app/labtypes.h:LabJobBundle","LabJobBundle","src/app/labtypes.h",33,44,"};
+
+struct LabJobBundle {
+    QString kind;
+    QString suiteId;
+    QString suiteName;
+    QString suiteFile;
+    QString scenarioFile;
+    QString argsJsonFile;
+    QStringList requiredDevices;
+    QString agentLabel;
+    QList<LabLogicalDeviceDefinition> logicalDevices;
+    QList<LabBundleFile> files;
+};
+
+struct LabResolvedBinding {
+",""
+"Struct:src/app/labtypes.h:LabResolvedBinding","LabResolvedBinding","src/app/labtypes.h",46,52,"};
+
+struct LabResolvedBinding {
+    QString logicalName;
+    QString portName;
+    QString displayName;
+    QStringList capabilityTags;
+    CommanderComSettings settings;
+};
+
+struct LabStoredArtifact {
+",""
+"Struct:src/app/labtypes.h:LabStoredArtifact","LabStoredArtifact","src/app/labtypes.h",54,57,"};
+
+struct LabStoredArtifact {
+    QString name;
+    QString path;
+};
+
+QVariantMap commanderComSettingsToVariantMap( const CommanderComSettings& settings );
+",""
+"Struct:src/app/labrequest.h:LabCliRequest","LabCliRequest","src/app/labrequest.h",16,32,"};
+
+struct LabCliRequest {
+    LabCliMode mode = LabCliMode::None;
+    QString controllerUrl;
+    QString listenAddress;
+    quint16 listenPort = 0;
+    QString stateDirPath;
+    QString tokenFilePath;
+    QString agentConfigPath;
+    QString suiteFilePath;
+    QString scenarioFilePath;
+    QString argsJsonFilePath;
+    QString reportDirPath;
+    QString outputDirPath;
+    QString agentLabel;
+    QString jobId;
+    bool prettyOutput = false;
+};
+",""
+"Struct:src/app/labcontrollerservice.h:AgentConnectionState","AgentConnectionState","src/app/labcontrollerservice.h",42,42,"
+  private:
+    struct AgentConnectionState;
+
+    bool initializeDatabase( const QString& stateDirPath, QString* errorMessage );
+",""
+"Struct:src/app/cli.h:CliParameters","CliParameters","src/app/cli.h",44,1931,"#include ""scenariobatchrequest.h""
+
+struct CliParameters {
+    struct CommanderParseResult {
+        std::optional<CommanderRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct ScenarioBatchParseResult {
+        std::optional<ScenarioBatchRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct LabParseResult {
+        std::optional<LabCliRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    bool new_session = false;
+    bool load_session = false;
+    bool multi_instance = false;
+    bool log_to_file = false;
+    bool follow_file = false;
+    bool dump_ui_tree = false;
+    QString dump_state_json_path;
+
+    bool enable_logging = false;
+    int log_level = 3;
+
+    bool parse_error = false;
+    QString parse_error_message;
+    bool exit_requested = false;
+    int exit_code = EXIT_SUCCESS;
+    QString exit_message;
+
+    std::vector<QString> filenames;
+    std::optional<CommanderRequest> commander_request;
+    std::optional<ScenarioBatchRequest> scenario_batch_request;
+    std::optional<LabCliRequest> lab_request;
+
+    int window_width = 0;
+    int window_height = 0;
+
+    QString pattern;
+
+    CliParameters() = default;
+
+    CliParameters( QCoreApplication& app, bool console = false )
+    {
+        parse( app.arguments(), console );
+    }
+
+    CliParameters( const QStringList& arguments, bool console = false )
+    {
+        parse( arguments, console );
+    }
+
+    bool isCommanderMode() const
+    {
+        return commander_request.has_value();
+    }
+
+    bool isScenarioBatchMode() const
+    {
+        return scenario_batch_request.has_value();
+    }
+
+    bool isLabMode() const
+    {
+        return lab_request.has_value();
+    }
+
+    static QString versionText()
+    {
+        QString output;
+        output += QStringLiteral( ""cilogg %1\n"" ).arg( QString::fromLatin1( kloggVersion() ) );
+        output += QStringLiteral( ""Built %1 from %2(%3)\n"" )
+                      .arg( QString::fromLatin1( kloggBuildDate() ),
+                            QString::fromLatin1( kloggCommit() ),
+                            QString::fromLatin1( kloggGitVersion() ) );
+        output += QStringLiteral(
+            ""Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\n"" );
+        output += QStringLiteral(
+            ""This is free software.  You may redistribute copies of it under the terms of\n"" );
+        output += QStringLiteral(
+            ""the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\n"" );
+        output += QStringLiteral( ""There is NO WARRANTY, to the extent permitted by law.\n"" );
+        return output;
+    }
+
+  private:
+    static QString mainHelpDescription()
+    {
+        return QStringLiteral(
+            ""CILogg log viewer\n\n""
+            ""Scenario batch mode:\n""
+            ""  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n""
+            ""  cilogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n""
+            ""  cilogg scenario validate --suite-file <path> [--device-map-file <path>]\n""
+            ""  cilogg scenario list-devices --suite-file <path>\n\n""
+            ""Remote lab mode:\n""
+            ""  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n""
+            ""  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n""
+            ""  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n""
+            ""  cilogg lab queue --controller-url <url> --token-file <path>\n""
+            ""  cilogg lab status --controller-url <url> --token-file <path> --job-id <id>\n""
+            ""  cilogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n""
+            ""  cilogg lab agents --controller-url <url> --token-file <path>\n""
+            ""  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n""
+            ""Commander mode:\n""
+            ""  cilogg command --action open_file --file <path> [--follow]\n""
+            ""  cilogg command --action open_url --url <url>\n""
+            ""  cilogg command --action open_com --port <name> [serial options]\n""
+            ""  cilogg command --action close_file --file <path>\n""
+            ""  cilogg command --action close_url --url <url>\n""
+            ""  cilogg command --action close_com --port <name>\n""
+            ""  cilogg command --action close_cilogg\n""
+            ""  cilogg command --action clos
+... [truncated]",""
+"Struct:src/app/cli.h:CommanderParseResult","CommanderParseResult","src/app/cli.h",45,50,"
+struct CliParameters {
+    struct CommanderParseResult {
+        std::optional<CommanderRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct ScenarioBatchParseResult {
+",""
+"Struct:src/app/cli.h:ScenarioBatchParseResult","ScenarioBatchParseResult","src/app/cli.h",52,57,"    };
+
+    struct ScenarioBatchParseResult {
+        std::optional<ScenarioBatchRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    struct LabParseResult {
+",""
+"Struct:src/app/cli.h:LabParseResult","LabParseResult","src/app/cli.h",59,64,"    };
+
+    struct LabParseResult {
+        std::optional<LabCliRequest> request;
+        bool exit_requested = false;
+        int exit_code = EXIT_FAILURE;
+        QString output_message;
+    };
+
+    bool new_session = false;
+",""
+"Struct:src/utils/include/overload_visitor.h:overload","overload","src/utils/include/overload_visitor.h",25,25,"namespace {
+template <class... Fs>
+struct overload;
+
+template <class F0, class... Frest>
+",""
+"Struct:src/ui/src/startupprogress.cpp:StartupProgressData","StartupProgressData","src/ui/src/startupprogress.cpp",12,22,"constexpr auto kAdvanceNotifyInterval = std::chrono::milliseconds( 40 );
+
+struct StartupProgressData {
+    struct CallbackHolder {
+        std::atomic_bool active{ true };
+        StartupProgress::Callback callback;
+    };
+
+    StartupProgressState state;
+    std::shared_ptr<CallbackHolder> callbackHolder;
+    std::chrono::steady_clock::time_point lastAdvanceNotification{};
+    bool hasAdvanceNotification = false;
+};
+
+StartupProgressData& startupProgressData()
+",""
+"Struct:src/ui/src/startupprogress.cpp:CallbackHolder","CallbackHolder","src/ui/src/startupprogress.cpp",13,16,"
+struct StartupProgressData {
+    struct CallbackHolder {
+        std::atomic_bool active{ true };
+        StartupProgress::Callback callback;
+    };
+
+    StartupProgressState state;
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:DecodeErrorInfo","DecodeErrorInfo","src/ui/src/previewmessagetab.cpp",73,81,"}
+
+struct DecodeErrorInfo {
+    QString previewName;
+    QString fieldPath;
+    QString source;
+    int offset = -1;
+    int width = -1;
+    QString rawSlice;
+    QString reason;
+};
+
+QString describeCaptureRef( const PreviewCaptureRef& capture, const QString& prefix )
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:EnumLookupResult","EnumLookupResult","src/ui/src/previewmessagetab.cpp",292,298,"}
+
+struct EnumLookupResult {
+    bool ok = false;
+    QString text;
+    QString error;
+    bool hasNumeric = false;
+    quint64 numeric = 0;
+};
+
+EnumLookupResult resolveEnumValue( const QString& rawText,
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:ExprResult","ExprResult","src/ui/src/previewmessagetab.cpp",391,396,"}
+
+struct ExprResult {
+    bool ok = false;
+    int value = 0;
+    QString error;
+    QString missingVariable;
+};
+
+ExprResult resolveExprValue( const PreviewValueExpr& expr, const QMap<QString, qint64>& values )
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:DecodeBytesResult","DecodeBytesResult","src/ui/src/previewmessagetab.cpp",422,427,"}
+
+struct DecodeBytesResult {
+    bool ok = false;
+    QByteArray bytes;
+    int digitCount = 0;
+    QString error;
+};
+
+DecodeBytesResult decodeBytesFromText( const QString& text, PreviewBufferType type )
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:ParseContext","ParseContext","src/ui/src/previewmessagetab.cpp",549,562,"}
+
+struct ParseContext {
+    QByteArray buffer;
+    int cursor = 0;
+    QMap<QString, qint64>* values = nullptr;
+    QMap<QString, QString>* rawValues = nullptr;
+    const QRegularExpressionMatch* match = nullptr;
+    const QMap<QString, PreviewFieldSpec>* blocks = nullptr;
+    QStringList* blockStack = nullptr;
+    QString previewName;
+    QString bufferSource;
+    int baseOffset = 0;
+    int matchStart = 0;
+    bool allowUnqualified = false;
+};
+
+void parseFieldIntoItem( QTreeWidgetItem* item,
+",""
+"Struct:src/ui/src/previewmessagetab.cpp:BlockResolution","BlockResolution","src/ui/src/previewmessagetab.cpp",627,631,"}
+
+struct BlockResolution {
+    const PreviewFieldSpec* block = nullptr;
+    QString resolvedName;
+    QString error;
+};
+
+BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseContext& context )
+",""
+"Struct:src/ui/src/previewdecodeutils.cpp:HexNormalized","HexNormalized","src/ui/src/previewdecodeutils.cpp",6,11,"
+namespace {
+struct HexNormalized {
+    bool ok = false;
+    QString digits;
+    int digitCount = 0;
+    QString error;
+};
+
+int clampToInt( qsizetype value )
+",""
+"Struct:src/ui/include/tabnamemapping.h:TabName","TabName","src/ui/include/tabnamemapping.h",43,47,"
+  private:
+    struct TabName
+    {
+        QString path;
+        QString name;
+    };
+
+    std::vector<TabName> tabNames_;
+",""
+"Struct:src/ui/include/tabbedcrawlerwidget.h:SerialCaptureSettings","SerialCaptureSettings","src/ui/include/tabbedcrawlerwidget.h",36,36,"
+class StreamSession;
+struct SerialCaptureSettings;
+
+// This class represents glogg's main widget, a tabbed
+",""
+"Struct:src/ui/include/startupprogress.h:StartupProgressState","StartupProgressState","src/ui/include/startupprogress.h",6,12,"#include <QString>
+
+struct StartupProgressState {
+    int minimum = 0;
+    int maximum = 1;
+    int value = 0;
+    QString status;
+    QString detail;
+};
+
+class StartupProgress {
+",""
+"Struct:src/ui/include/signalmux.h:Connection","Connection","src/ui/include/signalmux.h",82,87,"
+  private:
+    struct Connection {
+        QPointer<QObject>   source;
+        QPointer<QObject>   sink;
+        const char*         signal;
+        const char*         slot;
+    };
+
+    void connect( const Connection& connection);
+",""
+"Struct:src/ui/include/sessioninfo.h:OpenFile","OpenFile","src/ui/include/sessioninfo.h",58,82,"    }
+
+    struct OpenFile {
+        OpenFile( const QString& file, uint64_t top, const QString& context,
+                  const QString& streamContextValue = {},
+                  const QString& scriptContextValue = {} )
+            : fileName{ file }
+            , topLine{ top }
+            , viewContext{ context }
+            , streamContext{ streamContextValue }
+            , scriptContext{ scriptContextValue }
+        {
+        }
+
+        QString fileName;
+        uint64_t topLine;
+
+        // The view context contains parameter specific to the view's
+        // implementation (such as geometry...)
+        QString viewContext;
+
+        // Optional stream context for special sources (e.g. COM sessions).
+        QString streamContext;
+
+        // Optional script binding context for tab-owned automation.
+        QString scriptContext;
+    };
+
+    struct Window {
+",""
+"Struct:src/ui/include/sessioninfo.h:Window","Window","src/ui/include/sessioninfo.h",84,94,"    };
+
+    struct Window {
+
+        explicit Window( const QString& windowId )
+            : id{ windowId }
+        {
+        }
+
+        QString id;
+        QByteArray geometry;
+        std::vector<OpenFile> openFiles;
+    };
+
+    void add( const QString& windowId )
+",""
+"Struct:src/ui/include/session.h:OpenFile","OpenFile","src/ui/include/session.h",109,114,"
+  private:
+    struct OpenFile {
+        QString fileName;
+        std::shared_ptr<LogData> logData;
+        std::shared_ptr<LogFilteredData> logFilteredData;
+        ViewInterface* view;
+    };
+
+    // Open a file without checking if it is existing/readable
+",""
+"Struct:src/ui/include/session.h:OpenedFileData","OpenedFileData","src/ui/include/session.h",140,145,"};
+
+struct OpenedFileData {
+    QString fileName;
+    ViewInterface* view = nullptr;
+    QString streamContext;
+    QString scriptContext;
+};
+
+using OpenedFilesList = std::vector<OpenedFileData>;
+",""
+"Struct:src/ui/include/serialcaptureworker.h:SerialCaptureSettings","SerialCaptureSettings","src/ui/include/serialcaptureworker.h",8,20,"#include <optional>
+
+struct SerialCaptureSettings {
+    QString portName;
+    qint32 baudRate = 115200;
+    QSerialPort::DataBits dataBits = QSerialPort::Data8;
+    QSerialPort::Parity parity = QSerialPort::NoParity;
+    QSerialPort::StopBits stopBits = QSerialPort::OneStop;
+    QSerialPort::FlowControl flowControl = QSerialPort::NoFlowControl;
+    QString filePath;
+    bool addTimestamps = false;
+    QString timestampFormat = QStringLiteral( ""dd/MM/yyyy HH:mm:ss.zzz"" );
+    bool logTransmits = false;
+    bool useForActions = false;
+};
+
+QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings );
+",""
+"Struct:src/ui/include/selection.h:SelectedPartial","SelectedPartial","src/ui/include/selection.h",171,180,"    OptionalLineNumber selectedLine_;
+
+    struct SelectedPartial {
+        OptionalLineNumber line;
+        LineColumn startColumn;
+        LineColumn endColumn;
+
+        LineLength size() const
+        {
+            return ( endColumn - startColumn ) + 1_length;
+        }
+    };
+    struct SelectedRange {
+        // The limits of the range, sorted
+",""
+"Struct:src/ui/include/selection.h:SelectedRange","SelectedRange","src/ui/include/selection.h",181,192,"        }
+    };
+    struct SelectedRange {
+        // The limits of the range, sorted
+        OptionalLineNumber startLine;
+        LineNumber endLine;
+        // The line selected first, used for shift+click
+        LineNumber firstLine;
+
+        LinesCount size() const
+        {
+            return startLine ? ( endLine - startLine.value() ) + 1_lcount : 0_lcount;
+        }
+    };
+    struct SelectedPartial selectedPartial_;
+    struct SelectedRange selectedRange_;
+",""
+"Struct:src/ui/include/scriptsupervisor.h:ScriptSubscription","ScriptSubscription","src/ui/include/scriptsupervisor.h",66,80,"
+  private:
+    struct ScriptSubscription {
+        QString tabId;
+        int windowIndex = -1;
+        int tabIndex = -1;
+        QString windowId;
+        QString filePath;
+        QString displayName;
+        QString portName;
+        QString eventType;
+        QString sourceType;
+        std::optional<int> responseId;
+        QString responseName;
+        std::optional<int> actionId;
+        QString actionName;
+    };
+
+    struct ScriptRun;
+",""
+"Struct:src/ui/include/scriptsupervisor.h:ScriptRun","ScriptRun","src/ui/include/scriptsupervisor.h",82,82,"    };
+
+    struct ScriptRun;
+
+    QString resolvePythonExecutable() const;
+",""
+"Struct:src/ui/include/scenariorunner.h:Subscription","Subscription","src/ui/include/scenariorunner.h",48,62,"
+  private:
+    struct Subscription {
+        QString tabId;
+        int windowIndex = -1;
+        int tabIndex = -1;
+        QString windowId;
+        QString filePath;
+        QString displayName;
+        QString portName;
+        QString eventType;
+        QString sourceType;
+        std::optional<int> responseId;
+        QString responseName;
+        std::optional<int> actionId;
+        QString actionName;
+    };
+
+    QString resolvePythonExecutable() const;
+",""
+"Struct:src/ui/include/previewmanager.h:PreviewImportResult","PreviewImportResult","src/ui/include/previewmanager.h",8,12,"#include ""previewrepository.h""
+
+struct PreviewImportResult {
+    bool ok = false;
+    QStringList errors;
+    QStringList warnings;
+};
+
+class PreviewManager : public QObject {
+",""
+"Struct:src/ui/include/previewdecodeutils.h:HexParseResult","HexParseResult","src/ui/include/previewdecodeutils.h",9,14,"#include ""previewconfig.h""
+
+struct HexParseResult {
+    bool ok = false;
+    quint64 value = 0;
+    int digitCount = 0;
+    QString error;
+};
+
+struct HexDecodeResult {
+",""
+"Struct:src/ui/include/previewdecodeutils.h:HexDecodeResult","HexDecodeResult","src/ui/include/previewdecodeutils.h",16,21,"};
+
+struct HexDecodeResult {
+    bool ok = false;
+    QByteArray bytes;
+    int digitCount = 0;
+    QString error;
+};
+
+struct PreviewExpressionResult {
+",""
+"Struct:src/ui/include/previewdecodeutils.h:PreviewExpressionResult","PreviewExpressionResult","src/ui/include/previewdecodeutils.h",23,28,"};
+
+struct PreviewExpressionResult {
+    bool ok = false;
+    qint64 value = 0;
+    QString error;
+    QString missingVariable;
+};
+
+HexParseResult parseHexToU64AllowOddDigits( const QString& input );
+",""
+"Struct:src/ui/include/previewconfigparser.h:PreviewParseResult","PreviewParseResult","src/ui/include/previewconfigparser.h",8,13,"#include ""previewconfig.h""
+
+struct PreviewParseResult {
+    QVector<PreviewDefinition> previews;
+    QMap<QString, PreviewFieldSpec> blocks;
+    QStringList errors;
+    QStringList warnings;
+};
+
+class PreviewConfigParser {
+",""
+"Struct:src/ui/include/previewconfig.h:PreviewValueExpr","PreviewValueExpr","src/ui/include/previewconfig.h",23,28,"enum class PreviewFieldSource { Buffer, Capture, Block };
+
+struct PreviewValueExpr {
+    bool isSet = false;
+    bool isLiteral = false;
+    int literalValue = 0;
+    QString expression;
+};
+
+struct PreviewCaptureRef {
+",""
+"Struct:src/ui/include/previewconfig.h:PreviewCaptureRef","PreviewCaptureRef","src/ui/include/previewconfig.h",30,35,"};
+
+struct PreviewCaptureRef {
+    bool isSet = false;
+    bool isIndex = false;
+    int index = 0;
+    QString name;
+};
+
+struct PreviewFieldSpec {
+",""
+"Struct:src/ui/include/previewconfig.h:PreviewFieldSpec","PreviewFieldSpec","src/ui/include/previewconfig.h",37,54,"};
+
+struct PreviewFieldSpec {
+    QString name;
+    PreviewFieldSource source = PreviewFieldSource::Buffer;
+    PreviewCaptureRef capture;
+    PreviewValueExpr offset;
+    PreviewValueExpr width;
+    PreviewBufferType type = PreviewBufferType::Bytes;
+    PreviewFormat format = PreviewFormat::String;
+    QString regex;
+    QRegularExpression compiledRegex;
+    PreviewCaptureRef bufferCapture;
+    QString blockTemplate;
+    QString endianness;
+    QMap<QString, QString> enumMap;
+    QMap<QString, QString> flagMap;
+    QVector<PreviewFieldSpec> fields;
+    QVector<PreviewFieldSpec> bitfieldMap;
+};
+
+struct PreviewDefinition {
+",""
+"Struct:src/ui/include/previewconfig.h:PreviewDefinition","PreviewDefinition","src/ui/include/previewconfig.h",56,67,"};
+
+struct PreviewDefinition {
+    QString name;
+    QString regex;
+    QRegularExpression compiled;
+    bool enabled = true;
+    bool hasEnabled = false;
+    PreviewCaptureRef bufferCapture;
+    PreviewValueExpr offset;
+    PreviewBufferType type = PreviewBufferType::String;
+    PreviewFormat format = PreviewFormat::Fields;
+    QVector<PreviewFieldSpec> fields;
+};
+
+QString previewBufferTypeToString( PreviewBufferType type );
+",""
+"Struct:src/ui/include/predefinedfilterscombobox.h:SearchPatternState","SearchPatternState","src/ui/include/predefinedfilterscombobox.h",83,87,"
+    QStandardItemModel* model_;
+    struct SearchPatternState {
+        QString lastOne_;
+        QString newOne_;
+        bool useLogicalCombining_{false};
+    }; 
+    SearchPatternState searchPattern_;
+    bool ignoreCollecting_{false};
+",""
+"Struct:src/ui/include/predefinedfilters.h:PredefinedFilter","PredefinedFilter","src/ui/include/predefinedfilters.h",47,52,"#include ""persistable.h""
+
+struct PredefinedFilter {
+    QString id;
+    QString name;
+    QString pattern;
+    bool useRegex;
+};
+
+// Represents collection of filters read from settings file.
+",""
+"Struct:src/ui/include/mainwindow.h:SerialCaptureSettings","SerialCaptureSettings","src/ui/include/mainwindow.h",76,76,"class StreamSession;
+class ScriptSupervisor;
+struct SerialCaptureSettings;
+
+// Main window of the application, creates menus, toolbar and
+",""
+"Struct:src/ui/include/mainwindow.h:ComCaptureStartOptions","ComCaptureStartOptions","src/ui/include/mainwindow.h",222,230,"
+  private:
+    struct ComCaptureStartOptions {
+        static ComCaptureStartOptions interactive() { return { true, true, false, false }; }
+        static ComCaptureStartOptions restore() { return { false, true, true, true }; }
+
+        bool allowActionsPrompt = true;
+        bool showErrors = true;
+        bool nonBlockingErrors = false;
+        bool restoreMode = false;
+    };
+
+    void createActions();
+",""
+"Struct:src/ui/include/highlighterset.h:HighlightColor","HighlightColor","src/ui/include/highlighterset.h",56,59,"#include ""regularexpressionpattern.h""
+
+struct HighlightColor {
+    QColor foreColor;
+    QColor backColor;
+};
+
+// Represents a filter, i.e. a regexp and the colors matching text
+",""
+"Struct:src/ui/include/highlighterset.h:QuickHighlighter","QuickHighlighter","src/ui/include/highlighterset.h",172,176,"};
+
+struct QuickHighlighter {
+    QString name;
+    HighlightColor color;
+    bool useInCycle;
+};
+
+class HighlighterSetCollection final : public Persistable<HighlighterSetCollection> {
+",""
+"Struct:src/ui/include/crawlerwidget.h:CommanderRequest","CommanderRequest","src/ui/include/crawlerwidget.h",70,70,"
+class InfoLine;
+struct CommanderRequest;
+class QuickFindPattern;
+class SavedSearches;
+",""
+"Struct:src/ui/include/crawlerwidget.h:access_by","access_by","src/ui/include/crawlerwidget.h",165,165,"    void applyCommanderAutomationSearch( const CommanderRequest& request );
+    template <class T>
+    struct access_by;
+
+  protected:
+",""
+"Struct:src/ui/include/commander.h:CommanderComSettings","CommanderComSettings","src/ui/include/commander.h",72,84,"};
+
+struct CommanderComSettings {
+    QString portName;
+    std::optional<QString> filePath;
+    std::optional<qint32> baudRate;
+    std::optional<QSerialPort::DataBits> dataBits;
+    std::optional<QSerialPort::Parity> parity;
+    std::optional<QSerialPort::StopBits> stopBits;
+    std::optional<QSerialPort::FlowControl> flowControl;
+    std::optional<bool> addTimestamps;
+    std::optional<QString> timestampFormat;
+    std::optional<bool> logTransmits;
+    std::optional<bool> useForActions;
+};
+
+struct CommanderRequest {
+",""
+"Struct:src/ui/include/commander.h:CommanderRequest","CommanderRequest","src/ui/include/commander.h",86,123,"};
+
+struct CommanderRequest {
+    CommanderAction action = CommanderAction::None;
+    QString filePath;
+    QString url;
+    QString portName;
+    QString tabId;
+    QString filterId;
+    QString filterString;
+    QString searchText;
+    QString objectName;
+    QString entityName;
+    QString commentText;
+    QString scriptFilePath;
+    QString argsJsonFilePath;
+    QString scenarioFilePath;
+    QString suiteFilePath;
+    std::optional<int> windowIndex;
+    std::optional<int> tabIndex;
+    std::optional<int> filterIndex;
+    std::optional<int> entityId;
+    std::optional<int> timeoutMs;
+    std::optional<bool> enabled;
+    bool allEntities = false;
+    bool timestampComment = false;
+    bool followFile = false;
+    bool predefinedFilters = false;
+    bool prettyOutput = false;
+    bool runSearch = false;
+    bool rearmAutoRefresh = false;
+    bool searchUseRegex = false;
+    bool searchCaseSensitive = false;
+    bool searchInverseMatch = false;
+    bool searchUseBoolean = false;
+    bool searchAutoRefresh = false;
+    bool searchKeepResults = false;
+    CommanderComSettings comSettings;
+    QVariantMap definitionPayload;
+};
+
+struct CommanderResult {
+",""
+"Struct:src/ui/include/commander.h:CommanderResult","CommanderResult","src/ui/include/commander.h",125,139,"};
+
+struct CommanderResult {
+    CommanderResultCode code = CommanderResultCode::Success;
+    QString message;
+    QVariantMap payload;
+
+    bool ok() const
+    {
+        return code == CommanderResultCode::Success;
+    }
+
+    bool hasPayload() const
+    {
+        return !payload.isEmpty();
+    }
+};
+
+QString commanderActionToString( CommanderAction action );
+",""
+"Struct:src/ui/include/actionsmanager.h:ActionsImportResult","ActionsImportResult","src/ui/include/actionsmanager.h",7,11,"#include ""actionsrepository.h""
+
+struct ActionsImportResult {
+    bool ok = false;
+    QStringList errors;
+    QStringList warnings;
+};
+
+class ActionsManager : public QObject {
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionSequenceResult","ActionSequenceResult","src/ui/include/actionsconfig.h",10,14,"#include <QVector>
+
+struct ActionSequenceResult {
+    bool ok = false;
+    QByteArray bytes;
+    QString error;
+};
+
+enum class ActionSequenceType { String, HexString };
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionChecksumDefinition","ActionChecksumDefinition","src/ui/include/actionsconfig.h",24,28,"ResponseMatchType responseMatchTypeFromString( const QString& text, bool* ok = nullptr );
+
+struct ActionChecksumDefinition {
+    bool enabled = false;
+    QString algorithm = QStringLiteral( ""sum8"" );
+    QString placeholder = QStringLiteral( ""${CHECKSUM}"" );
+};
+
+struct ActionSequence {
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionSequence","ActionSequence","src/ui/include/actionsconfig.h",30,33,"};
+
+struct ActionSequence {
+    ActionSequenceType type = ActionSequenceType::String;
+    QString value;
+};
+
+struct ActionParameters {
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionParameters","ActionParameters","src/ui/include/actionsconfig.h",35,41,"};
+
+struct ActionParameters {
+    bool repeat = false;
+    int delay = 0;
+    int repeatCount = 1;
+    int repeatInterval = 0;
+    QStringList variableNames;
+};
+
+struct ActionDefinition {
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionDefinition","ActionDefinition","src/ui/include/actionsconfig.h",43,53,"};
+
+struct ActionDefinition {
+    int id = -1;
+    int order = 0;
+    bool enabled = true;
+    bool hidden = false;
+    QString name;
+    QString description;
+    ActionSequence sequence;
+    ActionParameters parameters;
+    ActionChecksumDefinition checksum;
+};
+
+struct ResponseMatchDefinition {
+",""
+"Struct:src/ui/include/actionsconfig.h:ResponseMatchDefinition","ResponseMatchDefinition","src/ui/include/actionsconfig.h",55,59,"};
+
+struct ResponseMatchDefinition {
+    ResponseMatchType type = ResponseMatchType::String;
+    QString value;
+    QRegularExpression compiled;
+};
+
+struct ResponseActionStep {
+",""
+"Struct:src/ui/include/actionsconfig.h:ResponseActionStep","ResponseActionStep","src/ui/include/actionsconfig.h",61,64,"};
+
+struct ResponseActionStep {
+    int actionId = -1;
+    int delayMs = 0;
+};
+
+struct ResponseActionDefinition {
+",""
+"Struct:src/ui/include/actionsconfig.h:ResponseActionDefinition","ResponseActionDefinition","src/ui/include/actionsconfig.h",66,77,"};
+
+struct ResponseActionDefinition {
+    bool hasActionId = false;
+    int actionId = -1;
+    QVector<ResponseActionStep> steps;
+    bool hasInlineAction = false;
+    ActionSequence inlineAction;
+    QString comment;
+    bool linebreak = false;
+    bool timestamp = false;
+    bool snapshot = false;
+    bool stopCommunication = false;
+};
+
+struct ResponseDefinition {
+",""
+"Struct:src/ui/include/actionsconfig.h:ResponseDefinition","ResponseDefinition","src/ui/include/actionsconfig.h",79,88,"};
+
+struct ResponseDefinition {
+    int id = -1;
+    int order = 0;
+    bool enabled = true;
+    bool hidden = false;
+    QString name;
+    QString description;
+    ResponseMatchDefinition match;
+    ResponseActionDefinition response;
+};
+
+struct ActionsParseResult {
+",""
+"Struct:src/ui/include/actionsconfig.h:ActionsParseResult","ActionsParseResult","src/ui/include/actionsconfig.h",90,95,"};
+
+struct ActionsParseResult {
+    QVector<ActionDefinition> actions;
+    QVector<ResponseDefinition> responses;
+    QStringList errors;
+    QStringList warnings;
+};
+
+ActionSequenceResult actionSequenceToBytes( const ActionSequence& sequence,
+",""
+"Struct:src/ui/include/actionruntime.h:ResponseMatchResult","ResponseMatchResult","src/ui/include/actionruntime.h",10,14,"class StreamSession;
+
+struct ResponseMatchResult {
+    bool matched = false;
+    QMap<QString, QString> captures;
+    QString lineText;
+};
+
+ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
+",""
+"Struct:src/ui/include/abstractlogview.h:WrappedLineData","WrappedLineData","src/ui/include/abstractlogview.h",374,378,"    LineColumn firstCol_ = 0_lcol;
+
+    struct WrappedLineData {
+      LineNumber lineNumber;
+      size_t wrappedLineIndex;
+      WrappedString wrappedString;
+    };
+    struct VisibleLayoutInfo {
+        LinesCount logicalLines = 0_lcount;
+",""
+"Struct:src/ui/include/abstractlogview.h:VisibleLayoutInfo","VisibleLayoutInfo","src/ui/include/abstractlogview.h",379,383,"      WrappedString wrappedString;
+    };
+    struct VisibleLayoutInfo {
+        LinesCount logicalLines = 0_lcount;
+        LinesCount visualLines = 0_lcount;
+        OptionalLineNumber lastVisibleLine;
+    };
+    klogg::vector<WrappedLineData> wrappedLinesInfo_;
+
+",""
+"Struct:src/ui/include/abstractlogview.h:TextAreaCache","TextAreaCache","src/ui/include/abstractlogview.h",435,441,"
+    // Cache pixmap and associated info
+    struct TextAreaCache {
+        QPixmap pixmap_;
+        bool invalid_;
+        LineNumber first_line_;
+        LineNumber last_line_;
+        LineColumn first_column_;
+    };
+    struct PullToFollowCache {
+        QPixmap pixmap_;
+",""
+"Struct:src/ui/include/abstractlogview.h:PullToFollowCache","PullToFollowCache","src/ui/include/abstractlogview.h",442,445,"        LineColumn first_column_;
+    };
+    struct PullToFollowCache {
+        QPixmap pixmap_;
+        LineLength nb_columns_;
+    };
+    TextAreaCache textAreaCache_ = { {}, true, 0_lnum, 0_lnum, 0_lcol };
+    PullToFollowCache pullToFollowCache_ = { {}, 0_length };
+",""
+"Struct:src/settings/include/styles.h:StyleManager","StyleManager","src/settings/include/styles.h",25,41,"#include <QLatin1String>
+
+struct StyleManager {
+
+    static constexpr QLatin1String DarkStyleKey = QLatin1String( ""Dark"", 4 );
+    static constexpr QLatin1String DarkWindowsStyleKey = QLatin1String( ""Windows Dark"", 12 );
+    static constexpr QLatin1String VistaKey = QLatin1String( ""WindowsVista"", 12 );
+    static constexpr QLatin1String FusionKey = QLatin1String( ""Fusion"", 6 );
+    static constexpr QLatin1String WindowsKey = QLatin1String( ""Windows"", 7 );
+    static constexpr QLatin1String MacintoshKey = QLatin1String( ""macintosh"", 9 );
+
+    static constexpr QLatin1String Gtk2Key = QLatin1String( ""Gtk2"", 4 );
+    static constexpr QLatin1String Bb10Key = QLatin1String( ""bb10"", 4 );
+
+    static QStringList availableStyles();
+    static QString defaultPlatformStyle();
+
+    static void applyStyle( const QString& style );
+};
+
+#endif
+",""
+"Struct:src/settings/include/shortcuts.h:ShortcutAction","ShortcutAction","src/settings/include/shortcuts.h",31,155,"class QShortcut;
+
+struct ShortcutAction {
+    static constexpr auto CrawlerChangeVisibilityForward = ""crawler.change_visibility_type"";
+    static constexpr auto CrawlerChangeVisibilityBackward
+        = ""crawler.change_visibility_type_backward"";
+    static constexpr auto CrawlerChangeVisibilityToMarksAndMatches
+        = ""crawler.change_visibility_to_marks_and_matches"";
+    static constexpr auto CrawlerChangeVisibilityToMarks = ""crawler.change_visibility_to_marks"";
+    static constexpr auto CrawlerChangeVisibilityToMatches = ""crawler.change_visibility_to_matches"";
+    static constexpr auto CrawlerIncreseTopViewSize = ""crawler.increase_top_view_size"";
+    static constexpr auto CrawlerDecreaseTopViewSize = ""crawler.decrease_top_view_size"";
+    static constexpr auto CrawlerEnableCaseMatching = ""crawler.enable_case_matching"";
+    static constexpr auto CrawlerEnableRegex = ""crawler.enable_regex"";
+    static constexpr auto CrawlerEnableInverseMatching = ""crawler.enable_inverse_matching"";
+    static constexpr auto CrawlerEnableRegexCombining = ""crawler.enable_regex_combining"";
+    static constexpr auto CrawlerEnableAutoRefresh = ""crawler.enable_auto_refresh"";
+    static constexpr auto CrawlerKeepResults = ""crawler.enable_keep_results"";
+
+    static constexpr auto QfFindNext = ""qf.find_next"";
+    static constexpr auto QfFindPrev = ""qf.find_prev"";
+
+    static constexpr auto MainWindowOpenFile = ""mainwindow.open_file"";
+    static constexpr auto MainWindowNewWindow = ""mainwindow.new_window"";
+    static constexpr auto MainWindowCloseFile = ""mainwindow.close_file"";
+    static constexpr auto MainWindowCloseAll = ""mainwindow.close_all"";
+    static constexpr auto MainWindowQuit = ""mainwindow.quit"";
+    static constexpr auto MainWindowFullScreen = ""mainwindow.fullscreen"";
+    static constexpr auto MainWindowMax = ""mainwindow.max_window"";
+    static constexpr auto MainWindowMin = ""mainwindow.min_window"";
+    static constexpr auto MainWindowPreference = ""mainwindow.preference"";
+    static constexpr auto MainWindowCopy = ""mainwindow.copy_selection"";
+    static constexpr auto MainWindowSelectAll = ""mainwindow.select_all"";
+    static constexpr auto MainWindowOpenQf = ""mainwindow.open_qf"";
+    static constexpr auto MainWindowOpenQfForward = ""mainwindow.open_qf_forward"";
+    static constexpr auto MainWindowOpenQfBackward = ""mainwindow.open_qf_backward"";
+    static constexpr auto MainWindowFocusSearchInput = ""qf.focus_search"";
+    static constexpr auto MainWindowClearFile = ""mainwindow.clear_file"";
+    static constexpr auto MainWindowFollowFile = ""mainwindow.follow_file"";
+    static constexpr auto MainWindowTextWrap = ""mainwindow.text_wrap"";
+    static constexpr auto MainWindowReload = ""mainwindow.reload"";
+    static constexpr auto MainWindowStop = ""mainwindow.stop"";
+    static constexpr auto MainWindowScratchpad = ""mainwindow.scratchpad"";
+    static constexpr auto MainWindowSelectOpenFile = ""mainwindow.select_open_file"";
+    static constexpr auto MainWindowOpenContainingFolder = ""mainwindow.open_containing_folder"";
+    static constexpr auto MainWindowOpenInEditor = ""mainwindow.open_in_editor"";
+    static constexpr auto MainWindowCopyPathToClipboard = ""mainwindow.copy_path_to_clipboard"";
+    static constexpr auto MainWindowOpenFromClipboard = ""mainwindow.open_from_clipboard"";
+    static constexpr auto MainWindowOpenFromUrl = ""mainwindow.open_from_url"";
+
+    static constexpr auto LogViewMark = ""logview.mark"";
+    static constexpr auto LogViewNextMark = ""logview.next_mark"";
+    static constexpr auto LogViewPrevMark = ""logview.prev_mark"";
+    static constexpr auto LogViewSelectionUp = ""logview.selection_up"";
+    static constexpr auto LogViewSelectionDown = ""logview.selection_down"";
+    static constexpr auto LogViewScrollUp = ""logview.scroll_up"";
+    static constexpr auto LogViewScrollDown = ""logview.scroll_down"";
+    static constexpr auto LogViewScrollLeft = ""logview.scroll_left"";
+    static constexpr auto LogViewScrollRight = ""logview.scroll_right"";
+    static constexpr auto LogViewJumpToTop = ""logview.jump_to_top"";
+    static constexpr auto LogViewJumpToButtom = ""logview.jump_to_buttom"";
+    static constexpr auto LogViewJumpToBottom = ""logview.jump_to_bottom"";
+    static constexpr auto LogViewJumpToStartOfLine = ""logview.jump_to_start_of_line"";
+    static constexpr auto LogViewJumpToEndOfLine = ""logview.jump_to_end_of_line"";
+    static constexpr auto LogViewJumpToRightOfScreen = ""logview.jump_to_right"";
+    static constexpr auto LogViewJumpToLine = ""logview.jump_to_line"";
+    static constexpr auto LogViewJumpToLineNumber = ""logview.jump_to_line_number"";
+
+    static constexpr auto LogViewQfSelectedForward = ""logview.qf_selected_forward"";
+    static constexpr auto LogViewQfSelectedBackward = ""logview.qf_selected_backward"";
+    static constexpr auto LogViewQfForward = ""logview.open_qf_forward"";
+    static constexpr auto LogViewQfBackward = ""logview.open_qf_backward"";
+... [truncated]",""
+"Struct:src/settings/include/shortcuts.h:ShortcutDesc","ShortcutDesc","src/settings/include/shortcuts.h",128,131,"
+private:
+    struct ShortcutDesc {
+        QString name;
+        QStringList keySequence;
+    };
+
+public:
+",""
+"Struct:src/settings/include/persistentinfo.h:app_settings","app_settings","src/settings/include/persistentinfo.h",48,49,"// Clients must implement Persistable
+
+struct app_settings {
+};
+struct session_settings {
+};
+",""
+"Struct:src/settings/include/persistentinfo.h:session_settings","session_settings","src/settings/include/persistentinfo.h",50,51,"struct app_settings {
+};
+struct session_settings {
+};
+
+class PersistentInfo {
+",""
+"Struct:src/regex/include/regularexpressionpattern.h:RegularExpressionPattern","RegularExpressionPattern","src/regex/include/regularexpressionpattern.h",30,94,"#include ""uuid.h""
+
+struct RegularExpressionPattern {
+
+    QString pattern;
+    bool isCaseSensitive = true;
+    bool isExclude = false;
+    bool isBoolean = false;
+    bool isPlainText = false;
+    bool isPrefilter = false;
+
+    RegularExpressionPattern() = default;
+
+    explicit RegularExpressionPattern( const QString& expression )
+        : RegularExpressionPattern( expression, true, false, false, false )
+    {
+    }
+
+    RegularExpressionPattern( const QString& expression, bool caseSensitive, bool inverse,
+                              bool boolean, bool plainText )
+        : pattern( expression )
+        , isCaseSensitive( caseSensitive )
+        , isExclude( inverse )
+        , isBoolean( boolean )
+        , isPlainText( plainText )
+        , patternId_( nextId() )
+    {
+    }
+
+    std::string id() const
+    {
+        return patternId_;
+    }
+
+    explicit operator QRegularExpression() const
+    {
+        auto patternOptions = QRegularExpression::UseUnicodePropertiesOption
+                              | QRegularExpression::DontCaptureOption;
+
+        if ( !isCaseSensitive ) {
+            patternOptions |= QRegularExpression::CaseInsensitiveOption;
+        }
+
+        auto finalPattern = pattern;
+        if ( isPlainText ) {
+            finalPattern = QRegularExpression::escape( pattern );
+        }
+
+        return QRegularExpression( finalPattern, patternOptions );
+    }
+
+    bool operator==( const RegularExpressionPattern& other ) const
+    {
+        return std::tie( pattern, isCaseSensitive, isExclude, isBoolean, isPlainText )
+               == std::tie( other.pattern, other.isCaseSensitive, isExclude, isBoolean,
+                            isPlainText );
+    }
+
+  private:
+    static std::string nextId()
+    {
+        static std::atomic<uint> counter_ = 0;
+        return std::string{ ""p_"" } + std::to_string( counter_++ );
+    }
+
+    std::string patternId_;
+};
+
+#endif",""
+"Struct:src/regex/include/hsregularexpression.h:HsMatcherContext","HsMatcherContext","src/regex/include/hsregularexpression.h",79,89,"using HsDatabase = SharedResource<hs_database_t>;
+
+struct HsMatcherContext {
+
+    HsMatcherContext( std::size_t numberOfPatterns = 1 );
+
+    void reset();
+
+    MatchedPatterns matchingPatterns;
+
+  private:
+    MatchedPatterns matchingPatternsTemplate_;
+};
+
+class HsMatcher {
+",""
+"Struct:src/logdata/src/logfiltereddataworker.cpp:PartialSearchResults","PartialSearchResults","src/logdata/src/logfiltereddataworker.cpp",64,77,"
+namespace {
+struct PartialSearchResults {
+    PartialSearchResults() = default;
+
+    PartialSearchResults( const PartialSearchResults& ) = delete;
+    PartialSearchResults( PartialSearchResults&& ) = default;
+    PartialSearchResults& operator=( const PartialSearchResults& ) = delete;
+    PartialSearchResults& operator=( PartialSearchResults&& ) = default;
+
+    SearchResultArray matchingLines;
+    LineLength maxLength;
+
+    LineNumber chunkStart;
+    LinesCount processedLines;
+};
+
+struct SearchBlockData {
+",""
+"Struct:src/logdata/src/logfiltereddataworker.cpp:SearchBlockData","SearchBlockData","src/logdata/src/logfiltereddataworker.cpp",79,95,"};
+
+struct SearchBlockData {
+    SearchBlockData() = default;
+    SearchBlockData( LineNumber start, LogData::RawLines blockLines )
+        : chunkStart( start )
+        , lines( std::move( blockLines ) )
+    {
+    }
+
+    SearchBlockData( const SearchBlockData& ) = delete;
+    SearchBlockData( SearchBlockData&& ) = default;
+
+    SearchBlockData& operator=( const SearchBlockData& ) = delete;
+    SearchBlockData& operator=( SearchBlockData&& ) = default;
+
+    LineNumber chunkStart;
+    LogData::RawLines lines;
+};
+
+PartialSearchResults filterLines( const PatternMatcher& matcher, const LogData::RawLines& rawLines,
+",""
+"Struct:src/logdata/src/fileholder.cpp:stat","stat","src/logdata/src/fileholder.cpp",212,212,"    return FileId{ fileIndex.QuadPart, static_cast<uint64_t>( info.dwVolumeSerialNumber ) };
+#else
+    struct stat info;
+    if ( lstat( filename.toUtf8().constData(), &info ) != 0 ) {
+        LOG_DEBUG << ""Failed to get file info for "" << filename.toStdString();
+",""
+"Struct:src/logdata/include/logfiltereddataworker.h:SearchResults","SearchResults","src/logdata/include/logfiltereddataworker.h",89,93,"using SearchResultArray = roaring::Roaring64Map;
+
+struct SearchResults {
+    SearchResultArray newMatches;
+    LineLength maxLength;
+    LinesCount processedLines;
+};
+
+// This class is a mutex protected set of search result data.
+",""
+"Struct:src/logdata/include/logfiltereddata.h:CachedSearchResult","CachedSearchResult","src/logdata/include/logfiltereddata.h",264,267,"
+  private:
+    struct CachedSearchResult {
+        SearchResultArray matching_lines;
+        LineLength maxLength;
+    };
+
+    using SearchCacheKey = std::tuple<RegularExpressionPattern, LineNumber::UnderlyingType,
+",""
+"Struct:src/logdata/include/logfiltereddata.h:SearchCacheKeyHash","SearchCacheKeyHash","src/logdata/include/logfiltereddata.h",271,289,"    using SearchCacheKey = std::tuple<RegularExpressionPattern, LineNumber::UnderlyingType,
+                                      LineNumber::UnderlyingType>;
+    struct SearchCacheKeyHash {
+        template <class T>
+        void hash_combine( std::size_t& seed, const T& v ) const
+        {
+            seed ^= std::hash<T>()( v ) + 0x9e3779b9 + ( seed << 6 ) + ( seed >> 2 );
+        }
+        std::size_t operator()( const SearchCacheKey& k ) const
+        {
+            size_t seed = qHash( std::get<0>( k ).pattern );
+
+            hash_combine( seed, std::get<0>( k ).isPlainText );
+            hash_combine( seed, std::get<0>( k ).isBoolean );
+            hash_combine( seed, std::get<0>( k ).isCaseSensitive );
+            hash_combine( seed, std::get<0>( k ).isExclude );
+            hash_combine( seed, std::get<1>( k ) );
+            hash_combine( seed, std::get<2>( k ) );
+            return seed;
+        }
+    };
+
+    std::unordered_map<SearchCacheKey, CachedSearchResult, SearchCacheKeyHash> searchResultsCache_;
+",""
+"Struct:src/logdata/include/logdataworker.h:IndexedHash","IndexedHash","src/logdata/include/logdataworker.h",64,74,"#include ""loadingstatus.h""
+
+struct IndexedHash {
+    qint64 size = 0;
+    quint64 fullDigest = 0;
+
+    qint64 headerSize = 0;
+    quint64 headerDigest = 0;
+
+    qint64 tailSize = 0;
+    qint64 tailOffset = 0;
+    quint64 tailDigest = 0;
+};
+
+template <typename Data, typename LockGuard>
+",""
+"Struct:src/logdata/include/logdataworker.h:IndexingState","IndexingState","src/logdata/include/logdataworker.h",251,262,"};
+
+struct IndexingState {
+
+    EncodingParameters encodingParams;
+    OffsetInFile::UnderlyingType pos{};
+    LineLength::UnderlyingType max_length{};
+    LineLength::UnderlyingType additional_spaces{};
+    OffsetInFile::UnderlyingType end{};
+    OffsetInFile::UnderlyingType file_size{};
+
+    QTextCodec* encodingGuess{};
+    QTextCodec* fileTextCodec{};
+};
+
+using OperationResult = std::variant<bool, MonitoredFileStatus>;
+",""
+"Struct:src/logdata/include/logdata.h:RawLines","RawLines","src/logdata/include/logdata.h",106,122,"    void setPrefilter(const QString& prefilterPattern);
+
+    struct RawLines {
+        LineNumber startLine;
+
+        klogg::vector<char> buffer;
+        klogg::vector<qint64> endOfLines;
+
+        TextDecoder textDecoder;
+
+        QRegularExpression prefilterPattern;
+
+      public:
+        klogg::vector<QString> decodeLines() const;
+        klogg::vector<std::string_view> buildUtf8View() const;
+
+      private:
+        mutable klogg::vector<char> utf8Data_;
+    };
+
+    RawLines getLinesRaw( LineNumber first, LinesCount number ) const;
+",""
+"Struct:src/logdata/include/linetypes.h:OffsetInFile","OffsetInFile","src/logdata/include/linetypes.h",45,71,"
+// Qt file reading api has qint64 type offsets
+struct OffsetInFile : type_safe::strong_typedef<OffsetInFile, int64_t>,
+                      type_safe::strong_typedef_op::addition<OffsetInFile>,
+                      type_safe::strong_typedef_op::subtraction<OffsetInFile>,
+                      type_safe::strong_typedef_op::increment<OffsetInFile>,
+                      type_safe::strong_typedef_op::relational_comparison<OffsetInFile>,
+                      type_safe::strong_typedef_op::equality_comparison<OffsetInFile> {
+    using strong_typedef::strong_typedef;
+
+    using UnderlyingType = int64_t;
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        const auto underlyingValue = type_safe::get( *this );
+
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return underlyingValue;
+        }
+        else if constexpr ( std::is_unsigned_v<T> ) {
+            Q_ASSERT( underlyingValue >= 0 );
+            return type_safe::narrow_cast<T>( static_cast<uint64_t>( underlyingValue ) );
+        }
+        else {
+            return type_safe::narrow_cast<T>( underlyingValue );
+        }
+    }
+};
+
+struct LinesCount : type_safe::strong_typedef<LinesCount, uint64_t>,
+",""
+"Struct:src/logdata/include/linetypes.h:LinesCount","LinesCount","src/logdata/include/linetypes.h",73,97,"};
+
+struct LinesCount : type_safe::strong_typedef<LinesCount, uint64_t>,
+                    type_safe::strong_typedef_op::addition<LinesCount>,
+                    type_safe::strong_typedef_op::subtraction<LinesCount>,
+                    type_safe::strong_typedef_op::increment<LinesCount>,
+                    type_safe::strong_typedef_op::decrement<LinesCount>,
+                    type_safe::strong_typedef_op::relational_comparison<LinesCount>,
+                    type_safe::strong_typedef_op::equality_comparison<LinesCount> {
+    using strong_typedef::strong_typedef;
+
+    using UnderlyingType = uint64_t;
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        static_assert( std::is_signed_v<T> == std::is_signed_v<UnderlyingType>,
+                       ""T should be the same sign as UnderlyingType"" );
+
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return type_safe::get( *this );
+        }
+        else {
+            return type_safe::narrow_cast<T>( type_safe::get( *this ) );
+        }
+    }
+};
+Q_DECLARE_METATYPE( LinesCount )
+
+",""
+"Struct:src/logdata/include/linetypes.h:LineNumber","LineNumber","src/logdata/include/linetypes.h",100,119,"Q_DECLARE_METATYPE( LinesCount )
+
+struct LineNumber : type_safe::strong_typedef<LineNumber, uint64_t>,
+                    type_safe::strong_typedef_op::increment<LineNumber>,
+                    type_safe::strong_typedef_op::decrement<LineNumber>,
+                    type_safe::strong_typedef_op::relational_comparison<LineNumber>,
+                    type_safe::strong_typedef_op::equality_comparison<LineNumber> {
+    using strong_typedef::strong_typedef;
+
+    using UnderlyingType = uint64_t;
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return type_safe::get( *this );
+        }
+        else {
+            return type_safe::narrow_cast<T>( type_safe::get( *this ) );
+        }
+    }
+};
+Q_DECLARE_METATYPE( LineNumber )
+
+",""
+"Struct:src/logdata/include/linetypes.h:LineLength","LineLength","src/logdata/include/linetypes.h",122,144,"Q_DECLARE_METATYPE( LineNumber )
+
+struct LineLength : type_safe::strong_typedef<LineLength, decltype( QString{}.size() )>,
+                    type_safe::strong_typedef_op::addition<LineLength>,
+                    type_safe::strong_typedef_op::subtraction<LineLength>,
+                    type_safe::strong_typedef_op::relational_comparison<LineLength>,
+                    type_safe::strong_typedef_op::equality_comparison<LineLength> {
+    using strong_typedef::strong_typedef;
+
+    using UnderlyingType = decltype( QString{}.size() );
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        static_assert( std::is_signed_v<T> == std::is_signed_v<UnderlyingType>,
+                       ""T should be the same sign as UnderlyingType"" );
+
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return type_safe::get( *this );
+        }
+        else {
+            return type_safe::narrow_cast<T>( type_safe::get( *this ) );
+        }
+    }
+};
+Q_DECLARE_METATYPE( LineLength )
+
+",""
+"Struct:src/logdata/include/linetypes.h:LineColumn","LineColumn","src/logdata/include/linetypes.h",147,171,"Q_DECLARE_METATYPE( LineLength )
+
+struct LineColumn : type_safe::strong_typedef<LineColumn, decltype( QString{}.size() )>,
+                    type_safe::strong_typedef_op::increment<LineColumn>,
+                    type_safe::strong_typedef_op::relational_comparison<LineColumn>,
+                    type_safe::strong_typedef_op::equality_comparison<LineColumn> {
+    using strong_typedef::strong_typedef;
+
+    using UnderlyingType = decltype( QString{}.size() );
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return type_safe::get( *this );
+        }
+        else if constexpr ( std::is_same_v<T, size_t> ) {
+            Q_ASSERT( type_safe::get( *this ) >= 0 );
+            return static_cast<T>( type_safe::get( *this ) );
+        }
+        else {
+            static_assert( std::is_signed_v<T> == std::is_signed_v<UnderlyingType>,
+                           ""T should be the same sign as UnderlyingType"" );
+            return type_safe::narrow_cast<T>( type_safe::get( *this ) );
+        }
+    }
+};
+Q_DECLARE_METATYPE( LineColumn )
+
+",""
+"Struct:src/logdata/include/fileholder.h:FileId","FileId","src/logdata/include/fileholder.h",8,18,"#include ""synchronization.h""
+
+struct FileId {
+    uint64_t fileIndex = 0;
+    uint64_t volumeIndex = 0;
+
+    bool operator!=( const FileId& other ) const
+    {
+        return fileIndex != other.fileIndex || volumeIndex != other.volumeIndex;
+    }
+
+    static FileId getFileId( const QString& filename );
+};
+
+template <typename T> class ScopedFileHolder {
+",""
+"Struct:src/logdata/include/encodingdetector.h:EncodingParameters","EncodingParameters","src/logdata/include/encodingdetector.h",31,60,"class QTextDecoder;
+
+struct EncodingParameters {
+    EncodingParameters() = default;
+    explicit EncodingParameters( const QTextCodec* codec );
+
+    bool isUtf8Compatible{ false };
+    bool isUtf16LE{ false };
+
+    int lineFeedWidth{ 1 };
+    int lineFeedIndex{ 0 };
+
+    bool operator==( const EncodingParameters& other ) const
+    {
+        return lineFeedWidth == other.lineFeedWidth && lineFeedIndex == other.lineFeedIndex;
+    }
+
+    bool operator!=( const EncodingParameters& other ) const
+    {
+        return !operator==( other );
+    }
+
+    int getBeforeCrOffset() const
+    {
+        return lineFeedIndex;
+    }
+
+    int getAfterCrOffset() const
+    {
+        return lineFeedWidth - lineFeedIndex - 1;
+    }
+};
+
+class EncodingDetector {
+",""
+"Struct:src/logdata/include/encodingdetector.h:TextDecoder","TextDecoder","src/logdata/include/encodingdetector.h",84,87,"};
+
+struct TextDecoder {
+    std::unique_ptr<QTextDecoder> decoder;
+    EncodingParameters encodingParams;
+};
+
+class TextCodecHolder {
+",""
+"Struct:src/logdata/include/compressedlinestorage.h:BlockMetadata","BlockMetadata","src/logdata/include/compressedlinestorage.h",83,86,"    void compress_current_block();
+    void uncompress_last_block();
+    struct BlockMetadata {
+        OffsetInFile firstLineOffset{};
+        size_t packetStorageOffset{};
+    };
+
+    klogg::vector<BlockMetadata> blocks_;
+",""
+"Struct:src/filewatch/src/filewatcher.cpp:WatchedFile","WatchedFile","src/filewatch/src/filewatcher.cpp",40,54,"namespace {
+
+struct WatchedFile {
+    std::string name;
+    int64_t mTime;
+    int64_t size;
+
+    bool operator==( const std::string& filename ) const
+    {
+        return name == filename;
+    }
+
+    bool operator!=( const WatchedFile& other ) const
+    {
+        return name != other.name || mTime != other.mTime || size != other.size;
+    }
+};
+
+struct WatchedDirecotry {
+",""
+"Struct:src/filewatch/src/filewatcher.cpp:WatchedDirecotry","WatchedDirecotry","src/filewatch/src/filewatcher.cpp",56,62,"};
+
+struct WatchedDirecotry {
+    efsw::WatchID watchId;
+
+    // filenames are in utf8
+    std::string name;
+    std::vector<WatchedFile> files;
+};
+
+bool isOnlyForPolling( const WatchedDirecotry& wd )
+",""
+"Struct:src/filewatch/include/filewatcher.h:EfswFileWatcherDeleter","EfswFileWatcherDeleter","src/filewatch/include/filewatcher.h",52,54,"}
+
+struct EfswFileWatcherDeleter {
+    void operator()( EfswFileWatcher* p ) const;
+};
+
+class FileWatcher : public QObject {
+",""

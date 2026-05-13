@@ -40,6 +40,7 @@
 #define LOGFILTEREDDATAWORKERTHREAD_H
 
 #include <QObject>
+#include <QString>
 #include <memory>
 
 #include <qthreadpool.h>
@@ -130,7 +131,7 @@ private:
 class SearchOperation : public QObject {
     Q_OBJECT
 public:
-    SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
+    SearchOperation( const LogData& sourceLogData, std::shared_ptr<AtomicFlag> interruptRequested,
                      const RegularExpressionPattern& regExp,
                      std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                      LineNumber endLine, uint64_t searchGeneration );
@@ -139,9 +140,20 @@ public:
     // and false if it has been cancelled (results not copied)
     virtual void run( SearchData& result ) = 0;
 
+    const RegularExpressionPattern& regexp() const
+    {
+        return regexp_;
+    }
+
+    std::shared_ptr<RegularExpression> compiledRegexp() const
+    {
+        return compiledRegexp_;
+    }
+
 Q_SIGNALS:
     void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine,
                            uint64_t searchGeneration );
+    void searchFailed( QString errorMessage, uint64_t searchGeneration );
     void searchFinished();
 
 protected:
@@ -149,7 +161,7 @@ protected:
     // the shared results and the line to begin the search from.
     void doSearch( SearchData& result, LineNumber initialLine );
 
-    AtomicFlag& interruptRequested_;
+    std::shared_ptr<AtomicFlag> interruptRequested_;
     const RegularExpressionPattern regexp_;
     std::shared_ptr<RegularExpression> compiledRegexp_;
     const LogData& sourceLogData_;
@@ -161,11 +173,12 @@ protected:
 class FullSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
-    FullSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
+    FullSearchOperation( const LogData& sourceLogData, std::shared_ptr<AtomicFlag> interruptRequested,
                          const RegularExpressionPattern& regExp,
                          std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                          LineNumber endLine, uint64_t searchGeneration )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
+        : SearchOperation( sourceLogData, std::move( interruptRequested ), regExp,
+                           std::move( compiledRegexp ),
                            startLine, endLine, searchGeneration )
     {
     }
@@ -176,11 +189,13 @@ public:
 class UpdateSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
-    UpdateSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
+    UpdateSearchOperation( const LogData& sourceLogData,
+                           std::shared_ptr<AtomicFlag> interruptRequested,
                            const RegularExpressionPattern& regExp,
                            std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
                            LineNumber endLine, LineNumber position, uint64_t searchGeneration )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, std::move( compiledRegexp ),
+        : SearchOperation( sourceLogData, std::move( interruptRequested ), regExp,
+                           std::move( compiledRegexp ),
                            startLine, endLine, searchGeneration )
         , initialPosition_( position )
     {
@@ -226,22 +241,34 @@ Q_SIGNALS:
     // percent being the percentage of completion.
     void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine,
                            uint64_t searchGeneration );
+    void searchFailed( QString errorMessage, uint64_t searchGeneration );
     // Sent when indexing is finished, signals the client
     // to copy the new data back.
     void searchFinished();
 
 private:
     void connectSignalsAndRun( SearchOperation* operationRequested );
+    std::shared_ptr<AtomicFlag> beginOperation();
+    std::shared_ptr<RegularExpression>
+    compiledRegexpFor( const RegularExpressionPattern& regExp,
+                       const std::shared_ptr<RegularExpression>& suppliedRegexp );
+    void rememberCompiledRegexp( const RegularExpressionPattern& regExp,
+                                 const std::shared_ptr<RegularExpression>& compiledRegexp );
+    void clearCompiledRegexp( const RegularExpressionPattern& regExp );
 
 private:
     const LogData& sourceLogData_;
-    AtomicFlag interruptRequested_;
+    std::shared_ptr<AtomicFlag> interruptRequested_;
 
     QThreadPool operationsPool_;
     Mutex operationsMutex_;
 
     // Shared indexing data
     SearchData searchData_;
+
+    Mutex compiledRegexpMutex_;
+    RegularExpressionPattern cachedRegExpPattern_;
+    std::shared_ptr<RegularExpression> cachedCompiledRegExp_;
 };
 
 #endif
