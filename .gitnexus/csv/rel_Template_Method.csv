@@ -1,0 +1,2 @@
+from,to,type,confidence,reason,step
+"Template:src/ui/src/commander.cpp:optionalEnumFromMap","Method:src/ui/src/abstractlogview.cpp:LineChunk.end#0","CALLS",0.5,"global",0

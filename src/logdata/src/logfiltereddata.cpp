@@ -50,6 +50,7 @@
 #include <functional>
 #include <numeric>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "logdata.h"
@@ -79,6 +80,8 @@ LogFilteredData::LogFilteredData( const LogData* logData )
     // Forward the update signal
     connect( &workerThread_, &LogFilteredDataWorker::searchProgressed, this,
              &LogFilteredData::handleSearchProgressed );
+    connect( &workerThread_, &LogFilteredDataWorker::searchFailed, this,
+             &LogFilteredData::handleSearchFailed );
 
     searchProgressThrottler_.setTimeout( 100 );
     connect( this, &LogFilteredData::searchProgressedThrottled, &searchProgressThrottler_,
@@ -128,7 +131,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
         compiledRegExp_ = std::move( previousCompiledRegExp );
     }
     else {
-        compiledRegExp_ = std::make_shared<RegularExpression>( regExp );
+        compiledRegExp_.reset();
     }
     currentRegExp_ = regExp;
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
@@ -136,6 +139,8 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
     lastSearchEnd_ = endLine;
     lastSearchIncremental_ = false;
     fullScanCompleted_ = false;
+    pendingUpdateSearch_ = false;
+    searchRunning_ = true;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting full search gen " << searchGeneration_ << " range [" << startLine << ", "
@@ -174,6 +179,21 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
         return;
     }
 
+    if ( searchRunning_ ) {
+        if ( !pendingUpdateSearch_ ) {
+            pendingUpdateStart_ = startLine;
+            pendingUpdateEnd_ = endLine;
+        }
+        else {
+            pendingUpdateStart_ = qMin( pendingUpdateStart_, startLine );
+            pendingUpdateEnd_ = qMax( pendingUpdateEnd_, endLine );
+        }
+        pendingUpdateSearch_ = true;
+        LOG_INFO << "Search already running; coalescing incremental update to range ["
+                 << pendingUpdateStart_ << ", " << pendingUpdateEnd_ << "]";
+        return;
+    }
+
     auto previousProcessed = LineNumber( nbLinesProcessed_.get() );
 
     if ( endLine <= previousProcessed ) {
@@ -195,6 +215,7 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     lastSearchEnd_ = endLine;
     lastSearchIncremental_ = true;
     fullScanCompleted_ = false;
+    searchRunning_ = true;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range [" << initialLine
@@ -221,6 +242,9 @@ void LogFilteredData::clearSearch( bool dropCache )
 
     currentRegExp_ = {};
     compiledRegExp_.reset();
+    ++searchGeneration_;
+    searchRunning_ = false;
+    pendingUpdateSearch_ = false;
     matching_lines_ = {};
     marks_and_matches_ = marks_;
     maxLength_ = 0_length;
@@ -465,6 +489,25 @@ void LogFilteredData::updateSearchResultsCache()
     }
 }
 
+void LogFilteredData::runPendingUpdateSearch()
+{
+    if ( !pendingUpdateSearch_ || currentRegExp_.pattern.isEmpty() ) {
+        return;
+    }
+
+    const auto pendingStart = pendingUpdateStart_;
+    const auto pendingEnd = pendingUpdateEnd_;
+    const auto generation = searchGeneration_;
+    pendingUpdateSearch_ = false;
+
+    QTimer::singleShot( 0, this, [ this, pendingStart, pendingEnd, generation ] {
+        if ( generation != searchGeneration_ || currentRegExp_.pattern.isEmpty() ) {
+            return;
+        }
+        updateSearch( pendingStart, pendingEnd );
+    } );
+}
+
 //
 // Q_SLOTS:
 //
@@ -506,6 +549,7 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 
     if ( progress == 100 ) {
         fullScanCompleted_ = true;
+        searchRunning_ = false;
     }
 
     Q_EMIT searchProgressedThrottled();
@@ -516,7 +560,25 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
         LOG_INFO << "Matches size " << readableSize( matching_lines_.getSizeInBytes( false ) )
                  << ", marks size " << readableSize( marks_.getSizeInBytes( false ) )
                  << ", union size " << readableSize( marks_and_matches_.getSizeInBytes( false ) );
+
+        runPendingUpdateSearch();
     }
+}
+
+void LogFilteredData::handleSearchFailed( QString errorMessage, uint64_t searchGeneration )
+{
+    if ( searchGeneration != searchGeneration_ ) {
+        LOG_DEBUG << "Ignoring stale search failure for generation " << searchGeneration
+                  << ", current generation " << searchGeneration_;
+        detachReader();
+        return;
+    }
+
+    detachReader();
+    fullScanCompleted_ = false;
+    searchRunning_ = false;
+    pendingUpdateSearch_ = false;
+    Q_EMIT searchFailed( std::move( errorMessage ) );
 }
 
 void LogFilteredData::handleSearchProgressedThrottled()

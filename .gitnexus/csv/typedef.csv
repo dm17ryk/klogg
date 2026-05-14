@@ -1,0 +1,7 @@
+id,name,filePath,startLine,endLine,content,description
+"Typedef:src/ui/include/session.h:OpenFileMap","OpenFileMap","src/ui/include/session.h",126,126,"
+    // List of open files
+    typedef std::unordered_map<const ViewInterface*, OpenFile> OpenFileMap;
+    OpenFileMap openFiles_;
+
+",""

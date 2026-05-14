@@ -210,6 +210,29 @@ void TabbedCrawlerWidget::clearStreamSessionForPath( const QString& fileName )
     streamSessions_.erase( fileName );
 }
 
+void TabbedCrawlerWidget::remapStreamSessionPath( const QString& oldFileName,
+                                                  const QString& newFileName )
+{
+    if ( oldFileName.isEmpty() || newFileName.isEmpty() || oldFileName == newFileName ) {
+        return;
+    }
+
+    const auto sessionIt = streamSessions_.find( oldFileName );
+    if ( sessionIt == streamSessions_.end() ) {
+        return;
+    }
+
+    auto session = sessionIt->second;
+    streamSessions_.erase( sessionIt );
+    setTabConnectionState( oldFileName, false );
+
+    if ( session ) {
+        streamSessions_[ newFileName ] = session;
+        setTabConnectionState( newFileName, session->isConnectionOpen(),
+                               &session->captureSettings() );
+    }
+}
+
 void TabbedCrawlerWidget::mouseReleaseEvent( QMouseEvent* event )
 {
     LOG_DEBUG << "TabbedCrawlerWidget::mouseReleaseEvent";
@@ -356,11 +379,30 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
         const auto closeText = tr( "Close %1 @ %2" ).arg( settings.portName,
                                                           QString::number( settings.baudRate ) );
         auto closeConnection = menu.addAction( closeText );
+        auto startNewFile = menu.addAction( tr( "Start new file" ) );
+        auto pauseOrPlay = menu.addAction( session->isPaused() ? tr( "Play" ) : tr( "Pause" ) );
         QPointer<StreamSession> safeSession = session;
-        closeConnection->setEnabled( safeSession && safeSession->isConnectionOpen() );
-        connect( closeConnection, &QAction::triggered, this, [ safeSession ] {
-            if ( safeSession ) {
-                safeSession->closeConnection();
+        closeConnection->setEnabled( safeSession
+                                     && ( safeSession->isConnectionOpen()
+                                          || safeSession->isPaused() ) );
+        startNewFile->setEnabled( safeSession && safeSession->isConnectionOpen() );
+        pauseOrPlay->setEnabled( safeSession
+                                 && ( safeSession->isConnectionOpen()
+                                      || ( safeSession->isPaused()
+                                           && safeSession->canResume() ) ) );
+        connect( closeConnection, &QAction::triggered, this,
+                 [ this, tab ] { Q_EMIT closeStreamConnectionRequested( tab ); } );
+        connect( startNewFile, &QAction::triggered, this,
+                 [ this, tab ] { Q_EMIT startNewStreamFileRequested( tab ); } );
+        connect( pauseOrPlay, &QAction::triggered, this, [ this, tab, safeSession ] {
+            if ( !safeSession ) {
+                return;
+            }
+            if ( safeSession->isPaused() ) {
+                Q_EMIT resumeStreamConnectionRequested( tab );
+            }
+            else {
+                Q_EMIT pauseStreamConnectionRequested( tab );
             }
         } );
     }

@@ -28,6 +28,7 @@ class SerialCaptureWorker : public QObject {
 
   public:
     explicit SerialCaptureWorker( SerialCaptureSettings settings, QObject* parent = nullptr );
+    bool switchCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
 
   public Q_SLOTS:
     void start();

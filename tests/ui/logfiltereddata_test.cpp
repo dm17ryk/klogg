@@ -19,6 +19,7 @@
 
 #include <catch2/catch.hpp>
 
+#include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTest>
@@ -130,6 +131,49 @@ struct LogDataLoader {
     QTemporaryFile file{ "filtered_test_XXXXXX" };
     LogData log_data;
 };
+
+TEST_CASE( "Log filtered data reports invalid search expressions asynchronously",
+           "[logdata][search]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+    SafeQSignalSpy failedSpy{ filtered_data.get(), &LogFilteredData::searchFailed };
+    filtered_data->runSearch( RegularExpressionPattern( "((VOICE COMMAND)|(VOICE CMD)" ) );
+
+    REQUIRE( failedSpy.safeWait( 10000 ) );
+    REQUIRE_FALSE( failedSpy.last().at( 0 ).toString().isEmpty() );
+    REQUIRE( filtered_data->getNbMatches().get() == 0 );
+    REQUIRE( filtered_data->getNbLine().get() == 0 );
+}
+
+TEST_CASE( "Log filtered data coalesces auto refresh while full search is running",
+           "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+    SafeQSignalSpy searchProgressSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    filtered_data->runSearch( RegularExpressionPattern( "line 000010" ) );
+    REQUIRE( filtered_data->isSearchRunning() );
+
+    const auto generationAfterFullStart = filtered_data->searchGeneration();
+    QElapsedTimer elapsed;
+    elapsed.start();
+    filtered_data->updateSearch( 0_lnum, LineNumber( logDataLoader.log_data.getNbLine().get() ) );
+
+    REQUIRE( elapsed.elapsed() < 100 );
+    REQUIRE( filtered_data->searchGeneration() == generationAfterFullStart );
+
+    int progress = 0;
+    do {
+        REQUIRE( searchProgressSpy.safeWait( 10000 ) );
+        progress = searchProgressSpy.last().at( 1 ).toInt();
+    } while ( progress < 100 );
+
+    REQUIRE( filtered_data->fullScanCompleted() );
+    REQUIRE_FALSE( filtered_data->isSearchRunning() );
+}
 
 SCENARIO( "marks in filtered log data", "[logdata]" )
 {

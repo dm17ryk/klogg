@@ -157,6 +157,11 @@ class LogFilteredData : public AbstractLogData {
         return fullScanCompleted_;
     }
 
+    bool isSearchRunning() const
+    {
+        return searchRunning_;
+    }
+
     LineType lineTypeByIndex( LineNumber index ) const;
     LineType lineTypeByLine( LineNumber lineNumber ) const;
 
@@ -194,11 +199,13 @@ class LogFilteredData : public AbstractLogData {
     // Sent when the search has progressed, give the number of matches (so far)
     // and the percentage of completion
     void searchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine );
+    void searchFailed( QString errorMessage );
     void searchProgressedThrottled();
 
   private Q_SLOTS:
     void handleSearchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine,
                                  uint64_t searchGeneration );
+    void handleSearchFailed( QString errorMessage, uint64_t searchGeneration );
     void handleSearchProgressedThrottled();
 
   private:
@@ -247,6 +254,10 @@ class LogFilteredData : public AbstractLogData {
     LineNumber lastSearchEnd_{ 0_lnum };
     bool lastSearchIncremental_{ false };
     bool fullScanCompleted_{ false };
+    bool searchRunning_{ false };
+    bool pendingUpdateSearch_{ false };
+    LineNumber pendingUpdateStart_{ 0_lnum };
+    LineNumber pendingUpdateEnd_{ 0_lnum };
     uint64_t searchGeneration_{ 0 };
 
     Visibility visibility_;
@@ -297,6 +308,7 @@ class LogFilteredData : public AbstractLogData {
     }
 
     void updateSearchResultsCache();
+    void runPendingUpdateSearch();
 
     inline LineNumber getExpectedSearchEnd( const SearchCacheKey& cacheKey ) const
     {

@@ -17,10 +17,15 @@ class StreamSession : public QObject {
 
     void start();
     void stop( bool waitForCompletion = true );
+    bool pauseConnection( QString* errorMessage = nullptr );
+    bool resumeConnection( QString* errorMessage = nullptr );
     bool isConnectionOpen() const;
+    bool isPaused() const;
+    bool canResume() const;
     QString sourceDisplayName() const;
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
+    bool startNewCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
     void sendBytes( const QByteArray& data );
     void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
                            const QByteArray& data );
@@ -51,10 +56,13 @@ class StreamSession : public QObject {
                           int counter,
                           const QByteArray& lineBytes,
                           const QString& lineText );
+    void captureFileChanged( const QString& oldFilePath, const QString& newFilePath );
 
   private:
+    void startInternal( bool resetResponseCounters );
     void setupWorker();
     void setConnectionClosed();
+    bool canOpenConfiguredCapture( QString* errorMessage ) const;
     void handleIncomingLine( const QByteArray& lineBytes );
 
   private Q_SLOTS:
@@ -67,6 +75,7 @@ class StreamSession : public QObject {
     bool started_ = false;
     bool stopping_ = false;
     bool connectionOpen_ = false;
+    bool paused_ = false;
     bool loggingEnabled_ = true;
     QByteArray lineBuffer_;
     QMap<int, int> responseCounters_;

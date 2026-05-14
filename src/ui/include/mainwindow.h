@@ -195,6 +195,10 @@ class MainWindow : public QMainWindow {
     void closeTab( int index, ActionInitiator initiator );
     // Setup the tab with current index for view
     void currentTabChanged( int index );
+    void startNewStreamFileForTab( int tab );
+    void closeStreamConnectionForTab( int tab );
+    void pauseStreamConnectionForTab( int tab );
+    void resumeStreamConnectionForTab( int tab );
 
     // Instructs the widget to change the pattern in the QuickFind widget
     // and confirm it.
@@ -283,6 +287,7 @@ class MainWindow : public QMainWindow {
     void updateComPortStatus();
     void refreshComTabIndicators();
     bool isActionsStreamSession( const StreamSession* streamSession ) const;
+    bool isOpenActionsStreamSession( const StreamSession* streamSession ) const;
     void showInfoLabels( bool show );
     void logScreenInfo( QScreen* screen );
     void removeFromFavorites( const QString& pathToRemove );

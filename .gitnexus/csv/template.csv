@@ -1,0 +1,596 @@
+id,name,filePath,startLine,endLine,content,description
+"Template:tests/helpers/test_utils.h:SafeQSignalSpy","SafeQSignalSpy","tests/helpers/test_utils.h",33,35,"class SafeQSignalSpy : public QSignalSpy {
+  public:
+    template <typename... Args>
+    SafeQSignalSpy( Args&&... agruments )
+        : QSignalSpy( std::forward<Args>(agruments)... ) {}
+
+    bool safeWait( int timeout = 10000 ) {
+",""
+"Template:tests/helpers/test_utils.h:waitUiState","waitUiState","tests/helpers/test_utils.h",47,56,"};
+
+template<typename F>
+bool waitUiState(F&& checkFunc ) {
+    for ( auto time = 0; time < 10000; time += 100 ) {
+        if ( checkFunc() ) {
+            return true;
+        }
+        QTest::qWait( 100 );
+    }
+    return false;
+};
+
+#endif
+",""
+"Template:src/utils/include/runnable_lambda.h:RunnableWrapper","RunnableWrapper","src/utils/include/runnable_lambda.h",24,40,"#include <QRunnable>
+
+template <typename TRunnable>
+class RunnableWrapper : public QRunnable {
+  public:
+    RunnableWrapper( TRunnable&& runnable )
+        : runnable_( std::move( runnable ) )
+    {
+        setAutoDelete( true );
+    }
+
+    void run() override
+    {
+        runnable_();
+    }
+
+  private:
+    TRunnable runnable_;
+};
+
+template <typename TRunnable>
+",""
+"Template:src/utils/include/resourcewrapper.h:makeUniqueResource","makeUniqueResource","src/utils/include/resourcewrapper.h",31,35,"using UniqueResource = std::unique_ptr<ManagedType, CustomDeleter<Functor>>;
+
+template <typename T, auto DeleteFunctor, typename CreateFunc, typename... Args>
+UniqueResource<T, DeleteFunctor> makeUniqueResource( CreateFunc createFunc, Args&&... args )
+{
+    return { createFunc( std::forward<Args>( args )... ), {} };
+}
+
+template <typename ManagedType>
+",""
+"Template:src/utils/include/progress.h:calculateProgress","calculateProgress","src/utils/include/progress.h",22,26,"#define KLOGG_PROGRESS_H
+
+template <typename T, typename U>
+int calculateProgress( const T& value, const U& total )
+{
+    return static_cast<int>( 100.f * static_cast<float>( value ) / static_cast<float>( total ) );
+}
+
+#endif",""
+"Template:src/utils/include/overload_visitor.h:makeOverloadVisitor","makeOverloadVisitor","src/utils/include/overload_visitor.h",50,54,"} // namespace
+
+template <class... Fs>
+auto makeOverloadVisitor( Fs... fs )
+{
+    return overload<Fs...>( fs... );
+}
+
+#endif",""
+"Template:src/utils/include/dispatch_to.h:dispatchToObject","dispatchToObject","src/utils/include/dispatch_to.h",30,34,"// by
+// https://github.com/KubaO/stackoverflown/blob/master/questions/metacall-21646467/main.cpp
+template <typename F>
+static void dispatchToObject( F&& fun, QObject* obj = qApp )
+{
+    QMetaObject::invokeMethod( obj, std::forward<F>( fun ), Qt::QueuedConnection );
+}
+
+template <typename F>
+",""
+"Template:src/utils/include/dispatch_to.h:dispatchToThread","dispatchToThread","src/utils/include/dispatch_to.h",36,42,"}
+
+template <typename F>
+static void dispatchToThread( F&& fun, QThread* thread = qApp->thread() )
+{
+    auto* obj = QAbstractEventDispatcher::instance( thread );
+    Q_ASSERT( obj );
+    QMetaObject::invokeMethod( obj, std::forward<F>( fun ), Qt::QueuedConnection );
+}
+
+template <typename F>
+",""
+"Template:src/utils/include/dispatch_to.h:dispatchToMainThread","dispatchToMainThread","src/utils/include/dispatch_to.h",44,48,"}
+
+template <typename F>
+static void dispatchToMainThread( F&& fun )
+{
+    dispatchToThread( std::forward<F>( fun ) );
+}
+
+#endif",""
+"Template:src/utils/include/containers.h:ssize","ssize","src/utils/include/containers.h",32,38,"using vector = std::vector<T, mi_stl_allocator<T>>;
+
+template <class C>
+constexpr auto ssize( const C& c )
+    -> std::common_type_t<std::ptrdiff_t, std::make_signed_t<decltype( c.size() )>>
+{
+    using R = std::common_type_t<std::ptrdiff_t, std::make_signed_t<decltype( c.size() )>>;
+    return static_cast<R>( c.size() );
+}
+
+template <class C>
+",""
+"Template:src/utils/include/containers.h:isize","isize","src/utils/include/containers.h",40,44,"}
+
+template <class C>
+constexpr int isize( const C& c )
+{
+    return type_safe::narrow_cast<int>( ssize( c ) );
+}
+
+
+",""
+"Template:src/ui/src/scratchpad.cpp:formatHex","formatHex","src/ui/src/scratchpad.cpp",65,69,"namespace {
+
+template <typename T>
+QString formatHex( T value )
+{
+    return QString::fromLatin1( QByteArray::number( value, 16 ).rightJustified( 8, '0', false ) );
+}
+
+template <typename T>
+",""
+"Template:src/ui/src/scratchpad.cpp:formatDec","formatDec","src/ui/src/scratchpad.cpp",71,75,"}
+
+template <typename T>
+QString formatDec( T value )
+{
+    return QString::fromLatin1( QByteArray::number( value, 10 ) );
+}
+
+constexpr int StatusTimeout = 2000;
+",""
+"Template:src/ui/src/commander.cpp:insertOptionalEnum","insertOptionalEnum","src/ui/src/commander.cpp",12,18,"
+namespace {
+template <typename Enum>
+void insertOptionalEnum( QVariantMap& map, const QString& key, const std::optional<Enum>& value )
+{
+    if ( value ) {
+        map.insert( key, static_cast<int>( *value ) );
+    }
+}
+
+template <typename Enum>
+",""
+"Template:src/ui/src/commander.cpp:optionalEnumFromMap","optionalEnumFromMap","src/ui/src/commander.cpp",20,35,"}
+
+template <typename Enum>
+std::optional<Enum> optionalEnumFromMap( const QVariantMap& map, const QString& key )
+{
+    const auto it = map.find( key );
+    if ( it == map.end() ) {
+        return std::nullopt;
+    }
+
+    bool ok = false;
+    const auto rawValue = it->toInt( &ok );
+    if ( !ok ) {
+        return std::nullopt;
+    }
+
+    return static_cast<Enum>( rawValue );
+}
+
+void setError( QString* errorMessage, const QString& message )
+",""
+"Template:src/ui/src/actionsmanager.cpp:nextDefinitionId","nextDefinitionId","src/ui/src/actionsmanager.cpp",11,19,"
+namespace {
+template <typename Definition>
+int nextDefinitionId( const QVector<Definition>& definitions )
+{
+    int maxId = 0;
+    for ( const auto& definition : definitions ) {
+        maxId = qMax( maxId, definition.id );
+    }
+    return maxId + 1;
+}
+
+void setError( QString* errorMessage, const QString& message )
+",""
+"Template:src/ui/include/tabbedcrawlerwidget.h:addCrawler","addCrawler","src/ui/include/tabbedcrawlerwidget.h",59,77,"    TabbedCrawlerWidget();
+
+    template <typename T>
+    int addCrawler( T* crawler, const QString& fileName )
+    {
+        const auto index = QTabWidget::addTab( crawler, QString{} );
+
+        connect( crawler, &T::dataStatusChanged, this, [ this, fileName ]( DataStatus status ) {
+            const auto tabsCount = count();
+            for ( int i = 0; i < tabsCount; ++i ) {
+                if ( tabPathAt( i ) == fileName ) {
+                    setTabDataStatus( i, status );
+                    return;
+                }
+            }
+        } );
+
+        addTabBarItem( index, fileName );
+
+        return index;
+    }
+
+    void removeCrawler( int index );
+",""
+"Template:src/settings/include/persistable.h:Persistable","Persistable","src/settings/include/persistable.h",30,76,"class QSettings;
+
+template <typename T, typename SettingsType = app_settings>
+class Persistable {
+
+  public:
+    static T& get()
+    {
+        return getPersistable( false );
+    }
+
+    static T& getSynced()
+    {
+        auto& persistable = getPersistable( true );
+        persistable.retrieve();
+        return persistable;
+    }
+
+    void save() const
+    {
+        auto& settings = PersistentInfo::getSettings( SettingsType{} );
+        static_cast<const T&>( *this ).saveToStorage( settings );
+    }
+
+  private:
+    static T& getPersistable( bool willBeInitialized = false )
+    {
+        static bool persistableInitialized = false;
+        if ( !persistableInitialized && !willBeInitialized ) {
+            LOG_ERROR << ""Access to not initialized persistable "" << T::persistableName();
+            throw std::logic_error( ""Access to not initialized persistable"" );
+        }
+
+        if ( !persistableInitialized ) {
+            persistableInitialized = willBeInitialized;
+        }
+
+        static T persistable;
+        return persistable;
+    }
+
+    void retrieve()
+    {
+        auto& settings = PersistentInfo::getSettings( SettingsType{} );
+
+        settings.sync();
+        static_cast<T&>( *this ).retrieveFromStorage( settings );
+    }
+};
+
+#endif
+",""
+"Template:src/logdata/include/logfiltereddata.h:hash_combine","hash_combine","src/logdata/include/logfiltereddata.h",272,276,"                                      LineNumber::UnderlyingType>;
+    struct SearchCacheKeyHash {
+        template <class T>
+        void hash_combine( std::size_t& seed, const T& v ) const
+        {
+            seed ^= std::hash<T>()( v ) + 0x9e3779b9 + ( seed << 6 ) + ( seed >> 2 );
+        }
+        std::size_t operator()( const SearchCacheKey& k ) const
+        {
+",""
+"Template:src/logdata/include/logdataworker.h:IndexingDataAccessor","IndexingDataAccessor","src/logdata/include/logdataworker.h",76,185,"};
+
+template <typename Data, typename LockGuard>
+class IndexingDataAccessor {
+public:
+    IndexingDataAccessor( Data data )
+        : data_( data )
+        , guard_( data->dataMutex_ )
+    {
+    }
+
+    ~IndexingDataAccessor() = default;
+
+    qint64 getIndexedSize() const
+    {
+        return data_->getIndexedSize();
+    }
+
+    IndexedHash getHash() const
+    {
+        return data_->getHash();
+    }
+
+    // Get the length of the longest line
+    LineLength getMaxLength() const
+    {
+        return data_->getMaxLength();
+    }
+
+    // Get the total number of lines
+    LinesCount getNbLines() const
+    {
+        return data_->getNbLines();
+    }
+
+    // Get the position (in byte from the beginning of the file)
+    // of the end of the passed line.
+    OffsetInFile getEndOfLineOffset( LineNumber line ) const
+    {
+        return data_->getEndOfLineOffset( line );
+    }
+
+    klogg::vector<OffsetInFile> getEndOfLineOffsets( LineNumber line, LinesCount count ) const
+    {
+      return data_->getEndOfLineOffsets(line, count);
+    }
+
+    // Get the guessed encoding for the content.
+    QTextCodec* getEncodingGuess() const
+    {
+        return data_->getEncodingGuess();
+    }
+    void setEncodingGuess( QTextCodec* codec )
+    {
+        data_->setEncodingGuess( codec );
+    }
+
+    QTextCodec* getForcedEncoding() const
+    {
+        return data_->getForcedEncoding();
+    }
+    void forceEncoding( QTextCodec* codec )
+    {
+        return data_->forceEncoding( codec );
+    }
+
+    // Atomically add to all the existing
+    // indexing data.
+    void addAll( const klogg::vector<char>& block, LineLength length,
+                 const FastLinePositionArray& linePosition, QTextCodec* encoding )
+    {
+        data_->addAll( block, length, linePosition, encoding );
+    }
+
+    void setHeaderHash( quint64 digest, qint64 size )
+    {
+        data_->hash_.headerSize = size;
+        data_->hash_.headerDigest = digest;
+    }
+
+    void setTailHash( quint64 digest, qint64 offset, qint64 size )
+    {
+        data_->hash_.tailSize = size;
+        data_->hash_.tailOffset = offset;
+        data_->hash_.tailDigest = digest;
+    }
+
+    int getProgress() const
+    {
+        return data_->getProgress();
+    }
+
+    void setProgress( int progress )
+    {
+        data_->setProgress( progress );
+    }
+
+    // Completely clear the indexing data.
+    void clear()
+    {
+        data_->clear();
+    }
+
+    size_t allocatedSize() const
+    {
+        return data_->allocatedSize();
+    }
+
+private:
+    Data data_;
+    LockGuard guard_;
+};
+
+// This class is a thread-safe set of indexing data.
+",""
+"Template:src/logdata/include/logdataoperation.h:enqueueOperation","enqueueOperation","src/logdata/include/logdataoperation.h",123,127,"    void shutdown();
+
+    template <typename Op, typename... Args>
+    void enqueueOperation( Args&&... args )
+    {
+        enqueueOperation( Op{ std::forward<Args>( args )... } );
+    }
+
+    void finishOperationAndStartNext();
+",""
+"Template:src/logdata/include/linetypes.h:maxValue","maxValue","src/logdata/include/linetypes.h",38,42,"#include ""log.h""
+
+template <typename StrongType>
+constexpr StrongType maxValue()
+{
+    return StrongType( std::numeric_limits<typename StrongType::UnderlyingType>::max() );
+}
+
+// Qt file reading api has qint64 type offsets
+",""
+"Template:src/logdata/include/linetypes.h:get","get","src/logdata/include/linetypes.h",55,70,"    using UnderlyingType = int64_t;
+
+    template <typename T = UnderlyingType>
+    constexpr T get() const
+    {
+        const auto underlyingValue = type_safe::get( *this );
+
+        if constexpr ( std::is_same_v<T, UnderlyingType> ) {
+            return underlyingValue;
+        }
+        else if constexpr ( std::is_unsigned_v<T> ) {
+            Q_ASSERT( underlyingValue >= 0 );
+            return type_safe::narrow_cast<T>( static_cast<uint64_t>( underlyingValue ) );
+        }
+        else {
+            return type_safe::narrow_cast<T>( underlyingValue );
+        }
+    }
+};
+
+",""
+"Template:src/logdata/include/linetypes.h:boundedAdd","boundedAdd","src/logdata/include/linetypes.h",195,200,"}
+
+template <typename T, typename U, typename R = T>
+inline R boundedAdd( const T& value, const U& inc )
+{
+    return ( value.get() <= maxValue<R>().get() - inc.get() ) ? R( value.get() + inc.get() )
+                                                              : maxValue<R>();
+}
+
+template <typename T, typename U, typename R = T>
+",""
+"Template:src/logdata/include/linetypes.h:boundedSubtract","boundedSubtract","src/logdata/include/linetypes.h",202,206,"}
+
+template <typename T, typename U, typename R = T>
+inline R boundedSubtract( const T& value, const U& dec )
+{
+    return value.get() >= dec.get() ? R( value.get() - dec.get() ) : R{};
+}
+
+inline LineNumber& operator+=( LineNumber& number, const LinesCount& count )
+",""
+"Template:src/logdata/include/linetypes.h:getUntabifiedLength","getUntabifiedLength","src/logdata/include/linetypes.h",325,340,"}
+
+template <typename LineType>
+LineLength getUntabifiedLength( const LineType& utf8Line )
+{
+    size_t totalSpaces = 0;
+
+    auto tabPosition = utf8Line.find( '\t' );
+    while ( tabPosition != std::string_view::npos ) {
+        const auto spaces = TabStop - ( ( tabPosition + totalSpaces ) % TabStop ) - 1;
+        totalSpaces += spaces;
+
+        tabPosition = utf8Line.find( '\t', tabPosition + 1 );
+    }
+
+    return LineLength( type_safe::narrow_cast<LineLength::UnderlyingType>(
+        static_cast<int64_t>( utf8Line.size() + totalSpaces ) ) );
+}
+",""
+"Template:src/logdata/include/linepositionarray.h:LinePosition","LinePosition","src/logdata/include/linepositionarray.h",138,222,"// it can keep track of whether the final LF was added (for non-LF terminated
+// files) and remove it when more data are added.
+template <typename Storage>
+class LinePosition {
+public:
+    template <typename>
+    friend class LinePosition;
+
+    LinePosition() = default;
+    LinePosition( const LinePosition& ) = delete;
+    LinePosition& operator=( const LinePosition& ) = delete;
+
+    LinePosition( LinePosition&& orig ) noexcept
+    {
+        *this = std::move( orig );
+    }
+
+    LinePosition& operator=( LinePosition&& orig ) noexcept
+    {
+        array = std::move( orig.array );
+        fakeFinalLF_ = orig.fakeFinalLF_;
+        return *this;
+    }
+
+    // Add a new line position at the given position
+    // Invariant: pos must be greater than the previous one
+    // (this is NOT checked!)
+    inline void append( OffsetInFile pos )
+    {
+        if ( fakeFinalLF_ )
+            array.pop_back();
+
+        array.push_back( pos );
+        fakeFinalLF_ = false;
+    }
+    // Size of the array
+    inline LinesCount size() const
+    {
+        return array.size();
+    }
+
+    size_t allocatedSize() const
+    {
+        return array.allocatedSize();
+    }
+
+    // Extract an element
+    inline OffsetInFile at( LineNumber::UnderlyingType i ) const
+    {
+        const auto pos = array.at( i );
+        // LOG_DEBUG << ""Line pos at "" << i << "" is "" << pos;
+        return pos;
+    }
+
+    klogg::vector<OffsetInFile> range( LineNumber firstLine, LinesCount count ) const
+    {
+        return array.range( firstLine, count );
+    }
+
+    // Set the presence of a fake final LF
+    // Must be used after 'append'-ing a fake LF at the end.
+    void setFakeFinalLF( bool finalLF = true )
+    {
+        fakeFinalLF_ = finalLF;
+    }
+
+    // Add another list to this one, removing any fake LF on this list.
+    // Invariant: all pos in other must be greater than any pos in this
+    // (this is NOT checked!)
+    void append_list( const LinePosition<SimpleLinePositionStorage>& other )
+    {
+        // If our final LF is fake, we remove it
+        if ( fakeFinalLF_ )
+            this->array.pop_back();
+
+        // Append the arrays
+        this->array.append_list( other.array );
+        // array += other.array;
+
+        // In case the 'other' object has a fake LF
+        this->fakeFinalLF_ = other.fakeFinalLF_;
+    }
+
+private:
+    Storage array;
+    bool fakeFinalLF_ = false;
+};
+
+// Use the non-optimised storage
+",""
+"Template:src/logdata/include/fileholder.h:ScopedFileHolder","ScopedFileHolder","src/logdata/include/fileholder.h",20,44,"};
+
+template <typename T> class ScopedFileHolder {
+  public:
+    explicit ScopedFileHolder( T* file )
+        : file_holder_( file )
+    {
+        file_holder_->lock();
+        file_holder_->attachReader();
+    }
+
+    ~ScopedFileHolder()
+    {
+        file_holder_->unlock();
+        file_holder_->detachReader();
+    }
+
+    QFile* getFile()
+    {
+        return file_holder_->getFile();
+    }
+
+  private:
+    Q_DISABLE_COPY( ScopedFileHolder<T> )
+
+    T* file_holder_;
+};
+
+class FileHolder {
+",""

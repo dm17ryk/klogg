@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QComboBox>
+#include <QDateTime>
 #include <QSerialPort>
 #include <QString>
 
@@ -16,6 +17,11 @@ SerialCaptureSettings defaultSerialCaptureSettings();
 
 // Build a suggested capture file path based on the port/baud and the configured capture directory.
 QString suggestedComCapturePath( const SerialCaptureSettings& settings );
+
+// Build the next capture file path in the same directory as the current capture.
+QString suggestedNextComCapturePath(
+    const SerialCaptureSettings& settings,
+    const QDateTime& timestamp = QDateTime::currentDateTime() );
 
 // Resolve commander COM options against Preferences/defaults.
 SerialCaptureSettings resolveCommanderComSettings( const CommanderComSettings& settings );

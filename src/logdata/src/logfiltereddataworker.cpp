@@ -40,7 +40,6 @@
 #include <cmath>
 #include <exception>
 #include <memory>
-#include <qsemaphore.h>
 #include <utility>
 
 #include <robin_hood.h>
@@ -172,6 +171,7 @@ void SearchData::clear()
 
 LogFilteredDataWorker::LogFilteredDataWorker( const LogData& sourceLogData )
     : sourceLogData_( sourceLogData )
+    , interruptRequested_( std::make_shared<AtomicFlag>() )
 {
     operationsPool_.setMaxThreadCount( 1 );
 }
@@ -179,7 +179,7 @@ LogFilteredDataWorker::LogFilteredDataWorker( const LogData& sourceLogData )
 LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 {
     try {
-        interruptRequested_.set();
+        interrupt();
         ScopedLock locker( operationsMutex_ );
         operationsPool_.waitForDone();
         LOG_INFO << "LogFilteredDataWorker shutdown";
@@ -192,11 +192,69 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
 {
     connect( operationRequested, &SearchOperation::searchProgressed, this,
              &LogFilteredDataWorker::searchProgressed );
+    connect( operationRequested, &SearchOperation::searchFailed, this,
+             &LogFilteredDataWorker::searchFailed );
     connect( operationRequested, &SearchOperation::searchFinished, this,
              &LogFilteredDataWorker::searchFinished, Qt::QueuedConnection );
 
     operationRequested->run( searchData_ );
+    const auto compiledRegexp = operationRequested->compiledRegexp();
+    if ( compiledRegexp && compiledRegexp->isValid() ) {
+        rememberCompiledRegexp( operationRequested->regexp(), compiledRegexp );
+    }
+    else {
+        clearCompiledRegexp( operationRequested->regexp() );
+    }
     operationRequested->disconnect( this );
+}
+
+std::shared_ptr<AtomicFlag> LogFilteredDataWorker::beginOperation()
+{
+    if ( interruptRequested_ ) {
+        interruptRequested_->set();
+    }
+
+    interruptRequested_ = std::make_shared<AtomicFlag>();
+    return interruptRequested_;
+}
+
+std::shared_ptr<RegularExpression>
+LogFilteredDataWorker::compiledRegexpFor( const RegularExpressionPattern& regExp,
+                                          const std::shared_ptr<RegularExpression>& suppliedRegexp )
+{
+    if ( suppliedRegexp ) {
+        if ( suppliedRegexp->isValid() ) {
+            rememberCompiledRegexp( regExp, suppliedRegexp );
+        }
+        return suppliedRegexp;
+    }
+
+    ScopedLock locker( compiledRegexpMutex_ );
+    if ( cachedCompiledRegExp_ && cachedCompiledRegExp_->isValid()
+         && cachedRegExpPattern_ == regExp ) {
+        LOG_DEBUG << "Reusing worker cached search expression";
+        return cachedCompiledRegExp_;
+    }
+
+    return {};
+}
+
+void LogFilteredDataWorker::rememberCompiledRegexp(
+    const RegularExpressionPattern& regExp,
+    const std::shared_ptr<RegularExpression>& compiledRegexp )
+{
+    ScopedLock locker( compiledRegexpMutex_ );
+    cachedRegExpPattern_ = regExp;
+    cachedCompiledRegExp_ = compiledRegexp;
+}
+
+void LogFilteredDataWorker::clearCompiledRegexp( const RegularExpressionPattern& regExp )
+{
+    ScopedLock locker( compiledRegexpMutex_ );
+    if ( cachedRegExpPattern_ == regExp ) {
+        cachedRegExpPattern_ = {};
+        cachedCompiledRegExp_.reset();
+    }
 }
 
 void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
@@ -205,21 +263,17 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
                                     uint64_t searchGeneration )
 {
     ScopedLock locker( operationsMutex_ );
-    operationsPool_.waitForDone();
-    interruptRequested_.clear();
+    auto operationInterrupt = beginOperation();
 
     LOG_INFO << "Search requested";
-    QSemaphore operationStarted;
     operationsPool_.start(
-        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
-                          searchGeneration ] {
-            operationStarted.release();
+        createRunnable( [ this, regExp, compiledRegexp, startLine, endLine, searchGeneration,
+                          operationInterrupt ] {
             auto operationRequested = std::make_unique<FullSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
-                searchGeneration );
+                sourceLogData_, operationInterrupt, regExp,
+                compiledRegexpFor( regExp, compiledRegexp ), startLine, endLine, searchGeneration );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
-    operationStarted.acquire();
 }
 
 void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp,
@@ -228,29 +282,28 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
                                           LineNumber position, uint64_t searchGeneration )
 {
     ScopedLock locker( operationsMutex_ );
-    operationsPool_.waitForDone();
-    interruptRequested_.clear();
+    auto operationInterrupt = beginOperation();
 
     LOG_INFO << "Search update requested from " << position.get();
 
-    QSemaphore operationStarted;
     operationsPool_.start(
-        createRunnable( [ this, &operationStarted, regExp, compiledRegexp, startLine, endLine,
-                          position, searchGeneration ] {
-            operationStarted.release();
+        createRunnable( [ this, regExp, compiledRegexp, startLine, endLine, position,
+                          searchGeneration, operationInterrupt ] {
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, compiledRegexp, startLine, endLine,
-                position, searchGeneration );
+                sourceLogData_, operationInterrupt, regExp,
+                compiledRegexpFor( regExp, compiledRegexp ), startLine, endLine, position,
+                searchGeneration );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
-
-    operationStarted.acquire();
 }
 
 void LogFilteredDataWorker::interrupt()
 {
     LOG_INFO << "Search interruption requested";
-    interruptRequested_.set();
+    ScopedLock locker( operationsMutex_ );
+    if ( interruptRequested_ ) {
+        interruptRequested_->set();
+    }
 }
 
 // This will do an atomic copy of the object
@@ -263,13 +316,14 @@ SearchResults LogFilteredDataWorker::getSearchResults() const
 // Operations implementation
 //
 
-SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
+SearchOperation::SearchOperation( const LogData& sourceLogData,
+                                  std::shared_ptr<AtomicFlag> interruptRequested,
                                   const RegularExpressionPattern& regExp,
                                   std::shared_ptr<RegularExpression> compiledRegexp,
                                   LineNumber startLine, LineNumber endLine,
                                   uint64_t searchGeneration )
 
-    : interruptRequested_( interruptRequested )
+    : interruptRequested_( std::move( interruptRequested ) )
     , regexp_( regExp )
     , compiledRegexp_( std::move( compiledRegexp ) )
     , sourceLogData_( sourceLogData )
@@ -283,8 +337,12 @@ SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& inte
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 {
     if ( !compiledRegexp_ ) {
-        LOG_ERROR << "Skipping search: no compiled regexp";
-        Q_EMIT searchProgressed( searchData.getNbMatches(), 100, initialLine, searchGeneration_ );
+        compiledRegexp_ = std::make_shared<RegularExpression>( regexp_ );
+    }
+
+    if ( !compiledRegexp_->isValid() ) {
+        LOG_WARNING << "Skipping search: invalid expression " << compiledRegexp_->errorString();
+        Q_EMIT searchFailed( compiledRegexp_->errorString(), searchGeneration_ );
         Q_EMIT searchFinished();
         return;
     }
@@ -339,8 +397,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         auto matcher = compiledRegexp_->createMatcher();
         if ( !matcher ) {
             LOG_ERROR << "Skipping search: failed to create matcher #" << index;
-            Q_EMIT searchProgressed( searchData.getNbMatches(), 100, initialLine,
-                                     searchGeneration_ );
+            Q_EMIT searchFailed( tr( "failed to create matcher" ), searchGeneration_ );
             Q_EMIT searchFinished();
             return;
         }
@@ -351,7 +408,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                               [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
                                   auto searchResults = std::make_shared<PartialSearchResults>();
 
-                    if ( interruptRequested_ ) {
+                    if ( *interruptRequested_ ) {
                         LOG_INFO << "Matcher " << index << " interrupted";
                                   searchResults->chunkStart = blockData->chunkStart;
                                   searchResults->processedLines
@@ -393,7 +450,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         = tbb::flow::function_node<BlockResultsType, tbb::flow::continue_msg,
                                    tbb::flow::rejecting>(
             searchGraph, 1, [ & ]( const BlockResultsType& matchResultsPtr ) {
-                if ( interruptRequested_ ) {
+                if ( *interruptRequested_ ) {
                     LOG_INFO << "Match processor interrupted";
                     return tbb::flow::continue_msg{};
                 }
@@ -456,7 +513,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     tbb::flow::make_edge( matchProcessor, blockPrefetcher.decrementer() );
 
     auto chunkStart = initialLine;
-    while ( chunkStart < endLine && !interruptRequested_ ) {
+    while ( chunkStart < endLine && !*interruptRequested_ ) {
         const auto lineSourceStartTime = high_resolution_clock::now();
         LOG_DEBUG << "Reading chunk starting at " << chunkStart;
 
@@ -483,7 +540,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         chunkStart = chunkStart + nbLinesInChunk;
         fileReadingDuration += chunkReadTime;
 
-        while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ ) {
+        while ( !blockPrefetcher.try_put( blockData ) && !*interruptRequested_ ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
         }
     }

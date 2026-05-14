@@ -81,6 +81,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     void setStreamSessionForPath( const QString& fileName,
                                   const std::shared_ptr<StreamSession>& session );
     void clearStreamSessionForPath( const QString& fileName );
+    void remapStreamSessionPath( const QString& oldFileName, const QString& newFileName );
     StreamSession* streamSessionForPath( const QString& fileName ) const;
     StreamSession* streamSessionForTab( int tab ) const;
     bool hasOpenStreamSession() const;
@@ -108,6 +109,12 @@ class TabbedCrawlerWidget : public QTabWidget {
     {
         return alwaysShowTabBar_;
     }
+
+  Q_SIGNALS:
+    void startNewStreamFileRequested( int tab );
+    void closeStreamConnectionRequested( int tab );
+    void pauseStreamConnectionRequested( int tab );
+    void resumeStreamConnectionRequested( int tab );
 
   private:
     void addTabBarItem( int index, const QString& fileName );

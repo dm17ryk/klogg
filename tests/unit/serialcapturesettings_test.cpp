@@ -19,7 +19,28 @@
 
 #include <catch2/catch.hpp>
 
+#include <functional>
+
+#include <QFile>
+#include <QTest>
+#include <QTemporaryDir>
+
+#include "comportutils.h"
 #include "serialcaptureworker.h"
+#include "streamsession.h"
+
+namespace {
+bool waitForState( const std::function<bool()>& condition )
+{
+    for ( int waitedMs = 0; waitedMs < 5000; waitedMs += 25 ) {
+        if ( condition() ) {
+            return true;
+        }
+        QTest::qWait( 25 );
+    }
+    return condition();
+}
+} // namespace
 
 TEST_CASE( "Serial capture settings serialize/deserialize roundtrip", "[serial][session]" )
 {
@@ -59,4 +80,160 @@ TEST_CASE( "Serial capture settings deserialize rejects invalid payload", "[seri
     REQUIRE_FALSE( deserializeSerialCaptureSettings( QStringLiteral( "not_json" ) ).has_value() );
     REQUIRE_FALSE( deserializeSerialCaptureSettings( QStringLiteral( "{\"baudRate\":115200}" ) )
                        .has_value() );
+}
+
+TEST_CASE( "Next COM capture path uses current directory and naming convention", "[serial][path]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "COM7";
+    settings.baudRate = 230400;
+    settings.filePath = tempDir.filePath( "existing.log" );
+
+    const auto timestamp = QDateTime::fromString( "2026-05-06T14:15:16", Qt::ISODate );
+    const auto nextPath = suggestedNextComCapturePath( settings, timestamp );
+
+    REQUIRE( QFileInfo( nextPath ).absolutePath() == QFileInfo( settings.filePath ).absolutePath() );
+    REQUIRE( QFileInfo( nextPath ).fileName() == "com7_230400_2026-05-06_14-15-16.log" );
+    REQUIRE( QFileInfo( nextPath ).absoluteFilePath() != QFileInfo( settings.filePath ).absoluteFilePath() );
+}
+
+TEST_CASE( "Next COM capture path appends suffix for same-second collision", "[serial][path]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "COM9";
+    settings.baudRate = 115200;
+    const auto timestamp = QDateTime::fromString( "2026-05-06T14:15:16", Qt::ISODate );
+    settings.filePath = tempDir.filePath( "com9_115200_2026-05-06_14-15-16.log" );
+
+    QFile currentFile( settings.filePath );
+    REQUIRE( currentFile.open( QIODevice::WriteOnly ) );
+    currentFile.close();
+
+    QFile collisionFile( tempDir.filePath( "com9_115200_2026-05-06_14-15-16_2.log" ) );
+    REQUIRE( collisionFile.open( QIODevice::WriteOnly ) );
+    collisionFile.close();
+
+    const auto nextPath = suggestedNextComCapturePath( settings, timestamp );
+
+    REQUIRE( QFileInfo( nextPath ).fileName() == "com9_115200_2026-05-06_14-15-16_3.log" );
+}
+
+TEST_CASE( "Serial capture worker switches capture file without serial port", "[serial][worker]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "COM7";
+    settings.filePath = tempDir.filePath( "old.log" );
+
+    SerialCaptureWorker worker( settings );
+    QString errorMessage;
+    const auto nextPath = tempDir.filePath( "new.log" );
+
+    REQUIRE( worker.switchCaptureFile( nextPath, &errorMessage ) );
+    REQUIRE( errorMessage.isEmpty() );
+
+    worker.appendToFile( QByteArrayLiteral( "rotated data\n" ) );
+
+    QFile newFile( nextPath );
+    REQUIRE( newFile.open( QIODevice::ReadOnly ) );
+    REQUIRE( newFile.readAll() == QByteArrayLiteral( "rotated data\n" ) );
+}
+
+TEST_CASE( "Serial capture worker reports switch capture file errors", "[serial][worker]" )
+{
+    SerialCaptureSettings settings;
+    settings.portName = "COM7";
+    SerialCaptureWorker worker( settings );
+
+    QString errorMessage;
+    REQUIRE_FALSE( worker.switchCaptureFile( QString{}, &errorMessage ) );
+    REQUIRE_FALSE( errorMessage.isEmpty() );
+}
+
+TEST_CASE( "Stream session pause preserves capture settings and logging state",
+           "[serial][session]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.baudRate = 230400;
+    settings.filePath = tempDir.filePath( "paused.log" );
+    settings.addTimestamps = true;
+    settings.logTransmits = true;
+    settings.useForActions = true;
+
+    StreamSession session( settings );
+    session.setLoggingEnabled( false );
+
+    session.start();
+    REQUIRE( session.isConnectionOpen() );
+
+    QString errorMessage;
+    REQUIRE( session.pauseConnection( &errorMessage ) );
+    REQUIRE( errorMessage.isEmpty() );
+    REQUIRE( session.isPaused() );
+
+    REQUIRE( waitForState( [ &session ] { return !session.isConnectionOpen(); } ) );
+    REQUIRE( waitForState( [ &session ] { return session.canResume(); } ) );
+
+    REQUIRE( session.isPaused() );
+    REQUIRE_FALSE( session.isLoggingEnabled() );
+    REQUIRE( session.captureSettings().portName == settings.portName );
+    REQUIRE( session.captureSettings().baudRate == settings.baudRate );
+    REQUIRE( session.captureSettings().filePath == settings.filePath );
+    REQUIRE( session.captureSettings().addTimestamps == settings.addTimestamps );
+    REQUIRE( session.captureSettings().logTransmits == settings.logTransmits );
+    REQUIRE( session.captureSettings().useForActions == settings.useForActions );
+}
+
+TEST_CASE( "Stream session failed resume keeps paused session available",
+           "[serial][session]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "resume.log" );
+
+    StreamSession session( settings );
+    session.start();
+    REQUIRE( session.pauseConnection() );
+    REQUIRE( waitForState( [ &session ] { return session.canResume(); } ) );
+
+    QString errorMessage;
+    REQUIRE_FALSE( session.resumeConnection( &errorMessage ) );
+    REQUIRE_FALSE( errorMessage.isEmpty() );
+    REQUIRE( session.isPaused() );
+    REQUIRE_FALSE( session.isConnectionOpen() );
+    REQUIRE( session.canResume() );
+}
+
+TEST_CASE( "Stream session hard close clears paused state", "[serial][session]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "hard_close.log" );
+
+    StreamSession session( settings );
+    session.start();
+    REQUIRE( session.isConnectionOpen() );
+
+    session.closeConnection();
+    REQUIRE_FALSE( session.isPaused() );
+    REQUIRE_FALSE( session.isConnectionOpen() );
+    REQUIRE_FALSE( session.canResume() );
 }
