@@ -286,6 +286,27 @@ constexpr auto kTelitAtConfig = R"json(
       "capture": "args"
     },
     {
+      "name": "at_response_STRINGENUM_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<state>\\S+)$",
+      "fields": [
+        {
+          "name": "state",
+          "source": "capture",
+          "capture": "state",
+          "type": "string",
+          "format": "enum",
+          "enumMap": {
+            "OFF": "off",
+            "ON": "on"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
       "name": "at_command_payload_known_block",
       "format": "match",
       "type": "string",
@@ -336,6 +357,17 @@ constexpr auto kTelitAtConfig = R"json(
       "capture": "args"
     },
     {
+      "name": "at_response_generic_args_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>.*)$",
+      "fields": [
+        { "name": "raw_args", "source": "capture", "capture": "raw", "format": "string" }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
       "name": "at_command_payload_generic_block",
       "format": "match",
       "type": "string",
@@ -363,7 +395,7 @@ constexpr auto kTelitAtConfig = R"json(
       "name": "at_response_payload_known_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>(?:CGPADDR|SS)))\\s*:\\s*(?<args>.*)$",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>(?:CGPADDR|SS|STRINGENUM|UNKNOWN)))\\s*:\\s*(?<args>.*)$",
       "fields": [
         { "name": "channel", "source": "capture", "capture": "channel", "format": "string" },
         { "name": "token", "source": "capture", "capture": "token", "format": "string" },
@@ -375,7 +407,9 @@ constexpr auto kTelitAtConfig = R"json(
           "format": "enum",
           "enumMap": {
             "CGPADDR": "PDP address report",
-            "SS": "Socket status"
+            "SS": "Socket status",
+            "STRINGENUM": "String enum test response",
+            "UNKNOWN": "Unknown response with raw arguments"
           }
         },
         { "name": "details", "source": "block", "block": "at_response_{response_key}_block" }
@@ -398,7 +432,7 @@ constexpr auto kTelitAtConfig = R"json(
     {
       "name": "AT response / URC (known)",
       "enabled": true,
-      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)(?:CGPADDR|SS)\\s*:.*)$",
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)(?:CGPADDR|SS|STRINGENUM|UNKNOWN)\\s*:.*)$",
       "type": "string",
       "format": "fields",
       "bufferCapture": "payload",
@@ -706,6 +740,19 @@ TEST_CASE( "AT response dynamic block resolves CGPADDR address", "[previewmatch]
     CHECK_FALSE( fieldHasChild( tree, "details", "Error" ) );
 }
 
+TEST_CASE( "AT response dynamic block falls back to generic args block", "[previewmatch][at]" )
+{
+    loadTelitAtConfig();
+
+    const QString line = QString::fromLatin1( "13/05/2026 21:18:16.222 [RX] - +UNKNOWN: 1,2,3" );
+
+    PreviewMessageTab tab( line, "AT response / URC (known)", 1 );
+    auto* tree = tab.findChild<QTreeWidget*>();
+
+    CHECK( fieldValue( tree, "raw_args" ) == "1,2,3" );
+    CHECK_FALSE( fieldHasChild( tree, "details", "Error" ) );
+}
+
 TEST_CASE( "AT CME errors describe Telit standard and socket errors", "[previewmatch][at]" )
 {
     loadTelitAtConfig();
@@ -815,4 +862,17 @@ TEST_CASE( "AT previews render unknown enum values without decode errors", "[pre
     auto* cmeTree = cmeTab.findChild<QTreeWidget*>();
     CHECK( fieldValue( cmeTree, "meaning" ) == "unknown/reserved (9999, numeric 9999)" );
     CHECK_FALSE( fieldHasChild( cmeTree, "meaning", "Error" ) );
+}
+
+TEST_CASE( "AT previews render unknown non-numeric enum values without decode errors",
+           "[previewmatch][at]" )
+{
+    loadTelitAtConfig();
+
+    const QString line = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - #STRINGENUM: MAYBE" );
+    PreviewMessageTab tab( line, "AT response / URC (known)", 1 );
+    auto* tree = tab.findChild<QTreeWidget*>();
+
+    CHECK( fieldValue( tree, "state" ) == "unknown/reserved (MAYBE)" );
+    CHECK_FALSE( fieldHasChild( tree, "state", "Error" ) );
 }
