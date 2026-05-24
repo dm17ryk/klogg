@@ -15,12 +15,13 @@ struct PreviewImportResult {
 class PreviewManager : public QObject {
     Q_OBJECT
 
-  public:
+public:
     static PreviewManager& instance();
 
     void loadFromRepository();
     PreviewImportResult importFromFile( const QString& path );
     bool removeByName( const QString& name );
+    bool movePreview( int fromRow, int toRow );
     bool clearAll();
 
     const QVector<PreviewDefinition>& all() const;
@@ -31,11 +32,11 @@ class PreviewManager : public QObject {
     void setEnabled( const QString& name, bool enabled );
     QString findFirstMatchingEnabledPreview( const QString& rawLine ) const;
 
-  Q_SIGNALS:
+Q_SIGNALS:
     void previewsChanged();
     void previewEnabledChanged( const QString& name, bool enabled );
 
-  private:
+private:
     PreviewManager() = default;
 
     PreviewRepository repository_;

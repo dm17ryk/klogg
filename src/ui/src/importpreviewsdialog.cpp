@@ -10,8 +10,8 @@
 #include <QScrollBar>
 #include <QTableView>
 #include <QToolButton>
-#include <QtGlobal>
 #include <QVBoxLayout>
+#include <QtGlobal>
 
 #include "iconloader.h"
 #include "previewmanager.h"
@@ -25,6 +25,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     model_ = new PreviewsTableModel( this );
 
     tableView_ = new QTableView( this );
+    tableView_->setObjectName( QStringLiteral( "importPreviewsTable" ) );
     tableView_->setModel( model_ );
     tableView_->setSelectionBehavior( QAbstractItemView::SelectRows );
     tableView_->setSelectionMode( QAbstractItemView::SingleSelection );
@@ -37,7 +38,29 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     tableView_->horizontalHeader()->setSectionResizeMode( 2, QHeaderView::ResizeToContents );
     tableView_->verticalHeader()->setSectionResizeMode( QHeaderView::ResizeToContents );
 
+    moveUpButton_ = new QToolButton( this );
+    moveUpButton_->setObjectName( QStringLiteral( "movePreviewUpButton" ) );
+    moveUpButton_->setAccessibleName( tr( "Move preview up" ) );
+    moveUpButton_->setToolTip( tr( "Move preview up" ) );
+    moveUpButton_->setEnabled( false );
+    {
+        IconLoader iconLoader( this );
+        moveUpButton_->setIcon( iconLoader.load( "icons8-up-16" ) );
+    }
+
+    moveDownButton_ = new QToolButton( this );
+    moveDownButton_->setObjectName( QStringLiteral( "movePreviewDownButton" ) );
+    moveDownButton_->setAccessibleName( tr( "Move preview down" ) );
+    moveDownButton_->setToolTip( tr( "Move preview down" ) );
+    moveDownButton_->setEnabled( false );
+    {
+        IconLoader iconLoader( this );
+        moveDownButton_->setIcon( iconLoader.load( "icons8-down-arrow-16" ) );
+    }
+
     removeButton_ = new QToolButton( this );
+    removeButton_->setObjectName( QStringLiteral( "removePreviewButton" ) );
+    removeButton_->setAccessibleName( tr( "Remove preview" ) );
     removeButton_->setToolTip( tr( "Remove preview" ) );
     removeButton_->setEnabled( false );
     {
@@ -46,6 +69,8 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     }
 
     clearButton_ = new QToolButton( this );
+    clearButton_->setObjectName( QStringLiteral( "clearPreviewsButton" ) );
+    clearButton_->setAccessibleName( tr( "Clear all previews" ) );
     clearButton_->setToolTip( tr( "Clear all previews" ) );
     clearButton_->setEnabled( false );
     {
@@ -55,9 +80,16 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
 
     buttonBox_ = new QDialogButtonBox( QDialogButtonBox::Close, this );
     auto* importButton = buttonBox_->addButton( tr( "Import" ), QDialogButtonBox::ActionRole );
+    importButton->setObjectName( QStringLiteral( "importPreviewsButton" ) );
+    importButton->setAccessibleName( tr( "Import previews" ) );
 
     connect( importButton, &QPushButton::clicked, this, &ImportPreviewsDialog::importPreviews );
-    connect( removeButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::removeSelectedPreview );
+    connect( moveUpButton_, &QToolButton::clicked, this,
+             &ImportPreviewsDialog::moveSelectedPreviewUp );
+    connect( moveDownButton_, &QToolButton::clicked, this,
+             &ImportPreviewsDialog::moveSelectedPreviewDown );
+    connect( removeButton_, &QToolButton::clicked, this,
+             &ImportPreviewsDialog::removeSelectedPreview );
     connect( clearButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::clearAllPreviews );
     connect( buttonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject );
     connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
@@ -67,6 +99,8 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
 
     auto* layout = new QVBoxLayout();
     auto* headerLayout = new QHBoxLayout();
+    headerLayout->addWidget( moveUpButton_ );
+    headerLayout->addWidget( moveDownButton_ );
     headerLayout->addWidget( removeButton_ );
     headerLayout->addWidget( clearButton_ );
     headerLayout->addStretch();
@@ -88,13 +122,44 @@ void ImportPreviewsDialog::importPreviews()
 
     const auto result = PreviewManager::instance().importFromFile( file );
     if ( !result.errors.isEmpty() ) {
-        QMessageBox::warning( this, tr( "Import previews" ),
-                              result.errors.join( "\n" ) );
+        QMessageBox::warning( this, tr( "Import previews" ), result.errors.join( "\n" ) );
         return;
     }
     if ( !result.warnings.isEmpty() ) {
-        QMessageBox::information( this, tr( "Import previews" ),
-                                  result.warnings.join( "\n" ) );
+        QMessageBox::information( this, tr( "Import previews" ), result.warnings.join( "\n" ) );
+    }
+}
+
+void ImportPreviewsDialog::moveSelectedPreviewUp()
+{
+    moveSelectedPreview( -1 );
+}
+
+void ImportPreviewsDialog::moveSelectedPreviewDown()
+{
+    moveSelectedPreview( 1 );
+}
+
+void ImportPreviewsDialog::moveSelectedPreview( int delta )
+{
+    if ( !tableView_->selectionModel() ) {
+        return;
+    }
+    const auto index = tableView_->selectionModel()->currentIndex();
+    if ( !index.isValid() ) {
+        return;
+    }
+
+    const int row = index.row();
+    const int targetRow = row + delta;
+    if ( targetRow < 0 || targetRow >= model_->rowCount() ) {
+        return;
+    }
+
+    pendingSelectionRow_ = targetRow;
+    if ( !PreviewManager::instance().movePreview( row, targetRow ) ) {
+        pendingSelectionRow_ = -1;
+        QMessageBox::warning( this, tr( "Move preview" ), tr( "Failed to move preview." ) );
     }
 }
 
@@ -148,10 +213,17 @@ void ImportPreviewsDialog::refreshTable()
 
 void ImportPreviewsDialog::updateButtons()
 {
-    const bool hasSelection = tableView_->selectionModel()
-                              && tableView_->selectionModel()->hasSelection();
+    const bool hasSelection
+        = tableView_->selectionModel() && tableView_->selectionModel()->hasSelection();
+    const auto currentIndex = tableView_->selectionModel()
+                                  ? tableView_->selectionModel()->currentIndex()
+                                  : QModelIndex();
+    const int currentRow = currentIndex.isValid() ? currentIndex.row() : -1;
+    const int rowCount = model_->rowCount();
+    moveUpButton_->setEnabled( hasSelection && currentRow > 0 );
+    moveDownButton_->setEnabled( hasSelection && currentRow >= 0 && currentRow < rowCount - 1 );
     removeButton_->setEnabled( hasSelection );
-    clearButton_->setEnabled( model_->rowCount() > 0 );
+    clearButton_->setEnabled( rowCount > 0 );
 }
 
 void ImportPreviewsDialog::updateDialogWidth()

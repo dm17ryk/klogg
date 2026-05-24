@@ -303,16 +303,18 @@ EnumLookupResult resolveEnumValue( const QString& rawText,
                                    const PreviewFieldSpec& field )
 {
     EnumLookupResult result;
-    result.hasNumeric = parseNumericValue( rawText, rawBytes, field, &result.numeric, nullptr );
 
     const auto trimmed = rawText.trimmed();
-    if ( !trimmed.isEmpty() ) {
-        const auto it = field.enumMap.constFind( trimmed );
-        if ( it != field.enumMap.constEnd() ) {
-            result.ok = true;
-            result.text = it.value();
-            return result;
-        }
+    result.hasNumeric = parseNumericString( trimmed, &result.numeric );
+    if ( !result.hasNumeric ) {
+        result.hasNumeric = parseNumericValue( rawText, rawBytes, field, &result.numeric, nullptr );
+    }
+
+    const auto directIt = field.enumMap.constFind( trimmed );
+    if ( directIt != field.enumMap.constEnd() ) {
+        result.ok = true;
+        result.text = directIt.value();
+        return result;
     }
 
     if ( result.hasNumeric ) {
@@ -333,14 +335,10 @@ EnumLookupResult resolveEnumValue( const QString& rawText,
     if ( displayRaw.isEmpty() ) {
         displayRaw = QObject::tr( "<empty>" );
     }
-    if ( result.hasNumeric ) {
-        result.error = QObject::tr( "Unknown enum value '%1' (numeric %2)." )
-                           .arg( displayRaw )
-                           .arg( result.numeric );
-    }
-    else {
-        result.error = QObject::tr( "Unknown enum value '%1'." ).arg( displayRaw );
-    }
+    result.ok = true;
+    result.text = result.hasNumeric
+        ? QObject::tr( "unknown/reserved (%1, numeric %2)" ).arg( displayRaw ).arg( result.numeric )
+        : QObject::tr( "unknown/reserved (%1)" ).arg( displayRaw );
     return result;
 }
 
@@ -631,6 +629,17 @@ struct BlockResolution {
     QString error;
 };
 
+QString fallbackBlockName( const QString& resolvedName )
+{
+    if ( resolvedName.startsWith( "at_command_" ) && resolvedName.endsWith( "_block" ) ) {
+        return "at_command_generic_args_block";
+    }
+    if ( resolvedName.startsWith( "at_response_" ) && resolvedName.endsWith( "_block" ) ) {
+        return "at_response_generic_args_block";
+    }
+    return {};
+}
+
 BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseContext& context )
 {
     BlockResolution result;
@@ -652,6 +661,17 @@ BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseConte
 
     const auto it = context.blocks->find( result.resolvedName );
     if ( it == context.blocks->end() ) {
+        if ( missing.isEmpty() ) {
+            const auto fallbackName = fallbackBlockName( result.resolvedName );
+            if ( !fallbackName.isEmpty() ) {
+                const auto fallbackIt = context.blocks->find( fallbackName );
+                if ( fallbackIt != context.blocks->end() ) {
+                    result.resolvedName = fallbackName;
+                    result.block = &fallbackIt.value();
+                    return result;
+                }
+            }
+        }
         if ( missing.isEmpty() ) {
             result.error = QObject::tr( "Missing block: %1" ).arg( result.resolvedName );
         }
@@ -869,8 +889,9 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                                             : QString();
         const auto source = describeCaptureRef( field.capture, "capture" );
         int captureOffset = -1;
+        int absoluteStart = -1;
         if ( context.match ) {
-            const auto absoluteStart = captureStart( field.capture, *context.match );
+            absoluteStart = captureStart( field.capture, *context.match );
             if ( absoluteStart >= 0 ) {
                 captureOffset = absoluteStart - context.matchStart;
             }
@@ -887,6 +908,10 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                                        truncateText( captured, 64 ),
                                        QObject::tr( "Capture is not set." ) };
             setItemDecodeError( item, errorInfo );
+            return;
+        }
+        if ( context.match && absoluteStart < 0 ) {
+            delete item;
             return;
         }
         const auto rawText = captured;

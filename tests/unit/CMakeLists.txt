@@ -2,6 +2,7 @@
 add_executable(klogg_tests
     actionsconfig_test.cpp
     commander_test.cpp
+    importpreviewsdialog_test.cpp
     linepositionarray_test.cpp
     patternmatcher_test.cpp
     previewdecodeutils_test.cpp
