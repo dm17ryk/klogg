@@ -192,8 +192,8 @@ LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 
 void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequested )
 {
-    const auto searchGeneration = operationRequested->searchGeneration();
-    LOG_DEBUG << "Connecting search operation signals for generation " << searchGeneration;
+    const auto requestedGeneration = operationRequested->searchGeneration();
+    LOG_DEBUG << "Connecting search operation signals for generation " << requestedGeneration;
 
     const QPointer<LogFilteredDataWorker> worker( this );
     connect( operationRequested, &SearchOperation::searchProgressed, operationRequested,
@@ -243,24 +243,24 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
              },
              Qt::DirectConnection );
 
-    LOG_DEBUG << "Running search operation for generation " << searchGeneration;
+    LOG_DEBUG << "Running search operation for generation " << requestedGeneration;
     operationRequested->run( searchData_ );
-    LOG_DEBUG << "Search operation returned for generation " << searchGeneration;
+    LOG_DEBUG << "Search operation returned for generation " << requestedGeneration;
 
     const auto compiledRegexp = operationRequested->compiledRegexp();
     if ( compiledRegexp && compiledRegexp->isValid() ) {
-        LOG_DEBUG << "Remembering compiled search expression for generation " << searchGeneration;
+        LOG_DEBUG << "Remembering compiled search expression for generation " << requestedGeneration;
         rememberCompiledRegexp( operationRequested->regexp(), compiledRegexp );
     }
     else {
-        LOG_DEBUG << "Clearing compiled search expression for generation " << searchGeneration;
+        LOG_DEBUG << "Clearing compiled search expression for generation " << requestedGeneration;
         clearCompiledRegexp( operationRequested->regexp() );
     }
 
-    LOG_DEBUG << "Posting deterministic search finish for generation " << searchGeneration;
+    LOG_DEBUG << "Posting deterministic search finish for generation " << requestedGeneration;
     QMetaObject::invokeMethod(
         this,
-        [ worker, searchGeneration ] {
+        [ worker, searchGeneration = requestedGeneration ] {
             if ( !worker ) {
                 LOG_DEBUG << "Skipping queued search finish for destroyed worker, generation "
                           << searchGeneration;
