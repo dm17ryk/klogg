@@ -206,6 +206,7 @@ class LogFilteredData : public AbstractLogData {
     void handleSearchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine,
                                  uint64_t searchGeneration );
     void handleSearchFailed( QString errorMessage, uint64_t searchGeneration );
+    void handleSearchFinished( uint64_t searchGeneration );
     void handleSearchProgressedThrottled();
 
   private:
@@ -256,9 +257,12 @@ class LogFilteredData : public AbstractLogData {
     bool fullScanCompleted_{ false };
     bool searchRunning_{ false };
     bool pendingUpdateSearch_{ false };
+    bool searchCompletionHandled_{ false };
     LineNumber pendingUpdateStart_{ 0_lnum };
     LineNumber pendingUpdateEnd_{ 0_lnum };
+    LineNumber activeSearchInitialLine_{ 0_lnum };
     uint64_t searchGeneration_{ 0 };
+    uint64_t lastDetachedStaleSearchGeneration_{ 0 };
 
     Visibility visibility_;
 
@@ -309,6 +313,12 @@ class LogFilteredData : public AbstractLogData {
 
     void updateSearchResultsCache();
     void runPendingUpdateSearch();
+    void applySearchResults( const char* source );
+    void publishSearchProgress( LinesCount nbMatches, int progress, LineNumber initialLine,
+                                uint64_t searchGeneration, bool emitImmediately );
+    void finalizeCurrentSearch( LineNumber initialLine, uint64_t searchGeneration,
+                                const char* source );
+    void detachStaleSearchReader( uint64_t searchGeneration, const char* source );
 
     inline LineNumber getExpectedSearchEnd( const SearchCacheKey& cacheKey ) const
     {

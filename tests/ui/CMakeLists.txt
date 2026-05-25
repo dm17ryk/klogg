@@ -25,4 +25,5 @@ add_test(
     COMMAND $<TARGET_FILE:klogg_itests> -platform offscreen
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
+set_tests_properties(cilogg_itests PROPERTIES TIMEOUT 900)
 # set_tests_properties(klogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_itests>")

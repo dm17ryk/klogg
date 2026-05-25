@@ -32,6 +32,7 @@
 
 #include "logdata.h"
 #include "logfiltereddata.h"
+#include "logfiltereddataworker.h"
 
 static const qint64 SL_NB_LINES = 500LL;
 
@@ -67,6 +68,9 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
         QList<QVariant> progressArgs = searchProgressSpy.last();
         progress = progressArgs.at( 1 ).toInt();
     } while ( progress < 100 );
+
+    REQUIRE( filtered_data->fullScanCompleted() );
+    REQUIRE_FALSE( filtered_data->isSearchRunning() );
 }
 
 bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, LineNumber endLine,
@@ -145,6 +149,8 @@ TEST_CASE( "Log filtered data reports invalid search expressions asynchronously"
     REQUIRE_FALSE( failedSpy.last().at( 0 ).toString().isEmpty() );
     REQUIRE( filtered_data->getNbMatches().get() == 0 );
     REQUIRE( filtered_data->getNbLine().get() == 0 );
+    REQUIRE_FALSE( filtered_data->fullScanCompleted() );
+    REQUIRE_FALSE( filtered_data->isSearchRunning() );
 }
 
 TEST_CASE( "Log filtered data coalesces auto refresh while full search is running",
@@ -173,6 +179,21 @@ TEST_CASE( "Log filtered data coalesces auto refresh while full search is runnin
 
     REQUIRE( filtered_data->fullScanCompleted() );
     REQUIRE_FALSE( filtered_data->isSearchRunning() );
+}
+
+TEST_CASE( "Log filtered data worker reports finished search generation",
+           "[logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+    LogFilteredDataWorker worker{ logDataLoader.log_data };
+
+    SafeQSignalSpy finishedSpy{ &worker, &LogFilteredDataWorker::searchFinished };
+    worker.search( RegularExpressionPattern( "line 000010" ), nullptr, 0_lnum,
+                   LineNumber( logDataLoader.log_data.getNbLine().get() ), 123 );
+
+    REQUIRE( finishedSpy.safeWait( 10000 ) );
+    REQUIRE( finishedSpy.last().size() == 1 );
+    CHECK( finishedSpy.last().at( 0 ).toULongLong() == 123 );
 }
 
 SCENARIO( "marks in filtered log data", "[logdata]" )
