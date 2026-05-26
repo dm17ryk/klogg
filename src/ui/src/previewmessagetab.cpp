@@ -629,13 +629,34 @@ struct BlockResolution {
     QString error;
 };
 
+// Maps a block-name prefix to the generic block used when a more specific
+// block is not present. Add an entry here to enable fallback for a new
+// protocol/role without touching the lookup logic below.
+//
+// This is intentionally a code-level table rather than runtime config: the
+// fallback names are tied to blocks that ship with the preview definitions,
+// so the two are versioned together. If/when block specs gain their own
+// optional "fallback" field in the preview config (see PreviewFieldSpec),
+// this table can be replaced by reading that field.
+struct BlockFallbackRule {
+    const char* prefix;
+    const char* fallback;
+};
+
+constexpr BlockFallbackRule kBlockFallbackRules[] = {
+    { "at_command_", "at_command_generic_args_block" },
+    { "at_response_", "at_response_generic_args_block" },
+};
+
 QString fallbackBlockName( const QString& resolvedName )
 {
-    if ( resolvedName.startsWith( "at_command_" ) && resolvedName.endsWith( "_block" ) ) {
-        return "at_command_generic_args_block";
+    if ( !resolvedName.endsWith( "_block" ) ) {
+        return {};
     }
-    if ( resolvedName.startsWith( "at_response_" ) && resolvedName.endsWith( "_block" ) ) {
-        return "at_response_generic_args_block";
+    for ( const auto& rule : kBlockFallbackRules ) {
+        if ( resolvedName.startsWith( QLatin1String( rule.prefix ) ) ) {
+            return QLatin1String( rule.fallback );
+        }
     }
     return {};
 }

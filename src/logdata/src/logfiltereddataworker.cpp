@@ -196,52 +196,54 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
     LOG_DEBUG << "Connecting search operation signals for generation " << requestedGeneration;
 
     const QPointer<LogFilteredDataWorker> worker( this );
-    connect( operationRequested, &SearchOperation::searchProgressed, operationRequested,
-             [ worker ]( LinesCount nbMatches, int percent, LineNumber initialLine,
-                         uint64_t searchGeneration ) {
-                 if ( !worker ) {
-                     LOG_DEBUG << "Dropping search progress for destroyed worker, generation "
-                               << searchGeneration;
-                     return;
-                 }
+    const auto progressConnection
+        = connect( operationRequested, &SearchOperation::searchProgressed, operationRequested,
+                   [ worker ]( LinesCount nbMatches, int percent, LineNumber initialLine,
+                               uint64_t searchGeneration ) {
+                       if ( !worker ) {
+                           LOG_DEBUG << "Dropping search progress for destroyed worker, generation "
+                                     << searchGeneration;
+                           return;
+                       }
 
-                 QMetaObject::invokeMethod(
-                     worker,
-                     [ worker, nbMatches, percent, initialLine, searchGeneration ] {
-                         if ( !worker ) {
-                             LOG_DEBUG
-                                 << "Skipping queued search progress for destroyed worker, generation "
-                                 << searchGeneration;
-                             return;
-                         }
-                         Q_EMIT worker->searchProgressed( nbMatches, percent, initialLine,
-                                                          searchGeneration );
-                     },
-                     Qt::QueuedConnection );
-             },
-             Qt::DirectConnection );
-    connect( operationRequested, &SearchOperation::searchFailed, operationRequested,
-             [ worker ]( QString errorMessage, uint64_t searchGeneration ) {
-                 if ( !worker ) {
-                     LOG_DEBUG << "Dropping search failure for destroyed worker, generation "
-                               << searchGeneration;
-                     return;
-                 }
+                       QMetaObject::invokeMethod(
+                           worker,
+                           [ worker, nbMatches, percent, initialLine, searchGeneration ] {
+                               if ( !worker ) {
+                                   LOG_DEBUG
+                                       << "Skipping queued search progress for destroyed worker, generation "
+                                       << searchGeneration;
+                                   return;
+                               }
+                               Q_EMIT worker->searchProgressed( nbMatches, percent, initialLine,
+                                                                searchGeneration );
+                           },
+                           Qt::QueuedConnection );
+                   },
+                   Qt::DirectConnection );
+    const auto failedConnection
+        = connect( operationRequested, &SearchOperation::searchFailed, operationRequested,
+                   [ worker ]( QString errorMessage, uint64_t searchGeneration ) {
+                       if ( !worker ) {
+                           LOG_DEBUG << "Dropping search failure for destroyed worker, generation "
+                                     << searchGeneration;
+                           return;
+                       }
 
-                 QMetaObject::invokeMethod(
-                     worker,
-                     [ worker, errorMessage = std::move( errorMessage ), searchGeneration ] {
-                         if ( !worker ) {
-                             LOG_DEBUG
-                                 << "Skipping queued search failure for destroyed worker, generation "
-                                 << searchGeneration;
-                             return;
-                         }
-                         Q_EMIT worker->searchFailed( errorMessage, searchGeneration );
-                     },
-                     Qt::QueuedConnection );
-             },
-             Qt::DirectConnection );
+                       QMetaObject::invokeMethod(
+                           worker,
+                           [ worker, errorMessage = std::move( errorMessage ), searchGeneration ] {
+                               if ( !worker ) {
+                                   LOG_DEBUG
+                                       << "Skipping queued search failure for destroyed worker, generation "
+                                       << searchGeneration;
+                                   return;
+                               }
+                               Q_EMIT worker->searchFailed( errorMessage, searchGeneration );
+                           },
+                           Qt::QueuedConnection );
+                   },
+                   Qt::DirectConnection );
 
     LOG_DEBUG << "Running search operation for generation " << requestedGeneration;
     operationRequested->run( searchData_ );
@@ -269,7 +271,11 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
             Q_EMIT worker->searchFinished( searchGeneration );
         },
         Qt::QueuedConnection );
-    operationRequested->disconnect();
+
+    // Only sever the connections we created above; leave any other connections
+    // (e.g. ones made by callers/tests) untouched.
+    QObject::disconnect( progressConnection );
+    QObject::disconnect( failedConnection );
 }
 
 std::shared_ptr<AtomicFlag> LogFilteredDataWorker::beginOperation()
