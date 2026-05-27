@@ -42,6 +42,8 @@
 #include <memory>
 #include <utility>
 
+#include <QPointer>
+
 #include <robin_hood.h>
 #include <tbb/flow_graph.h>
 #include <vector>
@@ -190,22 +192,90 @@ LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 
 void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequested )
 {
-    connect( operationRequested, &SearchOperation::searchProgressed, this,
-             &LogFilteredDataWorker::searchProgressed );
-    connect( operationRequested, &SearchOperation::searchFailed, this,
-             &LogFilteredDataWorker::searchFailed );
-    connect( operationRequested, &SearchOperation::searchFinished, this,
-             &LogFilteredDataWorker::searchFinished, Qt::QueuedConnection );
+    const auto requestedGeneration = operationRequested->searchGeneration();
+    LOG_DEBUG << "Connecting search operation signals for generation " << requestedGeneration;
 
+    const QPointer<LogFilteredDataWorker> worker( this );
+    const auto progressConnection
+        = connect( operationRequested, &SearchOperation::searchProgressed, operationRequested,
+                   [ worker ]( LinesCount nbMatches, int percent, LineNumber initialLine,
+                               uint64_t searchGeneration ) {
+                       if ( !worker ) {
+                           LOG_DEBUG << "Dropping search progress for destroyed worker, generation "
+                                     << searchGeneration;
+                           return;
+                       }
+
+                       QMetaObject::invokeMethod(
+                           worker,
+                           [ worker, nbMatches, percent, initialLine, searchGeneration ] {
+                               if ( !worker ) {
+                                   LOG_DEBUG
+                                       << "Skipping queued search progress for destroyed worker, generation "
+                                       << searchGeneration;
+                                   return;
+                               }
+                               Q_EMIT worker->searchProgressed( nbMatches, percent, initialLine,
+                                                                searchGeneration );
+                           },
+                           Qt::QueuedConnection );
+                   },
+                   Qt::DirectConnection );
+    const auto failedConnection
+        = connect( operationRequested, &SearchOperation::searchFailed, operationRequested,
+                   [ worker ]( QString errorMessage, uint64_t searchGeneration ) {
+                       if ( !worker ) {
+                           LOG_DEBUG << "Dropping search failure for destroyed worker, generation "
+                                     << searchGeneration;
+                           return;
+                       }
+
+                       QMetaObject::invokeMethod(
+                           worker,
+                           [ worker, errorMessage = std::move( errorMessage ), searchGeneration ] {
+                               if ( !worker ) {
+                                   LOG_DEBUG
+                                       << "Skipping queued search failure for destroyed worker, generation "
+                                       << searchGeneration;
+                                   return;
+                               }
+                               Q_EMIT worker->searchFailed( errorMessage, searchGeneration );
+                           },
+                           Qt::QueuedConnection );
+                   },
+                   Qt::DirectConnection );
+
+    LOG_DEBUG << "Running search operation for generation " << requestedGeneration;
     operationRequested->run( searchData_ );
+    LOG_DEBUG << "Search operation returned for generation " << requestedGeneration;
+
     const auto compiledRegexp = operationRequested->compiledRegexp();
     if ( compiledRegexp && compiledRegexp->isValid() ) {
+        LOG_DEBUG << "Remembering compiled search expression for generation " << requestedGeneration;
         rememberCompiledRegexp( operationRequested->regexp(), compiledRegexp );
     }
     else {
+        LOG_DEBUG << "Clearing compiled search expression for generation " << requestedGeneration;
         clearCompiledRegexp( operationRequested->regexp() );
     }
-    operationRequested->disconnect( this );
+
+    LOG_DEBUG << "Posting deterministic search finish for generation " << requestedGeneration;
+    QMetaObject::invokeMethod(
+        this,
+        [ worker, searchGeneration = requestedGeneration ] {
+            if ( !worker ) {
+                LOG_DEBUG << "Skipping queued search finish for destroyed worker, generation "
+                          << searchGeneration;
+                return;
+            }
+            Q_EMIT worker->searchFinished( searchGeneration );
+        },
+        Qt::QueuedConnection );
+
+    // Only sever the connections we created above; leave any other connections
+    // (e.g. ones made by callers/tests) untouched.
+    QObject::disconnect( progressConnection );
+    QObject::disconnect( failedConnection );
 }
 
 std::shared_ptr<AtomicFlag> LogFilteredDataWorker::beginOperation()
@@ -343,7 +413,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     if ( !compiledRegexp_->isValid() ) {
         LOG_WARNING << "Skipping search: invalid expression " << compiledRegexp_->errorString();
         Q_EMIT searchFailed( compiledRegexp_->errorString(), searchGeneration_ );
-        Q_EMIT searchFinished();
+        Q_EMIT searchFinished( searchGeneration_ );
         return;
     }
 
@@ -398,7 +468,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         if ( !matcher ) {
             LOG_ERROR << "Skipping search: failed to create matcher #" << index;
             Q_EMIT searchFailed( tr( "failed to create matcher" ), searchGeneration_ );
-            Q_EMIT searchFinished();
+            Q_EMIT searchFinished( searchGeneration_ );
             return;
         }
 
@@ -573,7 +643,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
              << " MiB/s";
 
     Q_EMIT searchProgressed( nbMatches, 100, initialLine, searchGeneration_ );
-    Q_EMIT searchFinished();
+    Q_EMIT searchFinished( searchGeneration_ );
 }
 
 // Called in the worker thread's context

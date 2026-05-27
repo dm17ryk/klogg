@@ -82,6 +82,8 @@ LogFilteredData::LogFilteredData( const LogData* logData )
              &LogFilteredData::handleSearchProgressed );
     connect( &workerThread_, &LogFilteredDataWorker::searchFailed, this,
              &LogFilteredData::handleSearchFailed );
+    connect( &workerThread_, &LogFilteredDataWorker::searchFinished, this,
+             &LogFilteredData::handleSearchFinished );
 
     searchProgressThrottler_.setTimeout( 100 );
     connect( this, &LogFilteredData::searchProgressedThrottled, &searchProgressThrottler_,
@@ -141,6 +143,8 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
     fullScanCompleted_ = false;
     pendingUpdateSearch_ = false;
     searchRunning_ = true;
+    searchCompletionHandled_ = false;
+    activeSearchInitialLine_ = startLine;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting full search gen " << searchGeneration_ << " range [" << startLine << ", "
@@ -159,7 +163,16 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
 
             marks_and_matches_ = matching_lines_ | marks_;
 
-            Q_EMIT searchProgressed( LinesCount( matching_lines_.cardinality() ), 100, startLine );
+            nbLinesProcessed_ = LinesCount( endLine.get() );
+            lastSearchEnd_ = endLine;
+            fullScanCompleted_ = true;
+            searchRunning_ = false;
+            searchCompletionHandled_ = true;
+
+            LOG_DEBUG << "Completing cached full search gen " << searchGeneration_
+                      << " without worker dispatch";
+            publishSearchProgress( LinesCount( matching_lines_.cardinality() ), 100, startLine,
+                                   searchGeneration_, true );
         }
     }
 
@@ -216,6 +229,8 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     lastSearchIncremental_ = true;
     fullScanCompleted_ = false;
     searchRunning_ = true;
+    searchCompletionHandled_ = false;
+    activeSearchInitialLine_ = initialLine;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range [" << initialLine
@@ -233,6 +248,7 @@ void LogFilteredData::interruptSearch()
 {
     LOG_DEBUG << "Entering interruptSearch";
 
+    LOG_DEBUG << "Requesting worker interruption for search generation " << searchGeneration_;
     workerThread_.interrupt();
 }
 
@@ -245,6 +261,8 @@ void LogFilteredData::clearSearch( bool dropCache )
     ++searchGeneration_;
     searchRunning_ = false;
     pendingUpdateSearch_ = false;
+    searchCompletionHandled_ = false;
+    activeSearchInitialLine_ = 0_lnum;
     matching_lines_ = {};
     marks_and_matches_ = marks_;
     maxLength_ = 0_length;
@@ -492,6 +510,8 @@ void LogFilteredData::updateSearchResultsCache()
 void LogFilteredData::runPendingUpdateSearch()
 {
     if ( !pendingUpdateSearch_ || currentRegExp_.pattern.isEmpty() ) {
+        LOG_DEBUG << "No pending update search to run. pending=" << pendingUpdateSearch_
+                  << " pattern empty=" << currentRegExp_.pattern.isEmpty();
         return;
     }
 
@@ -500,12 +520,115 @@ void LogFilteredData::runPendingUpdateSearch()
     const auto generation = searchGeneration_;
     pendingUpdateSearch_ = false;
 
+    LOG_DEBUG << "Scheduling pending update search gen " << generation << " range [" << pendingStart
+              << ", " << pendingEnd << "]";
     QTimer::singleShot( 0, this, [ this, pendingStart, pendingEnd, generation ] {
         if ( generation != searchGeneration_ || currentRegExp_.pattern.isEmpty() ) {
+            LOG_DEBUG << "Skipping pending update search for stale generation " << generation
+                      << ", current generation " << searchGeneration_
+                      << ", pattern empty=" << currentRegExp_.pattern.isEmpty();
             return;
         }
+        LOG_DEBUG << "Running pending update search for generation " << generation << " range ["
+                  << pendingStart << ", " << pendingEnd << "]";
         updateSearch( pendingStart, pendingEnd );
     } );
+}
+
+void LogFilteredData::applySearchResults( const char* source )
+{
+    const auto searchResults = workerThread_.getSearchResults();
+
+    LOG_DEBUG << "Applying search results from " << source << ": new matches "
+              << searchResults.newMatches.cardinality() << ", processed "
+              << searchResults.processedLines << ", max length " << searchResults.maxLength;
+
+    matching_lines_ |= searchResults.newMatches;
+    marks_and_matches_ |= searchResults.newMatches;
+
+    maxLength_ = searchResults.maxLength;
+    nbLinesProcessed_ = searchResults.processedLines;
+    lastSearchEnd_ = LineNumber( nbLinesProcessed_.get() );
+}
+
+void LogFilteredData::publishSearchProgress( LinesCount nbMatches, int progress,
+                                             LineNumber initialLine, uint64_t searchGeneration,
+                                             bool emitImmediately )
+{
+    LOG_DEBUG << "Publishing search progress gen " << searchGeneration << " progress " << progress
+              << " matches " << nbMatches << " initial line " << initialLine
+              << " immediate=" << emitImmediately;
+
+    {
+        ScopedLock lock( searchProgressMutex_ );
+        searchProgress_ = std::make_tuple( nbMatches, progress, initialLine, searchGeneration );
+    }
+
+    if ( emitImmediately ) {
+        Q_EMIT searchProgressed( nbMatches, progress, initialLine );
+    }
+    else {
+        Q_EMIT searchProgressedThrottled();
+    }
+}
+
+void LogFilteredData::finalizeCurrentSearch( LineNumber initialLine, uint64_t searchGeneration,
+                                             const char* source )
+{
+    if ( searchGeneration != searchGeneration_ ) {
+        LOG_DEBUG << "Ignoring stale search completion from " << source << " for generation "
+                  << searchGeneration << ", current generation " << searchGeneration_;
+        detachStaleSearchReader( searchGeneration, source );
+        return;
+    }
+
+    if ( searchCompletionHandled_ ) {
+        LOG_DEBUG << "Ignoring duplicate search completion from " << source << " for generation "
+                  << searchGeneration;
+        return;
+    }
+
+    LOG_DEBUG << "Finalizing search generation " << searchGeneration << " from " << source;
+    applySearchResults( source );
+
+    if ( nbLinesProcessed_.get() == getExpectedSearchEnd( currentSearchKey_ ).get() ) {
+        LOG_DEBUG << "Updating search results cache for completed generation " << searchGeneration;
+        updateSearchResultsCache();
+    }
+    else {
+        LOG_DEBUG << "Skipping search results cache update for generation " << searchGeneration
+                  << ": processed " << nbLinesProcessed_ << ", expected "
+                  << getExpectedSearchEnd( currentSearchKey_ );
+    }
+
+    fullScanCompleted_ = true;
+    searchRunning_ = false;
+    searchCompletionHandled_ = true;
+
+    detachReader();
+
+    LOG_INFO << "Matches size " << readableSize( matching_lines_.getSizeInBytes( false ) )
+             << ", marks size " << readableSize( marks_.getSizeInBytes( false ) )
+             << ", union size " << readableSize( marks_and_matches_.getSizeInBytes( false ) );
+
+    publishSearchProgress( LinesCount( matching_lines_.cardinality() ), 100, initialLine,
+                           searchGeneration, true );
+
+    runPendingUpdateSearch();
+}
+
+void LogFilteredData::detachStaleSearchReader( uint64_t searchGeneration, const char* source )
+{
+    if ( lastDetachedStaleSearchGeneration_ == searchGeneration ) {
+        LOG_DEBUG << "Stale search reader already detached for generation " << searchGeneration
+                  << " from earlier terminal event; source=" << source;
+        return;
+    }
+
+    LOG_DEBUG << "Detaching stale search reader for generation " << searchGeneration
+              << " from " << source;
+    lastDetachedStaleSearchGeneration_ = searchGeneration;
+    detachReader();
 }
 
 //
@@ -523,46 +646,18 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
         // The old search still attached a reader, so we must detach it when
         // that generation reports completion.
         if ( progress == 100 ) {
-            detachReader();
+            detachStaleSearchReader( searchGeneration, "stale final progress" );
         }
         return;
     }
 
-    const auto searchResults = workerThread_.getSearchResults();
-
-    matching_lines_ |= searchResults.newMatches;
-    marks_and_matches_ |= searchResults.newMatches;
-
-    maxLength_ = searchResults.maxLength;
-    nbLinesProcessed_ = searchResults.processedLines;
-    lastSearchEnd_ = LineNumber( nbLinesProcessed_.get() );
-
-    if ( progress == 100
-         && nbLinesProcessed_.get() == getExpectedSearchEnd( currentSearchKey_ ).get() ) {
-        updateSearchResultsCache();
-    }
-
-    {
-        ScopedLock lock( searchProgressMutex_ );
-        searchProgress_ = std::make_tuple( nbMatches, progress, initialLine, searchGeneration );
-    }
-
     if ( progress == 100 ) {
-        fullScanCompleted_ = true;
-        searchRunning_ = false;
+        finalizeCurrentSearch( initialLine, searchGeneration, "final progress" );
+        return;
     }
 
-    Q_EMIT searchProgressedThrottled();
-
-    if ( progress == 100 ) {
-        detachReader();
-
-        LOG_INFO << "Matches size " << readableSize( matching_lines_.getSizeInBytes( false ) )
-                 << ", marks size " << readableSize( marks_.getSizeInBytes( false ) )
-                 << ", union size " << readableSize( marks_and_matches_.getSizeInBytes( false ) );
-
-        runPendingUpdateSearch();
-    }
+    applySearchResults( "progress" );
+    publishSearchProgress( nbMatches, progress, initialLine, searchGeneration, false );
 }
 
 void LogFilteredData::handleSearchFailed( QString errorMessage, uint64_t searchGeneration )
@@ -570,15 +665,29 @@ void LogFilteredData::handleSearchFailed( QString errorMessage, uint64_t searchG
     if ( searchGeneration != searchGeneration_ ) {
         LOG_DEBUG << "Ignoring stale search failure for generation " << searchGeneration
                   << ", current generation " << searchGeneration_;
-        detachReader();
+        detachStaleSearchReader( searchGeneration, "stale failure" );
         return;
     }
 
+    if ( searchCompletionHandled_ ) {
+        LOG_DEBUG << "Ignoring search failure for already completed generation " << searchGeneration;
+        return;
+    }
+
+    LOG_DEBUG << "Finalizing failed search generation " << searchGeneration << ": "
+              << errorMessage;
     detachReader();
     fullScanCompleted_ = false;
     searchRunning_ = false;
     pendingUpdateSearch_ = false;
+    searchCompletionHandled_ = true;
     Q_EMIT searchFailed( std::move( errorMessage ) );
+}
+
+void LogFilteredData::handleSearchFinished( uint64_t searchGeneration )
+{
+    LOG_DEBUG << "Received deterministic search finish for generation " << searchGeneration;
+    finalizeCurrentSearch( activeSearchInitialLine_, searchGeneration, "worker finish" );
 }
 
 void LogFilteredData::handleSearchProgressedThrottled()
@@ -597,6 +706,13 @@ void LogFilteredData::handleSearchProgressedThrottled()
                   << ", current generation " << searchGeneration_;
         return;
     }
+
+    if ( searchCompletionHandled_ ) {
+        LOG_DEBUG << "Skipping throttled search update for already completed generation "
+                  << searchGeneration << " progress " << progress;
+        return;
+    }
+
     Q_EMIT searchProgressed( nbMatches, progress, initialLine );
 }
 

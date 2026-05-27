@@ -150,11 +150,16 @@ public:
         return compiledRegexp_;
     }
 
+    uint64_t searchGeneration() const
+    {
+        return searchGeneration_;
+    }
+
 Q_SIGNALS:
     void searchProgressed( LinesCount nbMatches, int percent, LineNumber initialLine,
                            uint64_t searchGeneration );
     void searchFailed( QString errorMessage, uint64_t searchGeneration );
-    void searchFinished();
+    void searchFinished( uint64_t searchGeneration );
 
 protected:
     // Implement the common part of the search, passing
@@ -244,7 +249,7 @@ Q_SIGNALS:
     void searchFailed( QString errorMessage, uint64_t searchGeneration );
     // Sent when indexing is finished, signals the client
     // to copy the new data back.
-    void searchFinished();
+    void searchFinished( uint64_t searchGeneration );
 
 private:
     void connectSignalsAndRun( SearchOperation* operationRequested );

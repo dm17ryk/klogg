@@ -67,6 +67,47 @@
       "width": 0
     },
     {
+      "name": "at_command_CGPADDR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<cid>\\d+))?$",
+      "fields": [
+        {
+          "name": "cid",
+          "source": "capture",
+          "capture": "cid",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_command_CMGR_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?:(?<index>\\d+))?$",
+      "fields": [
+        {
+          "name": "message_index",
+          "source": "capture",
+          "capture": "index",
+          "format": "string"
+        },
+        {
+          "name": "meaning",
+          "source": "capture",
+          "capture": "index",
+          "format": "enum",
+          "enumMap": {
+            "1": "SMS storage index to read"
+          }
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
       "name": "at_command_BND_block",
       "format": "match",
       "type": "string",
@@ -1089,7 +1130,7 @@
       "name": "at_response_SGACT_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<cid>\\d+),(?<state>\\d+)|(?<ip_addr_v4v6>[^,]+)(?:,(?<ip_addr_v6>[^,]+))?)$",
+      "regex": "^(?:(?<cid>\\d+),(?<state>\\d+)|(?<ip_addr_v4v6>[^,]+)(?:,(?<ip_addr_v6>[^,]+))?)[\\s\\S]*$",
       "fields": [
         {
           "name": "cid",
@@ -1127,7 +1168,7 @@
       "name": "at_response_SS_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?<connId>\\d+),(?<state>\\d+)(?:,(?<locIP>[^,]*),(?<locPort>[^,]*),(?<remIP>[^,]*),(?<remPort>[^,]*))?$",
+      "regex": "^(?<connId>\\d+),(?<state>\\d+)(?:,(?<locIP>[^,]*),(?<locPort>[^,]*),(?<remIP>[^,]*),(?<remPort>[^,]*))?[\\s\\S]*$",
       "fields": [
         {
           "name": "conn_id",
@@ -1182,7 +1223,7 @@
       "name": "at_response_QSS_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?<status>\\d+)$",
+      "regex": "^(?<status>\\d+)(?:,(?<mode>\\d+))?$",
       "fields": [
         {
           "name": "sim_status",
@@ -1195,6 +1236,12 @@
             "2": "SIM inserted and PIN unlocked",
             "3": "SIM inserted and READY"
           }
+        },
+        {
+          "name": "mode",
+          "source": "capture",
+          "capture": "mode",
+          "format": "string"
         }
       ],
       "source": "capture",
@@ -1246,7 +1293,7 @@
       "name": "at_response_CGDCONT_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?<cid>\\d+),\"(?<pdp_type>[^\"]+)\",\"(?<apn>[^\"]*)\",\"(?<pdp_addr>[^\"]*)\",(?<d_comp>\\d+),(?<h_comp>\\d+),(?<ipv4addralloc>\\d+),(?<request_type>\\d+)$",
+      "regex": "^(?<cid>\\d+),\"(?<pdp_type>[^\"]+)\",\"(?<apn>[^\"]*)\",\"(?<pdp_addr>[^\"]*)\",(?<d_comp>\\d+),(?<h_comp>\\d+),(?<ipv4addralloc>\\d+),(?<request_type>\\d+)(?:,.*)?$",
       "fields": [
         {
           "name": "cid",
@@ -1309,7 +1356,7 @@
       "name": "at_response_CGPADDR_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?<cid>\\d+),\"(?<addr>[^\"]+)\"$",
+      "regex": "^(?:#\\d+\\s*)?(?<cid>\\d+)(?:#\\d+\\s*)?(?:,\\s*\"(?<addr>[^\"]*)\"(?:,\"(?<addr2>[^\"]*)\")?)?[\\s\\S]*$",
       "fields": [
         {
           "name": "cid",
@@ -1321,6 +1368,12 @@
           "name": "address",
           "source": "capture",
           "capture": "addr",
+          "format": "string"
+        },
+        {
+          "name": "secondary_address",
+          "source": "capture",
+          "capture": "addr2",
           "format": "string"
         }
       ],
@@ -1411,10 +1464,42 @@
       "capture": "args"
     },
     {
+      "name": "at_command_generic_args_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>[\\s\\S]*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
+      "name": "at_response_generic_args_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<raw>[\\s\\S]*)$",
+      "fields": [
+        {
+          "name": "raw_args",
+          "source": "capture",
+          "capture": "raw",
+          "format": "string"
+        }
+      ],
+      "source": "capture",
+      "capture": "args"
+    },
+    {
       "name": "at_command_payload_known_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#])(?<command_key>(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|M2MATP|SWPKGV|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|BND|DVI|GMM|GMR|QSS|SD|SH|SS)))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:\\r?#\\d+\\s*)?$",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#])(?<command_key>(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|CGPADDR|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|FTPOPEN|FTPTYPE|FTPGET|FTPCLOSE|M2MATP|SWPKGV|ACDBEXT|FWSWITCH|FWAUTOSIM|DVIEXT|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|REBOOT|COPS|CGREG|CEREG|CGATT|CREG|CPIN|CIREG|CESQ|CMEE|CMGR|CMGD|CPAS|VCID|CLVL|CGEREP|CNMI|CCLK|CMGF|CALM|CSDH|CSSN|CLIP|CGSN|CCWA|CNUM|SHSEC|SHSNR|SHSSD|HSMICG|FCLASS|IMSUA|CFUN|CRSL|SLED|BND|DVI|GMM|GMR|IPR|CRC|CSQ|IFC|MWI|QSS|SRS|VCDT|VTD|SO|SD|SH|SS)))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:(?:<CR>|\\r)?#\\d+\\s*[\\s\\S]*|(?:<CR>|\\r)[\\s\\S]*)?$",
       "fields": [
         {
           "name": "channel",
@@ -1429,33 +1514,83 @@
           "format": "string"
         },
         {
+          "name": "command_key",
+          "source": "capture",
+          "capture": "command_key",
+          "format": "string"
+        },
+        {
           "name": "meaning",
           "source": "capture",
           "capture": "command_key",
           "format": "enum",
           "enumMap": {
+            "ACDBEXT": "Audio calibration database extension",
             "BND": "Select Band",
+            "CALM": "Alert Sound Mode",
             "CACHEDNS": "DNS Response Caching",
             "CCID": "Read ICCID",
+            "CCLK": "Clock",
+            "CCWA": "Call Waiting",
             "CFLO": "Command Flow Control",
             "CFVR": "Vendor-specific / undocumented CFVR query",
+            "CEREG": "EPS Network Registration Status",
+            "CESQ": "Extended Signal Quality",
+            "CFUN": "Set Phone Functionality",
+            "CGATT": "Packet Domain Attach or Detach",
+            "CGEREP": "Packet Domain Event Reporting",
+            "CGPADDR": "Show PDP Address",
+            "CGREG": "GPRS Network Registration Status",
+            "CGSN": "Product Serial Number Identification",
+            "CIREG": "IMS Registration Status",
+            "CLIP": "Calling Line Identification Presentation",
+            "CLVL": "Loudspeaker Volume Level",
+            "CMEE": "Report Mobile Equipment Error",
+            "CMGF": "Message Format",
+            "CMGD": "Delete Message",
+            "CMGR": "Read Message",
+            "CNMI": "New Message Indications to TE",
             "CODEC": "GSM and UMTS Audio Codec",
+            "CNUM": "Subscriber Number",
+            "COPS": "Operator Selection",
+            "CPAS": "Phone Activity Status",
+            "CPIN": "Enter PIN / SIM Status",
+            "CRC": "Cellular Result Codes",
+            "CREG": "Network Registration Status",
+            "CRSL": "Ringer Sound Level",
+            "CSDH": "Show Text Mode Parameters",
+            "CSQ": "Signal Quality",
+            "CSSN": "Supplementary Service Notifications",
             "DIALMODE": "Set Dialing Mode",
             "DTMF": "Embedded DTMF Decoder Enabling",
             "DTMFCFG": "Embedded DTMF Decoder Configuration",
             "DVI": "Digital Voiceband Interface",
+            "DVIEXT": "Digital Voiceband Interface Extension",
             "DVICLK": "Digital Voiceband Interface Clock",
             "E2SMSRI": "SMS Ring Indicator",
+            "FCLASS": "Fax Class",
             "FTPCFG": "FTP Configuration",
+            "FTPCLOSE": "FTP Close",
+            "FTPGET": "FTP Get",
+            "FTPOPEN": "FTP Open",
+            "FTPTYPE": "FTP Transfer Type",
+            "FWAUTOSIM": "Firmware Automatic SIM Selection",
+            "FWSWITCH": "Firmware Switch",
+            "HSMICG": "Headset Microphone Gain",
             "HWREV": "Hardware Identification",
+            "IFC": "TE-TA Local Data Flow Control",
+            "IMSUA": "IMS User Agent",
+            "IPR": "Fixed DTE Rate",
             "ISMSCFG": "SMS Transport Configuration",
             "LPURCMODE": "Vendor-specific / likely low-power URC mode",
             "M2MATP": "M2M AT Parser",
             "MONI": "Cell Monitor",
+            "MWI": "Message Waiting Indication",
             "PSEL": "Audio Profile Selection",
             "PSMRI": "Power Saving Mode Ring Indicator",
             "QDNS": "Query DNS",
             "QSS": "Query SIM Status",
+            "REBOOT": "Module Reboot",
             "RFSTS": "Read Current Network Status",
             "SCFG": "Socket Configuration",
             "SCFGEXT": "Socket Configuration Extended",
@@ -1472,10 +1607,19 @@
             "STIA": "SIM/USIM Toolkit Interface Action",
             "SWPKGV": "Request Software Package Version",
             "TEMPMON": "Temperature Monitor",
+            "VCID": "Voice Call Identification",
+            "VCDT": "Voice Call Dial Tone",
+            "VTD": "Tone Duration",
             "CEVDP": "Voice Domain Preference",
             "CGDCONT": "Define PDP Context",
             "GMM": "Model Identification",
             "GMR": "Revision Identification",
+            "SHSEC": "Secure HTTP Configuration",
+            "SHSNR": "Secure HTTP Server Name Resolution",
+            "SHSSD": "Secure HTTP Service Setup Data",
+            "SLED": "Status LED",
+            "SO": "Socket Option",
+            "SRS": "Socket Restore",
             "WS46": "PCCA STD-101 Select Wireless Network"
           }
         },
@@ -1503,7 +1647,7 @@
       "name": "at_command_payload_generic_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#])(?<command_key>[A-Z0-9]+))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:\\r?#\\d+\\s*)?$",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>AT(?<sigil>[+#]?)(?<command_key>[^=?\\s<\\r;]*))(?<op>=\\?|\\?|=|)(?<args>.*?)(?:(?:<CR>|\\r)?#\\d+\\s*[\\s\\S]*|(?:<CR>|\\r)[\\s\\S]*)?$",
       "fields": [
         {
           "name": "channel",
@@ -1547,7 +1691,7 @@
       "name": "at_response_payload_known_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>(?:CGDCONT|CGPADDR|CEVDP|SGACT|SSLEN|CFVR|CGEV|QDNS|WS46|QSS|SS)))\\s*:\\s*(?<args>.*)$",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>(?:SSLSECDATA|TEMPMEAS|CGDCONT|CGPADDR|ACDBEXT|FWSWITCH|FWAUTOSIM|CIREGU|DVICLK|M2MATP|ISMSCFG|DTMFEV|CEVDP|SGACT|SSLEN|CFVR|CGEV|MONI|RFSTS|QDNS|WS46|CEREG|CGREG|COPS|CGATT|CPIN|CESQ|CSQ|CREG|CIREG|CPAS|CMEE|CMGR|IMSUA|CRING|CLIP|CLVL|CCID|CCLK|CNUM|PSEL|BND|DVI|IPR|QSS|SS)))\\s*:\\s*(?<args>[\\s\\S]*?)(?:\\r\\s*)?$",
       "fields": [
         {
           "name": "channel",
@@ -1562,17 +1706,58 @@
           "format": "string"
         },
         {
+          "name": "response_key",
+          "source": "capture",
+          "capture": "response_key",
+          "format": "string"
+        },
+        {
           "name": "meaning",
           "source": "capture",
           "capture": "response_key",
           "format": "enum",
           "enumMap": {
+            "ACDBEXT": "Audio calibration database extension",
+            "BND": "Selected band report",
+            "CCID": "ICCID report",
+            "CCLK": "Clock report",
+            "CEREG": "EPS network registration status",
+            "CESQ": "Extended signal quality",
+            "CGATT": "Packet domain attach state",
+            "CGREG": "GPRS network registration status",
+            "CIREG": "IMS registration status",
+            "CIREGU": "IMS registration URC",
+            "CLIP": "Calling line identification",
+            "CLVL": "Loudspeaker volume level",
+            "CMEE": "Mobile equipment error mode",
+            "CMGR": "Message read response",
+            "CNUM": "Subscriber number report",
+            "COPS": "Operator selection report",
+            "CPAS": "Phone activity status",
+            "CPIN": "SIM PIN/status report",
+            "CREG": "Network registration status",
+            "CRING": "Extended incoming call indication",
+            "CSQ": "Signal quality",
+            "DTMFEV": "DTMF event indication",
+            "DVI": "Digital voiceband interface report",
+            "DVICLK": "Digital voiceband clock report",
+            "FWAUTOSIM": "Firmware automatic SIM selection report",
+            "FWSWITCH": "Firmware switch report",
+            "IMSUA": "IMS user agent report",
+            "IPR": "DTE rate report",
+            "ISMSCFG": "SMS transport configuration report",
+            "M2MATP": "M2M AT parser report",
+            "MONI": "Cell monitor report",
+            "PSEL": "Audio profile selection report",
             "QDNS": "DNS query result",
+            "RFSTS": "Current network status report",
             "SGACT": "PDP context state / activation result",
             "SS": "Socket status",
             "QSS": "SIM status indication / report",
             "CFVR": "Vendor-specific CFVR response",
             "SSLEN": "SSL socket enable status",
+            "SSLSECDATA": "SSL security data report",
+            "TEMPMEAS": "Temperature measurement report",
             "CGDCONT": "PDP context definition",
             "CGPADDR": "PDP address report",
             "WS46": "Selected wireless stack / RAT family",
@@ -1592,7 +1777,7 @@
       "name": "at_response_payload_generic_block",
       "format": "match",
       "type": "string",
-      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>[A-Z0-9 ]+))\\s*:\\s*(?<args>.*)$",
+      "regex": "^(?:(?<channel>#\\d+)\\s+)?(?<token>(?<sigil>[+#])(?<response_key>[A-Z0-9 ]+))\\s*:\\s*(?<args>[\\s\\S]*?)(?:\\r\\s*)?$",
       "fields": [
         {
           "name": "channel",
@@ -1625,7 +1810,7 @@
     {
       "name": "AT command (known)",
       "enabled": true,
-      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT(?:#|\\+)(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|M2MATP|SWPKGV|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|BND|DVI|GMM|GMR|QSS|SD|SH|SS).*)$",
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT(?:#|\\+)(?:SSLSECDATA|LPURCMODE|CACHEDNS|DIALMODE|SCFGEXT2|SCFGEXT3|CGDCONT|CGPADDR|DTMFCFG|E2SMSRI|ISMSCFG|SCFGEXT|SMSMODE|TEMPMON|DVICLK|FTPCFG|FTPOPEN|FTPTYPE|FTPGET|FTPCLOSE|M2MATP|SWPKGV|ACDBEXT|FWSWITCH|FWAUTOSIM|DVIEXT|CEVDP|CODEC|HWREV|PSMRI|RFSTS|SGACT|SSEND|SSLEN|CCID|CFLO|CFVR|DTMF|MONI|PSEL|QDNS|SCFG|STIA|WS46|REBOOT|COPS|CGREG|CEREG|CGATT|CREG|CPIN|CIREG|CESQ|CMEE|CMGR|CMGD|CPAS|VCID|CLVL|CGEREP|CNMI|CCLK|CMGF|CALM|CSDH|CSSN|CLIP|CGSN|CCWA|CNUM|SHSEC|SHSNR|SHSSD|HSMICG|FCLASS|IMSUA|CFUN|CRSL|SLED|BND|DVI|GMM|GMR|IPR|CRC|CSQ|IFC|MWI|QSS|SRS|VCDT|VTD|SO|SD|SH|SS)[\\s\\S]*)$",
       "type": "string",
       "format": "fields",
       "bufferCapture": "payload",
@@ -1647,7 +1832,7 @@
     {
       "name": "AT command (generic fallback)",
       "enabled": true,
-      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT(?:#|\\+)[A-Z0-9]+.*)$",
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?AT[\\s\\S]*)$",
       "type": "string",
       "format": "fields",
       "bufferCapture": "payload",
@@ -1692,6 +1877,59 @@
           "capture": "code",
           "format": "enum",
           "enumMap": {
+            "0": "phone failure",
+            "1": "no connection to phone",
+            "2": "phone-adaptor link reserved",
+            "3": "operation not allowed",
+            "4": "operation not supported",
+            "5": "PH-SIM PIN required",
+            "6": "PH-FSIM PIN required",
+            "7": "PH-FSIM PUK required",
+            "10": "SIM not inserted",
+            "11": "SIM PIN required",
+            "12": "SIM PUK required",
+            "13": "SIM failure",
+            "14": "SIM busy",
+            "15": "SIM wrong",
+            "16": "incorrect password",
+            "17": "SIM PIN2 required",
+            "18": "SIM PUK2 required",
+            "20": "memory full",
+            "21": "invalid index",
+            "22": "not found",
+            "23": "memory failure",
+            "24": "text string too long",
+            "25": "invalid characters in text string",
+            "26": "dial string too long",
+            "27": "invalid characters in dial string",
+            "30": "no network service",
+            "31": "network timeout",
+            "32": "network not allowed - emergency calls only",
+            "40": "network personalization PIN required",
+            "41": "network personalization PUK required",
+            "42": "network subset personalization PIN required",
+            "43": "network subset personalization PUK required",
+            "44": "service provider personalization PIN required",
+            "45": "service provider personalization PUK required",
+            "46": "corporate personalization PIN required",
+            "47": "corporate personalization PUK required",
+            "48": "hidden key required",
+            "49": "EAP method not supported",
+            "50": "incorrect parameters",
+            "100": "Telit/3GPP general purpose error: unknown",
+            "103": "illegal MS",
+            "106": "illegal ME",
+            "107": "GPRS services not allowed",
+            "111": "PLMN not allowed",
+            "112": "location area not allowed",
+            "113": "roaming not allowed in this location area",
+            "132": "service option not supported",
+            "133": "requested service option not subscribed",
+            "134": "service option temporarily out of order",
+            "148": "unspecified GPRS error",
+            "149": "PDP authentication failure",
+            "150": "invalid mobile class",
+            "151": "last PDN disconnection not allowed",
             "323": "parameter error",
             "550": "generic undocumented error",
             "551": "wrong state",
@@ -1752,6 +1990,59 @@
       ]
     },
     {
+      "name": "AT CMS error",
+      "enabled": true,
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+\\+CMS ERROR:\\s*(?<code>\\d+)\\s*$",
+      "type": "string",
+      "format": "fields",
+      "fields": [
+        {
+          "name": "header",
+          "source": "capture",
+          "capture": "hdr",
+          "format": "block",
+          "block": "at_log_header_block"
+        },
+        {
+          "name": "code",
+          "source": "capture",
+          "capture": "code",
+          "format": "string"
+        },
+        {
+          "name": "meaning",
+          "source": "capture",
+          "capture": "code",
+          "format": "enum",
+          "enumMap": {
+            "300": "ME failure",
+            "301": "SMS service of ME reserved",
+            "302": "operation not allowed",
+            "303": "operation not supported",
+            "304": "invalid PDU mode parameter",
+            "305": "invalid text mode parameter",
+            "310": "SIM not inserted",
+            "311": "SIM PIN required",
+            "312": "PH-SIM PIN required",
+            "313": "SIM failure",
+            "314": "SIM busy",
+            "315": "SIM wrong",
+            "316": "SIM PUK required",
+            "317": "SIM PIN2 required",
+            "318": "SIM PUK2 required",
+            "320": "memory failure",
+            "321": "invalid memory index",
+            "322": "memory full",
+            "330": "SMSC address unknown",
+            "331": "no network service",
+            "332": "network timeout",
+            "340": "no +CNMA acknowledgement expected",
+            "500": "unknown"
+          }
+        }
+      ]
+    },
+    {
       "name": "AT final result code",
       "enabled": true,
       "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<result>OK|ERROR)\\s*$",
@@ -1780,7 +2071,7 @@
     {
       "name": "AT response / URC (known)",
       "enabled": true,
-      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)(?:CGDCONT|CGPADDR|CEVDP|SGACT|SSLEN|CFVR|CGEV|QDNS|WS46|QSS|SS)\\s*:.*)$",
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)(?:SSLSECDATA|TEMPMEAS|CGDCONT|CGPADDR|ACDBEXT|FWSWITCH|FWAUTOSIM|CIREGU|DVICLK|M2MATP|ISMSCFG|DTMFEV|CEVDP|SGACT|SSLEN|CFVR|CGEV|MONI|RFSTS|QDNS|WS46|CEREG|CGREG|COPS|CGATT|CPIN|CESQ|CSQ|CREG|CIREG|CPAS|CMEE|CMGR|IMSUA|CRING|CLIP|CLVL|CCID|CCLK|CNUM|PSEL|BND|DVI|IPR|QSS|SS)\\s*:[\\s\\S]*)$",
       "type": "string",
       "format": "fields",
       "bufferCapture": "payload",
@@ -1802,7 +2093,7 @@
     {
       "name": "AT response / URC (generic fallback)",
       "enabled": true,
-      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)[A-Z0-9 ]+\\s*:.*)$",
+      "regex": "^(?<hdr>\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s+\\[(?:RX|TX)\\])\\s+-\\s+(?<payload>(?:#\\d+\\s+)?(?:#|\\+)[A-Z0-9 ]+\\s*:[\\s\\S]*)$",
       "type": "string",
       "format": "fields",
       "bufferCapture": "payload",

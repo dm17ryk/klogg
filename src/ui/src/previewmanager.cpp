@@ -31,7 +31,7 @@ void PreviewManager::loadFromRepository()
     Q_EMIT previewsChanged();
 }
 
-PreviewImportResult PreviewManager::importFromFile( const QString& path )       
+PreviewImportResult PreviewManager::importFromFile( const QString& path )
 {
     PreviewImportResult result;
     PreviewConfigParser parser;
@@ -44,10 +44,9 @@ PreviewImportResult PreviewManager::importFromFile( const QString& path )
     }
 
     for ( auto& incoming : parsed.previews ) {
-        auto existing = std::find_if( previews_.begin(), previews_.end(),
-                                      [ &incoming ]( const auto& preview ) {
-                                          return preview.name == incoming.name;
-                                      } );
+        auto existing = std::find_if(
+            previews_.begin(), previews_.end(),
+            [ &incoming ]( const auto& preview ) { return preview.name == incoming.name; } );
         if ( existing != previews_.end() ) {
             const bool keepEnabled = !incoming.hasEnabled;
             if ( keepEnabled ) {
@@ -81,10 +80,9 @@ PreviewImportResult PreviewManager::importFromFile( const QString& path )
 
 bool PreviewManager::removeByName( const QString& name )
 {
-    const auto it = std::find_if( previews_.begin(), previews_.end(),
-                                  [ &name ]( const auto& preview ) {
-                                      return preview.name == name;
-                                  } );
+    const auto it
+        = std::find_if( previews_.begin(), previews_.end(),
+                        [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( it == previews_.end() ) {
         return false;
     }
@@ -94,6 +92,26 @@ bool PreviewManager::removeByName( const QString& name )
     previews_.erase( it );
     if ( !repository_.save( previews_, blocks_ ) ) {
         previews_.insert( previews_.begin() + index, removed );
+        return false;
+    }
+
+    Q_EMIT previewsChanged();
+    return true;
+}
+
+bool PreviewManager::movePreview( int fromRow, int toRow )
+{
+    if ( fromRow == toRow ) {
+        return true;
+    }
+    if ( fromRow < 0 || fromRow >= previews_.size() || toRow < 0 || toRow >= previews_.size() ) {
+        return false;
+    }
+
+    const auto previous = previews_;
+    previews_.move( fromRow, toRow );
+    if ( !repository_.save( previews_, blocks_ ) ) {
+        previews_ = previous;
         return false;
     }
 
@@ -139,10 +157,9 @@ QVector<PreviewDefinition> PreviewManager::enabled() const
 
 const PreviewDefinition* PreviewManager::findByName( const QString& name ) const
 {
-    const auto it = std::find_if( previews_.begin(), previews_.end(),
-                                  [ &name ]( const auto& preview ) {
-                                      return preview.name == name;
-                                  } );
+    const auto it
+        = std::find_if( previews_.begin(), previews_.end(),
+                        [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( it == previews_.end() ) {
         return nullptr;
     }
@@ -166,9 +183,7 @@ const PreviewFieldSpec* PreviewManager::findBlock( const QString& name ) const
 void PreviewManager::setEnabled( const QString& name, bool enabled )
 {
     auto it = std::find_if( previews_.begin(), previews_.end(),
-                            [ &name ]( const auto& preview ) {
-                                return preview.name == name;
-                            } );
+                            [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( it == previews_.end() ) {
         return;
     }

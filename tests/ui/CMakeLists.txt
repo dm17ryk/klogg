@@ -9,20 +9,21 @@ if(NOT APPLE)
     LIST(APPEND UI_TEST_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/mainwindow_test.cpp)
 endif()
 
-add_executable(klogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE})
+add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE})
 
-target_link_libraries(klogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
+target_link_libraries(cilogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
 set_target_properties(
-    klogg_itests
+    cilogg_itests
     PROPERTIES AUTOMOC ON
                OUTPUT_NAME "${PRODUCT_UI_TEST_EXECUTABLE_NAME}"
 )
 
-add_backward(klogg_itests)
+add_backward(cilogg_itests)
 
 add_test(
     NAME cilogg_itests
-    COMMAND $<TARGET_FILE:klogg_itests> -platform offscreen
+    COMMAND $<TARGET_FILE:cilogg_itests> -platform offscreen
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
 )
-# set_tests_properties(klogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg_itests>")
+set_tests_properties(cilogg_itests PROPERTIES TIMEOUT 900)
+# set_tests_properties(cilogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:cilogg_itests>")
