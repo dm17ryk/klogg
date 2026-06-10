@@ -765,8 +765,14 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderWaitResponse( request );
     case CommanderAction::StartComm:
         return commanderStartComm( request );
+    case CommanderAction::PlayComm:
+        return commanderPlayComm( request );
+    case CommanderAction::PauseComm:
+        return commanderPauseComm( request );
     case CommanderAction::StopComm:
         return commanderStopComm( request );
+    case CommanderAction::StartNewCommFile:
+        return commanderStartNewCommFile( request );
     case CommanderAction::GetCommStatus:
         return commanderGetCommStatus( request );
     case CommanderAction::StartLogging:
@@ -2895,16 +2901,32 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 void MainWindow::startNewStreamFileForTab( int tab )
 {
     auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
-    if ( crawler == nullptr ) {
+    const auto result = startNewStreamFileForCrawler( crawler );
+    if ( result.ok() ) {
         return;
+    }
+
+    LOG_DEBUG << "Start new COM file from GUI failed: " << result.message.toStdString();
+    showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ), result.message,
+                        false );
+}
+
+CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler )
+{
+    LOG_DEBUG << "Starting new COM stream file";
+    if ( crawler == nullptr ) {
+        LOG_DEBUG << "Start new COM stream file failed: target crawler is null";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
     }
 
     const auto oldFilePath = session_.getFilename( crawler );
     auto* streamSession = mainTabWidget_.streamSessionForPath( oldFilePath );
     if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
-        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
-                            tr( "No active COM stream is available for this tab." ), false );
-        return;
+        LOG_DEBUG << "Start new COM stream file failed: no active stream for "
+                  << oldFilePath.toStdString();
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "No active COM stream is available for this tab." ) );
     }
 
     const auto context = crawler->context();
@@ -2914,31 +2936,39 @@ void MainWindow::startNewStreamFileForTab( int tab )
 
     QString captureFileError;
     if ( !ensureComCaptureFileWritable( newFilePath, &captureFileError ) ) {
-        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
-                            tr( "Failed to open new capture file: %1" ).arg( captureFileError ),
-                            false );
-        return;
+        LOG_DEBUG << "Start new COM stream file failed: capture file is not writable: "
+                  << newFilePath.toStdString() << " " << captureFileError.toStdString();
+        return commanderFailure(
+            CommanderResultCode::ExecutionFailed,
+            tr( "Failed to open new capture file: %1" ).arg( captureFileError ) );
     }
 
     if ( !loadFile( newFilePath, true ) ) {
-        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
-                            tr( "Failed to open new capture file in CILogg." ), false );
-        return;
+        LOG_DEBUG << "Start new COM stream file failed: CILogg could not load "
+                  << newFilePath.toStdString();
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "Failed to open new capture file in CILogg." ) );
     }
 
     auto* newCrawler = static_cast<CrawlerWidget*>( session_.getViewIfOpen( newFilePath ) );
+    if ( newCrawler == nullptr ) {
+        LOG_DEBUG << "Start new COM stream file failed: loaded capture file has no crawler: "
+                  << newFilePath.toStdString();
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "Failed to open new capture file in CILogg." ) );
+    }
+
     QString switchError;
     if ( !streamSession->startNewCaptureFile( newFilePath, &switchError ) ) {
-        if ( newCrawler != nullptr ) {
-            const auto newTab = mainTabWidget_.indexOf( newCrawler );
-            if ( newTab >= 0 ) {
-                closeTab( newTab, ActionInitiator::App );
-            }
+        const auto newTab = mainTabWidget_.indexOf( newCrawler );
+        if ( newTab >= 0 ) {
+            LOG_DEBUG << "Closing newly opened capture tab after stream switch failure";
+            closeTab( newTab, ActionInitiator::App );
         }
-        showComPortMessage( this, QMessageBox::Warning, tr( "Start New COM File" ),
-                            tr( "Failed to switch capture file: %1" ).arg( switchError ),
-                            false );
-        return;
+        LOG_DEBUG << "Start new COM stream file failed: stream switch failed: "
+                  << switchError.toStdString();
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "Failed to switch capture file: %1" ).arg( switchError ) );
     }
 
     mainTabWidget_.remapStreamSessionPath( oldFilePath, newFilePath );
@@ -2954,6 +2984,8 @@ void MainWindow::startNewStreamFileForTab( int tab )
         QTimer::singleShot( 0, newCrawler,
                             [ newCrawler, viewContext ] { newCrawler->setViewContextLazy( viewContext ); } );
     }
+    LOG_DEBUG << "Started new COM stream file: " << newFilePath.toStdString();
+    return commanderSuccess();
 }
 
 void MainWindow::closeStreamConnectionForTab( int tab )
@@ -3309,27 +3341,69 @@ CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request 
 {
     auto* streamSession = commanderTargetStreamSession( request, false );
     if ( streamSession == nullptr ) {
+        LOG_DEBUG << "start_comm failed: requested live communication tab was not found";
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested live communication tab was not found." ) );
     }
 
     if ( streamSession->isConnectionOpen() ) {
+        LOG_DEBUG << "start_comm succeeded: stream is already open";
         return commanderSuccess();
     }
 
     if ( streamSession->isPaused() ) {
         QString errorMessage;
         if ( !streamSession->resumeConnection( &errorMessage ) ) {
+            LOG_DEBUG << "start_comm failed: resume failed: " << errorMessage.toStdString();
             return commanderFailure( CommanderResultCode::ExecutionFailed,
                                      errorMessage.isEmpty()
                                          ? tr( "Failed to reopen COM stream." )
                                          : errorMessage );
         }
+        LOG_DEBUG << "start_comm resumed paused stream";
     }
     else {
+        LOG_DEBUG << "start_comm starting stopped stream";
         streamSession->start();
     }
     updateActionsSendState();
+    return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderPlayComm( const CommanderRequest& request )
+{
+    LOG_DEBUG << "play_comm requested";
+    return commanderStartComm( request );
+}
+
+CommanderResult MainWindow::commanderPauseComm( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        LOG_DEBUG << "pause_comm failed: requested live communication tab was not found";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+
+    if ( streamSession->isPaused() ) {
+        LOG_DEBUG << "pause_comm succeeded: stream is already paused";
+        return commanderSuccess();
+    }
+
+    QString errorMessage;
+    if ( !streamSession->pauseConnection( &errorMessage ) ) {
+        LOG_DEBUG << "pause_comm failed: " << errorMessage.toStdString();
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 errorMessage.isEmpty()
+                                     ? tr( "No active COM stream is available for this tab." )
+                                     : errorMessage );
+    }
+
+    LOG_DEBUG << "pause_comm paused stream";
+    updateActionsSendState();
+    updateComPortStatus();
+    refreshComTabIndicators();
+    refreshScriptStatusIndicators();
     return commanderSuccess();
 }
 
@@ -3337,12 +3411,20 @@ CommanderResult MainWindow::commanderStopComm( const CommanderRequest& request )
 {
     auto* streamSession = commanderTargetStreamSession( request, true );
     if ( streamSession == nullptr ) {
+        LOG_DEBUG << "stop_comm failed: requested live communication tab was not found";
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested live communication tab was not found." ) );
     }
 
+    LOG_DEBUG << "stop_comm closing stream";
     streamSession->closeConnection();
     return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderStartNewCommFile( const CommanderRequest& request )
+{
+    LOG_DEBUG << "start_new_comm_file requested";
+    return startNewStreamFileForCrawler( commanderTargetCrawler( request ) );
 }
 
 CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& request ) const

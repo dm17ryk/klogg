@@ -69,6 +69,9 @@ TEST_CASE( "Commander CLI exposes command help", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "send_action" ) );
     REQUIRE( parameters.exit_message.contains( "wait_response" ) );
     REQUIRE( parameters.exit_message.contains( "start_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "play_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "pause_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "start_new_comm_file" ) );
     REQUIRE( parameters.exit_message.contains( "get_comm_status" ) );
     REQUIRE( parameters.exit_message.contains( "get_response_counter" ) );
     REQUIRE( parameters.exit_message.contains( "run_script" ) );
@@ -414,6 +417,28 @@ TEST_CASE( "Commander CLI parses communication automation requests", "[commander
     REQUIRE( startComm.commander_request.has_value() );
     REQUIRE( startComm.commander_request->action == CommanderAction::StartComm );
     REQUIRE( startComm.commander_request->tabId == "tab-1" );
+
+    CliParameters playComm(
+        { "cilogg", "command", "--action", "play_comm", "--tab-id", "tab-1" } );
+    REQUIRE_FALSE( playComm.parse_error );
+    REQUIRE( playComm.commander_request.has_value() );
+    REQUIRE( playComm.commander_request->action == CommanderAction::PlayComm );
+    REQUIRE( playComm.commander_request->tabId == "tab-1" );
+
+    CliParameters pauseComm( { "cilogg", "command", "--action", "pause_comm", "--window-index",
+                               "0", "--tab-index", "1" } );
+    REQUIRE_FALSE( pauseComm.parse_error );
+    REQUIRE( pauseComm.commander_request.has_value() );
+    REQUIRE( pauseComm.commander_request->action == CommanderAction::PauseComm );
+    REQUIRE( pauseComm.commander_request->windowIndex == 0 );
+    REQUIRE( pauseComm.commander_request->tabIndex == 1 );
+
+    CliParameters startNewCommFile(
+        { "cilogg", "command", "--action", "start_new_comm_file", "--tab-id", "tab-1" } );
+    REQUIRE_FALSE( startNewCommFile.parse_error );
+    REQUIRE( startNewCommFile.commander_request.has_value() );
+    REQUIRE( startNewCommFile.commander_request->action == CommanderAction::StartNewCommFile );
+    REQUIRE( startNewCommFile.commander_request->tabId == "tab-1" );
 
     CliParameters addComment(
         { "cilogg", "command", "--action", "add_comment", "--text", "hello", "--timestamp" } );
@@ -771,6 +796,9 @@ TEST_CASE( "Main CLI help advertises commander mode", "[commander][cli]" )
     REQUIRE( parameters.exit_message.contains( "cilogg command --action close_com" ) );
     REQUIRE( parameters.exit_message.contains( "cilogg command --action get_info" ) );
     REQUIRE( parameters.exit_message.contains( "cilogg command --action start_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "cilogg command --action play_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "cilogg command --action pause_comm" ) );
+    REQUIRE( parameters.exit_message.contains( "cilogg command --action start_new_comm_file" ) );
     REQUIRE( parameters.exit_message.contains( "cilogg command --action get_comm_status" ) );
     REQUIRE( parameters.exit_message.contains( "cilogg command --action run_script" ) );
     REQUIRE( parameters.exit_message.contains( "cilogg command --action get_script_status" ) );
@@ -842,6 +870,21 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->comSettings.useForActions.has_value() );
     REQUIRE( restored->comSettings.useForActions == request.comSettings.useForActions );
     REQUIRE( restored->definitionPayload == request.definitionPayload );
+
+    for ( const auto action : { CommanderAction::PlayComm, CommanderAction::PauseComm,
+                                CommanderAction::StartNewCommFile } ) {
+        CommanderRequest commandRequest;
+        commandRequest.action = action;
+        commandRequest.tabId = "tab-123";
+
+        const auto restoredCommand
+            = commanderRequestFromVariantMap( commanderRequestToVariantMap( commandRequest ),
+                                              &errorMessage );
+        REQUIRE( restoredCommand.has_value() );
+        REQUIRE( errorMessage.isEmpty() );
+        REQUIRE( restoredCommand->action == action );
+        REQUIRE( restoredCommand->tabId == commandRequest.tabId );
+    }
 }
 
 TEST_CASE( "Commander dump_state variant roundtrip", "[commander][ipc]" )

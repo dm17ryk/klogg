@@ -1,2 +1,0 @@
-from,to,type,confidence,reason,step
-"Template:src/logdata/include/linetypes.h:getUntabifiedLength","Struct:src/logdata/include/linetypes.h:LineLength","CALLS",0.95,"same-file",0

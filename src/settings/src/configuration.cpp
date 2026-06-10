@@ -231,6 +231,18 @@ void Configuration::retrieveFromStorage( QSettings& settings )
     enableVersionChecking_
         = settings.value( "versionchecker.enabled", DefaultConfiguration.enableVersionChecking_ )
               .toBool();
+    updateChannel_ = static_cast<UpdateChannel>(
+        settings.value( "versionchecker.channel",
+                        static_cast<int>( DefaultConfiguration.updateChannel_ ) )
+            .toInt() );
+    updateFrequency_ = static_cast<UpdateFrequency>(
+        settings.value( "versionchecker.frequency",
+                        static_cast<int>( DefaultConfiguration.updateFrequency_ ) )
+            .toInt() );
+    updateAction_ = static_cast<UpdateAction>(
+        settings.value( "versionchecker.action",
+                        static_cast<int>( DefaultConfiguration.updateAction_ ) )
+            .toInt() );
 
     extractArchives_
         = settings.value( "archives.extract", DefaultConfiguration.extractArchives_ ).toBool();
@@ -460,6 +472,9 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "logging.verbosity", loggingLevel_ );
 
     settings.setValue( "versionchecker.enabled", enableVersionChecking_ );
+    settings.setValue( "versionchecker.channel", static_cast<int>( updateChannel_ ) );
+    settings.setValue( "versionchecker.frequency", static_cast<int>( updateFrequency_ ) );
+    settings.setValue( "versionchecker.action", static_cast<int>( updateAction_ ) );
 
     settings.setValue( "archives.extract", extractArchives_ );
     settings.setValue( "archives.extractAlways", extractArchivesAlways_ );

@@ -136,9 +136,11 @@ class KloggApp : public QApplication {
 
             // Version checker notification
             connect( &versionChecker_, &VersionChecker::newVersionFound,
-                     [ this ]( const QString& new_version, const QString& url,
+                     [ this ]( const QString& new_version, const QString& pageUrl,
+                               const QString& assetUrl,
                                const QStringList& changes ) {
-                         newVersionNotification( new_version, url, changes );
+                         Q_UNUSED( pageUrl );
+                         newVersionNotification( new_version, assetUrl, changes );
                      } );
         }
     }
@@ -742,7 +744,10 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::SendAction
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
+              || request.action == CommanderAction::PlayComm
+              || request.action == CommanderAction::PauseComm
               || request.action == CommanderAction::StopComm
+              || request.action == CommanderAction::StartNewCommFile
               || request.action == CommanderAction::GetCommStatus
               || request.action == CommanderAction::StartLogging
               || request.action == CommanderAction::StopLogging
@@ -770,7 +775,10 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::SendAction
                 || request.action == CommanderAction::WaitResponse
                 || request.action == CommanderAction::StartComm
+                || request.action == CommanderAction::PlayComm
+                || request.action == CommanderAction::PauseComm
                 || request.action == CommanderAction::StopComm
+                || request.action == CommanderAction::StartNewCommFile
                 || request.action == CommanderAction::GetCommStatus
                 || request.action == CommanderAction::StartLogging
                 || request.action == CommanderAction::StopLogging

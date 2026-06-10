@@ -1,3 +1,0 @@
-from,to,type,confidence,reason,step
-"Template:src/utils/include/dispatch_to.h:dispatchToMainThread","Function:src/utils/include/dispatch_to.h:dispatchToThread","CALLS",0.95,"same-file",0
-"Template:src/logdata/include/linetypes.h:boundedAdd","Function:src/logdata/include/linetypes.h:maxValue","CALLS",0.95,"same-file",0
