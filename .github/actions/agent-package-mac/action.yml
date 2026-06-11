@@ -75,6 +75,14 @@ runs:
         cd $CILOGG_BUILD_ROOT
         if ! cpack --verbose -G "DragNDrop"; then
           echo "CPack DMG generation failed, falling back to hdiutil"
+          for attempt in 1 2 3 4 5; do
+            if [ ! -e "/Volumes/CILogg" ]; then
+              break
+            fi
+            echo "Unmounting stale CILogg volume before fallback attempt ${attempt}"
+            hdiutil detach "/Volumes/CILogg" -force || diskutil unmount force "/Volumes/CILogg" || true
+            sleep 2
+          done
           mkdir -p ./packages
           rm -f "./packages/cilogg-${CILOGG_VERSION}-OSX.dmg"
           hdiutil create -fs HFS+ -srcfolder ./output/cilogg.app -volname "CILogg" -format UDZO "./packages/cilogg-${CILOGG_VERSION}-OSX.dmg"

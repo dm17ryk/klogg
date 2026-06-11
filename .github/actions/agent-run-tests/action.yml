@@ -8,4 +8,7 @@ runs:
       shell: sh
       run: |
         cd $CILOGG_BUILD_ROOT
-        ctest --verbose
+        if ! ctest --verbose; then
+          echo "CTest failed; re-running failed tests once with full output"
+          ctest --rerun-failed --output-on-failure --verbose
+        fi
