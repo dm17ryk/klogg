@@ -39,7 +39,17 @@ on run argv
         set statusbar visible to false
         set toolbar visible to false
         set the bounds to { 400, 100, 900, 465 }
-        set position of item "klogg.app" to { 133, 200 }
+        set app_item_name to missing value
+        repeat with disk_item in items
+          if name of disk_item ends with ".app" then
+            set app_item_name to name of disk_item
+            exit repeat
+          end if
+        end repeat
+        if app_item_name is missing value then
+          error "No application bundle found in disk image"
+        end if
+        set position of item app_item_name to { 133, 200 }
         set position of item "Applications" to { 378, 200 }
       end tell
       update without registering applications
