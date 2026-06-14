@@ -3394,9 +3394,8 @@ CommanderResult MainWindow::commanderPauseComm( const CommanderRequest& request 
     if ( !streamSession->pauseConnection( &errorMessage ) ) {
         LOG_DEBUG << "pause_comm failed: " << errorMessage.toStdString();
         return commanderFailure( CommanderResultCode::ExecutionFailed,
-                                 errorMessage.isEmpty()
-                                     ? tr( "No active COM stream is available for this tab." )
-                                     : errorMessage );
+                                 errorMessage.isEmpty() ? tr( "Failed to pause COM stream." )
+                                                        : errorMessage );
     }
 
     LOG_DEBUG << "pause_comm paused stream";

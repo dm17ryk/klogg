@@ -390,7 +390,7 @@ Commander actions:
 | `delete_response` | `--id <id>` | Delete a response definition. |
 | `send_action` | `--id <id> [tab selector]` | Send a configured action through the selected or active actions COM port. |
 | `wait_response` | `(--id <id> \| --name <name>) [tab selector] --timeout-ms <ms>` | Wait until a configured response is observed or the timeout expires. |
-| `run_script` | `--script-file <path> [--args-json-file <path>] (tab selector)` | Run a Python script bound to a specific tab. |
+| `run_script` | `--script-file <path> [--args-json-file <path>] (--tab-id <id> \| --window-index <n> --tab-index <n>)` | Run a Python script bound to a specific tab; a tab selector is required. |
 | `run_global_script` | `--script-file <path> [--args-json-file <path>]` | Run a Python script without a tab binding. |
 | `stop_script` | `(tab selector \| --all)` | Stop a tab-bound script or all tab-bound scripts. |
 | `stop_global_script` | no extra options | Stop the global script. |

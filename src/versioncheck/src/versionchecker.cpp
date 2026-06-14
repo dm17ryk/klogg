@@ -158,6 +158,7 @@ void VersionChecker::forceCheck()
 {
     LOG_DEBUG << "VersionChecker::forceCheck()";
     forced_ = true;
+    LOG_DEBUG << "Forced version check requested; preserving scheduled deadline after completion";
     requestVersionData();
 }
 
@@ -176,6 +177,8 @@ void VersionChecker::requestVersionData()
 void VersionChecker::downloadFinished( QNetworkReply* reply )
 {
     LOG_DEBUG << "VersionChecker::downloadFinished()";
+    const auto wasForced = forced_;
+    forced_ = false;
 
     if ( reply->error() == QNetworkReply::NoError ) {
         const auto rawReply = reply->readAll();
@@ -187,13 +190,18 @@ void VersionChecker::downloadFinished( QNetworkReply* reply )
 
     reply->deleteLater();
 
+    if ( wasForced ) {
+        LOG_DEBUG << "Forced version check completed; scheduled deadline was not changed";
+        return;
+    }
+
     // Extend the deadline based on the user's configured frequency.
     const auto frequency = Configuration::get().updateFrequency();
+    const auto nextDeadline = std::time( nullptr ) + checkIntervalForFrequency( frequency );
     auto& config = VersionCheckerConfig::get();
-    config.setNextDeadline( std::time( nullptr ) + checkIntervalForFrequency( frequency ) );
+    config.setNextDeadline( nextDeadline );
     config.save();
-
-    forced_ = false;
+    LOG_DEBUG << "Version check deadline updated to " << nextDeadline;
 }
 
 void VersionChecker::checkVersionData( QByteArray versionData )
