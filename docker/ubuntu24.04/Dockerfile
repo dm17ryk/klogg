@@ -24,10 +24,31 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN python3 -m venv /tmp/aqt-venv && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /tmp/aqt-venv/bin/python -m pip install --no-cache-dir "git+https://github.com/miurahr/aqtinstall.git@v3.2.1" && \
+    printf '%s\n' \
+        '[aqt]' \
+        'baseurl: https://download.qt.io' \
+        '' \
+        '[requests]' \
+        'connection_timeout: 10' \
+        'response_timeout: 60' \
+        'max_retries_on_connection_error: 5' \
+        'retry_backoff: 1' \
+        'max_retries_on_checksum_error: 5' \
+        'max_retries_to_retrieve_hash: 5' \
+        '' \
+        '[mirrors]' \
+        'blacklist:' \
+        '    https://ftp1.nluug.nl' \
+        '    https://ftp2.nluug.nl' \
+        'fallbacks:' \
+        '    https://master.qt.io' \
+        '    https://mirrors.ocf.berkeley.edu/qt' \
+        '    https://ftp.jaist.ac.jp/pub/qtproject' \
+        > /tmp/aqtinstall.ini && \
     ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then QT_AQT_OS=linux_arm64; QT_AQT_ARCH=linux_gcc_arm64; QT_DIR=gcc_arm64; CMAKE_ARCH=aarch64; else QT_AQT_OS=linux; QT_AQT_ARCH=linux_gcc_64; QT_DIR=gcc_64; CMAKE_ARCH=x86_64; fi && \
-    /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt && \
-    /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt \
+    AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt && \
+    AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt \
         --modules qtimageformats qtserialport qt5compat && \
     ln -s "/opt/Qt/6.10.1/${QT_DIR}" /opt/Qt/6.10.1/current && \
     wget "https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-${CMAKE_ARCH}.sh" && \

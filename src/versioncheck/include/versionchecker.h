@@ -80,14 +80,21 @@ class VersionChecker : public QObject {
     VersionChecker();
     ~VersionChecker() override = default;
 
-    // Starts an asynchronous check for a newer version if it is needed.
-    // A newVersionFound signal is sent if one is found.
-    // In case of error or if no new version is found, no signal is emitted.
+    // Starts an asynchronous check for a newer version if the configured
+    // frequency deadline has elapsed. Emits newVersionFound when applicable.
     void startCheck();
 
+  public Q_SLOTS:
+    // Forces an immediate check regardless of stored deadline. Used by the
+    // "Check now" button in the preferences dialog.
+    void forceCheck();
+
   Q_SIGNALS:
-    // New version "version" is available
-    void newVersionFound( const QString& version, const QString& url, const QStringList& changes );
+    // New version "version" is available. pageUrl points at the GitHub
+    // release page; assetUrl is a direct download URL for the platform
+    // package (may equal pageUrl when no per-OS asset is published).
+    void newVersionFound( const QString& version, const QString& pageUrl,
+                          const QString& assetUrl, const QStringList& changes );
 
   private Q_SLOTS:
     // Called when download is finished
@@ -95,9 +102,11 @@ class VersionChecker : public QObject {
 
   private:
     void checkVersionData( QByteArray versionData );
+    void requestVersionData();
 
   private:
     QNetworkAccessManager* manager_ = nullptr;
+    bool forced_ = false;
 };
 
 #endif

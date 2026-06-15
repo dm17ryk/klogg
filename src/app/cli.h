@@ -166,7 +166,10 @@ struct CliParameters {
             "  cilogg command --action close_all\n"
             "  cilogg command --action get_info [--pretty]\n"
             "  cilogg command --action start_comm [tab selector]\n"
+            "  cilogg command --action play_comm [tab selector]\n"
+            "  cilogg command --action pause_comm [tab selector]\n"
             "  cilogg command --action stop_comm [tab selector]\n"
+            "  cilogg command --action start_new_comm_file [tab selector]\n"
             "  cilogg command --action get_comm_status [tab selector] [--pretty]\n"
             "  cilogg command --action start_logging [tab selector]\n"
             "  cilogg command --action stop_logging [tab selector]\n"
@@ -272,7 +275,10 @@ struct CliParameters {
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  stop_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  start_new_comm_file [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  get_comm_status [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
             "  start_logging [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  stop_logging  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -1657,7 +1663,10 @@ struct CliParameters {
             }
             break;
         case CommanderAction::StartComm:
+        case CommanderAction::PlayComm:
+        case CommanderAction::PauseComm:
         case CommanderAction::StopComm:
+        case CommanderAction::StartNewCommFile:
         case CommanderAction::GetCommStatus:
         case CommanderAction::StartLogging:
         case CommanderAction::StopLogging:

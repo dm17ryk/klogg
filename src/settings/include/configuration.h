@@ -58,6 +58,16 @@ enum class SearchRegexpType {
 };
 
 enum class RegexpEngine { Hyperscan, QRegularExpression };
+
+// Update channel for version checking and downloads
+enum class UpdateChannel { Stable = 0, Ci = 1 };
+
+// How often the app polls for new versions
+enum class UpdateFrequency { OnStart = 0, Daily = 1, Weekly = 2, Monthly = 3 };
+
+// What to do when a new version is detected
+enum class UpdateAction { Notify = 0, Download = 1, DownloadAndInstall = 2 };
+
 static constexpr int MAX_RECENT_FILES = 25;
 
 // Configuration class containing everything in the "Settings" dialog
@@ -268,6 +278,33 @@ class Configuration final : public Persistable<Configuration> {
     void setVersionCheckingEnabled( bool enabled )
     {
         enableVersionChecking_ = enabled;
+    }
+
+    UpdateChannel updateChannel() const
+    {
+        return updateChannel_;
+    }
+    void setUpdateChannel( UpdateChannel channel )
+    {
+        updateChannel_ = channel;
+    }
+
+    UpdateFrequency updateFrequency() const
+    {
+        return updateFrequency_;
+    }
+    void setUpdateFrequency( UpdateFrequency frequency )
+    {
+        updateFrequency_ = frequency;
+    }
+
+    UpdateAction updateAction() const
+    {
+        return updateAction_;
+    }
+    void setUpdateAction( UpdateAction action )
+    {
+        updateAction_ = action;
     }
 
     // View settings
@@ -694,6 +731,9 @@ class Configuration final : public Persistable<Configuration> {
     int loggingLevel_ = 4;
 
     bool enableVersionChecking_ = true;
+    UpdateChannel updateChannel_ = UpdateChannel::Stable;
+    UpdateFrequency updateFrequency_ = UpdateFrequency::Weekly;
+    UpdateAction updateAction_ = UpdateAction::Notify;
 
     bool extractArchives_ = true;
     bool extractArchivesAlways_ = false;

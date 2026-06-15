@@ -42,19 +42,48 @@
 
 #include "klogg_version.h"
 
+#include <QSysInfo>
+
 namespace {
 
 #if defined( Q_OS_WIN )
 static constexpr QLatin1String OsSuffix = QLatin1String( "-win", 4 );
+static constexpr QLatin1String OsAssetPrefix = QLatin1String( "win", 3 );
 #elif defined( Q_OS_MACOS )
 static constexpr QLatin1String OsSuffix = QLatin1String( "-osx", 4 );
+static constexpr QLatin1String OsAssetPrefix = QLatin1String( "macos", 5 );
 #else
 static constexpr QLatin1String OsSuffix = QLatin1String( "-linux", 6 );
+static constexpr QLatin1String OsAssetPrefix = QLatin1String( "linux", 5 );
 #endif
 
 static constexpr QLatin1String VERSION_URL
     = QLatin1String( "https://raw.githubusercontent.com/dm17ryk/klogg/master/latest.json", 65 );
-static constexpr std::time_t CHECK_INTERVAL_S = 3600 * 24 * 7; /* 7 days */
+
+std::time_t checkIntervalForFrequency( UpdateFrequency frequency )
+{
+    switch ( frequency ) {
+    case UpdateFrequency::OnStart:
+        return 0;
+    case UpdateFrequency::Daily:
+        return 3600 * 24;
+    case UpdateFrequency::Weekly:
+        return 3600 * 24 * 7;
+    case UpdateFrequency::Monthly:
+        return 3600 * 24 * 30;
+    }
+    return 3600 * 24 * 7;
+}
+
+QString currentArchKey()
+{
+    const auto arch = QSysInfo::currentCpuArchitecture();
+    if ( arch.contains( QLatin1String( "arm" ), Qt::CaseInsensitive )
+         || arch.contains( QLatin1String( "aarch64" ), Qt::CaseInsensitive ) ) {
+        return QStringLiteral( "arm64" );
+    }
+    return QStringLiteral( "x64" );
+}
 
 bool isVersionNewer( const QString& current_version, const QString& new_version )
 {
@@ -109,28 +138,47 @@ void VersionChecker::startCheck()
     const auto& deadlineConfig = VersionCheckerConfig::getSynced();
     const auto& appConfig = Configuration::get();
 
-    if ( appConfig.versionCheckingEnabled() ) {
-        // Check the deadline has been reached
-        if ( deadlineConfig.nextDeadline() < std::time( nullptr ) ) {
-            connect( manager_, &QNetworkAccessManager::finished, this,
-                     &VersionChecker::downloadFinished );
-
-            LOG_DEBUG << "Requesting new version info from " << VERSION_URL;
-
-            QNetworkRequest request;
-            request.setUrl( QUrl( VERSION_URL ) );
-            manager_->get( request );
-        }
-        else {
-            LOG_DEBUG << "Deadline not reached yet, next check in "
-                      << std::difftime( deadlineConfig.nextDeadline(), std::time( nullptr ) );
-        }
+    if ( !appConfig.versionCheckingEnabled() ) {
+        return;
     }
+
+    const auto frequency = appConfig.updateFrequency();
+    const bool runEveryStart = ( frequency == UpdateFrequency::OnStart );
+
+    if ( runEveryStart || deadlineConfig.nextDeadline() < std::time( nullptr ) ) {
+        requestVersionData();
+    }
+    else {
+        LOG_DEBUG << "Deadline not reached yet, next check in "
+                  << std::difftime( deadlineConfig.nextDeadline(), std::time( nullptr ) );
+    }
+}
+
+void VersionChecker::forceCheck()
+{
+    LOG_DEBUG << "VersionChecker::forceCheck()";
+    forced_ = true;
+    LOG_DEBUG << "Forced version check requested; preserving scheduled deadline after completion";
+    requestVersionData();
+}
+
+void VersionChecker::requestVersionData()
+{
+    connect( manager_, &QNetworkAccessManager::finished, this,
+             &VersionChecker::downloadFinished, Qt::UniqueConnection );
+
+    LOG_DEBUG << "Requesting new version info from " << VERSION_URL;
+
+    QNetworkRequest request;
+    request.setUrl( QUrl( VERSION_URL ) );
+    manager_->get( request );
 }
 
 void VersionChecker::downloadFinished( QNetworkReply* reply )
 {
     LOG_DEBUG << "VersionChecker::downloadFinished()";
+    const auto wasForced = forced_;
+    forced_ = false;
 
     if ( reply->error() == QNetworkReply::NoError ) {
         const auto rawReply = reply->readAll();
@@ -142,12 +190,18 @@ void VersionChecker::downloadFinished( QNetworkReply* reply )
 
     reply->deleteLater();
 
-    // Extend the deadline
+    if ( wasForced ) {
+        LOG_DEBUG << "Forced version check completed; scheduled deadline was not changed";
+        return;
+    }
+
+    // Extend the deadline based on the user's configured frequency.
+    const auto frequency = Configuration::get().updateFrequency();
+    const auto nextDeadline = std::time( nullptr ) + checkIntervalForFrequency( frequency );
     auto& config = VersionCheckerConfig::get();
-
-    config.setNextDeadline( std::time( nullptr ) + CHECK_INTERVAL_S );
-
+    config.setNextDeadline( nextDeadline );
     config.save();
+    LOG_DEBUG << "Version check deadline updated to " << nextDeadline;
 }
 
 void VersionChecker::checkVersionData( QByteArray versionData )
@@ -157,27 +211,32 @@ void VersionChecker::checkVersionData( QByteArray versionData )
     const auto latestJson = QJsonDocument::fromJson( versionData );
     const auto latestVersionMap = latestJson.toVariant().toMap();
 
-    QString latestVersion;
-    QString url;
-    const auto stableVersions = latestVersionMap.value( "releases" ).toList();
+    const auto channel = Configuration::get().updateChannel();
+    const QString channelPrefix
+        = ( channel == UpdateChannel::Ci ) ? QStringLiteral( "ci" ) : QStringLiteral( "stable" );
+
+    const QString latestVersion = latestVersionMap.value( channelPrefix ).toString();
+    const QString pageUrl = latestVersionMap.value( channelPrefix + "_url" ).toString();
+
+    // Resolve a direct, per-OS asset URL when published; otherwise fall back
+    // to the existing channel URL (legacy latest.json without *_assets).
+    QString assetUrl;
+    const auto assets = latestVersionMap.value( channelPrefix + "_assets" ).toMap();
+    if ( !assets.isEmpty() ) {
+        const QString assetKey = OsAssetPrefix + QLatin1Char( '-' ) + currentArchKey();
+        assetUrl = assets.value( assetKey ).toString();
+    }
+    if ( assetUrl.isEmpty() ) {
+        // Legacy fallback: ci_url historically had no OS suffix, so append it
+        // here to preserve behaviour for older latest.json payloads.
+        assetUrl = ( channel == UpdateChannel::Ci ) ? ( pageUrl + OsSuffix ) : pageUrl;
+    }
 
     const auto currentVersion = kloggVersion();
-    if ( std::any_of( stableVersions.begin(), stableVersions.end(),
-                      [ &currentVersion ]( const auto& version ) {
-                          return version.toString() == currentVersion;
-                      } ) ) {
-        latestVersion = latestVersionMap.value( "stable" ).toString();
-        url = latestVersionMap.value( "stable_url" ).toString();
-    }
-    else {
-        latestVersion = latestVersionMap.value( "ci" ).toString();
-        url = latestVersionMap.value( "ci_url" ).toString() + OsSuffix;
-    }
-
     const auto changeLog = latestVersionMap.value( "changelog" ).toList();
 
     QStringList changes;
-    for ( const auto& entry :  changeLog ) {
+    for ( const auto& entry : changeLog ) {
         const auto entryData = entry.toMap();
         const auto version = entryData.value( "version" ).toString();
 
@@ -188,10 +247,10 @@ void VersionChecker::checkVersionData( QByteArray versionData )
     }
 
     LOG_DEBUG << "Current version: " << currentVersion << ". Latest version is " << latestVersion
-              << ", url " << url;
+              << ", page url " << pageUrl << ", asset url " << assetUrl;
     if ( isVersionNewer( currentVersion, latestVersion ) ) {
         LOG_INFO << "Sending new version notification";
 
-        Q_EMIT newVersionFound( latestVersion, url, changes );
+        Q_EMIT newVersionFound( latestVersion, pageUrl, assetUrl, changes );
     }
 }

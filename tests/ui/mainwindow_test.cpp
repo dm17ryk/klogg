@@ -328,6 +328,21 @@ SCENARIO( "Commander requests open and close files", "[ui][commander]" )
     REQUIRE( tabInfo.value( "sourceType" ).toString() == "file" );
     REQUIRE( tabInfo.value( "filePath" ).toString() == file.fileName() );
 
+    for ( const auto action : { CommanderAction::PlayComm, CommanderAction::PauseComm,
+                                CommanderAction::StartNewCommFile } ) {
+        CommanderRequest streamRequest;
+        streamRequest.action = action;
+        streamRequest.tabId = tabInfo.value( "tabId" ).toString();
+        CommanderResult streamResult{ CommanderResultCode::Success, {}, {} };
+
+        REQUIRE( QMetaObject::invokeMethod(
+            mainWindow.get(),
+            [ & ] { streamResult = mainWindow->executeCommanderRequest( streamRequest ); },
+            Qt::QueuedConnection ) );
+        REQUIRE( waitUiState( [&] { return !streamResult.ok(); } ) );
+        REQUIRE( streamResult.code == CommanderResultCode::NotFound );
+    }
+
     CommanderRequest closeByIdRequest;
     closeByIdRequest.action = CommanderAction::CloseTab;
     closeByIdRequest.tabId = tabInfo.value( "tabId" ).toString();

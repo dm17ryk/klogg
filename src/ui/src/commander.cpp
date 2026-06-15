@@ -88,8 +88,14 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "wait_response" );
     case CommanderAction::StartComm:
         return QStringLiteral( "start_comm" );
+    case CommanderAction::PlayComm:
+        return QStringLiteral( "play_comm" );
+    case CommanderAction::PauseComm:
+        return QStringLiteral( "pause_comm" );
     case CommanderAction::StopComm:
         return QStringLiteral( "stop_comm" );
+    case CommanderAction::StartNewCommFile:
+        return QStringLiteral( "start_new_comm_file" );
     case CommanderAction::GetCommStatus:
         return QStringLiteral( "get_comm_status" );
     case CommanderAction::StartLogging:
@@ -221,8 +227,17 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "start_comm" ) ) {
         return CommanderAction::StartComm;
     }
+    if ( normalized == QStringLiteral( "play_comm" ) ) {
+        return CommanderAction::PlayComm;
+    }
+    if ( normalized == QStringLiteral( "pause_comm" ) ) {
+        return CommanderAction::PauseComm;
+    }
     if ( normalized == QStringLiteral( "stop_comm" ) ) {
         return CommanderAction::StopComm;
+    }
+    if ( normalized == QStringLiteral( "start_new_comm_file" ) ) {
+        return CommanderAction::StartNewCommFile;
     }
     if ( normalized == QStringLiteral( "get_comm_status" ) ) {
         return CommanderAction::GetCommStatus;

@@ -407,6 +407,20 @@ void OptionsDialog::updateDialogFromConfig()
 
     // version checking
     checkForNewVersionCheckBox->setChecked( config.versionCheckingEnabled() );
+    updateChannelBox->setCurrentIndex( static_cast<int>( config.updateChannel() ) );
+    updateFrequencyBox->setCurrentIndex( static_cast<int>( config.updateFrequency() ) );
+    switch ( config.updateAction() ) {
+    case UpdateAction::Download:
+        updateActionDownloadRadio->setChecked( true );
+        break;
+    case UpdateAction::DownloadAndInstall:
+        updateActionInstallRadio->setChecked( true );
+        break;
+    case UpdateAction::Notify:
+    default:
+        updateActionNotifyRadio->setChecked( true );
+        break;
+    }
 
     // downloads
     verifySslCheckBox->setChecked( config.verifySslPeers() );

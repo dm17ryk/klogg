@@ -35,6 +35,7 @@
 #include <QCborMap>
 #include <QCborValue>
 
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -50,6 +51,7 @@
 #include <QTimer>
 #include <QSize>
 #include <QStyle>
+#include <QUrl>
 #include <QUuid>
 
 #ifdef Q_OS_MAC
@@ -136,9 +138,11 @@ class KloggApp : public QApplication {
 
             // Version checker notification
             connect( &versionChecker_, &VersionChecker::newVersionFound,
-                     [ this ]( const QString& new_version, const QString& url,
+                     [ this ]( const QString& new_version, const QString& pageUrl,
+                               const QString& assetUrl,
                                const QStringList& changes ) {
-                         newVersionNotification( new_version, url, changes );
+                         Q_UNUSED( pageUrl );
+                         newVersionNotification( new_version, assetUrl, changes );
                      } );
         }
     }
@@ -742,7 +746,10 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::SendAction
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
+              || request.action == CommanderAction::PlayComm
+              || request.action == CommanderAction::PauseComm
               || request.action == CommanderAction::StopComm
+              || request.action == CommanderAction::StartNewCommFile
               || request.action == CommanderAction::GetCommStatus
               || request.action == CommanderAction::StartLogging
               || request.action == CommanderAction::StopLogging
@@ -770,7 +777,10 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::SendAction
                 || request.action == CommanderAction::WaitResponse
                 || request.action == CommanderAction::StartComm
+                || request.action == CommanderAction::PlayComm
+                || request.action == CommanderAction::PauseComm
                 || request.action == CommanderAction::StopComm
+                || request.action == CommanderAction::StartNewCommFile
                 || request.action == CommanderAction::GetCommStatus
                 || request.action == CommanderAction::StartLogging
                 || request.action == CommanderAction::StopLogging
@@ -1090,10 +1100,28 @@ class KloggApp : public QApplication {
                                  const QStringList& changes )
     {
         LOG_DEBUG << "newVersionNotification( " << new_version << " from " << url << " )";
+        const auto updateAction = Configuration::get().updateAction();
 
         QString message = QString( "<p> A new version of CILogg (%1) is available for download </p>"
                                    "<a href=\"%2\">%2</a>" )
                               .arg( new_version, url );
+
+        switch ( updateAction ) {
+        case UpdateAction::Download:
+            LOG_DEBUG << "Configured update action is Download";
+            message.append( tr( "<p>The download link will open after this notification.</p>" ) );
+            break;
+        case UpdateAction::DownloadAndInstall:
+            LOG_DEBUG << "Configured update action is DownloadAndInstall";
+            message.append(
+                tr( "<p>The download link will open after this notification. "
+                    "Automatic installation is not available from this notification.</p>" ) );
+            break;
+        case UpdateAction::Notify:
+        default:
+            LOG_DEBUG << "Configured update action is Notify";
+            break;
+        }
 
         if ( !changes.empty() ) {
             message.append( "<p>Important changes:</p><ul>" );
@@ -1106,6 +1134,34 @@ class KloggApp : public QApplication {
         QMessageBox msgBox;
         msgBox.setText( message );
         msgBox.exec();
+
+        if ( updateAction == UpdateAction::Notify ) {
+            LOG_DEBUG << "Update action handled as notification only";
+            return;
+        }
+
+        if ( url.isEmpty() ) {
+            LOG_WARNING << "Update action requested a download, but no download URL was provided";
+            return;
+        }
+
+        const QUrl downloadUrl( url );
+        if ( !downloadUrl.isValid() ) {
+            LOG_WARNING << "Update action requested a download, but URL is invalid: " << url;
+            return;
+        }
+
+        if ( !QDesktopServices::openUrl( downloadUrl ) ) {
+            LOG_WARNING << "Failed to open update download URL: " << url;
+            return;
+        }
+
+        if ( updateAction == UpdateAction::DownloadAndInstall ) {
+            LOG_INFO << "Opened update download URL; automatic installation is deferred";
+        }
+        else {
+            LOG_INFO << "Opened update download URL";
+        }
     }
 
     size_t nextWindowIndex() const

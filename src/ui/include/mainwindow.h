@@ -256,7 +256,10 @@ class MainWindow : public QMainWindow {
     CommanderResult commanderSendAction( const CommanderRequest& request );
     CommanderResult commanderWaitResponse( const CommanderRequest& request );
     CommanderResult commanderStartComm( const CommanderRequest& request );
+    CommanderResult commanderPlayComm( const CommanderRequest& request );
+    CommanderResult commanderPauseComm( const CommanderRequest& request );
     CommanderResult commanderStopComm( const CommanderRequest& request );
+    CommanderResult commanderStartNewCommFile( const CommanderRequest& request );
     CommanderResult commanderGetCommStatus( const CommanderRequest& request ) const;
     CommanderResult commanderSetLogging( const CommanderRequest& request, bool enabled );
     CommanderResult commanderAddComment( const CommanderRequest& request );
@@ -301,9 +304,10 @@ class MainWindow : public QMainWindow {
     CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
+    CommanderResult startNewStreamFileForCrawler( CrawlerWidget* crawler );
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
-      StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
-                                                  bool requireOpen ) const;
+    StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
+                                                 bool requireOpen ) const;
       QVariantList commanderResponseCounters( StreamSession* streamSession,
                                               const CommanderRequest* request = nullptr ) const;
         QVariantMap scriptEventContextForFile( const QString& filePath ) const;
