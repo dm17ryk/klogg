@@ -298,6 +298,11 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
 static constexpr auto ClipboardMaxTry = 5;
 static const auto ActionsPortSuffix = QStringLiteral( " (actions)" );
 
+QString translateMainWindowMenu( const char* text )
+{
+    return QApplication::translate( "klogg::mainwindow::menu", text );
+}
+
 QString automationDisplayText( const QObject* object )
 {
     if ( object == nullptr ) {
@@ -1267,19 +1272,16 @@ void MainWindow::reTranslateUI()
 {
     using namespace klogg::mainwindow;
     // menu
-    auto transMenu = []( const char* text ) -> auto {
-        return QApplication::translate( "klogg::mainwindow::menu", text );
-    };
-    fileMenu->setTitle( transMenu( menu::fileTitle ) );
-    comPortsMenu->setTitle( transMenu( menu::comPortsTitle ) );
-    comPortsMenu->setAccessibleName( transMenu( menu::comPortsTitle ) );
-    editMenu->setTitle( transMenu( menu::editTitle ) );
-    viewMenu->setTitle( transMenu( menu::viewTitle ) );
-    openedFilesMenu->setTitle( transMenu( menu::openedFilesTitle ) );
-    toolsMenu->setTitle( transMenu( menu::toolsTitle ) );
-    highlightersMenu->setTitle( transMenu( menu::highlightersTitle ) );
-    favoritesMenu->setTitle( transMenu( menu::favoritesTitle ) );
-    helpMenu->setTitle( transMenu( menu::helpTitle ) );
+    fileMenu->setTitle( translateMainWindowMenu( menu::fileTitle ) );
+    comPortsMenu->setTitle( translateMainWindowMenu( menu::comPortsTitle ) );
+    comPortsMenu->setAccessibleName( translateMainWindowMenu( menu::comPortsTitle ) );
+    editMenu->setTitle( translateMainWindowMenu( menu::editTitle ) );
+    viewMenu->setTitle( translateMainWindowMenu( menu::viewTitle ) );
+    openedFilesMenu->setTitle( translateMainWindowMenu( menu::openedFilesTitle ) );
+    toolsMenu->setTitle( translateMainWindowMenu( menu::toolsTitle ) );
+    highlightersMenu->setTitle( translateMainWindowMenu( menu::highlightersTitle ) );
+    favoritesMenu->setTitle( translateMainWindowMenu( menu::favoritesTitle ) );
+    helpMenu->setTitle( translateMainWindowMenu( menu::helpTitle ) );
 
     // toolbar
     toolBar->setToolTip(
@@ -1806,9 +1808,10 @@ void MainWindow::createMenus()
     fileMenu->addAction( newWindowAction );
     fileMenu->addAction( openAction );
     fileMenu->addAction( openComPortAction );
-    comPortsMenu = fileMenu->addMenu( tr( menu::comPortsTitle ) );
+    const auto comPortsTitle = translateMainWindowMenu( menu::comPortsTitle );
+    comPortsMenu = fileMenu->addMenu( comPortsTitle );
     comPortsMenu->setObjectName( QStringLiteral( "comPortsMenu" ) );
-    comPortsMenu->setAccessibleName( tr( menu::comPortsTitle ) );
+    comPortsMenu->setAccessibleName( comPortsTitle );
     comPortsMenu->menuAction()->setVisible( false );
     connect( fileMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildComPortsMenu );
     fileMenu->addAction( openClipboardAction );
@@ -1917,32 +1920,28 @@ void MainWindow::rebuildComPortsMenu()
         return;
     }
 
-    LOG_DEBUG << "Rebuilding File > COM port menu from " << mainTabWidget_.count()
-              << " open tabs";
     comPortsMenu->clear();
 
     std::vector<const StreamSession*> includedSessions;
     int menuEntryCount = 0;
+    int skippedTabCount = 0;
     for ( int tab = 0; tab < mainTabWidget_.count(); ++tab ) {
         auto* streamSession = mainTabWidget_.streamSessionForTab( tab );
         if ( streamSession == nullptr ) {
-            LOG_DEBUG << "Skipping COM menu tab " << tab << ": no stream session";
+            ++skippedTabCount;
             continue;
         }
 
         const bool connectionOpen = streamSession->isConnectionOpen();
         const bool paused = streamSession->isPaused();
         if ( !connectionOpen && !paused ) {
-            LOG_DEBUG << "Skipping COM menu tab " << tab << " for "
-                      << streamSession->sourceDisplayName().toStdString()
-                      << ": stream is neither connected nor paused";
+            ++skippedTabCount;
             continue;
         }
 
         if ( std::find( includedSessions.cbegin(), includedSessions.cend(), streamSession )
              != includedSessions.cend() ) {
-            LOG_DEBUG << "Skipping duplicate COM menu session for "
-                      << streamSession->sourceDisplayName().toStdString() << " at tab " << tab;
+            ++skippedTabCount;
             continue;
         }
 
@@ -2014,16 +2013,11 @@ void MainWindow::rebuildComPortsMenu()
                 return -1;
             }
 
-            LOG_DEBUG << "Resolved COM menu action " << actionName << " for "
-                      << portName.toStdString() << " to tab " << currentTab << " ("
-                      << tabId.toStdString() << ")";
             return currentTab;
         };
 
         connect( closePortAction, &QAction::triggered, this,
                  [ this, resolveCurrentTab, portName ] {
-                     LOG_DEBUG << "File > COM port > " << portName.toStdString()
-                               << " > Close selected";
                      const auto currentTab = resolveCurrentTab( "Close" );
                      if ( currentTab >= 0 ) {
                          closeStreamConnectionForTab( currentTab );
@@ -2031,8 +2025,6 @@ void MainWindow::rebuildComPortsMenu()
                  } );
         connect( startNewFileAction, &QAction::triggered, this,
                  [ this, resolveCurrentTab, portName ] {
-                     LOG_DEBUG << "File > COM port > " << portName.toStdString()
-                               << " > Start new file selected";
                      const auto currentTab = resolveCurrentTab( "Start new file" );
                      if ( currentTab >= 0 ) {
                          startNewStreamFileForTab( currentTab );
@@ -2041,8 +2033,6 @@ void MainWindow::rebuildComPortsMenu()
         connect( playPauseAction, &QAction::triggered, this,
                  [ this, resolveCurrentTab, portName, showPlayAction ] {
                      const auto* actionName = showPlayAction ? "Play" : "Pause";
-                     LOG_DEBUG << "File > COM port > " << portName.toStdString() << " > "
-                               << actionName << " selected";
                      const auto currentTab = resolveCurrentTab( actionName );
                      if ( currentTab < 0 ) {
                          return;
@@ -2057,16 +2047,12 @@ void MainWindow::rebuildComPortsMenu()
                  } );
 
         ++menuEntryCount;
-        LOG_DEBUG << "Added COM menu entry for " << portName.toStdString() << " at tab "
-                  << tab << ": connected=" << connectionOpen << ", paused=" << paused
-                  << ", actions=" << actionsPort
-                  << ", start-new-file-enabled=" << startNewFileAction->isEnabled()
-                  << ", play-pause-enabled=" << playPauseEnabled;
     }
 
     const bool menuVisible = menuEntryCount > 0;
     comPortsMenu->menuAction()->setVisible( menuVisible );
-    LOG_DEBUG << "File > COM port menu rebuild complete: entries=" << menuEntryCount
+    LOG_DEBUG << "File > COM port menu refreshed: tabs=" << mainTabWidget_.count()
+              << ", entries=" << menuEntryCount << ", skipped=" << skippedTabCount
               << ", visible=" << menuVisible;
 }
 
@@ -3067,11 +3053,9 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
 void MainWindow::startNewStreamFileForTab( int tab )
 {
-    LOG_DEBUG << "Start new COM capture file requested for tab " << tab;
     auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
     const auto result = startNewStreamFileForCrawler( crawler );
     if ( result.ok() ) {
-        LOG_DEBUG << "Start new COM capture file completed for tab " << tab;
         return;
     }
 
@@ -3159,7 +3143,6 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
 
 void MainWindow::closeStreamConnectionForTab( int tab )
 {
-    LOG_DEBUG << "Close COM stream requested for tab " << tab;
     auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Close COM stream ignored for tab " << tab << ": crawler not found";
@@ -3175,17 +3158,10 @@ void MainWindow::closeStreamConnectionForTab( int tab )
     }
 
     if ( streamSession->isConnectionOpen() ) {
-        LOG_DEBUG << "Closing connected COM stream "
-                  << streamSession->sourceDisplayName().toStdString() << " for tab " << tab;
         streamSession->closeConnection();
     }
     else {
-        LOG_DEBUG << "Removing inactive or paused COM stream "
-                  << streamSession->sourceDisplayName().toStdString() << " for tab " << tab
-                  << ": paused=" << streamSession->isPaused();
         if ( actionsStreamSession_ == streamSession ) {
-            LOG_DEBUG << "Clearing actions COM stream designation for "
-                      << streamSession->sourceDisplayName().toStdString();
             actionsStreamSession_.clear();
         }
         mainTabWidget_.clearStreamSessionForPath( filePath );
@@ -3193,13 +3169,11 @@ void MainWindow::closeStreamConnectionForTab( int tab )
         updateComPortStatus();
         refreshComTabIndicators();
         refreshScriptStatusIndicators();
-        LOG_DEBUG << "Removed COM stream mapping for tab " << tab;
     }
 }
 
 void MainWindow::pauseStreamConnectionForTab( int tab )
 {
-    LOG_DEBUG << "Pause COM stream requested for tab " << tab;
     auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Pause COM stream ignored for tab " << tab << ": crawler not found";
@@ -3214,9 +3188,6 @@ void MainWindow::pauseStreamConnectionForTab( int tab )
         return;
     }
 
-    LOG_DEBUG << "Pausing COM stream " << streamSession->sourceDisplayName().toStdString()
-              << " for tab " << tab << ": connected=" << streamSession->isConnectionOpen()
-              << ", already-paused=" << streamSession->isPaused();
     QString errorMessage;
     if ( !streamSession->pauseConnection( &errorMessage ) ) {
         LOG_WARNING << "Pause COM stream failed for "
@@ -3229,13 +3200,10 @@ void MainWindow::pauseStreamConnectionForTab( int tab )
                             false );
         return;
     }
-    LOG_DEBUG << "Pause COM stream completed for "
-              << streamSession->sourceDisplayName().toStdString() << " at tab " << tab;
 }
 
 void MainWindow::resumeStreamConnectionForTab( int tab )
 {
-    LOG_DEBUG << "Play COM stream requested for tab " << tab;
     auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Play COM stream ignored for tab " << tab << ": crawler not found";
@@ -3250,10 +3218,6 @@ void MainWindow::resumeStreamConnectionForTab( int tab )
         return;
     }
 
-    LOG_DEBUG << "Playing COM stream " << streamSession->sourceDisplayName().toStdString()
-              << " for tab " << tab << ": connected=" << streamSession->isConnectionOpen()
-              << ", paused=" << streamSession->isPaused()
-              << ", can-resume=" << streamSession->canResume();
     QString errorMessage;
     if ( !streamSession->resumeConnection( &errorMessage ) ) {
         LOG_WARNING << "Play COM stream failed for "
@@ -3271,8 +3235,6 @@ void MainWindow::resumeStreamConnectionForTab( int tab )
     updateComPortStatus();
     refreshComTabIndicators();
     refreshScriptStatusIndicators();
-    LOG_DEBUG << "Play COM stream completed for "
-              << streamSession->sourceDisplayName().toStdString() << " at tab " << tab;
 }
 
 CommanderResult MainWindow::closeTabById( const QString& tabId )
