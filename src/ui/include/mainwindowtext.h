@@ -7,6 +7,7 @@ namespace klogg {
 namespace mainwindow {
 namespace menu {
 extern const char* fileTitle;
+extern const char* comPortsTitle;
 extern const char* editTitle;
 extern const char* viewTitle;
 // openedFilesTitle is the submenu of view menu

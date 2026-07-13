@@ -189,9 +189,18 @@ SCENARIO( "Main window tests", "[ui]" )
         auto tabArea = mainWindow->findChild<TabbedCrawlerWidget*>();
         REQUIRE( tabArea != nullptr );
 
+        auto fileMenu = mainWindow->findChild<QMenu*>( QStringLiteral( "fileMenu" ) );
+        REQUIRE( fileMenu != nullptr );
+
+        auto comPortsMenu = mainWindow->findChild<QMenu*>( QStringLiteral( "comPortsMenu" ) );
+        REQUIRE( comPortsMenu != nullptr );
+        REQUIRE( comPortsMenu->accessibleName() == QStringLiteral( "COM port" ) );
+
         THEN( "Has no tabs" )
         {
             REQUIRE( tabArea->count() == 0 );
+            REQUIRE( QMetaObject::invokeMethod( fileMenu, "aboutToShow", Qt::DirectConnection ) );
+            REQUIRE_FALSE( comPortsMenu->menuAction()->isVisible() );
             AND_THEN( "Path label empty" )
             {
                 REQUIRE( filePathLabel->text().isEmpty() );
