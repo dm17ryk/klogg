@@ -46,6 +46,8 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QPoint>
+#include <QPointer>
+#include <QProgressDialog>
 #include <QRect>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -79,6 +81,7 @@
 #include "scriptsupervisor.h"
 #include "startupprogress.h"
 #include "versionchecker.h"
+#include "updatedialog.h"
 
 class KloggApp : public QApplication {
 
@@ -137,12 +140,36 @@ class KloggApp : public QApplication {
                               &KloggApp::handleCommanderRequest );
 
             // Version checker notification
-            connect( &versionChecker_, &VersionChecker::newVersionFound,
-                     [ this ]( const QString& new_version, const QString& pageUrl,
-                               const QString& assetUrl,
-                               const QStringList& changes ) {
-                         Q_UNUSED( pageUrl );
-                         newVersionNotification( new_version, assetUrl, changes );
+            connect( &versionChecker_, &VersionChecker::releaseFound, this,
+                     &KloggApp::newVersionNotification );
+            connect( &versionChecker_, &VersionChecker::downloadProgress, this,
+                     [ this ]( qint64 received, qint64 total ) {
+                         if ( !updateProgress_ || total <= 0 ) return;
+                         updateProgress_->setValue( static_cast<int>( received * 100 / total ) );
+                     } );
+            connect( &versionChecker_, &VersionChecker::updateReady, this,
+                     [ this ]( const PendingUpdate& pending ) {
+                         if ( updateProgress_ ) {
+                             updateProgress_->close();
+                             updateProgress_->deleteLater();
+                         }
+                         LOG_INFO << "Verified update ready; install-on-exit="
+                                  << pending.installOnExit << ", package=" << pending.packagePath;
+                         QMessageBox::information(
+                             activeWindow(), tr( "CILogg Update" ),
+                             pending.installOnExit
+                                 ? tr( "The verified update is staged and will be installed after "
+                                       "CILogg exits cleanly." )
+                                 : tr( "The verified update package is ready at:\n%1" )
+                                       .arg( pending.packagePath ) );
+                     } );
+            connect( &versionChecker_, &VersionChecker::errorOccurred, this,
+                     [ this ]( const QString& message ) {
+                         if ( updateProgress_ ) {
+                             updateProgress_->close();
+                             updateProgress_->deleteLater();
+                         }
+                         QMessageBox::warning( activeWindow(), tr( "CILogg Update" ), message );
                      } );
         }
     }
@@ -989,6 +1016,7 @@ class KloggApp : public QApplication {
     void startBackgroundTasks()
     {
         LOG_DEBUG << "startBackgroundTasks";
+        versionChecker_.acknowledgeStartup();
         versionChecker_.startCheck();
     }
 
@@ -1096,72 +1124,32 @@ class KloggApp : public QApplication {
         QTimer::singleShot( 100, this, &QCoreApplication::quit );
     }
 
-    void newVersionNotification( const QString& new_version, const QString& url,
-                                 const QStringList& changes )
+    void newVersionNotification( const ReleaseInfo& release )
     {
-        LOG_DEBUG << "newVersionNotification( " << new_version << " from " << url << " )";
+        LOG_INFO << "Presenting update dialog for " << release.tag << ", installable="
+                 << release.canAutomaticallyUpdate();
         const auto updateAction = Configuration::get().updateAction();
-
-        QString message = QString( "<p> A new version of CILogg (%1) is available for download </p>"
-                                   "<a href=\"%2\">%2</a>" )
-                              .arg( new_version, url );
-
-        switch ( updateAction ) {
-        case UpdateAction::Download:
-            LOG_DEBUG << "Configured update action is Download";
-            message.append( tr( "<p>The download link will open after this notification.</p>" ) );
-            break;
-        case UpdateAction::DownloadAndInstall:
-            LOG_DEBUG << "Configured update action is DownloadAndInstall";
-            message.append(
-                tr( "<p>The download link will open after this notification. "
-                    "Automatic installation is not available from this notification.</p>" ) );
-            break;
-        case UpdateAction::Notify:
-        default:
-            LOG_DEBUG << "Configured update action is Notify";
-            break;
-        }
-
-        if ( !changes.empty() ) {
-            message.append( "<p>Important changes:</p><ul>" );
-            for ( const auto& change : changes ) {
-                message.append( QString( "<li>%1</li>" ).arg( change ) );
-            }
-            message.append( "</ul>" );
-        }
-
-        QMessageBox msgBox;
-        msgBox.setText( message );
-        msgBox.exec();
-
-        if ( updateAction == UpdateAction::Notify ) {
-            LOG_DEBUG << "Update action handled as notification only";
+        UpdateDialog dialog( release, updateAction, activeWindow() );
+        dialog.exec();
+        if ( dialog.choice() == UpdateDialog::Choice::OpenRelease ) {
+            const bool opened = QDesktopServices::openUrl( release.pageUrl );
+            LOG_INFO << "Update dialog decision=open-release; result=" << opened;
             return;
         }
-
-        if ( url.isEmpty() ) {
-            LOG_WARNING << "Update action requested a download, but no download URL was provided";
+        if ( dialog.choice() == UpdateDialog::Choice::Later ) {
+            LOG_INFO << "Update dialog decision=later";
             return;
         }
-
-        const QUrl downloadUrl( url );
-        if ( !downloadUrl.isValid() ) {
-            LOG_WARNING << "Update action requested a download, but URL is invalid: " << url;
-            return;
-        }
-
-        if ( !QDesktopServices::openUrl( downloadUrl ) ) {
-            LOG_WARNING << "Failed to open update download URL: " << url;
-            return;
-        }
-
-        if ( updateAction == UpdateAction::DownloadAndInstall ) {
-            LOG_INFO << "Opened update download URL; automatic installation is deferred";
-        }
-        else {
-            LOG_INFO << "Opened update download URL";
-        }
+        const bool installOnExit = dialog.choice() == UpdateDialog::Choice::DownloadAndInstall;
+        LOG_INFO << "Update dialog decision=download; install-on-exit=" << installOnExit;
+        updateProgress_ = new QProgressDialog( tr( "Downloading and verifying CILogg update…" ),
+                                               tr( "Cancel" ), 0, 100, activeWindow() );
+        updateProgress_->setWindowModality( Qt::WindowModal );
+        updateProgress_->setAutoClose( false );
+        connect( updateProgress_, &QProgressDialog::canceled, &versionChecker_,
+                 &VersionChecker::cancelDownload );
+        updateProgress_->show();
+        versionChecker_.downloadUpdate( release, installOnExit );
     }
 
     size_t nextWindowIndex() const
@@ -1306,7 +1294,7 @@ class KloggApp : public QApplication {
     QSize automationWindowSize_ = QSize( 1600, 1000 );
 
     VersionChecker versionChecker_;
+    QPointer<QProgressDialog> updateProgress_;
 };
 
 #endif // KLOGG_KLOGGAPP_H
-

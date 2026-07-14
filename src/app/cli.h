@@ -455,6 +455,10 @@ struct CliParameters {
             const QCommandLineOption dumpStateJsonOption(
                 "dump-state-json", "dump the automation state snapshot as JSON to the given path and exit",
                 "path" );
+            QCommandLineOption updateTokenOption( "cilogg-update-token", QString(), "token" );
+            QCommandLineOption updateAckOption( "cilogg-update-ack", QString(), "path" );
+            updateTokenOption.setFlags( QCommandLineOption::HiddenFromHelp );
+            updateAckOption.setFlags( QCommandLineOption::HiddenFromHelp );
             parser.addOption( multiInstanceOption );
             parser.addOption( loadSessionOption );
             parser.addOption( newSessionOption );
@@ -464,6 +468,8 @@ struct CliParameters {
             parser.addOption( windowHeightOption );
             parser.addOption( dumpUiTreeOption );
             parser.addOption( dumpStateJsonOption );
+            parser.addOption( updateTokenOption );
+            parser.addOption( updateAckOption );
         }
         else {
             parser.addOption( patternOption );

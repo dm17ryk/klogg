@@ -1,6 +1,9 @@
 add_library(
-  klogg_versioncheck STATIC ${CMAKE_CURRENT_SOURCE_DIR}/include/versionchecker.h
-                            ${CMAKE_CURRENT_SOURCE_DIR}/src/versionchecker.cpp
+  klogg_versioncheck STATIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/updatetypes.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/versionchecker.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/updatetypes.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/versionchecker.cpp
 )
 
 set_target_properties(klogg_versioncheck PROPERTIES AUTOMOC ON)
@@ -12,5 +15,6 @@ target_link_libraries(
          project_warnings
          klogg_settings
          klogg_utils
+         klogg_karchive
          Qt${QT_VERSION_MAJOR}::Network
 )

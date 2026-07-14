@@ -37,25 +37,27 @@
  */
 
 #include <QColorDialog>
-#include <QKeySequenceEdit>
-#include <QMessageBox>
-#include <QToolButton>
-#include <QtGui>
 #include <QDir>
 #include <QFileDialog>
-#include <QStandardPaths>
+#include <QKeySequenceEdit>
+#include <QMessageBox>
+#include <QProgressDialog>
 #include <QSerialPort>
+#include <QStandardPaths>
+#include <QToolButton>
+#include <QtGui>
 
+#include "comportutils.h"
 #include "encodings.h"
 #include "fontutils.h"
 #include "highlighteredit.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "recentfiles.h"
-#include "comportutils.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
 #include "styles.h"
+#include "updatedialog.h"
 
 #include "optionsdialog.h"
 
@@ -89,6 +91,72 @@ OptionsDialog::OptionsDialog( QWidget* parent )
 
     connect( extractArchivesCheckBox, &QCheckBox::toggled,
              [ this ]( auto ) { this->setupArchives(); } );
+
+    connect( checkNowButton, &QPushButton::clicked, this, [ this ] {
+        const auto channel = static_cast<UpdateChannel>( updateChannelBox->currentIndex() );
+        LOG_INFO << "Preferences manual update check clicked; selected channel="
+                 << ( channel == UpdateChannel::Ci ? "CI" : "Stable" );
+        checkNowButton->setEnabled( false );
+        manualVersionChecker_.forceCheck( channel );
+    } );
+    connect( &manualVersionChecker_, &VersionChecker::checkFinished, this,
+             [ this ]( bool updateAvailable, const QString& message ) {
+                 checkNowButton->setEnabled( true );
+                 LOG_INFO << "Preferences manual update check completed; available="
+                          << updateAvailable << ", status=" << message;
+                 if ( !updateAvailable )
+                     QMessageBox::information( this, tr( "CILogg Update" ), message );
+             } );
+    connect(
+        &manualVersionChecker_, &VersionChecker::releaseFound, this,
+        [ this ]( const ReleaseInfo& release ) {
+            UpdateAction action = UpdateAction::Notify;
+            if ( updateActionInstallRadio->isChecked() )
+                action = UpdateAction::DownloadAndInstall;
+            else if ( updateActionDownloadRadio->isChecked() )
+                action = UpdateAction::Download;
+            UpdateDialog dialog( release, action, this );
+            dialog.exec();
+            if ( dialog.choice() == UpdateDialog::Choice::OpenRelease ) {
+                LOG_INFO << "Manual update dialog decision: open release page";
+                QDesktopServices::openUrl( release.pageUrl );
+            }
+            else if ( dialog.choice() == UpdateDialog::Choice::Download
+                      || dialog.choice() == UpdateDialog::Choice::DownloadAndInstall ) {
+                const bool install = dialog.choice() == UpdateDialog::Choice::DownloadAndInstall;
+                LOG_INFO << "Manual update dialog decision: confirmed download; install-on-exit="
+                         << install;
+                updateProgress_
+                    = new QProgressDialog( tr( "Downloading and verifying CILogg update…" ),
+                                           tr( "Cancel" ), 0, 100, this );
+                updateProgress_->setWindowModality( Qt::WindowModal );
+                updateProgress_->setAutoClose( false );
+                connect( updateProgress_, &QProgressDialog::canceled, &manualVersionChecker_,
+                         &VersionChecker::cancelDownload );
+                manualVersionChecker_.downloadUpdate( release, install );
+            }
+            else
+                LOG_INFO << "Manual update dialog decision: later";
+        } );
+    connect( &manualVersionChecker_, &VersionChecker::downloadProgress, this,
+             [ this ]( qint64 received, qint64 total ) {
+                 if ( !updateProgress_ || total <= 0 )
+                     return;
+                 updateProgress_->setValue( static_cast<int>( received * 100 / total ) );
+             } );
+    connect(
+        &manualVersionChecker_, &VersionChecker::updateReady, this,
+        [ this ]( const PendingUpdate& pending ) {
+            if ( updateProgress_ ) {
+                updateProgress_->close();
+                updateProgress_->deleteLater();
+            }
+            QMessageBox::information(
+                this, tr( "CILogg Update" ),
+                pending.installOnExit
+                    ? tr( "The verified update will be installed after CILogg exits cleanly." )
+                    : tr( "The verified package is ready at:\n%1" ).arg( pending.packagePath ) );
+        } );
 
     connect( mainSearchColorButton, &QPushButton::clicked, this, &OptionsDialog::changeMainColor );
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );
@@ -224,7 +292,8 @@ void OptionsDialog::browseComLogPath()
         initialDir = defaultComLogDirectory();
     }
 
-    const auto dir = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
+    const auto dir
+        = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
     if ( !dir.isEmpty() ) {
         comLogPathEdit->setText( dir );
     }
@@ -617,6 +686,21 @@ void OptionsDialog::updateConfigFromDialog()
 
     // version checking
     config.setVersionCheckingEnabled( checkForNewVersionCheckBox->isChecked() );
+    config.setUpdateChannel( static_cast<UpdateChannel>( updateChannelBox->currentIndex() ) );
+    config.setUpdateFrequency( static_cast<UpdateFrequency>( updateFrequencyBox->currentIndex() ) );
+    if ( updateActionInstallRadio->isChecked() ) {
+        config.setUpdateAction( UpdateAction::DownloadAndInstall );
+    }
+    else if ( updateActionDownloadRadio->isChecked() ) {
+        config.setUpdateAction( UpdateAction::Download );
+    }
+    else {
+        config.setUpdateAction( UpdateAction::Notify );
+    }
+    LOG_INFO << "Saved updater preferences: enabled=" << config.versionCheckingEnabled()
+             << ", channel=" << static_cast<int>( config.updateChannel() )
+             << ", frequency=" << static_cast<int>( config.updateFrequency() )
+             << ", action=" << static_cast<int>( config.updateAction() );
 
     config.setVerifySslPeers( verifySslCheckBox->isChecked() );
 
