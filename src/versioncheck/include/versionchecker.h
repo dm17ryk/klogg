@@ -81,6 +81,8 @@ public:
                                                      QString* errorMessage = nullptr );
     static QList<ReleaseAsset> parseManifest( const QByteArray& manifestJson,
                                               QString* errorMessage = nullptr );
+    static InstallKind classifyLinuxInstallKind( const QString& distroId, const QString& distroLike,
+                                                 bool appImage );
     static std::optional<ReleaseAsset> selectAsset( const QList<ReleaseAsset>& manifestAssets,
                                                     const QList<ReleaseAsset>& githubAssets,
                                                     QString* errorMessage = nullptr );

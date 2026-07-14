@@ -41,7 +41,6 @@
 #include <QFileDialog>
 #include <QKeySequenceEdit>
 #include <QMessageBox>
-#include <QProgressDialog>
 #include <QSerialPort>
 #include <QStandardPaths>
 #include <QToolButton>
@@ -57,7 +56,6 @@
 #include "savedsearches.h"
 #include "shortcuts.h"
 #include "styles.h"
-#include "updatedialog.h"
 
 #include "optionsdialog.h"
 
@@ -67,6 +65,16 @@ static constexpr int PollIntervalMax = 3600000;
 // Constructor
 OptionsDialog::OptionsDialog( QWidget* parent )
     : QDialog( parent )
+    , manualUpdateUiController_(
+          manualVersionChecker_, [ this ] { return this; },
+          [ this ] {
+              if ( updateActionInstallRadio->isChecked() )
+                  return UpdateAction::DownloadAndInstall;
+              if ( updateActionDownloadRadio->isChecked() )
+                  return UpdateAction::Download;
+              return UpdateAction::Notify;
+          },
+          QStringLiteral( "preferences-manual" ), this )
 {
     setupUi( this );
 
@@ -104,59 +112,9 @@ OptionsDialog::OptionsDialog( QWidget* parent )
                  checkNowButton->setEnabled( true );
                  LOG_INFO << "Preferences manual update check completed; available="
                           << updateAvailable << ", status=" << message;
-                 if ( !updateAvailable )
+                 if ( !updateAvailable && manualVersionChecker_.state() != UpdateState::Error )
                      QMessageBox::information( this, tr( "CILogg Update" ), message );
              } );
-    connect(
-        &manualVersionChecker_, &VersionChecker::releaseFound, this,
-        [ this ]( const ReleaseInfo& release ) {
-            UpdateAction action = UpdateAction::Notify;
-            if ( updateActionInstallRadio->isChecked() )
-                action = UpdateAction::DownloadAndInstall;
-            else if ( updateActionDownloadRadio->isChecked() )
-                action = UpdateAction::Download;
-            UpdateDialog dialog( release, action, this );
-            dialog.exec();
-            if ( dialog.choice() == UpdateDialog::Choice::OpenRelease ) {
-                LOG_INFO << "Manual update dialog decision: open release page";
-                QDesktopServices::openUrl( release.pageUrl );
-            }
-            else if ( dialog.choice() == UpdateDialog::Choice::Download
-                      || dialog.choice() == UpdateDialog::Choice::DownloadAndInstall ) {
-                const bool install = dialog.choice() == UpdateDialog::Choice::DownloadAndInstall;
-                LOG_INFO << "Manual update dialog decision: confirmed download; install-on-exit="
-                         << install;
-                updateProgress_
-                    = new QProgressDialog( tr( "Downloading and verifying CILogg update…" ),
-                                           tr( "Cancel" ), 0, 100, this );
-                updateProgress_->setWindowModality( Qt::WindowModal );
-                updateProgress_->setAutoClose( false );
-                connect( updateProgress_, &QProgressDialog::canceled, &manualVersionChecker_,
-                         &VersionChecker::cancelDownload );
-                manualVersionChecker_.downloadUpdate( release, install );
-            }
-            else
-                LOG_INFO << "Manual update dialog decision: later";
-        } );
-    connect( &manualVersionChecker_, &VersionChecker::downloadProgress, this,
-             [ this ]( qint64 received, qint64 total ) {
-                 if ( !updateProgress_ || total <= 0 )
-                     return;
-                 updateProgress_->setValue( static_cast<int>( received * 100 / total ) );
-             } );
-    connect(
-        &manualVersionChecker_, &VersionChecker::updateReady, this,
-        [ this ]( const PendingUpdate& pending ) {
-            if ( updateProgress_ ) {
-                updateProgress_->close();
-                updateProgress_->deleteLater();
-            }
-            QMessageBox::information(
-                this, tr( "CILogg Update" ),
-                pending.installOnExit
-                    ? tr( "The verified update will be installed after CILogg exits cleanly." )
-                    : tr( "The verified package is ready at:\n%1" ).arg( pending.packagePath ) );
-        } );
 
     connect( mainSearchColorButton, &QPushButton::clicked, this, &OptionsDialog::changeMainColor );
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );

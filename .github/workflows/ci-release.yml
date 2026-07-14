@@ -203,7 +203,10 @@ jobs:
           tag="continuous-${CILOGG_VERSION}"
           flags=(--prerelease --generate-notes)
         fi
-        mapfile -d '' assets < <(find ./packages-* ./linux-debug -maxdepth 1 -type f -print0)
+          mapfile -d '' assets < <(
+            find ./packages-* -maxdepth 1 -type f -print0
+            find ./linux-debug -maxdepth 1 -type f -print0 2>/dev/null || true
+          )
         gh release delete "$tag" --cleanup-tag -y || true
         gh release create "$tag" "${assets[@]}" "${flags[@]}" --title "CILogg ${CILOGG_VERSION}"
         echo "CILOGG_RELEASE_TAG=$tag" >> "$GITHUB_ENV"

@@ -1,6 +1,7 @@
 add_library(
   klogg_versioncheck STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include/updatetypes.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/updatearguments.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/versionchecker.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/updatetypes.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/versionchecker.cpp

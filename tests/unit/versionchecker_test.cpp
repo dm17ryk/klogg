@@ -91,6 +91,26 @@ TEST_CASE( "Manifest parser rejects malformed hashes and accepts verified entrie
 #endif
 }
 
+TEST_CASE( "Linux install model is selected only for explicitly supported families", "[updater]" )
+{
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "arch", {}, true )
+             == InstallKind::AppImage );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "ubuntu", {}, false ) == InstallKind::Deb );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "linuxmint", "ubuntu debian", false )
+             == InstallKind::Deb );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "fedora", {}, false ) == InstallKind::Rpm );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "rocky", "rhel fedora", false )
+             == InstallKind::Rpm );
+
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "arch", {}, false ) == InstallKind::None );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "alpine", {}, false ) == InstallKind::None );
+    REQUIRE(
+        VersionChecker::classifyLinuxInstallKind( "opensuse-tumbleweed", "suse opensuse", false )
+        == InstallKind::None );
+    REQUIRE( VersionChecker::classifyLinuxInstallKind( "notdebian", {}, false )
+             == InstallKind::None );
+}
+
 TEST_CASE( "Pending update persistence round-trips verified transaction data", "[updater]" )
 {
     PendingUpdate pending;

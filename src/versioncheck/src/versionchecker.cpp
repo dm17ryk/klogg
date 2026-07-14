@@ -2,6 +2,7 @@
 
 #include "klogg_version.h"
 #include "log.h"
+#include "updatearguments.h"
 
 #include <algorithm>
 #include <ctime>
@@ -642,6 +643,48 @@ QList<ReleaseAsset> VersionChecker::parseManifest( const QByteArray& manifestJso
     return assets;
 }
 
+InstallKind VersionChecker::classifyLinuxInstallKind( const QString& distroId,
+                                                      const QString& distroLike, bool appImage )
+{
+    if ( appImage ) {
+        LOG_DEBUG << "Linux install model decision: APPIMAGE environment is present";
+        return InstallKind::AppImage;
+    }
+
+    const auto normalizedId = distroId.trimmed().toLower();
+    const auto likeTokens
+        = distroLike.simplified().toLower().split( QLatin1Char( ' ' ), Qt::SkipEmptyParts );
+    const auto matchesFamily = [ &normalizedId, &likeTokens ]( const QStringList& family ) {
+        if ( family.contains( normalizedId ) )
+            return true;
+        return std::any_of(
+            likeTokens.cbegin(), likeTokens.cend(),
+            [ &family ]( const QString& token ) { return family.contains( token ); } );
+    };
+
+    const QStringList debianFamily{ QStringLiteral( "debian" ), QStringLiteral( "ubuntu" ) };
+    if ( matchesFamily( debianFamily ) ) {
+        LOG_DEBUG << "Linux install model decision: Debian family matched; id=" << normalizedId
+                  << ", id-like=" << distroLike;
+        return InstallKind::Deb;
+    }
+
+    // These distributions use dnf for RPM installation. Other RPM distributions such as
+    // openSUSE are intentionally unsupported until their native package manager is implemented.
+    const QStringList dnfFamily{ QStringLiteral( "fedora" ),    QStringLiteral( "rhel" ),
+                                 QStringLiteral( "centos" ),    QStringLiteral( "rocky" ),
+                                 QStringLiteral( "almalinux" ), QStringLiteral( "ol" ) };
+    if ( matchesFamily( dnfFamily ) ) {
+        LOG_DEBUG << "Linux install model decision: dnf/RPM family matched; id=" << normalizedId
+                  << ", id-like=" << distroLike;
+        return InstallKind::Rpm;
+    }
+
+    LOG_WARNING << "Linux install model decision: unsupported distribution; id=" << normalizedId
+                << ", id-like=" << distroLike;
+    return InstallKind::None;
+}
+
 std::optional<ReleaseAsset> VersionChecker::selectAsset( const QList<ReleaseAsset>& manifestAssets,
                                                          const QList<ReleaseAsset>& githubAssets,
                                                          QString* errorMessage )
@@ -663,28 +706,32 @@ std::optional<ReleaseAsset> VersionChecker::selectAsset( const QList<ReleaseAsse
     Q_UNUSED( distroVersionVariant );
     Q_UNUSED( appImage );
 #endif
-    for ( auto manifestAsset : manifestAssets ) {
-        bool kindAccepted = false;
+    InstallKind requiredKind = InstallKind::None;
 #ifdef Q_OS_WIN
-        const bool portable = QFileInfo( QCoreApplication::applicationFilePath() )
-                                  .completeBaseName()
-                                  .contains( QLatin1String( "portable" ), Qt::CaseInsensitive );
-        kindAccepted = portable ? manifestAsset.installKind == InstallKind::WindowsPortable
-                                : manifestAsset.installKind == InstallKind::WindowsSetup;
+    const bool portable = QFileInfo( QCoreApplication::applicationFilePath() )
+                              .completeBaseName()
+                              .contains( QLatin1String( "portable" ), Qt::CaseInsensitive );
+    requiredKind = portable ? InstallKind::WindowsPortable : InstallKind::WindowsSetup;
 #elif defined( Q_OS_MACOS )
-        kindAccepted = manifestAsset.installKind == InstallKind::MacBundle;
+    requiredKind = InstallKind::MacBundle;
 #else
-        if ( appImage )
-            kindAccepted = manifestAsset.installKind == InstallKind::AppImage;
-        else if ( distroId.contains( QLatin1String( "ubuntu" ) )
-                  || distroId.contains( QLatin1String( "debian" ) )
-                  || distroLike.contains( QLatin1String( "debian" ) ) ) {
-            kindAccepted = manifestAsset.installKind == InstallKind::Deb;
-        }
-        else {
-            kindAccepted = manifestAsset.installKind == InstallKind::Rpm;
-        }
+    requiredKind = classifyLinuxInstallKind( distroId, distroLike, appImage );
+    if ( requiredKind == InstallKind::None ) {
+        const auto visibleDistro = distroId.isEmpty() ? QStringLiteral( "unknown" ) : distroId;
+        const auto reason
+            = tr( "Automatic package installation is unsupported on Linux distribution '%1'." )
+                  .arg( visibleDistro );
+        LOG_WARNING << "Package selection stopped: unsupported Linux distribution; id=" << distroId
+                    << ", id-like=" << distroLike << ", appimage=" << appImage;
+        if ( errorMessage )
+            *errorMessage = reason;
+        return std::nullopt;
+    }
 #endif
+    LOG_INFO << "Package selection install model=" << installKindName( requiredKind )
+             << ", platform=" << platform << ", architecture=" << architecture;
+    for ( auto manifestAsset : manifestAssets ) {
+        const bool kindAccepted = manifestAsset.installKind == requiredKind;
         const bool variantAccepted
             = manifestAsset.variant.isEmpty() || manifestAsset.installKind == InstallKind::AppImage
               || manifestAsset.installKind == InstallKind::WindowsSetup
@@ -1029,17 +1076,25 @@ void VersionChecker::launchPendingUpdate()
         return;
     }
     QFile::setPermissions( helper, QFile::permissions( helper ) | QFileDevice::ExeUser );
-    QStringList arguments{
-        QStringLiteral( "--wait-pid" ), QString::number( QCoreApplication::applicationPid() ),
-        QStringLiteral( "--mode" ),     installKindName( pendingUpdate_.release.asset.installKind ),
-        QStringLiteral( "--current" ),  pendingUpdate_.currentPath,
-        QStringLiteral( "--staged" ),   pendingUpdate_.stagedPath,
-        QStringLiteral( "--backup" ),   pendingUpdate_.backupPath,
-        QStringLiteral( "--relaunch" ), QCoreApplication::applicationFilePath(),
-        QStringLiteral( "--ack" ),      pendingUpdate_.acknowledgementPath,
-        QStringLiteral( "--token" ),    pendingUpdate_.transactionToken,
-        QStringLiteral( "--log" ),      pendingUpdate_.helperLogPath
-    };
+    QStringList arguments{ QString::fromLatin1( cilogg::update_protocol::WaitPidOption ),
+                           QString::number( QCoreApplication::applicationPid() ),
+                           QString::fromLatin1( cilogg::update_protocol::ModeOption ),
+                           installKindName( pendingUpdate_.release.asset.installKind ),
+                           QString::fromLatin1( cilogg::update_protocol::CurrentOption ),
+                           pendingUpdate_.currentPath,
+                           QString::fromLatin1( cilogg::update_protocol::StagedOption ),
+                           pendingUpdate_.stagedPath,
+                           QString::fromLatin1( cilogg::update_protocol::BackupOption ),
+                           pendingUpdate_.backupPath,
+                           QString::fromLatin1( cilogg::update_protocol::RelaunchOption ),
+                           QCoreApplication::applicationFilePath(),
+                           QString::fromLatin1(
+                               cilogg::update_protocol::HelperAcknowledgementOption ),
+                           pendingUpdate_.acknowledgementPath,
+                           QString::fromLatin1( cilogg::update_protocol::HelperTokenOption ),
+                           pendingUpdate_.transactionToken,
+                           QString::fromLatin1( cilogg::update_protocol::LogOption ),
+                           pendingUpdate_.helperLogPath };
     const bool launched
         = QProcess::startDetached( helper, arguments, QFileInfo( helper ).absolutePath() );
     LOG_INFO << "Exit-time updater helper launch result=" << launched
@@ -1051,8 +1106,10 @@ void VersionChecker::launchPendingUpdate()
 void VersionChecker::acknowledgeStartup()
 {
     const auto arguments = QCoreApplication::arguments();
-    const auto ackIndex = arguments.indexOf( QStringLiteral( "--cilogg-update-ack" ) );
-    const auto tokenIndex = arguments.indexOf( QStringLiteral( "--cilogg-update-token" ) );
+    const auto ackIndex = arguments.indexOf(
+        QString::fromLatin1( cilogg::update_protocol::StartupAcknowledgementOption ) );
+    const auto tokenIndex
+        = arguments.indexOf( QString::fromLatin1( cilogg::update_protocol::StartupTokenOption ) );
     if ( ackIndex < 0 || tokenIndex < 0 || ackIndex + 1 >= arguments.size()
          || tokenIndex + 1 >= arguments.size() ) {
         LOG_DEBUG << "Startup acknowledgement skipped: no updater transaction arguments";

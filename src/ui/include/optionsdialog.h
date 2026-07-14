@@ -44,10 +44,10 @@
 #include <QHBoxLayout>
 #include <QKeySequenceEdit>
 #include <QLabel>
-#include <QPointer>
 #include <QPushButton>
 
 #include "configuration.h"
+#include "updateuicontroller.h"
 #include "versionchecker.h"
 
 #include "ui_optionsdialog.h"
@@ -126,7 +126,7 @@ private:
     QColor mainSearchColor_;
     QColor qfSearchColor_;
     VersionChecker manualVersionChecker_;
-    QPointer<QProgressDialog> updateProgress_;
+    UpdateUiController manualUpdateUiController_;
 };
 
 #endif

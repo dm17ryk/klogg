@@ -41,6 +41,7 @@
 #include "labrequest.h"
 #include "log.h"
 #include "scenariobatchrequest.h"
+#include "updatearguments.h"
 
 struct CliParameters {
     struct CommanderParseResult {
@@ -455,8 +456,12 @@ struct CliParameters {
             const QCommandLineOption dumpStateJsonOption(
                 "dump-state-json", "dump the automation state snapshot as JSON to the given path and exit",
                 "path" );
-            QCommandLineOption updateTokenOption( "cilogg-update-token", QString(), "token" );
-            QCommandLineOption updateAckOption( "cilogg-update-ack", QString(), "path" );
+            QCommandLineOption updateTokenOption(
+                QString::fromLatin1( cilogg::update_protocol::StartupTokenOption + 2 ), QString(),
+                "token" );
+            QCommandLineOption updateAckOption(
+                QString::fromLatin1( cilogg::update_protocol::StartupAcknowledgementOption + 2 ),
+                QString(), "path" );
             updateTokenOption.setFlags( QCommandLineOption::HiddenFromHelp );
             updateAckOption.setFlags( QCommandLineOption::HiddenFromHelp );
             parser.addOption( multiInstanceOption );

@@ -35,7 +35,6 @@
 #include <QCborMap>
 #include <QCborValue>
 
-#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -47,7 +46,6 @@
 #include <QEventLoop>
 #include <QPoint>
 #include <QPointer>
-#include <QProgressDialog>
 #include <QRect>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -80,8 +78,8 @@
 #include "scriptrunnerwindow.h"
 #include "scriptsupervisor.h"
 #include "startupprogress.h"
+#include "updateuicontroller.h"
 #include "versionchecker.h"
-#include "updatedialog.h"
 
 class KloggApp : public QApplication {
 
@@ -90,6 +88,10 @@ class KloggApp : public QApplication {
   public:
     KloggApp( int& argc, char* argv[] )
         : QApplication( argc, argv)
+        , updateUiController_(
+              versionChecker_, [ this ] { return activeWindow(); },
+              [] { return Configuration::get().updateAction(); },
+              QStringLiteral( "background" ), this )
     {
         QFontDatabase::addApplicationFont( ":/fonts/DejaVuSansMono.ttf" );
 
@@ -139,38 +141,6 @@ class KloggApp : public QApplication {
             QObject::connect( &messageReceiver_, &MessageReceiver::executeCommand, this,
                               &KloggApp::handleCommanderRequest );
 
-            // Version checker notification
-            connect( &versionChecker_, &VersionChecker::releaseFound, this,
-                     &KloggApp::newVersionNotification );
-            connect( &versionChecker_, &VersionChecker::downloadProgress, this,
-                     [ this ]( qint64 received, qint64 total ) {
-                         if ( !updateProgress_ || total <= 0 ) return;
-                         updateProgress_->setValue( static_cast<int>( received * 100 / total ) );
-                     } );
-            connect( &versionChecker_, &VersionChecker::updateReady, this,
-                     [ this ]( const PendingUpdate& pending ) {
-                         if ( updateProgress_ ) {
-                             updateProgress_->close();
-                             updateProgress_->deleteLater();
-                         }
-                         LOG_INFO << "Verified update ready; install-on-exit="
-                                  << pending.installOnExit << ", package=" << pending.packagePath;
-                         QMessageBox::information(
-                             activeWindow(), tr( "CILogg Update" ),
-                             pending.installOnExit
-                                 ? tr( "The verified update is staged and will be installed after "
-                                       "CILogg exits cleanly." )
-                                 : tr( "The verified update package is ready at:\n%1" )
-                                       .arg( pending.packagePath ) );
-                     } );
-            connect( &versionChecker_, &VersionChecker::errorOccurred, this,
-                     [ this ]( const QString& message ) {
-                         if ( updateProgress_ ) {
-                             updateProgress_->close();
-                             updateProgress_->deleteLater();
-                         }
-                         QMessageBox::warning( activeWindow(), tr( "CILogg Update" ), message );
-                     } );
         }
     }
 
@@ -1124,34 +1094,6 @@ class KloggApp : public QApplication {
         QTimer::singleShot( 100, this, &QCoreApplication::quit );
     }
 
-    void newVersionNotification( const ReleaseInfo& release )
-    {
-        LOG_INFO << "Presenting update dialog for " << release.tag << ", installable="
-                 << release.canAutomaticallyUpdate();
-        const auto updateAction = Configuration::get().updateAction();
-        UpdateDialog dialog( release, updateAction, activeWindow() );
-        dialog.exec();
-        if ( dialog.choice() == UpdateDialog::Choice::OpenRelease ) {
-            const bool opened = QDesktopServices::openUrl( release.pageUrl );
-            LOG_INFO << "Update dialog decision=open-release; result=" << opened;
-            return;
-        }
-        if ( dialog.choice() == UpdateDialog::Choice::Later ) {
-            LOG_INFO << "Update dialog decision=later";
-            return;
-        }
-        const bool installOnExit = dialog.choice() == UpdateDialog::Choice::DownloadAndInstall;
-        LOG_INFO << "Update dialog decision=download; install-on-exit=" << installOnExit;
-        updateProgress_ = new QProgressDialog( tr( "Downloading and verifying CILogg update…" ),
-                                               tr( "Cancel" ), 0, 100, activeWindow() );
-        updateProgress_->setWindowModality( Qt::WindowModal );
-        updateProgress_->setAutoClose( false );
-        connect( updateProgress_, &QProgressDialog::canceled, &versionChecker_,
-                 &VersionChecker::cancelDownload );
-        updateProgress_->show();
-        versionChecker_.downloadUpdate( release, installOnExit );
-    }
-
     size_t nextWindowIndex() const
     {
         if ( mainWindows_.empty() ) {
@@ -1294,7 +1236,7 @@ class KloggApp : public QApplication {
     QSize automationWindowSize_ = QSize( 1600, 1000 );
 
     VersionChecker versionChecker_;
-    QPointer<QProgressDialog> updateProgress_;
+    UpdateUiController updateUiController_;
 };
 
 #endif // KLOGG_KLOGGAPP_H

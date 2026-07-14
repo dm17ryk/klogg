@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 
+#include "updatearguments.h"
+
 #ifdef _WIN32
 #include <windows.h>
 
@@ -23,6 +25,11 @@
 namespace fs = std::filesystem;
 
 namespace {
+#ifndef _WIN32
+constexpr int MissingSystemToolExitCode = 7;
+constexpr int UnsupportedInstallModeExitCode = 8;
+#endif
+
 struct Arguments {
     long long waitPid = 0;
     std::string mode;
@@ -56,18 +63,23 @@ fs::path withAsciiSuffix( fs::path path, const std::string& suffix )
 #ifdef _WIN32
 bool parse( int argc, wchar_t** argv, Arguments& result )
 {
-    std::map<std::wstring, std::string*> strings{ { L"--mode", &result.mode },
-                                                  { L"--token", &result.token } };
+    std::map<std::wstring, std::string*> strings{
+        { cilogg::update_protocol::ModeOptionWide, &result.mode },
+        { cilogg::update_protocol::HelperTokenOptionWide, &result.token }
+    };
     std::map<std::wstring, fs::path*> paths{
-        { L"--current", &result.current },     { L"--staged", &result.staged },
-        { L"--backup", &result.backup },       { L"--relaunch", &result.relaunch },
-        { L"--ack", &result.acknowledgement }, { L"--log", &result.log }
+        { cilogg::update_protocol::CurrentOptionWide, &result.current },
+        { cilogg::update_protocol::StagedOptionWide, &result.staged },
+        { cilogg::update_protocol::BackupOptionWide, &result.backup },
+        { cilogg::update_protocol::RelaunchOptionWide, &result.relaunch },
+        { cilogg::update_protocol::HelperAcknowledgementOptionWide, &result.acknowledgement },
+        { cilogg::update_protocol::LogOptionWide, &result.log }
     };
     for ( int i = 1; i < argc; ++i ) {
         const std::wstring key = argv[ i ];
         if ( i + 1 >= argc )
             return false;
-        if ( key == L"--wait-pid" ) {
+        if ( key == cilogg::update_protocol::WaitPidOptionWide ) {
             try {
                 result.waitPid = std::stoll( std::wstring( argv[ ++i ] ) );
             } catch ( ... ) {
@@ -95,18 +107,23 @@ bool parse( int argc, wchar_t** argv, Arguments& result )
 #else
 bool parse( int argc, char** argv, Arguments& result )
 {
-    std::map<std::string, std::string*> strings{ { "--mode", &result.mode },
-                                                 { "--token", &result.token } };
+    std::map<std::string, std::string*> strings{
+        { cilogg::update_protocol::ModeOption, &result.mode },
+        { cilogg::update_protocol::HelperTokenOption, &result.token }
+    };
     std::map<std::string, fs::path*> paths{
-        { "--current", &result.current },     { "--staged", &result.staged },
-        { "--backup", &result.backup },       { "--relaunch", &result.relaunch },
-        { "--ack", &result.acknowledgement }, { "--log", &result.log }
+        { cilogg::update_protocol::CurrentOption, &result.current },
+        { cilogg::update_protocol::StagedOption, &result.staged },
+        { cilogg::update_protocol::BackupOption, &result.backup },
+        { cilogg::update_protocol::RelaunchOption, &result.relaunch },
+        { cilogg::update_protocol::HelperAcknowledgementOption, &result.acknowledgement },
+        { cilogg::update_protocol::LogOption, &result.log }
     };
     for ( int i = 1; i < argc; ++i ) {
         const std::string key = argv[ i ];
         if ( i + 1 >= argc )
             return false;
-        if ( key == "--wait-pid" ) {
+        if ( key == cilogg::update_protocol::WaitPidOption ) {
             try {
                 result.waitPid = std::stoll( argv[ ++i ] );
             } catch ( ... ) {
@@ -169,9 +186,11 @@ int runElevated( const fs::path& executable, const std::wstring& parameters )
 
 bool launch( const Arguments& args )
 {
-    std::wstring command = quote( args.relaunch ) + L" --cilogg-update-token "
-                           + std::wstring( args.token.begin(), args.token.end() )
-                           + L" --cilogg-update-ack " + quote( args.acknowledgement );
+    std::wstring command = quote( args.relaunch ) + L" "
+                           + cilogg::update_protocol::StartupTokenOptionWide + L" "
+                           + std::wstring( args.token.begin(), args.token.end() ) + L" "
+                           + cilogg::update_protocol::StartupAcknowledgementOptionWide + L" "
+                           + quote( args.acknowledgement );
     STARTUPINFOW startup{};
     PROCESS_INFORMATION process{};
     startup.cb = sizeof( startup );
@@ -205,14 +224,33 @@ int runProcess( const std::vector<std::string>& command )
     return WIFEXITED( status ) ? WEXITSTATUS( status ) : 1;
 }
 
+bool requireSystemTool( const fs::path& path, const char* purpose )
+{
+    std::error_code error;
+    const bool regularFile = fs::is_regular_file( path, error );
+    if ( error || !regularFile ) {
+        log( std::string( "System tool validation failed for " ) + purpose + ": expected "
+             + path.string() + ( error ? "; error=" + error.message() : "; file is missing" ) );
+        return false;
+    }
+    if ( access( path.c_str(), X_OK ) != 0 ) {
+        log( std::string( "System tool validation failed for " ) + purpose + ": " + path.string()
+             + " is not executable" );
+        return false;
+    }
+    log( std::string( "System tool validation succeeded for " ) + purpose + ": " + path.string() );
+    return true;
+}
+
 bool launch( const Arguments& args )
 {
     const auto pid = fork();
     if ( pid == 0 ) {
         const auto relaunch = args.relaunch.string();
         const auto ack = args.acknowledgement.string();
-        execl( relaunch.c_str(), relaunch.c_str(), "--cilogg-update-token", args.token.c_str(),
-               "--cilogg-update-ack", ack.c_str(), static_cast<char*>( nullptr ) );
+        execl( relaunch.c_str(), relaunch.c_str(), cilogg::update_protocol::StartupTokenOption,
+               args.token.c_str(), cilogg::update_protocol::StartupAcknowledgementOption,
+               ack.c_str(), static_cast<char*>( nullptr ) );
         _exit( 127 );
     }
     return pid > 0;
@@ -244,6 +282,15 @@ std::string appleScriptQuote( const std::string& command )
 
 bool elevatedSwap( const Arguments& args, bool restore )
 {
+    const fs::path osascriptPath{ "/usr/bin/osascript" };
+    const fs::path removePath{ "/bin/rm" };
+    const fs::path movePath{ "/bin/mv" };
+    if ( !requireSystemTool( osascriptPath, "macOS administrator authorization" )
+         || !requireSystemTool( removePath, "macOS replacement cleanup" )
+         || !requireSystemTool( movePath, "macOS bundle replacement" ) ) {
+        log( "Privileged macOS replacement blocked because a required system tool is unavailable" );
+        return false;
+    }
     std::string command;
     if ( restore ) {
         const auto failed = withAsciiSuffix( args.current, ".failed" );
@@ -260,7 +307,7 @@ bool elevatedSwap( const Arguments& args, bool restore )
     }
     log( restore ? "Requesting administrator authorization for rollback"
                  : "Requesting administrator authorization for app replacement" );
-    return runProcess( { "/usr/bin/osascript", "-e", appleScriptQuote( command ) } ) == 0;
+    return runProcess( { osascriptPath.string(), "-e", appleScriptQuote( command ) } ) == 0;
 }
 #endif
 #endif
@@ -371,14 +418,36 @@ int installSystemPackage( const Arguments& args )
     log( "Launching NSIS setup with visible UAC" );
     return runElevated( args.staged, parameters );
 #else
-    if ( args.mode == "deb" ) {
-        log( "Launching fixed-path pkexec apt-get install" );
-        return runProcess(
-            { "/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", args.staged.string() } );
+    if ( args.mode != "deb" && args.mode != "rpm" ) {
+        log( "System-package installation blocked: unsupported install mode=" + args.mode );
+        return UnsupportedInstallModeExitCode;
     }
-    log( "Launching fixed-path pkexec dnf install" );
+
+    const fs::path pkexecPath{ "/usr/bin/pkexec" };
+    if ( !requireSystemTool( pkexecPath, "package-manager elevation" ) ) {
+        log( "System-package installation blocked: pkexec is unavailable" );
+        return MissingSystemToolExitCode;
+    }
+
+    if ( args.mode == "deb" ) {
+        const fs::path aptGetPath{ "/usr/bin/apt-get" };
+        if ( !requireSystemTool( aptGetPath, "Debian package installation" ) ) {
+            log( "DEB installation blocked: apt-get is unavailable" );
+            return MissingSystemToolExitCode;
+        }
+        log( "Launching validated fixed-path pkexec apt-get install" );
+        return runProcess(
+            { pkexecPath.string(), aptGetPath.string(), "install", "-y", args.staged.string() } );
+    }
+
+    const fs::path dnfPath{ "/usr/bin/dnf" };
+    if ( !requireSystemTool( dnfPath, "RPM package installation" ) ) {
+        log( "RPM installation blocked: dnf is unavailable" );
+        return MissingSystemToolExitCode;
+    }
+    log( "Launching validated fixed-path pkexec dnf install" );
     return runProcess(
-        { "/usr/bin/pkexec", "/usr/bin/dnf", "install", "-y", args.staged.string() } );
+        { pkexecPath.string(), dnfPath.string(), "install", "-y", args.staged.string() } );
 #endif
 }
 } // namespace

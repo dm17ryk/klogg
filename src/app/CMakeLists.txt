@@ -124,6 +124,16 @@ add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_portable ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_grep ${MAIN_SOURCES} ${KLOGG_GREP_SOURCES})
 
+target_include_directories(
+  klogg PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+target_include_directories(
+  klogg_portable PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+target_include_directories(
+  klogg_grep PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+
 add_dependencies(ci_build klogg klogg_grep cilogg_updater)
 
 if(WIN32)
