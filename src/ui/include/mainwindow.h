@@ -236,6 +236,7 @@ class MainWindow : public QMainWindow {
     void createActions();
     void loadIcons();
     void createMenus();
+    void rebuildComPortsMenu();
     void createToolBars();
     void createTrayIcon();
     void readSettings();
@@ -339,6 +340,7 @@ class MainWindow : public QMainWindow {
 
     QMenu* fileMenu;
     QMenu* recentFilesMenu;
+    QMenu* comPortsMenu = nullptr;
     QMenu* editMenu;
     QMenu* viewMenu;
     QMenu* toolsMenu;

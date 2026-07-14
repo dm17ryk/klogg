@@ -10,6 +10,7 @@ using namespace klogg::mainwindow;
 
 // menu
 const char* menu::fileTitle = QT_TR_NOOP( "&File" );
+const char* menu::comPortsTitle = QT_TR_NOOP( "COM port" );
 const char* menu::editTitle = QT_TR_NOOP( "&Edit" );
 const char* menu::viewTitle = QT_TR_NOOP( "&View" );
 const char* menu::openedFilesTitle = QT_TR_NOOP( "Opened files" );

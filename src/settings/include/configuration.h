@@ -708,7 +708,7 @@ class Configuration final : public Persistable<Configuration> {
     bool lineNumbersVisibleInMain_ = false;
     bool lineNumbersVisibleInFiltered_ = true;
     bool minimizeToTray_ = false;
-    bool showTabsBarByDefault_ = false;
+    bool showTabsBarByDefault_ = true;
     QString style_;
 
     // Default settings for new views
