@@ -89,7 +89,7 @@ class KloggApp : public QApplication {
     KloggApp( int& argc, char* argv[] )
         : QApplication( argc, argv)
         , updateUiController_(
-              versionChecker_, [ this ] { return activeWindow(); },
+              versionChecker_, [] { return activeWindow(); },
               [] { return Configuration::get().updateAction(); },
               QStringLiteral( "background" ), this )
     {
