@@ -1,5 +1,6 @@
 .\release\*.dll
 .\release\cilogg_portable.exe
+.\release\cilogg_updater.exe
 .\release\cilogg_crashpad_handler.exe
 .\release\cilogg_minidump_dump.exe
 .\release\documentation.html

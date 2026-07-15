@@ -3,6 +3,14 @@ name: "Make CI Release"
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: "Release channel"
+        required: true
+        default: "ci"
+        type: choice
+        options:
+          - ci
+          - stable
       ci-run-id:
         description: "Run ID of CI workflow"
         required: false
@@ -161,11 +169,17 @@ jobs:
 
         mv ./cilogg_version/cilogg_version.txt ./packages-bin
 
+    - name: Prepare update manifest
+      shell: sh
+      run: |
+        python3 ./scripts/generate_update_manifest.py \
+          --root . --output ./packages-bin/cilogg-update-manifest.json
+
     - name: Prepare checksums
       shell: sh
       run: |
         {
-          find ./packages-bin -maxdepth 1 -type f
+          find ./packages-bin -maxdepth 1 -type f ! -name '*-sha256.txt'
           find ./linux-debug -maxdepth 1 -type f 2>/dev/null || true
           for package_dir in ./packages-*; do
             if [ "$package_dir" != "./packages-bin" ] && [ -d "$package_dir" ]; then
@@ -175,43 +189,57 @@ jobs:
         } | sort | xargs sha256sum --binary > ./packages-bin/cilogg-$CILOGG_VERSION-sha256.txt
       # sha256sum --binary ./packages-bin/* ./packages-focal/* ./packages-jammy/* ./packages-noble/* ./packages-oracle/* ./packages-appimage/*  > ./packages-bin/cilogg-$CILOGG_VERSION-sha256.txt
 
-    - name: Release continuous
+    - name: Publish GitHub release
       if: ${{ env.CILOGG_GITHUB_TOKEN != '' }}
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: ${{ env.CILOGG_GITHUB_TOKEN }}
-        automatic_release_tag: continuous-${{ env.CILOGG_VERSION }}
-        prerelease: true
-        files: |
-          ./packages-windows-x64-qt6/*
-          ./packages-windows-arm64-vectorscan-qt6/*
-          ./packages-macos-intel-qt6/*
-          ./packages-macos-arm-qt6/*
-          ./packages-focal/*
-          ./packages-focal-arm64/*
-          ./packages-jammy/*
-          ./packages-jammy-arm64/*
-          ./packages-noble/*
-          ./packages-noble-arm64/*
-          ./packages-appimage/*
-          ./packages-appimage-arm64/*
-          ./packages-fedora40/*
-          ./packages-fedora41/*
-          ./packages-fedora42/*
-          ./packages-fedora40-arm64/*
-          ./packages-fedora41-arm64/*
-          ./packages-fedora42-arm64/*
-          ./packages-bin/*
-          ./linux-debug/*
-        # ./packages-macos-intel-qt6/*
-        # ./packages-windows-x86-qt5/*
-        # ./packages-oracle/*
+      env:
+        GH_TOKEN: ${{ env.CILOGG_GITHUB_TOKEN }}
+        RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
+      shell: bash
+      run: |
+        if [ "$RELEASE_CHANNEL" = "stable" ]; then
+          tag="v${CILOGG_VERSION}"
+          flags=(--latest --generate-notes)
+        else
+          tag="continuous-${CILOGG_VERSION}"
+          flags=(--prerelease --generate-notes)
+        fi
+          mapfile -d '' assets < <(
+            find ./packages-* -maxdepth 1 -type f -print0
+            find ./linux-debug -maxdepth 1 -type f -print0 2>/dev/null || true
+          )
+        gh release delete "$tag" --cleanup-tag -y || true
+        gh release create "$tag" "${assets[@]}" "${flags[@]}" --title "CILogg ${CILOGG_VERSION}"
+        echo "CILOGG_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+
+    - name: Maintain legacy latest.json
+      if: ${{ env.CILOGG_GITHUB_TOKEN != '' }}
+      env:
+        RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        path = Path("latest.json")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        channel = os.environ["RELEASE_CHANNEL"]
+        version = os.environ["CILOGG_VERSION"]
+        tag = ("v" if channel == "stable" else "continuous-") + version
+        data[channel] = version
+        data[channel + "_url"] = f"https://github.com/dm17ryk/klogg/releases/tag/{tag}"
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        PY
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add latest.json
+        git diff --cached --quiet || git commit -m "chore: update legacy release metadata [skip ci]"
+        git push
 
     - name: Discord notification
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
       env:
         DISCORD_WEBHOOK: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK }}
-        DISCORD_EMBEDS: '[{"title": "Continuous", "url": "https://github.com/dm17ryk/klogg/releases/tag/continuous-${{ env.CILOGG_VERSION }}"}]'
+        DISCORD_EMBEDS: '[{"title": "CILogg ${{ github.event.inputs.channel }}", "url": "https://github.com/dm17ryk/klogg/releases/tag/${{ env.CILOGG_RELEASE_TAG }}"}]'
       uses: Ilshidur/action-discord@master
       with:
         args: 'New CI build {{CILOGG_VERSION}} has been released!'

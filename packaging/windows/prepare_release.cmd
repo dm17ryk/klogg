@@ -8,6 +8,7 @@ xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_portable.exe %CILOGG_
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_portable.pdb %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg.exe %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg.pdb %CILOGG_WORKSPACE%\release\ /y
+xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_updater.exe %CILOGG_WORKSPACE%\release\ /y
 
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_crashpad_handler.exe %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_minidump_dump.exe %CILOGG_WORKSPACE%\release\ /y

@@ -10,6 +10,7 @@ add_executable(cilogg_tests
     previewmatchstage_test.cpp
     serialcapturesettings_test.cpp
     sessioninfo_test.cpp
+    versionchecker_test.cpp
     tests_main.cpp
 )
 

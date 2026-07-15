@@ -153,5 +153,7 @@ runs:
       shell: sh
       run: |
         cd $CILOGG_BUILD_ROOT
+        ditto -c -k --sequesterRsrc --keepParent ./output/cilogg.app \
+          ./packages/cilogg-${CILOGG_VERSION}-mac-${CILOGG_ARCH}-update.zip
         cp -a ./output/cilogg.dSym ./packages/cilogg-${{ env.CILOGG_ARCH }}.dSym
         cp -a ./output/cilogg.app ./packages/cilogg-${{ env.CILOGG_ARCH }}.app

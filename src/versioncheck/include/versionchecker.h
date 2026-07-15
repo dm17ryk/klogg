@@ -1,112 +1,142 @@
-/*
- * Copyright (C) 2014 Nicolas Bonnefon and other contributors
- *
- * This file is part of glogg.
- *
- * glogg is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * glogg is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with glogg.  If not, see <http://www.gnu.org/licenses/>.
- */
-
-/*
- * Copyright (C) 2019 Anton Filimonov and other contributors
- *
- * This file is part of klogg.
- *
- * klogg is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * klogg is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#ifndef VERSIONCHECKER_H
-#define VERSIONCHECKER_H
+#pragma once
 
 #include <ctime>
+#include <memory>
+#include <optional>
 
+#include <QCryptographicHash>
 #include <QObject>
-#include <QtNetwork>
 
+#include "configuration.h"
 #include "persistable.h"
+#include "updatetypes.h"
 
-// This class holds the configuration options and persistent
-// data for the version checker
+class QNetworkAccessManager;
+class QNetworkReply;
+class QSaveFile;
+
 class VersionCheckerConfig final : public Persistable<VersionCheckerConfig, session_settings> {
-  public:
+public:
     static const char* persistableName()
     {
         return "VersionCheckerConfig";
     }
     std::time_t nextDeadline() const
     {
-        return next_deadline_;
+        return nextDeadline_;
     }
     void setNextDeadline( std::time_t deadline )
     {
-        next_deadline_ = deadline;
+        nextDeadline_ = deadline;
+    }
+    QByteArray etag() const
+    {
+        return etag_;
+    }
+    void setEtag( QByteArray etag )
+    {
+        etag_ = std::move( etag );
+    }
+    QByteArray cachedReleases() const
+    {
+        return cachedReleases_;
+    }
+    void setCachedReleases( QByteArray releases )
+    {
+        cachedReleases_ = std::move( releases );
     }
 
-    // Reads/writes the current config in the QSettings object passed
-    virtual void saveToStorage( QSettings& settings ) const;
-    virtual void retrieveFromStorage( QSettings& settings );
+    void saveToStorage( QSettings& settings ) const;
+    void retrieveFromStorage( QSettings& settings );
 
-  private:
-    std::time_t next_deadline_ = {};
+private:
+    std::time_t nextDeadline_ = {};
+    QByteArray etag_;
+    QByteArray cachedReleases_;
 };
 
-// This class compares the current version number with the latest
-// stored on a central server
 class VersionChecker : public QObject {
     Q_OBJECT
 
-  public:
-    VersionChecker();
-    ~VersionChecker() override = default;
+public:
+    explicit VersionChecker( QObject* parent = nullptr );
+    // Test-only transport endpoint. Production code uses the default constructor,
+    // which accepts only trusted HTTPS GitHub hosts.
+    explicit VersionChecker( const QUrl& testReleasesUrl, QObject* parent = nullptr );
+    ~VersionChecker() override;
 
-    // Starts an asynchronous check for a newer version if the configured
-    // frequency deadline has elapsed. Emits newVersionFound when applicable.
     void startCheck();
+    UpdateState state() const
+    {
+        return state_;
+    }
+    PendingUpdate pendingUpdate() const
+    {
+        return pendingUpdate_;
+    }
 
-  public Q_SLOTS:
-    // Forces an immediate check regardless of stored deadline. Used by the
-    // "Check now" button in the preferences dialog.
+    static bool isVersionNewer( const QString& currentVersion, const QString& candidateVersion );
+    static std::optional<ReleaseInfo> selectRelease( const QByteArray& releasesJson,
+                                                     UpdateChannel channel,
+                                                     QString* errorMessage = nullptr );
+    static QList<ReleaseAsset> parseManifest( const QByteArray& manifestJson,
+                                              QString* errorMessage = nullptr );
+    static InstallKind classifyLinuxInstallKind( const QString& distroId, const QString& distroLike,
+                                                 bool appImage );
+    static std::optional<ReleaseAsset> selectAsset( const QList<ReleaseAsset>& manifestAssets,
+                                                    const QList<ReleaseAsset>& githubAssets,
+                                                    QString* errorMessage = nullptr );
+    static bool isSafeArchivePath( const QString& relativePath, const QString& symlinkTarget = {} );
+
+public Q_SLOTS:
     void forceCheck();
+    void forceCheck( UpdateChannel channel );
+    void downloadUpdate( const ReleaseInfo& release, bool installOnExit );
+    void cancelDownload();
+    void launchPendingUpdate();
+    void acknowledgeStartup();
 
-  Q_SIGNALS:
-    // New version "version" is available. pageUrl points at the GitHub
-    // release page; assetUrl is a direct download URL for the platform
-    // package (may equal pageUrl when no per-OS asset is published).
-    void newVersionFound( const QString& version, const QString& pageUrl,
-                          const QString& assetUrl, const QStringList& changes );
+Q_SIGNALS:
+    void releaseFound( const ReleaseInfo& release );
+    void newVersionFound( const QString& version, const QString& pageUrl, const QString& assetUrl,
+                          const QStringList& changes );
+    void checkFinished( bool updateAvailable, const QString& message );
+    void downloadProgress( qint64 received, qint64 total );
+    void updateReady( const PendingUpdate& pending );
+    void stateChanged( UpdateState state );
+    void errorOccurred( const QString& message );
 
-  private Q_SLOTS:
-    // Called when download is finished
-    void downloadFinished( QNetworkReply* );
+private:
+    enum class RequestPurpose { Releases, Manifest, Package };
 
-  private:
-    void checkVersionData( QByteArray versionData );
-    void requestVersionData();
+    void requestReleases( UpdateChannel channel, bool forced );
+    void requestManifest( const ReleaseInfo& release, const ReleaseAsset& manifestAsset );
+    void startRequest( const QUrl& url, RequestPurpose purpose, const QByteArray& etag = {} );
+    void handleReplyFinished();
+    void handleReleasesReply( QNetworkReply& reply, const QByteArray& data );
+    void handleManifestReply( QNetworkReply& reply, const QByteArray& data );
+    void handlePackageReply( QNetworkReply& reply );
+    void fail( const QString& message );
+    void setState( UpdateState state, const QString& decision );
+    void finishScheduledCheck();
+    bool preparePendingUpdate( QString* errorMessage );
+    bool persistPendingUpdate( QString* errorMessage = nullptr ) const;
+    void loadPendingUpdate();
+    QString updateRoot() const;
+    void initialize();
 
-  private:
     QNetworkAccessManager* manager_ = nullptr;
+    QNetworkReply* activeReply_ = nullptr;
+    std::unique_ptr<QSaveFile> downloadFile_;
+    QCryptographicHash packageHash_{ QCryptographicHash::Sha256 };
+    RequestPurpose requestPurpose_ = RequestPurpose::Releases;
+    UpdateState state_ = UpdateState::Idle;
+    UpdateChannel requestedChannel_ = UpdateChannel::Stable;
     bool forced_ = false;
+    bool installOnExit_ = false;
+    ReleaseInfo resolvingRelease_;
+    QList<ReleaseAsset> githubAssets_;
+    PendingUpdate pendingUpdate_;
+    QUrl releasesUrl_;
+    bool testTransport_ = false;
 };
-
-#endif

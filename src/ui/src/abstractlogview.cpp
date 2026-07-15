@@ -441,6 +441,16 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
 
 AbstractLogView::~AbstractLogView()
 {
+    // The popup references actions parented directly to this view. Destroy it before QObject
+    // starts deleting those sibling actions, otherwise QMenu teardown can observe actions that
+    // have already been destroyed (seen as a release-only Windows CI crash).
+    LOG_DEBUG << "AbstractLogView teardown: deleting popup menu before child actions";
+    delete popupMenu_;
+    popupMenu_ = nullptr;
+    highlightersMenu_ = nullptr;
+    colorLabelsMenu_ = nullptr;
+    sendToPreviewMenu_ = nullptr;
+
     try {
         if ( quickFind_ ) {
             quickFind_->stopSearch();
@@ -2106,7 +2116,7 @@ void AbstractLogView::createMenu()
              [ this ]( auto ) { Q_EMIT replaceScratchpadWithSelection(); } );
 
     popupMenu_ = new QMenu( this );
-    highlightersMenu_ = new HighlightersMenu( tr( "Highlighters" ) );
+    highlightersMenu_ = new HighlightersMenu( tr( "Highlighters" ), popupMenu_ );
     popupMenu_->addMenu( highlightersMenu_ );
     colorLabelsMenu_ = popupMenu_->addMenu( tr( "Color labels" ) );
 

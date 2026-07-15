@@ -37,22 +37,22 @@
  */
 
 #include <QColorDialog>
-#include <QKeySequenceEdit>
-#include <QMessageBox>
-#include <QToolButton>
-#include <QtGui>
 #include <QDir>
 #include <QFileDialog>
-#include <QStandardPaths>
+#include <QKeySequenceEdit>
+#include <QMessageBox>
 #include <QSerialPort>
+#include <QStandardPaths>
+#include <QToolButton>
+#include <QtGui>
 
+#include "comportutils.h"
 #include "encodings.h"
 #include "fontutils.h"
 #include "highlighteredit.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "recentfiles.h"
-#include "comportutils.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
 #include "styles.h"
@@ -65,6 +65,16 @@ static constexpr int PollIntervalMax = 3600000;
 // Constructor
 OptionsDialog::OptionsDialog( QWidget* parent )
     : QDialog( parent )
+    , manualUpdateUiController_(
+          manualVersionChecker_, [ this ] { return this; },
+          [ this ] {
+              if ( updateActionInstallRadio->isChecked() )
+                  return UpdateAction::DownloadAndInstall;
+              if ( updateActionDownloadRadio->isChecked() )
+                  return UpdateAction::Download;
+              return UpdateAction::Notify;
+          },
+          QStringLiteral( "preferences-manual" ), this )
 {
     setupUi( this );
 
@@ -89,6 +99,22 @@ OptionsDialog::OptionsDialog( QWidget* parent )
 
     connect( extractArchivesCheckBox, &QCheckBox::toggled,
              [ this ]( auto ) { this->setupArchives(); } );
+
+    connect( checkNowButton, &QPushButton::clicked, this, [ this ] {
+        const auto channel = static_cast<UpdateChannel>( updateChannelBox->currentIndex() );
+        LOG_INFO << "Preferences manual update check clicked; selected channel="
+                 << ( channel == UpdateChannel::Ci ? "CI" : "Stable" );
+        checkNowButton->setEnabled( false );
+        manualVersionChecker_.forceCheck( channel );
+    } );
+    connect( &manualVersionChecker_, &VersionChecker::checkFinished, this,
+             [ this ]( bool updateAvailable, const QString& message ) {
+                 checkNowButton->setEnabled( true );
+                 LOG_INFO << "Preferences manual update check completed; available="
+                          << updateAvailable << ", status=" << message;
+                 if ( !updateAvailable && manualVersionChecker_.state() != UpdateState::Error )
+                     QMessageBox::information( this, tr( "CILogg Update" ), message );
+             } );
 
     connect( mainSearchColorButton, &QPushButton::clicked, this, &OptionsDialog::changeMainColor );
     connect( quickFindColorButton, &QPushButton::clicked, this, &OptionsDialog::changeQfColor );
@@ -224,7 +250,8 @@ void OptionsDialog::browseComLogPath()
         initialDir = defaultComLogDirectory();
     }
 
-    const auto dir = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
+    const auto dir
+        = QFileDialog::getExistingDirectory( this, tr( "Select log folder" ), initialDir );
     if ( !dir.isEmpty() ) {
         comLogPathEdit->setText( dir );
     }
@@ -617,6 +644,21 @@ void OptionsDialog::updateConfigFromDialog()
 
     // version checking
     config.setVersionCheckingEnabled( checkForNewVersionCheckBox->isChecked() );
+    config.setUpdateChannel( static_cast<UpdateChannel>( updateChannelBox->currentIndex() ) );
+    config.setUpdateFrequency( static_cast<UpdateFrequency>( updateFrequencyBox->currentIndex() ) );
+    if ( updateActionInstallRadio->isChecked() ) {
+        config.setUpdateAction( UpdateAction::DownloadAndInstall );
+    }
+    else if ( updateActionDownloadRadio->isChecked() ) {
+        config.setUpdateAction( UpdateAction::Download );
+    }
+    else {
+        config.setUpdateAction( UpdateAction::Notify );
+    }
+    LOG_INFO << "Saved updater preferences: enabled=" << config.versionCheckingEnabled()
+             << ", channel=" << static_cast<int>( config.updateChannel() )
+             << ", frequency=" << static_cast<int>( config.updateFrequency() )
+             << ", action=" << static_cast<int>( config.updateAction() );
 
     config.setVerifySslPeers( verifySslCheckBox->isChecked() );
 

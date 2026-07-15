@@ -70,7 +70,8 @@ Section "CILogg" cilogg
     SectionIn RO
 
     SetOutPath $INSTDIR
-    File release\cilogg.exe
+File release\cilogg.exe
+File release\cilogg_updater.exe
     File /nonfatal release\cilogg_crashpad_handler.exe
     File /nonfatal release\cilogg_minidump_dump.exe
     File /nonfatal release\tbb12.dll

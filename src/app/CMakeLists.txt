@@ -124,7 +124,17 @@ add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_portable ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_grep ${MAIN_SOURCES} ${KLOGG_GREP_SOURCES})
 
-add_dependencies(ci_build klogg klogg_grep)
+target_include_directories(
+  klogg PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+target_include_directories(
+  klogg_portable PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+target_include_directories(
+  klogg_grep PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include
+)
+
+add_dependencies(ci_build klogg klogg_grep cilogg_updater)
 
 if(WIN32)
   add_dependencies(ci_build klogg_portable)
@@ -160,6 +170,17 @@ target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab)
 target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS} klogg_commander)
 
 target_compile_definitions(klogg_portable PUBLIC -DKLOGG_PORTABLE)
+
+add_custom_command(
+  TARGET klogg POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:cilogg_updater> $<TARGET_FILE_DIR:klogg>
+  COMMENT "Copy CILogg updater helper"
+)
+add_custom_command(
+  TARGET klogg_portable POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:cilogg_updater> $<TARGET_FILE_DIR:klogg_portable>
+  COMMENT "Copy CILogg updater helper for portable package"
+)
 
 if(WIN32)
 
