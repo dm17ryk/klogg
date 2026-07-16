@@ -36,6 +36,7 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <exception>
@@ -76,13 +77,15 @@ struct PartialSearchResults {
 
     LineNumber chunkStart;
     LinesCount processedLines;
+    uint64_t sequence = 0;
 };
 
 struct SearchBlockData {
     SearchBlockData() = default;
-    SearchBlockData( LineNumber start, LogData::RawLines blockLines )
+    SearchBlockData( LineNumber start, LogData::RawLines blockLines, uint64_t blockSequence )
         : chunkStart( start )
         , lines( std::move( blockLines ) )
+        , sequence( blockSequence )
     {
     }
 
@@ -94,15 +97,17 @@ struct SearchBlockData {
 
     LineNumber chunkStart;
     LogData::RawLines lines;
+    uint64_t sequence = 0;
 };
 
 PartialSearchResults filterLines( const PatternMatcher& matcher, const LogData::RawLines& rawLines,
-                                  LineNumber chunkStart )
+                                  LineNumber chunkStart, uint64_t sequence )
 {
     LOG_DEBUG << "Filter lines at " << chunkStart;
     PartialSearchResults results;
     results.chunkStart = chunkStart;
     results.processedLines = LinesCount{ rawLines.endOfLines.size() };
+    results.sequence = sequence;
 
     const auto& lines = rawLines.buildUtf8View();
 
@@ -127,7 +132,8 @@ PartialSearchResults filterLines( const PatternMatcher& matcher, const LogData::
 SearchResults SearchData::takeCurrentResults() const
 {
     UniqueLock lock( dataMutex_ );
-    return SearchResults{ std::exchange( newMatches_, {} ), maxLength_, nbLinesProcessed_ };
+    return SearchResults{ std::exchange( newMatches_, {} ), maxLength_, nbLinesProcessed_,
+                          limitReached_ };
 }
 
 void SearchData::addAll( LineLength length, const SearchResultArray& matches,
@@ -140,6 +146,12 @@ void SearchData::addAll( LineLength length, const SearchResultArray& matches,
     nbMatches_ += matchedLines;
 
     newMatches_ |= matches;
+}
+
+void SearchData::markLimitReached()
+{
+    UniqueLock lock( dataMutex_ );
+    limitReached_ = true;
 }
 
 LinesCount SearchData::getNbMatches() const
@@ -169,6 +181,7 @@ void SearchData::clear()
     nbMatches_ = LinesCount( 0 );
     matches_ = {};
     newMatches_ = {};
+    limitReached_ = false;
 }
 
 LogFilteredDataWorker::LogFilteredDataWorker( const LogData& sourceLogData )
@@ -196,54 +209,54 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
     LOG_DEBUG << "Connecting search operation signals for generation " << requestedGeneration;
 
     const QPointer<LogFilteredDataWorker> worker( this );
-    const auto progressConnection
-        = connect( operationRequested, &SearchOperation::searchProgressed, operationRequested,
-                   [ worker ]( LinesCount nbMatches, int percent, LineNumber initialLine,
-                               uint64_t searchGeneration ) {
-                       if ( !worker ) {
-                           LOG_DEBUG << "Dropping search progress for destroyed worker, generation "
-                                     << searchGeneration;
-                           return;
-                       }
+    const auto progressConnection = connect(
+        operationRequested, &SearchOperation::searchProgressed, operationRequested,
+        [ worker ]( LinesCount nbMatches, int percent, LineNumber initialLine,
+                    uint64_t searchGeneration ) {
+            if ( !worker ) {
+                LOG_DEBUG << "Dropping search progress for destroyed worker, generation "
+                          << searchGeneration;
+                return;
+            }
 
-                       QMetaObject::invokeMethod(
-                           worker,
-                           [ worker, nbMatches, percent, initialLine, searchGeneration ] {
-                               if ( !worker ) {
-                                   LOG_DEBUG
-                                       << "Skipping queued search progress for destroyed worker, generation "
-                                       << searchGeneration;
-                                   return;
-                               }
-                               Q_EMIT worker->searchProgressed( nbMatches, percent, initialLine,
-                                                                searchGeneration );
-                           },
-                           Qt::QueuedConnection );
-                   },
-                   Qt::DirectConnection );
-    const auto failedConnection
-        = connect( operationRequested, &SearchOperation::searchFailed, operationRequested,
-                   [ worker ]( QString errorMessage, uint64_t searchGeneration ) {
-                       if ( !worker ) {
-                           LOG_DEBUG << "Dropping search failure for destroyed worker, generation "
-                                     << searchGeneration;
-                           return;
-                       }
+            QMetaObject::invokeMethod(
+                worker,
+                [ worker, nbMatches, percent, initialLine, searchGeneration ] {
+                    if ( !worker ) {
+                        LOG_DEBUG
+                            << "Skipping queued search progress for destroyed worker, generation "
+                            << searchGeneration;
+                        return;
+                    }
+                    Q_EMIT worker->searchProgressed( nbMatches, percent, initialLine,
+                                                     searchGeneration );
+                },
+                Qt::QueuedConnection );
+        },
+        Qt::DirectConnection );
+    const auto failedConnection = connect(
+        operationRequested, &SearchOperation::searchFailed, operationRequested,
+        [ worker ]( QString errorMessage, uint64_t searchGeneration ) {
+            if ( !worker ) {
+                LOG_DEBUG << "Dropping search failure for destroyed worker, generation "
+                          << searchGeneration;
+                return;
+            }
 
-                       QMetaObject::invokeMethod(
-                           worker,
-                           [ worker, errorMessage = std::move( errorMessage ), searchGeneration ] {
-                               if ( !worker ) {
-                                   LOG_DEBUG
-                                       << "Skipping queued search failure for destroyed worker, generation "
-                                       << searchGeneration;
-                                   return;
-                               }
-                               Q_EMIT worker->searchFailed( errorMessage, searchGeneration );
-                           },
-                           Qt::QueuedConnection );
-                   },
-                   Qt::DirectConnection );
+            QMetaObject::invokeMethod(
+                worker,
+                [ worker, errorMessage = std::move( errorMessage ), searchGeneration ] {
+                    if ( !worker ) {
+                        LOG_DEBUG
+                            << "Skipping queued search failure for destroyed worker, generation "
+                            << searchGeneration;
+                        return;
+                    }
+                    Q_EMIT worker->searchFailed( errorMessage, searchGeneration );
+                },
+                Qt::QueuedConnection );
+        },
+        Qt::DirectConnection );
 
     LOG_DEBUG << "Running search operation for generation " << requestedGeneration;
     operationRequested->run( searchData_ );
@@ -251,7 +264,8 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
 
     const auto compiledRegexp = operationRequested->compiledRegexp();
     if ( compiledRegexp && compiledRegexp->isValid() ) {
-        LOG_DEBUG << "Remembering compiled search expression for generation " << requestedGeneration;
+        LOG_DEBUG << "Remembering compiled search expression for generation "
+                  << requestedGeneration;
         rememberCompiledRegexp( operationRequested->regexp(), compiledRegexp );
     }
     else {
@@ -330,41 +344,41 @@ void LogFilteredDataWorker::clearCompiledRegexp( const RegularExpressionPattern&
 void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp,
                                     std::shared_ptr<RegularExpression> compiledRegexp,
                                     LineNumber startLine, LineNumber endLine,
-                                    uint64_t searchGeneration )
+                                    uint64_t searchGeneration, SearchOptions options )
 {
     ScopedLock locker( operationsMutex_ );
     auto operationInterrupt = beginOperation();
 
     LOG_INFO << "Search requested";
-    operationsPool_.start(
-        createRunnable( [ this, regExp, compiledRegexp, startLine, endLine, searchGeneration,
-                          operationInterrupt ] {
-            auto operationRequested = std::make_unique<FullSearchOperation>(
-                sourceLogData_, operationInterrupt, regExp,
-                compiledRegexpFor( regExp, compiledRegexp ), startLine, endLine, searchGeneration );
-            connectSignalsAndRun( operationRequested.get() );
-        } ) );
+    operationsPool_.start( createRunnable( [ this, regExp, compiledRegexp, startLine, endLine,
+                                             searchGeneration, operationInterrupt,
+                                             options = std::move( options ) ] {
+        auto operationRequested = std::make_unique<FullSearchOperation>(
+            sourceLogData_, operationInterrupt, regExp, compiledRegexpFor( regExp, compiledRegexp ),
+            startLine, endLine, searchGeneration, options );
+        connectSignalsAndRun( operationRequested.get() );
+    } ) );
 }
 
 void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp,
                                           std::shared_ptr<RegularExpression> compiledRegexp,
                                           LineNumber startLine, LineNumber endLine,
-                                          LineNumber position, uint64_t searchGeneration )
+                                          LineNumber position, uint64_t searchGeneration,
+                                          SearchOptions options )
 {
     ScopedLock locker( operationsMutex_ );
     auto operationInterrupt = beginOperation();
 
     LOG_INFO << "Search update requested from " << position.get();
 
-    operationsPool_.start(
-        createRunnable( [ this, regExp, compiledRegexp, startLine, endLine, position,
-                          searchGeneration, operationInterrupt ] {
-            auto operationRequested = std::make_unique<UpdateSearchOperation>(
-                sourceLogData_, operationInterrupt, regExp,
-                compiledRegexpFor( regExp, compiledRegexp ), startLine, endLine, position,
-                searchGeneration );
-            connectSignalsAndRun( operationRequested.get() );
-        } ) );
+    operationsPool_.start( createRunnable( [ this, regExp, compiledRegexp, startLine, endLine,
+                                             position, searchGeneration, operationInterrupt,
+                                             options = std::move( options ) ] {
+        auto operationRequested = std::make_unique<UpdateSearchOperation>(
+            sourceLogData_, operationInterrupt, regExp, compiledRegexpFor( regExp, compiledRegexp ),
+            startLine, endLine, position, searchGeneration, options );
+        connectSignalsAndRun( operationRequested.get() );
+    } ) );
 }
 
 void LogFilteredDataWorker::interrupt()
@@ -391,7 +405,7 @@ SearchOperation::SearchOperation( const LogData& sourceLogData,
                                   const RegularExpressionPattern& regExp,
                                   std::shared_ptr<RegularExpression> compiledRegexp,
                                   LineNumber startLine, LineNumber endLine,
-                                  uint64_t searchGeneration )
+                                  uint64_t searchGeneration, SearchOptions options )
 
     : interruptRequested_( std::move( interruptRequested ) )
     , regexp_( regExp )
@@ -400,12 +414,27 @@ SearchOperation::SearchOperation( const LogData& sourceLogData,
     , startLine_( startLine )
     , endLine_( endLine )
     , searchGeneration_( searchGeneration )
+    , options_( std::move( options ) )
 
 {
 }
 
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 {
+    const bool isCappedSearch = options_.maxMatches.has_value();
+    LOG_INFO << "Search execution mode=" << ( isCappedSearch ? "capped" : "unlimited" )
+             << ", max matches="
+             << ( isCappedSearch ? QString::number( *options_.maxMatches )
+                                 : QStringLiteral( "unlimited" ) );
+
+    if ( options_.maxMatches == std::optional<uint64_t>{ 0 } ) {
+        LOG_INFO << "Maximum match count is zero; completing without scanning";
+        searchData.markLimitReached();
+        Q_EMIT searchProgressed( 0_lcount, 100, initialLine, searchGeneration_ );
+        Q_EMIT searchFinished( searchGeneration_ );
+        return;
+    }
+
     if ( !compiledRegexp_ ) {
         compiledRegexp_ = std::make_shared<RegularExpression>( regexp_ );
     }
@@ -474,38 +503,46 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
         regexMatchers.emplace_back(
             std::move( matcher ), microseconds{ 0 },
-            RegexMatcherNode( searchGraph, 1,
-                              [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
-                                  auto searchResults = std::make_shared<PartialSearchResults>();
+            RegexMatcherNode(
+                searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
+                    auto searchResults = std::make_shared<PartialSearchResults>();
 
                     if ( *interruptRequested_ ) {
                         LOG_INFO << "Matcher " << index << " interrupted";
-                                  searchResults->chunkStart = blockData->chunkStart;
-                                  searchResults->processedLines
+                        searchResults->chunkStart = blockData->chunkStart;
+                        searchResults->processedLines
                             = LinesCount{ blockData->lines.endOfLines.size() };
-                                  return searchResults;
+                        searchResults->sequence = blockData->sequence;
+                        return searchResults;
                     }
 
-                    const auto& matcherPtr = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
+                    const auto& matcherPtr
+                        = std::get<PatternMatcherPtr>( regexMatchers.at( index ) );
                     const auto matchStartTime = high_resolution_clock::now();
 
-                                  *searchResults
-                        = filterLines( *matcherPtr, blockData->lines, blockData->chunkStart );
+                    *searchResults = filterLines( *matcherPtr, blockData->lines,
+                                                  blockData->chunkStart, blockData->sequence );
 
                     const auto matchEndTime = high_resolution_clock::now();
 
                     microseconds& matchDuration
                         = std::get<microseconds>( regexMatchers.at( index ) );
                     matchDuration += duration_cast<microseconds>( matchEndTime - matchStartTime );
-                                  LOG_DEBUG << "Searcher " << index << " block "
-                                            << blockData->chunkStart
-                              << " sending matches "
-                                            << searchResults->matchingLines.cardinality();
-                                  return searchResults;
-                              } ) );
+                    LOG_DEBUG << "Searcher " << index << " block " << blockData->chunkStart
+                              << " sending matches " << searchResults->matchingLines.cardinality();
+                    return searchResults;
+                } ) );
     }
 
     auto resultsQueue = tbb::flow::buffer_node<BlockResultsType>( searchGraph );
+    std::unique_ptr<tbb::flow::sequencer_node<BlockResultsType>> resultsSequencer;
+    if ( isCappedSearch ) {
+        LOG_DEBUG << "Enabling ordered result sequencing for deterministic max-count search";
+        resultsSequencer = std::make_unique<tbb::flow::sequencer_node<BlockResultsType>>(
+            searchGraph, []( const BlockResultsType& results ) -> size_t {
+                return results ? static_cast<size_t>( results->sequence ) : 0u;
+            } );
+    }
 
     const auto totalLines = endLine - initialLine;
     LinesCount totalProcessedLines = 0_lcount;
@@ -515,10 +552,10 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     int reportedPercentage = 0;
 
     std::chrono::microseconds matchCombiningDuration{ 0 };
+    std::atomic_bool matchLimitReached{ false };
 
     auto matchProcessor
-        = tbb::flow::function_node<BlockResultsType, tbb::flow::continue_msg,
-                                   tbb::flow::rejecting>(
+        = tbb::flow::function_node<BlockResultsType, tbb::flow::continue_msg, tbb::flow::rejecting>(
             searchGraph, 1, [ & ]( const BlockResultsType& matchResultsPtr ) {
                 if ( *interruptRequested_ ) {
                     LOG_INFO << "Match processor interrupted";
@@ -531,13 +568,42 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
                 const auto& matchResults = *matchResultsPtr;
 
+                if ( matchLimitReached.load( std::memory_order_relaxed ) ) {
+                    LOG_DEBUG << "Discarding ordered chunk " << matchResults.sequence
+                              << " after maximum match count was reached";
+                    return tbb::flow::continue_msg{};
+                }
+
                 const auto matchProcessorStartTime = high_resolution_clock::now();
 
                 if ( matchResults.processedLines.get() ) {
 
                     maxLength = qMax( maxLength, matchResults.maxLength );
-                    const LinesCount matchesCount
-                        = LinesCount( matchResults.matchingLines.cardinality() );
+                    auto acceptedMatches = matchResults.matchingLines;
+                    auto acceptedCount = acceptedMatches.cardinality();
+
+                    if ( isCappedSearch ) {
+                        const auto existingCount = static_cast<uint64_t>( nbMatches.get() );
+                        const auto remaining = existingCount < *options_.maxMatches
+                                                   ? *options_.maxMatches - existingCount
+                                                   : 0u;
+                        if ( acceptedCount > remaining ) {
+                            LOG_DEBUG << "Truncating chunk " << matchResults.sequence << " from "
+                                      << acceptedCount << " matches to remaining limit "
+                                      << remaining;
+                            SearchResultArray truncatedMatches;
+                            for ( uint64_t index = 0; index < remaining; ++index ) {
+                                uint64_t line = 0;
+                                if ( acceptedMatches.select( index, &line ) ) {
+                                    truncatedMatches.add( line );
+                                }
+                            }
+                            acceptedMatches = std::move( truncatedMatches );
+                            acceptedCount = acceptedMatches.cardinality();
+                        }
+                    }
+
+                    const LinesCount matchesCount = LinesCount( acceptedCount );
                     nbMatches += matchesCount;
 
                     const auto processedLines = LinesCount{ matchResults.chunkStart.get()
@@ -547,11 +613,18 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
                     // After each block, copy the data to shared data
                     // and update the client
-                    searchData.addAll( maxLength, matchResults.matchingLines, matchesCount,
-                                       processedLines );
+                    searchData.addAll( maxLength, acceptedMatches, matchesCount, processedLines );
 
                     LOG_DEBUG << "done Searching chunk starting at " << matchResults.chunkStart
                               << ", " << matchResults.processedLines << " lines read.";
+
+                    if ( isCappedSearch
+                         && static_cast<uint64_t>( nbMatches.get() ) >= *options_.maxMatches ) {
+                        LOG_INFO << "Maximum match count reached at ordered chunk "
+                                 << matchResults.sequence << ", accepted matches " << nbMatches;
+                        searchData.markLimitReached();
+                        matchLimitReached.store( true, std::memory_order_relaxed );
+                    }
                 }
 
                 const auto matchProcessorEndTime = high_resolution_clock::now();
@@ -579,11 +652,19 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         tbb::flow::make_edge( std::get<RegexMatcherNode>( regexMatcher ), resultsQueue );
     }
 
-    tbb::flow::make_edge( resultsQueue, matchProcessor );
+    if ( resultsSequencer ) {
+        tbb::flow::make_edge( resultsQueue, *resultsSequencer );
+        tbb::flow::make_edge( *resultsSequencer, matchProcessor );
+    }
+    else {
+        tbb::flow::make_edge( resultsQueue, matchProcessor );
+    }
     tbb::flow::make_edge( matchProcessor, blockPrefetcher.decrementer() );
 
     auto chunkStart = initialLine;
-    while ( chunkStart < endLine && !*interruptRequested_ ) {
+    uint64_t chunkSequence = 0;
+    while ( chunkStart < endLine && !*interruptRequested_
+            && !matchLimitReached.load( std::memory_order_relaxed ) ) {
         const auto lineSourceStartTime = high_resolution_clock::now();
         LOG_DEBUG << "Reading chunk starting at " << chunkStart;
 
@@ -594,8 +675,8 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         /*LOG_DEBUG << "Sending chunk starting at " << chunkStart << ", " <<
             lines.second.size()
                 << " lines read.";*/
-        auto blockData
-            = std::make_shared<SearchBlockData>( SearchBlockData{ chunkStart, std::move( lines ) } );
+        auto blockData = std::make_shared<SearchBlockData>(
+            SearchBlockData{ chunkStart, std::move( lines ), chunkSequence++ } );
 
         const auto lineSourceEndTime = high_resolution_clock::now();
         const auto chunkReadTime
@@ -610,7 +691,8 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         chunkStart = chunkStart + nbLinesInChunk;
         fileReadingDuration += chunkReadTime;
 
-        while ( !blockPrefetcher.try_put( blockData ) && !*interruptRequested_ ) {
+        while ( !blockPrefetcher.try_put( blockData ) && !*interruptRequested_
+                && !matchLimitReached.load( std::memory_order_relaxed ) ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
         }
     }
@@ -631,14 +713,16 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
     const auto totalFileSize = sourceLogData_.getFileSize();
 
+    const auto measuredLines = isCappedSearch ? totalProcessedLines : endLine - initialLine;
+    const auto safeDurationMs = qMax<int64_t>( 1, durationMs.count() );
     LOG_INFO << "Searching perf "
              << static_cast<uint64_t>(
-                    std::floor( 1000.f * static_cast<float>( ( endLine - initialLine ).get() )
-                                / static_cast<float>( durationMs.count() ) ) )
+                    std::floor( 1000.f * static_cast<float>( measuredLines.get() )
+                                / static_cast<float>( safeDurationMs ) ) )
              << " lines/s";
     LOG_INFO << "Searching io perf "
              << ( 1000.f * static_cast<float>( totalFileSize )
-                  / static_cast<float>( durationMs.count() ) )
+                  / static_cast<float>( safeDurationMs ) )
                     / ( 1024 * 1024 )
              << " MiB/s";
 

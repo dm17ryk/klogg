@@ -78,7 +78,7 @@ class HighlightersMenu;
 class DigitsBuffer : public QObject {
     Q_OBJECT
 
-  public:
+public:
     // Reset the buffer.
     void reset();
     // Add a single digit to the buffer (discarded if it's not a digit),
@@ -89,10 +89,10 @@ class DigitsBuffer : public QObject {
 
     bool isEmpty() const;
 
-  protected:
+protected:
     void timerEvent( QTimerEvent* event ) override;
 
-  private:
+private:
     // Duration of the timeout in milliseconds.
     static constexpr int DigitsTimeout = 2000;
 
@@ -108,7 +108,7 @@ class Overview;
 class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInterface {
     Q_OBJECT
 
-  public:
+public:
     // Constructor of the widget, the data set is passed.
     // The caller retains ownership of the data set.
     // The pointer to the QFP is used for colouring and QuickFind searches
@@ -160,7 +160,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
 
     void registerShortcuts();
 
-  protected:
+protected:
     void mousePressEvent( QMouseEvent* mouseEvent ) override;
     void mouseMoveEvent( QMouseEvent* mouseEvent ) override;
     void mouseReleaseEvent( QMouseEvent* ) override;
@@ -177,6 +177,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     // Must be implemented to return what LineType the line number is
     // (used for coloured bullets)
     virtual AbstractLogData::LineType lineType( LineNumber lineNumber ) const = 0;
+    virtual bool groupSeparatorBefore( LineNumber lineNumber ) const;
 
     // Line number to display for line at the given index
     virtual LineNumber displayLineNumber( LineNumber lineNumber ) const;
@@ -198,7 +199,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     virtual void doRegisterShortcuts();
     void registerShortcut( const std::string& action, std::function<void()> func );
 
-  Q_SIGNALS:
+Q_SIGNALS:
     // Sent up to the MainWindow to enable/disable the follow mode
     void followModeChanged( bool enabled );
     // Sent when the view wants the QuickFind widget pattern to change.
@@ -245,7 +246,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     void clearColorLabels();
     void highlightersChange();
 
-  public Q_SLOTS:
+public Q_SLOTS:
     // Makes the widget select and display the passed line.
     // Scrolling as necessary
     void trySelectLine( LineNumber newLine );
@@ -289,7 +290,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
 
     void setSearchLimits( LineNumber startLine, LineNumber endLine );
 
-  private Q_SLOTS:
+private Q_SLOTS:
     void handlePatternUpdated();
     void addToSearch();
     void replaceSearch();
@@ -308,7 +309,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     void setQuickFindResult( bool hasMatch, const Portion& selection );
     void setColorLabel( QAction* action );
 
-  private:
+private:
     // Graphic parameters
     static constexpr int OverviewWidth = 27;
     static constexpr int HookThreshold = 300;
@@ -373,9 +374,9 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     LineColumn firstCol_ = 0_lcol;
 
     struct WrappedLineData {
-      LineNumber lineNumber;
-      size_t wrappedLineIndex;
-      WrappedString wrappedString;
+        LineNumber lineNumber;
+        size_t wrappedLineIndex;
+        WrappedString wrappedString;
     };
     struct VisibleLayoutInfo {
         LinesCount logicalLines = 0_lcount;

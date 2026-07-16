@@ -48,6 +48,7 @@
 
 #include <cassert>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <tuple>
 #include <utility>
@@ -64,6 +65,7 @@
 LogFilteredData::LogFilteredData( const LogData* logData )
     : AbstractLogData()
     , matching_lines_( SearchResultArray() )
+    , displayed_lines_( SearchResultArray() )
     , currentRegExp_()
     , visibility_()
     , workerThread_( *logData )
@@ -102,21 +104,22 @@ LogFilteredData::~LogFilteredData()
     workerThread_.interrupt();
 }
 
-void LogFilteredData::runSearch( const RegularExpressionPattern& regExp )
+void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, SearchOptions options )
 {
-    runSearch( regExp, nullptr, 0_lnum, LineNumber( getNbTotalLines().get() ) );
+    runSearch( regExp, nullptr, 0_lnum, LineNumber( getNbTotalLines().get() ),
+               std::move( options ) );
 }
 
 // Run the search and send newDataAvailable() signals.
 void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
-                                 LineNumber endLine )
+                                 LineNumber endLine, SearchOptions options )
 {
-    runSearch( regExp, nullptr, startLine, endLine );
+    runSearch( regExp, nullptr, startLine, endLine, std::move( options ) );
 }
 
 void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
                                  std::shared_ptr<RegularExpression> compiledRegExp,
-                                 LineNumber startLine, LineNumber endLine )
+                                 LineNumber startLine, LineNumber endLine, SearchOptions options )
 {
     LOG_DEBUG << "Entering runSearch";
 
@@ -136,6 +139,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
         compiledRegExp_.reset();
     }
     currentRegExp_ = regExp;
+    currentSearchOptions_ = std::move( options );
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
     lastSearchStart_ = startLine;
     lastSearchEnd_ = endLine;
@@ -144,11 +148,16 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
     pendingUpdateSearch_ = false;
     searchRunning_ = true;
     searchCompletionHandled_ = false;
+    limitReached_ = false;
     activeSearchInitialLine_ = startLine;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting full search gen " << searchGeneration_ << " range [" << startLine << ", "
-              << endLine << "]";
+              << endLine << "] context before=" << currentSearchOptions_.contextBefore
+              << " after=" << currentSearchOptions_.contextAfter << " max="
+              << ( currentSearchOptions_.maxMatches
+                       ? QString::number( *currentSearchOptions_.maxMatches )
+                       : QStringLiteral( "unlimited" ) );
     LOG_INFO << "Search cache key: " << regExp.pattern << "_" << startLine.get() << "_"
              << endLine.get();
 
@@ -158,10 +167,10 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
         if ( cachedResults != std::end( searchResultsCache_ ) ) {
             LOG_INFO << "Got result from cache";
             shouldRunSearch = false;
-            matching_lines_ = cachedResults->second.matching_lines;
+            matching_lines_
+                = applyMatchLimit( cachedResults->second.matching_lines, limitReached_ );
             maxLength_ = cachedResults->second.maxLength;
-
-            marks_and_matches_ = matching_lines_ | marks_;
+            rebuildDisplayedLines();
 
             nbLinesProcessed_ = LinesCount( endLine.get() );
             lastSearchEnd_ = endLine;
@@ -179,7 +188,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
     if ( shouldRunSearch ) {
         attachReader();
         workerThread_.search( currentRegExp_, compiledRegExp_, startLine, endLine,
-                              searchGeneration_ );
+                              searchGeneration_, currentSearchOptions_ );
     }
 }
 
@@ -189,6 +198,11 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
 
     if ( currentRegExp_.pattern.isEmpty() ) {
         LOG_INFO << "Skipping updateSearch: no active search pattern";
+        return;
+    }
+
+    if ( limitReached_ ) {
+        LOG_INFO << "Skipping updateSearch: maximum match count is saturated";
         return;
     }
 
@@ -233,15 +247,16 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     activeSearchInitialLine_ = initialLine;
     ++searchGeneration_;
 
-    LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range [" << initialLine
-              << ", " << endLine << "]"
+    LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range ["
+              << initialLine << ", " << endLine << "]"
               << " previous processed " << previousProcessed;
 
     currentSearchKey_ = {};
 
     attachReader();
     workerThread_.updateSearch( currentRegExp_, compiledRegExp_, startLine, endLine,
-                                LineNumber( nbLinesProcessed_.get() ), searchGeneration_ );
+                                LineNumber( nbLinesProcessed_.get() ), searchGeneration_,
+                                currentSearchOptions_ );
 }
 
 void LogFilteredData::interruptSearch()
@@ -257,6 +272,7 @@ void LogFilteredData::clearSearch( bool dropCache )
     interruptSearch();
 
     currentRegExp_ = {};
+    currentSearchOptions_ = {};
     compiledRegExp_.reset();
     ++searchGeneration_;
     searchRunning_ = false;
@@ -264,6 +280,7 @@ void LogFilteredData::clearSearch( bool dropCache )
     searchCompletionHandled_ = false;
     activeSearchInitialLine_ = 0_lnum;
     matching_lines_ = {};
+    displayed_lines_ = {};
     marks_and_matches_ = marks_;
     maxLength_ = 0_length;
     nbLinesProcessed_ = 0_lcount;
@@ -271,6 +288,7 @@ void LogFilteredData::clearSearch( bool dropCache )
     lastSearchEnd_ = 0_lnum;
     lastSearchIncremental_ = false;
     fullScanCompleted_ = false;
+    limitReached_ = false;
 
     if ( dropCache ) {
         searchResultsCache_.clear();
@@ -412,7 +430,7 @@ void LogFilteredData::deleteMark( LineNumber line )
 void LogFilteredData::updateMaxLengthMarks( OptionalLineNumber added_line,
                                             OptionalLineNumber removed_line )
 {
-    marks_and_matches_ = matching_lines_ | marks_;
+    marks_and_matches_ = displayed_lines_ | marks_;
 
     if ( added_line.has_value() ) {
         maxLengthMarks_ = qMax( maxLengthMarks_, sourceLogData_->getLineLength( *added_line ) );
@@ -507,6 +525,104 @@ void LogFilteredData::updateSearchResultsCache()
     }
 }
 
+bool LogFilteredData::isContextGroupStart( LineNumber index ) const
+{
+    if ( index == 0_lnum
+         || ( currentSearchOptions_.contextBefore == 0
+              && currentSearchOptions_.contextAfter == 0 ) ) {
+        return false;
+    }
+
+    const auto currentSourceLine = getMatchingLineNumber( index );
+    const auto previousSourceLine = getMatchingLineNumber( index - 1_lcount );
+    return currentSourceLine > previousSourceLine + 1_lcount;
+}
+
+SearchResultArray LogFilteredData::applyMatchLimit( const SearchResultArray& matches,
+                                                    bool& limitReached ) const
+{
+    limitReached = false;
+    if ( !currentSearchOptions_.maxMatches ) {
+        return matches;
+    }
+
+    const auto requestedMatches = *currentSearchOptions_.maxMatches;
+    const auto availableMatches = matches.cardinality();
+    limitReached = availableMatches >= requestedMatches;
+
+    if ( requestedMatches >= availableMatches ) {
+        return matches;
+    }
+
+    if ( requestedMatches == 0 ) {
+        return {};
+    }
+
+    SearchResultArray limitedMatches = matches;
+    uint64_t lastAcceptedLine = 0;
+    if ( limitedMatches.select( requestedMatches - 1, &lastAcceptedLine )
+         && lastAcceptedLine != std::numeric_limits<uint64_t>::max() ) {
+        limitedMatches.removeRangeClosed( lastAcceptedLine + 1,
+                                          std::numeric_limits<uint64_t>::max() );
+    }
+
+    return limitedMatches;
+}
+
+void LogFilteredData::rebuildDisplayedLines()
+{
+    displayed_lines_ = {};
+    addDisplayedLines( matching_lines_ );
+    marks_and_matches_ = displayed_lines_ | marks_;
+    LOG_DEBUG << "Rebuilt displayed search rows: matches=" << matching_lines_.cardinality()
+              << ", displayed=" << displayed_lines_.cardinality()
+              << ", before=" << currentSearchOptions_.contextBefore
+              << ", after=" << currentSearchOptions_.contextAfter;
+}
+
+void LogFilteredData::addDisplayedLines( const SearchResultArray& newMatches )
+{
+    if ( newMatches.isEmpty() ) {
+        return;
+    }
+
+    if ( currentSearchOptions_.contextBefore == 0 && currentSearchOptions_.contextAfter == 0 ) {
+        displayed_lines_ |= newMatches;
+        return;
+    }
+
+    struct ContextExpansion {
+        LogFilteredData* filteredData;
+        uint64_t totalLines;
+    };
+
+    ContextExpansion context{ this, static_cast<uint64_t>( getNbTotalLines().get() ) };
+    const auto displayedBefore = displayed_lines_.cardinality();
+    newMatches.iterate(
+        []( uint64_t matchLine, void* contextPointer ) -> bool {
+            auto* expansion = static_cast<ContextExpansion*>( contextPointer );
+            auto* filteredData = expansion->filteredData;
+            const auto before = filteredData->currentSearchOptions_.contextBefore;
+            const auto after = filteredData->currentSearchOptions_.contextAfter;
+            const auto startLine = matchLine > before ? matchLine - before : 0u;
+            const auto availableAfter
+                = expansion->totalLines > matchLine ? expansion->totalLines - matchLine - 1 : 0u;
+            const auto endLine = matchLine + qMin( after, availableAfter ) + 1;
+
+            filteredData->displayed_lines_.addRange( startLine, endLine );
+            for ( auto line = startLine; line < endLine; ++line ) {
+                filteredData->maxLength_
+                    = qMax( filteredData->maxLength_,
+                            filteredData->sourceLogData_->getLineLength( LineNumber( line ) ) );
+            }
+            return true;
+        },
+        &context );
+
+    LOG_DEBUG << "Expanded " << newMatches.cardinality() << " new matches into "
+              << displayed_lines_.cardinality() - displayedBefore << " new displayed rows";
+}
+
 void LogFilteredData::runPendingUpdateSearch()
 {
     if ( !pendingUpdateSearch_ || currentRegExp_.pattern.isEmpty() ) {
@@ -541,14 +657,17 @@ void LogFilteredData::applySearchResults( const char* source )
 
     LOG_DEBUG << "Applying search results from " << source << ": new matches "
               << searchResults.newMatches.cardinality() << ", processed "
-              << searchResults.processedLines << ", max length " << searchResults.maxLength;
+              << searchResults.processedLines << ", max length " << searchResults.maxLength
+              << ", limit reached=" << searchResults.limitReached;
 
     matching_lines_ |= searchResults.newMatches;
-    marks_and_matches_ |= searchResults.newMatches;
+    addDisplayedLines( searchResults.newMatches );
+    marks_and_matches_ = displayed_lines_ | marks_;
 
-    maxLength_ = searchResults.maxLength;
+    maxLength_ = qMax( maxLength_, searchResults.maxLength );
     nbLinesProcessed_ = searchResults.processedLines;
     lastSearchEnd_ = LineNumber( nbLinesProcessed_.get() );
+    limitReached_ = limitReached_ || searchResults.limitReached;
 }
 
 void LogFilteredData::publishSearchProgress( LinesCount nbMatches, int progress,
@@ -591,7 +710,8 @@ void LogFilteredData::finalizeCurrentSearch( LineNumber initialLine, uint64_t se
     LOG_DEBUG << "Finalizing search generation " << searchGeneration << " from " << source;
     applySearchResults( source );
 
-    if ( nbLinesProcessed_.get() == getExpectedSearchEnd( currentSearchKey_ ).get() ) {
+    if ( !limitReached_
+         && nbLinesProcessed_.get() == getExpectedSearchEnd( currentSearchKey_ ).get() ) {
         LOG_DEBUG << "Updating search results cache for completed generation " << searchGeneration;
         updateSearchResultsCache();
     }
@@ -601,15 +721,16 @@ void LogFilteredData::finalizeCurrentSearch( LineNumber initialLine, uint64_t se
                   << getExpectedSearchEnd( currentSearchKey_ );
     }
 
-    fullScanCompleted_ = true;
+    fullScanCompleted_ = !limitReached_;
     searchRunning_ = false;
     searchCompletionHandled_ = true;
 
     detachReader();
 
     LOG_INFO << "Matches size " << readableSize( matching_lines_.getSizeInBytes( false ) )
-             << ", marks size " << readableSize( marks_.getSizeInBytes( false ) )
-             << ", union size " << readableSize( marks_and_matches_.getSizeInBytes( false ) );
+             << ", displayed size " << readableSize( displayed_lines_.getSizeInBytes( false ) )
+             << ", marks size " << readableSize( marks_.getSizeInBytes( false ) ) << ", union size "
+             << readableSize( marks_and_matches_.getSizeInBytes( false ) );
 
     publishSearchProgress( LinesCount( matching_lines_.cardinality() ), 100, initialLine,
                            searchGeneration, true );
@@ -625,8 +746,8 @@ void LogFilteredData::detachStaleSearchReader( uint64_t searchGeneration, const 
         return;
     }
 
-    LOG_DEBUG << "Detaching stale search reader for generation " << searchGeneration
-              << " from " << source;
+    LOG_DEBUG << "Detaching stale search reader for generation " << searchGeneration << " from "
+              << source;
     lastDetachedStaleSearchGeneration_ = searchGeneration;
     detachReader();
 }
@@ -670,12 +791,12 @@ void LogFilteredData::handleSearchFailed( QString errorMessage, uint64_t searchG
     }
 
     if ( searchCompletionHandled_ ) {
-        LOG_DEBUG << "Ignoring search failure for already completed generation " << searchGeneration;
+        LOG_DEBUG << "Ignoring search failure for already completed generation "
+                  << searchGeneration;
         return;
     }
 
-    LOG_DEBUG << "Finalizing failed search generation " << searchGeneration << ": "
-              << errorMessage;
+    LOG_DEBUG << "Finalizing failed search generation " << searchGeneration << ": " << errorMessage;
     detachReader();
     fullScanCompleted_ = false;
     searchRunning_ = false;
@@ -740,7 +861,7 @@ const SearchResultArray& LogFilteredData::currentResultArray() const
         return marks_and_matches_;
     }
     else if ( visibility_.testFlag( VisibilityFlags::Matches ) ) {
-        return matching_lines_;
+        return displayed_lines_;
     }
     else {
         return marks_;
@@ -780,7 +901,7 @@ klogg::vector<QString> LogFilteredData::doGetLines( LineNumber first_line, Lines
 
 // Implementation of the virtual function.
 klogg::vector<QString> LogFilteredData::doGetExpandedLines( LineNumber first_line,
-                                                          LinesCount number ) const
+                                                            LinesCount number ) const
 {
     return doGetLines( first_line, number,
                        [ this ]( const auto& line ) { return doGetExpandedLineString( line ); } );
@@ -801,9 +922,9 @@ LogFilteredData::doGetLines( LineNumber first_line, LinesCount number,
     return lines;
 }
 
-LineNumber LogFilteredData::doGetLineNumber(LineNumber index) const
+LineNumber LogFilteredData::doGetLineNumber( LineNumber index ) const
 {
-    return getMatchingLineNumber(index);
+    return getMatchingLineNumber( index );
 }
 
 // Implementation of the virtual function.

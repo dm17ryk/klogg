@@ -76,6 +76,11 @@ AbstractLogData::LineType FilteredView::lineType( LineNumber lineNumber ) const
     return logFilteredData_->lineTypeByIndex( lineNumber );
 }
 
+bool FilteredView::groupSeparatorBefore( LineNumber lineNumber ) const
+{
+    return logFilteredData_->isContextGroupStart( lineNumber );
+}
+
 LineNumber FilteredView::displayLineNumber( LineNumber lineNumber ) const
 {
     // Display a 1-based index

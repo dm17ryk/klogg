@@ -19,6 +19,7 @@
 
 #include <catch2/catch.hpp>
 
+#include "hsregularexpression.h"
 #include "regularexpression.h"
 
 SCENARIO( "Pattern matcher in boolean mode", "[patternmatcher]" )
@@ -137,4 +138,92 @@ SCENARIO( "Pattern matcher splits top level alternation", "[patternmatcher]" )
         const auto matcher = expression.createMatcher();
         REQUIRE_FALSE( matcher->hasMatch( noMatchLine ) );
     }
+}
+
+SCENARIO( "Pattern matcher supports whole word mode", "[patternmatcher]" )
+{
+    const RegularExpressionPattern pattern( "INFO", true, false, false, true,
+                                            MatchMode::WholeWord );
+    const RegularExpression expression( pattern );
+    REQUIRE( expression.isValid() );
+
+    const auto matcher = expression.createMatcher();
+    CHECK( matcher->hasMatch( "INFO connected" ) );
+    CHECK( matcher->hasMatch( "[INFO] connected" ) );
+    CHECK_FALSE( matcher->hasMatch( "INFORMATION connected" ) );
+    CHECK_FALSE( matcher->hasMatch( "MY_INFO connected" ) );
+
+    const auto qtPattern = static_cast<QRegularExpression>( pattern );
+    CHECK( qtPattern.match( QString::fromUtf8( "INFO connected" ) ).hasMatch() );
+    CHECK_FALSE( qtPattern.match( QString::fromUtf8( "INFORMATION connected" ) ).hasMatch() );
+
+#ifdef KLOGG_HAS_HS
+    const HsRegularExpression hsExpression( pattern );
+    const auto acceleratedMatcher = hsExpression.createMatcher();
+    CHECK_FALSE( std::holds_alternative<DefaultRegularExpressionMatcher>( acceleratedMatcher ) );
+#endif
+}
+
+SCENARIO( "Whole word mode is applied to each boolean term", "[patternmatcher]" )
+{
+    const RegularExpressionPattern pattern( "\"foo\" & \"bar\"", true, false, true, true,
+                                            MatchMode::WholeWord );
+    const RegularExpression expression( pattern );
+    REQUIRE( expression.isValid() );
+
+    const auto matcher = expression.createMatcher();
+    CHECK( matcher->hasMatch( "foo and bar" ) );
+    CHECK_FALSE( matcher->hasMatch( "foobar and bar" ) );
+    CHECK_FALSE( matcher->hasMatch( "foo and bartender" ) );
+}
+
+SCENARIO( "Pattern matcher supports visible whole line mode", "[patternmatcher]" )
+{
+    const RegularExpressionPattern pattern( "Connected", true, false, false, true,
+                                            MatchMode::WholeLine );
+    const RegularExpression expression( pattern );
+    REQUIRE( expression.isValid() );
+
+    const auto matcher = expression.createMatcher();
+    CHECK( matcher->hasMatch( "Connected" ) );
+    CHECK( matcher->hasMatch( "Connected\r" ) );
+    CHECK_FALSE( matcher->hasMatch( "prefix Connected" ) );
+    CHECK_FALSE( matcher->hasMatch( "Connected suffix" ) );
+
+#ifdef KLOGG_HAS_HS
+    const HsRegularExpression hsExpression( pattern );
+    const auto acceleratedMatcher = hsExpression.createMatcher();
+    CHECK_FALSE( std::holds_alternative<DefaultRegularExpressionMatcher>( acceleratedMatcher ) );
+#endif
+}
+
+SCENARIO( "Whole line mode rejects boolean search", "[patternmatcher]" )
+{
+    const RegularExpression expression( RegularExpressionPattern(
+        "\"foo\" | \"bar\"", true, false, true, true, MatchMode::WholeLine ) );
+
+    CHECK_FALSE( expression.isValid() );
+    CHECK( expression.errorString().contains( "Whole line" ) );
+}
+
+SCENARIO( "Regular expression pattern equality includes all search options", "[patternmatcher]" )
+{
+    RegularExpressionPattern lhs( "token", true, false, false, true, MatchMode::Contains );
+    auto rhs = lhs;
+    CHECK( lhs == rhs );
+
+    rhs.isExclude = true;
+    CHECK_FALSE( lhs == rhs );
+    rhs = lhs;
+    rhs.isBoolean = true;
+    CHECK_FALSE( lhs == rhs );
+    rhs = lhs;
+    rhs.isPlainText = false;
+    CHECK_FALSE( lhs == rhs );
+    rhs = lhs;
+    rhs.isPrefilter = true;
+    CHECK_FALSE( lhs == rhs );
+    rhs = lhs;
+    rhs.matchMode = MatchMode::WholeWord;
+    CHECK_FALSE( lhs == rhs );
 }

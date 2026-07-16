@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 
-#include <QFileInfo>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
@@ -113,9 +113,8 @@ TEST_CASE( "Scenario batch CLI parses run and utility requests", "[scenario][cli
     REQUIRE( runScenario.scenario_batch_request->scenarioFilePath.endsWith( "scenario.py" ) );
     REQUIRE( runScenario.scenario_batch_request->argsJsonFilePath.endsWith( "args.json" ) );
 
-    CliParameters validateSuite(
-        { "cilogg", "scenario", "validate", "--suite-file", "suite.json", "--device-map-file",
-          "devices.json" } );
+    CliParameters validateSuite( { "cilogg", "scenario", "validate", "--suite-file", "suite.json",
+                                   "--device-map-file", "devices.json" } );
     REQUIRE_FALSE( validateSuite.parse_error );
     REQUIRE( validateSuite.scenario_batch_request.has_value() );
     REQUIRE( validateSuite.scenario_batch_request->action == ScenarioBatchAction::Validate );
@@ -133,27 +132,23 @@ TEST_CASE( "Scenario batch CLI rejects invalid combinations", "[scenario][cli]" 
     REQUIRE( missingTarget.parse_error );
     REQUIRE( missingTarget.parse_error_message.contains( "exactly one" ) );
 
-    CliParameters conflictingTargets(
-        { "cilogg", "scenario", "run", "--suite-file", "suite.json", "--scenario-file",
-          "scenario.py" } );
+    CliParameters conflictingTargets( { "cilogg", "scenario", "run", "--suite-file", "suite.json",
+                                        "--scenario-file", "scenario.py" } );
     REQUIRE( conflictingTargets.parse_error );
     REQUIRE( conflictingTargets.parse_error_message.contains( "exactly one" ) );
 
-    CliParameters suiteWithArgs(
-        { "cilogg", "scenario", "run", "--suite-file", "suite.json", "--args-json-file",
-          "args.json" } );
+    CliParameters suiteWithArgs( { "cilogg", "scenario", "run", "--suite-file", "suite.json",
+                                   "--args-json-file", "args.json" } );
     REQUIRE( suiteWithArgs.parse_error );
     REQUIRE( suiteWithArgs.parse_error_message.contains( "--args-json-file" ) );
 
-    CliParameters validateInvalid(
-        { "cilogg", "scenario", "validate", "--suite-file", "suite.json", "--report-dir",
-          "reports" } );
+    CliParameters validateInvalid( { "cilogg", "scenario", "validate", "--suite-file", "suite.json",
+                                     "--report-dir", "reports" } );
     REQUIRE( validateInvalid.parse_error );
     REQUIRE( validateInvalid.parse_error_message.contains( "only accepts" ) );
 
-    CliParameters listInvalid(
-        { "cilogg", "scenario", "list-devices", "--suite-file", "suite.json", "--device-map-file",
-          "devices.json" } );
+    CliParameters listInvalid( { "cilogg", "scenario", "list-devices", "--suite-file", "suite.json",
+                                 "--device-map-file", "devices.json" } );
     REQUIRE( listInvalid.parse_error );
     REQUIRE( listInvalid.parse_error_message.contains( "only accepts" ) );
 }
@@ -182,8 +177,9 @@ TEST_CASE( "Lab CLI parses controller and agent requests", "[lab][cli]" )
     REQUIRE( controller.lab_request->stateDirPath.endsWith( "lab-state" ) );
     REQUIRE( controller.lab_request->tokenFilePath.endsWith( "token.txt" ) );
 
-    CliParameters agent( { "cilogg", "lab-agent", "run", "--controller-url", "http://127.0.0.1:5091",
-                           "--agent-config", "agent.json", "--token-file", "token.txt" } );
+    CliParameters agent( { "cilogg", "lab-agent", "run", "--controller-url",
+                           "http://127.0.0.1:5091", "--agent-config", "agent.json", "--token-file",
+                           "token.txt" } );
     REQUIRE_FALSE( agent.parse_error );
     REQUIRE( agent.lab_request.has_value() );
     REQUIRE( agent.lab_request->mode == LabCliMode::AgentRun );
@@ -194,9 +190,10 @@ TEST_CASE( "Lab CLI parses controller and agent requests", "[lab][cli]" )
 
 TEST_CASE( "Lab operator CLI parses requests", "[lab][cli]" )
 {
-    CliParameters submitSuite( { "cilogg", "lab", "submit", "--controller-url", "http://127.0.0.1:5091",
-                                 "--token-file", "token.txt", "--suite-file", "suite.json",
-                                 "--agent-label", "rack-a", "--report-dir", "reports" } );
+    CliParameters submitSuite( { "cilogg", "lab", "submit", "--controller-url",
+                                 "http://127.0.0.1:5091", "--token-file", "token.txt",
+                                 "--suite-file", "suite.json", "--agent-label", "rack-a",
+                                 "--report-dir", "reports" } );
     REQUIRE_FALSE( submitSuite.parse_error );
     REQUIRE( submitSuite.lab_request.has_value() );
     REQUIRE( submitSuite.lab_request->mode == LabCliMode::Submit );
@@ -230,9 +227,9 @@ TEST_CASE( "Lab operator CLI parses requests", "[lab][cli]" )
     REQUIRE( agents.lab_request.has_value() );
     REQUIRE( agents.lab_request->mode == LabCliMode::Agents );
 
-    CliParameters artifacts( { "cilogg", "lab", "artifacts", "--controller-url", "http://127.0.0.1:5091",
-                               "--token-file", "token.txt", "--job-id", "job-3", "--output-dir",
-                               "downloads" } );
+    CliParameters artifacts( { "cilogg", "lab", "artifacts", "--controller-url",
+                               "http://127.0.0.1:5091", "--token-file", "token.txt", "--job-id",
+                               "job-3", "--output-dir", "downloads" } );
     REQUIRE_FALSE( artifacts.parse_error );
     REQUIRE( artifacts.lab_request.has_value() );
     REQUIRE( artifacts.lab_request->mode == LabCliMode::Artifacts );
@@ -241,7 +238,8 @@ TEST_CASE( "Lab operator CLI parses requests", "[lab][cli]" )
 
 TEST_CASE( "Lab operator CLI rejects invalid combinations", "[lab][cli]" )
 {
-    CliParameters missingToken( { "cilogg", "lab", "queue", "--controller-url", "http://127.0.0.1:5091" } );
+    CliParameters missingToken(
+        { "cilogg", "lab", "queue", "--controller-url", "http://127.0.0.1:5091" } );
     REQUIRE( missingToken.parse_error );
     REQUIRE( missingToken.parse_error_message.contains( "--token-file" ) );
 
@@ -251,15 +249,14 @@ TEST_CASE( "Lab operator CLI rejects invalid combinations", "[lab][cli]" )
     REQUIRE( invalidSubmit.parse_error );
     REQUIRE( invalidSubmit.parse_error_message.contains( "exactly one" ) );
 
-    CliParameters missingArtifactOutput(
-        { "cilogg", "lab", "artifacts", "--controller-url", "http://127.0.0.1:5091",
-          "--token-file", "token.txt", "--job-id", "job-9" } );
+    CliParameters missingArtifactOutput( { "cilogg", "lab", "artifacts", "--controller-url",
+                                           "http://127.0.0.1:5091", "--token-file", "token.txt",
+                                           "--job-id", "job-9" } );
     REQUIRE( missingArtifactOutput.parse_error );
     REQUIRE( missingArtifactOutput.parse_error_message.contains( "--output-dir" ) );
 
-    CliParameters missingAgentConfig(
-        { "cilogg", "lab-agent", "run", "--controller-url", "http://127.0.0.1:5091",
-          "--token-file", "token.txt" } );
+    CliParameters missingAgentConfig( { "cilogg", "lab-agent", "run", "--controller-url",
+                                        "http://127.0.0.1:5091", "--token-file", "token.txt" } );
     REQUIRE( missingAgentConfig.parse_error );
     REQUIRE( missingAgentConfig.parse_error_message.contains( "--agent-config" ) );
 }
@@ -274,8 +271,7 @@ TEST_CASE( "Commander CLI rejects missing required arguments", "[commander][cli]
 
 TEST_CASE( "Commander CLI rejects unknown options with help text", "[commander][cli]" )
 {
-    CliParameters parameters(
-        { "cilogg", "command", "--action", "open_com", "--portss", "COM1" } );
+    CliParameters parameters( { "cilogg", "command", "--action", "open_com", "--portss", "COM1" } );
 
     REQUIRE( parameters.parse_error );
     REQUIRE( parameters.parse_error_message.contains( "portss" ) );
@@ -284,11 +280,17 @@ TEST_CASE( "Commander CLI rejects unknown options with help text", "[commander][
 
 TEST_CASE( "Commander CLI parses open_com overrides", "[commander][cli]" )
 {
-    CliParameters parameters(
-        { "cilogg", "command", "--action", "open_com", "--port", "COM7", "--baud", "230400",
-          "--data-bits", "7", "--parity", "even", "--stop-bits", "2", "--flow-control",
-          "hardware", "--timestamps", "--timestamp-format", "HH:mm:ss", "--log-transmits",
-          "--use-for-actions" } );
+    CliParameters parameters( { "cilogg",           "command",
+                                "--action",         "open_com",
+                                "--port",           "COM7",
+                                "--baud",           "230400",
+                                "--data-bits",      "7",
+                                "--parity",         "even",
+                                "--stop-bits",      "2",
+                                "--flow-control",   "hardware",
+                                "--timestamps",     "--timestamp-format",
+                                "HH:mm:ss",         "--log-transmits",
+                                "--use-for-actions" } );
 
     REQUIRE_FALSE( parameters.parse_error );
     REQUIRE( parameters.commander_request.has_value() );
@@ -303,7 +305,8 @@ TEST_CASE( "Commander CLI parses open_com overrides", "[commander][cli]" )
     REQUIRE( parameters.commander_request->comSettings.stopBits.has_value() );
     REQUIRE( *parameters.commander_request->comSettings.stopBits == QSerialPort::TwoStop );
     REQUIRE( parameters.commander_request->comSettings.flowControl.has_value() );
-    REQUIRE( *parameters.commander_request->comSettings.flowControl == QSerialPort::HardwareControl );
+    REQUIRE( *parameters.commander_request->comSettings.flowControl
+             == QSerialPort::HardwareControl );
     REQUIRE( parameters.commander_request->comSettings.addTimestamps.has_value() );
     REQUIRE( *parameters.commander_request->comSettings.addTimestamps );
     REQUIRE( parameters.commander_request->comSettings.timestampFormat.has_value() );
@@ -338,8 +341,8 @@ TEST_CASE( "Main CLI parses dump_ui_tree automation mode", "[cli][automation]" )
 
 TEST_CASE( "Main CLI parses dump_state_json automation mode", "[cli][automation]" )
 {
-    CliParameters parameters(
-        { "cilogg", "--dump-state-json", "state.json", "--window-width", "1280", "--window-height", "720" } );
+    CliParameters parameters( { "cilogg", "--dump-state-json", "state.json", "--window-width",
+                                "1280", "--window-height", "720" } );
 
     REQUIRE_FALSE( parameters.parse_error );
     REQUIRE_FALSE( parameters.commander_request.has_value() );
@@ -357,12 +360,13 @@ TEST_CASE( "Commander CLI parses actions CRUD requests", "[commander][cli]" )
     const auto payloadPath = dir.filePath( "action.json" );
     QFile payloadFile( payloadPath );
     REQUIRE( payloadFile.open( QIODevice::WriteOnly ) );
-    payloadFile.write( QJsonDocument( QJsonObject{
+    payloadFile.write(
+        QJsonDocument( QJsonObject{
                            { "id", 17 },
                            { "name", "Ping" },
                            { "sequence", QJsonObject{ { "type", "String" }, { "value", "AT" } } },
                        } )
-                           .toJson( QJsonDocument::Compact ) );
+            .toJson( QJsonDocument::Compact ) );
     payloadFile.close();
 
     CliParameters createParameters(
@@ -370,11 +374,11 @@ TEST_CASE( "Commander CLI parses actions CRUD requests", "[commander][cli]" )
     REQUIRE_FALSE( createParameters.parse_error );
     REQUIRE( createParameters.commander_request.has_value() );
     REQUIRE( createParameters.commander_request->action == CommanderAction::CreateAction );
-    REQUIRE( createParameters.commander_request->definitionPayload.value( "name" ).toString() == "Ping" );
+    REQUIRE( createParameters.commander_request->definitionPayload.value( "name" ).toString()
+             == "Ping" );
 
-    CliParameters updateParameters(
-        { "cilogg", "command", "--action", "update_action", "--id", "17", "--json-file",
-          payloadPath } );
+    CliParameters updateParameters( { "cilogg", "command", "--action", "update_action", "--id",
+                                      "17", "--json-file", payloadPath } );
     REQUIRE_FALSE( updateParameters.parse_error );
     REQUIRE( updateParameters.commander_request.has_value() );
     REQUIRE( updateParameters.commander_request->entityId == 17 );
@@ -397,9 +401,9 @@ TEST_CASE( "Commander CLI parses send and wait response requests", "[commander][
     REQUIRE( sendParameters.commander_request->entityId == 12 );
     REQUIRE( sendParameters.commander_request->tabId == "tab-1" );
 
-    CliParameters waitParameters(
-        { "cilogg", "command", "--action", "wait_response", "--name", "Ready", "--timeout-ms",
-          "1500", "--window-index", "0", "--tab-index", "1" } );
+    CliParameters waitParameters( { "cilogg", "command", "--action", "wait_response", "--name",
+                                    "Ready", "--timeout-ms", "1500", "--window-index", "0",
+                                    "--tab-index", "1" } );
     REQUIRE_FALSE( waitParameters.parse_error );
     REQUIRE( waitParameters.commander_request.has_value() );
     REQUIRE( waitParameters.commander_request->action == CommanderAction::WaitResponse );
@@ -418,15 +422,14 @@ TEST_CASE( "Commander CLI parses communication automation requests", "[commander
     REQUIRE( startComm.commander_request->action == CommanderAction::StartComm );
     REQUIRE( startComm.commander_request->tabId == "tab-1" );
 
-    CliParameters playComm(
-        { "cilogg", "command", "--action", "play_comm", "--tab-id", "tab-1" } );
+    CliParameters playComm( { "cilogg", "command", "--action", "play_comm", "--tab-id", "tab-1" } );
     REQUIRE_FALSE( playComm.parse_error );
     REQUIRE( playComm.commander_request.has_value() );
     REQUIRE( playComm.commander_request->action == CommanderAction::PlayComm );
     REQUIRE( playComm.commander_request->tabId == "tab-1" );
 
-    CliParameters pauseComm( { "cilogg", "command", "--action", "pause_comm", "--window-index",
-                               "0", "--tab-index", "1" } );
+    CliParameters pauseComm( { "cilogg", "command", "--action", "pause_comm", "--window-index", "0",
+                               "--tab-index", "1" } );
     REQUIRE_FALSE( pauseComm.parse_error );
     REQUIRE( pauseComm.commander_request.has_value() );
     REQUIRE( pauseComm.commander_request->action == CommanderAction::PauseComm );
@@ -459,9 +462,8 @@ TEST_CASE( "Commander CLI parses communication automation requests", "[commander
 
 TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
 {
-    CliParameters runScript(
-        { "cilogg", "command", "--action", "run_script", "--script-file", "test.py",
-          "--args-json-file", "args.json", "--tab-id", "tab-1" } );
+    CliParameters runScript( { "cilogg", "command", "--action", "run_script", "--script-file",
+                               "test.py", "--args-json-file", "args.json", "--tab-id", "tab-1" } );
     REQUIRE_FALSE( runScript.parse_error );
     REQUIRE( runScript.commander_request.has_value() );
     REQUIRE( runScript.commander_request->action == CommanderAction::RunScript );
@@ -477,9 +479,8 @@ TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
     REQUIRE( getStatus.commander_request->allEntities );
     REQUIRE( getStatus.commander_request->prettyOutput );
 
-    CliParameters getSubscriptions(
-        { "cilogg", "command", "--action", "get_script_subscriptions", "--tab-id", "tab-1",
-          "--pretty" } );
+    CliParameters getSubscriptions( { "cilogg", "command", "--action", "get_script_subscriptions",
+                                      "--tab-id", "tab-1", "--pretty" } );
     REQUIRE_FALSE( getSubscriptions.parse_error );
     REQUIRE( getSubscriptions.commander_request.has_value() );
     REQUIRE( getSubscriptions.commander_request->action
@@ -498,9 +499,8 @@ TEST_CASE( "Commander CLI parses script runner requests", "[commander][cli]" )
 
 TEST_CASE( "Commander CLI parses global script runner requests", "[commander][cli]" )
 {
-    CliParameters runGlobal(
-        { "cilogg", "command", "--action", "run_global_script", "--script-file", "global.py",
-          "--args-json-file", "args.json" } );
+    CliParameters runGlobal( { "cilogg", "command", "--action", "run_global_script",
+                               "--script-file", "global.py", "--args-json-file", "args.json" } );
     REQUIRE_FALSE( runGlobal.parse_error );
     REQUIRE( runGlobal.commander_request.has_value() );
     REQUIRE( runGlobal.commander_request->action == CommanderAction::RunGlobalScript );
@@ -532,9 +532,8 @@ TEST_CASE( "Commander CLI parses global script runner requests", "[commander][cl
 
 TEST_CASE( "Commander CLI parses scenario runner requests", "[commander][cli]" )
 {
-    CliParameters runScenario(
-        { "cilogg", "command", "--action", "run_scenario", "--scenario-file", "scenario.py",
-          "--args-json-file", "args.json" } );
+    CliParameters runScenario( { "cilogg", "command", "--action", "run_scenario", "--scenario-file",
+                                 "scenario.py", "--args-json-file", "args.json" } );
     REQUIRE_FALSE( runScenario.parse_error );
     REQUIRE( runScenario.commander_request.has_value() );
     REQUIRE( runScenario.commander_request->action == CommanderAction::RunScenario );
@@ -565,58 +564,58 @@ TEST_CASE( "Commander CLI parses scenario runner requests", "[commander][cli]" )
 
 TEST_CASE( "Commander CLI rejects invalid scenario selectors", "[commander][cli]" )
 {
-    CliParameters missingScenarioFile(
-        { "cilogg", "command", "--action", "run_scenario" } );
+    CliParameters missingScenarioFile( { "cilogg", "command", "--action", "run_scenario" } );
     REQUIRE( missingScenarioFile.parse_error );
     REQUIRE( missingScenarioFile.parse_error_message.contains( "--scenario-file" ) );
 
-    CliParameters missingSuiteFile(
-        { "cilogg", "command", "--action", "run_suite" } );
+    CliParameters missingSuiteFile( { "cilogg", "command", "--action", "run_suite" } );
     REQUIRE( missingSuiteFile.parse_error );
     REQUIRE( missingSuiteFile.parse_error_message.contains( "--suite-file" ) );
 
-    CliParameters scenarioWithTab(
-        { "cilogg", "command", "--action", "run_scenario", "--scenario-file", "scenario.py",
-          "--tab-id", "tab-1" } );
+    CliParameters scenarioWithTab( { "cilogg", "command", "--action", "run_scenario",
+                                     "--scenario-file", "scenario.py", "--tab-id", "tab-1" } );
     REQUIRE( scenarioWithTab.parse_error );
-    REQUIRE( scenarioWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+    REQUIRE(
+        scenarioWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
 
     CliParameters scenarioStatusWithAll(
         { "cilogg", "command", "--action", "get_scenario_status", "--all" } );
     REQUIRE( scenarioStatusWithAll.parse_error );
-    REQUIRE( scenarioStatusWithAll.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+    REQUIRE( scenarioStatusWithAll.parse_error_message.contains(
+        "does not accept tab selectors or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid global script selectors", "[commander][cli]" )
 {
-    CliParameters missingScript(
-        { "cilogg", "command", "--action", "run_global_script" } );
+    CliParameters missingScript( { "cilogg", "command", "--action", "run_global_script" } );
     REQUIRE( missingScript.parse_error );
     REQUIRE( missingScript.parse_error_message.contains( "--script-file" ) );
 
-    CliParameters globalWithTab(
-        { "cilogg", "command", "--action", "run_global_script", "--script-file", "global.py",
-          "--tab-id", "tab-1" } );
+    CliParameters globalWithTab( { "cilogg", "command", "--action", "run_global_script",
+                                   "--script-file", "global.py", "--tab-id", "tab-1" } );
     REQUIRE( globalWithTab.parse_error );
-    REQUIRE( globalWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+    REQUIRE(
+        globalWithTab.parse_error_message.contains( "does not accept tab selectors or --all" ) );
 
     CliParameters globalStatusWithAll(
         { "cilogg", "command", "--action", "get_global_script_status", "--all" } );
     REQUIRE( globalStatusWithAll.parse_error );
-    REQUIRE( globalStatusWithAll.parse_error_message.contains( "does not accept tab selectors or --all" ) );
+    REQUIRE( globalStatusWithAll.parse_error_message.contains(
+        "does not accept tab selectors or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid response counter selectors", "[commander][cli]" )
 {
-    CliParameters missingSelector(
-        { "cilogg", "command", "--action", "get_response_counter" } );
+    CliParameters missingSelector( { "cilogg", "command", "--action", "get_response_counter" } );
     REQUIRE( missingSelector.parse_error );
-    REQUIRE( missingSelector.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
+    REQUIRE(
+        missingSelector.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
 
     CliParameters mixedSelectors(
         { "cilogg", "command", "--action", "reset_response_counter", "--id", "1", "--all" } );
     REQUIRE( mixedSelectors.parse_error );
-    REQUIRE( mixedSelectors.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
+    REQUIRE(
+        mixedSelectors.parse_error_message.contains( "exactly one of --id, --name, or --all" ) );
 }
 
 TEST_CASE( "Commander CLI rejects invalid wait_response selectors", "[commander][cli]" )
@@ -634,8 +633,7 @@ TEST_CASE( "Commander CLI rejects invalid wait_response selectors", "[commander]
 
 TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
 {
-    CliParameters getInfoPretty(
-        { "cilogg", "command", "--action", "get_info", "--pretty" } );
+    CliParameters getInfoPretty( { "cilogg", "command", "--action", "get_info", "--pretty" } );
 
     REQUIRE_FALSE( getInfoPretty.parse_error );
     REQUIRE( getInfoPretty.commander_request.has_value() );
@@ -652,8 +650,7 @@ TEST_CASE( "Commander CLI parses pretty JSON options", "[commander][cli]" )
 
 TEST_CASE( "Commander CLI parses close_tab selectors", "[commander][cli]" )
 {
-    CliParameters byId( { "cilogg", "command", "--action", "close_tab", "--tab-id",
-                          "abc123" } );
+    CliParameters byId( { "cilogg", "command", "--action", "close_tab", "--tab-id", "abc123" } );
     REQUIRE_FALSE( byId.parse_error );
     REQUIRE( byId.commander_request.has_value() );
     REQUIRE( byId.commander_request->action == CommanderAction::CloseTab );
@@ -661,8 +658,8 @@ TEST_CASE( "Commander CLI parses close_tab selectors", "[commander][cli]" )
     REQUIRE_FALSE( byId.commander_request->windowIndex.has_value() );
     REQUIRE_FALSE( byId.commander_request->tabIndex.has_value() );
 
-    CliParameters byIndex( { "cilogg", "command", "--action", "close_tab", "--window-index",
-                             "2", "--tab-index", "4" } );
+    CliParameters byIndex( { "cilogg", "command", "--action", "close_tab", "--window-index", "2",
+                             "--tab-index", "4" } );
     REQUIRE_FALSE( byIndex.parse_error );
     REQUIRE( byIndex.commander_request.has_value() );
     REQUIRE( byIndex.commander_request->action == CommanderAction::CloseTab );
@@ -677,9 +674,8 @@ TEST_CASE( "Commander CLI rejects invalid close_tab selectors", "[commander][cli
     REQUIRE( missingSelector.parse_error );
     REQUIRE( missingSelector.parse_error_message.contains( "close_tab requires" ) );
 
-    CliParameters mixedSelectors(
-        { "cilogg", "command", "--action", "close_tab", "--tab-id", "abc123", "--window-index",
-          "1", "--tab-index", "0" } );
+    CliParameters mixedSelectors( { "cilogg", "command", "--action", "close_tab", "--tab-id",
+                                    "abc123", "--window-index", "1", "--tab-index", "0" } );
     REQUIRE( mixedSelectors.parse_error );
     REQUIRE( mixedSelectors.parse_error_message.contains( "Use either --tab-id" ) );
 
@@ -696,15 +692,14 @@ TEST_CASE( "Commander CLI rejects invalid close_tab selectors", "[commander][cli
 
 TEST_CASE( "Commander CLI parses focus_tab selectors", "[commander][cli]" )
 {
-    CliParameters byId(
-        { "cilogg", "command", "--action", "focus_tab", "--tab-id", "tab-42" } );
+    CliParameters byId( { "cilogg", "command", "--action", "focus_tab", "--tab-id", "tab-42" } );
     REQUIRE_FALSE( byId.parse_error );
     REQUIRE( byId.commander_request.has_value() );
     REQUIRE( byId.commander_request->action == CommanderAction::FocusTab );
     REQUIRE( byId.commander_request->tabId == "tab-42" );
 
-    CliParameters byIndex( { "cilogg", "command", "--action", "focus_tab", "--window-index",
-                             "2", "--tab-index", "1" } );
+    CliParameters byIndex( { "cilogg", "command", "--action", "focus_tab", "--window-index", "2",
+                             "--tab-index", "1" } );
     REQUIRE_FALSE( byIndex.parse_error );
     REQUIRE( byIndex.commander_request.has_value() );
     REQUIRE( byIndex.commander_request->windowIndex == 2 );
@@ -713,9 +708,8 @@ TEST_CASE( "Commander CLI parses focus_tab selectors", "[commander][cli]" )
 
 TEST_CASE( "Commander CLI parses filter actions", "[commander][cli]" )
 {
-    CliParameters getFilters(
-        { "cilogg", "command", "--action", "get_filters", "--tab-id", "tab-7",
-          "--filter-index", "3", "--pretty" } );
+    CliParameters getFilters( { "cilogg", "command", "--action", "get_filters", "--tab-id", "tab-7",
+                                "--filter-index", "3", "--pretty" } );
     REQUIRE_FALSE( getFilters.parse_error );
     REQUIRE( getFilters.commander_request.has_value() );
     REQUIRE( getFilters.commander_request->action == CommanderAction::GetFilters );
@@ -724,9 +718,9 @@ TEST_CASE( "Commander CLI parses filter actions", "[commander][cli]" )
     REQUIRE( getFilters.commander_request->prettyOutput );
     REQUIRE_FALSE( getFilters.commander_request->predefinedFilters );
 
-    CliParameters setFilter(
-        { "cilogg", "command", "--action", "set_filter", "--window-index", "0", "--tab-index",
-          "1", "--filter-id", "flt-1", "--predefined", "--search", "--auto-refresh" } );
+    CliParameters setFilter( { "cilogg", "command", "--action", "set_filter", "--window-index", "0",
+                               "--tab-index", "1", "--filter-id", "flt-1", "--predefined",
+                               "--search", "--auto-refresh" } );
     REQUIRE_FALSE( setFilter.parse_error );
     REQUIRE( setFilter.commander_request.has_value() );
     REQUIRE( setFilter.commander_request->action == CommanderAction::SetFilter );
@@ -740,9 +734,9 @@ TEST_CASE( "Commander CLI parses filter actions", "[commander][cli]" )
 
 TEST_CASE( "Commander CLI parses automation actions", "[commander][cli]" )
 {
-    CliParameters search(
-        { "cilogg", "command", "--action", "search", "--text", "ERROR", "--regex",
-          "--case-sensitive", "--inverse", "--boolean", "--auto-refresh", "--keep-results" } );
+    CliParameters search( { "cilogg", "command", "--action", "search", "--text", "ERROR", "--regex",
+                            "--case-sensitive", "--inverse", "--boolean", "--auto-refresh",
+                            "--keep-results" } );
     REQUIRE_FALSE( search.parse_error );
     REQUIRE( search.commander_request.has_value() );
     REQUIRE( search.commander_request->action == CommanderAction::Search );
@@ -754,8 +748,7 @@ TEST_CASE( "Commander CLI parses automation actions", "[commander][cli]" )
     REQUIRE( search.commander_request->searchAutoRefresh );
     REQUIRE( search.commander_request->searchKeepResults );
 
-    CliParameters follow(
-        { "cilogg", "command", "--action", "set_follow_mode", "--enabled" } );
+    CliParameters follow( { "cilogg", "command", "--action", "set_follow_mode", "--enabled" } );
     REQUIRE_FALSE( follow.parse_error );
     REQUIRE( follow.commander_request.has_value() );
     REQUIRE( follow.commander_request->action == CommanderAction::SetFollowMode );
@@ -776,9 +769,8 @@ TEST_CASE( "Commander CLI rejects invalid set_filter selectors", "[commander][cl
     REQUIRE( missingFilter.parse_error );
     REQUIRE( missingFilter.parse_error_message.contains( "exactly one" ) );
 
-    CliParameters multipleFilters(
-        { "cilogg", "command", "--action", "set_filter", "--filter-id", "flt-1",
-          "--filter-index", "0" } );
+    CliParameters multipleFilters( { "cilogg", "command", "--action", "set_filter", "--filter-id",
+                                     "flt-1", "--filter-index", "0" } );
     REQUIRE( multipleFilters.parse_error );
     REQUIRE( multipleFilters.parse_error_message.contains( "exactly one" ) );
 
@@ -824,6 +816,10 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.scriptFilePath = "D:/scripts/demo.py";
     request.argsJsonFilePath = "D:/scripts/demo.args.json";
     request.timeoutMs = 5000;
+    request.beforeContext = 4;
+    request.afterContext = 7;
+    request.maxMatches = 25;
+    request.matchMode = QStringLiteral( "whole_word" );
     request.allEntities = true;
     request.timestampComment = true;
     request.prettyOutput = true;
@@ -838,8 +834,12 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.definitionPayload = QVariantMap{ { "name", "Ping" }, { "order", 1 } };
 
     QString errorMessage;
-    const auto restored
-        = commanderRequestFromVariantMap( commanderRequestToVariantMap( request ), &errorMessage );
+    const auto serializedRequest = commanderRequestToVariantMap( request );
+    REQUIRE( serializedRequest.value( "before_context" ).toULongLong() == 4 );
+    REQUIRE( serializedRequest.value( "after_context" ).toULongLong() == 7 );
+    REQUIRE( serializedRequest.value( "max_matches" ).toULongLong() == 25 );
+    REQUIRE( serializedRequest.value( "match_mode" ).toString() == "whole_word" );
+    const auto restored = commanderRequestFromVariantMap( serializedRequest, &errorMessage );
 
     REQUIRE( restored.has_value() );
     REQUIRE( errorMessage.isEmpty() );
@@ -856,6 +856,10 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->scriptFilePath == request.scriptFilePath );
     REQUIRE( restored->argsJsonFilePath == request.argsJsonFilePath );
     REQUIRE( restored->timeoutMs == request.timeoutMs );
+    REQUIRE( restored->beforeContext == request.beforeContext );
+    REQUIRE( restored->afterContext == request.afterContext );
+    REQUIRE( restored->maxMatches == request.maxMatches );
+    REQUIRE( restored->matchMode == request.matchMode );
     REQUIRE( restored->allEntities == request.allEntities );
     REQUIRE( restored->timestampComment == request.timestampComment );
     REQUIRE( restored->prettyOutput == request.prettyOutput );
@@ -877,14 +881,44 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
         commandRequest.action = action;
         commandRequest.tabId = "tab-123";
 
-        const auto restoredCommand
-            = commanderRequestFromVariantMap( commanderRequestToVariantMap( commandRequest ),
-                                              &errorMessage );
+        const auto restoredCommand = commanderRequestFromVariantMap(
+            commanderRequestToVariantMap( commandRequest ), &errorMessage );
         REQUIRE( restoredCommand.has_value() );
         REQUIRE( errorMessage.isEmpty() );
         REQUIRE( restoredCommand->action == action );
         REQUIRE( restoredCommand->tabId == commandRequest.tabId );
     }
+}
+
+TEST_CASE( "Grep CLI parses context precedence and maximum count", "[cli][grep]" )
+{
+    CliParameters parameters(
+        { "cilogg_grep", "-e", "needle", "-C", "4", "-A", "7", "-m", "0", "-w", "sample.log" },
+        true );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE( parameters.pattern == QStringLiteral( "needle" ) );
+    REQUIRE( parameters.before_context == 4 );
+    REQUIRE( parameters.after_context == 7 );
+    REQUIRE( parameters.max_matches == 0 );
+    REQUIRE( parameters.match_mode == MatchMode::WholeWord );
+
+    CliParameters incompatible( { "cilogg_grep", "-e", "needle", "-w", "-x", "sample.log" }, true );
+    REQUIRE( incompatible.parse_error );
+}
+
+TEST_CASE( "Commander CLI parses advanced filter options", "[commander][cli]" )
+{
+    CliParameters parameters( { "cilogg", "command", "--action", "set_filter", "--filter-string",
+                                "needle", "--search", "--before-context", "2", "--after-context",
+                                "5", "--max-matches", "9", "--match-mode", "whole_word" } );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE( parameters.commander_request.has_value() );
+    REQUIRE( parameters.commander_request->beforeContext == 2 );
+    REQUIRE( parameters.commander_request->afterContext == 5 );
+    REQUIRE( parameters.commander_request->maxMatches == 9 );
+    REQUIRE( parameters.commander_request->matchMode == QStringLiteral( "whole_word" ) );
 }
 
 TEST_CASE( "Commander dump_state variant roundtrip", "[commander][ipc]" )
@@ -983,7 +1017,8 @@ TEST_CASE( "Commander COM settings inherit preferences and support overrides", "
     overrides.logTransmits = false;
 
     const auto resolvedOverrides = resolveCommanderComSettings( overrides );
-    REQUIRE( resolvedOverrides.filePath == QFileInfo{ dir.filePath( "manual_capture.log" ) }.absoluteFilePath() );
+    REQUIRE( resolvedOverrides.filePath
+             == QFileInfo{ dir.filePath( "manual_capture.log" ) }.absoluteFilePath() );
     REQUIRE( resolvedOverrides.baudRate == 230400 );
     REQUIRE_FALSE( resolvedOverrides.addTimestamps );
     REQUIRE_FALSE( resolvedOverrides.logTransmits );
@@ -1054,8 +1089,8 @@ TEST_CASE( "Action definition variant roundtrip preserves extended fields", "[co
     action.checksum.placeholder = "${CHECKSUM}";
 
     QString errorMessage;
-    const auto restored = actionDefinitionFromVariantMap( actionDefinitionToVariantMap( action ),
-                                                          &errorMessage );
+    const auto restored
+        = actionDefinitionFromVariantMap( actionDefinitionToVariantMap( action ), &errorMessage );
     REQUIRE( errorMessage.isEmpty() );
     REQUIRE( restored.id == action.id );
     REQUIRE( restored.order == action.order );

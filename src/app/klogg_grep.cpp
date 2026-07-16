@@ -20,9 +20,9 @@
 #include <mimalloc.h>
 
 #include "configuration.h"
+#include "dispatch_to.h"
 #include "logdata.h"
 #include "logfiltereddata.h"
-#include "dispatch_to.h"
 #include "logger.h"
 #include "persistentinfo.h"
 
@@ -67,13 +67,15 @@ int main( int argc, char* argv[] )
         [ & ]( LinesCount nbMatches, int progress, LineNumber ) {
             if ( progress == 100 ) {
 
-                LOG_INFO << "Searched finished, got " << nbMatches.get() << " matches";
+                const auto nbDisplayedLines = filteredData->getNbLine();
+                LOG_INFO << "Search finished, got " << nbMatches.get() << " true matches and "
+                         << nbDisplayedLines.get() << " displayed lines";
 
                 const auto defaultChunkSize = 1000_lcount;
-                for ( auto chunkStart = 0_lnum; chunkStart < nbMatches;
+                for ( auto chunkStart = 0_lnum; chunkStart < nbDisplayedLines;
                       chunkStart = chunkStart + defaultChunkSize ) {
-                    auto chunkSize
-                        = std::min( defaultChunkSize.get(), nbMatches.get() - chunkStart.get() );
+                    auto chunkSize = std::min( defaultChunkSize.get(),
+                                               nbDisplayedLines.get() - chunkStart.get() );
                     auto lines = filteredData->getLines( chunkStart, LinesCount( chunkSize ) );
                     for ( const auto& l : lines ) {
                         std::cout << l.toStdString() << "\n";
@@ -85,8 +87,16 @@ int main( int argc, char* argv[] )
         } );
 
     logData.connect( &logData, &LogData::loadingFinished, [ & ]() {
-        dispatchToMainThread(
-            [ & ] { filteredData->runSearch( RegularExpressionPattern( parameters.pattern ) ); } );
+        dispatchToMainThread( [ & ] {
+            SearchOptions options;
+            options.contextBefore = parameters.before_context;
+            options.contextAfter = parameters.after_context;
+            options.maxMatches = parameters.max_matches;
+            filteredData->runSearch( RegularExpressionPattern( parameters.pattern, false, false,
+                                                               false, false,
+                                                               parameters.match_mode ),
+                                     options );
+        } );
     } );
 
     logData.attachFile( parameters.filenames.front() );

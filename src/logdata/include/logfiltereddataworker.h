@@ -42,6 +42,7 @@
 #include <QObject>
 #include <QString>
 #include <memory>
+#include <optional>
 
 #include <qthreadpool.h>
 
@@ -87,10 +88,23 @@ private:
 // a fixed "in-place" array (vector) is probably fine.
 using SearchResultArray = roaring::Roaring64Map;
 
+struct SearchOptions {
+    uint64_t contextBefore = 0;
+    uint64_t contextAfter = 0;
+    std::optional<uint64_t> maxMatches;
+
+    bool operator==( const SearchOptions& other ) const
+    {
+        return contextBefore == other.contextBefore && contextAfter == other.contextAfter
+               && maxMatches == other.maxMatches;
+    }
+};
+
 struct SearchResults {
     SearchResultArray newMatches;
     LineLength maxLength;
     LinesCount processedLines;
+    bool limitReached = false;
 };
 
 // This class is a mutex protected set of search result data.
@@ -103,6 +117,7 @@ public:
     // Atomically add to all the existing search data.
     void addAll( LineLength length, const SearchResultArray& matches, LinesCount nbMatches,
                  LinesCount nbLinesProcessed );
+    void markLimitReached();
     // Get the number of matches
     LinesCount getNbMatches() const;
     // Get the last matched line number
@@ -126,6 +141,7 @@ private:
     LineLength maxLength_{ 0 };
     LinesCount nbLinesProcessed_{ 0 };
     LinesCount nbMatches_{ 0 };
+    bool limitReached_ = false;
 };
 
 class SearchOperation : public QObject {
@@ -134,7 +150,7 @@ public:
     SearchOperation( const LogData& sourceLogData, std::shared_ptr<AtomicFlag> interruptRequested,
                      const RegularExpressionPattern& regExp,
                      std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                     LineNumber endLine, uint64_t searchGeneration );
+                     LineNumber endLine, uint64_t searchGeneration, SearchOptions options );
 
     // Run the search operation, returns true if it has been done
     // and false if it has been cancelled (results not copied)
@@ -173,18 +189,20 @@ protected:
     LineNumber startLine_;
     LineNumber endLine_;
     const uint64_t searchGeneration_;
+    const SearchOptions options_;
 };
 
 class FullSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
-    FullSearchOperation( const LogData& sourceLogData, std::shared_ptr<AtomicFlag> interruptRequested,
+    FullSearchOperation( const LogData& sourceLogData,
+                         std::shared_ptr<AtomicFlag> interruptRequested,
                          const RegularExpressionPattern& regExp,
                          std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                         LineNumber endLine, uint64_t searchGeneration )
+                         LineNumber endLine, uint64_t searchGeneration, SearchOptions options )
         : SearchOperation( sourceLogData, std::move( interruptRequested ), regExp,
-                           std::move( compiledRegexp ),
-                           startLine, endLine, searchGeneration )
+                           std::move( compiledRegexp ), startLine, endLine, searchGeneration,
+                           std::move( options ) )
     {
     }
 
@@ -198,10 +216,11 @@ public:
                            std::shared_ptr<AtomicFlag> interruptRequested,
                            const RegularExpressionPattern& regExp,
                            std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                           LineNumber endLine, LineNumber position, uint64_t searchGeneration )
+                           LineNumber endLine, LineNumber position, uint64_t searchGeneration,
+                           SearchOptions options )
         : SearchOperation( sourceLogData, std::move( interruptRequested ), regExp,
-                           std::move( compiledRegexp ),
-                           startLine, endLine, searchGeneration )
+                           std::move( compiledRegexp ), startLine, endLine, searchGeneration,
+                           std::move( options ) )
         , initialPosition_( position )
     {
     }
@@ -228,12 +247,14 @@ public:
     // Start the search with the passed regexp
     void search( const RegularExpressionPattern& regExp,
                  std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                 LineNumber endLine, uint64_t searchGeneration );
+                 LineNumber endLine, uint64_t searchGeneration,
+                 SearchOptions options = SearchOptions{} );
     // Continue the previous search starting at the passed position
     // in the source file (line number)
     void updateSearch( const RegularExpressionPattern& regExp,
                        std::shared_ptr<RegularExpression> compiledRegexp, LineNumber startLine,
-                       LineNumber endLine, LineNumber position, uint64_t searchGeneration );
+                       LineNumber endLine, LineNumber position, uint64_t searchGeneration,
+                       SearchOptions options = SearchOptions{} );
 
     // Interrupts the search if one is in progress
     void interrupt();

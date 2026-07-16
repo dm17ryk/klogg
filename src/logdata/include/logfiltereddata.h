@@ -69,7 +69,7 @@ class QTimer;
 class LogFilteredData : public AbstractLogData {
     Q_OBJECT
 
-  public:
+public:
     // Constructor used by LogData
     explicit LogFilteredData( const LogData* logData );
     ~LogFilteredData() override;
@@ -78,13 +78,14 @@ class LogFilteredData : public AbstractLogData {
     // If a search is already in progress this function will block until
     // it is done, so the application should call interruptSearch() first.
     void runSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
-                    LineNumber endLine );
+                    LineNumber endLine, SearchOptions options = SearchOptions{} );
     // Reuse a precompiled expression to avoid recompiling for validation and run.
     void runSearch( const RegularExpressionPattern& regExp,
                     std::shared_ptr<RegularExpression> compiledRegExp, LineNumber startLine,
-                    LineNumber endLine );
+                    LineNumber endLine, SearchOptions options = SearchOptions{} );
     // Shortcut for runSearch on all file
-    void runSearch( const RegularExpressionPattern& regExp );
+    void runSearch( const RegularExpressionPattern& regExp,
+                    SearchOptions options = SearchOptions{} );
 
     // Incremental auto-refresh overview:
     // - Full scans are launched via runSearch() or after filter changes.
@@ -125,6 +126,16 @@ class LogFilteredData : public AbstractLogData {
         return currentRegExp_;
     }
 
+    const SearchOptions& currentSearchOptions() const
+    {
+        return currentSearchOptions_;
+    }
+
+    bool limitReached() const
+    {
+        return limitReached_;
+    }
+
     // Last processed line for the current search (for incremental scans).
     LineNumber lastProcessedLine() const
     {
@@ -163,6 +174,7 @@ class LogFilteredData : public AbstractLogData {
     }
 
     LineType lineTypeByIndex( LineNumber index ) const;
+    bool isContextGroupStart( LineNumber index ) const;
     LineType lineTypeByLine( LineNumber lineNumber ) const;
 
     // Marks interface (delegated to a Marks object)
@@ -195,28 +207,29 @@ class LogFilteredData : public AbstractLogData {
     Visibility visibility() const;
 
     void iterateOverLines( const std::function<void( LineNumber )>& callback ) const;
-  Q_SIGNALS:
+Q_SIGNALS:
     // Sent when the search has progressed, give the number of matches (so far)
     // and the percentage of completion
     void searchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine );
     void searchFailed( QString errorMessage );
     void searchProgressedThrottled();
 
-  private Q_SLOTS:
+private Q_SLOTS:
     void handleSearchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine,
                                  uint64_t searchGeneration );
     void handleSearchFailed( QString errorMessage, uint64_t searchGeneration );
     void handleSearchFinished( uint64_t searchGeneration );
     void handleSearchProgressedThrottled();
 
-  private:
+private:
     // Implementation of virtual functions
     QString doGetLineString( LineNumber line ) const override;
     QString doGetExpandedLineString( LineNumber line ) const override;
     klogg::vector<QString> doGetLines( LineNumber first, LinesCount number ) const override;
     klogg::vector<QString> doGetExpandedLines( LineNumber first, LinesCount number ) const override;
-    klogg::vector<QString> doGetLines( LineNumber first, LinesCount number,
-                                     const std::function<QString( LineNumber )>& lineGetter ) const;
+    klogg::vector<QString>
+    doGetLines( LineNumber first, LinesCount number,
+                const std::function<QString( LineNumber )>& lineGetter ) const;
     LineNumber doGetLineNumber( LineNumber index ) const override;
     LinesCount doGetNbLine() const override;
     LineLength doGetMaxLength() const override;
@@ -238,12 +251,14 @@ class LogFilteredData : public AbstractLogData {
 
     // List of the matching line numbers
     SearchResultArray matching_lines_;
+    SearchResultArray displayed_lines_;
     SearchResultArray marks_;
     SearchResultArray marks_and_matches_;
 
     const LogData* sourceLogData_;
 
     RegularExpressionPattern currentRegExp_;
+    SearchOptions currentSearchOptions_;
     std::shared_ptr<RegularExpression> compiledRegExp_;
     LineLength maxLength_;
     LineLength maxLengthMarks_;
@@ -258,6 +273,7 @@ class LogFilteredData : public AbstractLogData {
     bool searchRunning_{ false };
     bool pendingUpdateSearch_{ false };
     bool searchCompletionHandled_{ false };
+    bool limitReached_{ false };
     LineNumber pendingUpdateStart_{ 0_lnum };
     LineNumber pendingUpdateEnd_{ 0_lnum };
     LineNumber activeSearchInitialLine_{ 0_lnum };
@@ -274,7 +290,7 @@ class LogFilteredData : public AbstractLogData {
     // Keep worker teardown ahead of throttler/mutex teardown.
     LogFilteredDataWorker workerThread_;
 
-  private:
+private:
     struct CachedSearchResult {
         SearchResultArray matching_lines;
         LineLength maxLength;
@@ -296,6 +312,8 @@ class LogFilteredData : public AbstractLogData {
             hash_combine( seed, std::get<0>( k ).isBoolean );
             hash_combine( seed, std::get<0>( k ).isCaseSensitive );
             hash_combine( seed, std::get<0>( k ).isExclude );
+            hash_combine( seed, std::get<0>( k ).isPrefilter );
+            hash_combine( seed, static_cast<uint8_t>( std::get<0>( k ).matchMode ) );
             hash_combine( seed, std::get<1>( k ) );
             hash_combine( seed, std::get<2>( k ) );
             return seed;
@@ -312,6 +330,9 @@ class LogFilteredData : public AbstractLogData {
     }
 
     void updateSearchResultsCache();
+    void rebuildDisplayedLines();
+    void addDisplayedLines( const SearchResultArray& newMatches );
+    SearchResultArray applyMatchLimit( const SearchResultArray& matches, bool& limitReached ) const;
     void runPendingUpdateSearch();
     void applySearchResults( const char* source );
     void publishSearchProgress( LinesCount nbMatches, int progress, LineNumber initialLine,
