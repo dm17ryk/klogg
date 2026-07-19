@@ -38,7 +38,7 @@ RUN python3 -m venv /tmp/aqt-venv && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then QT_AQT_OS=linux_arm64; QT_AQT_ARCH=linux_gcc_arm64; QT_DIR=gcc_arm64; else QT_AQT_OS=linux; QT_AQT_ARCH=linux_gcc_64; QT_DIR=gcc_64; fi && \
     AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt && \
     AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop 6.10.1 ${QT_AQT_ARCH} -O /opt/Qt \
-        --modules qtsql qtimageformats qtserialport qt5compat && \
+        --modules qtimageformats qtserialport qt5compat && \
     QT_SQL_CONFIG="/opt/Qt/6.10.1/${QT_DIR}/lib/cmake/Qt6Sql/Qt6SqlConfig.cmake" && \
     if [ ! -f "$QT_SQL_CONFIG" ]; then \
         echo "Qt6Sql CMake package is missing: $QT_SQL_CONFIG"; \
@@ -48,7 +48,7 @@ RUN python3 -m venv /tmp/aqt-venv && \
     ln -s "/opt/Qt/6.10.1/${QT_DIR}" /opt/Qt/6.10.1/current
 
 ENV QT_ROOT=/opt/Qt/6.10.1/current
-ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current/lib/cmake
+ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current
 ENV PATH=/opt/Qt/6.10.1/current/bin:$PATH
 ENV CC=gcc
 ENV CXX=g++

@@ -230,7 +230,7 @@ jobs:
             check_container: fedora:40
             container_root: docker/fedora40
             container: dm17ryk/klogg_fedora40_arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
           - os: fedora41
@@ -244,7 +244,7 @@ jobs:
             check_container: fedora:41
             container_root: docker/fedora41
             container: dm17ryk/klogg_fedora41_arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
           - os: fedora42
@@ -258,7 +258,7 @@ jobs:
             check_container: fedora:42
             container_root: docker/fedora42
             container: dm17ryk/klogg_fedora42_arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
+            cmake_opts: -DCMAKE_BUILD_TYPE=RelWithDebInfo -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_USE_SENTRY=OFF -DCMAKE_HAVE_LIBC_PTHREAD=1 -DKLOGG_GENERIC_CPU=ON
             container_platform: linux/arm64
 
 
