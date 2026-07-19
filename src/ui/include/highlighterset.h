@@ -168,6 +168,7 @@ class HighlighterSet {
 
     mutable std::shared_ptr<MultiRegularExpression> compiledExpression_;
     mutable QVector<int> compiledPatternToHighlighterIndex_;
+    mutable QString compiledPatternSignature_;
 };
 
 struct QuickHighlighter {

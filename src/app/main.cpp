@@ -72,6 +72,7 @@
 #include "tbb/global_control.h"
 
 #include "configuration.h"
+#include "highlighterset.h"
 #include "logger.h"
 #include "mainwindow.h"
 #include "styles.h"
@@ -652,6 +653,10 @@ int main( int argc, char* argv[] )
     app.initCrashHandler();
 
     if ( parameters.scenario_batch_request ) {
+        LOG_INFO << "Initializing persisted highlighter collection for scenario-batch window creation";
+        HighlighterSetCollection::getSynced();
+        LOG_INFO << "Persisted highlighter collection initialized for scenario-batch";
+
         StyleManager::applyStyle( config.style() );
 
         ScenarioHeadlessRunner runner( app );
@@ -735,6 +740,10 @@ int main( int argc, char* argv[] )
         }
         LOG_WARNING << "Failed to contact primary instance, starting a new window";
     }
+
+    LOG_INFO << "Initializing persisted highlighter collection before creating the first main window";
+    HighlighterSetCollection::getSynced();
+    LOG_INFO << "Persisted highlighter collection initialized; subsequent windows reuse compiled sets";
 
     StyleManager::applyStyle( config.style() );
 

@@ -4848,7 +4848,8 @@ void MainWindow::readSettings()
 
     StartupProgress::advance( tr( "Loading highlighters" ),
                               tr( "Restoring and compiling highlighter sets" ) );
-    auto& highlighterCollection = HighlighterSetCollection::getSynced();
+    LOG_DEBUG << "Using the initialized highlighter collection for this main window";
+    auto& highlighterCollection = HighlighterSetCollection::get();
     auto& highlighterSets = highlighterCollection.highlighterSets();
     for ( auto& highlighterSet : highlighterSets ) {
         StartupProgress::advance( tr( "Loading highlighter set" ), highlighterSet.name() );

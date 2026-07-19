@@ -88,6 +88,7 @@ QString Highlighter::pattern() const
 void Highlighter::setPattern( const QString& pattern )
 {
     regexp_.setPattern( pattern );
+    optimizedRegexp_.reset();
 }
 
 bool Highlighter::ignoreCase() const
@@ -98,6 +99,7 @@ bool Highlighter::ignoreCase() const
 void Highlighter::setIgnoreCase( bool ignoreCase )
 {
     regexp_.setPatternOptions( getPatternOptions( ignoreCase ) );
+    optimizedRegexp_.reset();
 }
 
 bool Highlighter::useRegex() const
@@ -108,6 +110,7 @@ bool Highlighter::useRegex() const
 void Highlighter::setUseRegex( bool useRegex )
 {
     useRegex_ = useRegex;
+    optimizedRegexp_.reset();
 }
 
 bool Highlighter::highlightOnlyMatch() const
@@ -187,6 +190,11 @@ RegularExpressionPattern Highlighter::expressionPattern() const
 
 void Highlighter::compile() const
 {
+    if ( optimizedRegexp_ && optimizedRegexp_->isValid() ) {
+        LOG_DEBUG << "Reusing compiled highlighter pattern";
+        return;
+    }
+
     const auto pattern
         = useRegex_ ? regexp_.pattern() : QRegularExpression::escape( regexp_.pattern() );
 
@@ -275,6 +283,22 @@ bool HighlighterSet::isEmpty() const
 
 void HighlighterSet::compile() const
 {
+    QString patternSignature;
+    for ( const auto& highlighter : highlighterList_ ) {
+        patternSignature += highlighter.pattern();
+        patternSignature += QLatin1Char( '\0' );
+        patternSignature += highlighter.ignoreCase() ? QLatin1Char( '1' ) : QLatin1Char( '0' );
+        patternSignature += highlighter.useRegex() ? QLatin1Char( '1' ) : QLatin1Char( '0' );
+        patternSignature += highlighter.highlightOnlyMatch() ? QLatin1Char( '1' )
+                                                             : QLatin1Char( '0' );
+        patternSignature += QLatin1Char( '\0' );
+    }
+
+    if ( compiledExpression_ && compiledPatternSignature_ == patternSignature ) {
+        LOG_DEBUG << "Reusing compiled highlighter set " << name_;
+        return;
+    }
+
     compiledPatternToHighlighterIndex_.clear();
 
     klogg::vector<RegularExpressionPattern> patterns;
@@ -294,12 +318,14 @@ void HighlighterSet::compile() const
     }
 
     compiledExpression_ = std::make_shared<MultiRegularExpression>( patterns );
+    compiledPatternSignature_ = std::move( patternSignature );
 }
 
 void HighlighterSet::invalidateCompiled() const
 {
     compiledExpression_.reset();
     compiledPatternToHighlighterIndex_.clear();
+    compiledPatternSignature_.clear();
 }
 
 HighlighterMatchType HighlighterSet::matchLine( const QString& line,
@@ -390,6 +416,8 @@ void Highlighter::saveToStorage( QSettings& settings ) const
 void Highlighter::retrieveFromStorage( QSettings& settings )
 {
     LOG_DEBUG << "Highlighter::retrieveFromStorage";
+
+    optimizedRegexp_.reset();
 
     regexp_ = QRegularExpression(
         settings.value( "regexp" ).toString(),
