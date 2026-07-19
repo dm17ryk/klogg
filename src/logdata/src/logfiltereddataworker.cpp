@@ -430,7 +430,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     if ( options_.maxMatches == std::optional<uint64_t>{ 0 } ) {
         LOG_INFO << "Maximum match count is zero; completing without scanning";
         searchData.markLimitReached();
-        Q_EMIT searchProgressed( 0_lcount, 100, initialLine, searchGeneration_ );
+        LOG_DEBUG << "Deferring terminal progress for zero-match search to worker finish";
         Q_EMIT searchFinished( searchGeneration_ );
         return;
     }
@@ -442,6 +442,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     if ( !compiledRegexp_->isValid() ) {
         LOG_WARNING << "Skipping search: invalid expression " << compiledRegexp_->errorString();
         Q_EMIT searchFailed( compiledRegexp_->errorString(), searchGeneration_ );
+        LOG_DEBUG << "Skipping terminal progress for invalid search; failure is terminal";
         Q_EMIT searchFinished( searchGeneration_ );
         return;
     }
@@ -497,6 +498,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         if ( !matcher ) {
             LOG_ERROR << "Skipping search: failed to create matcher #" << index;
             Q_EMIT searchFailed( tr( "failed to create matcher" ), searchGeneration_ );
+            LOG_DEBUG << "Skipping terminal progress for matcher creation failure; failure is terminal";
             Q_EMIT searchFinished( searchGeneration_ );
             return;
         }
@@ -726,7 +728,8 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                     / ( 1024 * 1024 )
              << " MiB/s";
 
-    Q_EMIT searchProgressed( nbMatches, 100, initialLine, searchGeneration_ );
+    LOG_DEBUG << "Search operation completed; terminal progress will be published after worker "
+                 "finish dispatch";
     Q_EMIT searchFinished( searchGeneration_ );
 }
 
