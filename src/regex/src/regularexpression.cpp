@@ -22,8 +22,8 @@
 #include <memory>
 #include <qregularexpression.h>
 #include <string>
-#include <variant>
 #include <unordered_map>
+#include <variant>
 
 #include "configuration.h"
 #include "containers.h"
@@ -44,7 +44,7 @@ klogg::vector<QString> splitTopLevelOr( const QString& pattern )
     bool escaped = false;
     int lastSplit = 0;
 
-    const auto flushPart = [&]( int endIndex ) {
+    const auto flushPart = [ & ]( int endIndex ) {
         const auto part = pattern.mid( lastSplit, endIndex - lastSplit ).trimmed();
         if ( !part.isEmpty() ) {
             parts.push_back( part );
@@ -117,8 +117,7 @@ QString normalizeExtendedBooleanOps( QString expression )
                 replacement = QStringLiteral( "!( (%1)|(%2) )" ).arg( a, b );
             }
             else if ( op == "xnor" ) {
-                replacement
-                    = QStringLiteral( "!(((%1)|(%2))&!((%1)&(%2)))" ).arg( a, b );
+                replacement = QStringLiteral( "!(((%1)|(%2))&!((%1)&(%2)))" ).arg( a, b );
             }
 
             expression.replace( match.capturedStart(), match.capturedLength(), replacement );
@@ -136,12 +135,13 @@ bool canUseDirectHsCombinationBit( const QString& expression )
     // an intermediate offset and then false later, so we must use evaluator.
     const auto lower = expression.toLower();
     return !lower.contains( '!' ) && !lower.contains( "not" ) && !lower.contains( "xor" )
-           && !lower.contains( "xnor" ) && !lower.contains( "nand" )
-           && !lower.contains( "nor" );
+           && !lower.contains( "xnor" ) && !lower.contains( "nand" ) && !lower.contains( "nor" );
 }
 
-klogg::vector<RegularExpressionPattern>
-parseBooleanExpressions( QString& pattern, bool isCaseSensitive, bool isPlainText )
+klogg::vector<RegularExpressionPattern> parseBooleanExpressions( QString& pattern,
+                                                                 bool isCaseSensitive,
+                                                                 bool isPlainText,
+                                                                 MatchMode matchMode )
 {
     if ( !pattern.contains( '"' ) ) {
         throw std::runtime_error( "Patterns must be enclosed in quotes" );
@@ -190,7 +190,8 @@ parseBooleanExpressions( QString& pattern, bool isCaseSensitive, bool isPlainTex
         auto subPattern = pattern.mid( leftQuote + 1, subPatternLength );
         subPattern.replace( "\\\"", "\"" );
 
-        subPatterns.emplace_back( subPattern, isCaseSensitive, false, false, isPlainText );
+        subPatterns.emplace_back( subPattern, isCaseSensitive, false, false, isPlainText,
+                                  matchMode );
 
         pattern.replace( leftQuote, subPatternLength + 2,
                          QString::fromStdString( subPatterns.back().id() ) );
@@ -222,16 +223,21 @@ RegularExpression::RegularExpression( const RegularExpressionPattern& pattern )
     , expression_( pattern.pattern )
 {
     try {
+        if ( pattern.isBoolean && pattern.matchMode == MatchMode::WholeLine ) {
+            throw std::runtime_error( "Whole line mode cannot be combined with Boolean search" );
+        }
+
         if ( pattern.isBoolean ) {
             subPatterns_ = parseBooleanExpressions( expression_, pattern.isCaseSensitive,
-                                                    pattern.isPlainText );
+                                                    pattern.isPlainText, pattern.matchMode );
         }
         else {
             const auto topLevelOrParts = splitTopLevelOr( expression_ );
             if ( topLevelOrParts.size() > 1 ) {
                 for ( const auto& part : topLevelOrParts ) {
                     subPatterns_.emplace_back( part, pattern.isCaseSensitive, pattern.isExclude,
-                                               /*boolean*/ false, pattern.isPlainText );
+                                               /*boolean*/ false, pattern.isPlainText,
+                                               pattern.matchMode );
                 }
             }
             else {
@@ -253,25 +259,25 @@ RegularExpression::RegularExpression( const RegularExpressionPattern& pattern )
 
             if ( combination.contains( '&' ) || combination.contains( '|' ) ) {
 
-            // Map p_<n> tokens to positional indices.
-            std::unordered_map<QString, size_t> idToIndex;
-            for ( size_t i = 0; i < subPatterns_.size(); ++i ) {
-                idToIndex.emplace( QString::fromStdString( subPatterns_[ i ].id() ), i );
-            }
-
-            static const QRegularExpression tokenRe( "p_\\d+" );
-            auto it = tokenRe.globalMatch( combination );
-            while ( it.hasNext() ) {
-                const auto m = it.next();
-                const auto token = m.captured();
-                if ( const auto found = idToIndex.find( token ); found != idToIndex.end() ) {
-                    combination.replace( token, QString::number( found->second ) );
+                // Map p_<n> tokens to positional indices.
+                std::unordered_map<QString, size_t> idToIndex;
+                for ( size_t i = 0; i < subPatterns_.size(); ++i ) {
+                    idToIndex.emplace( QString::fromStdString( subPatterns_[ i ].id() ), i );
                 }
-            }
 
-            hsCombination = combination.toStdString();
-            hasHsCombination_ = !hsCombination.empty();
-            combinationIndex_ = subPatterns_.size(); // last entry
+                static const QRegularExpression tokenRe( "p_\\d+" );
+                auto it = tokenRe.globalMatch( combination );
+                while ( it.hasNext() ) {
+                    const auto m = it.next();
+                    const auto token = m.captured();
+                    if ( const auto found = idToIndex.find( token ); found != idToIndex.end() ) {
+                        combination.replace( token, QString::number( found->second ) );
+                    }
+                }
+
+                hsCombination = combination.toStdString();
+                hasHsCombination_ = !hsCombination.empty();
+                combinationIndex_ = subPatterns_.size(); // last entry
             }
         }
 
@@ -360,7 +366,8 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
     , isBooleanCombination_( expression.isBooleanCombination_ )
     , hasHsCombination_( expression.hasHsCombination_ )
     , combinationIndex_( expression.combinationIndex_ )
-    , mainPatternId_( expression.subPatterns_.empty() ? std::string{} : expression.subPatterns_.front().id() )
+    , mainPatternId_( expression.subPatterns_.empty() ? std::string{}
+                                                      : expression.subPatterns_.front().id() )
     , matcher_( expression.hsExpression_.createMatcher() )
 {
     const auto& config = Configuration::get();
@@ -381,9 +388,9 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
 
     if ( isBooleanCombination_ ) {
         // Boolean path: prefer HS combination bit if enabled, otherwise fall back to evaluator.
-        hasMatchImpl_ = [this, useHsCombinationBit]( std::string_view line,
-                                                     const MatcherVariant& matcher,
-                                                     BooleanExpressionEvaluator* evaluator ) {
+        hasMatchImpl_ = [ this, useHsCombinationBit ]( std::string_view line,
+                                                       const MatcherVariant& matcher,
+                                                       BooleanExpressionEvaluator* evaluator ) {
             auto result
                 = std::visit( [ &line ]( const auto& m ) { return m.match( line ); }, matcher );
 
@@ -404,8 +411,8 @@ PatternMatcher::PatternMatcher( const RegularExpression& expression )
 
         if ( isInverse_ ) {
             const auto base = hasMatchImpl_;
-            hasMatchImpl_ = [base]( std::string_view line, const MatcherVariant& matcher,
-                                    BooleanExpressionEvaluator* evaluator ) {
+            hasMatchImpl_ = [ base ]( std::string_view line, const MatcherVariant& matcher,
+                                      BooleanExpressionEvaluator* evaluator ) {
                 return !base( line, matcher, evaluator );
             };
         }

@@ -1182,6 +1182,11 @@ LineNumber AbstractLogView::displayLineNumber( LineNumber lineNumber ) const
     return lineNumber + 1_lcount; // show a 1-based index
 }
 
+bool AbstractLogView::groupSeparatorBefore( LineNumber ) const
+{
+    return false;
+}
+
 LineNumber AbstractLogView::lineIndex( LineNumber lineNumber ) const
 {
     return lineNumber;
@@ -2128,8 +2133,7 @@ void AbstractLogView::createMenu()
     popupMenu_->addAction( sendToScratchpadAction_ );
     popupMenu_->addAction( replaceInScratchpadAction_ );
     sendToPreviewMenu_ = popupMenu_->addMenu( tr( "Send to Preview" ) );
-    connect( sendToPreviewMenu_, &QMenu::aboutToShow, this,
-             &AbstractLogView::updatePreviewMenu );
+    connect( sendToPreviewMenu_, &QMenu::aboutToShow, this, &AbstractLogView::updatePreviewMenu );
     popupMenu_->addSeparator();
     popupMenu_->addAction( findNextAction_ );
     popupMenu_->addAction( findPreviousAction_ );
@@ -2166,9 +2170,7 @@ void AbstractLogView::updatePreviewMenu()
     for ( const auto& preview : previews ) {
         auto* action = sendToPreviewMenu_->addAction( preview.name );
         connect( action, &QAction::triggered, this,
-                 [ this, name = preview.name ]( auto ) {
-                     Q_EMIT sendSelectionToPreview( name );
-                 } );
+                 [ this, name = preview.name ]( auto ) { Q_EMIT sendSelectionToPreview( name ); } );
     }
 }
 
@@ -2200,11 +2202,10 @@ LinesCount AbstractLogView::getNbBottomWrappedVisibleLines() const
     }
 
     const auto totalLines = logData_->getNbLine();
-    const auto tailStartLine = totalLines > visibleLines
-                                   ? LineNumber{ totalLines.get() - visibleLines.get() }
-                                   : 0_lnum;
-    const auto tailLogicalLines = LinesCount{
-        type_safe::narrow_cast<LinesCount::UnderlyingType>( totalLines.get() - tailStartLine.get() ) };
+    const auto tailStartLine
+        = totalLines > visibleLines ? LineNumber{ totalLines.get() - visibleLines.get() } : 0_lnum;
+    const auto tailLogicalLines = LinesCount{ type_safe::narrow_cast<LinesCount::UnderlyingType>(
+        totalLines.get() - tailStartLine.get() ) };
     return visualRowsForRange( tailStartLine, tailLogicalLines );
 }
 
@@ -2214,8 +2215,9 @@ void AbstractLogView::updateScrollBars()
     const LineLength visibleColumns = getNbVisibleCols();
     const auto visibleWrappedLines = getNbBottomWrappedVisibleLines();
     const auto wrappedLinesScrollAdjust = ( visibleWrappedLines - visibleLines ).get();
-    const auto rawVerticalScrollMax = logData_->getNbLine().get() < visibleLines.get() ? LinesCount::UnderlyingType{ 0 }
-                                        : logData_->getNbLine().get() - visibleLines.get();
+    const auto rawVerticalScrollMax = logData_->getNbLine().get() < visibleLines.get()
+                                          ? LinesCount::UnderlyingType{ 0 }
+                                          : logData_->getNbLine().get() - visibleLines.get();
 
     const auto maxVerticalScroll = std::clamp(
         rawVerticalScrollMax + LinesCount::UnderlyingType{ 1 } + wrappedLinesScrollAdjust,
@@ -2357,9 +2359,10 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         patternHighlight = Highlighter{};
         patternHighlight->setHighlightOnlyMatch( true );
         patternHighlight->setVariateColors( variateHighlightPatternMatches );
-        patternHighlight->setPattern( searchPattern_.pattern );
+        patternHighlight->setPattern( searchPattern_.qtPattern() );
         patternHighlight->setIgnoreCase( !searchPattern_.isCaseSensitive );
-        patternHighlight->setUseRegex( !searchPattern_.isPlainText );
+        patternHighlight->setUseRegex( !searchPattern_.isPlainText
+                                       || searchPattern_.matchMode != MatchMode::Contains );
 
         patternHighlight->setBackColor( mainSearchBackColor );
         patternHighlight->setForeColor( Qt::black );
@@ -2391,6 +2394,8 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     klogg::vector<std::pair<QColor, QColor>> highlightColors;
     for ( auto currentLine = 0_lcount; currentLine < nbLines; ++currentLine ) {
         const auto lineNumber = firstLine_ + currentLine;
+        using LineTypeFlags = AbstractLogData::LineTypeFlags;
+        const auto currentLineType = lineType( lineNumber );
         QString logLine = logLines[ currentLine.get() ];
 
         const int xPos = contentStartPosX + ContentMarginWidth;
@@ -2419,7 +2424,7 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
                     backColor = highlighterMatches.front().backColor();
                 }
 
-                if ( patternHighlight ) {
+                if ( patternHighlight && currentLineType.testFlag( LineTypeFlags::Match ) ) {
                     klogg::vector<HighlightedMatch> patternMatches;
                     patternHighlight->matchLine( logLine, patternMatches );
                     highlighterMatches.addMatches( patternMatches );
@@ -2547,6 +2552,13 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         lineDrawer.draw( painter.get(), xPos, yPos, viewport()->width(), wrappedLineView,
                          ContentMarginWidth );
 
+        if ( groupSeparatorBefore( lineNumber ) ) {
+            auto separatorPen = QPen( palette.color( QPalette::Disabled, QPalette::Text ) );
+            separatorPen.setStyle( Qt::DashLine );
+            painter->setPen( separatorPen );
+            painter->drawLine( 0, yPos, viewport()->width(), yPos );
+        }
+
         if ( ( selection_.isLineSelected( lineNumber ) && selection_.isSingleLine() )
              || selection_.getPortionForLine( lineNumber ).isValid() ) {
             auto selectionPen = QPen( palette.color( QPalette::Highlight ) );
@@ -2564,8 +2576,6 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         const int middleXLine = BulletAreaWidth / 2;
         const int middleYLine = yPos + ( fontHeight / 2 );
 
-        using LineTypeFlags = AbstractLogData::LineTypeFlags;
-        const auto currentLineType = lineType( lineNumber );
         if ( currentLineType.testFlag( LineTypeFlags::Mark ) ) {
             // A pretty arrow if the line is marked
             const QPointF points[ 7 ] = {
@@ -2625,7 +2635,8 @@ LinesCount AbstractLogView::visualRowsForLine( LineNumber line ) const
         type_safe::narrow_cast<LinesCount::UnderlyingType>( wrapped.wrappedLinesCount() ) );
 }
 
-LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine, LinesCount logicalLines ) const
+LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine,
+                                                LinesCount logicalLines ) const
 {
     if ( logData_ == nullptr || logicalLines <= 0_lcount ) {
         return 0_lcount;
@@ -2645,8 +2656,8 @@ LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine, LinesCount
     return visualRows;
 }
 
-AbstractLogView::VisibleLayoutInfo AbstractLogView::visibleLayoutFor( LineNumber startLine,
-                                                                      LinesCount maxVisualLines ) const
+AbstractLogView::VisibleLayoutInfo
+AbstractLogView::visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines ) const
 {
     VisibleLayoutInfo layout;
 

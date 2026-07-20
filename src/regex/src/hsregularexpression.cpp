@@ -64,8 +64,8 @@ bool isAcceleratedBackendPlatformValid()
         return true;
     }
 
-    LOG_WARNING << acceleratedBackendName() << " platform validation failed on " << targetArchitectureName()
-                << " with status " << validPlatformResult;
+    LOG_WARNING << acceleratedBackendName() << " platform validation failed on "
+                << targetArchitectureName() << " with status " << validPlatformResult;
 
 #ifdef KLOGG_BACKEND_HYPERSCAN
     auto requiredInstructions = CpuInstructions::SSE2;
@@ -220,6 +220,9 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
     , combinationExpression_( combination )
     , hasCombination_( !combination.empty() )
 {
+    LOG_DEBUG << "Creating " << acceleratedBackendName() << " pattern database with "
+              << patterns_.size() << " expressions and combination=" << hasCombination_;
+
     // Validate patterns with Qt first. Hyperscan prefilter can accept
     // expressions that are still invalid as full Qt regular expressions.
     // We rely on Qt matching for prefilter verification, so invalid Qt
@@ -262,11 +265,9 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
             klogg::vector<QByteArray> utf8Patterns( patternCount );
             std::transform( expressions.cbegin(), expressions.cend(), utf8Patterns.begin(),
                             []( const auto& expression ) {
-                                auto p = expression.pattern;
-                                if ( expression.isPlainText ) {
-                                    p = QRegularExpression::escape( expression.pattern );
-                                }
-                                return p.toUtf8();
+                                LOG_DEBUG << "Compiling accelerated expression mode="
+                                          << matchModeName( expression.matchMode );
+                                return expression.acceleratedPattern().toUtf8();
                             } );
 
             if ( !combinationExpression.empty() ) {
@@ -349,7 +350,7 @@ HsRegularExpression::HsRegularExpression( const klogg::vector<RegularExpressionP
     }
 
     LOG_DEBUG << "Finished creating pattern database, patterns: " << patterns_.size()
-             << ", is db valid: " << isValid_ << ", is prefilter: " << isPrefilter_;
+              << ", is db valid: " << isValid_ << ", is prefilter: " << isPrefilter_;
 }
 
 bool HsRegularExpression::isValid() const
@@ -402,9 +403,8 @@ MatcherVariant HsRegularExpression::createMatcher() const
         }
     }
     else {
-        return HsPrefilterMatcher( patterns_,
-                                   HsMultiMatcher{ database_, std::move( matcherScratch ),
-                                                   numberOfPatterns } );
+        return HsPrefilterMatcher(
+            patterns_, HsMultiMatcher{ database_, std::move( matcherScratch ), numberOfPatterns } );
     }
 }
 #endif

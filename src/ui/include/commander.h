@@ -2,9 +2,9 @@
 
 #include <QByteArray>
 #include <QMetaType>
+#include <QSerialPort>
 #include <QString>
 #include <QVariantMap>
-#include <QSerialPort>
 #include <optional>
 
 enum class CommanderAction {
@@ -108,6 +108,10 @@ struct CommanderRequest {
     std::optional<int> filterIndex;
     std::optional<int> entityId;
     std::optional<int> timeoutMs;
+    uint64_t beforeContext = 0;
+    uint64_t afterContext = 0;
+    std::optional<uint64_t> maxMatches;
+    QString matchMode = QStringLiteral( "contains" );
     std::optional<bool> enabled;
     bool allEntities = false;
     bool timestampComment = false;

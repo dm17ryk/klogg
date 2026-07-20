@@ -48,7 +48,7 @@ RUN python3 -m venv /tmp/aqt-venv && \
     ln -s "/opt/Qt/6.10.1/${QT_DIR}" /opt/Qt/6.10.1/current
 
 ENV QT_ROOT=/opt/Qt/6.10.1/current
-ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current/lib/cmake
+ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current
 ENV PATH=/opt/Qt/6.10.1/current/bin:$PATH
 ENV CC=gcc
 ENV CXX=g++

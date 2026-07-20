@@ -56,10 +56,10 @@
 #include <windows.h>
 #endif // Q_OS_WIN
 
-#include <QClipboard>
-#include <QComboBox>
 #include <QAbstractButton>
+#include <QClipboard>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialogButtonBox>
@@ -70,29 +70,29 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
-#include <QLabel>
-#include <QLineEdit>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QLabel>
+#include <QLineEdit>
 #include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QSerialPortInfo>
 #include <QMimeData>
 #include <QPainter>
+#include <QPixmap>
 #include <QPointer>
 #include <QProgressDialog>
-#include <QPixmap>
+#include <QRegularExpression>
 #include <QResource>
 #include <QScreen>
+#include <QSerialPortInfo>
 #include <QShortcut>
-#include <QSplitter>
 #include <QSortFilterProxyModel>
+#include <QSplitter>
+#include <QStringListModel>
 #include <QTabBar>
 #include <QTabWidget>
-#include <QRegularExpression>
-#include <QStringListModel>
 #include <QTemporaryFile>
 #include <QTextBrowser>
 #include <QTimer>
@@ -104,14 +104,14 @@
 
 #include "mainwindow.h"
 
+#include "actionruntime.h"
+#include "actionsmanager.h"
 #include "clipboard.h"
+#include "comportutils.h"
 #include "crawlerwidget.h"
 #include "decompressor.h"
 #include "dispatch_to.h"
 #include "downloader.h"
-#include "actionsmanager.h"
-#include "actionruntime.h"
-#include "comportutils.h"
 #include "encodings.h"
 #include "favoritefiles.h"
 #include "highlightersdialog.h"
@@ -122,18 +122,18 @@
 #include "klogg_version.h"
 #include "logger.h"
 #include "mainwindowtext.h"
-#include "previewmanager.h"
 #include "opencomportdialog.h"
 #include "openfilehelper.h"
 #include "optionsdialog.h"
 #include "predefinedfilters.h"
 #include "predefinedfiltersdialog.h"
+#include "previewmanager.h"
 #include "progress.h"
 #include "readablesize.h"
 #include "recentfiles.h"
+#include "serialcaptureworker.h"
 #include "sessioninfo.h"
 #include "shortcuts.h"
-#include "serialcaptureworker.h"
 #include "startupprogress.h"
 #include "streamsession.h"
 #include "styles.h"
@@ -141,7 +141,8 @@
 
 namespace {
 
-QIcon makePythonScriptRunnerIcon() {
+QIcon makePythonScriptRunnerIcon()
+{
     constexpr auto iconSize = 20;
 
     QPixmap pixmap( iconSize, iconSize );
@@ -235,10 +236,9 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
     const auto loadingFinishedConnection = QObject::connect(
         crawler_widget, &CrawlerWidget::loadingFinished, &waitLoop, [ & ]( LoadingStatus status ) {
             const auto detail = QObject::tr( "%1 (%2)" )
-                                    .arg( shortName,
-                                          status == LoadingStatus::Successful
-                                              ? QObject::tr( "loading completed" )
-                                              : QObject::tr( "loading failed" ) );
+                                    .arg( shortName, status == LoadingStatus::Successful
+                                                         ? QObject::tr( "loading completed" )
+                                                         : QObject::tr( "loading failed" ) );
             StartupProgress::advance( QObject::tr( "Preparing tab" ), detail );
             tryFinish();
         } );
@@ -265,10 +265,9 @@ void waitForCrawlerStartupPreparation( CrawlerWidget* crawler_widget, const QStr
         const qint64 elapsedSeconds = elapsedMs / 1000;
         if ( elapsedSeconds != lastReportedSecond ) {
             lastReportedSecond = elapsedSeconds;
-            StartupProgress::message( QObject::tr( "Preparing tab" ),
-                                      QObject::tr( "%1 (waiting %2s)" )
-                                          .arg( shortName )
-                                          .arg( elapsedSeconds ) );
+            StartupProgress::message(
+                QObject::tr( "Preparing tab" ),
+                QObject::tr( "%1 (waiting %2s)" ).arg( shortName ).arg( elapsedSeconds ) );
         }
     } );
 
@@ -385,7 +384,8 @@ QVariantMap automationBounds( const QWidget* widget, const QWidget* rootWidget )
         return bounds;
     }
 
-    const auto topLeft = ( widget == rootWidget ) ? QPoint{} : widget->mapTo( rootWidget, QPoint{} );
+    const auto topLeft
+        = ( widget == rootWidget ) ? QPoint{} : widget->mapTo( rootWidget, QPoint{} );
     bounds.insert( QStringLiteral( "x" ), topLeft.x() );
     bounds.insert( QStringLiteral( "y" ), topLeft.y() );
     bounds.insert( QStringLiteral( "width" ), widget->width() );
@@ -563,7 +563,8 @@ MainWindow::MainWindow( WindowSession session )
 
     StartupProgress::advance( tr( "Loading previews" ), tr( "Loading preview definitions" ) );
     PreviewManager::instance().loadFromRepository();
-    StartupProgress::advance( tr( "Loading actions" ), tr( "Loading action/response definitions" ) );
+    StartupProgress::advance( tr( "Loading actions" ),
+                              tr( "Loading action/response definitions" ) );
     ActionsManager::instance().loadFromRepository();
 
     connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
@@ -738,16 +739,18 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         if ( !startComCaptureSession( settings, { false, false, true }, &errorMessage ) ) {
             return commanderFailure(
                 CommanderResultCode::ExecutionFailed,
-                errorMessage.isEmpty() ? tr( "Failed to open COM port %1." ).arg( settings.portName )
-                                       : errorMessage );
+                errorMessage.isEmpty()
+                    ? tr( "Failed to open COM port %1." ).arg( settings.portName )
+                    : errorMessage );
         }
 
         if ( !loadFile( settings.filePath, true ) ) {
             if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
                 session->closeConnection();
             }
-            return commanderFailure( CommanderResultCode::ExecutionFailed,
-                                     tr( "Failed to open capture file %1." ).arg( settings.filePath ) );
+            return commanderFailure(
+                CommanderResultCode::ExecutionFailed,
+                tr( "Failed to open capture file %1." ).arg( settings.filePath ) );
         }
 
         return commanderSuccess();
@@ -887,8 +890,8 @@ QVariantMap MainWindow::commanderWindowInfo() const
         QVariantMap scriptStatus;
         if ( applicationHasMethod( "scriptStatusForTab(QString)" )
              && QMetaObject::invokeMethod( qApp, "scriptStatusForTab", Qt::DirectConnection,
-                                        Q_RETURN_ARG( QVariantMap, scriptStatus ),
-                                        Q_ARG( QString, tabId ) )
+                                           Q_RETURN_ARG( QVariantMap, scriptStatus ),
+                                           Q_ARG( QString, tabId ) )
              && !scriptStatus.isEmpty() ) {
             tabInfo.insert( QStringLiteral( "script" ), scriptStatus );
         }
@@ -952,20 +955,22 @@ QVariantMap MainWindow::automationState() const
     QVariantMap state;
     state.insert( QStringLiteral( "startupReady" ), isStartupReadyForDisplay() );
     state.insert( QStringLiteral( "windowId" ), windowInfo.value( QStringLiteral( "windowId" ) ) );
-    state.insert( QStringLiteral( "windowIndex" ), windowInfo.value( QStringLiteral( "windowIndex" ) ) );
+    state.insert( QStringLiteral( "windowIndex" ),
+                  windowInfo.value( QStringLiteral( "windowIndex" ) ) );
     state.insert( QStringLiteral( "activeTabIndex" ), activeTabIndex );
     state.insert( QStringLiteral( "activeTabTitle" ),
-                  activeTabIndex >= 0 ? mainTabWidget_.tabDisplayNameAt( activeTabIndex ) : QString{} );
+                  activeTabIndex >= 0 ? mainTabWidget_.tabDisplayNameAt( activeTabIndex )
+                                      : QString{} );
     state.insert( QStringLiteral( "activeFile" ),
                   crawler != nullptr ? session_.getFilename( crawler ) : QString{} );
     state.insert( QStringLiteral( "sourceType" ), QStringLiteral( "file" ) );
     state.insert( QStringLiteral( "cursorLine" ),
-                  crawler != nullptr ? QVariant::fromValue(
-                                           static_cast<qulonglong>( crawler->currentLineNumber().get() + 1 ) )
+                  crawler != nullptr ? QVariant::fromValue( static_cast<qulonglong>(
+                                           crawler->currentLineNumber().get() + 1 ) )
                                      : QVariant{} );
     state.insert( QStringLiteral( "cursorColumn" ),
-                  crawler != nullptr ? QVariant::fromValue(
-                                           static_cast<qulonglong>( crawler->currentColumnNumber().get() + 1 ) )
+                  crawler != nullptr ? QVariant::fromValue( static_cast<qulonglong>(
+                                           crawler->currentColumnNumber().get() + 1 ) )
                                      : QVariant{} );
     state.insert( QStringLiteral( "visibleLineStart" ), QVariant{} );
     state.insert( QStringLiteral( "visibleLineEnd" ), QVariant{} );
@@ -977,7 +982,8 @@ QVariantMap MainWindow::automationState() const
                   crawler != nullptr ? crawler->isTextWrapEnabled() : false );
     state.insert( QStringLiteral( "focusedViewObjectName" ),
                   crawler != nullptr ? crawler->focusedViewObjectName() : QString{} );
-    state.insert( QStringLiteral( "searchText" ), crawler != nullptr ? crawler->searchText() : QString{} );
+    state.insert( QStringLiteral( "searchText" ),
+                  crawler != nullptr ? crawler->searchText() : QString{} );
     state.insert( QStringLiteral( "matchCount" ), crawler != nullptr ? crawler->matchCount() : 0 );
     state.insert( QStringLiteral( "searchInProgress" ),
                   crawler != nullptr ? crawler->isSearchInProgress() : false );
@@ -991,8 +997,10 @@ QVariantMap MainWindow::automationState() const
     state.insert( QStringLiteral( "parserMode" ), QString{} );
     state.insert( QStringLiteral( "scratchPad" ), scratchPad );
     state.insert( QStringLiteral( "previewerVisible" ), previewWindow_.isVisible() );
-    state.insert( QStringLiteral( "actionsResponsesVisible" ), actionsResponsesWindow_.isVisible() );
-    state.insert( QStringLiteral( "statusBarText" ), infoLine != nullptr ? infoLine->text() : QString{} );
+    state.insert( QStringLiteral( "actionsResponsesVisible" ),
+                  actionsResponsesWindow_.isVisible() );
+    state.insert( QStringLiteral( "statusBarText" ),
+                  infoLine != nullptr ? infoLine->text() : QString{} );
     state.insert( QStringLiteral( "lastErrorText" ),
                   crawler != nullptr ? crawler->lastErrorText() : QString{} );
 
@@ -1000,8 +1008,10 @@ QVariantMap MainWindow::automationState() const
         const auto visibleRange = crawler->visibleLineRange();
         const auto mainVisibleRange = crawler->mainVisibleLineRange();
         const auto filteredVisibleRange = crawler->filteredVisibleLineRange();
-        state.insert( QStringLiteral( "visibleLineStart" ), visibleRange.value( QStringLiteral( "start" ) ) );
-        state.insert( QStringLiteral( "visibleLineEnd" ), visibleRange.value( QStringLiteral( "end" ) ) );
+        state.insert( QStringLiteral( "visibleLineStart" ),
+                      visibleRange.value( QStringLiteral( "start" ) ) );
+        state.insert( QStringLiteral( "visibleLineEnd" ),
+                      visibleRange.value( QStringLiteral( "end" ) ) );
         state.insert( QStringLiteral( "mainVisibleLineStart" ),
                       mainVisibleRange.value( QStringLiteral( "start" ) ) );
         state.insert( QStringLiteral( "mainVisibleLineEnd" ),
@@ -1013,9 +1023,11 @@ QVariantMap MainWindow::automationState() const
     }
 
     if ( activeTabIndex >= 0 ) {
-        const auto match = std::find_if( tabs.cbegin(), tabs.cend(), [ activeTabIndex ]( const auto& tabValue ) {
-            return tabValue.toMap().value( QStringLiteral( "tabIndex" ) ).toInt() == activeTabIndex;
-        } );
+        const auto match
+            = std::find_if( tabs.cbegin(), tabs.cend(), [ activeTabIndex ]( const auto& tabValue ) {
+                  return tabValue.toMap().value( QStringLiteral( "tabIndex" ) ).toInt()
+                         == activeTabIndex;
+              } );
         if ( match != tabs.cend() ) {
             const auto activeTab = match->toMap();
             state.insert( QStringLiteral( "sourceType" ),
@@ -1051,7 +1063,8 @@ QVariantMap MainWindow::scriptEventContextForFile( const QString& filePath ) con
         context.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
         context.insert( QStringLiteral( "tabIndex" ), index );
         context.insert( QStringLiteral( "windowId" ), session_.windowId() );
-        context.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
+        context.insert( QStringLiteral( "windowIndex" ),
+                        static_cast<int>( session_.windowIndex() ) );
         context.insert( QStringLiteral( "filePath" ), filePath );
         context.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
         if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
@@ -1074,9 +1087,8 @@ void MainWindow::publishScriptEvent( const QVariantMap& event ) const
         return;
     }
 
-    const auto invoked = QMetaObject::invokeMethod( qApp, "publishScriptEvent",
-                                                    Qt::DirectConnection,
-                                                    Q_ARG( QVariantMap, event ) );
+    const auto invoked = QMetaObject::invokeMethod(
+        qApp, "publishScriptEvent", Qt::DirectConnection, Q_ARG( QVariantMap, event ) );
     if ( !invoked ) {
         LOG_WARNING << "Failed to publish script event";
     }
@@ -1113,10 +1125,8 @@ void MainWindow::publishScriptReceiveEvent( const QString& filePath,
     publishScriptEvent( event );
 }
 
-void MainWindow::publishScriptResponseEvent( const QString& filePath,
-                                             int responseId,
-                                             const QString& responseName,
-                                             int counter,
+void MainWindow::publishScriptResponseEvent( const QString& filePath, int responseId,
+                                             const QString& responseName, int counter,
                                              const QByteArray& lineBytes,
                                              const QString& matchedText ) const
 {
@@ -1137,7 +1147,8 @@ void MainWindow::publishScriptResponseEvent( const QString& filePath,
     publishScriptEvent( event );
 }
 
-void MainWindow::publishScriptTxEvent( const QString& filePath, const QByteArray& payloadBytes ) const
+void MainWindow::publishScriptTxEvent( const QString& filePath,
+                                       const QByteArray& payloadBytes ) const
 {
     auto event = scriptEventContextForFile( filePath );
     if ( event.isEmpty() ) {
@@ -1153,10 +1164,8 @@ void MainWindow::publishScriptTxEvent( const QString& filePath, const QByteArray
     publishScriptEvent( event );
 }
 
-void MainWindow::publishScriptActionSendEvent( const QString& filePath,
-                                               int actionId,
-                                               const QString& actionName,
-                                               int stepIndex,
+void MainWindow::publishScriptActionSendEvent( const QString& filePath, int actionId,
+                                               const QString& actionName, int stepIndex,
                                                const QByteArray& payloadBytes ) const
 {
     auto event = scriptEventContextForFile( filePath );
@@ -1185,8 +1194,7 @@ void MainWindow::refreshScriptStatusIndicators()
         bool active = false;
         if ( applicationHasMethod( "hasActiveScriptForTab(QString)" ) ) {
             QMetaObject::invokeMethod( qApp, "hasActiveScriptForTab", Qt::DirectConnection,
-                                       Q_RETURN_ARG( bool, active ),
-                                       Q_ARG( QString, tabId ) );
+                                       Q_RETURN_ARG( bool, active ), Q_ARG( QString, tabId ) );
         }
         mainTabWidget_.setTabScriptActive( tabId, active );
     }
@@ -1202,8 +1210,8 @@ QString MainWindow::scriptContextForTab( int index ) const
     const auto tabId = mainTabWidget_.tabIdAt( index );
     if ( !applicationHasMethod( "scriptBindingForTab(QString)" )
          || !QMetaObject::invokeMethod( qApp, "scriptBindingForTab", Qt::DirectConnection,
-                                      Q_RETURN_ARG( QVariantMap, scriptBinding ),
-                                      Q_ARG( QString, tabId ) )
+                                        Q_RETURN_ARG( QVariantMap, scriptBinding ),
+                                        Q_ARG( QString, tabId ) )
          || scriptBinding.isEmpty() ) {
         return {};
     }
@@ -1472,7 +1480,8 @@ void MainWindow::createActions()
 
     openComPortAction = new QAction( tr( action::openComPortText ), this );
     openComPortAction->setStatusTip( tr( action::openComPortStatusTip ) );
-    connect( openComPortAction, &QAction::triggered, this, [ this ]( auto ) { this->openComPort(); } );
+    connect( openComPortAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->openComPort(); } );
 
     recentFilesCleanup = new QAction( tr( action::recentFilesCleanupText ), this );
     connect( recentFilesCleanup, &QAction::triggered, this,
@@ -1668,12 +1677,12 @@ void MainWindow::createActions()
     showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
     showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
     connect( showScriptRunnerAction, &QAction::triggered, this,
-              [ this ]( auto ) { this->showScriptRunner(); } );
+             [ this ]( auto ) { this->showScriptRunner(); } );
 
     showScenarioRunnerAction = new QAction( tr( action::showScenarioRunnerText ), this );
     showScenarioRunnerAction->setStatusTip( tr( action::showScenarioRunnerStatusTip ) );
     connect( showScenarioRunnerAction, &QAction::triggered, this,
-              [ this ]( auto ) { this->showScenarioRunner(); } );
+             [ this ]( auto ) { this->showScenarioRunner(); } );
 
     showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
     showLabQueueAction->setStatusTip( tr( action::showLabQueueStatusTip ) );
@@ -1983,12 +1992,10 @@ void MainWindow::rebuildComPortsMenu()
             = portMenu->addAction( showPlayAction ? tr( "Play" ) : tr( "Pause" ) );
         playPauseAction->setObjectName(
             QStringLiteral( "comPortPlayPauseAction_%1" ).arg( tabId ) );
-        const bool playPauseEnabled
-            = connectionOpen || ( paused && streamSession->canResume() );
+        const bool playPauseEnabled = connectionOpen || ( paused && streamSession->canResume() );
         playPauseAction->setEnabled( playPauseEnabled );
 
-        const auto resolveCurrentTab
-            = [ this, tabId, portName ]( const char* actionName ) -> int {
+        const auto resolveCurrentTab = [ this, tabId, portName ]( const char* actionName ) -> int {
             const auto currentTab = mainTabWidget_.findTabById( tabId );
             if ( currentTab < 0 ) {
                 LOG_WARNING << "Ignoring COM menu action " << actionName << " for "
@@ -2016,13 +2023,12 @@ void MainWindow::rebuildComPortsMenu()
             return currentTab;
         };
 
-        connect( closePortAction, &QAction::triggered, this,
-                 [ this, resolveCurrentTab, portName ] {
-                     const auto currentTab = resolveCurrentTab( "Close" );
-                     if ( currentTab >= 0 ) {
-                         closeStreamConnectionForTab( currentTab );
-                     }
-                 } );
+        connect( closePortAction, &QAction::triggered, this, [ this, resolveCurrentTab, portName ] {
+            const auto currentTab = resolveCurrentTab( "Close" );
+            if ( currentTab >= 0 ) {
+                closeStreamConnectionForTab( currentTab );
+            }
+        } );
         connect( startNewFileAction, &QAction::triggered, this,
                  [ this, resolveCurrentTab, portName ] {
                      const auto currentTab = resolveCurrentTab( "Start new file" );
@@ -2270,16 +2276,13 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     settings.filePath = absolutePath;
 
     const auto availablePorts = QSerialPortInfo::availablePorts();
-    const bool portExists = std::any_of( availablePorts.cbegin(), availablePorts.cend(),
-                                         [ &settings ]( const QSerialPortInfo& portInfo ) {
-                                             return portInfo.portName().compare( settings.portName,
-                                                                                 Qt::CaseInsensitive )
-                                                        == 0
-                                                    || portInfo.systemLocation().compare(
-                                                           settings.portName,
-                                                           Qt::CaseInsensitive )
-                                                           == 0;
-                                         } );
+    const bool portExists = std::any_of(
+        availablePorts.cbegin(), availablePorts.cend(),
+        [ &settings ]( const QSerialPortInfo& portInfo ) {
+            return portInfo.portName().compare( settings.portName, Qt::CaseInsensitive ) == 0
+                   || portInfo.systemLocation().compare( settings.portName, Qt::CaseInsensitive )
+                          == 0;
+        } );
     if ( !portExists ) {
         showWarning( tr( "COM port %1 was not found. The capture file remains open, but the COM "
                          "connection was not restored." )
@@ -2297,7 +2300,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() ) {
             existingSession->closeConnection();
-            showInformation( tr( "The existing capture is still closing. Please try again in a moment." ) );
+            showInformation(
+                tr( "The existing capture is still closing. Please try again in a moment." ) );
             return false;
         }
         if ( actionsStreamSession_ == existingSession ) {
@@ -2308,64 +2312,62 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
-    connect( session.get(), &StreamSession::connectionOpened, this,
-             [ this, session ] {
-                 const auto currentFilePath = session->filePath();
-                 mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
-                 publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_start" ) );
-                 updateActionsSendState();
-             } );
-    connect( session.get(), &StreamSession::connectionClosed, this,
-             [ this, session, safeSession ] {
-                 const auto currentFilePath = session->filePath();
-                 bool tabStillOpen = false;
-                 for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-                     auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
-                     if ( widget != nullptr && session_.getFilename( widget ) == currentFilePath ) {
-                         tabStillOpen = true;
-                         break;
-                     }
-                 }
+    connect( session.get(), &StreamSession::connectionOpened, this, [ this, session ] {
+        const auto currentFilePath = session->filePath();
+        mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
+        publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_start" ) );
+        updateActionsSendState();
+    } );
+    connect( session.get(), &StreamSession::connectionClosed, this, [ this, session, safeSession ] {
+        const auto currentFilePath = session->filePath();
+        bool tabStillOpen = false;
+        for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+            auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+            if ( widget != nullptr && session_.getFilename( widget ) == currentFilePath ) {
+                tabStillOpen = true;
+                break;
+            }
+        }
 
-                 if ( tabStillOpen && session->isPaused() ) {
-                     mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
-                 }
-                 else {
-                     mainTabWidget_.clearStreamSessionForPath( currentFilePath );
-                 }
-                 if ( actionsStreamSession_ == safeSession && !session->isPaused() ) {
-                     actionsStreamSession_.clear();
-                 }
-                 publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_stop" ) );
-                 updateActionsSendState();
-             } );
-    connect( session.get(), &StreamSession::errorOccurred, this,
-             [ this, filePath, safeSession, settings, options ]( const QString& message ) {
-                 const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
-                 const auto currentFilePath = safeSession ? safeSession->filePath() : filePath;
-                 if ( options.showErrors ) {
-                     const auto title = options.restoreMode && startupFailure
-                                            ? tr( "Restore COM Port" )
-                                            : tr( "COM port capture error" );
-                     const auto text = options.restoreMode && startupFailure
-                                           ? tr( "Failed to restore COM port %1 for %2.\n"
-                                                "The capture file remains open.\n\n%3" )
-                                                 .arg( settings.portName, currentFilePath, message )
-                                           : tr( "Capture stopped for %1:\n%2" )
-                                                 .arg( currentFilePath, message );
-                     const auto icon = options.restoreMode && startupFailure
-                                           ? QMessageBox::Information
-                                           : QMessageBox::Warning;
-                     showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
-                 }
-                 else {
-                     LOG_WARNING << "Capture stopped for " << currentFilePath.toStdString() << ": "
-                                 << message.toStdString();
-                 }
-                 if ( safeSession ) {
-                     safeSession->closeConnection();
-                 }
-             } );
+        if ( tabStillOpen && session->isPaused() ) {
+            mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
+        }
+        else {
+            mainTabWidget_.clearStreamSessionForPath( currentFilePath );
+        }
+        if ( actionsStreamSession_ == safeSession && !session->isPaused() ) {
+            actionsStreamSession_.clear();
+        }
+        publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_stop" ) );
+        updateActionsSendState();
+    } );
+    connect(
+        session.get(), &StreamSession::errorOccurred, this,
+        [ this, filePath, safeSession, settings, options ]( const QString& message ) {
+            const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
+            const auto currentFilePath = safeSession ? safeSession->filePath() : filePath;
+            if ( options.showErrors ) {
+                const auto title = options.restoreMode && startupFailure
+                                       ? tr( "Restore COM Port" )
+                                       : tr( "COM port capture error" );
+                const auto text
+                    = options.restoreMode && startupFailure
+                          ? tr( "Failed to restore COM port %1 for %2.\n"
+                                "The capture file remains open.\n\n%3" )
+                                .arg( settings.portName, currentFilePath, message )
+                          : tr( "Capture stopped for %1:\n%2" ).arg( currentFilePath, message );
+                const auto icon = options.restoreMode && startupFailure ? QMessageBox::Information
+                                                                        : QMessageBox::Warning;
+                showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
+            }
+            else {
+                LOG_WARNING << "Capture stopped for " << currentFilePath.toStdString() << ": "
+                            << message.toStdString();
+            }
+            if ( safeSession ) {
+                safeSession->closeConnection();
+            }
+        } );
     connect( session.get(), &StreamSession::dataObserved, this,
              [ this, safeSession ]( const QByteArray& payloadBytes ) {
                  if ( safeSession ) {
@@ -2448,7 +2450,8 @@ CommanderResult MainWindow::openRemoteFile( const QUrl& url, bool interactiveErr
                 return commanderSuccess();
             }
 
-            const auto message = tr( "Failed to open downloaded file %1." ).arg( tempFile->fileName() );
+            const auto message
+                = tr( "Failed to open downloaded file %1." ).arg( tempFile->fileName() );
             if ( interactiveErrors ) {
                 QMessageBox::critical( this, tr( "CILogg - File download" ), message );
             }
@@ -2709,11 +2712,14 @@ void MainWindow::about()
         tr( "<h2>CILogg %1</h2>"
             "<p>A fast, advanced log explorer.</p>"
             "<p>Built %2 from %3</p>"
-            "<p><a href=\"https://github.com/dm17ryk/klogg\">https://github.com/dm17ryk/klogg</a></p>"
+            "<p><a "
+            "href=\"https://github.com/dm17ryk/klogg\">https://github.com/dm17ryk/klogg</a></p>"
             "<p>Originally forked from glogg.</p>"
             "<p>Using icons from <a href=\"https://icons8.com\">icons8.com</a> project</p>"
-            "<p>Maintained by <a href=\"https://github.com/dm17ryk\">Dmitry Kokotov</a> and contributors.</p>"
-            "<p>Copyright &copy; 2026 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors</p>"
+            "<p>Maintained by <a href=\"https://github.com/dm17ryk\">Dmitry Kokotov</a> and "
+            "contributors.</p>"
+            "<p>Copyright &copy; 2026 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other "
+            "contributors</p>"
             "<p>You may modify and redistribute the program under the terms of the GPL (version 3 "
             "or later).</p>" )
             .arg( kloggVersion(), kloggBuildDate(), kloggCommit() ) );
@@ -2808,7 +2814,7 @@ void MainWindow::replaceDataInScratchpad( QString newData )
     showScratchPad();
 }
 
-void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )    
+void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
 {
     if ( rawLine.isEmpty() ) {
         return;
@@ -3134,8 +3140,9 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
     updateOpenedFilesMenu();
 
     if ( newCrawler != nullptr && !viewContext.isEmpty() ) {
-        QTimer::singleShot( 0, newCrawler,
-                            [ newCrawler, viewContext ] { newCrawler->setViewContextLazy( viewContext ); } );
+        QTimer::singleShot( 0, newCrawler, [ newCrawler, viewContext ] {
+            newCrawler->setViewContextLazy( viewContext );
+        } );
     }
     LOG_DEBUG << "Started new COM stream file: " << newFilePath.toStdString();
     return commanderSuccess();
@@ -3191,8 +3198,8 @@ void MainWindow::pauseStreamConnectionForTab( int tab )
     QString errorMessage;
     if ( !streamSession->pauseConnection( &errorMessage ) ) {
         LOG_WARNING << "Pause COM stream failed for "
-                    << streamSession->sourceDisplayName().toStdString() << " at tab " << tab
-                    << ": " << errorMessage.toStdString();
+                    << streamSession->sourceDisplayName().toStdString() << " at tab " << tab << ": "
+                    << errorMessage.toStdString();
         showComPortMessage( this, QMessageBox::Warning, tr( "Pause COM Stream" ),
                             errorMessage.isEmpty()
                                 ? tr( "No active COM stream is available for this tab." )
@@ -3221,13 +3228,11 @@ void MainWindow::resumeStreamConnectionForTab( int tab )
     QString errorMessage;
     if ( !streamSession->resumeConnection( &errorMessage ) ) {
         LOG_WARNING << "Play COM stream failed for "
-                    << streamSession->sourceDisplayName().toStdString() << " at tab " << tab
-                    << ": " << errorMessage.toStdString();
-        showComPortMessage( this, QMessageBox::Warning, tr( "Play COM Stream" ),
-                            errorMessage.isEmpty()
-                                ? tr( "Failed to reopen COM stream." )
-                                : errorMessage,
-                            false );
+                    << streamSession->sourceDisplayName().toStdString() << " at tab " << tab << ": "
+                    << errorMessage.toStdString();
+        showComPortMessage(
+            this, QMessageBox::Warning, tr( "Play COM Stream" ),
+            errorMessage.isEmpty() ? tr( "Failed to reopen COM stream." ) : errorMessage, false );
         return;
     }
 
@@ -3289,7 +3294,7 @@ StreamSession* MainWindow::streamSessionForCrawler( const CrawlerWidget* crawler
 }
 
 StreamSession* MainWindow::commanderTargetStreamSession( const CommanderRequest& request,
-                                                        bool requireOpen ) const
+                                                         bool requireOpen ) const
 {
     auto* crawler = commanderTargetCrawler( request );
     if ( crawler == nullptr ) {
@@ -3470,8 +3475,9 @@ CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& reque
     QMetaObject::Connection lineConnection;
     QMetaObject::Connection disconnectConnection;
     QObject::connect( &timer, &QTimer::timeout, &loop, [ & ]() {
-        result = commanderFailure( CommanderResultCode::NotFound,
-                                   tr( "Timed out waiting for response %1." ).arg( response->name ) );
+        result
+            = commanderFailure( CommanderResultCode::NotFound,
+                                tr( "Timed out waiting for response %1." ).arg( response->name ) );
         loop.quit();
     } );
     disconnectConnection = QObject::connect( streamSession, &QObject::destroyed, &loop, [ & ]() {
@@ -3479,25 +3485,24 @@ CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& reque
                                    tr( "COM session closed while waiting for response." ) );
         loop.quit();
     } );
-    lineConnection = QObject::connect( streamSession, &StreamSession::lineObserved, &loop,
-                                       [ & ]( const QByteArray& lineBytes ) {
-                                           const auto match = matchResponseDefinition( *response, lineBytes );
-                                           if ( !match.matched ) {
-                                               return;
-                                           }
+    lineConnection = QObject::connect(
+        streamSession, &StreamSession::lineObserved, &loop, [ & ]( const QByteArray& lineBytes ) {
+            const auto match = matchResponseDefinition( *response, lineBytes );
+            if ( !match.matched ) {
+                return;
+            }
 
-                                           QVariantMap captures;
-                                           for ( auto it = match.captures.cbegin();
-                                                 it != match.captures.cend(); ++it ) {
-                                               captures.insert( it.key(), it.value() );
-                                           }
-                                           payload.insert( QStringLiteral( "matchedLine" ), match.lineText );
-                                           if ( !captures.isEmpty() ) {
-                                               payload.insert( QStringLiteral( "captures" ), captures );
-                                           }
-                                           result = commanderSuccess( {}, payload );
-                                           loop.quit();
-                                       } );
+            QVariantMap captures;
+            for ( auto it = match.captures.cbegin(); it != match.captures.cend(); ++it ) {
+                captures.insert( it.key(), it.value() );
+            }
+            payload.insert( QStringLiteral( "matchedLine" ), match.lineText );
+            if ( !captures.isEmpty() ) {
+                payload.insert( QStringLiteral( "captures" ), captures );
+            }
+            result = commanderSuccess( {}, payload );
+            loop.quit();
+        } );
 
     timer.start( *request.timeoutMs );
     loop.exec();
@@ -3525,9 +3530,8 @@ CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request 
         if ( !streamSession->resumeConnection( &errorMessage ) ) {
             LOG_DEBUG << "start_comm failed: resume failed: " << errorMessage.toStdString();
             return commanderFailure( CommanderResultCode::ExecutionFailed,
-                                     errorMessage.isEmpty()
-                                         ? tr( "Failed to reopen COM stream." )
-                                         : errorMessage );
+                                     errorMessage.isEmpty() ? tr( "Failed to reopen COM stream." )
+                                                            : errorMessage );
         }
         LOG_DEBUG << "start_comm resumed paused stream";
     }
@@ -3725,8 +3729,8 @@ CommanderResult MainWindow::commanderClearComm( const CommanderRequest& request 
 
     mainTabWidget_.setCurrentWidget( crawler );
     crawler->reload();
-    return commanderSuccess(
-        tr( "Live communication view reloaded. Non-destructive clear is not yet separate from reload." ) );
+    return commanderSuccess( tr( "Live communication view reloaded. Non-destructive clear is not "
+                                 "yet separate from reload." ) );
 }
 
 CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) const
@@ -3747,9 +3751,11 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
     auto filters = request.predefinedFilters ? crawler->commanderPredefinedFilters()
                                              : crawler->commanderFilters();
     if ( !request.filterId.isEmpty() ) {
-        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
-            return value.toMap().value( QStringLiteral( "filterId" ) ).toString() == request.filterId;
-        } );
+        const auto match
+            = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+                  return value.toMap().value( QStringLiteral( "filterId" ) ).toString()
+                         == request.filterId;
+              } );
         if ( match == filters.cend() ) {
             return commanderFailure( CommanderResultCode::NotFound,
                                      tr( "Requested filter was not found." ) );
@@ -3757,9 +3763,11 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
         filters = QVariantList{ *match };
     }
     else if ( request.filterIndex ) {
-        const auto match = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
-            return value.toMap().value( QStringLiteral( "filterIndex" ) ).toInt() == *request.filterIndex;
-        } );
+        const auto match
+            = std::find_if( filters.cbegin(), filters.cend(), [ &request ]( const auto& value ) {
+                  return value.toMap().value( QStringLiteral( "filterIndex" ) ).toInt()
+                         == *request.filterIndex;
+              } );
         if ( match == filters.cend() ) {
             return commanderFailure( CommanderResultCode::NotFound,
                                      tr( "Requested filter was not found." ) );
@@ -3768,9 +3776,9 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
     }
 
     payload.insert( QStringLiteral( "filters" ), filters );
-    payload.insert( QStringLiteral( "source" ),
-                    request.predefinedFilters ? QStringLiteral( "predefined" )
-                                              : QStringLiteral( "history" ) );
+    payload.insert( QStringLiteral( "source" ), request.predefinedFilters
+                                                    ? QStringLiteral( "predefined" )
+                                                    : QStringLiteral( "history" ) );
     return commanderSuccess( {}, payload );
 }
 
@@ -3782,6 +3790,13 @@ CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request 
                                  tr( "Requested tab was not found." ) );
     }
 
+    if ( request.matchMode == QStringLiteral( "whole_line" )
+         && crawler->isBooleanSearchEnabled() ) {
+        return commanderFailure(
+            CommanderResultCode::InvalidRequest,
+            tr( "whole_line match mode cannot be combined with Boolean search." ) );
+    }
+
     if ( !request.filterId.isEmpty() ) {
         const auto filter = request.predefinedFilters
                                 ? crawler->commanderPredefinedFilterById( request.filterId )
@@ -3790,8 +3805,7 @@ CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request 
             return commanderFailure( CommanderResultCode::NotFound,
                                      tr( "Requested filter was not found." ) );
         }
-        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
-                                                 request.rearmAutoRefresh );
+        crawler->applyCommanderPredefinedFilter( *filter, request );
         return commanderSuccess();
     }
 
@@ -3803,14 +3817,12 @@ CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request 
             return commanderFailure( CommanderResultCode::NotFound,
                                      tr( "Requested filter was not found." ) );
         }
-        crawler->applyCommanderPredefinedFilter( *filter, request.runSearch,
-                                                 request.rearmAutoRefresh );
+        crawler->applyCommanderPredefinedFilter( *filter, request );
         return commanderSuccess();
     }
 
     if ( !request.filterString.isEmpty() ) {
-        crawler->applyCommanderSearchPattern( request.filterString, request.runSearch,
-                                              request.rearmAutoRefresh );
+        crawler->applyCommanderSearchPattern( request.filterString, request );
         return commanderSuccess();
     }
 
@@ -3909,8 +3921,9 @@ CommanderResult MainWindow::closeFileByPath( const QString& filePath )
 
 CommanderResult MainWindow::closeUrlBySource( const QString& url )
 {
-    const auto target = std::find_if( remoteFileSources_.cbegin(), remoteFileSources_.cend(),
-                                      [ &url ]( const auto& entry ) { return entry.second == url; } );
+    const auto target
+        = std::find_if( remoteFileSources_.cbegin(), remoteFileSources_.cend(),
+                        [ &url ]( const auto& entry ) { return entry.second == url; } );
     if ( target == remoteFileSources_.cend() ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Open URL %1 was not found." ).arg( url ) );
@@ -3933,7 +3946,8 @@ CommanderResult MainWindow::closeComPortByName( const QString& portName )
             continue;
         }
 
-        if ( streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive ) == 0 ) {
+        if ( streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive )
+             == 0 ) {
             streamSession->closeConnection();
             return commanderSuccess();
         }
@@ -4074,20 +4088,24 @@ void MainWindow::changeEvent( QEvent* event )
 
         if ( this->windowState() & Qt::WindowMinimized ) {
             if ( Configuration::get().minimizeToTray() ) {
-                dispatchToObject( [ this ] {
-                    trayIcon_->show();
-                    this->hide();
-                }, this );
+                dispatchToObject(
+                    [ this ] {
+                        trayIcon_->show();
+                        this->hide();
+                    },
+                    this );
             }
         }
     }
     else if ( event->type() == QEvent::StyleChange ) {
-        dispatchToObject( [ this ] {
-            loadIcons();
-            updateOpenedFilesMenu();
-            updateFavoritesMenu();
-            updateHighlightersMenu();
-        }, this );
+        dispatchToObject(
+            [ this ] {
+                loadIcons();
+                updateOpenedFilesMenu();
+                updateFavoritesMenu();
+                updateHighlightersMenu();
+            },
+            this );
     }
     else if ( event->type() == QEvent::LanguageChange ) {
         reTranslateUI();
@@ -4148,8 +4166,8 @@ bool MainWindow::extractAndLoadFile( const QString& fileName )
     }
 
     if ( !config.extractArchivesAlways() ) {
-        const auto userChoice
-            = QMessageBox::question( this, tr( "CILogg" ), tr( "Extract archive to temp folder?" ) );
+        const auto userChoice = QMessageBox::question( this, tr( "CILogg" ),
+                                                       tr( "Extract archive to temp folder?" ) );
         if ( userChoice == QMessageBox::No ) {
             return false;
         }
@@ -4830,15 +4848,15 @@ void MainWindow::readSettings()
 
     StartupProgress::advance( tr( "Loading highlighters" ),
                               tr( "Restoring and compiling highlighter sets" ) );
-    auto& highlighterCollection = HighlighterSetCollection::getSynced();
+    LOG_DEBUG << "Using the initialized highlighter collection for this main window";
+    auto& highlighterCollection = HighlighterSetCollection::get();
     auto& highlighterSets = highlighterCollection.highlighterSets();
     for ( auto& highlighterSet : highlighterSets ) {
         StartupProgress::advance( tr( "Loading highlighter set" ), highlighterSet.name() );
         auto& highlighters = highlighterSet.highlighters();
         for ( auto& highlighter : highlighters ) {
-            const auto highlighterName = highlighter.pattern().isEmpty()
-                                             ? tr( "<empty pattern>" )
-                                             : highlighter.pattern();
+            const auto highlighterName
+                = highlighter.pattern().isEmpty() ? tr( "<empty pattern>" ) : highlighter.pattern();
             StartupProgress::advance( tr( "Compiling highlighter" ), highlighterName );
             highlighter.compile();
         }
@@ -4852,8 +4870,7 @@ void MainWindow::readSettings()
     auto& predefinedFiltersCollection = PredefinedFiltersCollection::getSynced();
     const auto predefinedFilters = predefinedFiltersCollection.getFilters();
     for ( const auto& filter : predefinedFilters ) {
-        const auto filterName
-            = filter.name.isEmpty() ? filter.pattern.left( 64 ) : filter.name;
+        const auto filterName = filter.name.isEmpty() ? filter.pattern.left( 64 ) : filter.name;
         StartupProgress::advance( tr( "Loading predefined filter" ), filterName );
         if ( filter.useRegex ) {
             QRegularExpression expression( filter.pattern,
@@ -4911,4 +4928,3 @@ void MainWindow::generateDump()
         throw std::logic_error( "test dump" );
     }
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

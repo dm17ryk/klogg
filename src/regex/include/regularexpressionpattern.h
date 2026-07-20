@@ -22,11 +22,29 @@
 
 #include <QRegularExpression>
 #include <QString>
+#include <atomic>
 #include <cstdint>
 #include <qregularexpression.h>
 #include <string>
+#include <tuple>
 
 #include "uuid.h"
+
+enum class MatchMode : uint8_t { Contains, WholeWord, WholeLine };
+
+inline const char* matchModeName( MatchMode mode )
+{
+    switch ( mode ) {
+    case MatchMode::Contains:
+        return "contains";
+    case MatchMode::WholeWord:
+        return "whole_word";
+    case MatchMode::WholeLine:
+        return "whole_line";
+    }
+
+    return "contains";
+}
 
 struct RegularExpressionPattern {
 
@@ -36,6 +54,7 @@ struct RegularExpressionPattern {
     bool isBoolean = false;
     bool isPlainText = false;
     bool isPrefilter = false;
+    MatchMode matchMode = MatchMode::Contains;
 
     RegularExpressionPattern() = default;
 
@@ -45,12 +64,13 @@ struct RegularExpressionPattern {
     }
 
     RegularExpressionPattern( const QString& expression, bool caseSensitive, bool inverse,
-                              bool boolean, bool plainText )
+                              bool boolean, bool plainText, MatchMode mode = MatchMode::Contains )
         : pattern( expression )
         , isCaseSensitive( caseSensitive )
         , isExclude( inverse )
         , isBoolean( boolean )
         , isPlainText( plainText )
+        , matchMode( mode )
         , patternId_( nextId() )
     {
     }
@@ -69,22 +89,56 @@ struct RegularExpressionPattern {
             patternOptions |= QRegularExpression::CaseInsensitiveOption;
         }
 
-        auto finalPattern = pattern;
-        if ( isPlainText ) {
-            finalPattern = QRegularExpression::escape( pattern );
+        return QRegularExpression( qtPattern(), patternOptions );
+    }
+
+    QString basePattern() const
+    {
+        return isPlainText ? QRegularExpression::escape( pattern ) : pattern;
+    }
+
+    QString qtPattern() const
+    {
+        const auto base = basePattern();
+        switch ( matchMode ) {
+        case MatchMode::Contains:
+            return base;
+        case MatchMode::WholeWord:
+            return QStringLiteral( "(?<!\\w)(?:" ) + base + QStringLiteral( ")(?!\\w)" );
+        case MatchMode::WholeLine:
+            return QStringLiteral( "\\A(?:" ) + base + QStringLiteral( ")\\r?\\z" );
         }
 
-        return QRegularExpression( finalPattern, patternOptions );
+        return base;
+    }
+
+    QString acceleratedPattern() const
+    {
+        const auto base = basePattern();
+        switch ( matchMode ) {
+        case MatchMode::Contains:
+            return base;
+        case MatchMode::WholeWord:
+            // Hyperscan rejects \\b in UCP mode. Consuming one non-word
+            // delimiter preserves line-level existence semantics without SOM.
+            return QStringLiteral( "(?:\\A|\\W)(?:" ) + base + QStringLiteral( ")(?:\\z|\\W)" );
+        case MatchMode::WholeLine:
+            // Raw CRLF lines retain CR after LogData removes LF.
+            return QStringLiteral( "\\A(?:" ) + base + QStringLiteral( ")\\r?\\z" );
+        }
+
+        return base;
     }
 
     bool operator==( const RegularExpressionPattern& other ) const
     {
-        return std::tie( pattern, isCaseSensitive, isExclude, isBoolean, isPlainText )
-               == std::tie( other.pattern, other.isCaseSensitive, isExclude, isBoolean,
-                            isPlainText );
+        return std::tie( pattern, isCaseSensitive, isExclude, isBoolean, isPlainText, isPrefilter,
+                         matchMode )
+               == std::tie( other.pattern, other.isCaseSensitive, other.isExclude, other.isBoolean,
+                            other.isPlainText, other.isPrefilter, other.matchMode );
     }
 
-  private:
+private:
     static std::string nextId()
     {
         static std::atomic<uint> counter_ = 0;

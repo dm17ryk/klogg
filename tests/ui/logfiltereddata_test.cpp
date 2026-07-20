@@ -73,6 +73,20 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
     REQUIRE_FALSE( filtered_data->isSearchRunning() );
 }
 
+void runSearch( LogFilteredData* filteredData, const RegularExpressionPattern& pattern,
+                SearchOptions options, SafeQSignalSpy& searchProgressSpy )
+{
+    filteredData->runSearch( pattern, std::move( options ) );
+
+    int progress = 0;
+    do {
+        REQUIRE( searchProgressSpy.safeWait( 10000 ) );
+        progress = searchProgressSpy.last().at( 1 ).toInt();
+    } while ( progress < 100 );
+
+    REQUIRE_FALSE( filteredData->isSearchRunning() );
+}
+
 bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, LineNumber endLine,
                       SafeQSignalSpy& searchProgressSpy )
 {
@@ -101,9 +115,10 @@ bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, Line
 QString formattedLine( int value )
 {
     char newLine[ 90 ];
-    snprintf( newLine, 89,
-              "LOGDATA \t is a part of glogg, we are going to test it thoroughly, this is line %06d\n",
-              value );
+    snprintf(
+        newLine, 89,
+        "LOGDATA \t is a part of glogg, we are going to test it thoroughly, this is line %06d\n",
+        value );
     return QString::fromLatin1( newLine );
 }
 
@@ -135,6 +150,101 @@ struct LogDataLoader {
     QTemporaryFile file{ "filtered_test_XXXXXX" };
     LogData log_data;
 };
+
+TEST_CASE( "Log filtered data expands and deduplicates grep context rows",
+           "[logdata][search][context]" )
+{
+    LogDataLoader logDataLoader;
+    auto filteredData = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy progressSpy{ filteredData.get(), &LogFilteredData::searchProgressed };
+
+    SearchOptions options;
+    options.contextBefore = 1;
+    options.contextAfter = 1;
+    runSearch( filteredData.get(),
+               RegularExpressionPattern( "line 000010|line 000012", true, false, false, false ),
+               options, progressSpy );
+
+    CHECK( filteredData->getNbMatches() == 2_lcount );
+    REQUIRE( filteredData->getNbLine() == 5_lcount );
+    CHECK( filteredData->getMatchingLineNumber( 0_lnum ) == 9_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 1_lnum ) == 10_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 2_lnum ) == 11_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 3_lnum ) == 12_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 4_lnum ) == 13_lnum );
+    CHECK_FALSE( filteredData->lineTypeByLine( 9_lnum ).testFlag( LineTypeFlags::Match ) );
+    CHECK( filteredData->lineTypeByLine( 10_lnum ).testFlag( LineTypeFlags::Match ) );
+    CHECK_FALSE( filteredData->lineTypeByLine( 11_lnum ).testFlag( LineTypeFlags::Match ) );
+    CHECK( filteredData->lineTypeByLine( 12_lnum ).testFlag( LineTypeFlags::Match ) );
+    CHECK_FALSE( filteredData->lineTypeByLine( 13_lnum ).testFlag( LineTypeFlags::Match ) );
+}
+
+TEST_CASE( "Log filtered data returns deterministic earliest maximum matches",
+           "[logdata][search][max-count]" )
+{
+    auto& config = Configuration::getSynced();
+    config.setSearchThreadPoolSize( 2 );
+    config.setUseParallelSearch( true );
+
+    LogDataLoader logDataLoader;
+    auto filteredData = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy progressSpy{ filteredData.get(), &LogFilteredData::searchProgressed };
+
+    SearchOptions options;
+    options.maxMatches = 3;
+    runSearch( filteredData.get(), RegularExpressionPattern( "this is line" ), options,
+               progressSpy );
+
+    CHECK( filteredData->limitReached() );
+    CHECK_FALSE( filteredData->fullScanCompleted() );
+    REQUIRE( filteredData->getNbMatches() == 3_lcount );
+    REQUIRE( filteredData->getNbLine() == 3_lcount );
+    CHECK( filteredData->getMatchingLineNumber( 0_lnum ) == 0_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 1_lnum ) == 1_lnum );
+    CHECK( filteredData->getMatchingLineNumber( 2_lnum ) == 2_lnum );
+
+    const auto generation = filteredData->searchGeneration();
+    filteredData->updateSearch( 0_lnum, LineNumber( logDataLoader.log_data.getNbLine().get() ) );
+    CHECK( filteredData->searchGeneration() == generation );
+    CHECK_FALSE( filteredData->isSearchRunning() );
+}
+
+TEST_CASE( "Log filtered data identifies noncontiguous context groups",
+           "[logdata][search][context]" )
+{
+    LogDataLoader logDataLoader;
+    auto filteredData = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy progressSpy{ filteredData.get(), &LogFilteredData::searchProgressed };
+
+    SearchOptions options;
+    options.contextBefore = 1;
+    options.contextAfter = 1;
+    runSearch( filteredData.get(),
+               RegularExpressionPattern( "line 000010|line 000020", true, false, false, false ),
+               options, progressSpy );
+
+    REQUIRE( filteredData->getNbLine() == 6_lcount );
+    CHECK_FALSE( filteredData->isContextGroupStart( 0_lnum ) );
+    CHECK_FALSE( filteredData->isContextGroupStart( 1_lnum ) );
+    CHECK( filteredData->isContextGroupStart( 3_lnum ) );
+}
+
+TEST_CASE( "Maximum match count zero completes without scanning", "[logdata][search][max-count]" )
+{
+    LogDataLoader logDataLoader;
+    auto filteredData = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy progressSpy{ filteredData.get(), &LogFilteredData::searchProgressed };
+
+    SearchOptions options;
+    options.maxMatches = 0;
+    runSearch( filteredData.get(), RegularExpressionPattern( "this is line" ), options,
+               progressSpy );
+
+    CHECK( filteredData->limitReached() );
+    CHECK( filteredData->getNbMatches() == 0_lcount );
+    CHECK( filteredData->getNbLine() == 0_lcount );
+    CHECK( filteredData->lastProcessedLine() == 0_lnum );
+}
 
 TEST_CASE( "Log filtered data reports invalid search expressions asynchronously",
            "[logdata][search]" )
@@ -181,8 +291,7 @@ TEST_CASE( "Log filtered data coalesces auto refresh while full search is runnin
     REQUIRE_FALSE( filtered_data->isSearchRunning() );
 }
 
-TEST_CASE( "Log filtered data worker reports finished search generation",
-           "[logdata][incremental]" )
+TEST_CASE( "Log filtered data worker reports finished search generation", "[logdata][incremental]" )
 {
     LogDataLoader logDataLoader;
     LogFilteredDataWorker worker{ logDataLoader.log_data };
@@ -310,7 +419,8 @@ SCENARIO( "marks in filtered log data", "[logdata]" )
     }
 }
 
-SCENARIO( "filter change triggers full rescan and resets incremental state", "[logdata][incremental]" )
+SCENARIO( "filter change triggers full rescan and resets incremental state",
+          "[logdata][incremental]" )
 {
     LogDataLoader logDataLoader;
 
@@ -326,7 +436,8 @@ SCENARIO( "filter change triggers full rescan and resets incremental state", "[l
 
         WHEN( "running search with a different pattern" )
         {
-            SafeQSignalSpy secondSearchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+            SafeQSignalSpy secondSearchSpy{ filtered_data.get(),
+                                            &LogFilteredData::searchProgressed };
             runSearch( filtered_data.get(), "line 000001", secondSearchSpy );
 
             THEN( "state is reset and search starts from the beginning" )
@@ -364,7 +475,8 @@ SCENARIO( "auto refresh scans only appended lines", "[logdata][incremental]" )
         logDataLoader.file.write( matching.toLatin1() );
         logDataLoader.file.flush();
 
-        SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+        SafeQSignalSpy reloadSpy( &logDataLoader.log_data,
+                                  SIGNAL( loadingFinished( LoadingStatus ) ) );
         logDataLoader.log_data.reload();
         REQUIRE( reloadSpy.safeWait() );
 
@@ -385,7 +497,8 @@ SCENARIO( "auto refresh scans only appended lines", "[logdata][incremental]" )
     }
 }
 
-SCENARIO( "manual scan then auto refresh avoids full rescan when no new data", "[logdata][incremental]" )
+SCENARIO( "manual scan then auto refresh avoids full rescan when no new data",
+          "[logdata][incremental]" )
 {
     LogDataLoader logDataLoader;
 
@@ -402,8 +515,9 @@ SCENARIO( "manual scan then auto refresh avoids full rescan when no new data", "
 
         // Trigger update without appending anything.
         SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
-        const auto hadSignals = runUpdateSearch(
-            filtered_data.get(), 0_lnum, LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy );
+        const auto hadSignals
+            = runUpdateSearch( filtered_data.get(), 0_lnum,
+                               LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy );
 
         THEN( "no incremental scan is launched and state is unchanged" )
         {
@@ -433,13 +547,15 @@ SCENARIO( "incremental scan appends new matches without duplicates", "[logdata][
         logDataLoader.file.write( formattedLine( 777 ).toLatin1() );
         logDataLoader.file.flush();
 
-        SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+        SafeQSignalSpy reloadSpy( &logDataLoader.log_data,
+                                  SIGNAL( loadingFinished( LoadingStatus ) ) );
         logDataLoader.log_data.reload();
         REQUIRE( reloadSpy.safeWait() );
 
         SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
         REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
-                                  LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
+                                  LineNumber( logDataLoader.log_data.getNbLine().get() ),
+                                  updateSpy ) );
 
         const auto afterFirstRefreshMatches = filtered_data->getNbMatches();
         REQUIRE( afterFirstRefreshMatches == baseMatches + 1_lcount );
@@ -447,9 +563,9 @@ SCENARIO( "incremental scan appends new matches without duplicates", "[logdata][
 
         // Second refresh without new data should not add duplicates.
         SafeQSignalSpy secondUpdateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
-        const auto hadSecondRun = runUpdateSearch( filtered_data.get(), 0_lnum,
-                                                   LineNumber( logDataLoader.log_data.getNbLine().get() ),
-                                                   secondUpdateSpy );
+        const auto hadSecondRun = runUpdateSearch(
+            filtered_data.get(), 0_lnum, LineNumber( logDataLoader.log_data.getNbLine().get() ),
+            secondUpdateSpy );
 
         THEN( "matches remain stable and no duplicate insertions occur" )
         {

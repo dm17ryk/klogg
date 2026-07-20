@@ -20,10 +20,30 @@ set_target_properties(
 
 add_backward(cilogg_itests)
 
-add_test(
-    NAME cilogg_itests
-    COMMAND $<TARGET_FILE:cilogg_itests> -platform offscreen
-    WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
-)
-set_tests_properties(cilogg_itests PROPERTIES TIMEOUT 900)
+if(WIN32)
+    # Keep the log-data and widget suites in separate processes.  Both suites
+    # use global Qt/Hyperscan state (QSettings, highlighter databases and the
+    # global thread pool); running them together can leave the later MainWindow
+    # scenarios compiling a database indefinitely on Windows CI.  The binary
+    # remains the same, but each CTest entry gets a fresh process and event
+    # loop.
+    add_test(
+        NAME cilogg_itests
+        COMMAND $<TARGET_FILE:cilogg_itests> "[logdata]" -platform offscreen
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+    )
+    add_test(
+        NAME cilogg_ui_itests
+        COMMAND $<TARGET_FILE:cilogg_itests> "[ui]" -platform offscreen
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+    )
+    set_tests_properties(cilogg_itests cilogg_ui_itests PROPERTIES TIMEOUT 900)
+else()
+    add_test(
+        NAME cilogg_itests
+        COMMAND $<TARGET_FILE:cilogg_itests> -platform offscreen
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
+    )
+    set_tests_properties(cilogg_itests PROPERTIES TIMEOUT 900)
+endif()
 # set_tests_properties(cilogg_itests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:cilogg_itests>")

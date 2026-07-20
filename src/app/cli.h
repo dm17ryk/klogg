@@ -40,6 +40,7 @@
 #include "klogg_version.h"
 #include "labrequest.h"
 #include "log.h"
+#include "regularexpressionpattern.h"
 #include "scenariobatchrequest.h"
 #include "updatearguments.h"
 
@@ -91,6 +92,10 @@ struct CliParameters {
     int window_height = 0;
 
     QString pattern;
+    uint64_t before_context = 0;
+    uint64_t after_context = 0;
+    std::optional<uint64_t> max_matches;
+    MatchMode match_mode = MatchMode::Contains;
 
     CliParameters() = default;
 
@@ -127,8 +132,8 @@ struct CliParameters {
                       .arg( QString::fromLatin1( kloggBuildDate() ),
                             QString::fromLatin1( kloggCommit() ),
                             QString::fromLatin1( kloggGitVersion() ) );
-        output += QStringLiteral(
-            "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\n" );
+        output += QStringLiteral( "Copyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry "
+                                  "Kokotov and other contributors\n" );
         output += QStringLiteral(
             "This is free software.  You may redistribute copies of it under the terms of\n" );
         output += QStringLiteral(
@@ -137,25 +142,32 @@ struct CliParameters {
         return output;
     }
 
-  private:
+private:
     static QString mainHelpDescription()
     {
         return QStringLiteral(
             "CILogg log viewer\n\n"
             "Scenario batch mode:\n"
-            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
-            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir "
+            "<path>]\n"
+            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] "
+            "[--device-map-file <path>] [--report-dir <path>]\n"
             "  cilogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
             "  cilogg scenario list-devices --suite-file <path>\n\n"
             "Remote lab mode:\n"
-            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n"
-            "  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n"
-            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file "
+            "<path>\n"
+            "  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file "
+            "<path>\n"
+            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | "
+            "--scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] "
+            "[--report-dir <path>]\n"
             "  cilogg lab queue --controller-url <url> --token-file <path>\n"
             "  cilogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
             "  cilogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
             "  cilogg lab agents --controller-url <url> --token-file <path>\n"
-            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
+            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> "
+            "--output-dir <path>\n\n"
             "Commander mode:\n"
             "  cilogg command --action open_file --file <path> [--follow]\n"
             "  cilogg command --action open_url --url <url>\n"
@@ -175,12 +187,17 @@ struct CliParameters {
             "  cilogg command --action start_logging [tab selector]\n"
             "  cilogg command --action stop_logging [tab selector]\n"
             "  cilogg command --action add_comment --text <value> [--timestamp] [tab selector]\n"
-            "  cilogg command --action get_response_counter (--id <id> | --name <name> | --all) [tab selector] [--pretty]\n"
-            "  cilogg command --action reset_response_counter (--id <id> | --name <name> | --all) [tab selector]\n"
+            "  cilogg command --action get_response_counter (--id <id> | --name <name> | --all) "
+            "[tab selector] [--pretty]\n"
+            "  cilogg command --action reset_response_counter (--id <id> | --name <name> | --all) "
+            "[tab selector]\n"
             "  cilogg command --action clear_comm [tab selector]\n"
-            "  cilogg command --action run_script --script-file <path> [--args-json-file <path>] [tab selector]\n"
-            "  cilogg command --action run_global_script --script-file <path> [--args-json-file <path>]\n"
-            "  cilogg command --action run_scenario --scenario-file <path> [--args-json-file <path>]\n"
+            "  cilogg command --action run_script --script-file <path> [--args-json-file <path>] "
+            "[tab selector]\n"
+            "  cilogg command --action run_global_script --script-file <path> [--args-json-file "
+            "<path>]\n"
+            "  cilogg command --action run_scenario --scenario-file <path> [--args-json-file "
+            "<path>]\n"
             "  cilogg command --action run_suite --suite-file <path>\n"
             "  cilogg command --action stop_script [tab selector | --all]\n"
             "  cilogg command --action stop_global_script\n"
@@ -202,16 +219,23 @@ struct CliParameters {
             "  cilogg command --action update_response --id <id> --json-file <path>\n"
             "  cilogg command --action delete_response --id <id>\n"
             "  cilogg command --action send_action --id <id> [tab selector]\n"
-            "  cilogg command --action wait_response (--id <id> | --name <name>) [tab selector] --timeout-ms <n>\n"
-            "  cilogg command --action get_filters [tab selector] [filter selector] [--predefined] [--pretty]\n"
-            "  cilogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
-            "  cilogg command --action set_filter [tab selector] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
-            "  cilogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index <n>)\n\n"
+            "  cilogg command --action wait_response (--id <id> | --name <name>) [tab selector] "
+            "--timeout-ms <n>\n"
+            "  cilogg command --action get_filters [tab selector] [filter selector] [--predefined] "
+            "[--pretty]\n"
+            "  cilogg command --action focus_tab (--tab-id <id> | --window-index <n> --tab-index "
+            "<n>)\n"
+            "  cilogg command --action set_filter [tab selector] (--filter-id <id> | "
+            "--filter-index <n> | --filter-string <expr>) [--predefined] [--search] "
+            "[--auto-refresh]\n"
+            "  cilogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index "
+            "<n>)\n\n"
             "Automation:\n"
             "  cilogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
             "  cilogg --dump-state-json <path> [--window-width <n> --window-height <n>]\n\n"
             "Run `cilogg scenario --help` for detailed scenario batch options.\n"
-            "Run `cilogg lab --help`, `cilogg lab-agent --help`, or `cilogg lab-controller --help` for remote lab options.\n"
+            "Run `cilogg lab --help`, `cilogg lab-agent --help`, or `cilogg lab-controller --help` "
+            "for remote lab options.\n"
             "Run `cilogg command --help` for detailed commander options." );
     }
 
@@ -220,8 +244,10 @@ struct CliParameters {
         return QStringLiteral(
             "CILogg headless scenario runner\n\n"
             "Usage:\n"
-            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir <path>]\n"
-            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] [--device-map-file <path>] [--report-dir <path>]\n"
+            "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir "
+            "<path>]\n"
+            "  cilogg scenario run --scenario-file <path> [--args-json-file <path>] "
+            "[--device-map-file <path>] [--report-dir <path>]\n"
             "  cilogg scenario validate --suite-file <path> [--device-map-file <path>]\n"
             "  cilogg scenario list-devices --suite-file <path>\n\n"
             "The suite manifest declares logical device names. The optional device-map JSON\n"
@@ -233,18 +259,20 @@ struct CliParameters {
         return QStringLiteral(
             "CILogg remote lab controller\n\n"
             "Usage:\n"
-            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file <path>\n\n"
+            "  cilogg lab-controller serve --listen <host:port> --state-dir <path> --token-file "
+            "<path>\n\n"
             "The controller exposes HTTP JSON APIs for operators and a TCP agent channel on the\n"
             "next port number after the HTTP listen port." );
     }
 
     static QString labAgentHelpDescription()
     {
-        return QStringLiteral(
-            "CILogg remote lab agent\n\n"
-            "Usage:\n"
-            "  cilogg lab-agent run --controller-url <url> --agent-config <path> --token-file <path>\n\n"
-            "The agent registers local COM inventory with the controller and executes queued jobs." );
+        return QStringLiteral( "CILogg remote lab agent\n\n"
+                               "Usage:\n"
+                               "  cilogg lab-agent run --controller-url <url> --agent-config "
+                               "<path> --token-file <path>\n\n"
+                               "The agent registers local COM inventory with the controller and "
+                               "executes queued jobs." );
     }
 
     static QString labHelpDescription()
@@ -252,13 +280,17 @@ struct CliParameters {
         return QStringLiteral(
             "CILogg remote lab operator CLI\n\n"
             "Usage:\n"
-            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | --scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] [--report-dir <path>]\n"
+            "  cilogg lab submit --controller-url <url> --token-file <path> (--suite-file <path> | "
+            "--scenario-file <path>) [--args-json-file <path>] [--agent-label <label>] "
+            "[--report-dir <path>]\n"
             "  cilogg lab queue --controller-url <url> --token-file <path>\n"
             "  cilogg lab status --controller-url <url> --token-file <path> --job-id <id>\n"
             "  cilogg lab cancel --controller-url <url> --token-file <path> --job-id <id>\n"
             "  cilogg lab agents --controller-url <url> --token-file <path>\n"
-            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> --output-dir <path>\n\n"
-            "The CLI uploads scenario bundles to the controller and fetches status, queue, and artifacts." );
+            "  cilogg lab artifacts --controller-url <url> --token-file <path> --job-id <id> "
+            "--output-dir <path>\n\n"
+            "The CLI uploads scenario bundles to the controller and fetches status, queue, and "
+            "artifacts." );
     }
 
     static QString commanderHelpDescription()
@@ -280,26 +312,34 @@ struct CliParameters {
             "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  stop_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  start_new_comm_file [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  get_comm_status [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
+            "  get_comm_status [--tab-id <id> | --window-index <n> --tab-index <n>] "
+            "[--pretty|--preatty]\n"
             "  start_logging [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  stop_logging  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  add_comment --text <value> [--timestamp] [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  get_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
-            "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  add_comment --text <value> [--timestamp] [--tab-id <id> | --window-index <n> "
+            "--tab-index <n>]\n"
+            "  get_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | "
+            "--window-index <n> --tab-index <n>] [--pretty|--preatty]\n"
+            "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | "
+            "--window-index <n> --tab-index <n>]\n"
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | "
+            "--window-index <n> --tab-index <n>)\n"
             "  run_global_script --script-file <path> [--args-json-file <path>]\n"
             "  run_scenario --scenario-file <path> [--args-json-file <path>]\n"
             "  run_suite --suite-file <path>\n"
             "  stop_script [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
             "  stop_global_script\n"
             "  stop_scenario_run\n"
-            "  get_script_status [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  get_script_status [--tab-id <id> | --window-index <n> --tab-index <n> | --all] "
+            "[--pretty|--preatty]\n"
             "  get_global_script_status [--pretty|--preatty]\n"
             "  get_scenario_status [--pretty|--preatty]\n"
-            "  get_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all] [--pretty|--preatty]\n"
+            "  get_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | "
+            "--all] [--pretty|--preatty]\n"
             "  get_global_script_subscriptions [--pretty|--preatty]\n"
-            "  clear_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | --all]\n"
+            "  clear_script_subscriptions [--tab-id <id> | --window-index <n> --tab-index <n> | "
+            "--all]\n"
             "  clear_global_script_subscriptions\n"
             "  get_scenario_report [--pretty|--preatty]\n"
             "  get_actions [--pretty|--preatty]\n"
@@ -311,18 +351,26 @@ struct CliParameters {
             "  update_response --id <id> --json-file <path>\n"
             "  delete_response --id <id>\n"
             "  send_action --id <id> [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  wait_response (--id <id> | --name <name>) [--tab-id <id> | --window-index <n> --tab-index <n>] --timeout-ms <ms>\n"
-            "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> | --filter-index <n>] [--predefined] [--pretty|--preatty]\n"
+            "  wait_response (--id <id> | --name <name>) [--tab-id <id> | --window-index <n> "
+            "--tab-index <n>] --timeout-ms <ms>\n"
+            "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> "
+            "| --filter-index <n>] [--predefined] [--pretty|--preatty]\n"
             "  focus_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
-            "  set_filter [--tab-id <id> | --window-index <n> --tab-index <n>] (--filter-id <id> | --filter-index <n> | --filter-string <expr>) [--predefined] [--search] [--auto-refresh]\n"
+            "  set_filter [--tab-id <id> | --window-index <n> --tab-index <n>] (--filter-id <id> | "
+            "--filter-index <n> | --filter-string <expr>) [--predefined] [--search] "
+            "[--auto-refresh]\n"
             "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
-            "  search     [--tab-id <id> | --window-index <n> --tab-index <n>] --text <expr> [--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] [--keep-results]\n"
-            "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | --disabled)\n"
+            "  search     [--tab-id <id> | --window-index <n> --tab-index <n>] --text <expr> "
+            "[--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] "
+            "[--keep-results]\n"
+            "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | "
+            "--disabled)\n"
             "  invoke_action --object-name <name>\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
 
-    static QString formatParserError( const QCommandLineParser& parser, const QString& errorMessage )
+    static QString formatParserError( const QCommandLineParser& parser,
+                                      const QString& errorMessage )
     {
         auto output = errorMessage.trimmed();
         const auto helpText = parser.helpText().trimmed();
@@ -335,7 +383,8 @@ struct CliParameters {
     void parse( const QStringList& arguments, bool console )
     {
         if ( !console && arguments.size() > 1
-             && arguments.at( 1 ).compare( QStringLiteral( "command" ), Qt::CaseInsensitive ) == 0 ) {
+             && arguments.at( 1 ).compare( QStringLiteral( "command" ), Qt::CaseInsensitive )
+                    == 0 ) {
             const auto commanderResult = parseCommanderArguments( arguments );
             commander_request = commanderResult.request;
             exit_requested = commanderResult.exit_requested;
@@ -349,7 +398,8 @@ struct CliParameters {
         }
 
         if ( !console && arguments.size() > 1
-             && arguments.at( 1 ).compare( QStringLiteral( "scenario" ), Qt::CaseInsensitive ) == 0 ) {
+             && arguments.at( 1 ).compare( QStringLiteral( "scenario" ), Qt::CaseInsensitive )
+                    == 0 ) {
             const auto scenarioResult = parseScenarioArguments( arguments );
             scenario_batch_request = scenarioResult.request;
             exit_requested = scenarioResult.exit_requested;
@@ -363,8 +413,7 @@ struct CliParameters {
         }
 
         if ( !console && arguments.size() > 1
-             && arguments.at( 1 ).compare( QStringLiteral( "lab-controller" ),
-                                           Qt::CaseInsensitive )
+             && arguments.at( 1 ).compare( QStringLiteral( "lab-controller" ), Qt::CaseInsensitive )
                     == 0 ) {
             const auto labResult = parseLabControllerArguments( arguments );
             lab_request = labResult.request;
@@ -438,6 +487,25 @@ struct CliParameters {
         const QCommandLineOption patternOption( QStringList() << "e"
                                                               << "pattern",
                                                 "pattern to search for", "pattern" );
+        const QCommandLineOption afterContextOption( QStringList() << "A"
+                                                                   << "after-context",
+                                                     "print NUM lines of trailing context", "NUM" );
+        const QCommandLineOption beforeContextOption( QStringList() << "B"
+                                                                    << "before-context",
+                                                      "print NUM lines of leading context", "NUM" );
+        const QCommandLineOption contextOption( QStringList() << "C"
+                                                              << "context",
+                                                "print NUM lines of leading and trailing context",
+                                                "NUM" );
+        const QCommandLineOption wordRegexpOption( QStringList() << "w"
+                                                                 << "word-regexp",
+                                                   "match complete words" );
+        const QCommandLineOption lineRegexpOption( QStringList() << "x"
+                                                                 << "line-regexp",
+                                                   "match complete lines" );
+        const QCommandLineOption maxCountOption( QStringList() << "m"
+                                                               << "max-count",
+                                                 "stop after NUM matching lines", "NUM" );
 
         const QCommandLineOption debugOption(
             QStringList() << "d"
@@ -454,8 +522,8 @@ struct CliParameters {
             const QCommandLineOption dumpUiTreeOption(
                 "dump-ui-tree", "dump the automation UI tree as JSON and exit" );
             const QCommandLineOption dumpStateJsonOption(
-                "dump-state-json", "dump the automation state snapshot as JSON to the given path and exit",
-                "path" );
+                "dump-state-json",
+                "dump the automation state snapshot as JSON to the given path and exit", "path" );
             QCommandLineOption updateTokenOption(
                 QString::fromLatin1( cilogg::update_protocol::StartupTokenOption + 2 ), QString(),
                 "token" );
@@ -478,6 +546,12 @@ struct CliParameters {
         }
         else {
             parser.addOption( patternOption );
+            parser.addOption( afterContextOption );
+            parser.addOption( beforeContextOption );
+            parser.addOption( contextOption );
+            parser.addOption( wordRegexpOption );
+            parser.addOption( lineRegexpOption );
+            parser.addOption( maxCountOption );
         }
 
         if ( !parser.parse( arguments ) ) {
@@ -535,8 +609,64 @@ struct CliParameters {
                 multi_instance = true;
             }
         }
-        else if ( parser.isSet( patternOption ) ) {
-            pattern = parser.value( patternOption );
+        else {
+            if ( parser.isSet( patternOption ) ) {
+                pattern = parser.value( patternOption );
+            }
+
+            const auto parseNonnegative
+                = [ & ]( const QCommandLineOption& option, uint64_t* value ) -> bool {
+                if ( !parser.isSet( option ) ) {
+                    return true;
+                }
+
+                bool ok = false;
+                const auto parsed = parser.value( option ).toULongLong( &ok );
+                if ( !ok ) {
+                    parse_error = true;
+                    parse_error_message = formatParserError(
+                        parser, QStringLiteral( "Invalid nonnegative value for --%1." )
+                                    .arg( option.names().constLast() ) );
+                    return false;
+                }
+                *value = parsed;
+                return true;
+            };
+
+            uint64_t combinedContext = 0;
+            if ( !parseNonnegative( contextOption, &combinedContext ) ) {
+                return;
+            }
+            if ( parser.isSet( contextOption ) ) {
+                before_context = combinedContext;
+                after_context = combinedContext;
+            }
+            if ( !parseNonnegative( beforeContextOption, &before_context )
+                 || !parseNonnegative( afterContextOption, &after_context ) ) {
+                return;
+            }
+
+            if ( parser.isSet( maxCountOption ) ) {
+                uint64_t parsedMax = 0;
+                if ( !parseNonnegative( maxCountOption, &parsedMax ) ) {
+                    return;
+                }
+                max_matches = parsedMax;
+            }
+
+            if ( parser.isSet( wordRegexpOption ) && parser.isSet( lineRegexpOption ) ) {
+                parse_error = true;
+                parse_error_message = formatParserError(
+                    parser,
+                    QStringLiteral( "--word-regexp and --line-regexp are mutually exclusive." ) );
+                return;
+            }
+            if ( parser.isSet( wordRegexpOption ) ) {
+                match_mode = MatchMode::WholeWord;
+            }
+            else if ( parser.isSet( lineRegexpOption ) ) {
+                match_mode = MatchMode::WholeLine;
+            }
         }
 
         for ( const auto& file : parser.positionalArguments() ) {
@@ -655,8 +785,8 @@ struct CliParameters {
         QFile file( path );
         if ( !file.open( QIODevice::ReadOnly ) ) {
             if ( errorMessage != nullptr ) {
-                *errorMessage
-                    = QStringLiteral( "Failed to open JSON file %1: %2" ).arg( path, file.errorString() );
+                *errorMessage = QStringLiteral( "Failed to open JSON file %1: %2" )
+                                    .arg( path, file.errorString() );
             }
             return std::nullopt;
         }
@@ -723,9 +853,10 @@ struct CliParameters {
             QStringLiteral( "device-map-file" ),
             QStringLiteral( "JSON file mapping logical devices to real COM ports." ),
             QStringLiteral( "path" ) );
-        const QCommandLineOption reportDirOption( QStringLiteral( "report-dir" ),
-                                                  QStringLiteral( "Directory for scenario report artifacts." ),
-                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption reportDirOption(
+            QStringLiteral( "report-dir" ),
+            QStringLiteral( "Directory for scenario report artifacts." ),
+            QStringLiteral( "path" ) );
 
         parser.addOption( suiteFileOption );
         parser.addOption( scenarioFileOption );
@@ -771,7 +902,8 @@ struct CliParameters {
         request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
         request.scenarioFilePath = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
         request.argsJsonFilePath = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
-        request.deviceMapFilePath = normalizeCommanderFilePath( parser.value( deviceMapFileOption ) );
+        request.deviceMapFilePath
+            = normalizeCommanderFilePath( parser.value( deviceMapFileOption ) );
         request.reportDirPath = normalizeCommanderFilePath( parser.value( reportDirOption ) );
 
         const auto hasSuite = !request.suiteFilePath.isEmpty();
@@ -782,8 +914,8 @@ struct CliParameters {
         switch ( request.action ) {
         case ScenarioBatchAction::Run:
             if ( hasSuite == hasScenario ) {
-                result.output_message
-                    = QStringLiteral( "Scenario run requires exactly one of --suite-file or --scenario-file." );
+                result.output_message = QStringLiteral(
+                    "Scenario run requires exactly one of --suite-file or --scenario-file." );
                 return result;
             }
             if ( hasSuite && hasArgs ) {
@@ -794,7 +926,8 @@ struct CliParameters {
             break;
         case ScenarioBatchAction::Validate:
             if ( !hasSuite ) {
-                result.output_message = QStringLiteral( "Scenario validate requires --suite-file." );
+                result.output_message
+                    = QStringLiteral( "Scenario validate requires --suite-file." );
                 return result;
             }
             if ( hasScenario || hasArgs || hasReportDir ) {
@@ -805,7 +938,8 @@ struct CliParameters {
             break;
         case ScenarioBatchAction::ListDevices:
             if ( !hasSuite ) {
-                result.output_message = QStringLiteral( "Scenario list-devices requires --suite-file." );
+                result.output_message
+                    = QStringLiteral( "Scenario list-devices requires --suite-file." );
                 return result;
             }
             if ( hasScenario || hasArgs || !request.deviceMapFilePath.isEmpty() || hasReportDir ) {
@@ -885,9 +1019,10 @@ struct CliParameters {
         parser.setApplicationDescription( labControllerHelpDescription() );
         const auto helpOption = parser.addHelpOption();
         const auto versionOption = parser.addVersionOption();
-        const QCommandLineOption listenOption( QStringLiteral( "listen" ),
-                                               QStringLiteral( "HTTP listen address in host:port format." ),
-                                               QStringLiteral( "host:port" ) );
+        const QCommandLineOption listenOption(
+            QStringLiteral( "listen" ),
+            QStringLiteral( "HTTP listen address in host:port format." ),
+            QStringLiteral( "host:port" ) );
         const QCommandLineOption stateDirOption( QStringLiteral( "state-dir" ),
                                                  QStringLiteral( "Controller state directory." ),
                                                  QStringLiteral( "path" ) );
@@ -916,8 +1051,9 @@ struct CliParameters {
         }
 
         if ( subcommand != QStringLiteral( "serve" ) ) {
-            result.output_message = QStringLiteral( "Unknown lab-controller subcommand \"%1\".\n\n%2" )
-                                        .arg( arguments.at( 2 ), labControllerHelpDescription() );
+            result.output_message
+                = QStringLiteral( "Unknown lab-controller subcommand \"%1\".\n\n%2" )
+                      .arg( arguments.at( 2 ), labControllerHelpDescription() );
             return result;
         }
 
@@ -1102,9 +1238,9 @@ struct CliParameters {
         const QCommandLineOption jobIdOption( QStringLiteral( "job-id" ),
                                               QStringLiteral( "Lab job identifier." ),
                                               QStringLiteral( "id" ) );
-        const QCommandLineOption prettyOption(
-            QStringList() << QStringLiteral( "pretty" ) << QStringLiteral( "preatty" ),
-            QStringLiteral( "Pretty print JSON output." ) );
+        const QCommandLineOption prettyOption( QStringList() << QStringLiteral( "pretty" )
+                                                             << QStringLiteral( "preatty" ),
+                                               QStringLiteral( "Pretty print JSON output." ) );
         parser.addOption( controllerUrlOption );
         parser.addOption( tokenFileOption );
         parser.addOption( suiteFileOption );
@@ -1166,7 +1302,8 @@ struct CliParameters {
             if ( hasSuite || hasScenario || hasArgs || !request.jobId.isEmpty()
                  || !request.outputDirPath.isEmpty() || !request.reportDirPath.isEmpty()
                  || !request.agentLabel.isEmpty() ) {
-                errorMessage = QStringLiteral( "lab queue only accepts controller and token options." );
+                errorMessage
+                    = QStringLiteral( "lab queue only accepts controller and token options." );
             }
         }
         else if ( subcommand == QStringLiteral( "status" ) ) {
@@ -1186,7 +1323,8 @@ struct CliParameters {
             if ( hasSuite || hasScenario || hasArgs || !request.jobId.isEmpty()
                  || !request.outputDirPath.isEmpty() || !request.reportDirPath.isEmpty()
                  || !request.agentLabel.isEmpty() ) {
-                errorMessage = QStringLiteral( "lab agents only accepts controller and token options." );
+                errorMessage
+                    = QStringLiteral( "lab agents only accepts controller and token options." );
             }
         }
         else if ( subcommand == QStringLiteral( "artifacts" ) ) {
@@ -1241,9 +1379,8 @@ struct CliParameters {
         const QCommandLineOption fileOption( QStringLiteral( "file" ),
                                              QStringLiteral( "Target file path." ),
                                              QStringLiteral( "path" ) );
-        const QCommandLineOption urlOption( QStringLiteral( "url" ),
-                                            QStringLiteral( "Target URL." ),
-                                            QStringLiteral( "url" ) );
+        const QCommandLineOption urlOption(
+            QStringLiteral( "url" ), QStringLiteral( "Target URL." ), QStringLiteral( "url" ) );
         const QCommandLineOption portOption( QStringLiteral( "port" ),
                                              QStringLiteral( "Target COM port name." ),
                                              QStringLiteral( "port" ) );
@@ -1260,12 +1397,12 @@ struct CliParameters {
             QStringLiteral( "filter-string" ),
             QStringLiteral( "Literal filter/search expression to apply." ),
             QStringLiteral( "expr" ) );
-        const QCommandLineOption textOption( QStringLiteral( "text" ),
-                                             QStringLiteral( "Search text expression or comment text." ),
-                                             QStringLiteral( "text" ) );
-        const QCommandLineOption objectNameOption( QStringLiteral( "object-name" ),
-                                                   QStringLiteral( "Target automation object name." ),
-                                                   QStringLiteral( "name" ) );
+        const QCommandLineOption textOption(
+            QStringLiteral( "text" ), QStringLiteral( "Search text expression or comment text." ),
+            QStringLiteral( "text" ) );
+        const QCommandLineOption objectNameOption(
+            QStringLiteral( "object-name" ), QStringLiteral( "Target automation object name." ),
+            QStringLiteral( "name" ) );
         const QCommandLineOption scriptFileOption( QStringLiteral( "script-file" ),
                                                    QStringLiteral( "Python script file to run." ),
                                                    QStringLiteral( "path" ) );
@@ -1273,18 +1410,17 @@ struct CliParameters {
             QStringLiteral( "args-json-file" ),
             QStringLiteral( "Optional JSON file passed to the Python script." ),
             QStringLiteral( "path" ) );
-        const QCommandLineOption scenarioFileOption( QStringLiteral( "scenario-file" ),
-                                                     QStringLiteral( "Python scenario file to run." ),
-                                                     QStringLiteral( "path" ) );
-        const QCommandLineOption suiteFileOption( QStringLiteral( "suite-file" ),
-                                                  QStringLiteral( "Scenario suite JSON file to run." ),
-                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption scenarioFileOption(
+            QStringLiteral( "scenario-file" ), QStringLiteral( "Python scenario file to run." ),
+            QStringLiteral( "path" ) );
+        const QCommandLineOption suiteFileOption(
+            QStringLiteral( "suite-file" ), QStringLiteral( "Scenario suite JSON file to run." ),
+            QStringLiteral( "path" ) );
         const QCommandLineOption timestampOption(
             QStringLiteral( "timestamp" ),
             QStringLiteral( "Prefix add_comment output with a timestamp." ) );
         const QCommandLineOption allOption(
-            QStringLiteral( "all" ),
-            QStringLiteral( "Target all matching response counters." ) );
+            QStringLiteral( "all" ), QStringLiteral( "Target all matching response counters." ) );
         const QCommandLineOption idOption( QStringLiteral( "id" ),
                                            QStringLiteral( "Action/response id." ),
                                            QStringLiteral( "id" ) );
@@ -1304,19 +1440,33 @@ struct CliParameters {
             QStringLiteral( "window-index" ),
             QStringLiteral( "Target window index for tab-focused actions." ),
             QStringLiteral( "index" ) );
-        const QCommandLineOption tabIndexOption( QStringLiteral( "tab-index" ),
-                                                 QStringLiteral( "Target tab index for tab-focused actions." ),
-                                                 QStringLiteral( "index" ) );
+        const QCommandLineOption tabIndexOption(
+            QStringLiteral( "tab-index" ),
+            QStringLiteral( "Target tab index for tab-focused actions." ),
+            QStringLiteral( "index" ) );
         const QCommandLineOption followOption( QStringLiteral( "follow" ),
                                                QStringLiteral( "Follow the opened file." ) );
         const QCommandLineOption prettyOption(
             QStringList{ QStringLiteral( "pretty" ), QStringLiteral( "preatty" ) },
             QStringLiteral( "Print formatted JSON output." ) );
-        const QCommandLineOption searchOption( QStringLiteral( "search" ),
-                                               QStringLiteral( "Run search after setting the filter." ) );
+        const QCommandLineOption searchOption(
+            QStringLiteral( "search" ), QStringLiteral( "Run search after setting the filter." ) );
         const QCommandLineOption autoRefreshOption(
             QStringLiteral( "auto-refresh" ),
             QStringLiteral( "Rearm auto-refresh after applying the filter." ) );
+        const QCommandLineOption beforeContextCommanderOption(
+            QStringLiteral( "before-context" ), QStringLiteral( "Leading context line count." ),
+            QStringLiteral( "count" ) );
+        const QCommandLineOption afterContextCommanderOption(
+            QStringLiteral( "after-context" ), QStringLiteral( "Trailing context line count." ),
+            QStringLiteral( "count" ) );
+        const QCommandLineOption maxMatchesCommanderOption(
+            QStringLiteral( "max-matches" ), QStringLiteral( "Maximum true match count." ),
+            QStringLiteral( "count" ) );
+        const QCommandLineOption matchModeCommanderOption(
+            QStringLiteral( "match-mode" ),
+            QStringLiteral( "Match mode: contains, whole_word, or whole_line." ),
+            QStringLiteral( "mode" ), QStringLiteral( "contains" ) );
         const QCommandLineOption regexOption( QStringLiteral( "regex" ),
                                               QStringLiteral( "Use regex search semantics." ) );
         const QCommandLineOption caseSensitiveOption(
@@ -1329,19 +1479,21 @@ struct CliParameters {
         const QCommandLineOption keepResultsOption(
             QStringLiteral( "keep-results" ),
             QStringLiteral( "Keep the current search results in a separate filtered view." ) );
-        const QCommandLineOption enabledOption( QStringLiteral( "enabled" ),
-                                                QStringLiteral( "Enable the requested toggle action." ) );
-        const QCommandLineOption disabledOption( QStringLiteral( "disabled" ),
-                                                 QStringLiteral( "Disable the requested toggle action." ) );
+        const QCommandLineOption enabledOption(
+            QStringLiteral( "enabled" ), QStringLiteral( "Enable the requested toggle action." ) );
+        const QCommandLineOption disabledOption(
+            QStringLiteral( "disabled" ),
+            QStringLiteral( "Disable the requested toggle action." ) );
         const QCommandLineOption baudOption( QStringLiteral( "baud" ),
                                              QStringLiteral( "COM baud rate." ),
                                              QStringLiteral( "baud" ) );
         const QCommandLineOption dataBitsOption( QStringLiteral( "data-bits" ),
                                                  QStringLiteral( "COM data bits (5, 6, 7, 8)." ),
                                                  QStringLiteral( "bits" ) );
-        const QCommandLineOption parityOption( QStringLiteral( "parity" ),
-                                               QStringLiteral( "COM parity (none, even, odd, mark, space)." ),
-                                               QStringLiteral( "parity" ) );
+        const QCommandLineOption parityOption(
+            QStringLiteral( "parity" ),
+            QStringLiteral( "COM parity (none, even, odd, mark, space)." ),
+            QStringLiteral( "parity" ) );
         const QCommandLineOption stopBitsOption( QStringLiteral( "stop-bits" ),
                                                  QStringLiteral( "COM stop bits (1, 1.5, 2)." ),
                                                  QStringLiteral( "stop_bits" ) );
@@ -1349,18 +1501,16 @@ struct CliParameters {
             QStringLiteral( "flow-control" ),
             QStringLiteral( "COM flow control (none, hardware, software)." ),
             QStringLiteral( "flow_control" ) );
-        const QCommandLineOption timestampsOption( QStringLiteral( "timestamps" ),
-                                                   QStringLiteral( "Enable timestamps in COM capture." ) );
+        const QCommandLineOption timestampsOption(
+            QStringLiteral( "timestamps" ), QStringLiteral( "Enable timestamps in COM capture." ) );
         const QCommandLineOption noTimestampsOption(
             QStringLiteral( "no-timestamps" ),
             QStringLiteral( "Disable timestamps in COM capture." ) );
         const QCommandLineOption timestampFormatOption(
             QStringLiteral( "timestamp-format" ),
-            QStringLiteral( "Timestamp format for COM capture." ),
-            QStringLiteral( "format" ) );
+            QStringLiteral( "Timestamp format for COM capture." ), QStringLiteral( "format" ) );
         const QCommandLineOption logTransmitsOption(
-            QStringLiteral( "log-transmits" ),
-            QStringLiteral( "Enable COM transmit logging." ) );
+            QStringLiteral( "log-transmits" ), QStringLiteral( "Enable COM transmit logging." ) );
         const QCommandLineOption noLogTransmitsOption(
             QStringLiteral( "no-log-transmits" ),
             QStringLiteral( "Disable COM transmit logging." ) );
@@ -1398,6 +1548,10 @@ struct CliParameters {
         parser.addOption( prettyOption );
         parser.addOption( searchOption );
         parser.addOption( autoRefreshOption );
+        parser.addOption( beforeContextCommanderOption );
+        parser.addOption( afterContextCommanderOption );
+        parser.addOption( maxMatchesCommanderOption );
+        parser.addOption( matchModeCommanderOption );
         parser.addOption( regexOption );
         parser.addOption( caseSensitiveOption );
         parser.addOption( inverseOption );
@@ -1450,8 +1604,8 @@ struct CliParameters {
 
         const auto action = commanderActionFromString( parser.value( actionOption ) );
         if ( !action ) {
-            result.output_message
-                = formatParserError( parser, QStringLiteral( "Missing or invalid --action value." ) );
+            result.output_message = formatParserError(
+                parser, QStringLiteral( "Missing or invalid --action value." ) );
             return result;
         }
 
@@ -1463,17 +1617,51 @@ struct CliParameters {
         request.rearmAutoRefresh = parser.isSet( autoRefreshOption );
         request.predefinedFilters = parser.isSet( predefinedOption );
         request.entityName = parser.value( nameOption ).trimmed();
-          request.commentText = parser.value( textOption );
-          request.scriptFilePath = normalizeCommanderFilePath( parser.value( scriptFileOption ) );
-          request.argsJsonFilePath
-              = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
-          request.scenarioFilePath
-              = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
-          request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
-          request.allEntities = parser.isSet( allOption );
+        request.commentText = parser.value( textOption );
+        request.scriptFilePath = normalizeCommanderFilePath( parser.value( scriptFileOption ) );
+        request.argsJsonFilePath = normalizeCommanderFilePath( parser.value( argsJsonFileOption ) );
+        request.scenarioFilePath = normalizeCommanderFilePath( parser.value( scenarioFileOption ) );
+        request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
+        request.allEntities = parser.isSet( allOption );
         request.timestampComment = parser.isSet( timestampOption );
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
+        }
+
+        const auto parseFilterCount
+            = [ & ]( const QCommandLineOption& option, uint64_t* value ) -> bool {
+            if ( !parser.isSet( option ) ) {
+                return true;
+            }
+            bool ok = false;
+            const auto parsed = parser.value( option ).toULongLong( &ok );
+            if ( !ok ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Invalid nonnegative value for --%1." )
+                                .arg( option.names().constLast() ) );
+                return false;
+            }
+            *value = parsed;
+            return true;
+        };
+        if ( !parseFilterCount( beforeContextCommanderOption, &request.beforeContext )
+             || !parseFilterCount( afterContextCommanderOption, &request.afterContext ) ) {
+            return result;
+        }
+        if ( parser.isSet( maxMatchesCommanderOption ) ) {
+            uint64_t maxMatches = 0;
+            if ( !parseFilterCount( maxMatchesCommanderOption, &maxMatches ) ) {
+                return result;
+            }
+            request.maxMatches = maxMatches;
+        }
+        request.matchMode = parser.value( matchModeCommanderOption ).trimmed().toLower();
+        if ( request.matchMode != QStringLiteral( "contains" )
+             && request.matchMode != QStringLiteral( "whole_word" )
+             && request.matchMode != QStringLiteral( "whole_line" ) ) {
+            result.output_message
+                = formatParserError( parser, QStringLiteral( "Invalid --match-mode value." ) );
+            return result;
         }
 
         if ( parser.isSet( idOption ) ) {
@@ -1491,8 +1679,8 @@ struct CliParameters {
             bool ok = false;
             const auto parsedTimeout = parser.value( timeoutMsOption ).toInt( &ok );
             if ( !ok || parsedTimeout <= 0 ) {
-                result.output_message = formatParserError(
-                    parser, QStringLiteral( "Invalid --timeout-ms value." ) );
+                result.output_message
+                    = formatParserError( parser, QStringLiteral( "Invalid --timeout-ms value." ) );
                 return result;
             }
             request.timeoutMs = parsedTimeout;
@@ -1502,13 +1690,13 @@ struct CliParameters {
         const bool hasTabId = !tabId.isEmpty();
         const bool hasWindowIndex = parser.isSet( windowIndexOption );
         const bool hasTabIndex = parser.isSet( tabIndexOption );
-        const auto validateTabSelector = [ & ]( const QString& actionName,
-                                                bool selectorRequired ) -> bool {
+        const auto validateTabSelector
+            = [ & ]( const QString& actionName, bool selectorRequired ) -> bool {
             if ( hasTabId && ( hasWindowIndex || hasTabIndex ) ) {
                 result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral( "Use either --tab-id or --window-index with --tab-index for %1." )
-                        .arg( actionName ) );
+                    parser, QStringLiteral(
+                                "Use either --tab-id or --window-index with --tab-index for %1." )
+                                .arg( actionName ) );
                 return false;
             }
             if ( hasWindowIndex != hasTabIndex ) {
@@ -1559,8 +1747,8 @@ struct CliParameters {
         case CommanderAction::CloseFile:
             request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );
             if ( request.filePath.isEmpty() ) {
-                result.output_message
-                    = formatParserError( parser, QStringLiteral( "--file is required for this action." ) );
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--file is required for this action." ) );
                 return result;
             }
             break;
@@ -1568,8 +1756,8 @@ struct CliParameters {
         case CommanderAction::CloseUrl:
             request.url = normalizeCommanderUrl( parser.value( urlOption ) );
             if ( request.url.isEmpty() ) {
-                result.output_message
-                    = formatParserError( parser, QStringLiteral( "--url is required for this action." ) );
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--url is required for this action." ) );
                 return result;
             }
             break;
@@ -1577,8 +1765,8 @@ struct CliParameters {
         case CommanderAction::CloseCom:
             request.portName = parser.value( portOption ).trimmed();
             if ( request.portName.isEmpty() ) {
-                result.output_message
-                    = formatParserError( parser, QStringLiteral( "--port is required for this action." ) );
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--port is required for this action." ) );
                 return result;
             }
             break;
@@ -1618,11 +1806,15 @@ struct CliParameters {
                 selectors += request.filterString.isEmpty() ? 0 : 1;
                 if ( selectors != 1 ) {
                     result.output_message = formatParserError(
-                        parser,
-                        QStringLiteral(
-                            "set_filter requires exactly one of --filter-id, --filter-index, or --filter-string." ) );
+                        parser, QStringLiteral( "set_filter requires exactly one of --filter-id, "
+                                                "--filter-index, or --filter-string." ) );
                     return result;
                 }
+            }
+            if ( request.matchMode == QStringLiteral( "whole_line" ) && request.searchUseBoolean ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "whole_line match mode cannot use --boolean." ) );
+                return result;
             }
             break;
         case CommanderAction::GetActions:
@@ -1664,7 +1856,8 @@ struct CliParameters {
             }
             if ( ( request.entityId ? 1 : 0 ) + ( request.entityName.isEmpty() ? 0 : 1 ) != 1 ) {
                 result.output_message = formatParserError(
-                    parser, QStringLiteral( "wait_response requires exactly one of --id or --name." ) );
+                    parser,
+                    QStringLiteral( "wait_response requires exactly one of --id or --name." ) );
                 return result;
             }
             if ( !request.timeoutMs ) {
@@ -1706,92 +1899,95 @@ struct CliParameters {
                      + ( request.allEntities ? 1 : 0 )
                  != 1 ) {
                 result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral( "%1 requires exactly one of --id, --name, or --all." )
-                        .arg( commanderActionToString( *action ) ) );
+                    parser, QStringLiteral( "%1 requires exactly one of --id, --name, or --all." )
+                                .arg( commanderActionToString( *action ) ) );
                 return result;
             }
             break;
-            case CommanderAction::RunScript:
-                if ( !validateTabSelector( commanderActionToString( *action ), true ) ) {
-                    return result;
-                }
-                if ( request.scriptFilePath.isEmpty() ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "--script-file is required for run_script." ) );
-                    return result;
-                }
-                break;
-            case CommanderAction::RunGlobalScript:
-                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "run_global_script does not accept tab selectors or --all." ) );
-                    return result;
-                }
-                if ( request.scriptFilePath.isEmpty() ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "--script-file is required for run_global_script." ) );
-                    return result;
-                }
-                break;
-            case CommanderAction::RunScenario:
-                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "run_scenario does not accept tab selectors or --all." ) );
-                    return result;
-                }
-                if ( request.scenarioFilePath.isEmpty() ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "--scenario-file is required for run_scenario." ) );
-                    return result;
-                }
-                break;
-            case CommanderAction::RunSuite:
-                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "run_suite does not accept tab selectors or --all." ) );
-                    return result;
-                }
-                if ( request.suiteFilePath.isEmpty() ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "--suite-file is required for run_suite." ) );
-                    return result;
-                }
-                break;
-            case CommanderAction::StopScript:
-            case CommanderAction::GetScriptStatus:
-            case CommanderAction::GetScriptSubscriptions:
-            case CommanderAction::ClearScriptSubscriptions:
-                if ( parser.isSet( allOption ) && ( hasTabId || hasWindowIndex || hasTabIndex ) ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "Use either a tab selector or --all for this action." ) );
-                    return result;
-                }
-                if ( !parser.isSet( allOption )
-                     && !validateTabSelector( commanderActionToString( *action ), true ) ) {
-                    return result;
-                }
-                break;
-            case CommanderAction::StopGlobalScript:
-            case CommanderAction::GetGlobalScriptStatus:
-            case CommanderAction::GetGlobalScriptSubscriptions:
-            case CommanderAction::ClearGlobalScriptSubscriptions:
-            case CommanderAction::StopScenarioRun:
-            case CommanderAction::GetScenarioStatus:
-            case CommanderAction::GetScenarioReport:
-                if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
-                    result.output_message = formatParserError(
-                        parser, QStringLiteral( "%1 does not accept tab selectors or --all." )
-                                    .arg( commanderActionToString( *action ) ) );
-                    return result;
-                }
-                break;
+        case CommanderAction::RunScript:
+            if ( !validateTabSelector( commanderActionToString( *action ), true ) ) {
+                return result;
+            }
+            if ( request.scriptFilePath.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--script-file is required for run_script." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::RunGlobalScript:
+            if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "run_global_script does not accept tab selectors or --all." ) );
+                return result;
+            }
+            if ( request.scriptFilePath.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--script-file is required for run_global_script." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::RunScenario:
+            if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "run_scenario does not accept tab selectors or --all." ) );
+                return result;
+            }
+            if ( request.scenarioFilePath.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--scenario-file is required for run_scenario." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::RunSuite:
+            if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "run_suite does not accept tab selectors or --all." ) );
+                return result;
+            }
+            if ( request.suiteFilePath.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--suite-file is required for run_suite." ) );
+                return result;
+            }
+            break;
+        case CommanderAction::StopScript:
+        case CommanderAction::GetScriptStatus:
+        case CommanderAction::GetScriptSubscriptions:
+        case CommanderAction::ClearScriptSubscriptions:
+            if ( parser.isSet( allOption ) && ( hasTabId || hasWindowIndex || hasTabIndex ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "Use either a tab selector or --all for this action." ) );
+                return result;
+            }
+            if ( !parser.isSet( allOption )
+                 && !validateTabSelector( commanderActionToString( *action ), true ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::StopGlobalScript:
+        case CommanderAction::GetGlobalScriptStatus:
+        case CommanderAction::GetGlobalScriptSubscriptions:
+        case CommanderAction::ClearGlobalScriptSubscriptions:
+        case CommanderAction::StopScenarioRun:
+        case CommanderAction::GetScenarioStatus:
+        case CommanderAction::GetScenarioReport:
+            if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "%1 does not accept tab selectors or --all." )
+                                .arg( commanderActionToString( *action ) ) );
+                return result;
+            }
+            break;
         case CommanderAction::CloseKlogg:
         case CommanderAction::CloseAll:
             if ( parser.isSet( prettyOption ) || parser.isSet( searchOption )
                  || parser.isSet( autoRefreshOption ) ) {
                 result.output_message = formatParserError(
-                    parser, QStringLiteral( "Unsupported options were provided for this action." ) );
+                    parser,
+                    QStringLiteral( "Unsupported options were provided for this action." ) );
                 return result;
             }
             break;
@@ -1801,8 +1997,8 @@ struct CliParameters {
             }
             request.searchText = parser.value( textOption );
             if ( request.searchText.isEmpty() ) {
-                result.output_message
-                    = formatParserError( parser, QStringLiteral( "--text is required for search." ) );
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--text is required for search." ) );
                 return result;
             }
             request.searchUseRegex = parser.isSet( regexOption );
@@ -1811,6 +2007,11 @@ struct CliParameters {
             request.searchUseBoolean = parser.isSet( booleanOption );
             request.searchAutoRefresh = parser.isSet( autoRefreshOption );
             request.searchKeepResults = parser.isSet( keepResultsOption );
+            if ( request.matchMode == QStringLiteral( "whole_line" ) && request.searchUseBoolean ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "whole_line match mode cannot use --boolean." ) );
+                return result;
+            }
             break;
         case CommanderAction::SetFollowMode:
             if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
@@ -1853,7 +2054,8 @@ struct CliParameters {
 
             if ( !request.filterId.isEmpty() && request.filterIndex ) {
                 result.output_message = formatParserError(
-                    parser, QStringLiteral( "Use either --filter-id or --filter-index for get_filters." ) );
+                    parser,
+                    QStringLiteral( "Use either --filter-id or --filter-index for get_filters." ) );
                 return result;
             }
         }
@@ -1863,9 +2065,8 @@ struct CliParameters {
 
             if ( parser.isSet( fileOption ) ) {
                 const auto filePath = parser.value( fileOption ).trimmed();
-                request.comSettings.filePath = filePath.isEmpty()
-                                                   ? QString{}
-                                                   : normalizeCommanderFilePath( filePath );
+                request.comSettings.filePath
+                    = filePath.isEmpty() ? QString{} : normalizeCommanderFilePath( filePath );
             }
 
             if ( parser.isSet( baudOption ) ) {
@@ -1882,8 +2083,8 @@ struct CliParameters {
             if ( parser.isSet( dataBitsOption ) ) {
                 request.comSettings.dataBits = parseDataBits( parser.value( dataBitsOption ) );
                 if ( !request.comSettings.dataBits ) {
-                    result.output_message
-                        = formatParserError( parser, QStringLiteral( "Invalid --data-bits value." ) );
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --data-bits value." ) );
                     return result;
                 }
             }
@@ -1900,8 +2101,8 @@ struct CliParameters {
             if ( parser.isSet( stopBitsOption ) ) {
                 request.comSettings.stopBits = parseStopBits( parser.value( stopBitsOption ) );
                 if ( !request.comSettings.stopBits ) {
-                    result.output_message
-                        = formatParserError( parser, QStringLiteral( "Invalid --stop-bits value." ) );
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --stop-bits value." ) );
                     return result;
                 }
             }
@@ -1910,8 +2111,8 @@ struct CliParameters {
                 request.comSettings.flowControl
                     = parseFlowControl( parser.value( flowControlOption ) );
                 if ( !request.comSettings.flowControl ) {
-                    result.output_message
-                        = formatParserError( parser, QStringLiteral( "Invalid --flow-control value." ) );
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --flow-control value." ) );
                     return result;
                 }
             }
@@ -1938,7 +2139,8 @@ struct CliParameters {
              || *action == CommanderAction::CreateResponse
              || *action == CommanderAction::UpdateResponse ) {
             QString errorMessage;
-            const auto payload = loadJsonObjectFile( parser.value( jsonFileOption ), &errorMessage );
+            const auto payload
+                = loadJsonObjectFile( parser.value( jsonFileOption ), &errorMessage );
             if ( !payload ) {
                 result.output_message = formatParserError( parser, errorMessage );
                 return result;

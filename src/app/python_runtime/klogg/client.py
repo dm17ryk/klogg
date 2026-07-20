@@ -742,12 +742,27 @@ class TabRef:
 
     def set_filter(self, *, filter_id: Optional[str] = None, filter_index: Optional[int] = None,
                    filter_string: Optional[str] = None, predefined: bool = False,
-                   search: bool = False, auto_refresh: bool = False) -> Dict[str, Any]:
+                   search: bool = False, auto_refresh: bool = False,
+                   before_context: int = 0, after_context: int = 0,
+                   max_matches: Optional[int] = None,
+                   match_mode: str = "contains") -> Dict[str, Any]:
+        if before_context < 0 or after_context < 0:
+            raise ValueError("before_context and after_context must be nonnegative")
+        if max_matches is not None and max_matches < 0:
+            raise ValueError("max_matches must be nonnegative or None")
+        if match_mode not in {"contains", "whole_word", "whole_line"}:
+            raise ValueError("match_mode must be contains, whole_word, or whole_line")
+
         payload: Dict[str, Any] = {
             "predefinedFilters": bool(predefined),
             "runSearch": bool(search or auto_refresh),
             "rearmAutoRefresh": bool(auto_refresh),
+            "before_context": int(before_context),
+            "after_context": int(after_context),
+            "match_mode": match_mode,
         }
+        if max_matches is not None:
+            payload["max_matches"] = int(max_matches)
         if filter_id:
             payload["filterId"] = filter_id
         if filter_index is not None:

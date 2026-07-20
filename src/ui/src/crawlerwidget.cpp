@@ -54,18 +54,20 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QCoreApplication>
 #include <QCompleter>
+#include <QCoreApplication>
+#include <QFormLayout>
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QListView>
-#include <QSignalBlocker>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStringListModel>
 #include <QTimer>
+#include <QWidgetAction>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -76,8 +78,8 @@
 
 #include <QCryptographicHash>
 
-#include "configuration.h"
 #include "commander.h"
+#include "configuration.h"
 #include "dispatch_to.h"
 #include "fontutils.h"
 #include "infoline.h"
@@ -87,6 +89,33 @@
 #include "startupprogress.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
+
+namespace {
+MatchMode matchModeFromString( const QString& value )
+{
+    const auto normalized = value.trimmed().toLower();
+    if ( normalized == QStringLiteral( "whole_word" ) ) {
+        return MatchMode::WholeWord;
+    }
+    if ( normalized == QStringLiteral( "whole_line" ) ) {
+        return MatchMode::WholeLine;
+    }
+    return MatchMode::Contains;
+}
+
+QString matchModeToString( MatchMode mode )
+{
+    switch ( mode ) {
+    case MatchMode::WholeWord:
+        return QStringLiteral( "whole_word" );
+    case MatchMode::WholeLine:
+        return QStringLiteral( "whole_line" );
+    case MatchMode::Contains:
+    default:
+        return QStringLiteral( "contains" );
+    }
+}
+} // namespace
 
 // Palette for error signaling (yellow background)
 const QPalette CrawlerWidget::ErrorPalette( Qt::darkYellow );
@@ -99,7 +128,8 @@ public:
     // Construct from the value passsed
     CrawlerWidgetContext( QList<int> sizes, bool ignoreCase, bool autoRefresh, bool followFile,
                           bool useRegexp, bool inverseRegexp, bool useBooleanCombination,
-                          QString searchPattern, QList<LineNumber> markedLines )
+                          MatchMode matchMode, SearchOptions searchOptions, QString searchPattern,
+                          QList<LineNumber> markedLines )
         : sizes_( std::move( sizes ) )
         , ignoreCase_( ignoreCase )
         , autoRefresh_( autoRefresh )
@@ -107,6 +137,8 @@ public:
         , useRegexp_( useRegexp )
         , inverseRegexp_( inverseRegexp )
         , useBooleanCombination_( useBooleanCombination )
+        , matchMode_( matchMode )
+        , searchOptions_( std::move( searchOptions ) )
         , searchPattern_( std::move( searchPattern ) )
     {
         std::transform( markedLines.cbegin(), markedLines.cend(), std::back_inserter( marks_ ),
@@ -147,6 +179,16 @@ public:
         return useBooleanCombination_;
     }
 
+    MatchMode matchMode() const
+    {
+        return matchMode_;
+    }
+
+    const SearchOptions& searchOptions() const
+    {
+        return searchOptions_;
+    }
+
     QList<LineNumber::UnderlyingType> marks() const
     {
         return marks_;
@@ -170,6 +212,8 @@ private:
     bool useRegexp_ = false;
     bool inverseRegexp_ = false;
     bool useBooleanCombination_ = false;
+    MatchMode matchMode_ = MatchMode::Contains;
+    SearchOptions searchOptions_;
 
     QList<LineNumber::UnderlyingType> marks_;
     QString searchPattern_;
@@ -422,10 +466,12 @@ void CrawlerWidget::doSendAllStateSignals()
 void CrawlerWidget::changeEvent( QEvent* event )
 {
     if ( event->type() == QEvent::StyleChange ) {
-        dispatchToObject( [ this ] {
-            loadIcons();
-            searchInfoLineDefaultPalette_ = this->palette();
-        }, this );
+        dispatchToObject(
+            [ this ] {
+                loadIcons();
+                searchInfoLineDefaultPalette_ = this->palette();
+            },
+            this );
     }
 
     QWidget::changeEvent( event );
@@ -482,8 +528,8 @@ QVariantList CrawlerWidget::commanderFilters() const
         const auto& filterString = history.at( filterIndex );
         QVariantMap filterInfo;
         filterInfo.insert( QStringLiteral( "filterId" ),
-                           QString::fromLatin1( QCryptographicHash::hash(
-                                                    filterString.toUtf8(), QCryptographicHash::Sha1 )
+                           QString::fromLatin1( QCryptographicHash::hash( filterString.toUtf8(),
+                                                                          QCryptographicHash::Sha1 )
                                                     .toHex() ) );
         filterInfo.insert( QStringLiteral( "filterIndex" ), filterIndex );
         filterInfo.insert( QStringLiteral( "filterString" ), filterString );
@@ -529,28 +575,29 @@ std::optional<PredefinedFilter> CrawlerWidget::commanderFilterByIndex( int filte
     return PredefinedFilter{ QString{}, filterString, filterString, false };
 }
 
-std::optional<PredefinedFilter> CrawlerWidget::commanderPredefinedFilterById(
-    const QString& filterId ) const
+std::optional<PredefinedFilter>
+CrawlerWidget::commanderPredefinedFilterById( const QString& filterId ) const
 {
     return predefinedFilters_->commanderFilterById( filterId );
 }
 
-std::optional<PredefinedFilter> CrawlerWidget::commanderPredefinedFilterByIndex(
-    int filterIndex ) const
+std::optional<PredefinedFilter>
+CrawlerWidget::commanderPredefinedFilterByIndex( int filterIndex ) const
 {
     return predefinedFilters_->commanderFilterByIndex( filterIndex );
 }
 
-void CrawlerWidget::applyCommanderSearchPattern( const QString& searchPattern, bool runSearch,
-                                                 bool rearmAutoRefresh )
+void CrawlerWidget::applyCommanderSearchPattern( const QString& searchPattern,
+                                                 const CommanderRequest& request )
 {
+    applyCommanderSearchOptions( request );
     setSearchPattern( searchPattern, false );
 
-    if ( runSearch ) {
+    if ( request.runSearch ) {
         startNewSearch();
     }
 
-    if ( rearmAutoRefresh ) {
+    if ( request.rearmAutoRefresh ) {
         if ( searchRefreshButton_->isChecked() ) {
             searchRefreshButton_->setChecked( false );
         }
@@ -558,16 +605,17 @@ void CrawlerWidget::applyCommanderSearchPattern( const QString& searchPattern, b
     }
 }
 
-void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filter, bool runSearch,
-                                                    bool rearmAutoRefresh )
+void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filter,
+                                                    const CommanderRequest& request )
 {
     QString searchPattern;
     combinePatterns( searchPattern, escapeSearchPattern( filter.pattern, filter.useRegex ) );
-    applyCommanderSearchPattern( searchPattern, runSearch, rearmAutoRefresh );
+    applyCommanderSearchPattern( searchPattern, request );
 }
 
 void CrawlerWidget::applyCommanderAutomationSearch( const CommanderRequest& request )
 {
+    applyCommanderSearchOptions( request );
     matchCaseButton_->setChecked( request.searchCaseSensitive );
     useRegexpButton_->setChecked( request.searchUseRegex );
     inverseButton_->setChecked( request.searchInverseMatch );
@@ -577,6 +625,37 @@ void CrawlerWidget::applyCommanderAutomationSearch( const CommanderRequest& requ
     lastSearchErrorText_.clear();
     setSearchPattern( request.searchText, false );
     startNewSearch();
+}
+
+void CrawlerWidget::applyCommanderSearchOptions( const CommanderRequest& request )
+{
+    const auto clampForGui = []( uint64_t value ) {
+        return static_cast<int>( std::min<uint64_t>( value, std::numeric_limits<int>::max() ) );
+    };
+
+    const QSignalBlocker beforeBlocker( beforeContextSpinBox_ );
+    const QSignalBlocker afterBlocker( afterContextSpinBox_ );
+    const QSignalBlocker linkBlocker( linkContextCheckBox_ );
+    const QSignalBlocker maximumEnabledBlocker( maxMatchesCheckBox_ );
+    const QSignalBlocker maximumValueBlocker( maxMatchesSpinBox_ );
+    const QSignalBlocker modeBlocker( matchModeComboBox_ );
+
+    beforeContextSpinBox_->setValue( clampForGui( request.beforeContext ) );
+    afterContextSpinBox_->setValue( clampForGui( request.afterContext ) );
+    linkContextCheckBox_->setChecked( request.beforeContext == request.afterContext );
+    maxMatchesCheckBox_->setChecked( request.maxMatches.has_value() );
+    maxMatchesSpinBox_->setEnabled( request.maxMatches.has_value() );
+    if ( request.maxMatches ) {
+        maxMatchesSpinBox_->setValue( clampForGui( *request.maxMatches ) );
+    }
+
+    const auto requestedMode = matchModeFromString( request.matchMode );
+    const auto modeIndex = matchModeComboBox_->findData( static_cast<int>( requestedMode ) );
+    if ( modeIndex >= 0 ) {
+        matchModeComboBox_->setCurrentIndex( modeIndex );
+    }
+    updateMatchModeCompatibility();
+    resetStateOnSearchPatternChanges();
 }
 
 void CrawlerWidget::goToLine()
@@ -652,6 +731,12 @@ void CrawlerWidget::applyViewContext( const QString& view_context, bool lazySear
             const QSignalBlocker inverseBlocker( inverseButton_ );
             const QSignalBlocker booleanBlocker( booleanButton_ );
             const QSignalBlocker refreshBlocker( searchRefreshButton_ );
+            const QSignalBlocker beforeContextBlocker( beforeContextSpinBox_ );
+            const QSignalBlocker afterContextBlocker( afterContextSpinBox_ );
+            const QSignalBlocker linkContextBlocker( linkContextCheckBox_ );
+            const QSignalBlocker matchModeBlocker( matchModeComboBox_ );
+            const QSignalBlocker maxMatchesCheckBlocker( maxMatchesCheckBox_ );
+            const QSignalBlocker maxMatchesValueBlocker( maxMatchesSpinBox_ );
 
             searchLineEdit_->setEditText( context.searchPattern() );
             matchCaseButton_->setChecked( !context.ignoreCase() );
@@ -659,6 +744,21 @@ void CrawlerWidget::applyViewContext( const QString& view_context, bool lazySear
             inverseButton_->setChecked( context.inverseRegexp() );
             booleanButton_->setChecked( context.useBooleanCombination() );
             searchRefreshButton_->setChecked( context.autoRefresh() );
+            beforeContextSpinBox_->setValue( static_cast<int>( std::min<uint64_t>(
+                context.searchOptions().contextBefore, std::numeric_limits<int>::max() ) ) );
+            afterContextSpinBox_->setValue( static_cast<int>( std::min<uint64_t>(
+                context.searchOptions().contextAfter, std::numeric_limits<int>::max() ) ) );
+            linkContextCheckBox_->setChecked( context.searchOptions().contextBefore
+                                              == context.searchOptions().contextAfter );
+            const auto modeIndex
+                = matchModeComboBox_->findData( static_cast<int>( context.matchMode() ) );
+            matchModeComboBox_->setCurrentIndex( std::max( 0, modeIndex ) );
+            maxMatchesCheckBox_->setChecked( context.searchOptions().maxMatches.has_value() );
+            maxMatchesSpinBox_->setEnabled( context.searchOptions().maxMatches.has_value() );
+            if ( context.searchOptions().maxMatches ) {
+                maxMatchesSpinBox_->setValue( static_cast<int>( std::min<uint64_t>(
+                    *context.searchOptions().maxMatches, std::numeric_limits<int>::max() ) ) );
+            }
         }
 
         // Keep search state in sync with restored controls without forcing an
@@ -667,13 +767,15 @@ void CrawlerWidget::applyViewContext( const QString& view_context, bool lazySear
         matchCaseChangedHandler( !context.ignoreCase() );
         booleanCombiningChangedHandler( context.useBooleanCombination() );
         useRegexpChangeHandler( context.useRegexp() );
+        updateMatchModeCompatibility();
         updatePredefinedFiltersWidget();
 
         const auto& config = Configuration::get();
         logMainView_->followSet( context.followFile() && config.anyFileWatchEnabled() );
 
         const auto savedMarks = context.marks();
-        std::transform( savedMarks.cbegin(), savedMarks.cend(), std::back_inserter( savedMarkedLines_ ),
+        std::transform( savedMarks.cbegin(), savedMarks.cend(),
+                        std::back_inserter( savedMarkedLines_ ),
                         []( const auto& l ) { return LineNumber( l ); } );
 
         restoreSearchPending_ = context.autoRefresh() && !context.searchPattern().isEmpty();
@@ -693,7 +795,8 @@ std::shared_ptr<const ViewContextInterface> CrawlerWidget::doGetViewContext() co
     auto context = std::make_shared<const CrawlerWidgetContext>(
         sizes(), ( !matchCaseButton_->isChecked() ), searchRefreshButton_->isChecked(),
         logMainView_->isFollowEnabled(), useRegexpButton_->isChecked(), inverseButton_->isChecked(),
-        booleanButton_->isChecked(), searchLineEdit_->currentText(), logFilteredData_->getMarks() );
+        booleanButton_->isChecked(), currentMatchMode(), currentSearchOptions(),
+        searchLineEdit_->currentText(), logFilteredData_->getMarks() );
 
     return static_cast<std::shared_ptr<const ViewContextInterface>>( context );
 }
@@ -1184,6 +1287,7 @@ void CrawlerWidget::matchCaseChangedHandler( bool shouldMatchCase )
 
 void CrawlerWidget::booleanCombiningChangedHandler( bool )
 {
+    updateMatchModeCompatibility();
     resetStateOnSearchPatternChanges();
 }
 
@@ -1297,6 +1401,39 @@ void CrawlerWidget::setSearchPattern( const QString& searchPattern, bool allowAu
     if ( allowAutoRun && Configuration::get().autoRunSearchOnPatternChange() ) {
         dispatchToObject( [ this ] { startNewSearch(); }, this );
     }
+}
+
+SearchOptions CrawlerWidget::currentSearchOptions() const
+{
+    SearchOptions options;
+    options.contextBefore = static_cast<uint64_t>( beforeContextSpinBox_->value() );
+    options.contextAfter = static_cast<uint64_t>( afterContextSpinBox_->value() );
+    if ( maxMatchesCheckBox_->isChecked() ) {
+        options.maxMatches = static_cast<uint64_t>( maxMatchesSpinBox_->value() );
+    }
+    return options;
+}
+
+MatchMode CrawlerWidget::currentMatchMode() const
+{
+    return static_cast<MatchMode>( matchModeComboBox_->currentData().toInt() );
+}
+
+void CrawlerWidget::updateMatchModeCompatibility()
+{
+    const bool booleanSearch = booleanButton_->isChecked();
+    const auto wholeLineIndex
+        = matchModeComboBox_->findData( static_cast<int>( MatchMode::WholeLine ) );
+    if ( auto* model = qobject_cast<QStandardItemModel*>( matchModeComboBox_->model() );
+         model != nullptr && wholeLineIndex >= 0 ) {
+        model->item( wholeLineIndex )->setEnabled( !booleanSearch );
+    }
+
+    if ( booleanSearch && currentMatchMode() == MatchMode::WholeLine ) {
+        matchModeComboBox_->setCurrentIndex(
+            matchModeComboBox_->findData( static_cast<int>( MatchMode::Contains ) ) );
+    }
+    booleanButton_->setEnabled( currentMatchMode() != MatchMode::WholeLine );
 }
 
 void CrawlerWidget::mouseHoveredOverMatch( LineNumber line )
@@ -1466,6 +1603,71 @@ void CrawlerWidget::setup()
     searchRefreshButton_->setFocusPolicy( Qt::NoFocus );
     searchRefreshButton_->setContentsMargins( 2, 2, 2, 2 );
 
+    advancedFilterButton_ = new QToolButton();
+    advancedFilterButton_->setObjectName( QStringLiteral( "advancedFilterButton" ) );
+    advancedFilterButton_->setAccessibleName( tr( "Advanced filter options" ) );
+    advancedFilterButton_->setToolTip( tr( "Context, match mode, and maximum matches" ) );
+    advancedFilterButton_->setText( tr( "Advanced" ) );
+    advancedFilterButton_->setPopupMode( QToolButton::InstantPopup );
+    advancedFilterButton_->setFocusPolicy( Qt::NoFocus );
+
+    auto* advancedFilterMenu = new QMenu( advancedFilterButton_ );
+    advancedFilterMenu->setObjectName( QStringLiteral( "advancedFilterMenu" ) );
+    advancedFilterMenu->setAccessibleName( tr( "Advanced filter options" ) );
+    auto* advancedFilterPanel = new QWidget( advancedFilterMenu );
+    advancedFilterPanel->setObjectName( QStringLiteral( "advancedFilterPanel" ) );
+    advancedFilterPanel->setAccessibleName( tr( "Advanced filter options" ) );
+    auto* advancedFilterLayout = new QFormLayout( advancedFilterPanel );
+
+    beforeContextSpinBox_ = new QSpinBox( advancedFilterPanel );
+    beforeContextSpinBox_->setObjectName( QStringLiteral( "beforeContextSpinBox" ) );
+    beforeContextSpinBox_->setAccessibleName( tr( "Before context lines" ) );
+    beforeContextSpinBox_->setRange( 0, std::numeric_limits<int>::max() );
+    beforeContextSpinBox_->setToolTip( tr( "Source lines shown before each true match" ) );
+    advancedFilterLayout->addRow( tr( "Before:" ), beforeContextSpinBox_ );
+
+    afterContextSpinBox_ = new QSpinBox( advancedFilterPanel );
+    afterContextSpinBox_->setObjectName( QStringLiteral( "afterContextSpinBox" ) );
+    afterContextSpinBox_->setAccessibleName( tr( "After context lines" ) );
+    afterContextSpinBox_->setRange( 0, std::numeric_limits<int>::max() );
+    afterContextSpinBox_->setToolTip( tr( "Source lines shown after each true match" ) );
+    advancedFilterLayout->addRow( tr( "After:" ), afterContextSpinBox_ );
+
+    linkContextCheckBox_ = new QCheckBox( tr( "Link Before and After" ), advancedFilterPanel );
+    linkContextCheckBox_->setObjectName( QStringLiteral( "linkContextCheckBox" ) );
+    linkContextCheckBox_->setAccessibleName( tr( "Link Before and After context counts" ) );
+    linkContextCheckBox_->setChecked( true );
+    advancedFilterLayout->addRow( QString{}, linkContextCheckBox_ );
+
+    matchModeComboBox_ = new QComboBox( advancedFilterPanel );
+    matchModeComboBox_->setObjectName( QStringLiteral( "matchModeComboBox" ) );
+    matchModeComboBox_->setAccessibleName( tr( "Filter match mode" ) );
+    matchModeComboBox_->addItem( tr( "Contains" ), static_cast<int>( MatchMode::Contains ) );
+    matchModeComboBox_->addItem( tr( "Whole word" ), static_cast<int>( MatchMode::WholeWord ) );
+    matchModeComboBox_->addItem( tr( "Whole line" ), static_cast<int>( MatchMode::WholeLine ) );
+    advancedFilterLayout->addRow( tr( "Match mode:" ), matchModeComboBox_ );
+
+    auto* maximumRow = new QWidget( advancedFilterPanel );
+    auto* maximumLayout = new QHBoxLayout( maximumRow );
+    maximumLayout->setContentsMargins( 0, 0, 0, 0 );
+    maxMatchesCheckBox_ = new QCheckBox( tr( "Limit" ), maximumRow );
+    maxMatchesCheckBox_->setObjectName( QStringLiteral( "maxMatchesCheckBox" ) );
+    maxMatchesCheckBox_->setAccessibleName( tr( "Enable maximum match count" ) );
+    maxMatchesSpinBox_ = new QSpinBox( maximumRow );
+    maxMatchesSpinBox_->setObjectName( QStringLiteral( "maxMatchesSpinBox" ) );
+    maxMatchesSpinBox_->setAccessibleName( tr( "Maximum match count" ) );
+    maxMatchesSpinBox_->setRange( 0, std::numeric_limits<int>::max() );
+    maxMatchesSpinBox_->setValue( 1000 );
+    maxMatchesSpinBox_->setEnabled( false );
+    maximumLayout->addWidget( maxMatchesCheckBox_ );
+    maximumLayout->addWidget( maxMatchesSpinBox_ );
+    advancedFilterLayout->addRow( tr( "Maximum matches:" ), maximumRow );
+
+    auto* advancedFilterAction = new QWidgetAction( advancedFilterMenu );
+    advancedFilterAction->setDefaultWidget( advancedFilterPanel );
+    advancedFilterMenu->addAction( advancedFilterAction );
+    advancedFilterButton_->setMenu( advancedFilterMenu );
+
     // Construct the Search line
     searchLineCompleter_ = new QCompleter( savedSearches_->recentSearches(), this );
     searchLineEdit_ = new QComboBox;
@@ -1541,6 +1743,7 @@ void CrawlerWidget::setup()
     searchLineLayout->addWidget( inverseButton_ );
     searchLineLayout->addWidget( booleanButton_ );
     searchLineLayout->addWidget( searchRefreshButton_ );
+    searchLineLayout->addWidget( advancedFilterButton_ );
     searchLineLayout->addWidget( predefinedFilters_ );
     searchLineLayout->addWidget( searchLineEdit_ );
     searchLineLayout->addWidget( clearButton_ );
@@ -1581,6 +1784,34 @@ void CrawlerWidget::setup()
     useRegexpChangeHandler( useRegexpButton_->isChecked() );
     matchCaseChangedHandler( matchCaseButton_->isChecked() );
     booleanCombiningChangedHandler( booleanButton_->isChecked() );
+
+    connect( beforeContextSpinBox_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
+             [ this ]( int value ) {
+                 if ( linkContextCheckBox_->isChecked() ) {
+                     const QSignalBlocker blocker( afterContextSpinBox_ );
+                     afterContextSpinBox_->setValue( value );
+                 }
+                 resetStateOnSearchPatternChanges();
+             } );
+    connect( afterContextSpinBox_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
+             [ this ]( int value ) {
+                 if ( linkContextCheckBox_->isChecked() ) {
+                     const QSignalBlocker blocker( beforeContextSpinBox_ );
+                     beforeContextSpinBox_->setValue( value );
+                 }
+                 resetStateOnSearchPatternChanges();
+             } );
+    connect( matchModeComboBox_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
+             [ this ] {
+                 updateMatchModeCompatibility();
+                 resetStateOnSearchPatternChanges();
+             } );
+    connect( maxMatchesCheckBox_, &QCheckBox::toggled, this, [ this ]( bool enabled ) {
+        maxMatchesSpinBox_->setEnabled( enabled );
+        resetStateOnSearchPatternChanges();
+    } );
+    connect( maxMatchesSpinBox_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
+             [ this ] { resetStateOnSearchPatternChanges(); } );
 
     // Default splitter position (usually overridden by the config file)
     setSizes( config.splitterSizes() );
@@ -1728,6 +1959,48 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
         filteredView_ = tabFilteredView;
         logFilteredData_ = filteredViewsData_.at( tabFilteredView );
+
+        if ( logFilteredData_->hasCurrentRegexp() ) {
+            const auto& pattern = logFilteredData_->currentRegexp();
+            const auto& options = logFilteredData_->currentSearchOptions();
+            const QSignalBlocker searchBlocker( searchLineEdit_ );
+            const QSignalBlocker caseBlocker( matchCaseButton_ );
+            const QSignalBlocker regexBlocker( useRegexpButton_ );
+            const QSignalBlocker inverseBlocker( inverseButton_ );
+            const QSignalBlocker booleanBlocker( booleanButton_ );
+            const QSignalBlocker beforeBlocker( beforeContextSpinBox_ );
+            const QSignalBlocker afterBlocker( afterContextSpinBox_ );
+            const QSignalBlocker linkBlocker( linkContextCheckBox_ );
+            const QSignalBlocker modeBlocker( matchModeComboBox_ );
+            const QSignalBlocker maxEnabledBlocker( maxMatchesCheckBox_ );
+            const QSignalBlocker maxValueBlocker( maxMatchesSpinBox_ );
+
+            searchLineEdit_->setEditText( pattern.pattern );
+            matchCaseButton_->setChecked( pattern.isCaseSensitive );
+            useRegexpButton_->setChecked( !pattern.isPlainText );
+            inverseButton_->setChecked( pattern.isExclude );
+            booleanButton_->setChecked( pattern.isBoolean );
+            beforeContextSpinBox_->setValue( static_cast<int>(
+                std::min<uint64_t>( options.contextBefore, std::numeric_limits<int>::max() ) ) );
+            afterContextSpinBox_->setValue( static_cast<int>(
+                std::min<uint64_t>( options.contextAfter, std::numeric_limits<int>::max() ) ) );
+            linkContextCheckBox_->setChecked( options.contextBefore == options.contextAfter );
+            matchModeComboBox_->setCurrentIndex(
+                matchModeComboBox_->findData( static_cast<int>( pattern.matchMode ) ) );
+            maxMatchesCheckBox_->setChecked( options.maxMatches.has_value() );
+            maxMatchesSpinBox_->setEnabled( options.maxMatches.has_value() );
+            if ( options.maxMatches ) {
+                maxMatchesSpinBox_->setValue( static_cast<int>(
+                    std::min<uint64_t>( *options.maxMatches, std::numeric_limits<int>::max() ) ) );
+            }
+            updateMatchModeCompatibility();
+            nbMatches_ = logFilteredData_->getNbMatches();
+            LOG_INFO << "Restored retained filter tab options mode="
+                     << matchModeName( pattern.matchMode ) << " before=" << options.contextBefore
+                     << " after=" << options.contextAfter << " max="
+                     << ( options.maxMatches ? QString::number( *options.maxMatches )
+                                             : QStringLiteral( "unlimited" ) );
+        }
 
         Q_EMIT filteredViewChanged();
 
@@ -2077,18 +2350,21 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         }
 
         // Constructs the regexp
+        const auto searchOptions = currentSearchOptions();
         auto regexpPattern = RegularExpressionPattern(
             searchText, matchCaseButton_->isChecked(), inverseButton_->isChecked(),
-            booleanButton_->isChecked(), !useRegexpButton_->isChecked() );
+            booleanButton_->isChecked(), !useRegexpButton_->isChecked(), currentMatchMode() );
         if ( StartupProgress::isActive() ) {
-            const auto detail = searchText.isEmpty() ? tr( "<empty expression>" ) : searchText.left( 96 );
+            const auto detail
+                = searchText.isEmpty() ? tr( "<empty expression>" ) : searchText.left( 96 );
             StartupProgress::advance( tr( "Compiling filter expression" ), detail );
         }
 
         const bool samePatternAsCurrent
             = !forceRecompile && logFilteredData_->hasCurrentRegexp()
               && logFilteredData_->fullScanCompleted()
-              && logFilteredData_->currentRegexp() == regexpPattern;
+              && logFilteredData_->currentRegexp() == regexpPattern
+              && logFilteredData_->currentSearchOptions() == searchOptions;
 
         if ( samePatternAsCurrent ) {
             stopButton_->setEnabled( true );
@@ -2098,11 +2374,14 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             startupFilterSearchInProgress_ = true;
 
             if ( forceFullScan ) {
-                LOG_INFO << "Pattern unchanged, forcing full refresh while reusing compiled expression";
-                logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+                LOG_INFO
+                    << "Pattern unchanged, forcing full refresh while reusing compiled expression";
+                logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_,
+                                             searchOptions );
             }
             else {
-                LOG_INFO << "Pattern unchanged, reusing compiled expression and issuing incremental refresh";
+                LOG_INFO << "Pattern unchanged, reusing compiled expression and issuing "
+                            "incremental refresh";
                 logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
             }
 
@@ -2118,7 +2397,12 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         filteredView_->updateData();
 
         LOG_INFO << "Starting search for pattern " << regexpPattern.pattern << " range ["
-                 << searchStartLine_ << ", " << searchEndLine_ << "]";
+                 << searchStartLine_ << ", " << searchEndLine_
+                 << "] mode=" << matchModeName( regexpPattern.matchMode )
+                 << " context before=" << searchOptions.contextBefore
+                 << " after=" << searchOptions.contextAfter << " max="
+                 << ( searchOptions.maxMatches ? QString::number( *searchOptions.maxMatches )
+                                               : QStringLiteral( "unlimited" ) );
 
         stopButton_->setEnabled( true );
         stopButton_->show();
@@ -2126,7 +2410,8 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         searchButton_->hide();
         startupFilterSearchInProgress_ = true;
 
-        logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+        logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_,
+                                     searchOptions );
 
         searchState_.startSearch();
         searchInfoLine_->hide();
@@ -2178,6 +2463,11 @@ void CrawlerWidget::printSearchInfoMessage( LinesCount nbMatches )
     case SearchState::TruncatedAutorefreshing:
         text = tr( "File truncated on disk" );
         break;
+    }
+
+    if ( logFilteredData_->limitReached() ) {
+        text += text.isEmpty() ? tr( "Match limit reached; auto-refresh suspended" )
+                               : tr( " — match limit reached; auto-refresh suspended" );
     }
 
     searchInfoLine_->setPalette( searchInfoLineDefaultPalette_ );
@@ -2409,6 +2699,25 @@ void CrawlerWidgetContext::loadFromJson( const QString& json )
         useBooleanCombination_ = false;
     }
 
+    matchMode_ = matchModeFromString( properties.value( "MM" ).toString() );
+    bool contextBeforeOk = false;
+    const auto contextBefore = properties.value( "CB" ).toULongLong( &contextBeforeOk );
+    if ( contextBeforeOk ) {
+        searchOptions_.contextBefore = contextBefore;
+    }
+    bool contextAfterOk = false;
+    const auto contextAfter = properties.value( "CA" ).toULongLong( &contextAfterOk );
+    if ( contextAfterOk ) {
+        searchOptions_.contextAfter = contextAfter;
+    }
+    if ( properties.contains( "ML" ) ) {
+        bool maxMatchesOk = false;
+        const auto maxMatches = properties.value( "ML" ).toULongLong( &maxMatchesOk );
+        if ( maxMatchesOk ) {
+            searchOptions_.maxMatches = maxMatches;
+        }
+    }
+
     if ( properties.contains( "M" ) ) {
         const auto marks = properties.value( "M" ).toList();
         for ( const auto& m : marks ) {
@@ -2438,6 +2747,12 @@ QString CrawlerWidgetContext::toString() const
     properies[ "RE" ] = useRegexp_;
     properies[ "IR" ] = inverseRegexp_;
     properies[ "BC" ] = useBooleanCombination_;
+    properies[ "MM" ] = matchModeToString( matchMode_ );
+    properies[ "CB" ] = QVariant::fromValue( searchOptions_.contextBefore );
+    properies[ "CA" ] = QVariant::fromValue( searchOptions_.contextAfter );
+    if ( searchOptions_.maxMatches ) {
+        properies[ "ML" ] = QVariant::fromValue( *searchOptions_.maxMatches );
+    }
     properies[ "M" ] = toVariantList( marks_ );
     properies[ "SP" ] = searchPattern_;
 

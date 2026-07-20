@@ -49,10 +49,11 @@
 #include <QLabel>
 #include <QMenu>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QToolButton>
-#include <QVariantList>
 #include <QVBoxLayout>
+#include <QVariantList>
 
 #include "colorlabelsmanager.h"
 #include "filteredview.h"
@@ -84,7 +85,7 @@ class CrawlerWidget : public QSplitter,
                       public MuxableDocumentInterface {
     Q_OBJECT
 
-  public:
+public:
     CrawlerWidget( QWidget* parent = nullptr );
     ~CrawlerWidget() override;
 
@@ -135,7 +136,7 @@ class CrawlerWidget : public QSplitter,
     void registerShortcuts();
     void setViewContextLazy( const QString& viewContext );
 
-  public Q_SLOTS:
+public Q_SLOTS:
     // Stop the asynchoronous loading of the file if one is in progress
     // The file is identified by the view attached to it.
     void stopLoading();
@@ -150,22 +151,22 @@ class CrawlerWidget : public QSplitter,
     // Instructs the widget to reconfigure itself because Config() has changed.
     void applyConfiguration();
 
-  public:
+public:
     QVariantList commanderFilters() const;
     QVariantList commanderPredefinedFilters() const;
     std::optional<PredefinedFilter> commanderFilterById( const QString& filterId ) const;
     std::optional<PredefinedFilter> commanderFilterByIndex( int filterIndex ) const;
     std::optional<PredefinedFilter> commanderPredefinedFilterById( const QString& filterId ) const;
     std::optional<PredefinedFilter> commanderPredefinedFilterByIndex( int filterIndex ) const;
-    void applyCommanderSearchPattern( const QString& searchPattern, bool runSearch,
-                                      bool rearmAutoRefresh );
-    void applyCommanderPredefinedFilter( const PredefinedFilter& filter, bool runSearch,
-                                         bool rearmAutoRefresh );
+    void applyCommanderSearchPattern( const QString& searchPattern,
+                                      const CommanderRequest& request );
+    void applyCommanderPredefinedFilter( const PredefinedFilter& filter,
+                                         const CommanderRequest& request );
     void applyCommanderAutomationSearch( const CommanderRequest& request );
     template <class T>
     struct access_by;
 
-  protected:
+protected:
     // Implementation of the ViewInterface functions
     void doSetData( std::shared_ptr<LogData> logData,
                     std::shared_ptr<LogFilteredData> filteredData ) override;
@@ -184,7 +185,7 @@ class CrawlerWidget : public QSplitter,
 
     void changeEvent( QEvent* event ) override;
 
-  Q_SIGNALS:
+Q_SIGNALS:
     // Sent to signal the client load has progressed,
     // passing the completion percentage.
     void loadingProgressed( int progress );
@@ -219,7 +220,7 @@ class CrawlerWidget : public QSplitter,
     // Sent up when the current filtered view has been changed
     void filteredViewChanged();
 
-  private Q_SLOTS:
+private Q_SLOTS:
     // Instructs the widget to start a search using the current search line.
     void startNewSearch();
     // Stop the currently ongoing search (if one exists)
@@ -302,15 +303,15 @@ class CrawlerWidget : public QSplitter,
     void addNextColorLabelToSelection();
     void clearColorLabels();
 
-    void changeFilteredView(int tabIndex);
-    void closeFilteredView(int tabIndex);
-    void filteredViewDestroyed(QObject* view);
+    void changeFilteredView( int tabIndex );
+    void closeFilteredView( int tabIndex );
+    void filteredViewDestroyed( QObject* view );
 
-  private:
+private:
     // State machine holding the state of the search, used to allow/disallow
     // auto-refresh and inform the user via the info line.
     class SearchState {
-      public:
+    public:
         enum State {
             NoSearch,
             Static,
@@ -353,7 +354,7 @@ class CrawlerWidget : public QSplitter,
             return ( state_ == FileTruncated || state_ == TruncatedAutorefreshing );
         }
 
-      private:
+    private:
         State state_;
         bool autoRefreshRequested_;
     };
@@ -382,12 +383,16 @@ class CrawlerWidget : public QSplitter,
     QString& combinePatterns( QString& currentPattern, const QString& newPattern ) const;
     void setSearchPattern( const QString& searchPattern );
     void setSearchPattern( const QString& searchPattern, bool allowAutoRun );
+    SearchOptions currentSearchOptions() const;
+    MatchMode currentMatchMode() const;
+    void applyCommanderSearchOptions( const CommanderRequest& request );
+    void updateMatchModeCompatibility();
 
     void resetStateOnSearchPatternChanges();
 
     void updateColorLabels( const ColorLabelsManager::QuickHighlightersCollection& labels );
 
-    void connectAllFilteredViewSlots( FilteredView* view);
+    void connectAllFilteredViewSlots( FilteredView* view );
 
     void saveSplitterSizes() const;
 
@@ -436,6 +441,13 @@ class CrawlerWidget : public QSplitter,
     QToolButton* inverseButton_;
     QToolButton* booleanButton_;
     QToolButton* searchRefreshButton_;
+    QToolButton* advancedFilterButton_;
+    QSpinBox* beforeContextSpinBox_;
+    QSpinBox* afterContextSpinBox_;
+    QCheckBox* linkContextCheckBox_;
+    QComboBox* matchModeComboBox_;
+    QCheckBox* maxMatchesCheckBox_;
+    QSpinBox* maxMatchesSpinBox_;
 
     std::map<QString, QShortcut*> shortcuts_;
 

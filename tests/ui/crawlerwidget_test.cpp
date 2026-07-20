@@ -23,6 +23,7 @@
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QSignalSpy>
+#include <QStandardItemModel>
 #include <QTabWidget>
 #include <QTemporaryFile>
 #include <QTest>
@@ -36,9 +37,9 @@
 #include "session.h"
 #include "test_utils.h"
 
+#include "infoline.h"
 #include "logdata.h"
 #include "logfiltereddata.h"
-#include "infoline.h"
 
 #include "crawlerwidget.h"
 
@@ -70,8 +71,7 @@ bool generateDataFiles( QTemporaryFile& file )
 
 } // namespace
 
-struct CrawlerWidgetPrivate {
-};
+struct CrawlerWidgetPrivate {};
 
 template <>
 struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
@@ -130,8 +130,9 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     {
         if ( crawler->searchRefreshButton_->isChecked() != enabled ) {
             QTest::mouseClick( crawler->searchRefreshButton_, Qt::LeftButton );
-            waitUiState(
-                [ this, enabled ]() { return crawler->searchRefreshButton_->isChecked() == enabled; } );
+            waitUiState( [ this, enabled ]() {
+                return crawler->searchRefreshButton_->isChecked() == enabled;
+            } );
         }
     }
 
@@ -227,6 +228,45 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     bool isAutoRefreshEnabled() const
     {
         return crawler->searchRefreshButton_->isChecked();
+    }
+
+    void setAdvancedSearchOptions( int before, int after, MatchMode mode,
+                                   std::optional<int> maximum )
+    {
+        crawler->linkContextCheckBox_->setChecked( false );
+        crawler->beforeContextSpinBox_->setValue( before );
+        crawler->afterContextSpinBox_->setValue( after );
+        crawler->matchModeComboBox_->setCurrentIndex(
+            crawler->matchModeComboBox_->findData( static_cast<int>( mode ) ) );
+        crawler->maxMatchesCheckBox_->setChecked( maximum.has_value() );
+        if ( maximum ) {
+            crawler->maxMatchesSpinBox_->setValue( *maximum );
+        }
+    }
+
+    SearchOptions advancedSearchOptions() const
+    {
+        return crawler->currentSearchOptions();
+    }
+
+    MatchMode matchMode() const
+    {
+        return crawler->currentMatchMode();
+    }
+
+    void keepNextSearchResults()
+    {
+        crawler->keepSearchResultsButton_->setChecked( true );
+    }
+
+    void selectFilteredTab( int index )
+    {
+        crawler->tabbedFilteredView_->setCurrentIndex( index );
+    }
+
+    int filteredTabCount() const
+    {
+        return crawler->tabbedFilteredView_->count();
     }
 
     void enableTextWrap()
@@ -436,8 +476,6 @@ SCENARIO( "Crawler widget search", "[ui]" )
     }
 }
 
-
-
 SCENARIO( "Crawler restore with invalid saved expressions", "[ui][startup]" )
 {
     QTemporaryFile file{ "crawler_restore_test_XXXXXX" };
@@ -481,7 +519,8 @@ SCENARIO( "Crawler restore with invalid saved expressions", "[ui][startup]" )
     WHEN( "auto-refresh is restored with an invalid regex search pattern" )
     {
         crawlerVisitor.crawler->setViewContext(
-            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":false,\"SP\":\"((VOICE COMMAND)|(VOICE CMD)|(VPD Voice Commands)\"}" );
+            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,"
+            "\"BC\":false,\"SP\":\"((VOICE COMMAND)|(VOICE CMD)|(VPD Voice Commands)\"}" );
 
         THEN( "startup remains alive and reports expression error" )
         {
@@ -495,7 +534,8 @@ SCENARIO( "Crawler restore with invalid saved expressions", "[ui][startup]" )
     WHEN( "auto-refresh is restored with invalid boolean expression" )
     {
         crawlerVisitor.crawler->setViewContext(
-            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,\"BC\":true,\"SP\":\"\\\"a\\\" and (\"}" );
+            "{\"S\":[400,100],\"IC\":false,\"AR\":true,\"FF\":false,\"RE\":true,\"IR\":false,"
+            "\"BC\":true,\"SP\":\"\\\"a\\\" and (\"}" );
 
         THEN( "startup remains alive and reports expression error" )
         {
@@ -538,6 +578,8 @@ TEST_CASE( "Crawler widget full view context can be copied to another stream tab
     sourceVisitor.enableInverseMatch();
     sourceVisitor.enableBooleanCombinationMode();
     sourceVisitor.setAutoRefresh( true );
+    sourceVisitor.disableBooleanCombinationMode();
+    sourceVisitor.setAdvancedSearchOptions( 3, 5, MatchMode::WholeWord, 17 );
 
     const auto sourceContext = sourceVisitor.crawler->context();
     REQUIRE( sourceContext != nullptr );
@@ -554,7 +596,8 @@ TEST_CASE( "Crawler widget full view context can be copied to another stream tab
     const auto copiedContext = targetVisitor.crawler->context();
     REQUIRE( copiedContext != nullptr );
 
-    const auto sourceProperties = QJsonDocument::fromJson( serializedContext.toUtf8() ).toVariant().toMap();
+    const auto sourceProperties
+        = QJsonDocument::fromJson( serializedContext.toUtf8() ).toVariant().toMap();
     const auto copiedProperties
         = QJsonDocument::fromJson( copiedContext->toString().toUtf8() ).toVariant().toMap();
 
@@ -567,13 +610,21 @@ TEST_CASE( "Crawler widget full view context can be copied to another stream tab
     REQUIRE( copiedProperties.value( "FF" ).toBool() == false );
     REQUIRE( copiedProperties.value( "RE" ).toBool() == true );
     REQUIRE( copiedProperties.value( "IR" ).toBool() == true );
-    REQUIRE( copiedProperties.value( "BC" ).toBool() == true );
+    REQUIRE( copiedProperties.value( "BC" ).toBool() == false );
+    REQUIRE( copiedProperties.value( "MM" ).toString() == "whole_word" );
+    REQUIRE( copiedProperties.value( "CB" ).toULongLong() == 3 );
+    REQUIRE( copiedProperties.value( "CA" ).toULongLong() == 5 );
+    REQUIRE( copiedProperties.value( "ML" ).toULongLong() == 17 );
     REQUIRE( targetVisitor.currentSearchText() == "\"LOGDATA\"" );
     REQUIRE( targetVisitor.isCaseSensitiveSearchEnabled() );
     REQUIRE( targetVisitor.isRegexSearchEnabled() );
     REQUIRE( targetVisitor.isInverseMatchEnabled() );
-    REQUIRE( targetVisitor.isBooleanCombinationModeEnabled() );
+    REQUIRE_FALSE( targetVisitor.isBooleanCombinationModeEnabled() );
     REQUIRE( targetVisitor.isAutoRefreshEnabled() );
+    REQUIRE( targetVisitor.matchMode() == MatchMode::WholeWord );
+    REQUIRE( targetVisitor.advancedSearchOptions().contextBefore == 3 );
+    REQUIRE( targetVisitor.advancedSearchOptions().contextAfter == 5 );
+    REQUIRE( targetVisitor.advancedSearchOptions().maxMatches == 17 );
 }
 
 TEST_CASE( "Crawler widget lazy view context restores controls before running filter",
@@ -598,9 +649,47 @@ TEST_CASE( "Crawler widget lazy view context restores controls before running fi
     REQUIRE( targetVisitor.getLogFilteredNbLines().get() == 0 );
 
     REQUIRE( waitUiState( [ &targetVisitor ]() {
-        return targetVisitor.isSearchStopped()
-               && targetVisitor.getLogFilteredNbLines().get() == 1;
+        return targetVisitor.isSearchStopped() && targetVisitor.getLogFilteredNbLines().get() == 1;
     } ) );
+}
+
+TEST_CASE( "Retained result tabs restore their advanced filter snapshot", "[ui][filter-options]" )
+{
+    QTemporaryFile file{ "crawler_retained_filter_options_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), []() { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableBooleanCombinationMode();
+
+    visitor.setSearchPattern( "this is line" );
+    visitor.setAdvancedSearchOptions( 1, 2, MatchMode::Contains, 2 );
+    visitor.runSearch();
+
+    visitor.keepNextSearchResults();
+    visitor.setSearchPattern( "LOGDATA" );
+    visitor.setAdvancedSearchOptions( 4, 5, MatchMode::WholeWord, std::nullopt );
+    visitor.runSearch();
+    REQUIRE( visitor.filteredTabCount() == 2 );
+
+    visitor.selectFilteredTab( 0 );
+    REQUIRE( waitUiState( [ & ] {
+        return visitor.matchMode() == MatchMode::Contains
+               && visitor.advancedSearchOptions().contextBefore == 1;
+    } ) );
+    REQUIRE( visitor.advancedSearchOptions().contextAfter == 2 );
+    REQUIRE( visitor.advancedSearchOptions().maxMatches == 2 );
+
+    visitor.selectFilteredTab( 1 );
+    REQUIRE( waitUiState( [ & ] {
+        return visitor.matchMode() == MatchMode::WholeWord
+               && visitor.advancedSearchOptions().contextBefore == 4;
+    } ) );
+    REQUIRE( visitor.advancedSearchOptions().contextAfter == 5 );
+    REQUIRE_FALSE( visitor.advancedSearchOptions().maxMatches.has_value() );
 }
 
 TEST_CASE( "Crawler widget lazy view context reports invalid filters asynchronously",
@@ -662,6 +751,15 @@ TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automa
     REQUIRE( crawler->findChild<QToolButton*>( "inverseMatchButton" ) != nullptr );
     REQUIRE( crawler->findChild<QToolButton*>( "booleanSearchButton" ) != nullptr );
     REQUIRE( crawler->findChild<QToolButton*>( "searchRefreshButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QToolButton*>( "advancedFilterButton" ) != nullptr );
+    REQUIRE( crawler->findChild<QSpinBox*>( "beforeContextSpinBox" ) != nullptr );
+    REQUIRE( crawler->findChild<QSpinBox*>( "afterContextSpinBox" ) != nullptr );
+    REQUIRE( crawler->findChild<QCheckBox*>( "linkContextCheckBox" ) != nullptr );
+    auto* matchModeComboBox = crawler->findChild<QComboBox*>( "matchModeComboBox" );
+    REQUIRE( matchModeComboBox != nullptr );
+    REQUIRE( matchModeComboBox->accessibleName() == "Filter match mode" );
+    REQUIRE( crawler->findChild<QCheckBox*>( "maxMatchesCheckBox" ) != nullptr );
+    REQUIRE( crawler->findChild<QSpinBox*>( "maxMatchesSpinBox" ) != nullptr );
     REQUIRE( crawler->findChild<QToolButton*>( "clearSearchButton" ) != nullptr );
     REQUIRE( crawler->findChild<QToolButton*>( "searchButton" ) != nullptr );
     REQUIRE( crawler->findChild<QToolButton*>( "keepSearchResultsButton" ) != nullptr );
@@ -672,6 +770,23 @@ TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automa
     REQUIRE( crawler->findChild<LogMainView*>( "logMainView" ) != nullptr );
     REQUIRE( crawler->findChild<FilteredView*>( "filteredView" ) != nullptr );
     REQUIRE( crawler->findChild<QTabWidget*>( "filteredViewsTabWidget" ) != nullptr );
+
+    auto* booleanButton = crawler->findChild<QToolButton*>( "booleanSearchButton" );
+    REQUIRE( booleanButton != nullptr );
+    crawlerVisitor.disableBooleanCombinationMode();
+    matchModeComboBox->setCurrentIndex(
+        matchModeComboBox->findData( static_cast<int>( MatchMode::WholeLine ) ) );
+    REQUIRE_FALSE( booleanButton->isEnabled() );
+    matchModeComboBox->setCurrentIndex(
+        matchModeComboBox->findData( static_cast<int>( MatchMode::Contains ) ) );
+    REQUIRE( booleanButton->isEnabled() );
+    booleanButton->setChecked( true );
+    auto* matchModeModel = qobject_cast<QStandardItemModel*>( matchModeComboBox->model() );
+    REQUIRE( matchModeModel != nullptr );
+    REQUIRE_FALSE(
+        matchModeModel
+            ->item( matchModeComboBox->findData( static_cast<int>( MatchMode::WholeLine ) ) )
+            ->isEnabled() );
 }
 
 TEST_CASE( "Crawler widget exposes semantic automation state", "[ui][automation]" )
@@ -708,7 +823,8 @@ TEST_CASE( "Crawler widget exposes semantic automation state", "[ui][automation]
     REQUIRE_FALSE( crawler->focusedViewObjectName().isEmpty() );
     REQUIRE( crawler->isTextWrapEnabled() == false );
     REQUIRE( visibleRange.value( "start" ).toULongLong() >= 1 );
-    REQUIRE( visibleRange.value( "end" ).toULongLong() >= visibleRange.value( "start" ).toULongLong() );
+    REQUIRE( visibleRange.value( "end" ).toULongLong()
+             >= visibleRange.value( "start" ).toULongLong() );
     REQUIRE( mainVisibleRange.value( "start" ).toULongLong() >= 1 );
     REQUIRE( mainVisibleRange.value( "end" ).toULongLong()
              >= mainVisibleRange.value( "start" ).toULongLong() );
@@ -731,10 +847,7 @@ TEST_CASE( "Filtered visible range tracks wrapped rows", "[ui][wrap]" )
           "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "
           "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
     const QString fileContents
-        = "MATCH short one\n"
-          + longPayload + "\n"
-          + "MATCH short two\n"
-          + "MATCH short three\n";
+        = "MATCH short one\n" + longPayload + "\n" + "MATCH short two\n" + "MATCH short three\n";
 
     REQUIRE( file.write( fileContents.toUtf8() ) == fileContents.toUtf8().size() );
     file.flush();
