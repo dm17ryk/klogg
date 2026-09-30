@@ -272,18 +272,19 @@ SCENARIO( "Closing main window closes auxiliary windows", "[ui]" )
     REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showScratchPad" ) );
     REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showPreviewer" ) );
     REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showActionsResponses" ) );
+    REQUIRE( QMetaObject::invokeMethod( mainWindow.get(), "showResponses" ) );
 
     REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
     REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
-    REQUIRE(
-        waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( " - actions" ); } ) );
+    REQUIRE( waitUiState( [] { return hasVisibleTopLevelWindowWithTitle( " - responses" ); } ) );
 
     mainWindow->close();
 
     REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "scratchpad" ); } ) );
     REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "previewer" ); } ) );
-    REQUIRE(
-        waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( "actions/responses" ); } ) );
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( " - actions" ); } ) );
+    REQUIRE( waitUiState( [] { return !hasVisibleTopLevelWindowWithTitle( " - responses" ); } ) );
 
 }
 
