@@ -11,14 +11,6 @@
 #include "persistentinfo.h"
 
 namespace {
-QJsonObject sequenceToJson( const ActionSequence& sequence )
-{
-    QJsonObject obj;
-    obj.insert( "type", actionSequenceTypeToString( sequence.type ) );
-    obj.insert( "value", sequence.value );
-    return obj;
-}
-
 QJsonObject actionToJson( const ActionDefinition& action )
 {
     return QJsonObject::fromVariantMap( actionDefinitionToVariantMap( action ) );

@@ -117,7 +117,7 @@ struct ResponseMatchDefinition {
 struct ResponseActionStep {
     int actionId = -1;
     int delayMs = 0;
-    QVariantMap parameters;
+    QVariantMap parameters{};
 };
 
 enum class ResponseParameterBindingSource { Legacy, Literal, Capture, Expression };
