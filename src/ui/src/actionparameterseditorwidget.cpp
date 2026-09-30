@@ -89,7 +89,7 @@ int ActionParametersEditorWidget::selectedRow() const
 
 void ActionParametersEditorWidget::refreshTable()
 {
-    table_->setRowCount( fields_.size() );
+    table_->setRowCount( static_cast<int>( fields_.size() ) );
     for ( int row = 0; row < fields_.size(); ++row ) {
         const auto& field = fields_.at( row );
         table_->setItem( row, 0, new QTableWidgetItem( QString::number( row + 1 ) ) );
@@ -117,7 +117,7 @@ void ActionParametersEditorWidget::addField()
     fields_.push_back( dialog.definition() );
     LOG_DEBUG << "Added action parameter field " << fields_.back().name.toStdString();
     refreshTable();
-    table_->selectRow( fields_.size() - 1 );
+    table_->selectRow( table_->rowCount() - 1 );
 }
 
 void ActionParametersEditorWidget::editField()

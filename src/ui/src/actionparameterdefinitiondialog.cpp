@@ -501,7 +501,7 @@ int ActionParameterDefinitionDialog::selectedChoiceRow() const
 
 void ActionParameterDefinitionDialog::refreshChoices()
 {
-    choicesTable_->setRowCount( choices_.size() );
+    choicesTable_->setRowCount( static_cast<int>( choices_.size() ) );
     for ( int row = 0; row < choices_.size(); ++row ) {
         choicesTable_->setItem( row, 0, new QTableWidgetItem( choices_.at( row ).label ) );
         choicesTable_->setItem( row, 1, new QTableWidgetItem( choices_.at( row ).value.toString() ) );

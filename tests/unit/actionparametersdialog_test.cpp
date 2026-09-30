@@ -78,7 +78,15 @@ TEST_CASE( "Action parameter dialog creates requested choice controls", "[action
     REQUIRE( sensitiveEditor != nullptr );
     REQUIRE( sensitiveEditor->echoMode() == QLineEdit::Password );
 
-    const auto* dateEditor = dialog.findChild<QDateEdit*>( QStringLiteral( "actionParameter_date" ) );
+    const auto* dateContainer = dialog.findChild<QWidget*>( QStringLiteral( "actionParameter_date" ) );
+    REQUIRE( dateContainer != nullptr );
+    const auto* dateEditor = dateContainer->findChild<QDateEdit*>();
     REQUIRE( dateEditor != nullptr );
     REQUIRE( dateEditor->date().isValid() );
+    auto* omitDate = dateContainer->findChild<QCheckBox*>();
+    REQUIRE( omitDate != nullptr );
+    REQUIRE( omitDate->isChecked() );
+    REQUIRE_FALSE( dialog.currentValues().contains( date.name ) );
+    omitDate->setChecked( false );
+    REQUIRE( dialog.currentValues().value( date.name ).toDate() == dateEditor->date() );
 }
