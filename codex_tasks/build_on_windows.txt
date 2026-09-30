@@ -1,4 +1,4 @@
-set QTDIR=C:\qt6.10.1
+set QTDIR=C:\Essence_SC\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
 set KLOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg

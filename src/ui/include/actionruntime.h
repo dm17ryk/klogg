@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QMap>
 #include <QString>
+#include <QVariantMap>
 
 #include "actionsconfig.h"
 
@@ -17,10 +18,8 @@ struct ResponseMatchResult {
 ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
                                             const QByteArray& lineBytes,
                                             const QString& lineText = {} );
-bool sendActionDefinition( StreamSession* session,
-                           const ActionDefinition& action,
-                           const QMap<QString, QString>& substitutions = {},
-                           int stepIndex = -1,
+bool sendActionDefinition( StreamSession* session, const ActionDefinition& action,
+                           const QVariantMap& parameters = {}, int stepIndex = -1,
                            QString* errorMessage = nullptr );
 bool executeResponseDefinition( StreamSession* session,
                                 const ResponseDefinition& response,

@@ -8,6 +8,8 @@ class QCheckBox;
 class QComboBox;
 class QLineEdit;
 class QPlainTextEdit;
+class ActionParametersEditorWidget;
+class QPushButton;
 class QSpinBox;
 
 class ActionEditDialog : public QDialog {
@@ -39,6 +41,10 @@ class ActionEditDialog : public QDialog {
     QSpinBox* repeatCountSpin_ = nullptr;
     QSpinBox* repeatIntervalSpin_ = nullptr;
     QLineEdit* variableNamesEdit_ = nullptr;
+    QPlainTextEdit* expressionEdit_ = nullptr;
+    QPlainTextEdit* fieldsJsonEdit_ = nullptr;
+    ActionParametersEditorWidget* parametersEditor_ = nullptr;
+    QPushButton* applyFieldsJsonButton_ = nullptr;
     QCheckBox* checksumEnabledCheck_ = nullptr;
     QComboBox* checksumAlgorithmCombo_ = nullptr;
     QLineEdit* checksumPlaceholderEdit_ = nullptr;

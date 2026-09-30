@@ -832,6 +832,7 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     request.comSettings.addTimestamps = false;
     request.comSettings.useForActions = true;
     request.definitionPayload = QVariantMap{ { "name", "Ping" }, { "order", 1 } };
+    request.actionParameters = QVariantMap{ { "mode", 3 }, { "interfaces", QVariantList{ 1, 4 } } };
 
     QString errorMessage;
     const auto serializedRequest = commanderRequestToVariantMap( request );
@@ -874,6 +875,7 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
     REQUIRE( restored->comSettings.useForActions.has_value() );
     REQUIRE( restored->comSettings.useForActions == request.comSettings.useForActions );
     REQUIRE( restored->definitionPayload == request.definitionPayload );
+    REQUIRE( restored->actionParameters == request.actionParameters );
 
     for ( const auto action : { CommanderAction::PlayComm, CommanderAction::PauseComm,
                                 CommanderAction::StartNewCommFile } ) {
@@ -888,6 +890,39 @@ TEST_CASE( "Commander request variant roundtrip", "[commander][ipc]" )
         REQUIRE( restoredCommand->action == action );
         REQUIRE( restoredCommand->tabId == commandRequest.tabId );
     }
+}
+
+TEST_CASE( "Commander rejects non-object action parameters", "[commander][ipc][actions]" )
+{
+    QVariantMap payload{ { "action", "send_action" },
+                         { "entityId", 7 },
+                         { "actionParameters", QStringLiteral( "mode=3" ) } };
+
+    QString errorMessage;
+    const auto restored = commanderRequestFromVariantMap( payload, &errorMessage );
+
+    REQUIRE_FALSE( restored.has_value() );
+    REQUIRE( errorMessage.contains( "action parameters", Qt::CaseInsensitive ) );
+}
+
+TEST_CASE( "Commander CLI loads send_action parameters from JSON", "[commander][cli][actions]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto parametersPath = directory.filePath( "parameters.json" );
+    QFile parametersFile( parametersPath );
+    REQUIRE( parametersFile.open( QIODevice::WriteOnly ) );
+    REQUIRE( parametersFile.write( R"({"mode":3,"interfaces":[1,4]})" ) > 0 );
+    parametersFile.close();
+
+    CliParameters parameters( { "cilogg", "command", "--action", "send_action", "--id", "9",
+                                "--params-json-file", parametersPath } );
+
+    REQUIRE_FALSE( parameters.parse_error );
+    REQUIRE( parameters.commander_request.has_value() );
+    REQUIRE( parameters.commander_request->actionParameters.value( "mode" ).toInt() == 3 );
+    REQUIRE( parameters.commander_request->actionParameters.value( "interfaces" ).toList()
+             == QVariantList{ 1, 4 } );
 }
 
 TEST_CASE( "Grep CLI parses context precedence and maximum count", "[cli][grep]" )

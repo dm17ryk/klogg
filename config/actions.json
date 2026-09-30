@@ -1,6 +1,6 @@
 {
     "$schema": "../schemas/actions.schema.json",
-    "version": 1,
+    "version": 4,
     "actions": [
         {
             "id": 0,
@@ -1026,21 +1026,65 @@
             "id": 68,
             "enabled": true,
             "hidden": false,
-            "name": "<1.6> ESP Set Debug Level [ADC_ReadChannel]",
-            "description": "<1.6> ESP Set Debug Level [ADC_ReadChannel]",
+            "name": "ESP SET DEBUG LEVEL",
+            "description": "Set the ESP debug level for a tag. Use * to apply to every tag.",
             "sequence": {
-                "type": "hexString",
-                "value": "45 53 50 20 53 45 54 20 44 45 42 55 47 20 4C 45 56 45 4C 3A 41 44 43 5F 52 65 61 64 43 68 61 6E 6E 65 6C 2C 30 3B 0D 0A"
+                "type": "string",
+                "value": "ESP SET DEBUG LEVEL:${tag},${level};\r\n"
             },
             "parameters": {
                 "repeat": false,
-                "delay": 60
+                "delay": 60,
+                "fields": [
+                    {
+                        "name": "tag",
+                        "label": "Tag",
+                        "type": "text",
+                        "presentation": "auto",
+                        "required": true,
+                        "default": "ADC_ReadChannel"
+                    },
+                    {
+                        "name": "level",
+                        "label": "Level",
+                        "type": "choice",
+                        "presentation": "combo_box",
+                        "required": true,
+                        "default": "0",
+                        "choices": [
+                            {
+                                "label": "E",
+                                "value": "E"
+                            },
+                            {
+                                "label": "W",
+                                "value": "W"
+                            },
+                            {
+                                "label": "I",
+                                "value": "I"
+                            },
+                            {
+                                "label": "D",
+                                "value": "D"
+                            },
+                            {
+                                "label": "V",
+                                "value": "V"
+                            },
+                            {
+                                "label": "0",
+                                "value": "0"
+                            }
+                        ]
+                    }
+                ]
             }
         },
         {
             "id": 69,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [All Warning]",
             "description": "<1.6> ESP Set Debug Level [All Warning]",
             "sequence": {
@@ -1055,7 +1099,7 @@
         {
             "id": 70,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [All Info]",
             "description": "<1.6> ESP Set Debug Level [All Info]",
             "sequence": {
@@ -1070,7 +1114,7 @@
         {
             "id": 71,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.7> ESP Set Debug Level [All None]",
             "description": "<1.7> ESP Set Debug Level [All None]",
             "sequence": {
@@ -1085,7 +1129,7 @@
         {
             "id": 72,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [WriteCount]",
             "description": "<1.6> ESP Set Debug Level [WriteCount]",
             "sequence": {
@@ -1100,7 +1144,7 @@
         {
             "id": 73,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [GSM_claim_modem]",
             "description": "<1.6> ESP Set Debug Level [GSM_claim_modem]",
             "sequence": {
@@ -1115,7 +1159,7 @@
         {
             "id": 74,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [uart_event_task]",
             "description": "<1.6> ESP Set Debug Level [uart_event_task]",
             "sequence": {
@@ -1130,7 +1174,7 @@
         {
             "id": 75,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [GSM_release_modem]",
             "description": "<1.6> ESP Set Debug Level [GSM_release_modem]",
             "sequence": {
@@ -1145,7 +1189,7 @@
         {
             "id": 76,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [uart_PlaceToCyclicBufferFromUart]",
             "description": "<1.6> ESP Set Debug Level [uart_PlaceToCyclicBufferFromUart]",
             "sequence": {
@@ -1160,7 +1204,7 @@
         {
             "id": 77,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<1.6> ESP Set Debug Level [uart_event_task]",
             "description": "<1.6> ESP Set Debug Level [uart_event_task]",
             "sequence": {
@@ -1326,15 +1370,45 @@
             "id": 88,
             "enabled": true,
             "hidden": false,
-            "name": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
-            "description": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
+            "name": "EEPROM WRITE: ComboCommInterface",
+            "description": "Write the ComboCommInterface bit mask at EEPROM address FF0B.",
             "sequence": {
-                "type": "hexString",
-                "value": "45 45 50 52 4F 4D 20 57 52 49 54 45 3A 46 46 30 42 2C 30 31 3B 0D 0A"
+                "type": "string",
+                "value": "EEPROM WRITE:FF0B,${interfaces};\r\n"
             },
             "parameters": {
                 "repeat": false,
-                "delay": 5
+                "delay": 5,
+                "fields": [
+                    {
+                        "name": "interfaces",
+                        "label": "Communication interfaces",
+                        "type": "multi_choice",
+                        "presentation": "check_boxes",
+                        "required": false,
+                        "default": [],
+                        "choices": [
+                            {
+                                "label": "GSM (B0)",
+                                "value": 1
+                            },
+                            {
+                                "label": "PSTN (B1)",
+                                "value": 2
+                            },
+                            {
+                                "label": "Ethernet (B2)",
+                                "value": 4
+                            },
+                            {
+                                "label": "BLE (B3)",
+                                "value": 8
+                            }
+                        ],
+                        "multi_value_mode": "bitwise_or",
+                        "expression": "hex(value, 2)"
+                    }
+                ]
             }
         },
         {
@@ -6891,21 +6965,69 @@
             "id": 459,
             "enabled": true,
             "hidden": false,
-            "name": "<9.71> Select cellular data networks",
-            "description": "<9.71> Select cellular data networks",
+            "name": "SELECT CELLULAR DATA NETWORKS",
+            "description": "Select the cellular data network preference.",
             "sequence": {
-                "type": "hexString",
-                "value": "53 45 4C 45 43 54 20 43 45 4C 4C 55 4C 41 52 20 44 41 54 41 20 4E 45 54 57 4F 52 4B 53 3A 33 31 3B 0D 0A"
+                "type": "string",
+                "value": "SELECT CELLULAR DATA NETWORKS:${network};\r\n"
             },
             "parameters": {
                 "repeat": false,
-                "delay": 30
+                "delay": 30,
+                "fields": [
+                    {
+                        "name": "network",
+                        "label": "Network preference",
+                        "type": "choice",
+                        "presentation": "combo_box",
+                        "required": true,
+                        "default": 31,
+                        "choices": [
+                            {
+                                "label": "Default",
+                                "value": 0
+                            },
+                            {
+                                "label": "2G only",
+                                "value": 12
+                            },
+                            {
+                                "label": "3G only",
+                                "value": 22
+                            },
+                            {
+                                "label": "4G/3G/2G",
+                                "value": 25
+                            },
+                            {
+                                "label": "4G only",
+                                "value": 28
+                            },
+                            {
+                                "label": "3G/2G only",
+                                "value": 29
+                            },
+                            {
+                                "label": "4G preferred and 2G",
+                                "value": 30
+                            },
+                            {
+                                "label": "4G preferred, 3G and 2G",
+                                "value": 31
+                            },
+                            {
+                                "label": "5G/4G only",
+                                "value": 37
+                            }
+                        ]
+                    }
+                ]
             }
         },
         {
             "id": 460,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks[4G (preferred) and 2G]",
             "description": "<9.71> Select cellular data networks[4G (preferred) and 2G]",
             "sequence": {
@@ -6920,7 +7042,7 @@
         {
             "id": 461,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks [3G (preferred) and 2G]",
             "description": "<9.71> Select cellular data networks [3G (preferred) and 2G]",
             "sequence": {
@@ -6935,7 +7057,7 @@
         {
             "id": 462,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks",
             "description": "<9.71> Select cellular data networks",
             "sequence": {
@@ -6950,7 +7072,7 @@
         {
             "id": 463,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks [4G (preferred), 3G and 2G]",
             "description": "<9.71> Select cellular data networks [4G (preferred), 3G and 2G]",
             "sequence": {
@@ -6965,7 +7087,7 @@
         {
             "id": 464,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks [3G Only]",
             "description": "<9.71> Select cellular data networks [3G Only]",
             "sequence": {
@@ -6980,7 +7102,7 @@
         {
             "id": 465,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks [2G Only]",
             "description": "<9.71> Select cellular data networks [2G Only]",
             "sequence": {
@@ -6995,7 +7117,7 @@
         {
             "id": 466,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<9.71> Select cellular data networks",
             "description": "<9.71> Select cellular data networks",
             "sequence": {
@@ -9902,21 +10024,6 @@
                 "delay": 5
             }
         },
-        // {
-        //     "id": 660,
-        //     "enabled": true,
-        //     "hidden": false,
-        //     "name": "**** CP_ESP32 Brnach ****",
-        //     "description": "**** CP_ESP32 Brnach ****",
-        //     "sequence": {
-        //         "type": "hexString",
-        //         "value": ""
-        //     },
-        //     "parameters": {
-        //         "repeat": false,
-        //         "delay": 5
-        //     }
-        // },
         {
             "id": 661,
             "enabled": true,
@@ -9965,7 +10072,7 @@
         {
             "id": 664,
             "enabled": true,
-            "hidden": false,
+            "hidden": true,
             "name": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
             "description": "<4.1> Eeprom Write [ComboCommInterface B0-GSM, B1-PSTN, B2-ETHERNET, B3 - BLE]",
             "sequence": {
@@ -9976,28 +10083,52 @@
                 "repeat": false,
                 "delay": 5
             }
+        },
+        {
+            "id": 665,
+            "enabled": true,
+            "hidden": false,
+            "name": "SCHED STATS",
+            "description": "Request scheduler statistics, optionally for a specific mode.",
+            "sequence": {
+                "type": "string",
+                "value": "SCHED STATS:;\r\n"
+            },
+            "expression": "concat(\"SCHED STATS:\", mode == null ? \"\" : str(mode), \";\\r\\n\")",
+            "parameters": {
+                "repeat": false,
+                "delay": 30,
+                "fields": [
+                    {
+                        "name": "mode",
+                        "label": "Mode",
+                        "type": "choice",
+                        "presentation": "combo_box",
+                        "required": false,
+                        "choices": [
+                            {
+                                "label": "Queued",
+                                "value": 0
+                            },
+                            {
+                                "label": "Active",
+                                "value": 1
+                            },
+                            {
+                                "label": "Active + reset",
+                                "value": 2
+                            },
+                            {
+                                "label": "Full",
+                                "value": 3
+                            }
+                        ]
+                    }
+                ]
+            }
         }
     ],
     "responses": [
-        // {
-        //     "id": 0,
-        //     "enabled": false,
-        //     "hidden": false,
-        //     "name": "<1> ********** PG90 & PG56 ENTER *********",
-        //     "description": "<1> ********** PG90 & PG56 ENTER *********",
-        //     "match": {
-        //         "type": "string",
-        //         "value": ""
-        //     },
-        //     "response": {
-        //         "action_id": -1,
-        //         "comment": "",
-        //         "linebreak": false,
-        //         "timestamp": false,
-        //         "snapshot": true,
-        //         "stop_communication": false
-        //     }
-        // },
         {
             "id": 1,
             "enabled": true,
@@ -10085,12 +10216,22 @@
                 "value": "4E 45 54 20 53 45 54 20 44 45 42 55 47 20 4C 45 56 45 4C 3A 20 32 35 35 20 35"
             },
             "response": {
-                "action_id": 70,
+                "action_id": 68,
                 "comment": "",
                 "linebreak": false,
                 "timestamp": false,
                 "snapshot": true,
-                "stop_communication": false
+                "stop_communication": false,
+                "steps": [
+                    {
+                        "action_id": 68,
+                        "delay_ms": 0,
+                        "parameters": {
+                            "tag": "*",
+                            "level": "I"
+                        }
+                    }
+                ]
             }
         },
         {
@@ -10104,12 +10245,22 @@
                 "value": "4E 45 54 20 53 45 54 20 44 45 42 55 47 20 4C 45 56 45 4C 3A 20 32 35 35 20 35"
             },
             "response": {
-                "action_id": 69,
+                "action_id": 68,
                 "comment": "",
                 "linebreak": false,
                 "timestamp": false,
                 "snapshot": true,
-                "stop_communication": false
+                "stop_communication": false,
+                "steps": [
+                    {
+                        "action_id": 68,
+                        "delay_ms": 0,
+                        "parameters": {
+                            "tag": "*",
+                            "level": "W"
+                        }
+                    }
+                ]
             }
         },
         {
@@ -10188,25 +10339,6 @@
                 "stop_communication": false
             }
         },
-        // {
-        //     "id": 11,
-        //     "enabled": false,
-        //     "hidden": false,
-        //     "name": "<2> ********** PG90 & PG56 EXIT *********",
-        //     "description": "<2> ********** PG90 & PG56 EXIT *********",
-        //     "match": {
-        //         "type": "string",
-        //         "value": ""
-        //     },
-        //     "response": {
-        //         "action_id": -1,
-        //         "comment": "",
-        //         "linebreak": false,
-        //         "timestamp": false,
-        //         "snapshot": true,
-        //         "stop_communication": false
-        //     }
-        // },
         {
             "id": 12,
             "enabled": false,
@@ -10237,12 +10369,22 @@
                 "value": "44 49 53 41 42 4C 45 20 50 52 49 4E 54 46 20 50 52 49 4E 54 53 3A"
             },
             "response": {
-                "action_id": 71,
+                "action_id": 68,
                 "comment": "",
                 "linebreak": false,
                 "timestamp": false,
                 "snapshot": true,
-                "stop_communication": false
+                "stop_communication": false,
+                "steps": [
+                    {
+                        "action_id": 68,
+                        "delay_ms": 0,
+                        "parameters": {
+                            "tag": "*",
+                            "level": "0"
+                        }
+                    }
+                ]
             }
         },
         {
@@ -10351,12 +10493,22 @@
                 "value": "45 58 49 54 20 54 45 53 54 20 4D 4F 44 45 20 57 49 54 48 20 41 55 54 4F 20 50 4C 55 47 49 4E 3A"
             },
             "response": {
-                "action_id": 71,
+                "action_id": 68,
                 "comment": "",
                 "linebreak": false,
                 "timestamp": false,
                 "snapshot": true,
-                "stop_communication": false
+                "stop_communication": false,
+                "steps": [
+                    {
+                        "action_id": 68,
+                        "delay_ms": 0,
+                        "parameters": {
+                            "tag": "*",
+                            "level": "0"
+                        }
+                    }
+                ]
             }
         },
         {

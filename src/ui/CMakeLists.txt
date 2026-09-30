@@ -2,12 +2,16 @@ add_library(
   klogg_ui STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include/abstractlogview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfig.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionexpression.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsconfigparser.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsmanager.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsrepository.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionsresponseswindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionstablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actioneditdialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionparametersdialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionparameterdefinitiondialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/actionparameterseditorwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionruntime.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/comportutils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
@@ -86,12 +90,16 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfig.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionexpression.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfigparser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsmanager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsresponseswindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionstablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actioneditdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionparametersdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionparameterdefinitiondialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/actionparameterseditorwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionruntime.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/comportutils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp

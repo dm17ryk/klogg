@@ -215,14 +215,22 @@ void SerialCaptureWorker::stop()
     Q_EMIT finished();
 }
 
-void SerialCaptureWorker::sendData( QByteArray data )
+void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
 {
     if ( stopping_ || data.isEmpty() || !port_ || !port_->isOpen() ) {
+        LOG_DEBUG << "Skipping COM write because the worker is stopping, payload is empty, or port "
+                     "is closed";
         return;
     }
 
-    LOG_INFO << "COM write to " << settings_.portName.toStdString() << ", bytes: "
-             << data.size() << ", hex: " << previewHex( data ).toStdString();
+    if ( sensitive ) {
+        LOG_INFO << "COM write to " << settings_.portName.toStdString()
+                 << ", bytes: " << data.size() << ", payload: [REDACTED]";
+    }
+    else {
+        LOG_INFO << "COM write to " << settings_.portName.toStdString()
+                 << ", bytes: " << data.size() << ", hex: " << previewHex( data ).toStdString();
+    }
 
     const auto written = port_->write( data );
     if ( written < 0 ) {
@@ -240,12 +248,15 @@ void SerialCaptureWorker::sendData( QByteArray data )
             tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
     else {
-        Q_EMIT dataTransmitted( data.left( qMax<qint64>( 0, written ) ) );
+        const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" )
+                                              : data.left( qMax<qint64>( 0, written ) );
+        Q_EMIT dataTransmitted( observableData );
     }
 
     if ( loggingEnabled_ && settings_.logTransmits && file_.isOpen() ) {
         QByteArray toWrite;
-        toWrite.reserve( data.size() + 64 );
+        const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" ) : data;
+        toWrite.reserve( observableData.size() + 64 );
         if ( settings_.addTimestamps ) {
             toWrite.append(
                 timestampPrefix( settings_, QStringView( QStringLiteral( "[TX]" ) ) ) );
@@ -253,8 +264,8 @@ void SerialCaptureWorker::sendData( QByteArray data )
         else {
             toWrite.append( "[TX] - " );
         }
-        toWrite.append( data );
-        if ( !data.endsWith( '\n' ) ) {
+        toWrite.append( observableData );
+        if ( !observableData.endsWith( '\n' ) ) {
             toWrite.append( '\n' );
         }
         const auto logged = file_.write( toWrite );

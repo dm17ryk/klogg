@@ -104,6 +104,7 @@
 
 #include "mainwindow.h"
 
+#include "actionparametersdialog.h"
 #include "actionruntime.h"
 #include "actionsmanager.h"
 #include "clipboard.h"
@@ -557,9 +558,17 @@ MainWindow::MainWindow( WindowSession session )
     }
 
     actionsResponsesWindow_.setWindowIcon( mainIcon_ );
-    actionsResponsesWindow_.setWindowTitle( tr( "CILogg - actions/responses" ) );
+    actionsResponsesWindow_.setWindowTitle( tr( "CILogg - actions" ) );
     connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
              &MainWindow::sendActionById );
+    connect( &actionsResponsesWindow_,
+             &ActionsResponsesWindow::sendActionWithParametersRequested,
+             this,
+             &MainWindow::sendActionByIdWithParameters );
+
+    responsesWindow_.setResponsesOnly( true );
+    responsesWindow_.setWindowIcon( mainIcon_ );
+    responsesWindow_.setWindowTitle( tr( "CILogg - responses" ) );
 
     StartupProgress::advance( tr( "Loading previews" ), tr( "Loading preview definitions" ) );
     PreviewManager::instance().loadFromRepository();
@@ -999,6 +1008,7 @@ QVariantMap MainWindow::automationState() const
     state.insert( QStringLiteral( "previewerVisible" ), previewWindow_.isVisible() );
     state.insert( QStringLiteral( "actionsResponsesVisible" ),
                   actionsResponsesWindow_.isVisible() );
+    state.insert( QStringLiteral( "responsesVisible" ), responsesWindow_.isVisible() );
     state.insert( QStringLiteral( "statusBarText" ),
                   infoLine != nullptr ? infoLine->text() : QString{} );
     state.insert( QStringLiteral( "lastErrorText" ),
@@ -1393,9 +1403,10 @@ void MainWindow::reTranslateUI()
     showScratchPadAction->setStatusTip( transAction( action::showScratchPadStatusTip ) );
     showPreviewerAction->setText( transAction( action::showPreviewerText ) );
     showPreviewerAction->setStatusTip( transAction( action::showPreviewerStatusTip ) );
-    showActionsResponsesAction->setText( transAction( action::showActionsResponsesText ) );
-    showActionsResponsesAction->setStatusTip(
-        transAction( action::showActionsResponsesStatusTip ) );
+    showActionsResponsesAction->setText( tr( "Show actions" ) );
+    showActionsResponsesAction->setStatusTip( tr( "Open the action sender and editor" ) );
+    showResponsesAction->setText( tr( "Show responses" ) );
+    showResponsesAction->setStatusTip( tr( "Open the response definitions editor" ) );
     showScriptRunnerAction->setText( transAction( action::showScriptRunnerText ) );
     showScriptRunnerAction->setStatusTip( transAction( action::showScriptRunnerStatusTip ) );
     showScenarioRunnerAction->setText( transAction( action::showScenarioRunnerText ) );
@@ -1668,11 +1679,17 @@ void MainWindow::createActions()
     connect( showPreviewerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showPreviewer(); } );
 
-    showActionsResponsesAction = new QAction( tr( action::showActionsResponsesText ), this );
+    showActionsResponsesAction = new QAction( tr( "Show actions" ), this );
     showActionsResponsesAction->setObjectName( QStringLiteral( "showActionsResponsesAction" ) );
-    showActionsResponsesAction->setStatusTip( tr( action::showActionsResponsesStatusTip ) );
+    showActionsResponsesAction->setStatusTip( tr( "Open the action sender and editor" ) );
     connect( showActionsResponsesAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showActionsResponses(); } );
+
+    showResponsesAction = new QAction( tr( "Show responses" ), this );
+    showResponsesAction->setObjectName( QStringLiteral( "showResponsesAction" ) );
+    showResponsesAction->setStatusTip( tr( "Open the response definitions editor" ) );
+    connect( showResponsesAction, &QAction::triggered, this,
+             [ this ]( auto ) { this->showResponses(); } );
 
     showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
     showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
@@ -1896,6 +1913,7 @@ void MainWindow::createMenus()
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
+    toolsMenu->addAction( showResponsesAction );
     toolsMenu->addAction( showScriptRunnerAction );
     toolsMenu->addAction( showScenarioRunnerAction );
     toolsMenu->addAction( showLabQueueAction );
@@ -2780,6 +2798,15 @@ void MainWindow::showActionsResponses()
     actionsResponsesWindow_.activateWindow();
 }
 
+void MainWindow::showResponses()
+{
+    auto state = responsesWindow_.windowState();
+    state.setFlag( Qt::WindowMinimized, false );
+    responsesWindow_.setWindowState( state );
+    responsesWindow_.show();
+    responsesWindow_.activateWindow();
+}
+
 void MainWindow::showScriptRunner()
 {
     if ( applicationHasMethod( "showScriptRunnerWindow()" )
@@ -2844,14 +2871,61 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
 
+    QVariantMap parameters;
+    if ( !action->parameters.fields.isEmpty() ) {
+        LOG_DEBUG << "Opening parameter dialog for action id=" << action->id
+                  << ", field_count=" << action->parameters.fields.size();
+        ActionParametersDialog dialog( *action, this );
+        if ( dialog.exec() != QDialog::Accepted ) {
+            LOG_DEBUG << "Action id=" << action->id << " cancelled in parameter dialog";
+            return;
+        }
+        parameters = dialog.values();
+    }
+    else {
+        LOG_DEBUG << "Action id=" << action->id << " has no typed fields; sending directly";
+    }
+
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, *action, parameters, -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
         return;
     }
 }
+
+void MainWindow::sendActionByIdWithParameters( int actionId, const QVariantMap& parameters )
+{
+    const auto* action = ActionsManager::instance().findActionById( actionId );
+    if ( !action ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "Unknown action id." ) );
+        return;
+    }
+
+    auto* streamSession = actionsStreamSession_.data();
+    if ( !streamSession || !streamSession->isConnectionOpen() ) {
+        streamSession = currentStreamSession();
+    }
+    if ( ( !streamSession || !streamSession->isConnectionOpen() )
+         && mainTabWidget_.hasOpenStreamSession() ) {
+        streamSession = mainTabWidget_.firstOpenStreamSession();
+    }
+    if ( !streamSession ) {
+        QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
+        return;
+    }
+
+    LOG_DEBUG << "Sending action id=" << action->id
+              << " with inline parameters, parameter_count=" << parameters.size();
+    QString errorMessage;
+    if ( !sendActionDefinition( streamSession, *action, parameters, -1, &errorMessage ) ) {
+        QMessageBox::warning( this, tr( "Send action" ),
+                              errorMessage.isEmpty() ? tr( "Failed to send action." )
+                                                     : errorMessage );
+    }
+}
+
 void MainWindow::encodingChanged( QAction* action )
 {
     const auto mibData = action->data();
@@ -3420,7 +3494,8 @@ CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request
     }
 
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, {}, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, *action, request.actionParameters, -1,
+                                &errorMessage ) ) {
         return commanderFailure( CommanderResultCode::ExecutionFailed,
                                  errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                         : errorMessage );
@@ -4066,6 +4141,7 @@ void MainWindow::closeEvent( QCloseEvent* event )
         scratchPad_.close();
         previewWindow_.close();
         actionsResponsesWindow_.close();
+        responsesWindow_.close();
 
         const auto saveSettings = session_.close();
         if ( saveSettings ) {

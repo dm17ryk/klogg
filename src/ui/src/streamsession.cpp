@@ -211,14 +211,17 @@ bool StreamSession::startNewCaptureFile( const QString& filePath, QString* error
     return true;
 }
 
-void StreamSession::sendBytes( const QByteArray& data )
+void StreamSession::sendBytes( const QByteArray& data, bool sensitive )
 {
     if ( !worker_ || data.isEmpty() ) {
+        LOG_DEBUG << "Skipping COM send because worker or payload is unavailable";
         return;
     }
+    LOG_DEBUG << "Queueing COM send for " << settings_.portName.toStdString()
+              << ", bytes: " << data.size() << ( sensitive ? ", sensitive payload" : "" );
     const auto invoked
         = QMetaObject::invokeMethod( worker_, "sendData", Qt::QueuedConnection,
-                                     Q_ARG( QByteArray, data ) );
+                                     Q_ARG( QByteArray, data ), Q_ARG( bool, sensitive ) );
     if ( !invoked ) {
         LOG_ERROR << "Failed to invoke serial send for " << settings_.portName.toStdString();
     }

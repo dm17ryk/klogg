@@ -295,13 +295,18 @@ QString resolveTemplateString( const QString& templateText,
     int pos = 0;
     while ( pos < templateText.size() ) {
         const auto ch = templateText.at( pos );
-        if ( ch != '{' ) {
+        // Action/template placeholders are written as ${name}.  Keep accepting
+        // the older {name} spelling, but consume the '$' together with the
+        // braces so it never leaks into the encoded command.
+        const bool dollarPlaceholder = ch == '$' && pos + 1 < templateText.size()
+                                       && templateText.at( pos + 1 ) == '{';
+        if ( ch != '{' && !dollarPlaceholder ) {
             resolved.append( ch );
             ++pos;
             continue;
         }
 
-        const int start = pos + 1;
+        const int start = dollarPlaceholder ? pos + 2 : pos + 1;
         const int end = clampToInt( templateText.indexOf( '}', start ) );
         if ( end < 0 ) {
             resolved.append( templateText.mid( pos ) );

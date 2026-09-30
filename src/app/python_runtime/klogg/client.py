@@ -9,7 +9,7 @@ import time
 import traceback
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, List, Mapping, Optional, Tuple
 
 from .exceptions import KloggError
 
@@ -685,8 +685,12 @@ class TabRef:
         payload.update(extra)
         return _get_client().command(action, **payload)
 
-    def send_action(self, action_id: int) -> Dict[str, Any]:
-        return self._command("send_action", entityId=int(action_id))
+    def send_action(self, action_id: int,
+                    parameters: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        request: Dict[str, Any] = {"entityId": int(action_id)}
+        if parameters is not None:
+            request["actionParameters"] = dict(parameters)
+        return self._command("send_action", **request)
 
     def wait_response(self, *, response_id: Optional[int] = None, name: Optional[str] = None,
                       timeout_ms: int = 1000) -> Dict[str, Any]:

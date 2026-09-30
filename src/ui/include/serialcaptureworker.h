@@ -33,7 +33,7 @@ class SerialCaptureWorker : public QObject {
   public Q_SLOTS:
     void start();
     void stop();
-    void sendData( QByteArray data );
+    void sendData( QByteArray data, bool sensitive = false );
     void appendToFile( QByteArray data );
     void setLoggingEnabled( bool enabled );
 

@@ -1,6 +1,8 @@
 # Add test cpp file
 add_executable(cilogg_tests
     actionsconfig_test.cpp
+    actionparametersdialog_test.cpp
+    actionparameterseditorwidget_test.cpp
     commander_test.cpp
     configuration_test.cpp
     importpreviewsdialog_test.cpp

@@ -26,7 +26,7 @@ class StreamSession : public QObject {
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
     bool startNewCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
-    void sendBytes( const QByteArray& data );
+    void sendBytes( const QByteArray& data, bool sensitive = false );
     void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
                            const QByteArray& data );
     void appendToFile( const QByteArray& data );

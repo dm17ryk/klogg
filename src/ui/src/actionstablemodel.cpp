@@ -10,6 +10,39 @@ QString truncateText( const QString& text, int maxLength )
     }
     return text.left( maxLength ) + "...";
 }
+
+QString parameterPresentationLabel( const ActionParameterDefinition& field )
+{
+    switch ( field.presentation ) {
+    case ActionParameterPresentation::ComboBox:
+        return QObject::tr( "combo" );
+    case ActionParameterPresentation::RadioButtons:
+        return QObject::tr( "radio" );
+    case ActionParameterPresentation::CheckBoxes:
+        return QObject::tr( "checks" );
+    case ActionParameterPresentation::TextBox:
+        return QObject::tr( "text" );
+    case ActionParameterPresentation::Automatic:
+    default:
+        if ( field.type == ActionParameterType::Choice ) {
+            return QObject::tr( "combo" );
+        }
+        if ( field.type == ActionParameterType::MultiChoice ) {
+            return QObject::tr( "checks" );
+        }
+        return QObject::tr( "text" );
+    }
+}
+
+QString parameterSummary( const ActionDefinition& action )
+{
+    QStringList summary;
+    for ( const auto& field : action.parameters.fields ) {
+        const auto label = field.label.trimmed().isEmpty() ? field.name : field.label.trimmed();
+        summary.push_back( QStringLiteral( "%1 (%2)" ).arg( label, parameterPresentationLabel( field ) ) );
+    }
+    return summary.isEmpty() ? QObject::tr( "None" ) : summary.join( QStringLiteral( ", " ) );
+}
 } // namespace
 
 ActionsTableModel::ActionsTableModel( QObject* parent )
@@ -30,7 +63,7 @@ int ActionsTableModel::columnCount( const QModelIndex& parent ) const
     if ( parent.isValid() ) {
         return 0;
     }
-    return 4;
+    return 5;
 }
 
 QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
@@ -51,7 +84,6 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
     if ( role == Qt::ToolTipRole ) {
         return tooltipForAction( action );
     }
-
     switch ( index.column() ) {
     case 0:
         if ( role == Qt::DisplayRole ) {
@@ -79,6 +111,11 @@ QVariant ActionsTableModel::data( const QModelIndex& index, int role ) const
         break;
     case 3:
         if ( role == Qt::DisplayRole ) {
+            return parameterSummary( action );
+        }
+        break;
+    case 4:
+        if ( role == Qt::DisplayRole ) {
             return previewSequence( action.sequence );
         }
         break;
@@ -104,6 +141,8 @@ QVariant ActionsTableModel::headerData( int section,
     case 2:
         return tr( "Action" );
     case 3:
+        return tr( "Parameters" );
+    case 4:
         return tr( "Sequence" );
     default:
         return {};
@@ -172,6 +211,8 @@ QString ActionsTableModel::tooltipForAction( const ActionDefinition& action ) co
     tooltip.append( tr( "Repeat: %1" ).arg( action.parameters.repeat ? tr( "yes" ) : tr( "no" ) ) );
     tooltip.append( '\n' );
     tooltip.append( tr( "Delay: %1" ).arg( action.parameters.delay ) );
+    tooltip.append( '\n' );
+    tooltip.append( tr( "Parameters: %1" ).arg( parameterSummary( action ) ) );
     tooltip.append( '\n' );
     tooltip.append( tr( "Sequence: %1" ).arg( action.sequence.value ) );
     return tooltip;

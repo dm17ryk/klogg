@@ -4,14 +4,14 @@
   "build_root": "build_root",
   "shell": "x64 Native Tools Command Prompt for VS 2022",
   "env": {
-    "QTDIR": "C:\\qt6",
-    "CMAKE_PREFIX_PATH": "C:\\qt6",
+    "QTDIR": "C:\\Essence_SC\\qt6",
+    "CMAKE_PREFIX_PATH": "C:\\Essence_SC\\qt6",
     "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
     "KLOGG_BUILD_ROOT": "build_root",
     "platform": "x64",
     "KLOGG_QT": "Qt6",
-    "KLOGG_QT_DIR": "C:\\qt6",
-    "PATH_prepend": ["C:\\qt6\\bin"]
+    "KLOGG_QT_DIR": "C:\\Essence_SC\\qt6",
+    "PATH_prepend": ["C:\\Essence_SC\\qt6\\bin"]
   },
   "configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
   "build_command": "cmake --build . --config RelWithDebInfo",
