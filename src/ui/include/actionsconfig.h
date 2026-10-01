@@ -33,12 +33,66 @@ struct ActionSequence {
     QString value;
 };
 
+enum class ActionParameterType {
+    Text,
+    Integer,
+    Decimal,
+    Boolean,
+    Choice,
+    MultiChoice,
+    Date,
+    Time,
+    DateTime,
+    IpAddress,
+    MacAddress,
+    PhoneNumber,
+    HexBytes
+};
+QString actionParameterTypeToString( ActionParameterType type );
+ActionParameterType actionParameterTypeFromString( const QString& text, bool* ok = nullptr );
+
+enum class ActionParameterPresentation { Automatic, TextBox, ComboBox, RadioButtons, CheckBoxes };
+QString actionParameterPresentationToString( ActionParameterPresentation presentation );
+ActionParameterPresentation actionParameterPresentationFromString( const QString& text,
+                                                                   bool* ok = nullptr );
+
+enum class ActionMultiValueMode { BitwiseOr, CommaSeparated, CustomSeparator };
+QString actionMultiValueModeToString( ActionMultiValueMode mode );
+ActionMultiValueMode actionMultiValueModeFromString( const QString& text, bool* ok = nullptr );
+
+struct ActionParameterChoice {
+    QString label;
+    QVariant value;
+};
+
+struct ActionParameterDefinition {
+    QString name;
+    QString label;
+    QString description;
+    ActionParameterType type = ActionParameterType::Text;
+    ActionParameterPresentation presentation = ActionParameterPresentation::Automatic;
+    ActionMultiValueMode multiValueMode = ActionMultiValueMode::CommaSeparated;
+    bool required = false;
+    bool sensitive = false;
+    bool remember = true;
+    QVariant defaultValue;
+    QVariant minimum;
+    QVariant maximum;
+    QVariant step;
+    QString validationPattern;
+    QString format;
+    QString separator = QStringLiteral( "," );
+    QString expression;
+    QVector<ActionParameterChoice> choices;
+};
+
 struct ActionParameters {
     bool repeat = false;
     int delay = 0;
     int repeatCount = 1;
     int repeatInterval = 0;
     QStringList variableNames;
+    QVector<ActionParameterDefinition> fields;
 };
 
 struct ActionDefinition {
@@ -49,6 +103,7 @@ struct ActionDefinition {
     QString name;
     QString description;
     ActionSequence sequence;
+    QString expression;
     ActionParameters parameters;
     ActionChecksumDefinition checksum;
 };
@@ -62,7 +117,22 @@ struct ResponseMatchDefinition {
 struct ResponseActionStep {
     int actionId = -1;
     int delayMs = 0;
+    QVariantMap parameters{};
 };
+
+enum class ResponseParameterBindingSource { Legacy, Literal, Capture, Expression };
+
+struct ResponseParameterBinding {
+    ResponseParameterBindingSource source = ResponseParameterBindingSource::Legacy;
+    QVariant value;
+};
+
+QString responseParameterBindingSourceToString( ResponseParameterBindingSource source );
+ResponseParameterBindingSource responseParameterBindingSourceFromString( const QString& text,
+                                                                          bool* ok = nullptr );
+ResponseParameterBinding responseParameterBindingFromVariant( const QVariant& value,
+                                                               QString* errorMessage = nullptr );
+QVariant responseParameterBindingToVariant( const ResponseParameterBinding& binding );
 
 struct ResponseActionDefinition {
     bool hasActionId = false;
@@ -101,6 +171,9 @@ ActionSequenceResult actionSequenceToBytes( const ActionSequence& sequence,
 ActionSequenceResult actionDefinitionToBytes( const ActionDefinition& action,
                                               const QMap<QString, QString>& substitutions = {},
                                               QStringList* missing = nullptr );
+ActionSequenceResult actionDefinitionToBytesWithParameters( const ActionDefinition& action,
+                                                            const QVariantMap& values,
+                                                            QStringList* missing = nullptr );
 bool validateActionDefinition( const ActionDefinition& action, QString* errorMessage = nullptr );
 bool validateResponseDefinition( const ResponseDefinition& response,
                                  QString* errorMessage = nullptr );

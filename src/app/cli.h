@@ -1430,6 +1430,10 @@ private:
         const QCommandLineOption jsonFileOption( QStringLiteral( "json-file" ),
                                                  QStringLiteral( "Path to a JSON object payload." ),
                                                  QStringLiteral( "path" ) );
+        const QCommandLineOption paramsJsonFileOption(
+            QStringLiteral( "params-json-file" ),
+            QStringLiteral( "JSON object containing send_action parameter values." ),
+            QStringLiteral( "path" ) );
         const QCommandLineOption timeoutMsOption( QStringLiteral( "timeout-ms" ),
                                                   QStringLiteral( "Timeout in milliseconds." ),
                                                   QStringLiteral( "ms" ) );
@@ -1540,6 +1544,7 @@ private:
         parser.addOption( idOption );
         parser.addOption( nameOption );
         parser.addOption( jsonFileOption );
+        parser.addOption( paramsJsonFileOption );
         parser.addOption( timeoutMsOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
@@ -2146,6 +2151,22 @@ private:
                 return result;
             }
             request.definitionPayload = *payload;
+        }
+
+        if ( parser.isSet( paramsJsonFileOption ) ) {
+            if ( *action != CommanderAction::SendAction ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--params-json-file is only valid for send_action." ) );
+                return result;
+            }
+            QString errorMessage;
+            const auto parameters
+                = loadJsonObjectFile( parser.value( paramsJsonFileOption ), &errorMessage );
+            if ( !parameters ) {
+                result.output_message = formatParserError( parser, errorMessage );
+                return result;
+            }
+            request.actionParameters = *parameters;
         }
 
         result.request = request;

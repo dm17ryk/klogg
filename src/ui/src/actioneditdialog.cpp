@@ -5,17 +5,26 @@
 #include <QDialogButtonBox>
 #include <QEvent>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QSignalBlocker>
-#include <QTextCursor>
-#include <QtGlobal>
 #include <QSpinBox>
+#include <QTabWidget>
+#include <QToolButton>
+#include <QTextCursor>
 #include <QVBoxLayout>
+#include <QtGlobal>
 
 #include "configuration.h"
+#include "actionparameterseditorwidget.h"
+#include "log.h"
 #include "previewdecodeutils.h"
 
 namespace {
@@ -161,7 +170,7 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     nameEdit_ = new QLineEdit( this );
     descriptionEdit_ = new QPlainTextEdit( this );
     descriptionEdit_->setTabChangesFocus( true );
-    descriptionEdit_->setMinimumHeight( 90 );
+    descriptionEdit_->setMinimumHeight( 60 );
 
     sequenceTypeCombo_ = new QComboBox( this );
     sequenceTypeCombo_->addItem( tr( "String" ), actionSequenceTypeToString( ActionSequenceType::String ) );
@@ -177,12 +186,12 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
 
     stringValueEdit_ = new QPlainTextEdit( this );
     stringValueEdit_->setTabChangesFocus( true );
-    stringValueEdit_->setMinimumHeight( 80 );
+    stringValueEdit_->setMinimumHeight( 65 );
     stringValueEdit_->installEventFilter( this );
 
     hexValueEdit_ = new QPlainTextEdit( this );
     hexValueEdit_->setTabChangesFocus( true );
-    hexValueEdit_->setMinimumHeight( 80 );
+    hexValueEdit_->setMinimumHeight( 65 );
 
     delaySpin_ = new QSpinBox( this );
     delaySpin_->setRange( 0, 3600000 );
@@ -197,6 +206,29 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
 
     variableNamesEdit_ = new QLineEdit( this );
     variableNamesEdit_->setPlaceholderText( tr( "value1, value2" ) );
+    variableNamesEdit_->setToolTip( tr( "Legacy ${name} substitutions. Leave empty when typed fields "
+                                        "are used; their values are selected after clicking Send." ) );
+
+    expressionEdit_ = new QPlainTextEdit( this );
+    expressionEdit_->setObjectName( QStringLiteral( "actionExpressionEdit" ) );
+    expressionEdit_->setPlaceholderText(
+        tr( "Example: concat(\"SCHED STATS:\", mode == null ? \"\" : str(mode), \";\\r\\n\")" ) );
+    expressionEdit_->setTabChangesFocus( true );
+    expressionEdit_->setMinimumHeight( 65 );
+    expressionEdit_->setToolTip( tr( "Optional advanced expression that builds the complete output. "
+                                      "Leave empty when the sequence uses ${field} placeholders." ) );
+
+    fieldsJsonEdit_ = new QPlainTextEdit( this );
+    fieldsJsonEdit_->setObjectName( QStringLiteral( "actionParameterFieldsJsonEdit" ) );
+    fieldsJsonEdit_->setAccessibleName( tr( "Typed action parameter definitions" ) );
+    fieldsJsonEdit_->setPlaceholderText( tr(
+        R"([{"name":"mode","type":"choice","presentation":"combo_box","choices":[{"label":"Queued","value":0}]}])" ) );
+    fieldsJsonEdit_->setToolTip(
+        tr( "Defines the controls shown by Send: automatic, text_box, combo_box, "
+            "radio_buttons, or check_boxes. This is a definition, not the values to send. "
+            "Multi-value modes: bitwise_or, comma_separated, custom_separator." ) );
+    fieldsJsonEdit_->setTabChangesFocus( true );
+    fieldsJsonEdit_->setMinimumHeight( 130 );
 
     checksumEnabledCheck_ = new QCheckBox( tr( "Enable checksum" ), this );
     checksumAlgorithmCombo_ = new QComboBox( this );
@@ -205,29 +237,154 @@ ActionEditDialog::ActionEditDialog( QWidget* parent )
     checksumPlaceholderEdit_ = new QLineEdit( this );
     checksumPlaceholderEdit_->setPlaceholderText( QStringLiteral( "${CHECKSUM}" ) );
 
-    auto* formLayout = new QFormLayout;
-    formLayout->addRow( tr( "Name" ), nameEdit_ );
-    formLayout->addRow( tr( "Description" ), descriptionEdit_ );
-    formLayout->addRow( tr( "Sequence type" ), sequenceTypeCombo_ );
-    formLayout->addRow( tr( "Enter inserts" ), lineEndingCombo_ );
-    formLayout->addRow( tr( "String value" ), stringValueEdit_ );
-    formLayout->addRow( tr( "Hex string value" ), hexValueEdit_ );
-    formLayout->addRow( tr( "Initial delay" ), delaySpin_ );
-    formLayout->addRow( tr( "Repeat count" ), repeatCountSpin_ );
-    formLayout->addRow( tr( "Repeat interval" ), repeatIntervalSpin_ );
-    formLayout->addRow( tr( "Template variables" ), variableNamesEdit_ );
-    formLayout->addRow( QString(), checksumEnabledCheck_ );
-    formLayout->addRow( tr( "Checksum algorithm" ), checksumAlgorithmCombo_ );
-    formLayout->addRow( tr( "Checksum placeholder" ), checksumPlaceholderEdit_ );
+    auto* tabs = new QTabWidget( this );
+    tabs->setObjectName( QStringLiteral( "actionEditorTabs" ) );
+
+    auto* sequencePage = new QWidget( tabs );
+    auto* sequenceLayout = new QFormLayout( sequencePage );
+    sequenceLayout->addRow( tr( "Name" ), nameEdit_ );
+    sequenceLayout->addRow( tr( "Description" ), descriptionEdit_ );
+    sequenceLayout->addRow( tr( "Sequence type" ), sequenceTypeCombo_ );
+    sequenceLayout->addRow( tr( "Enter inserts" ), lineEndingCombo_ );
+    sequenceLayout->addRow( tr( "String value" ), stringValueEdit_ );
+    sequenceLayout->addRow( tr( "Hex string value" ), hexValueEdit_ );
+    tabs->addTab( sequencePage, tr( "Sequence" ) );
+
+    auto* parametersPage = new QWidget( tabs );
+    auto* parametersLayout = new QVBoxLayout( parametersPage );
+    auto* parameterHelp = new QLabel(
+        tr( "Typed parameter definitions below create the combo boxes, radio buttons, and "
+            "checkboxes shown when you press Send in the actions table. Add each parameter with "
+            "the structured editor; current values are selected after clicking Send." ),
+        this );
+    parameterHelp->setWordWrap( true );
+    parameterHelp->setObjectName( QStringLiteral( "actionParameterDefinitionHelp" ) );
+    parametersLayout->addWidget( parameterHelp );
+    parametersEditor_ = new ActionParametersEditorWidget( parametersPage );
+    parametersEditor_->setObjectName( QStringLiteral( "actionParametersEditor" ) );
+    parametersLayout->addWidget( parametersEditor_, 1 );
+    auto* expressionLayout = new QFormLayout;
+    expressionLayout->addRow( tr( "Output expression (advanced)" ), expressionEdit_ );
+    parametersLayout->addLayout( expressionLayout );
+
+    auto* advancedToggle = new QToolButton( parametersPage );
+    advancedToggle->setText( tr( "Advanced JSON" ) );
+    advancedToggle->setCheckable( true );
+    advancedToggle->setChecked( false );
+    advancedToggle->setToolButtonStyle( Qt::ToolButtonTextBesideIcon );
+    auto* advancedJson = new QWidget( parametersPage );
+    auto* advancedJsonLayout = new QVBoxLayout( advancedJson );
+    advancedJsonLayout->setContentsMargins( 0, 0, 0, 0 );
+    auto* advancedLabel = new QLabel(
+        tr( "Compatibility fallback. Apply valid JSON to replace the structured definitions." ),
+        advancedJson );
+    advancedLabel->setWordWrap( true );
+    applyFieldsJsonButton_ = new QPushButton( tr( "Apply JSON" ), advancedJson );
+    advancedJsonLayout->addWidget( advancedLabel );
+    advancedJsonLayout->addWidget( fieldsJsonEdit_, 1 );
+    advancedJsonLayout->addWidget( applyFieldsJsonButton_, 0, Qt::AlignRight );
+    advancedJson->setVisible( false );
+    parametersLayout->addWidget( advancedToggle );
+    parametersLayout->addWidget( advancedJson );
+    const auto syncAdvancedFields = [ this ] {
+        QVariantList fields;
+        for ( const auto& field : parametersEditor_->fields() ) {
+            QVariantMap fieldMap;
+            fieldMap.insert( QStringLiteral( "name" ), field.name );
+            fieldMap.insert( QStringLiteral( "label" ), field.label );
+            fieldMap.insert( QStringLiteral( "description" ), field.description );
+            fieldMap.insert( QStringLiteral( "type" ), actionParameterTypeToString( field.type ) );
+            fieldMap.insert( QStringLiteral( "presentation" ),
+                             actionParameterPresentationToString( field.presentation ) );
+            fieldMap.insert( QStringLiteral( "multi_value_mode" ),
+                             actionMultiValueModeToString( field.multiValueMode ) );
+            fieldMap.insert( QStringLiteral( "required" ), field.required );
+            fieldMap.insert( QStringLiteral( "sensitive" ), field.sensitive );
+            fieldMap.insert( QStringLiteral( "remember" ), field.remember );
+            if ( field.defaultValue.isValid() ) {
+                fieldMap.insert( QStringLiteral( "default" ), field.defaultValue );
+            }
+            if ( field.minimum.isValid() ) {
+                fieldMap.insert( QStringLiteral( "minimum" ), field.minimum );
+            }
+            if ( field.maximum.isValid() ) {
+                fieldMap.insert( QStringLiteral( "maximum" ), field.maximum );
+            }
+            if ( field.step.isValid() ) {
+                fieldMap.insert( QStringLiteral( "step" ), field.step );
+            }
+            fieldMap.insert( QStringLiteral( "validation_pattern" ), field.validationPattern );
+            fieldMap.insert( QStringLiteral( "format" ), field.format );
+            fieldMap.insert( QStringLiteral( "separator" ), field.separator );
+            fieldMap.insert( QStringLiteral( "expression" ), field.expression );
+            QVariantList choices;
+            for ( const auto& choice : field.choices ) {
+                choices.push_back( QVariantMap { { QStringLiteral( "label" ), choice.label },
+                                                  { QStringLiteral( "value" ), choice.value } } );
+            }
+            fieldMap.insert( QStringLiteral( "choices" ), choices );
+            fields.push_back( fieldMap );
+        }
+        fieldsJsonEdit_->setPlainText(
+            QString::fromUtf8( QJsonDocument::fromVariant( fields ).toJson( QJsonDocument::Indented ) ) );
+    };
+    connect( advancedToggle, &QToolButton::toggled, this,
+             [ advancedJson, syncAdvancedFields ]( const bool checked ) {
+                 if ( checked ) {
+                     syncAdvancedFields();
+                 }
+                 advancedJson->setVisible( checked );
+             } );
+    connect( applyFieldsJsonButton_, &QPushButton::clicked, this, [ this ] {
+        QJsonParseError parseError;
+        const auto document
+            = QJsonDocument::fromJson( fieldsJsonEdit_->toPlainText().toUtf8(), &parseError );
+        if ( parseError.error != QJsonParseError::NoError || !document.isArray() ) {
+            LOG_WARNING << "Action editor rejected advanced parameter JSON";
+            QMessageBox::warning( this, tr( "Edit Action" ),
+                                  tr( "Typed fields must be a valid JSON array: %1" )
+                                      .arg( parseError.errorString() ) );
+            return;
+        }
+        QVariantMap actionMap = actionDefinitionToVariantMap( action_ );
+        auto parametersMap = actionMap.value( QStringLiteral( "parameters" ) ).toMap();
+        parametersMap.insert( QStringLiteral( "fields" ), document.array().toVariantList() );
+        actionMap.insert( QStringLiteral( "parameters" ), parametersMap );
+        QString errorMessage;
+        const auto parsed = actionDefinitionFromVariantMap( actionMap, &errorMessage );
+        if ( !errorMessage.isEmpty() ) {
+            LOG_WARNING << "Action editor advanced parameter JSON parse failed";
+            QMessageBox::warning( this, tr( "Edit Action" ), errorMessage );
+            return;
+        }
+        parametersEditor_->setFields( parsed.parameters.fields );
+        LOG_DEBUG << "Applied advanced action parameter JSON; field_count="
+                  << parsed.parameters.fields.size();
+    } );
+    tabs->addTab( parametersPage, tr( "Parameters" ) );
+
+    auto* advancedPage = new QWidget( tabs );
+    auto* advancedLayout = new QFormLayout( advancedPage );
+    advancedLayout->addRow( tr( "Initial delay" ), delaySpin_ );
+    advancedLayout->addRow( tr( "Repeat count" ), repeatCountSpin_ );
+    advancedLayout->addRow( tr( "Repeat interval" ), repeatIntervalSpin_ );
+    advancedLayout->addRow( tr( "Template variables (legacy)" ), variableNamesEdit_ );
+    advancedLayout->addRow( QString(), checksumEnabledCheck_ );
+    advancedLayout->addRow( tr( "Checksum algorithm" ), checksumAlgorithmCombo_ );
+    advancedLayout->addRow( tr( "Checksum placeholder" ), checksumPlaceholderEdit_ );
+    tabs->addTab( advancedPage, tr( "Advanced" ) );
 
     auto* buttons = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this );
     connect( buttons, &QDialogButtonBox::accepted, this, &ActionEditDialog::accept );
     connect( buttons, &QDialogButtonBox::rejected, this, &ActionEditDialog::reject );
 
     auto* layout = new QVBoxLayout( this );
-    layout->addLayout( formLayout );
+    layout->addWidget( tabs, 1 );
     layout->addWidget( buttons );
     setLayout( layout );
+    setSizeGripEnabled( true );
+    setMinimumSize( 620, 430 );
+    resize( 780, 560 );
 
     connect( stringValueEdit_, &QPlainTextEdit::textChanged, this, &ActionEditDialog::syncHexFromString );
     connect( hexValueEdit_, &QPlainTextEdit::textChanged, this, &ActionEditDialog::syncStringFromHex );
@@ -282,6 +439,52 @@ void ActionEditDialog::accept()
     action_.parameters.repeat = action_.parameters.repeatCount > 1;
     action_.parameters.repeatInterval = repeatIntervalSpin_->value();
     action_.parameters.variableNames = splitCsvValues( variableNamesEdit_->text() );
+    action_.expression = expressionEdit_->toPlainText().trimmed();
+
+    auto actionMap = actionDefinitionToVariantMap( action_ );
+    auto parametersMap = actionMap.value( QStringLiteral( "parameters" ) ).toMap();
+    QVariantList fields;
+    for ( const auto& field : parametersEditor_->fields() ) {
+        QVariantMap fieldMap;
+        fieldMap.insert( QStringLiteral( "name" ), field.name );
+        fieldMap.insert( QStringLiteral( "label" ), field.label );
+        fieldMap.insert( QStringLiteral( "description" ), field.description );
+        fieldMap.insert( QStringLiteral( "type" ), actionParameterTypeToString( field.type ) );
+        fieldMap.insert( QStringLiteral( "presentation" ),
+                         actionParameterPresentationToString( field.presentation ) );
+        fieldMap.insert( QStringLiteral( "multi_value_mode" ),
+                         actionMultiValueModeToString( field.multiValueMode ) );
+        fieldMap.insert( QStringLiteral( "required" ), field.required );
+        fieldMap.insert( QStringLiteral( "sensitive" ), field.sensitive );
+        fieldMap.insert( QStringLiteral( "remember" ), field.remember );
+        if ( field.defaultValue.isValid() ) fieldMap.insert( QStringLiteral( "default" ), field.defaultValue );
+        if ( field.minimum.isValid() ) fieldMap.insert( QStringLiteral( "minimum" ), field.minimum );
+        if ( field.maximum.isValid() ) fieldMap.insert( QStringLiteral( "maximum" ), field.maximum );
+        if ( field.step.isValid() ) fieldMap.insert( QStringLiteral( "step" ), field.step );
+        fieldMap.insert( QStringLiteral( "validation_pattern" ), field.validationPattern );
+        fieldMap.insert( QStringLiteral( "format" ), field.format );
+        fieldMap.insert( QStringLiteral( "separator" ), field.separator );
+        fieldMap.insert( QStringLiteral( "expression" ), field.expression );
+        QVariantList choices;
+        for ( const auto& choice : field.choices ) {
+            QVariantMap choiceMap;
+            choiceMap.insert( QStringLiteral( "label" ), choice.label );
+            choiceMap.insert( QStringLiteral( "value" ), choice.value );
+            choices.push_back( choiceMap );
+        }
+        fieldMap.insert( QStringLiteral( "choices" ), choices );
+        fields.push_back( fieldMap );
+    }
+    parametersMap.insert( QStringLiteral( "fields" ), fields );
+    actionMap.insert( QStringLiteral( "parameters" ), parametersMap );
+    actionMap.insert( QStringLiteral( "expression" ), action_.expression );
+    QString fieldError;
+    const auto parsedAction = actionDefinitionFromVariantMap( actionMap, &fieldError );
+    if ( !fieldError.isEmpty() ) {
+        QMessageBox::warning( this, tr( "Edit Action" ), fieldError );
+        return;
+    }
+    action_ = parsedAction;
     action_.checksum.enabled = checksumEnabledCheck_->isChecked();
     action_.checksum.algorithm = checksumAlgorithmCombo_->currentText();
     action_.checksum.placeholder = checksumPlaceholderEdit_->text().trimmed();
@@ -306,6 +509,15 @@ void ActionEditDialog::populateFromAction( const ActionDefinition& action )
     repeatCountSpin_->setValue( qMax( 1, action.parameters.repeatCount ) );
     repeatIntervalSpin_->setValue( action.parameters.repeatInterval );
     variableNamesEdit_->setText( action.parameters.variableNames.join( QStringLiteral( ", " ) ) );
+    expressionEdit_->setPlainText( action.expression );
+    const auto actionMap = actionDefinitionToVariantMap( action );
+    const auto fields = actionMap.value( QStringLiteral( "parameters" ) )
+                            .toMap()
+                            .value( QStringLiteral( "fields" ) )
+                            .toList();
+    fieldsJsonEdit_->setPlainText( QString::fromUtf8(
+        QJsonDocument::fromVariant( fields ).toJson( QJsonDocument::Indented ) ) );
+    parametersEditor_->setFields( action.parameters.fields );
     checksumEnabledCheck_->setChecked( action.checksum.enabled );
     const auto checksumIndex = checksumAlgorithmCombo_->findText( action.checksum.algorithm );
     checksumAlgorithmCombo_->setCurrentIndex( checksumIndex >= 0 ? checksumIndex : 0 );

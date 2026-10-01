@@ -531,6 +531,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( !request.definitionPayload.isEmpty() ) {
         map.insert( QStringLiteral( "definitionPayload" ), request.definitionPayload );
     }
+    if ( !request.actionParameters.isEmpty() ) {
+        map.insert( QStringLiteral( "actionParameters" ), request.actionParameters );
+    }
 
     return map;
 }
@@ -750,6 +753,16 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
             return std::nullopt;
         }
         request.definitionPayload = definitionPayloadIt->toMap();
+    }
+
+    const auto actionParametersIt = map.find( QStringLiteral( "actionParameters" ) );
+    if ( actionParametersIt != map.end() ) {
+        if ( actionParametersIt->metaType().id() != QMetaType::QVariantMap ) {
+            setError( errorMessage,
+                      QStringLiteral( "Invalid commander action parameters object." ) );
+            return std::nullopt;
+        }
+        request.actionParameters = actionParametersIt->toMap();
     }
 
     return request;

@@ -241,14 +241,24 @@ include(FindPkgConfig)
 if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUTABLE)
   set(
     KLOGG_PKG_CONFIG_CANDIDATES
+    "C:/Essence_SC/Strawberry/c/bin/pkg-config.exe"
+    "C:/Essence_SC/Strawberry/c/bin/pkg-config"
+    "C:/Essence_SC/Strawberry/c/bin/pkgconf.exe"
+    "C:/Essence_SC/Strawberry/c/bin/pkgconf"
     "C:/Strawberry/c/bin/pkg-config.exe"
     "C:/Strawberry/c/bin/pkg-config"
     "C:/Strawberry/c/bin/pkgconf.exe"
     "C:/Strawberry/c/bin/pkgconf"
+    "C:/Essence_SC/Git/usr/bin/pkg-config.exe"
+    "C:/Essence_SC/Git/usr/bin/pkg-config"
+    "C:/Essence_SC/Git/usr/bin/pkgconf.exe"
+    "C:/Essence_SC/Git/usr/bin/pkgconf"
     "$ENV{ProgramFiles}/Git/usr/bin/pkg-config.exe"
     "$ENV{ProgramFiles}/Git/usr/bin/pkg-config"
     "$ENV{ProgramFiles}/Git/usr/bin/pkgconf.exe"
     "$ENV{ProgramFiles}/Git/usr/bin/pkgconf"
+    "C:/Essence_SC/Strawberry/perl/bin/pkg-config.bat"
+    "C:/Essence_SC/Strawberry/perl/bin/pkg-config"
     "C:/Strawberry/perl/bin/pkg-config.bat"
     "C:/Strawberry/perl/bin/pkg-config"
   )
@@ -272,6 +282,9 @@ if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUT
       KLOGG_PKG_CONFIG_EXECUTABLE
       NAMES pkgconf.exe pkgconf pkg-config.exe pkg-config pkg-config.bat
       HINTS
+        "C:/Essence_SC/Strawberry/c/bin"
+        "C:/Essence_SC/Strawberry/perl/bin"
+        "C:/Essence_SC/Git/usr/bin"
         "C:/Strawberry/c/bin"
         "C:/Strawberry/perl/bin"
         "$ENV{ProgramFiles}/Git/usr/bin"
@@ -498,6 +511,13 @@ set(CPACK_PACKAGE_VERSION
     "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}.${PROJECT_VERSION_TWEAK}"
 )
 set(CPACK_PACKAGE_ICON "${ICON_FILE}")
+
+# Ship the action catalog schema with every installation so external editors and
+# generated catalogs can validate the same format as the bundled application.
+install(
+  FILES "${CMAKE_CURRENT_SOURCE_DIR}/schemas/actions.schema.json"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/${PRODUCT_EXECUTABLE_NAME}/schemas"
+)
 
 if(UNIX)
   include(InstallRequiredSystemLibraries)

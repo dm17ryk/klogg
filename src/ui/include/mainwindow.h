@@ -151,6 +151,7 @@ class MainWindow : public QMainWindow {
     void showScratchPad();
     void showPreviewer();
     void showActionsResponses();
+    void showResponses();
     void showScriptRunner();
     void showScenarioRunner();
     void showLabQueue();
@@ -158,6 +159,7 @@ class MainWindow : public QMainWindow {
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
     void sendActionById( int actionId );
+    void sendActionByIdWithParameters( int actionId, const QVariantMap& parameters );
     void encodingChanged( QAction* action );
     void addToFavorites();
     void removeFromFavorites();
@@ -388,6 +390,7 @@ class MainWindow : public QMainWindow {
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
     QAction* showActionsResponsesAction;
+    QAction* showResponsesAction;
     QAction* showScriptRunnerAction;
     QAction* showScenarioRunnerAction;
     QAction* showLabQueueAction;
@@ -437,6 +440,7 @@ class MainWindow : public QMainWindow {
     TabbedScratchPad scratchPad_;
     PreviewWindow previewWindow_;
     ActionsResponsesWindow actionsResponsesWindow_;
+    ActionsResponsesWindow responsesWindow_;
     QPointer<StreamSession> actionsStreamSession_;
 
     QTemporaryDir tempDir_;

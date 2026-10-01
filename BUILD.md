@@ -36,7 +36,7 @@ pwsh.exe -NoExit -NoProfile -Command "&{Import-Module 'd:\Program Files\Microsof
 Set the environment expected by the repo:
 
 ```bat
-set QTDIR=C:\qt6.10.1
+set QTDIR=C:\Essence_SC\qt6.10.1
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
 set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg

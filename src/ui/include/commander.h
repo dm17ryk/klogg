@@ -128,6 +128,7 @@ struct CommanderRequest {
     bool searchKeepResults = false;
     CommanderComSettings comSettings;
     QVariantMap definitionPayload;
+    QVariantMap actionParameters;
 };
 
 struct CommanderResult {

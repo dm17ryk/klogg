@@ -1,10 +1,14 @@
 #include "actionsconfigparser.h"
 
+#include <cmath>
+
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+
+#include "log.h"
 
 namespace {
 QByteArray stripLineComments( const QByteArray& input )
@@ -114,9 +118,9 @@ bool parseAction( const QJsonObject& object,
         return false;
     }
 
-    const QSet<QString> knownKeys = { "id",       "order",      "enabled", "hidden",
-                                      "hiden",    "name",       "description",
-                                      "sequence", "parameters", "checksum" };
+    const QSet<QString> knownKeys
+        = { "id",          "order",    "enabled",    "hidden",     "hiden",   "name",
+            "description", "sequence", "expression", "parameters", "checksum" };
     const auto extraKeys = unknownKeys( object, knownKeys );
     for ( const auto& key : extraKeys ) {
         if ( warnings ) {
@@ -165,22 +169,37 @@ bool parseAction( const QJsonObject& object,
     if ( object.contains( "description" ) ) {
         out->description = object.value( "description" ).toString();
     }
+    if ( object.contains( "expression" ) ) {
+        out->expression = object.value( "expression" ).toString();
+    }
 
     const auto sequenceValue = object.value( "sequence" );
     if ( !sequenceValue.isObject() ) {
-        if ( errors ) {
+        if ( out->expression.trimmed().isEmpty() && errors ) {
             errors->push_back( QString( "Missing sequence for action '%1'." ).arg( out->name ) );
         }
-        return false;
+        if ( out->expression.trimmed().isEmpty() ) {
+            return false;
+        }
+        LOG_DEBUG << "Expression-only action '" << out->name.toStdString()
+                  << "' has no legacy sequence";
     }
-    if ( !parseSequence( sequenceValue.toObject(), &out->sequence, errors, warnings,
-                         QString( "action '%1' sequence" ).arg( out->name ) ) ) {
+    else if ( !parseSequence( sequenceValue.toObject(), &out->sequence, errors, warnings,
+                              QString( "action '%1' sequence" ).arg( out->name ) ) ) {
         return false;
     }
 
     const auto parametersValue = object.value( "parameters" );
     if ( parametersValue.isObject() ) {
         const auto paramsObj = parametersValue.toObject();
+        const QSet<QString> parameterKeys
+            = { "repeat", "delay", "repeat_count", "repeat_interval", "variable_names", "fields" };
+        for ( const auto& key : unknownKeys( paramsObj, parameterKeys ) ) {
+            if ( warnings ) {
+                warnings->push_back( QString( "Unknown parameter property '%1' for action '%2'." )
+                                         .arg( key, out->name ) );
+            }
+        }
         if ( paramsObj.contains( "repeat" ) ) {
             out->parameters.repeat = paramsObj.value( "repeat" ).toBool( false );
         }
@@ -200,6 +219,127 @@ bool parseAction( const QJsonObject& object,
                 if ( !value.isEmpty() ) {
                     out->parameters.variableNames.push_back( value );
                 }
+            }
+        }
+        if ( paramsObj.contains( "fields" ) ) {
+            const auto fieldsValue = paramsObj.value( "fields" );
+            if ( !fieldsValue.isArray() ) {
+                if ( errors ) {
+                    errors->push_back( QString( "Action '%1' parameter fields must be an array." )
+                                           .arg( out->name ) );
+                }
+                return false;
+            }
+            const auto fieldsArray = fieldsValue.toArray();
+            for ( qsizetype fieldIndex = 0; fieldIndex < fieldsArray.size(); ++fieldIndex ) {
+                if ( !fieldsArray.at( fieldIndex ).isObject() ) {
+                    if ( errors ) {
+                        errors->push_back(
+                            QString( "Action '%1' parameter field %2 must be an object." )
+                                .arg( out->name )
+                                .arg( fieldIndex ) );
+                    }
+                    return false;
+                }
+                const auto fieldObject = fieldsArray.at( fieldIndex ).toObject();
+                const QSet<QString> fieldKeys = { "name",         "label",
+                                                  "description",  "type",
+                                                  "presentation", "multi_value_mode",
+                                                  "required",     "sensitive",
+                                                  "remember",     "default",
+                                                  "minimum",      "maximum",
+                                                  "step",         "validation_pattern",
+                                                  "format",       "separator",
+                                                  "expression",   "choices" };
+                for ( const auto& key : unknownKeys( fieldObject, fieldKeys ) ) {
+                    if ( warnings ) {
+                        warnings->push_back(
+                            QString( "Unknown property '%1' for action '%2' parameter field %3." )
+                                .arg( key, out->name )
+                                .arg( fieldIndex ) );
+                    }
+                }
+                ActionParameterDefinition field;
+                field.name = fieldObject.value( "name" ).toString().trimmed();
+                if ( field.name.isEmpty() ) {
+                    if ( errors ) {
+                        errors->push_back( QString( "Action '%1' parameter field %2 has no name." )
+                                               .arg( out->name )
+                                               .arg( fieldIndex ) );
+                    }
+                    return false;
+                }
+                field.label = fieldObject.value( "label" ).toString( field.name );
+                field.description = fieldObject.value( "description" ).toString();
+                bool typeOk = false;
+                field.type = actionParameterTypeFromString(
+                    fieldObject.value( "type" ).toString( QStringLiteral( "text" ) ), &typeOk );
+                bool presentationOk = false;
+                field.presentation = actionParameterPresentationFromString(
+                    fieldObject.value( "presentation" ).toString( QStringLiteral( "auto" ) ),
+                    &presentationOk );
+                bool multiModeOk = false;
+                field.multiValueMode = actionMultiValueModeFromString(
+                    fieldObject.value( "multi_value_mode" )
+                        .toString( QStringLiteral( "comma_separated" ) ),
+                    &multiModeOk );
+                if ( !typeOk || !presentationOk || !multiModeOk ) {
+                    if ( errors ) {
+                        errors->push_back(
+                            QString(
+                                "Action '%1' parameter '%2' has an invalid type or presentation." )
+                                .arg( out->name, field.name ) );
+                    }
+                    return false;
+                }
+                field.required = fieldObject.value( "required" ).toBool( false );
+                field.sensitive = fieldObject.value( "sensitive" ).toBool( false );
+                field.remember = fieldObject.value( "remember" ).toBool( true );
+                if ( fieldObject.contains( "default" ) ) {
+                    field.defaultValue = fieldObject.value( "default" ).toVariant();
+                }
+                if ( fieldObject.contains( "minimum" ) ) {
+                    field.minimum = fieldObject.value( "minimum" ).toVariant();
+                }
+                if ( fieldObject.contains( "maximum" ) ) {
+                    field.maximum = fieldObject.value( "maximum" ).toVariant();
+                }
+                if ( fieldObject.contains( "step" ) ) {
+                    field.step = fieldObject.value( "step" ).toVariant();
+                }
+                field.validationPattern = fieldObject.value( "validation_pattern" ).toString();
+                field.format = fieldObject.value( "format" ).toString();
+                field.separator
+                    = fieldObject.value( "separator" ).toString( QStringLiteral( "," ) );
+                field.expression = fieldObject.value( "expression" ).toString();
+                if ( fieldObject.contains( "choices" ) ) {
+                    const auto choicesValue = fieldObject.value( "choices" );
+                    if ( !choicesValue.isArray() ) {
+                        if ( errors ) {
+                            errors->push_back(
+                                QString( "Action '%1' parameter '%2' choices must be an array." )
+                                    .arg( out->name, field.name ) );
+                        }
+                        return false;
+                    }
+                    for ( const auto& choiceValue : choicesValue.toArray() ) {
+                        if ( !choiceValue.isObject() ) {
+                            if ( errors ) {
+                                errors->push_back(
+                                    QString(
+                                        "Action '%1' parameter '%2' contains an invalid choice." )
+                                        .arg( out->name, field.name ) );
+                            }
+                            return false;
+                        }
+                        const auto choiceObject = choiceValue.toObject();
+                        field.choices.push_back( {
+                            choiceObject.value( "label" ).toString(),
+                            choiceObject.value( "value" ).toVariant(),
+                        } );
+                    }
+                }
+                out->parameters.fields.push_back( field );
             }
         }
     }
@@ -392,6 +532,28 @@ bool parseResponse( const QJsonObject& object,
                     continue;
                 }
                 step.delayMs = stepObj.value( "delay_ms" ).toInt( 0 );
+                if ( stepObj.value( "parameters" ).isObject() ) {
+                    step.parameters = stepObj.value( "parameters" ).toObject().toVariantMap();
+                    for ( auto parameter = step.parameters.constBegin();
+                          parameter != step.parameters.constEnd(); ++parameter ) {
+                        QString bindingError;
+                        responseParameterBindingFromVariant( parameter.value(), &bindingError );
+                        if ( !bindingError.isEmpty() && warnings ) {
+                            warnings->push_back(
+                                QString( "Invalid response parameter binding '%1' in step %2 for '%3': %4" )
+                                    .arg( parameter.key() )
+                                    .arg( stepIndex )
+                                    .arg( out->name )
+                                    .arg( bindingError ) );
+                        }
+                    }
+                }
+                else if ( stepObj.contains( "parameters" ) && warnings ) {
+                    warnings->push_back(
+                        QString( "Invalid parameters object in response step %1 for '%2'." )
+                            .arg( stepIndex )
+                            .arg( out->name ) );
+                }
                 out->response.steps.push_back( step );
             }
         }
@@ -469,6 +631,25 @@ ActionsParseResult ActionsConfigParser::parseJson( const QByteArray& jsonBytes )
     }
 
     const auto root = document.object();
+    const auto versionValue = root.value( "version" );
+    if ( versionValue.isDouble() ) {
+        const auto versionNumber = versionValue.toDouble();
+        if ( !std::isfinite( versionNumber ) || versionNumber != std::floor( versionNumber ) ) {
+            result.errors.push_back( "Actions configuration version must be an integer." );
+            return result;
+        }
+        const auto version = static_cast<int>( versionNumber );
+        if ( version != 1 && version != 3 && version != 4 ) {
+            result.errors.push_back( QString( "Unsupported actions configuration version %1; "
+                                              "supported versions are 1, 3, and 4." )
+                                         .arg( version ) );
+            return result;
+        }
+    }
+    else if ( !versionValue.isUndefined() ) {
+        result.errors.push_back( "Actions configuration version must be an integer." );
+        return result;
+    }
     const auto actionsValue = root.value( "actions" );
     if ( !actionsValue.isArray() ) {
         result.errors.push_back( "Missing 'actions' array in JSON." );

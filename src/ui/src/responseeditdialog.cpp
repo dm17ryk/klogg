@@ -1,26 +1,35 @@
 #include "responseeditdialog.h"
 
 #include <QCheckBox>
+#include <QButtonGroup>
+#include <QAbstractButton>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
 #include <QFormLayout>
-#include <QHeaderView>
+#include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QToolButton>
 #include <QTextCursor>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 #include "configuration.h"
 #include "previewdecodeutils.h"
@@ -156,6 +165,52 @@ QString actionLabel( const QVector<ActionDefinition>& actions, int actionId )
     return QObject::tr( "Unknown action (%1)" ).arg( actionId );
 }
 
+QVariant responseLiteralValue( const QString& text, const ActionParameterDefinition& field,
+                               bool* conversionOk = nullptr )
+{
+    const auto value = text.trimmed();
+    if ( conversionOk ) {
+        *conversionOk = true;
+    }
+    bool ok = false;
+    switch ( field.type ) {
+    case ActionParameterType::Integer: {
+        const auto converted = value.toLongLong( &ok );
+        if ( conversionOk ) {
+            *conversionOk = ok;
+        }
+        return converted;
+    }
+    case ActionParameterType::Decimal: {
+        const auto converted = value.toDouble( &ok );
+        if ( conversionOk ) {
+            *conversionOk = ok;
+        }
+        return converted;
+    }
+    case ActionParameterType::Boolean:
+        if ( value.compare( QStringLiteral( "true" ), Qt::CaseInsensitive ) == 0 || value == "1" ) {
+            return true;
+        }
+        if ( value.compare( QStringLiteral( "false" ), Qt::CaseInsensitive ) == 0 || value == "0" ) {
+            return false;
+        }
+        if ( conversionOk ) {
+            *conversionOk = false;
+        }
+        return {};
+    case ActionParameterType::MultiChoice: {
+        QVariantList list;
+        for ( const auto& item : value.split( QLatin1Char( ',' ), Qt::SkipEmptyParts ) ) {
+            list.push_back( item.trimmed() );
+        }
+        return list;
+    }
+    default:
+        return text;
+    }
+}
+
 class ResponseActionStepDialog : public QDialog {
   public:
     explicit ResponseActionStepDialog( const QVector<ActionDefinition>& actions, QWidget* parent = nullptr )
@@ -173,16 +228,88 @@ class ResponseActionStepDialog : public QDialog {
         delaySpin_->setRange( 0, 3600000 );
         delaySpin_->setSuffix( tr( " ms" ) );
 
+        parametersEdit_ = new QPlainTextEdit( this );
+        parametersEdit_->setObjectName( QStringLiteral( "responseActionStepParametersEdit" ) );
+        parametersEdit_->setAccessibleName( tr( "Response capture parameter bindings" ) );
+        parametersEdit_->setPlaceholderText( tr( R"({"mode":"${status}","interfaces":[1,4]})" ) );
+        parametersEdit_->setToolTip(
+            tr( "JSON object mapped to the linked action's named parameters. String values may "
+                "reference regex captures with ${name} or ${1}." ) );
+        parametersEdit_->setTabChangesFocus( true );
+        parametersEdit_->setMinimumHeight( 90 );
+        parametersEdit_->setPlainText( QStringLiteral( "{}" ) );
+
+        bindingTable_ = new QTableWidget( this );
+        bindingTable_->setObjectName( QStringLiteral( "responseParameterBindingsTable" ) );
+        bindingTable_->setColumnCount( 3 );
+        bindingTable_->setHorizontalHeaderLabels( { tr( "Parameter" ), tr( "Source" ), tr( "Value" ) } );
+        bindingTable_->horizontalHeader()->setSectionResizeMode( 0, QHeaderView::ResizeToContents );
+        bindingTable_->horizontalHeader()->setSectionResizeMode( 1, QHeaderView::ResizeToContents );
+        bindingTable_->horizontalHeader()->setSectionResizeMode( 2, QHeaderView::Stretch );
+        bindingTable_->setMinimumHeight( 130 );
+        applyParametersJsonButton_ = new QPushButton( tr( "Apply JSON" ), this );
+
+        choiceParametersPanel_ = new QWidget( this );
+        choiceParametersPanel_->setObjectName( QStringLiteral( "responseActionChoiceParameters" ) );
+        choiceParametersLayout_ = new QFormLayout( choiceParametersPanel_ );
+        choiceParametersLayout_->setContentsMargins( 0, 0, 0, 0 );
+
         auto* formLayout = new QFormLayout;
         formLayout->addRow( tr( "Filter" ), filterEdit_ );
         formLayout->addRow( tr( "Action" ), actionCombo_ );
         formLayout->addRow( tr( "Delay" ), delaySpin_ );
+        formLayout->addRow( tr( "Parameter bindings" ), bindingTable_ );
+        formLayout->addRow( tr( "Choice parameters" ), choiceParametersPanel_ );
+
+        auto* advancedToggle = new QToolButton( this );
+        advancedToggle->setText( tr( "Advanced parameter JSON" ) );
+        advancedToggle->setCheckable( true );
+        advancedToggle->setToolButtonStyle( Qt::ToolButtonTextBesideIcon );
+        auto* advancedPanel = new QWidget( this );
+        auto* advancedLayout = new QVBoxLayout( advancedPanel );
+        advancedLayout->setContentsMargins( 0, 0, 0, 0 );
+        auto* advancedHint = new QLabel(
+            tr( "Compatibility fallback. Structured bindings use source/value objects; legacy scalar values remain supported." ),
+            advancedPanel );
+        advancedHint->setWordWrap( true );
+        advancedLayout->addWidget( advancedHint );
+        advancedLayout->addWidget( parametersEdit_ );
+        advancedLayout->addWidget( applyParametersJsonButton_, 0, Qt::AlignRight );
+        advancedPanel->setVisible( false );
+        formLayout->addRow( QString(), advancedToggle );
+        formLayout->addRow( QString(), advancedPanel );
 
         buttons_ = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this );
         connect( filterEdit_, &QLineEdit::textChanged, this, [this]() {
             reloadActionCombo( currentActionId() );
         } );
         connect( actionCombo_, qOverload<int>( &QComboBox::currentIndexChanged ), this, [this]( int ) {
+            LOG_DEBUG << "Response action selection changed to action_id=" << currentActionId();
+            updateState();
+        } );
+        connect( advancedToggle, &QToolButton::toggled, this,
+                 [ this, advancedPanel ]( const bool checked ) {
+                     if ( checked ) {
+                         const auto current = step();
+                         parametersEdit_->setPlainText( QString::fromUtf8(
+                             QJsonDocument::fromVariant( current.parameters )
+                                 .toJson( QJsonDocument::Indented ) ) );
+                         LOG_DEBUG << "Synchronized response binding table to advanced JSON";
+                     }
+                     bindingTable_->setEnabled( !checked );
+                     choiceParametersPanel_->setEnabled( !checked );
+                     advancedPanel->setVisible( checked );
+                 } );
+        connect( applyParametersJsonButton_, &QPushButton::clicked, this, [ this ] {
+            QJsonParseError parseError;
+            const auto document
+                = QJsonDocument::fromJson( parametersEdit_->toPlainText().toUtf8(), &parseError );
+            if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+                QMessageBox::warning( this, tr( "Linked Action Step" ),
+                                      tr( "Parameter bindings must be a valid JSON object: %1" )
+                                          .arg( parseError.errorString() ) );
+                return;
+            }
             updateState();
         } );
         connect( buttons_, &QDialogButtonBox::accepted, this, &QDialog::accept );
@@ -193,24 +320,116 @@ class ResponseActionStepDialog : public QDialog {
         layout->addWidget( buttons_ );
 
         reloadActionCombo();
+        setSizeGripEnabled( true );
+        setMinimumSize( 720, 620 );
+        resize( 900, 760 );
     }
 
     void setStep( const ResponseActionStep& step )
     {
         filterEdit_->clear();
+        parametersEdit_->setPlainText( QString::fromUtf8(
+            QJsonDocument::fromVariant( step.parameters ).toJson( QJsonDocument::Indented ) ) );
+        displayedActionId_ = step.actionId;
         reloadActionCombo( step.actionId );
         delaySpin_->setValue( step.delayMs );
     }
 
     ResponseActionStep step() const
     {
-        return { actionCombo_->currentData().toInt(), delaySpin_->value() };
+        ResponseActionStep result{ actionCombo_->currentData().toInt(), delaySpin_->value() };
+        result.parameters = QJsonDocument::fromJson( parametersEdit_->toPlainText().toUtf8() )
+                                .object()
+                                .toVariantMap();
+        for ( const auto& row : bindingRows_ ) {
+            const auto field = row.field;
+            const auto source = responseParameterBindingSourceFromString(
+                row.source->currentData().toString() );
+            QVariant value = row.value->text();
+            if ( source == ResponseParameterBindingSource::Literal ) {
+                bool conversionOk = true;
+                value = responseLiteralValue( row.value->text(), field, &conversionOk );
+                if ( !conversionOk ) {
+                    value = row.value->text();
+                }
+                for ( const auto& editor : choiceEditors_ ) {
+                    if ( editor.name == field.name ) {
+                        value = editor.value();
+                        break;
+                    }
+                }
+                if ( !value.isValid() && !field.required ) {
+                    LOG_DEBUG << "Omitting optional response choice parameter "
+                              << field.name.toStdString();
+                    continue;
+                }
+            }
+            result.parameters.insert( field.name,
+                                      responseParameterBindingToVariant( { source, value } ) );
+        }
+        return result;
+    }
+
+protected:
+    void accept() override
+    {
+        QJsonParseError parseError;
+        const auto document
+            = QJsonDocument::fromJson( parametersEdit_->toPlainText().toUtf8(), &parseError );
+        if ( parseError.error != QJsonParseError::NoError || !document.isObject() ) {
+            QMessageBox::warning( this, tr( "Linked Action Step" ),
+                                  tr( "Parameter bindings must be a valid JSON object: %1" )
+                                      .arg( parseError.errorString() ) );
+            return;
+        }
+        for ( const auto& row : bindingRows_ ) {
+            if ( responseParameterBindingSourceFromString( row.source->currentData().toString() )
+                     != ResponseParameterBindingSource::Literal
+                 || row.field.type == ActionParameterType::Choice
+                 || row.field.type == ActionParameterType::MultiChoice ) {
+                continue;
+            }
+            bool conversionOk = true;
+            responseLiteralValue( row.value->text(), row.field, &conversionOk );
+            if ( !conversionOk ) {
+                QMessageBox::warning(
+                    this, tr( "Linked Action Step" ),
+                    tr( "Literal value for parameter '%1' is invalid for type %2." )
+                        .arg( row.field.name, actionParameterTypeToString( row.field.type ) ) );
+                return;
+            }
+        }
+        for ( const auto& row : bindingRows_ ) {
+            if ( responseParameterBindingSourceFromString( row.source->currentData().toString() )
+                     != ResponseParameterBindingSource::Literal
+                 || !row.field.required
+                 || ( row.field.type != ActionParameterType::Choice
+                      && row.field.type != ActionParameterType::MultiChoice ) ) {
+                continue;
+            }
+            for ( const auto& editor : choiceEditors_ ) {
+                if ( editor.name != row.field.name ) {
+                    continue;
+                }
+                const auto selected = editor.value();
+                if ( !selected.isValid()
+                     || ( row.field.type == ActionParameterType::MultiChoice
+                          && selected.toList().isEmpty() ) ) {
+                    QMessageBox::warning( this, tr( "Linked Action Step" ),
+                                          tr( "Required choice parameter '%1' must be selected." )
+                                              .arg( row.field.name ) );
+                    return;
+                }
+            }
+        }
+        QDialog::accept();
     }
 
   private:
     void reloadActionCombo( int preferredActionId = -1 )
     {
         const auto filter = filterEdit_->text().trimmed();
+        reloadingActionCombo_ = true;
         actionCombo_->clear();
 
         for ( const auto& action : actions_ ) {
@@ -226,6 +445,7 @@ class ResponseActionStepDialog : public QDialog {
 
         const auto index = preferredActionId >= 0 ? actionCombo_->findData( preferredActionId ) : 0;
         actionCombo_->setCurrentIndex( index >= 0 ? index : ( actionCombo_->count() > 0 ? 0 : -1 ) );
+        reloadingActionCombo_ = false;
         updateState();
     }
 
@@ -238,16 +458,262 @@ class ResponseActionStepDialog : public QDialog {
     {
         const bool hasActions = actionCombo_->count() > 0 && currentActionId() >= 0;
         actionCombo_->setEnabled( hasActions );
+        rebuildChoiceEditors();
+        rebuildBindingEditors();
+        displayedActionId_ = currentActionId();
         if ( auto* okButton = buttons_->button( QDialogButtonBox::Ok ) ) {
             okButton->setEnabled( hasActions );
         }
+    }
+
+    struct BindingRow {
+        ActionParameterDefinition field;
+        QComboBox* source = nullptr;
+        QLineEdit* value = nullptr;
+    };
+
+    void rebuildBindingEditors()
+    {
+        bindingRows_.clear();
+        bindingTable_->setRowCount( 0 );
+        const auto* action = currentAction();
+        if ( !action ) {
+            return;
+        }
+        const auto raw = QJsonDocument::fromJson( parametersEdit_->toPlainText().toUtf8() )
+                             .object()
+                             .toVariantMap();
+        for ( const auto& field : action->parameters.fields ) {
+            const auto row = bindingTable_->rowCount();
+            bindingTable_->insertRow( row );
+            bindingTable_->setItem( row, 0,
+                                    new QTableWidgetItem( field.label.isEmpty() ? field.name
+                                                                                : field.label ) );
+            auto* source = new QComboBox( bindingTable_ );
+            source->addItem( tr( "Literal" ), responseParameterBindingSourceToString(
+                                                   ResponseParameterBindingSource::Literal ) );
+            source->addItem( tr( "Capture" ), responseParameterBindingSourceToString(
+                                                   ResponseParameterBindingSource::Capture ) );
+            source->addItem( tr( "Expression" ), responseParameterBindingSourceToString(
+                                                   ResponseParameterBindingSource::Expression ) );
+            auto* value = new QLineEdit( bindingTable_ );
+            value->setPlaceholderText( field.type == ActionParameterType::Choice
+                                           || field.type == ActionParameterType::MultiChoice
+                                       ? tr( "Use choice controls below for literal values" )
+                                       : tr( "Value, capture name, or expression" ) );
+            const auto binding = raw.contains( field.name )
+                                     ? responseParameterBindingFromVariant( raw.value( field.name ) )
+                                     : ResponseParameterBinding{ ResponseParameterBindingSource::Literal,
+                                                                 field.defaultValue };
+            auto bindingSource = binding.source;
+            if ( bindingSource == ResponseParameterBindingSource::Legacy ) {
+                const auto text = binding.value.toString();
+                bindingSource = text.startsWith( QLatin1String( "${" ) )
+                                    ? ResponseParameterBindingSource::Capture
+                                    : ResponseParameterBindingSource::Literal;
+            }
+            source->setCurrentIndex( source->findData(
+                responseParameterBindingSourceToString( bindingSource ) ) );
+            auto textValue = binding.value.toString();
+            if ( bindingSource == ResponseParameterBindingSource::Capture
+                 && textValue.startsWith( QLatin1String( "${" ) )
+                 && textValue.endsWith( QLatin1Char( '}' ) ) ) {
+                textValue = textValue.mid( 2, textValue.size() - 3 );
+            }
+            value->setText( textValue );
+            bindingTable_->setCellWidget( row, 1, source );
+            bindingTable_->setCellWidget( row, 2, value );
+            bindingRows_.push_back( { field, source, value } );
+        }
+    }
+
+    struct ChoiceEditor {
+        QString name;
+        ActionParameterType type = ActionParameterType::Choice;
+        ActionMultiValueMode multiValueMode = ActionMultiValueMode::CommaSeparated;
+        QComboBox* combo = nullptr;
+        QButtonGroup* buttonGroup = nullptr;
+        QVector<QAbstractButton*> buttons;
+
+        QVariant value() const
+        {
+            if ( combo ) {
+                return combo->currentData();
+            }
+            if ( buttonGroup && type == ActionParameterType::Choice ) {
+                const auto* button = buttonGroup->checkedButton();
+                return button ? button->property( "choiceValue" ) : QVariant();
+            }
+
+            QVariantList values;
+            for ( auto* button : buttons ) {
+                if ( button->isChecked() ) {
+                    values.push_back( button->property( "choiceValue" ) );
+                }
+            }
+            return values;
+        }
+    };
+
+    const ActionDefinition* currentAction() const
+    {
+        const auto actionId = currentActionId();
+        for ( const auto& action : actions_ ) {
+            if ( action.id == actionId ) {
+                return &action;
+            }
+        }
+        return nullptr;
+    }
+
+    static bool choiceValueMatches( const QVariant& choice, const QVariant& selected )
+    {
+        if ( choice == selected ) {
+            return true;
+        }
+        return choice.toString().trimmed() == selected.toString().trimmed();
+    }
+
+    static bool selectedContains( const QVariant& selected, const QVariant& choice )
+    {
+        if ( selected.typeId() == QMetaType::QVariantList
+             || selected.typeId() == QMetaType::QStringList ) {
+            const auto values = selected.toList();
+            return std::any_of( values.cbegin(), values.cend(),
+                                [&choice]( const QVariant& value ) {
+                                    return choiceValueMatches( value, choice );
+                                } );
+        }
+        bool ok = false;
+        const auto mask = selected.toLongLong( &ok );
+        if ( ok && choice.canConvert<qlonglong>() ) {
+            const auto bit = choice.toLongLong( &ok );
+            return ok && bit != 0 && ( mask & bit ) == bit;
+        }
+        return choiceValueMatches( selected, choice );
+    }
+
+    void clearChoiceEditors()
+    {
+        choiceEditors_.clear();
+        while ( choiceParametersLayout_->count() > 0 ) {
+            auto* item = choiceParametersLayout_->takeAt( 0 );
+            if ( item->widget() ) {
+                delete item->widget();
+            }
+            delete item;
+        }
+    }
+
+    void rebuildChoiceEditors()
+    {
+        clearChoiceEditors();
+        const auto* action = currentAction();
+        if ( !action ) {
+            choiceParametersPanel_->setVisible( false );
+            return;
+        }
+
+        const auto parameters = QJsonDocument::fromJson( parametersEdit_->toPlainText().toUtf8() )
+                                     .object()
+                                     .toVariantMap();
+        for ( const auto& field : action->parameters.fields ) {
+            if ( ( field.type != ActionParameterType::Choice
+                   && field.type != ActionParameterType::MultiChoice )
+                 || field.choices.isEmpty() ) {
+                continue;
+            }
+
+            ChoiceEditor editor;
+            editor.name = field.name;
+            editor.type = field.type;
+            editor.multiValueMode = field.multiValueMode;
+            auto selected = parameters.value( field.name );
+            if ( selected.isValid() ) {
+                const auto binding = responseParameterBindingFromVariant( selected );
+                if ( binding.source == ResponseParameterBindingSource::Capture
+                     || binding.source == ResponseParameterBindingSource::Expression ) {
+                    selected = {};
+                }
+                else {
+                    selected = binding.value;
+                }
+            }
+            if ( !selected.isValid() ) {
+                selected = field.defaultValue;
+            }
+            const bool isRadio = field.type == ActionParameterType::Choice
+                                 && field.presentation == ActionParameterPresentation::RadioButtons;
+            if ( field.type == ActionParameterType::Choice && !isRadio ) {
+                editor.combo = new QComboBox( choiceParametersPanel_ );
+                editor.combo->setObjectName( QStringLiteral( "responseActionParameter_%1" ).arg( field.name ) );
+                editor.combo->setAccessibleName( field.label.isEmpty() ? field.name : field.label );
+                if ( !field.required ) {
+                    editor.combo->addItem( tr( "(use default / omit)" ), QVariant() );
+                }
+                for ( const auto& choice : field.choices ) {
+                    editor.combo->addItem( choice.label, choice.value );
+                }
+                int index = field.required ? -1 : 0;
+                if ( selected.isValid() && !selected.toString().contains( QLatin1String( "${" ) ) ) {
+                    for ( int choiceIndex = 0; choiceIndex < field.choices.size(); ++choiceIndex ) {
+                        if ( choiceValueMatches( field.choices.at( choiceIndex ).value, selected ) ) {
+                            index = choiceIndex + ( field.required ? 0 : 1 );
+                            break;
+                        }
+                    }
+                }
+                editor.combo->setCurrentIndex( index >= 0 && index < editor.combo->count() ? index : -1 );
+                choiceParametersLayout_->addRow( field.label.isEmpty() ? field.name : field.label,
+                                                  editor.combo );
+            }
+            else {
+                auto* container = new QWidget( choiceParametersPanel_ );
+                auto* layout = new QVBoxLayout( container );
+                layout->setContentsMargins( 0, 0, 0, 0 );
+                editor.buttonGroup = new QButtonGroup( container );
+                editor.buttonGroup->setExclusive( field.type == ActionParameterType::Choice );
+                for ( const auto& choice : field.choices ) {
+                    QAbstractButton* button = nullptr;
+                    if ( field.type == ActionParameterType::Choice && isRadio ) {
+                        button = new QRadioButton( choice.label, container );
+                    }
+                    else {
+                        button = new QCheckBox( choice.label, container );
+                    }
+                    button->setProperty( "choiceValue", choice.value );
+                    button->setObjectName( QStringLiteral( "responseActionParameter_%1_%2" )
+                                               .arg( field.name, choice.label ) );
+                    editor.buttonGroup->addButton( button );
+                    editor.buttons.push_back( button );
+                    layout->addWidget( button );
+                    if ( selected.isValid() && !selected.toString().contains( QLatin1String( "${" ) )
+                         && selectedContains( selected, choice.value ) ) {
+                        button->setChecked( true );
+                    }
+                }
+                choiceParametersLayout_->addRow( field.label.isEmpty() ? field.name : field.label,
+                                                  container );
+            }
+            choiceEditors_.push_back( std::move( editor ) );
+        }
+        choiceParametersPanel_->setVisible( !choiceEditors_.isEmpty() );
     }
 
     QVector<ActionDefinition> actions_;
     QLineEdit* filterEdit_ = nullptr;
     QComboBox* actionCombo_ = nullptr;
     QSpinBox* delaySpin_ = nullptr;
+    QPlainTextEdit* parametersEdit_ = nullptr;
+    QTableWidget* bindingTable_ = nullptr;
+    QPushButton* applyParametersJsonButton_ = nullptr;
+    QWidget* choiceParametersPanel_ = nullptr;
+    QFormLayout* choiceParametersLayout_ = nullptr;
     QDialogButtonBox* buttons_ = nullptr;
+    QVector<ChoiceEditor> choiceEditors_;
+    QVector<BindingRow> bindingRows_;
+    int displayedActionId_ = -1;
+    bool reloadingActionCombo_ = false;
 };
 } // namespace
 

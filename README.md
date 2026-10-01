@@ -230,7 +230,7 @@ Before running build-tree executables on Windows, deploy the Qt runtime DLLs
 next to the executable:
 
 ```powershell
-$env:QTDIR = 'C:\qt6.10.1'
+$env:QTDIR = 'C:\Essence_SC\qt6.10.1'
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_tests.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_itests.exe"

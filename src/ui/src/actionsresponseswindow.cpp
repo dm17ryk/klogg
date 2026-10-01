@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPersistentModelIndex>
+#include <QGroupBox>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QScreen>
@@ -19,13 +20,17 @@
 #include <QTableView>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
+#include <QLabel>
+#include <QList>
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <functional>
 
 #include "actioneditdialog.h"
+#include "actionparametersdialog.h"
 #include "actionstablemodel.h"
 #include "actionsmanager.h"
+#include "log.h"
 #include "previewdecodeutils.h"
 #include "responseeditdialog.h"
 #include "responsestablemodel.h"
@@ -48,7 +53,7 @@ class ActionsFilterProxyModel : public QSortFilterProxyModel {
             return true;
         }
         const auto nameIndex = sourceModel()->index( sourceRow, 2, sourceParent );
-        const auto seqIndex = sourceModel()->index( sourceRow, 3, sourceParent );
+        const auto seqIndex = sourceModel()->index( sourceRow, 4, sourceParent );
         const auto name = sourceModel()->data( nameIndex, Qt::DisplayRole ).toString();
         const auto sequence = sourceModel()->data( seqIndex, Qt::DisplayRole ).toString();
         return name.contains( filterText_, Qt::CaseInsensitive )
@@ -351,7 +356,7 @@ class ActionSendDelegate : public QStyledItemDelegate {
 ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     : QWidget( parent )
 {
-    setObjectName( QStringLiteral( "actionsResponsesWindow" ) );
+    setObjectName( QStringLiteral( "actionsWindow" ) );
     actionsModel_ = new ActionsTableModel( this );
     responsesModel_ = new ResponsesTableModel( this );
 
@@ -391,15 +396,17 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsTable_->setColumnWidth( 1, actionsTable_->columnWidth( 1 ) + 5 );
     actionsTable_->setColumnWidth( 0, qMin( actionsTable_->columnWidth( 0 ), 70 ) );
     capColumnWidth( actionsTable_, 2, 350 );
-    capColumnWidth( actionsTable_, 3, 600 );
+    capColumnWidth( actionsTable_, 3, 320 );
+    capColumnWidth( actionsTable_, 4, 600 );
 
     auto* sendDelegate = new ActionSendDelegate(
-        [ this, actionsProxy ]( const QModelIndex& proxyIndex ) {
-            const auto sourceIndex = actionsProxy->mapToSource( proxyIndex );
-            const auto actionId = sourceIndex.data( ActionsTableModel::ActionIdRole ).toInt();
-            if ( actionId >= 0 ) {
-                Q_EMIT sendActionRequested( actionId );
+        [ this ]( const QModelIndex& proxyIndex ) {
+            if ( !proxyIndex.isValid() ) {
+                return;
             }
+            actionsTable_->selectRow( proxyIndex.row() );
+            updateActionParametersPanel();
+            sendSelectedAction();
         },
         actionsTable_ );
     actionsTable_->setItemDelegateForColumn( 1, sendDelegate );
@@ -421,16 +428,16 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     capColumnWidth( responsesTable_, 2, 350 );
     capColumnWidth( responsesTable_, 3, 600 );
 
-    auto* actionsPanel = new QWidget( this );
-    auto* actionsLayout = new QVBoxLayout( actionsPanel );
+    actionsPanel_ = new QWidget( this );
+    auto* actionsLayout = new QVBoxLayout( actionsPanel_ );
     actionsLayout->setContentsMargins( 0, 0, 0, 0 );
     auto* actionsButtonsLayout = new QHBoxLayout;
-    auto* addActionButton = new QPushButton( tr( "Add" ), actionsPanel );
-    editActionButton_ = new QPushButton( tr( "Edit" ), actionsPanel );
-    duplicateActionButton_ = new QPushButton( tr( "Duplicate" ), actionsPanel );
-    deleteActionButton_ = new QPushButton( tr( "Delete" ), actionsPanel );
-    moveActionUpButton_ = new QPushButton( tr( "Move Up" ), actionsPanel );
-    moveActionDownButton_ = new QPushButton( tr( "Move Down" ), actionsPanel );
+    auto* addActionButton = new QPushButton( tr( "Add" ), actionsPanel_ );
+    editActionButton_ = new QPushButton( tr( "Edit" ), actionsPanel_ );
+    duplicateActionButton_ = new QPushButton( tr( "Duplicate" ), actionsPanel_ );
+    deleteActionButton_ = new QPushButton( tr( "Delete" ), actionsPanel_ );
+    moveActionUpButton_ = new QPushButton( tr( "Move Up" ), actionsPanel_ );
+    moveActionDownButton_ = new QPushButton( tr( "Move Down" ), actionsPanel_ );
     actionsButtonsLayout->addWidget( addActionButton );
     actionsButtonsLayout->addWidget( editActionButton_ );
     actionsButtonsLayout->addWidget( duplicateActionButton_ );
@@ -442,16 +449,35 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsLayout->addLayout( actionsButtonsLayout );
     actionsLayout->addWidget( actionsTable_ );
 
-    auto* responsesPanel = new QWidget( this );
-    auto* responsesLayout = new QVBoxLayout( responsesPanel );
+    auto* parameterPanel = new QGroupBox( tr( "Selected action parameters" ), actionsPanel_ );
+    parameterPanel->setObjectName( QStringLiteral( "selectedActionParametersPanel" ) );
+    auto* parameterLayout = new QVBoxLayout( parameterPanel );
+    parameterLayout->setContentsMargins( 8, 6, 8, 6 );
+    actionParametersHint_ = new QLabel(
+        tr( "Select an action with parameters to expand its controls here. "
+            "The Send button uses the values currently shown." ),
+        parameterPanel );
+    actionParametersHint_->setWordWrap( true );
+    actionParametersHint_->setObjectName( QStringLiteral( "selectedActionParametersHint" ) );
+    parameterLayout->addWidget( actionParametersHint_ );
+    sendSelectedActionButton_ = new QPushButton( tr( "Send selected action" ), parameterPanel );
+    sendSelectedActionButton_->setObjectName( QStringLiteral( "sendSelectedActionButton" ) );
+    sendSelectedActionButton_->setVisible( false );
+    parameterLayout->addWidget( sendSelectedActionButton_, 0, Qt::AlignRight );
+    actionParametersPanel_ = parameterPanel;
+    actionParametersPanel_->setVisible( false );
+    actionsLayout->addWidget( actionParametersPanel_ );
+
+    responsesPanel_ = new QWidget( this );
+    auto* responsesLayout = new QVBoxLayout( responsesPanel_ );
     responsesLayout->setContentsMargins( 0, 0, 0, 0 );
     auto* responsesButtonsLayout = new QHBoxLayout;
-    auto* addResponseButton = new QPushButton( tr( "Add" ), responsesPanel );
-    editResponseButton_ = new QPushButton( tr( "Edit" ), responsesPanel );
-    duplicateResponseButton_ = new QPushButton( tr( "Duplicate" ), responsesPanel );
-    deleteResponseButton_ = new QPushButton( tr( "Delete" ), responsesPanel );
-    moveResponseUpButton_ = new QPushButton( tr( "Move Up" ), responsesPanel );
-    moveResponseDownButton_ = new QPushButton( tr( "Move Down" ), responsesPanel );
+    auto* addResponseButton = new QPushButton( tr( "Add" ), responsesPanel_ );
+    editResponseButton_ = new QPushButton( tr( "Edit" ), responsesPanel_ );
+    duplicateResponseButton_ = new QPushButton( tr( "Duplicate" ), responsesPanel_ );
+    deleteResponseButton_ = new QPushButton( tr( "Delete" ), responsesPanel_ );
+    moveResponseUpButton_ = new QPushButton( tr( "Move Up" ), responsesPanel_ );
+    moveResponseDownButton_ = new QPushButton( tr( "Move Down" ), responsesPanel_ );
     responsesButtonsLayout->addWidget( addResponseButton );
     responsesButtonsLayout->addWidget( editResponseButton_ );
     responsesButtonsLayout->addWidget( duplicateResponseButton_ );
@@ -462,20 +488,20 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     responsesLayout->addWidget( responsesFilter_ );
     responsesLayout->addLayout( responsesButtonsLayout );
     responsesLayout->addWidget( responsesTable_ );
-    autoResponsesCheck_ = new QCheckBox( tr( "Auto response enabled" ), this );
+    autoResponsesCheck_ = new QCheckBox( tr( "Auto response enabled" ), responsesPanel_ );
     autoResponsesCheck_->setObjectName( QStringLiteral( "autoResponsesCheckBox" ) );
     autoResponsesCheck_->setChecked( ActionsManager::instance().autoResponsesEnabled() );
     responsesLayout->addWidget( autoResponsesCheck_ );
 
-    auto* splitter = new QSplitter( Qt::Vertical, this );
-    splitter->setObjectName( QStringLiteral( "actionsResponsesSplitter" ) );
-    splitter->addWidget( actionsPanel );
-    splitter->addWidget( responsesPanel );
-    splitter->setStretchFactor( 0, 1 );
-    splitter->setStretchFactor( 1, 1 );
+    splitter_ = new QSplitter( Qt::Vertical, this );
+    splitter_->setObjectName( QStringLiteral( "actionsResponsesSplitter" ) );
+    splitter_->addWidget( actionsPanel_ );
+    splitter_->addWidget( responsesPanel_ );
+    splitter_->setStretchFactor( 0, 1 );
+    splitter_->setStretchFactor( 1, 1 );
 
     auto* layout = new QVBoxLayout( this );
-    layout->addWidget( splitter );
+    layout->addWidget( splitter_ );
     setLayout( layout );
 
     refreshActions();
@@ -517,8 +543,13 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
              } );
     connect( responsesTable_, &QTableView::doubleClicked, this,
              [ this ]( const QModelIndex& ) { editSelectedResponse(); } );
+    connect( sendSelectedActionButton_, &QPushButton::clicked, this,
+             &ActionsResponsesWindow::sendSelectedAction );
     connect( actionsTable_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
-             [ this ] { updateActionButtons(); } );
+             [ this ] {
+                 updateActionButtons();
+                 updateActionParametersPanel();
+             } );
     connect( responsesTable_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
              [ this ] { updateResponseButtons(); } );
     connect( &ActionsManager::instance(), &ActionsManager::autoResponsesEnabledChanged,
@@ -530,6 +561,32 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
              } );
     updateActionButtons();
     updateResponseButtons();
+    updateActionParametersPanel();
+    setResponsesOnly( false );
+}
+
+void ActionsResponsesWindow::setResponsesOnly( const bool responsesOnly )
+{
+    responsesOnly_ = responsesOnly;
+    setObjectName( responsesOnly_ ? QStringLiteral( "responsesWindow" )
+                                  : QStringLiteral( "actionsWindow" ) );
+    if ( actionsPanel_ != nullptr ) {
+        actionsPanel_->setVisible( !responsesOnly_ );
+    }
+    if ( responsesPanel_ != nullptr ) {
+        responsesPanel_->setVisible( responsesOnly_ );
+    }
+    if ( splitter_ != nullptr ) {
+        splitter_->setStretchFactor( 0, responsesOnly_ ? 0 : 1 );
+        splitter_->setStretchFactor( 1, responsesOnly_ ? 1 : 0 );
+        splitter_->setSizes( responsesOnly_ ? QList<int>{ 0, qMax( 1, height() ) }
+                                            : QList<int>{ qMax( 1, height() ), 0 } );
+    }
+    if ( responsesOnly_ ) {
+        actionParametersPanel_->setVisible( false );
+    }
+    updateWindowSize();
+    LOG_DEBUG << "Configured actions/responses window mode: responses_only=" << responsesOnly_;
 }
 
 void ActionsResponsesWindow::setSendAvailable( bool available )
@@ -537,10 +594,113 @@ void ActionsResponsesWindow::setSendAvailable( bool available )
     if ( actionsModel_ ) {
         actionsModel_->setSendAvailable( available );
     }
+    if ( sendSelectedActionButton_ ) {
+        sendSelectedActionButton_->setEnabled( available );
+    }
+}
+
+void ActionsResponsesWindow::updateActionParametersPanel()
+{
+    if ( !actionParametersPanel_ || !actionsModel_ ) {
+        return;
+    }
+
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_->actionAt( row );
+    const bool hasParameters = action != nullptr && !action->parameters.fields.isEmpty();
+
+    if ( hasParameters && actionParametersEditor_ != nullptr
+         && actionParametersActionId_ == action->id ) {
+        actionParametersPanel_->setVisible( true );
+        if ( sendSelectedActionButton_ ) {
+            sendSelectedActionButton_->setVisible( true );
+        }
+        return;
+    }
+
+    if ( actionParametersEditor_ != nullptr ) {
+        if ( auto* layout = qobject_cast<QVBoxLayout*>( actionParametersPanel_->layout() ) ) {
+            layout->removeWidget( actionParametersEditor_ );
+        }
+        actionParametersEditor_->deleteLater();
+        actionParametersEditor_ = nullptr;
+    }
+    actionParametersActionId_ = hasParameters ? action->id : -1;
+
+    if ( !hasParameters ) {
+        actionParametersPanel_->setVisible( false );
+        if ( sendSelectedActionButton_ ) {
+            sendSelectedActionButton_->setVisible( false );
+        }
+        return;
+    }
+
+    actionParametersEditor_ = new ActionParametersDialog( *action, actionParametersPanel_, true );
+    actionParametersEditor_->setObjectName( QStringLiteral( "inlineActionParametersEditor" ) );
+    if ( auto* layout = qobject_cast<QVBoxLayout*>( actionParametersPanel_->layout() ) ) {
+        layout->insertWidget( 1, actionParametersEditor_ );
+    }
+    actionParametersEditor_->show();
+    if ( actionParametersHint_ ) {
+        actionParametersHint_->setText(
+            tr( "Choose values for %1. The row Send button and the button below use these values." )
+                .arg( action->name ) );
+    }
+    if ( sendSelectedActionButton_ ) {
+        sendSelectedActionButton_->setVisible( true );
+    }
+    actionParametersPanel_->setVisible( true );
+    LOG_DEBUG << "Expanded inline action parameters for action id=" << action->id
+              << ", field_count=" << action->parameters.fields.size();
+}
+
+void ActionsResponsesWindow::sendSelectedAction()
+{
+    const auto row = selectedActionRow();
+    const auto* action = actionsModel_ ? actionsModel_->actionAt( row ) : nullptr;
+    if ( action == nullptr ) {
+        return;
+    }
+
+    if ( action->parameters.fields.isEmpty() ) {
+        Q_EMIT sendActionRequested( action->id );
+        return;
+    }
+
+    if ( actionParametersEditor_ == nullptr || actionParametersActionId_ != action->id ) {
+        updateActionParametersPanel();
+    }
+    if ( actionParametersEditor_ == nullptr ) {
+        return;
+    }
+
+    QString errorMessage;
+    if ( !actionParametersEditor_->validateCurrentValues( &errorMessage ) ) {
+        LOG_WARNING << "Inline parameter editor rejected action id=" << action->id;
+        QMessageBox::warning( this, tr( "Send action" ), errorMessage );
+        return;
+    }
+
+    const auto parameters = actionParametersEditor_->currentValues();
+    actionParametersEditor_->rememberCurrentValues();
+    LOG_DEBUG << "Sending action id=" << action->id
+              << " from inline parameter editor, parameter_count=" << parameters.size();
+    Q_EMIT sendActionWithParametersRequested( action->id, parameters );
 }
 
 void ActionsResponsesWindow::refreshActions()
 {
+    // Keep the edited action selected when ActionsManager emits actionsChanged.
+    // A model refresh resets the selection model, which otherwise makes the
+    // action appear to lose focus immediately after pressing OK.
+    int selectedActionId = -1;
+    const auto previousRow = selectedActionRow();
+    if ( actionsModel_ != nullptr && previousRow >= 0 ) {
+        if ( const auto* previousAction = actionsModel_->actionAt( previousRow ) ) {
+            selectedActionId = previousAction->id;
+        }
+    }
+
     if ( actionsModel_ ) {
         actionsModel_->refresh();
     }
@@ -549,9 +709,25 @@ void ActionsResponsesWindow::refreshActions()
         actionsTable_->setColumnWidth( 1, actionsTable_->columnWidth( 1 ) + 5 );
         actionsTable_->setColumnWidth( 0, qMin( actionsTable_->columnWidth( 0 ), 70 ) );
         capColumnWidth( actionsTable_, 2, 350 );
-        capColumnWidth( actionsTable_, 3, 600 );
+        capColumnWidth( actionsTable_, 3, 320 );
+        capColumnWidth( actionsTable_, 4, 600 );
+
+        if ( selectedActionId >= 0 && actionsProxy_ != nullptr
+             && actionsTable_->selectionModel() != nullptr ) {
+            for ( int proxyRow = 0; proxyRow < actionsProxy_->rowCount(); ++proxyRow ) {
+                const auto sourceIndex = actionsProxy_->index( proxyRow, 0 );
+                const auto sourceRow = actionsProxy_->mapToSource( sourceIndex ).row();
+                const auto* candidate = actionsModel_->actionAt( sourceRow );
+                if ( candidate != nullptr && candidate->id == selectedActionId ) {
+                    actionsTable_->selectRow( proxyRow );
+                    actionsTable_->setFocus( Qt::OtherFocusReason );
+                    break;
+                }
+            }
+        }
     }
     updateActionButtons();
+    updateActionParametersPanel();
 }
 
 void ActionsResponsesWindow::refreshResponses()
@@ -575,7 +751,7 @@ void ActionsResponsesWindow::updateWindowSize()
     }
     const int previousActionsMin = actionsTable_->minimumHeight();
     const int previousResponsesMin = responsesTable_->minimumHeight();
-    actionsTable_->setMinimumHeight( tableHeightForRows( actionsTable_, 10 ) );
+    actionsTable_->setMinimumHeight( responsesOnly_ ? 0 : tableHeightForRows( actionsTable_, 10 ) );
     responsesTable_->setMinimumHeight( tableHeightForRows( responsesTable_, 10 ) );
     if ( layout() ) {
         layout()->activate();
@@ -584,8 +760,8 @@ void ActionsResponsesWindow::updateWindowSize()
     actionsTable_->setMinimumHeight( previousActionsMin );
     responsesTable_->setMinimumHeight( previousResponsesMin );
 
-    const int widthHint = qMax( tableWidthHint( actionsTable_ ),
-                                tableWidthHint( responsesTable_ ) );
+    const int widthHint = responsesOnly_ ? tableWidthHint( responsesTable_ )
+                                        : tableWidthHint( actionsTable_ );
     const int desiredWidth = qMax(
         clampToScreenWidth( this, qMax( widthHint, 925 ) ), minimumSizeHint().width() );
     const int desiredHeight = qMax( hint.height(), minimumSizeHint().height() );

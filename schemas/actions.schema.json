@@ -16,8 +16,12 @@
         },
         "version": {
             "type": "integer",
-            "const": 1,
-            "description": "Config format version."
+            "enum": [
+                1,
+                3,
+                4
+            ],
+            "description": "Config format version. Versions 1 and 3 are read-compatible; version 4 is written by current builds."
         },
         "actions": {
             "type": "array",
@@ -128,8 +132,143 @@
                             "description": "Regex pattern (syntax validated at runtime by the app)."
                         }
                     }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "type",
+                        "value"
+                    ],
+                    "properties": {
+                        "type": {
+                            "const": "wildcard"
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": "Wildcard pattern validated at runtime by the app."
+                        }
+                    }
                 }
             ]
+        },
+        "parameterChoice": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "label",
+                "value"
+            ],
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "value": {}
+            }
+        },
+        "parameterField": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "name",
+                "type"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "type": {
+                    "enum": [
+                        "text",
+                        "integer",
+                        "decimal",
+                        "boolean",
+                        "choice",
+                        "multi_choice",
+                        "date",
+                        "time",
+                        "date_time",
+                        "datetime",
+                        "ip_address",
+                        "ip",
+                        "mac_address",
+                        "mac",
+                        "phone_number",
+                        "phone",
+                        "hex_bytes"
+                    ]
+                },
+                "presentation": {
+                    "enum": [
+                        "auto",
+                        "text",
+                        "text_box",
+                        "combo",
+                        "combobox",
+                        "combo_box",
+                        "radio",
+                        "radiobutton",
+                        "radio_buttons",
+                        "checkboxes",
+                        "check_boxes"
+                    ]
+                },
+                "multi_value_mode": {
+                    "enum": [
+                        "bitwise_or",
+                        "comma_separated",
+                        "separator",
+                        "custom_separator"
+                    ]
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "sensitive": {
+                    "type": "boolean"
+                },
+                "remember": {
+                    "type": "boolean"
+                },
+                "default": {},
+                "minimum": {
+                    "type": "number"
+                },
+                "maximum": {
+                    "type": "number"
+                },
+                "step": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                },
+                "validation_pattern": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "separator": {
+                    "type": "string"
+                },
+                "expression": {
+                    "type": "string"
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/parameterChoice"
+                    }
+                }
+            }
         },
         "actionParameters": {
             "type": "object",
@@ -140,9 +279,31 @@
                     "default": false
                 },
                 "delay": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 0
+                },
+                "repeat_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1
+                },
+                "repeat_interval": {
                     "type": "integer",
                     "minimum": 0,
                     "default": 0
+                },
+                "variable_names": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/parameterField"
+                    }
                 }
             }
         },
@@ -153,13 +314,27 @@
                 "id",
                 "enabled",
                 "hidden",
-                "name",
-                "sequence"
+                "name"
+            ],
+            "anyOf": [
+                {
+                    "required": [
+                        "sequence"
+                    ]
+                },
+                {
+                    "required": [
+                        "expression"
+                    ]
+                }
             ],
             "properties": {
                 "id": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "order": {
+                    "type": "integer"
                 },
                 "enabled": {
                     "type": "boolean",
@@ -180,8 +355,86 @@
                 "sequence": {
                     "$ref": "#/$defs/sequence"
                 },
+                "expression": {
+                    "type": "string",
+                    "minLength": 1
+                },
                 "parameters": {
                     "$ref": "#/$defs/actionParameters"
+                },
+                "checksum": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "algorithm": {
+                            "enum": [
+                                "sum8",
+                                "crc16_ccitt"
+                            ]
+                        },
+                        "placeholder": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "responseParameterBinding": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "source",
+                "value"
+            ],
+            "properties": {
+                "source": {
+                    "enum": [
+                        "literal",
+                        "capture",
+                        "expression"
+                    ],
+                    "description": "How the response value is produced at runtime."
+                },
+                "value": {
+                    "description": "Literal value, capture name/index, or action expression."
+                }
+            }
+        },
+        "responseStep": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "action_id"
+            ],
+            "properties": {
+                "action_id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "delay_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/$defs/responseParameterBinding"
+                            },
+                            {
+                                "not": {
+                                    "required": [
+                                        "source"
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "description": "Named parameter bindings. Legacy scalar/template values remain supported."
                 }
             }
         },
@@ -198,6 +451,12 @@
                 "action": {
                     "$ref": "#/$defs/sequence",
                     "description": "Inline action payload to send."
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/responseStep"
+                    }
                 },
                 "comment": {
                     "type": "string",
@@ -247,6 +506,9 @@
                 "id": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "order": {
+                    "type": "integer"
                 },
                 "enabled": {
                     "type": "boolean",

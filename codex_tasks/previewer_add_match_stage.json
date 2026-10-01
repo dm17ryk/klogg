@@ -20,14 +20,14 @@
     "workspace_dir_env": "KLOGG_WORKSPACE",
     "build_root_env": "KLOGG_BUILD_ROOT",
     "env": {
-      "QTDIR": "C:\\qt6",
+      "QTDIR": "C:\\Essence_SC\\qt6",
       "PATH": "%QTDIR%\\bin;%PATH%",
       "CMAKE_PREFIX_PATH": "%QTDIR%",
       "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
       "KLOGG_BUILD_ROOT": "build_root",
       "platform": "x64",
       "KLOGG_QT": "Qt6",
-      "KLOGG_QT_DIR": "C:\\qt6"
+      "KLOGG_QT_DIR": "C:\\Essence_SC\\qt6"
     },
     "cmake_configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
     "cmake_build_command": "cmake --build . --config RelWithDebInfo"
