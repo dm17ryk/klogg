@@ -7,6 +7,9 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
+
+#include <algorithm>
 
 #include "configuration.h"
 #include "filewatcher.h"
@@ -242,16 +245,37 @@ TEST_CASE( "File watching stays disabled until polling is explicitly enabled",
     auto& watcher = FileWatcher::getFileWatcher();
     watcher.updateConfiguration();
     QSignalSpy notifications( &watcher, &FileWatcher::fileChanged );
+    const auto hasNotificationFor = [ &notifications ]( const QString& path ) {
+        return std::any_of( notifications.cbegin(), notifications.cend(),
+                            [ &path ]( const auto& notification ) {
+                                return !notification.isEmpty()
+                                       && notification.front().toString() == path;
+                            } );
+    };
+    const auto unrelatedFile = directory.filePath( QStringLiteral( "earlier-test.log" ) );
+    // A shared watcher can still deliver another file's queued notification.
+    QTimer::singleShot( 0, &watcher, [ &watcher, unrelatedFile ]() {
+        watcher.fileChangedOnDisk( unrelatedFile );
+    } );
     watcher.addFile( fileName );
     REQUIRE( file.open( QIODevice::WriteOnly | QIODevice::Append ) );
     REQUIRE( file.write( "change\n" ) == 7 );
     REQUIRE( file.flush() );
     file.close();
-    REQUIRE_FALSE( notifications.wait( 500 ) );
-    REQUIRE( notifications.isEmpty() );
+    QTest::qWait( 500 );
+    LOG_DEBUG << "Disabled watcher regression: target=" << fileName
+              << ", observed signals=" << notifications.size();
+    REQUIRE( hasNotificationFor( unrelatedFile ) );
+    REQUIRE_FALSE( hasNotificationFor( fileName ) );
 
     config.setPollingEnabled( true );
     watcher.updateConfiguration();
-    REQUIRE( notifications.wait( 2000 ) );
-    REQUIRE( notifications.front().front().toString() == fileName );
+    QElapsedTimer deadline;
+    deadline.start();
+    while ( !hasNotificationFor( fileName ) && deadline.elapsed() < 2000 ) {
+        QTest::qWait( 10 );
+    }
+    LOG_DEBUG << "Enabled watcher regression: target=" << fileName
+              << ", observed signals=" << notifications.size();
+    REQUIRE( hasNotificationFor( fileName ) );
 }

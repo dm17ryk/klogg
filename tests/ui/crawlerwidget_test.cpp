@@ -19,6 +19,7 @@
 
 #include <catch2/catch.hpp>
 
+#include <QApplication>
 #include <QComboBox>
 #include <QJsonDocument>
 #include <QLineEdit>
@@ -290,14 +291,33 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
     void focusFilteredView()
     {
-        // setFocus only takes effect once the top-level window is active.
-        // Headless platforms do not necessarily activate a window on show().
-        crawler->activateWindow();
-        REQUIRE( QTest::qWaitForWindowActive( crawler.get(), 5000 ) );
-        crawler->filteredView_->setFocus();
+        const bool headless = QApplication::platformName() == QStringLiteral( "offscreen" );
+        if ( !headless ) {
+            crawler->activateWindow();
+            REQUIRE( QTest::qWaitForWindowActive( crawler.get(), 5000 ) );
+        }
         INFO( "Filtered-view focus setup: visible=" << crawler->filteredView_->isVisible()
-                                                    << ", active=" << crawler->isActiveWindow() );
-        REQUIRE( waitUiState( [ this ]() { return crawler->filteredView_->hasFocus(); } ) );
+                                                    << ", headless=" << headless );
+        REQUIRE( waitUiState( [ this, headless ]() {
+            if ( !crawler->isActiveWindow() ) {
+                if ( headless ) {
+                    // The offscreen platform may report QWindow activation without
+                    // activating its QWidget on macOS. Establish the widget state
+                    // directly for this test; no native application focus is needed.
+                    QT_WARNING_PUSH
+                    QT_WARNING_DISABLE_DEPRECATED
+                    QApplication::setActiveWindow( crawler.get() );
+                    QT_WARNING_POP
+                    LOG_DEBUG << "Activated offscreen crawler widget for focus test";
+                }
+                else {
+                    crawler->activateWindow();
+                    LOG_DEBUG << "Requested native crawler activation for focus test";
+                }
+            }
+            crawler->filteredView_->setFocus();
+            return crawler->filteredView_->hasFocus();
+        } ) );
     }
 
     QVariantMap filteredVisibleLineRange() const
@@ -869,10 +889,18 @@ TEST_CASE( "Filtered visible range tracks wrapped rows", "[ui][wrap]" )
     crawlerVisitor.enableTextWrap();
     crawlerVisitor.setSearchPattern( "MATCH" );
     crawlerVisitor.runSearch();
-    crawlerVisitor.focusFilteredView();
     crawlerVisitor.render();
 
     REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.getLogFilteredNbLines().get() == 4; } ) );
+    if ( QApplication::platformName() == QStringLiteral( "offscreen" ) ) {
+        // Reproduce the inactive QWidget state seen by the macOS offscreen job.
+        QT_WARNING_PUSH
+        QT_WARNING_DISABLE_DEPRECATED
+        QApplication::setActiveWindow( nullptr );
+        QT_WARNING_POP
+        REQUIRE_FALSE( crawlerVisitor.crawler->isActiveWindow() );
+    }
+    crawlerVisitor.focusFilteredView();
 
     const auto filteredVisibleRange = crawlerVisitor.filteredVisibleLineRange();
     REQUIRE( filteredVisibleRange.value( "start" ).toULongLong() == 1 );

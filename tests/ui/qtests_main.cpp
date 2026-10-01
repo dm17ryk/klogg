@@ -84,17 +84,16 @@ int main( int argc, char* argv[] )
 
     auto higthlighters = HighlighterSetCollection::getSynced();
 
-#if defined( Q_OS_WIN ) || defined( Q_OS_MAC )
+    // File-change scenarios need a working backend on every platform. Use
+    // polling consistently; disabling both modes deliberately disables watching.
     config.setPollingEnabled( true );
     config.setPollIntervalMs( 1000 );
-#else
-    config.setPollingEnabled( false );
-#endif
 
     // Native file watchers are flaky under heavy UI/integration test churn on
     // Windows CI. Keep tests on polling to avoid non-deterministic heap
     // corruption from watcher backend callbacks.
     config.setNativeFileWatchEnabled( false );
+    LOG_INFO << "Integration-test watching configuration: native=false, polling=true, interval=1000";
 
     QThreadPool::globalInstance()->reserveThread();
 
