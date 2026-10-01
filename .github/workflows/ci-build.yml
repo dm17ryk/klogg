@@ -426,7 +426,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}\openssl-3.5
-          key: OpensslCache-3-5-9
+          key: OpensslCache-3-5-9-v2
 
       - name: Download openssl
         if: ${{ steps.cache-openssl.outputs.cache-hit != 'true' }}
@@ -441,12 +441,19 @@ jobs:
             throw "OpenSSL archive checksum mismatch: $hash"
           }
           Write-Host "OpenSSL archive checksum verified; extracting"
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:GITHUB_WORKSPACE
+          Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "openssl-3.5")
 
       - name: Set openssl paths
         shell: pwsh
         run: |
-          $sslDir = Join-Path $env:GITHUB_WORKSPACE "openssl-3.5\${{ matrix.config.ssl_dir_arch }}\bin"
+          $sslRoot = Join-Path $env:GITHUB_WORKSPACE "openssl-3.5"
+          $cryptoName = "libcrypto-3${{ matrix.config.ssl_arch }}.dll"
+          $crypto = @(Get-ChildItem -LiteralPath $sslRoot -Filter $cryptoName -File -Recurse)
+          if ($crypto.Count -ne 1) {
+            Get-ChildItem -LiteralPath $sslRoot -Filter "lib*.dll" -File -Recurse | Select-Object -ExpandProperty FullName
+            throw "Expected one ${{ matrix.config.arch }} OpenSSL runtime ($cryptoName), found $($crypto.Count)"
+          }
+          $sslDir = $crypto[0].Directory.FullName
           foreach ($library in @("libcrypto-3${{ matrix.config.ssl_arch }}.dll", "libssl-3${{ matrix.config.ssl_arch }}.dll")) {
             if (-not (Test-Path -LiteralPath (Join-Path $sslDir $library))) {
               throw "OpenSSL runtime missing for ${{ matrix.config.arch }}: $library in $sslDir"
