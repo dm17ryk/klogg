@@ -1,0 +1,2 @@
+# Unified patches contain significant context whitespace and need stable line endings.
+*.patch text eol=lf -whitespace
