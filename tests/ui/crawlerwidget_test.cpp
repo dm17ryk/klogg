@@ -47,6 +47,16 @@
 static const qint64 SL_NB_LINES = 100LL;
 
 namespace {
+// Keep the deprecated Qt call outside assertion macros and retry lambdas so
+// GCC also applies this warning guard while parsing the complete function.
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+void setOffscreenActiveWindow( QWidget* window )
+{
+    QApplication::setActiveWindow( window );
+}
+QT_WARNING_POP
+
 bool generateDataFiles( QTemporaryFile& file )
 {
     char newLine[ 90 ];
@@ -304,10 +314,7 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
                     // The offscreen platform may report QWindow activation without
                     // activating its QWidget on macOS. Establish the widget state
                     // directly for this test; no native application focus is needed.
-                    QT_WARNING_PUSH
-                    QT_WARNING_DISABLE_DEPRECATED
-                    QApplication::setActiveWindow( crawler.get() );
-                    QT_WARNING_POP
+                    setOffscreenActiveWindow( crawler.get() );
                     LOG_DEBUG << "Activated offscreen crawler widget for focus test";
                 }
                 else {
@@ -894,10 +901,7 @@ TEST_CASE( "Filtered visible range tracks wrapped rows", "[ui][wrap]" )
     REQUIRE( waitUiState( [ & ]() { return crawlerVisitor.getLogFilteredNbLines().get() == 4; } ) );
     if ( QApplication::platformName() == QStringLiteral( "offscreen" ) ) {
         // Reproduce the inactive QWidget state seen by the macOS offscreen job.
-        QT_WARNING_PUSH
-        QT_WARNING_DISABLE_DEPRECATED
-        QApplication::setActiveWindow( nullptr );
-        QT_WARNING_POP
+        setOffscreenActiveWindow( nullptr );
         REQUIRE_FALSE( crawlerVisitor.crawler->isActiveWindow() );
     }
     crawlerVisitor.focusFilteredView();
