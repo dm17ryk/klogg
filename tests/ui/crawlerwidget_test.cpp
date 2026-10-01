@@ -290,8 +290,14 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
     void focusFilteredView()
     {
+        // setFocus only takes effect once the top-level window is active.
+        // Headless platforms do not necessarily activate a window on show().
+        crawler->activateWindow();
+        REQUIRE( QTest::qWaitForWindowActive( crawler.get(), 5000 ) );
         crawler->filteredView_->setFocus();
-        waitUiState( [ this ]() { return crawler->focusedViewObjectName() == "filteredView"; } );
+        INFO( "Filtered-view focus setup: visible=" << crawler->filteredView_->isVisible()
+                                                    << ", active=" << crawler->isActiveWindow() );
+        REQUIRE( waitUiState( [ this ]() { return crawler->filteredView_->hasFocus(); } ) );
     }
 
     QVariantMap filteredVisibleLineRange() const
