@@ -89,7 +89,7 @@ class MainWindow : public QMainWindow {
     // (should be done before 'Widget::show()')
     void reloadGeometry();
     // Re-load the files from the previous session
-    void reloadSession();
+    void reloadSession( int preferredFileIndex = -1 );
     bool saveProject( const QString& path, QString* errorMessage = nullptr );
     bool loadProject( const QString& path, QString* errorMessage = nullptr );
     // Loads the initial file (parameter passed or from config file)

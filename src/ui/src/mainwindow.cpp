@@ -636,15 +636,15 @@ void MainWindow::reloadGeometry()
     restoreGeometry( geometry );
 }
 
-void MainWindow::reloadSession()
+void MainWindow::reloadSession( int preferredFileIndex )
 {
     StartupProgress::advance( tr( "Restoring session" ), tr( "Restoring opened tabs" ) );
     const auto& config = Configuration::get();
     const auto followFileOnLoad = config.followFileOnLoad() && config.anyFileWatchEnabled();
 
     int current_file_index = -1;
-    const auto openedFiles
-        = session_.restore( [] { return new CrawlerWidget(); }, &current_file_index );
+    const auto openedFiles = session_.restore( [] { return new CrawlerWidget(); },
+                                               &current_file_index, preferredFileIndex );
 
     for ( const auto& open_file : openedFiles ) {
         QString file_name = open_file.fileName;

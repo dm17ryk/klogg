@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -16,6 +17,7 @@
 #include "log.h"
 #include "logger.h"
 #include "persistentinfo.h"
+#include "serialcaptureworker.h"
 
 namespace {
 QString ensureSuffix( QString path, const QString& suffix )
@@ -235,6 +237,7 @@ bool MainWindow::loadProject( const QString& path, QString* errorMessage )
     }
     SessionInfo stored;
     stored.setGlobalScriptContext( project.session.globalScriptContext() );
+    const auto projectDir = QFileInfo( path ).absoluteDir();
     for ( int i = 0; i < ids.size(); ++i ) {
         auto* window = windows.at( i );
         const auto targetId = window->session_.windowId();
@@ -244,7 +247,14 @@ bool MainWindow::loadProject( const QString& path, QString* errorMessage )
         // retained.
         for ( auto& file : files ) {
             if ( QDir::isRelativePath( file.fileName ) ) {
-                file.fileName = QFileInfo( path ).absoluteDir().absoluteFilePath( file.fileName );
+                file.fileName = projectDir.absoluteFilePath( file.fileName );
+                LOG_DEBUG << "Resolved project log path: " << file.fileName;
+            }
+            auto settings = deserializeSerialCaptureSettings( file.streamContext );
+            if ( settings && QDir::isRelativePath( settings->filePath ) ) {
+                settings->filePath = projectDir.absoluteFilePath( settings->filePath );
+                file.streamContext = serializeSerialCaptureSettings( *settings );
+                LOG_DEBUG << "Resolved project COM capture path: " << settings->filePath;
             }
         }
         stored.setOpenFiles( targetId, files );
@@ -255,11 +265,8 @@ bool MainWindow::loadProject( const QString& path, QString* errorMessage )
     for ( int i = 0; i < ids.size(); ++i ) {
         auto* window = windows.at( i );
         window->reloadGeometry();
-        window->reloadSession();
         const int current = project.activeTabs.value( ids.at( i ), -1 );
-        if ( current >= 0 && current < window->mainTabWidget_.count() ) {
-            window->mainTabWidget_.setCurrentIndex( current );
-        }
+        window->reloadSession( current );
         window->registeredExports_ = project.exports;
         window->projectPath_ = QFileInfo( path ).absoluteFilePath();
         window->updateHighlightersMenu();

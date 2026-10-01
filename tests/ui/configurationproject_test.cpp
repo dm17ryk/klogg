@@ -2,7 +2,9 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QMenu>
 #include <QTemporaryDir>
 #include <QTest>
@@ -11,6 +13,7 @@
 #include "configurationexportdialog.h"
 #include "crawlerwidget.h"
 #include "mainwindow.h"
+#include "serialcaptureworker.h"
 #include "session.h"
 #include "sessioninfo.h"
 #include "tabbedcrawlerwidget.h"
@@ -173,4 +176,104 @@ TEST_CASE( "Project loading creates and restores additional saved windows",
     REQUIRE( first.saveProject( path, &error ) );
     REQUIRE( ConfigurationExport::readProject( path, &project, &error ) );
     REQUIRE( project.session.windows().size() == 2 );
+}
+
+TEST_CASE( "Project active tab follows its saved entry when earlier files cannot be restored",
+           "[ui][configurationexport][project][projectreview]" )
+{
+    SessionRestoreGuard restore;
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession( session, "ProjectSkippedTabs", 0 ) );
+    window.show();
+    auto* tabs = window.findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabs );
+    for ( const auto* name : { "first.log", "second.log", "third.log", "fourth.log" } ) {
+        QFile file( directory.filePath( name ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        REQUIRE( file.write( "saved tab\n" ) > 0 );
+        file.close();
+        window.loadFileNonInteractive( file.fileName() );
+    }
+    REQUIRE( waitForLoaded( window ) );
+    REQUIRE( tabs->count() == 4 );
+    tabs->setCurrentIndex( 2 );
+    QString error;
+    const auto path = directory.filePath( "skipped.cilogproj" );
+    REQUIRE( window.saveProject( path, &error ) );
+    CommanderRequest request;
+    request.action = CommanderAction::CloseAll;
+    REQUIRE( window.executeCommanderRequest( request ).ok() );
+    REQUIRE( QFile::remove( directory.filePath( "first.log" ) ) );
+    int expectedIndex = 1;
+    SECTION( "One earlier file is missing" ) {}
+    SECTION( "Two earlier files are missing" )
+    {
+        REQUIRE( QFile::remove( directory.filePath( "second.log" ) ) );
+        expectedIndex = 0;
+    }
+    SECTION( "The active file is missing and selection falls back to the last restored tab" )
+    {
+        REQUIRE( QFile::remove( directory.filePath( "third.log" ) ) );
+    }
+    INFO( error.toStdString() );
+    REQUIRE( window.loadProject( path, &error ) );
+    REQUIRE( waitForLoaded( window ) );
+    REQUIRE( tabs->currentIndex() == expectedIndex );
+    const auto info = window.commanderWindowInfo().value( "tabs" ).toList();
+    const auto selectedPath
+        = info.at( tabs->currentIndex() ).toMap().value( "filePath" ).toString();
+    REQUIRE( selectedPath
+             == directory.filePath( QFileInfo::exists( directory.filePath( "third.log" ) )
+                                        ? "third.log"
+                                        : "fourth.log" ) );
+}
+
+TEST_CASE(
+    "Project COM capture paths resolve beside the project from a different working directory",
+    "[ui][configurationexport][project][projectreview]" )
+{
+    SessionRestoreGuard restore;
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    QDir parent( directory.path() );
+    REQUIRE( parent.mkdir( "project" ) );
+    REQUIRE( parent.mkdir( "other" ) );
+    struct WorkingDirectoryRestore {
+        QString previous = QDir::currentPath();
+        ~WorkingDirectoryRestore()
+        {
+            QDir::setCurrent( previous );
+        }
+    } restoreDirectory;
+    REQUIRE( QDir::setCurrent( parent.filePath( "other" ) ) );
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_PROJECT_MISSING_PORT";
+    settings.filePath = "captures/device.log";
+    SessionInfo saved;
+    saved.add( "SavedRelativeCom" );
+    saved.setOpenFiles(
+        "SavedRelativeCom",
+        { { "missing.log", 0, {}, {}, {} },
+          { settings.filePath, 0, {}, serializeSerialCaptureSettings( settings ), {} } } );
+    QString error;
+    const auto path = parent.filePath( "project/relative.cilogproj" );
+    REQUIRE( ConfigurationExport::saveProject( path, saved, { { "SavedRelativeCom", 1 } }, {},
+                                               &error ) );
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession( session, "ProjectRelativeCom", 0 ) );
+    window.show();
+    INFO( error.toStdString() );
+    REQUIRE( window.loadProject( path, &error ) );
+    REQUIRE( waitForLoaded( window ) );
+    auto* tabs = window.findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabs );
+    REQUIRE( tabs->count() == 1 );
+    REQUIRE( tabs->currentIndex() == 0 );
+    const auto info = window.commanderWindowInfo().value( "tabs" ).toList();
+    const auto capturePath = info.front().toMap().value( "filePath" ).toString();
+    REQUIRE( QFileInfo( capturePath ).absoluteDir().path()
+             == parent.filePath( "project/captures" ) );
+    REQUIRE_FALSE( QFileInfo::exists( parent.filePath( "other/captures" ) ) );
 }

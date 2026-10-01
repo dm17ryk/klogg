@@ -397,12 +397,28 @@ TEST_CASE( "Project save rejects unsupported collection sizes and removes failed
     QTemporaryDir directory;
     REQUIRE( directory.isValid() );
     PredefinedFiltersCollection::Collection filters;
-    for ( int i = 0; i < 4097; ++i ) {
-        filters.append( { QString::number( i ), QString::number( i ), "pattern", false } );
+    SECTION( "Predefined filters exceed the settings-array limit" )
+    {
+        for ( int i = 0; i < 4097; ++i ) {
+            filters.append( { QString::number( i ), QString::number( i ), "pattern", false } );
+        }
+        auto& collection = PredefinedFiltersCollection::getSynced();
+        collection.setFilters( filters );
+        collection.save();
     }
-    auto& collection = PredefinedFiltersCollection::getSynced();
-    collection.setFilters( filters );
-    collection.save();
+    SECTION( "Actions exceed the project selection limit" )
+    {
+        QVector<ActionDefinition> actions;
+        for ( int i = 0; i < 4097; ++i ) {
+            ActionDefinition action;
+            action.id = i + 1;
+            action.name = QString::number( i );
+            action.sequence.value = "hello";
+            actions.append( action );
+        }
+        REQUIRE( ActionsRepository{}.save( actions, {} ) );
+        ActionsManager::instance().loadFromRepository();
+    }
     QString error;
     const auto path = directory.filePath( "too-large.cilogproj" );
     REQUIRE_FALSE( ConfigurationExport::saveProject( path, testSession(), {}, {}, &error ) );

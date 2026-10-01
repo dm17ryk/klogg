@@ -78,8 +78,10 @@ xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\vcruntime140.dll" %CILOG
 xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\vcruntime140_1.dll" %CILOGG_WORKSPACE%\release\ /y
 
 echo "Copying ssl..."
-xcopy %SSL_DIR%\libcrypto-1_1%SSL_ARCH%.dll %CILOGG_WORKSPACE%\release\ /y
-xcopy %SSL_DIR%\libssl-1_1%SSL_ARCH%.dll %CILOGG_WORKSPACE%\release\ /y
+xcopy "%SSL_DIR%\libcrypto-3%SSL_ARCH%.dll" "%CILOGG_WORKSPACE%\release\" /y
+if errorlevel 1 exit /b 1
+xcopy "%SSL_DIR%\libssl-3%SSL_ARCH%.dll" "%CILOGG_WORKSPACE%\release\" /y
+if errorlevel 1 exit /b 1
 
 echo "Copying Qt..."
 if "%CILOGG_QT_DIR%"=="" (

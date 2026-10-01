@@ -92,7 +92,7 @@ QVector<int> allRows( int count )
     return result;
 }
 
-bool validRows( const QVector<int>& rows, int count, QString* error )
+bool validRows( const QVector<int>& rows, qsizetype count, QString* error )
 {
     QSet<int> seen;
     for ( const auto row : rows ) {
@@ -424,7 +424,13 @@ bool saveProject( const QString& path, const SessionInfo& session,
             { ConfigurationExportKind::Preferences, "preferences" } };
     for ( const auto& entry : kinds ) {
         const auto fileName = QString::fromLatin1( entry.second ) + suffix( entry.first );
-        if ( !exportSelected( entry.first, allRows( names( entry.first, &snapshot ).size() ),
+        const auto count = names( entry.first, &snapshot ).size();
+        if ( count > MaxConfigurationItems ) {
+            LOG_WARNING << "Project configuration exceeds item limit: " << entry.second
+                        << " count=" << count << " limit=" << MaxConfigurationItems;
+            return fail( QObject::tr( "Too many configuration items to save a project." ), error );
+        }
+        if ( !exportSelected( entry.first, allRows( static_cast<int>( count ) ),
                               dir.filePath( fileName ), error, nullptr, &snapshot ) ) {
             return false;
         }
