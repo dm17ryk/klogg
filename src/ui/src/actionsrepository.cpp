@@ -32,8 +32,8 @@ ActionsParseResult ActionsRepository::load() const
     return parser.parseFile( path );
 }
 
-bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
-                              const QVector<ResponseDefinition>& responses ) const
+QByteArray ActionsRepository::serialize( const QVector<ActionDefinition>& actions,
+                                         const QVector<ResponseDefinition>& responses )
 {
     QJsonArray actionsArray;
     for ( const auto& action : actions ) {
@@ -51,11 +51,20 @@ bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
     root.insert( "responses", responsesArray );
 
     const QJsonDocument doc( root );
+    return doc.toJson( QJsonDocument::Indented );
+}
+
+bool ActionsRepository::save( const QVector<ActionDefinition>& actions,
+                              const QVector<ResponseDefinition>& responses ) const
+{
     QSaveFile file( storagePath() );
     if ( !file.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
         return false;
     }
-    file.write( doc.toJson( QJsonDocument::Indented ) );
+    const auto bytes = serialize( actions, responses );
+    if ( file.write( bytes ) != bytes.size() ) {
+        return false;
+    }
     return file.commit();
 }
 

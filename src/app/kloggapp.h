@@ -1072,6 +1072,26 @@ class KloggApp : public QApplication {
     void onWindowClosed( MainWindow& window )
     {
         LOG_INFO << "Window " << &window << " closed";
+        // Closed widgets remain alive. Remove every activation entry so later file/command
+        // requests cannot select a closed window, while retaining the remaining activation order.
+        decltype( activeWindows_ ) retained;
+        size_t removed = 0;
+        while ( !activeWindows_.empty() ) {
+            auto candidate = activeWindows_.top();
+            activeWindows_.pop();
+            if ( candidate && candidate.data() != &window ) {
+                retained.push( candidate );
+            }
+            else {
+                ++removed;
+            }
+        }
+        while ( !retained.empty() ) {
+            activeWindows_.push( retained.top() );
+            retained.pop();
+        }
+        LOG_DEBUG << "Removed closed/null window activation entries: removed=" << removed
+                  << " remaining=" << activeWindows_.size();
         auto w = std::find_if( mainWindows_.begin(), mainWindows_.end(),
                                [ &window ]( const auto& p ) { return p.second == &window; } );
 

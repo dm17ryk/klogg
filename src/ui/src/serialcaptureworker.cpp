@@ -1,10 +1,10 @@
 #include "serialcaptureworker.h"
 
-#include <QIODevice>
-#include <QStringView>
 #include <QDateTime>
+#include <QIODevice>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringView>
 
 #include "configuration.h"
 #include "log.h"
@@ -147,8 +147,9 @@ bool SerialCaptureWorker::switchCaptureFile( const QString& filePath, QString* e
 
 void SerialCaptureWorker::start()
 {
+    LOG_DEBUG << "Starting serial capture for " << settings_.portName.toStdString();
     if ( stopping_ ) {
-        Q_EMIT finished();
+        LOG_DEBUG << "Serial capture start ignored: worker is already stopped";
         return;
     }
 
@@ -184,24 +185,34 @@ void SerialCaptureWorker::start()
     flushCounter_ = 0;
 
     connect( port_, &QSerialPort::readyRead, this, &SerialCaptureWorker::onReadyRead );
-    connect( port_, &QSerialPort::errorOccurred, this, &SerialCaptureWorker::onError );
 
+    // open() emits errors synchronously. Handle its result once, after Qt finishes opening.
     if ( !port_->open( QIODevice::ReadWrite ) ) {
-        stopping_ = true;
-        Q_EMIT errorOccurred( tr( "Failed to open %1: %2" ).arg( settings_.portName, port_->errorString() ) );
-        file_.close();
-        Q_EMIT finished();
+        const auto message
+            = tr( "Failed to open %1: %2" ).arg( settings_.portName, port_->errorString() );
+        LOG_WARNING << "Serial open failed for " << settings_.portName.toStdString()
+                    << ", error=" << static_cast<int>( port_->error() ) << ": "
+                    << message.toStdString();
+        Q_EMIT errorOccurred( message );
+        stop();
         return;
     }
+
+    // Defer runtime-error cleanup until Qt has returned from the failing I/O operation.
+    connect( port_, &QSerialPort::errorOccurred, this, &SerialCaptureWorker::onError,
+             Qt::QueuedConnection );
+    LOG_DEBUG << "Serial capture opened " << settings_.portName.toStdString();
 }
 
 void SerialCaptureWorker::stop()
 {
     if ( stopping_ ) {
+        LOG_DEBUG << "Serial capture stop ignored: worker is already stopped";
         return;
     }
 
     stopping_ = true;
+    LOG_DEBUG << "Stopping serial capture for " << settings_.portName.toStdString();
 
     if ( port_ && port_->isOpen() ) {
         port_->close();
@@ -213,6 +224,7 @@ void SerialCaptureWorker::stop()
     }
 
     Q_EMIT finished();
+    LOG_DEBUG << "Serial capture resources closed for " << settings_.portName.toStdString();
 }
 
 void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
@@ -352,9 +364,14 @@ void SerialCaptureWorker::onReadyRead()
 void SerialCaptureWorker::onError( QSerialPort::SerialPortError error )
 {
     if ( stopping_ || error == QSerialPort::NoError ) {
+        LOG_DEBUG << "Serial error ignored for " << settings_.portName.toStdString()
+                  << ", error=" << static_cast<int>( error ) << ", stopping=" << stopping_;
         return;
     }
 
-    Q_EMIT errorOccurred( port_ ? port_->errorString() : tr( "Serial port error." ) );
+    const auto message = port_ ? port_->errorString() : tr( "Serial port error." );
+    LOG_WARNING << "Serial I/O failed for " << settings_.portName.toStdString()
+                << ", error=" << static_cast<int>( error ) << ": " << message.toStdString();
+    Q_EMIT errorOccurred( message );
     stop();
 }

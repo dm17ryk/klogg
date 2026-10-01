@@ -1,6 +1,6 @@
 #include "streamsession.h"
-#include <algorithm>
 #include <QDateTime>
+#include <algorithm>
 
 #include <QDir>
 #include <QFileInfo>
@@ -19,11 +19,6 @@ StreamSession::StreamSession( SerialCaptureSettings settings )
     : QObject( nullptr )
     , settings_( std::move( settings ) )
 {
-    connect( &thread_, &QThread::finished, this, [ this ]() {
-        started_ = false;
-        stopping_ = false;
-        setConnectionClosed();
-    } );
 }
 
 StreamSession::~StreamSession()
@@ -39,10 +34,14 @@ void StreamSession::start()
 void StreamSession::startInternal( bool resetResponseCounters )
 {
     if ( started_ ) {
+        LOG_DEBUG << "Serial session start ignored for " << settings_.portName.toStdString()
+                  << ": previous worker has not finished";
         return;
     }
 
     setupWorker();
+    LOG_DEBUG << "Starting serial session for " << settings_.portName.toStdString()
+              << ", worker generation=" << workerGeneration_;
 
     stopping_ = false;
     started_ = true;
@@ -68,6 +67,8 @@ void StreamSession::startInternal( bool resetResponseCounters )
 void StreamSession::stop( bool waitForCompletion )
 {
     if ( !started_ ) {
+        LOG_DEBUG << "Serial session stop ignored for " << settings_.portName.toStdString()
+                  << ": no active worker";
         return;
     }
 
@@ -76,6 +77,8 @@ void StreamSession::stop( bool waitForCompletion )
     }
 
     stopping_ = true;
+    LOG_DEBUG << "Stopping serial session for " << settings_.portName.toStdString()
+              << ", wait=" << waitForCompletion << ", worker=" << ( worker_ != nullptr );
 
     if ( thread_.isRunning() ) {
         if ( worker_ ) {
@@ -100,6 +103,7 @@ void StreamSession::stop( bool waitForCompletion )
     }
     started_ = false;
     stopping_ = false;
+    worker_ = nullptr;
     setConnectionClosed();
 }
 
@@ -245,13 +249,48 @@ void StreamSession::setupWorker()
 
     worker_ = new SerialCaptureWorker( settings_ );
     worker_->moveToThread( &thread_ );
+    const auto generation = ++workerGeneration_;
 
     connect( &thread_, &QThread::started, worker_, &SerialCaptureWorker::start );
-    connect( worker_, &SerialCaptureWorker::finished, &thread_, &QThread::quit );
-    connect( worker_, &SerialCaptureWorker::finished, worker_, &QObject::deleteLater );
-    connect( worker_, &QObject::destroyed, this, [ this ] { worker_ = nullptr; } );
+    // Keep the worker alive while the GUI handles its queued error. Clear the pointer
+    // before allowing the thread to exit and delete it, so stop/send cannot use freed memory.
+    connect( worker_, &SerialCaptureWorker::finished, this, [ this, generation ] {
+        if ( generation != workerGeneration_ ) {
+            LOG_DEBUG << "Ignoring completion from an earlier serial worker";
+            return;
+        }
+        LOG_DEBUG << "Serial worker finished for " << settings_.portName.toStdString()
+                  << ", generation=" << generation;
+        worker_ = nullptr;
+        thread_.quit();
+    } );
+    connect( &thread_, &QThread::finished, worker_, &QObject::deleteLater );
+    disconnect( threadFinishedConnection_ );
+    threadFinishedConnection_ = connect( &thread_, &QThread::finished, this, [ this, generation ] {
+        if ( generation != workerGeneration_ ) {
+            return;
+        }
+        LOG_DEBUG << "Serial thread finished for " << settings_.portName.toStdString()
+                  << ", paused=" << paused_;
+        started_ = false;
+        stopping_ = false;
+        setConnectionClosed();
+    } );
     connect( worker_, &SerialCaptureWorker::errorOccurred, this,
-             [ this ]( const QString& message ) { Q_EMIT errorOccurred( message ); } );
+             [ this, generation ]( const QString& message ) {
+                 if ( generation != workerGeneration_ || !connectionOpen_ ) {
+                     LOG_DEBUG << "Ignoring serial error after connection close or restart";
+                     return;
+                 }
+                 LOG_WARNING << "Serial connection unavailable for "
+                             << settings_.portName.toStdString() << ": " << message.toStdString();
+                 paused_ = true;
+                 // Some transmit/file errors report failure without stopping the worker.
+                 // Always release the port, while preserving the session for Play to retry.
+                 stop( false );
+                 setConnectionClosed();
+                 Q_EMIT errorOccurred( message );
+             } );
     connect( worker_, &SerialCaptureWorker::dataReceived, this,
              &StreamSession::handleDataReceived );
     connect( worker_, &SerialCaptureWorker::dataTransmitted, this,
@@ -454,4 +493,3 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         }
     }
 }
-            

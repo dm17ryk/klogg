@@ -1910,6 +1910,7 @@ void MainWindow::createMenus()
     toolsMenu->addAction( predefinedFiltersDialogAction );
     toolsMenu->addAction( importPreviewsAction );
     toolsMenu->addAction( importActionsAction );
+    createConfigurationActions();
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
     toolsMenu->addAction( showActionsResponsesAction );
@@ -2301,11 +2302,15 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                    || portInfo.systemLocation().compare( settings.portName, Qt::CaseInsensitive )
                           == 0;
         } );
-    if ( !portExists ) {
+    if ( !portExists && !options.restoreMode ) {
         showWarning( tr( "COM port %1 was not found. The capture file remains open, but the COM "
                          "connection was not restored." )
                          .arg( settings.portName ) );
         return false;
+    }
+    if ( !portExists ) {
+        LOG_WARNING << "Restoring unavailable COM port " << settings.portName.toStdString()
+                    << " as a retryable capture session for " << settings.filePath.toStdString();
     }
 
     QString captureFileError;
@@ -2362,28 +2367,19 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     connect(
         session.get(), &StreamSession::errorOccurred, this,
         [ this, filePath, safeSession, settings, options ]( const QString& message ) {
-            const bool startupFailure = safeSession && !safeSession->isConnectionOpen();
             const auto currentFilePath = safeSession ? safeSession->filePath() : filePath;
             if ( options.showErrors ) {
-                const auto title = options.restoreMode && startupFailure
-                                       ? tr( "Restore COM Port" )
-                                       : tr( "COM port capture error" );
-                const auto text
-                    = options.restoreMode && startupFailure
-                          ? tr( "Failed to restore COM port %1 for %2.\n"
-                                "The capture file remains open.\n\n%3" )
-                                .arg( settings.portName, currentFilePath, message )
-                          : tr( "Capture stopped for %1:\n%2" ).arg( currentFilePath, message );
-                const auto icon = options.restoreMode && startupFailure ? QMessageBox::Information
-                                                                        : QMessageBox::Warning;
-                showComPortMessage( this, icon, title, text, options.nonBlockingErrors );
+                const auto text = tr( "COM port %1 is unavailable for %2.\n"
+                                      "The capture file remains open. Use Play to retry.\n\n%3" )
+                                      .arg( settings.portName, currentFilePath, message );
+                const auto icon = options.restoreMode ? QMessageBox::Information
+                                                     : QMessageBox::Warning;
+                showComPortMessage( this, icon, tr( "COM connection unavailable" ), text,
+                                    options.nonBlockingErrors );
             }
             else {
                 LOG_WARNING << "Capture stopped for " << currentFilePath.toStdString() << ": "
                             << message.toStdString();
-            }
-            if ( safeSession ) {
-                safeSession->closeConnection();
             }
         } );
     connect( session.get(), &StreamSession::dataObserved, this,
@@ -2669,6 +2665,14 @@ void MainWindow::openUrl()
 void MainWindow::editHighlighters()
 {
     HighlightersDialog dialog( this );
+    connect( &dialog, &HighlightersDialog::configurationsExported, this,
+             [ this ]( const QStringList& paths ) {
+                 for ( const auto& path : paths ) {
+                     registeredExports_.insert( QFileInfo( path ).absoluteFilePath(),
+                                                tr( "Export highlights" ) );
+                     LOG_DEBUG << "Registered highlight editor export: " << path;
+                 }
+             } );
     signalMux_.connect( &dialog, SIGNAL( optionsChanged() ), SLOT( applyConfiguration() ) );
 
     connect( &dialog, &HighlightersDialog::optionsChanged,
@@ -4891,8 +4895,10 @@ void MainWindow::writeSettings()
         QString scriptContext;
         const auto fileName = session_.getFilename( view );
         if ( auto* streamSession = mainTabWidget_.streamSessionForPath( fileName ) ) {
-            if ( streamSession->isConnectionOpen() ) {
+            if ( streamSession->isConnectionOpen() || streamSession->isPaused() ) {
                 streamContext = serializeSerialCaptureSettings( streamSession->captureSettings() );
+                LOG_DEBUG << "Saving COM session for " << fileName.toStdString()
+                          << ", paused=" << streamSession->isPaused();
             }
         }
         scriptContext = scriptContextForTab( i );

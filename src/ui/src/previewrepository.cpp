@@ -158,8 +158,8 @@ PreviewParseResult PreviewRepository::load() const
     return parser.parseFile( path );
 }
 
-bool PreviewRepository::save( const QVector<PreviewDefinition>& previews,
-                              const QMap<QString, PreviewFieldSpec>& blocks ) const
+QByteArray PreviewRepository::serialize( const QVector<PreviewDefinition>& previews,
+                                         const QMap<QString, PreviewFieldSpec>& blocks )
 {
     QJsonArray previewArray;
     for ( const auto& preview : previews ) {
@@ -178,11 +178,20 @@ bool PreviewRepository::save( const QVector<PreviewDefinition>& previews,
     }
 
     const QJsonDocument doc( root );
+    return doc.toJson( QJsonDocument::Indented );
+}
+
+bool PreviewRepository::save( const QVector<PreviewDefinition>& previews,
+                              const QMap<QString, PreviewFieldSpec>& blocks ) const
+{
     QSaveFile file( storagePath() );
     if ( !file.open( QIODevice::WriteOnly | QIODevice::Truncate ) ) {
         return false;
     }
-    file.write( doc.toJson( QJsonDocument::Indented ) );
+    const auto bytes = serialize( previews, blocks );
+    if ( file.write( bytes ) != bytes.size() ) {
+        return false;
+    }
     return file.commit();
 }
 

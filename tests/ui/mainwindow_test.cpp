@@ -26,7 +26,9 @@
 #include <QDir>
 #include <QFile>
 #include <QMenu>
+#include <QMessageBox>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
 #include <QVariantMap>
@@ -40,9 +42,11 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "predefinedfilters.h"
+#include "serialcaptureworker.h"
 #include "session.h"
 #include "sessioninfo.h"
 #include "startupprogress.h"
+#include "streamsession.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -739,6 +743,68 @@ SCENARIO( "Main window restores session with missing and empty files safely", "[
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 1; } ) );
     REQUIRE( tabArea->currentIndex() >= 0 );
     REQUIRE( waitUiState( [ & ] { return mainWindow->isStartupReadyForDisplay(); } ) );
+}
+
+TEST_CASE( "Restoring an unavailable COM port preserves a retryable capture tab",
+           "[ui][startup][serialfailure]" )
+{
+    QTemporaryDir captureDir;
+    REQUIRE( captureDir.isValid() );
+    QTemporaryFile file{ captureDir.filePath( "mainwindow_restore_com_XXXXXX.log" ) };
+    REQUIRE( file.open() );
+    REQUIRE( file.write( "previous capture\n" ) > 0 );
+    file.flush();
+
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = file.fileName();
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.add( "Main" );
+    SessionFilesRestoreGuard restoreGuard{ sessionInfo, "Main", sessionInfo.openFiles( "Main" ) };
+    sessionInfo.setOpenFiles( "Main", { SessionInfo::OpenFile{
+                                         file.fileName(), 0, {},
+                                         serializeSerialCaptureSettings( settings ) } } );
+    sessionInfo.save();
+
+    auto appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "Main", 0 };
+    MainWindow window( windowSession );
+    auto* tabs = window.findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabs != nullptr );
+    window.reloadSession();
+    window.show();
+    REQUIRE( waitUiState( [ & ] { return tabs->count() == 1; } ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( tabs->widget( 0 ) );
+    REQUIRE( crawler != nullptr );
+    const auto restoredPath = windowSession.getFilename( crawler );
+    REQUIRE( waitUiState( [ & ] {
+        auto* stream = tabs->streamSessionForPath( restoredPath );
+        return stream != nullptr && stream->isPaused() && stream->canResume();
+    } ) );
+    REQUIRE( tabs->count() == 1 );
+    REQUIRE( window.isStartupReadyForDisplay() );
+
+    auto* stream = tabs->streamSessionForPath( restoredPath );
+    REQUIRE_FALSE( stream->isConnectionOpen() );
+    REQUIRE( stream->captureSettings().portName == settings.portName );
+    QString error;
+    REQUIRE_FALSE( stream->resumeConnection( &error ) );
+    REQUIRE_FALSE( error.isEmpty() );
+    REQUIRE( stream->isPaused() );
+    REQUIRE( stream->canResume() );
+    QTemporaryDir projectDir;
+    REQUIRE( projectDir.isValid() );
+    REQUIRE( window.saveProject( projectDir.filePath( "paused.cilogproj" ), &error ) );
+    const auto savedFiles = SessionInfo::getSynced().openFiles( "Main" );
+    REQUIRE( savedFiles.size() == 1 );
+    const auto savedStream = deserializeSerialCaptureSettings( savedFiles.front().streamContext );
+    REQUIRE( savedStream.has_value() );
+    REQUIRE( savedStream->portName == settings.portName );
+    // Dismiss only this test window's restore notification.
+    const auto children = window.findChildren<QMessageBox*>();
+    for ( auto* message : children ) {
+        message->close();
+    }
 }
 
 SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )
