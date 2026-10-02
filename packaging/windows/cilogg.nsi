@@ -71,6 +71,7 @@ Section "CILogg" cilogg
 
     SetOutPath $INSTDIR
 File release\cilogg.exe
+File release\cilogg_grep.exe
 File release\cilogg_updater.exe
     File /nonfatal release\cilogg_crashpad_handler.exe
     File /nonfatal release\cilogg_minidump_dump.exe
@@ -80,6 +81,7 @@ File release\cilogg_updater.exe
     File NOTICE
     File README.md
     File DOCUMENTATION.md
+    File MCP.md
     File release\documentation.html
     SetOutPath $INSTDIR\python_runtime
     File /nonfatal /r release\python_runtime\*
@@ -183,6 +185,7 @@ Section "Uninstall"
     Delete "$INSTDIR\Uninstall.exe"
 
     Delete "$INSTDIR\cilogg.exe"
+    Delete "$INSTDIR\cilogg_grep.exe"
     Delete "$INSTDIR\cilogg_crashpad_handler.exe"
     Delete "$INSTDIR\cilogg_minidump_dump.exe"
     Delete "$INSTDIR\README.md"

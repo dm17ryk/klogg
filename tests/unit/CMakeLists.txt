@@ -4,6 +4,7 @@ add_executable(cilogg_tests
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
+    mcp_test.cpp
     configuration_test.cpp
     configurationexport_test.cpp
     importpreviewsdialog_test.cpp
@@ -17,7 +18,7 @@ add_executable(cilogg_tests
     tests_main.cpp
 )
 
-target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging Catch2 Qt${QT_VERSION_MAJOR}::Test)
+target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 set_target_properties(
     cilogg_tests

@@ -120,6 +120,12 @@ target_link_libraries(
          Qt${QT_VERSION_MAJOR}::SerialPort
 )
 
+add_library(klogg_mcp STATIC mcp/mcp.h mcp/protocol.cpp mcp/install.cpp mcp/runtime.cpp)
+target_include_directories(klogg_mcp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(klogg_mcp PUBLIC Qt${QT_VERSION_MAJOR}::Core project_options project_warnings
+                      tomlplusplus::tomlplusplus)
+target_compile_definitions(klogg_mcp PRIVATE CILOGG_MCP_GREP_NAME="${PRODUCT_GREP_EXECUTABLE_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
+
 add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_portable ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_grep ${MAIN_SOURCES} ${KLOGG_GREP_SOURCES})
@@ -165,8 +171,8 @@ if(KLOGG_USE_LTO)
   set_property(TARGET klogg_grep PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab)
-target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab)
+target_link_libraries(klogg PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab klogg_mcp)
+target_link_libraries(klogg_portable PUBLIC ${MAIN_LIBS} klogg_ui klogg_lab klogg_mcp)
 target_link_libraries(klogg_grep PUBLIC ${MAIN_LIBS} klogg_commander)
 
 target_compile_definitions(klogg_portable PUBLIC -DKLOGG_PORTABLE)
@@ -181,6 +187,38 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:cilogg_updater> $<TARGET_FILE_DIR:klogg_portable>
   COMMENT "Copy CILogg updater helper for portable package"
 )
+
+if((WIN32 OR APPLE) AND TARGET Qt${QT_VERSION_MAJOR}::QOffscreenIntegrationPlugin)
+  foreach(app_target klogg klogg_portable)
+    if(APPLE)
+      set(platform_plugin_dir "$<TARGET_BUNDLE_CONTENT_DIR:${app_target}>/PlugIns/platforms")
+    else()
+      set(platform_plugin_dir "$<TARGET_FILE_DIR:${app_target}>/platforms")
+    endif()
+    add_custom_command(
+      TARGET ${app_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${platform_plugin_dir}"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              $<TARGET_FILE:Qt${QT_VERSION_MAJOR}::QOffscreenIntegrationPlugin> "${platform_plugin_dir}"
+      COMMENT "Copy Qt offscreen plugin for native MCP CLI commands"
+      VERBATIM
+    )
+  endforeach()
+endif()
+
+if(APPLE)
+  foreach(app_target klogg klogg_portable)
+    add_dependencies(${app_target} klogg_grep)
+    add_custom_command(
+      TARGET ${app_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:klogg_grep> $<TARGET_FILE_DIR:${app_target}>
+      COMMENT "Copy command-line search into CILogg bundle"
+      VERBATIM
+    )
+  endforeach()
+elseif(NOT WIN32)
+  install(TARGETS klogg_grep DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 if(WIN32)
 

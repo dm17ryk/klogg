@@ -47,6 +47,7 @@
 struct CliParameters {
     struct CommanderParseResult {
         std::optional<CommanderRequest> request;
+        bool require_running = false;
         bool exit_requested = false;
         int exit_code = EXIT_FAILURE;
         QString output_message;
@@ -85,6 +86,7 @@ struct CliParameters {
 
     std::vector<QString> filenames;
     std::optional<CommanderRequest> commander_request;
+    bool commander_require_running = false;
     std::optional<ScenarioBatchRequest> scenario_batch_request;
     std::optional<LabCliRequest> lab_request;
 
@@ -147,6 +149,11 @@ private:
     {
         return QStringLiteral(
             "CILogg log viewer\n\n"
+            "Built-in MCP:\n"
+            "  cilogg mcp serve\n"
+            "  cilogg mcp install [--client codex] [--client claude-code]\n"
+            "  cilogg mcp config\n"
+            "  cilogg mcp skill [--output <skill-directory>]\n\n"
             "Scenario batch mode:\n"
             "  cilogg scenario run --suite-file <path> [--device-map-file <path>] [--report-dir "
             "<path>]\n"
@@ -365,7 +372,13 @@ private:
             "[--keep-results]\n"
             "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | "
             "--disabled)\n"
-            "  invoke_action --object-name <name>\n\n"
+            "  invoke_action --object-name <name> [--window-index <n>]\n"
+            "  dump_state [--window-index <n>] [--pretty]\n"
+            "  get_ui [--object-name <name-or-path>] [--window-index <n>] [--pretty]\n"
+            "  set_ui --object-name <name-or-path> --json-file <properties.json> "
+            "[--window-index <n>]\n"
+            "  activate_ui --object-name <name-or-path> [--text <key-sequence> | --json-file <mouse-gesture.json>] "
+            "[--window-index <n>]\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
 
@@ -387,6 +400,7 @@ private:
                     == 0 ) {
             const auto commanderResult = parseCommanderArguments( arguments );
             commander_request = commanderResult.request;
+            commander_require_running = commanderResult.require_running;
             exit_requested = commanderResult.exit_requested;
             exit_code = commanderResult.exit_code;
             exit_message = commanderResult.output_message;
@@ -1525,6 +1539,10 @@ private:
             QStringLiteral( "no-use-for-actions" ),
             QStringLiteral( "Do not use the COM capture as the actions port." ) );
 
+        const QCommandLineOption requireRunningOption(
+            QStringLiteral( "require-running" ),
+            QStringLiteral( "Require an existing GUI, including for open commands." ) );
+        parser.addOption( requireRunningOption );
         parser.addOption( actionOption );
         parser.addOption( fileOption );
         parser.addOption( urlOption );
@@ -1615,6 +1633,7 @@ private:
         }
 
         CommanderRequest request;
+        result.require_running = parser.isSet( requireRunningOption );
         request.action = *action;
         request.followFile = parser.isSet( followOption );
         request.prettyOutput = parser.isSet( prettyOption );
@@ -2030,18 +2049,47 @@ private:
             }
             break;
         case CommanderAction::InvokeAction:
+        case CommanderAction::SetUi:
+        case CommanderAction::ActivateUi:
+            if ( *action == CommanderAction::ActivateUi ) {
+                request.searchText = parser.value( textOption );
+            }
             request.objectName = parser.value( objectNameOption ).trimmed();
             if ( request.objectName.isEmpty() ) {
                 result.output_message = formatParserError(
-                    parser, QStringLiteral( "--object-name is required for invoke_action." ) );
+                    parser, QStringLiteral( "--object-name is required for %1." )
+                                .arg( commanderActionToString( *action ) ) );
                 return result;
             }
+            break;
+        case CommanderAction::GetUi:
+            request.objectName = parser.value( objectNameOption ).trimmed();
             break;
         case CommanderAction::DumpState:
         case CommanderAction::GetInfo:
             break;
         case CommanderAction::None:
             break;
+        }
+
+        if ( *action == CommanderAction::InvokeAction || *action == CommanderAction::GetUi
+             || *action == CommanderAction::SetUi || *action == CommanderAction::ActivateUi
+             || *action == CommanderAction::DumpState ) {
+            if ( hasTabId || hasTabIndex ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "Use only --window-index for this action." ) );
+                return result;
+            }
+            if ( hasWindowIndex ) {
+                bool ok = false;
+                const int index = parser.value( windowIndexOption ).toInt( &ok );
+                if ( !ok || index < 0 ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "Invalid --window-index value." ) );
+                    return result;
+                }
+                request.windowIndex = index;
+            }
         }
 
         if ( *action == CommanderAction::GetFilters ) {
@@ -2142,7 +2190,9 @@ private:
 
         if ( *action == CommanderAction::CreateAction || *action == CommanderAction::UpdateAction
              || *action == CommanderAction::CreateResponse
-             || *action == CommanderAction::UpdateResponse ) {
+             || *action == CommanderAction::UpdateResponse
+             || *action == CommanderAction::SetUi
+             || ( *action == CommanderAction::ActivateUi && parser.isSet( jsonFileOption ) ) ) {
             QString errorMessage;
             const auto payload
                 = loadJsonObjectFile( parser.value( jsonFileOption ), &errorMessage );

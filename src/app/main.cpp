@@ -79,6 +79,7 @@
 #include "startupprogress.h"
 
 #include "cli.h"
+#include "mcp/mcp.h"
 #include "kloggapp.h"
 #include "labagentrunner.h"
 #include "labbundleutils.h"
@@ -524,6 +525,9 @@ bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath
 
 int main( int argc, char* argv[] )
 {
+    if ( argc > 1 && QString::fromLocal8Bit( argv[1] ).compare( "mcp", Qt::CaseInsensitive ) == 0 ) {
+        return cilogg::mcp::runCli( argc, argv, QString::fromLatin1( kloggVersion() ) );
+    }
 #ifdef KLOGG_USE_MIMALLOC
     mi_process_init();
 #endif
@@ -770,7 +774,10 @@ int main( int argc, char* argv[] )
                                QObject::tr( "Preparing application state" ) );
 
     if ( parameters.commander_request
-         && !isCommanderOpenAction( parameters.commander_request->action ) ) {
+         && ( parameters.commander_require_running
+              || !isCommanderOpenAction( parameters.commander_request->action ) ) ) {
+        LOG_DEBUG << "Commander rejected startup: no running instance, require-running="
+                  << parameters.commander_require_running;
         writeCliMessage( QObject::tr( "No running CILogg instance." ), true );
         return EXIT_FAILURE;
     }

@@ -561,6 +561,13 @@ if(KLOGG_USE_SENTRY)
   endif()
 endif(KLOGG_USE_SENTRY)
 
+cpmaddpackage(
+  NAME tomlplusplus
+  GITHUB_REPOSITORY marzer/tomlplusplus
+  VERSION 3.4.0
+  OPTIONS "TOMLPLUSPLUS_BUILD_TESTS OFF" "TOMLPLUSPLUS_BUILD_EXAMPLES OFF"
+)
+
 set(klogg_cpm_targets
     xxhash
     Catch2

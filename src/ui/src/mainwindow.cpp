@@ -103,6 +103,7 @@
 #include <QWindow>
 
 #include "mainwindow.h"
+#include "uiautomation.h"
 
 #include "actionparametersdialog.h"
 #include "actionruntime.h"
@@ -832,6 +833,12 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderInvokeAction( request );
     case CommanderAction::DumpState:
         return commanderSuccess( {}, automationSnapshot() );
+    case CommanderAction::GetUi:
+    case CommanderAction::SetUi:
+    case CommanderAction::ActivateUi:
+        return executeUiAutomation( this, request,
+                                    { &scratchPad_, &previewWindow_, &actionsResponsesWindow_,
+                                      &responsesWindow_ } );
     case CommanderAction::CloseKlogg:
     case CommanderAction::GetActions:
     case CommanderAction::GetResponses:
@@ -3969,15 +3976,12 @@ CommanderResult MainWindow::commanderInvokeAction( const CommanderRequest& reque
                                  tr( "Action %1 is disabled." ).arg( request.objectName ) );
     }
 
-    if ( action->isCheckable() ) {
-        action->toggle();
-    }
-    else {
-        action->trigger();
-    }
-
-    QCoreApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
-    return commanderSuccess( {}, automationState() );
+    // Dialog actions may enter a modal event loop. Acknowledge the command first so
+    // the caller can inspect and operate that dialog with subsequent UI commands.
+    LOG_DEBUG << "Commander invoke_action queued: " << request.objectName.toStdString();
+    queueUiActivation( action );
+    return commanderSuccess( {}, { { QStringLiteral( "queued" ), true },
+                                  { QStringLiteral( "objectName" ), request.objectName } } );
 }
 
 CommanderResult MainWindow::closeFileByPath( const QString& filePath )
