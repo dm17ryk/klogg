@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QObject>
 #include <QByteArray>
 #include <QMap>
+#include <QObject>
 #include <QThread>
 #include <QVariantList>
 
@@ -72,6 +72,8 @@ class StreamSession : public QObject {
     SerialCaptureSettings settings_;
     QThread thread_;
     SerialCaptureWorker* worker_ = nullptr;
+    quint64 workerGeneration_ = 0;
+    QMetaObject::Connection threadFinishedConnection_;
     bool started_ = false;
     bool stopping_ = false;
     bool connectionOpen_ = false;

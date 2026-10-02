@@ -210,9 +210,10 @@ class WindowSession {
     // Open all the files listed in the stored session
     // (see ::open)
     // returns a vector of pairs (file_name, view) and the index of the
-    // current file (or -1 if none).
+    // current file (or -1 if none). The optional preferred index refers to the saved
+    // entries before skipped files are removed; defaults to the last restored file.
     OpenedFilesList restore( const std::function<ViewInterface*()>& view_factory,
-                             int* current_file_index );
+                             int* current_file_index, int preferred_file_index = -1 );
 
     // Get the geometry string from persistent storage for this session.
     void restoreGeometry( QByteArray* geometry ) const;

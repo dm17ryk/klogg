@@ -3,8 +3,9 @@ description: ""
 runs:
   using: "composite"
   steps:
-    - name: Install Ninja
-      uses: seanmiddleditch/gha-setup-ninja@master
+    - name: Check runner Ninja
+      shell: sh
+      run: ninja --version
 
     - name: Cache Qt
       id: cache-qt

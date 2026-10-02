@@ -425,20 +425,43 @@ jobs:
         id: cache-openssl
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\openssl-1.1
-          key: OpensslCache-1-1-1w
+          path: ${{ github.workspace }}\openssl-3.5
+          key: OpensslCache-3-5-9-v2
 
       - name: Download openssl
         if: ${{ steps.cache-openssl.outputs.cache-hit != 'true' }}
+        shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://www.firedaemon.com/download-firedaemon-openssl-1.1.1-zip" -OutFile openssl.zip
-          7z x openssl.zip
+          $archive = Join-Path $env:RUNNER_TEMP "openssl-3.5.9.zip"
+          Write-Host "Downloading OpenSSL 3.5.9 LTS for x64 and ARM64"
+          curl.exe --fail --location --retry 4 --output $archive "https://download.firedaemon.com/FireDaemon-OpenSSL/openssl-3.5.9.zip"
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL download failed: $LASTEXITCODE" }
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+          if ($hash -ne "76DA391395BE029B44794857B9FF380255E02A0960A98314CD3F6A6816D82696") {
+            throw "OpenSSL archive checksum mismatch: $hash"
+          }
+          Write-Host "OpenSSL archive checksum verified; extracting"
+          Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "openssl-3.5")
 
       - name: Set openssl paths
-        shell: sh
+        shell: pwsh
         run: |
-          echo "SSL_DIR=${{ github.workspace }}\openssl-1.1\${{ matrix.config.ssl_dir_arch }}\bin" >> $GITHUB_ENV
-          echo "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $GITHUB_ENV 
+          $sslRoot = Join-Path $env:GITHUB_WORKSPACE "openssl-3.5"
+          $cryptoName = "libcrypto-3${{ matrix.config.ssl_arch }}.dll"
+          $crypto = @(Get-ChildItem -LiteralPath $sslRoot -Filter $cryptoName -File -Recurse)
+          if ($crypto.Count -ne 1) {
+            Get-ChildItem -LiteralPath $sslRoot -Filter "lib*.dll" -File -Recurse | Select-Object -ExpandProperty FullName
+            throw "Expected one ${{ matrix.config.arch }} OpenSSL runtime ($cryptoName), found $($crypto.Count)"
+          }
+          $sslDir = $crypto[0].Directory.FullName
+          foreach ($library in @("libcrypto-3${{ matrix.config.ssl_arch }}.dll", "libssl-3${{ matrix.config.ssl_arch }}.dll")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $sslDir $library))) {
+              throw "OpenSSL runtime missing for ${{ matrix.config.arch }}: $library in $sslDir"
+            }
+          }
+          Write-Host "Using verified OpenSSL 3 runtime for ${{ matrix.config.arch }}: $sslDir"
+          "SSL_DIR=$sslDir" >> $env:GITHUB_ENV
+          "SSL_ARCH=${{ matrix.config.ssl_arch }}" >> $env:GITHUB_ENV
 
       - name: Install Ragel
         if: ${{ runner.os == 'Windows' && matrix.config.backend == 'vectorscan' }}

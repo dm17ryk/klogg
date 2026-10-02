@@ -5,6 +5,7 @@ add_executable(cilogg_tests
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
     configuration_test.cpp
+    configurationexport_test.cpp
     importpreviewsdialog_test.cpp
     linepositionarray_test.cpp
     patternmatcher_test.cpp

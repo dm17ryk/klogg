@@ -14,6 +14,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionparameterseditorwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/actionruntime.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/comportutils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/configurationexport.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/configurationexportdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filteredview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersdialog.h
@@ -102,6 +104,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionparameterseditorwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionruntime.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/comportutils.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/configurationexport.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/configurationexportdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowproject.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersdialog.cpp

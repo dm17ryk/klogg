@@ -244,7 +244,7 @@ class EfswFileWatcher final : public efsw::FileWatchListener {
 
     void handleFileAction( efsw::WatchID watchid, const std::string& dir,
                            const std::string& filename, efsw::Action action,
-                           std::string oldFilename ) override
+                           const std::string& oldFilename ) override
     {
         Q_UNUSED( watchid );
         Q_UNUSED( action );
@@ -346,6 +346,11 @@ FileWatcher::FileWatcher()
              &KDToolBox::KDGenericSignalThrottler::throttle );
     connect( throttler_, &KDToolBox::KDGenericSignalThrottler::triggered, this,
              &FileWatcher::sendChangesNotifications );
+
+    // Apply the native-watch setting before registering the first file.
+    // Otherwise polling-only startup briefly submits and cancels native I/O.
+    LOG_DEBUG << "Initializing file watcher configuration before first registration";
+    updateConfiguration();
 }
 
 FileWatcher::~FileWatcher() = default;
@@ -389,8 +394,13 @@ void FileWatcher::sendChangesNotifications()
 void FileWatcher::updateConfiguration()
 {
     const auto& config = Configuration::get();
-    const bool fallbackPollingEnabled = efswWatcher_->hasPollingOnlyWatches();
+    efswWatcher_->enableWatch( config.nativeFileWatchEnabled() );
+    const bool fallbackPollingEnabled
+        = config.nativeFileWatchEnabled() && efswWatcher_->hasPollingOnlyWatches();
     const bool pollingEnabled = config.pollingEnabled() || fallbackPollingEnabled;
+    LOG_DEBUG << "File watcher configuration: native=" << config.nativeFileWatchEnabled()
+              << ", requested polling=" << config.pollingEnabled()
+              << ", fallback polling=" << fallbackPollingEnabled;
 
     if ( pollingEnabled ) {
         if ( fallbackPollingEnabled && !config.pollingEnabled() ) {
@@ -403,8 +413,6 @@ void FileWatcher::updateConfiguration()
         LOG_INFO << "Polling files disabled";
         checkTimer_->stop();
     }
-
-    efswWatcher_->enableWatch( config.nativeFileWatchEnabled() );
 }
 
 void FileWatcher::checkWatches()

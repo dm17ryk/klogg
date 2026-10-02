@@ -1,0 +1,102 @@
+diff --git a/src/efsw/FileWatcherWin32.cpp b/src/efsw/FileWatcherWin32.cpp
+index cd79921..c354720 100644
+--- a/src/efsw/FileWatcherWin32.cpp
++++ b/src/efsw/FileWatcherWin32.cpp
+@@ -118,7 +118,10 @@ void FileWatcherWin32::removeWatch( WatcherStructWin32* watch ) {
+ 
+ 	StopWatch( watch );
+ 	mWatches.erase( watch );
+-	mRetiredWatches.insert( watch );
++	if ( watch->CompletionPending || watch->CallbackActive )
++		mRetiredWatches.insert( watch );
++	else
++		DestroyWatch( watch );
+ }
+ 
+ void FileWatcherWin32::watch() {
+@@ -135,7 +138,10 @@ void FileWatcherWin32::removeAllWatches() {
+ 
+ 	for ( ; iter != mWatches.end(); ++iter ) {
+ 		StopWatch( ( *iter ) );
+-		mRetiredWatches.insert( *iter );
++		if ( ( *iter )->CompletionPending || ( *iter )->CallbackActive )
++			mRetiredWatches.insert( *iter );
++		else
++			DestroyWatch( *iter );
+ 	}
+ 
+ 	mWatches.clear();
+@@ -152,6 +158,7 @@ void FileWatcherWin32::drainRetiredWatches() {
+ 			Lock lock( mWatchesLock );
+ 			auto retired = mRetiredWatches.find( (WatcherStructWin32*)ov );
+ 			if ( retired != mRetiredWatches.end() ) {
++				( *retired )->CompletionPending = false;
+ 				DestroyWatch( *retired );
+ 				mRetiredWatches.erase( retired );
+ 			}
+@@ -185,16 +192,36 @@ void FileWatcherWin32::run() {
+ 				Lock lock( mWatchesLock );
+ 				auto retired = mRetiredWatches.find( (WatcherStructWin32*)ov );
+ 				if ( retired != mRetiredWatches.end() ) {
++					( *retired )->CompletionPending = false;
+ 					DestroyWatch( *retired );
+ 					mRetiredWatches.erase( retired );
+ 				} else if ( mWatches.find( (WatcherStructWin32*)ov ) != mWatches.end() ) {
++					auto watch = (WatcherStructWin32*)ov;
++					watch->CompletionPending = false;
++					watch->CallbackActive = true;
+ 					WatchCallback( numOfBytes, ov );
+-					FlushPendingMoves( ( (WatcherStructWin32*)ov )->Watch );
++					FlushPendingMoves( watch->Watch );
++					watch->CallbackActive = false;
++					if ( watch->Watch->StopNow && !watch->CompletionPending ) {
++						mRetiredWatches.erase( watch );
++						DestroyWatch( watch );
++					}
+ 				}
+ 			} else if ( !res && GetLastError() == WAIT_TIMEOUT ) {
+ 				Lock lock( mWatchesLock );
+-				for ( auto watch : mWatches )
++				// Listener callbacks may remove this or another active watch.
++				const auto pendingWatches = mWatches;
++				for ( auto watch : pendingWatches ) {
++					if ( mWatches.find( watch ) == mWatches.end() )
++						continue;
++					watch->CallbackActive = true;
+ 					FlushPendingMoves( watch->Watch );
++					watch->CallbackActive = false;
++					if ( watch->Watch->StopNow && !watch->CompletionPending ) {
++						mRetiredWatches.erase( watch );
++						DestroyWatch( watch );
++					}
++				}
+ 			}
+ 		} else {
+ 			System::sleep( 10 );
+diff --git a/src/efsw/WatcherWin32.cpp b/src/efsw/WatcherWin32.cpp
+index 162a6ff..a9528af 100644
+--- a/src/efsw/WatcherWin32.cpp
++++ b/src/efsw/WatcherWin32.cpp
+@@ -337,6 +337,7 @@ RefreshResult RefreshWatch( WatcherStructWin32* pWatch ) {
+ 		Errors::Log::createLastError( Errors::WatcherFailed, error );
+ 	}
+ 
++	pWatch->CompletionPending = bRet;
+ 	return ret;
+ }
+ 
+diff --git a/src/efsw/WatcherWin32.hpp b/src/efsw/WatcherWin32.hpp
+index 9bf5963..d32f3d6 100644
+--- a/src/efsw/WatcherWin32.hpp
++++ b/src/efsw/WatcherWin32.hpp
+@@ -28,6 +28,10 @@ enum RefreshResult { Failed, Success, SucessEx };
+ struct WatcherStructWin32 {
+ 	OVERLAPPED Overlapped;
+ 	WatcherWin32* Watch;
++	// Includes a queued IOCP completion that has not yet been consumed.
++	bool CompletionPending = false;
++	// A listener may synchronously remove its watch from inside a callback.
++	bool CallbackActive = false;
+ };
+ 
+ struct sLastModifiedEvent {

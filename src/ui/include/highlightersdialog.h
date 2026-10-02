@@ -56,6 +56,7 @@ class HighlightersDialog : public QDialog, public Ui::HighlightersDialog {
   Q_SIGNALS:
     // Is emitted when new settings must be used
     void optionsChanged();
+    void configurationsExported( const QStringList& paths );
 
   private Q_SLOTS:
     void addHighlighterSet();

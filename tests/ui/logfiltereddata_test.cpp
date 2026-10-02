@@ -59,7 +59,7 @@ bool generateDataFiles( QTemporaryFile& file )
 void runSearch( LogFilteredData* filtered_data, const QString& regexp,
                 SafeQSignalSpy& searchProgressSpy )
 {
-
+    searchProgressSpy.clear();
     filtered_data->runSearch( RegularExpressionPattern( regexp ) );
 
     int progress = 0;
@@ -67,6 +67,10 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
         REQUIRE( searchProgressSpy.safeWait( 10000 ) );
         QList<QVariant> progressArgs = searchProgressSpy.last();
         progress = progressArgs.at( 1 ).toInt();
+        if ( progress < 100 ) {
+            // Consume partial progress so safeWait pumps Qt for the completion signal.
+            searchProgressSpy.clear();
+        }
     } while ( progress < 100 );
 
     REQUIRE( filtered_data->fullScanCompleted() );
@@ -76,12 +80,16 @@ void runSearch( LogFilteredData* filtered_data, const QString& regexp,
 void runSearch( LogFilteredData* filteredData, const RegularExpressionPattern& pattern,
                 SearchOptions options, SafeQSignalSpy& searchProgressSpy )
 {
+    searchProgressSpy.clear();
     filteredData->runSearch( pattern, std::move( options ) );
 
     int progress = 0;
     do {
         REQUIRE( searchProgressSpy.safeWait( 10000 ) );
         progress = searchProgressSpy.last().at( 1 ).toInt();
+        if ( progress < 100 ) {
+            searchProgressSpy.clear();
+        }
     } while ( progress < 100 );
 
     REQUIRE_FALSE( filteredData->isSearchRunning() );
@@ -90,25 +98,21 @@ void runSearch( LogFilteredData* filteredData, const RegularExpressionPattern& p
 bool runUpdateSearch( LogFilteredData* filtered_data, LineNumber startLine, LineNumber endLine,
                       SafeQSignalSpy& searchProgressSpy )
 {
+    searchProgressSpy.clear();
     filtered_data->updateSearch( startLine, endLine );
 
     int progress = 0;
-    const qsizetype lastCount = searchProgressSpy.count();
     while ( true ) {
         if ( !searchProgressSpy.safeWait( 500 ) ) {
             // No signal emitted (likely nothing to scan).
             return false;
         }
-        // Ignore signals that arrived before this run.
-        if ( searchProgressSpy.count() <= lastCount ) {
-            continue;
-        }
-
         QList<QVariant> progressArgs = searchProgressSpy.last();
         progress = progressArgs.at( 1 ).toInt();
         if ( progress >= 100 ) {
             return true;
         }
+        searchProgressSpy.clear();
     }
 }
 
@@ -285,6 +289,11 @@ TEST_CASE( "Log filtered data coalesces auto refresh while full search is runnin
     do {
         REQUIRE( searchProgressSpy.safeWait( 10000 ) );
         progress = searchProgressSpy.last().at( 1 ).toInt();
+        if ( progress < 100 ) {
+            LOG_DEBUG << "Consumed partial test search progress " << progress
+                      << "; waiting for completion";
+            searchProgressSpy.clear();
+        }
     } while ( progress < 100 );
 
     REQUIRE( filtered_data->fullScanCompleted() );

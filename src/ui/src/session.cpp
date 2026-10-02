@@ -246,15 +246,17 @@ void WindowSession::save(
 }
 
 OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& view_factory,
-                                        int* current_file_index )
+                                        int* current_file_index, int preferred_file_index )
 {
     const auto& session = SessionInfo::getSynced();
 
     std::vector<SessionInfo::OpenFile> session_files = session.openFiles( windowId_ );
     LOG_DEBUG << "Session returned " << session_files.size();
     OpenedFilesList result;
+    int restoredPreferredIndex = -1;
 
-    for ( const auto& file : session_files ) {
+    for ( size_t savedIndex = 0; savedIndex < session_files.size(); ++savedIndex ) {
+        const auto& file = session_files.at( savedIndex );
         QString fileName = file.fileName;
         QString streamContext = file.streamContext;
         bool hasStreamContext = !streamContext.trimmed().isEmpty();
@@ -306,6 +308,12 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
             }
             result.emplace_back( OpenedFileData{ fileName, view, streamContext, file.scriptContext } );
             openedFiles_.emplace_back( fileName );
+            if ( preferred_file_index >= 0
+                 && savedIndex == static_cast<size_t>( preferred_file_index ) ) {
+                restoredPreferredIndex = klogg::isize( result ) - 1;
+                LOG_DEBUG << "Restored preferred session entry " << savedIndex << " as tab "
+                          << restoredPreferredIndex << " file=" << fileName;
+            }
         } catch ( const std::exception& e ) {
             LOG_ERROR << "Failed to restore file " << fileName << ": " << e.what();
         } catch ( ... ) {
@@ -313,7 +321,14 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
         }
     }
 
-    *current_file_index = result.empty() ? -1 : ( klogg::isize( result ) - 1 );
+    if ( restoredPreferredIndex >= 0 ) {
+        *current_file_index = restoredPreferredIndex;
+    }
+    else {
+        *current_file_index = result.empty() ? -1 : ( klogg::isize( result ) - 1 );
+        LOG_DEBUG << "Preferred session entry unavailable or not requested: "
+                  << preferred_file_index << "; selecting tab " << *current_file_index;
+    }
 
     return result;
 }

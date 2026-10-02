@@ -20,14 +20,21 @@
 #include <catch2/catch.hpp>
 
 #include <functional>
+#include <memory>
 
+#include <QDir>
 #include <QFile>
-#include <QTest>
+#include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTest>
 
 #include "comportutils.h"
 #include "serialcaptureworker.h"
 #include "streamsession.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 namespace {
 bool waitForState( const std::function<bool()>& condition )
@@ -158,6 +165,49 @@ TEST_CASE( "Serial capture worker reports switch capture file errors", "[serial]
     REQUIRE_FALSE( errorMessage.isEmpty() );
 }
 
+TEST_CASE( "Serial capture failed open reports one error and one completion",
+           "[serial][worker][serialfailure]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "failed_open.log" );
+    SerialCaptureWorker worker( settings );
+    QSignalSpy errors( &worker, &SerialCaptureWorker::errorOccurred );
+    QSignalSpy finished( &worker, &SerialCaptureWorker::finished );
+
+    worker.start();
+    REQUIRE( errors.size() == 1 );
+    REQUIRE( finished.size() == 1 );
+    REQUIRE( errors.front().front().toString().contains( settings.portName ) );
+    worker.stop();
+    REQUIRE( finished.size() == 1 );
+}
+
+TEST_CASE( "Failed serial worker remains safe until its queued error is handled",
+           "[serial][session][serialfailure]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "failed_session.log" );
+
+    for ( int attempt = 0; attempt < 20; ++attempt ) {
+        StreamSession session( settings );
+        QSignalSpy errors( &session, &StreamSession::errorOccurred );
+        // Reproduce a busy GUI: the worker fails before the main event loop handles its error.
+        QObject::connect( &session, &StreamSession::errorOccurred, &session,
+                          [ &session ] { session.closeConnection(); } );
+        session.start();
+        QTest::qSleep( 25 );
+        REQUIRE( waitForState( [ & ] { return !session.isConnectionOpen(); } ) );
+        REQUIRE( errors.size() == 1 );
+        session.stop();
+    }
+}
+
 TEST_CASE( "Stream session pause preserves capture settings and logging state",
            "[serial][session]" )
 {
@@ -196,8 +246,58 @@ TEST_CASE( "Stream session pause preserves capture settings and logging state",
     REQUIRE( session.captureSettings().useForActions == settings.useForActions );
 }
 
-TEST_CASE( "Stream session failed resume keeps paused session available",
-           "[serial][session]" )
+TEST_CASE( "Failed serial start stays paused and supports repeated retry or close",
+           "[serial][session][serialfailure]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "retry.log" );
+    StreamSession session( settings );
+    session.setLoggingEnabled( false );
+    QSignalSpy errors( &session, &StreamSession::errorOccurred );
+    QSignalSpy closed( &session, &StreamSession::connectionClosed );
+    session.start();
+    REQUIRE( waitForState( [ & ] { return session.canResume(); } ) );
+    REQUIRE( session.isPaused() );
+    REQUIRE_FALSE( session.isConnectionOpen() );
+    REQUIRE( errors.size() == 1 );
+    REQUIRE( closed.size() == 1 );
+    for ( int attempt = 0; attempt < 3; ++attempt ) {
+        QString error;
+        REQUIRE_FALSE( session.resumeConnection( &error ) );
+        REQUIRE_FALSE( error.isEmpty() );
+        REQUIRE( session.canResume() );
+        REQUIRE_FALSE( session.isLoggingEnabled() );
+        REQUIRE( session.captureSettings().filePath == settings.filePath );
+    }
+    session.closeConnection();
+    REQUIRE_FALSE( session.isPaused() );
+    REQUIRE_FALSE( session.canResume() );
+}
+
+TEST_CASE( "Failed serial worker can be stopped without processing GUI events",
+           "[serial][session][serialfailure]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+    SerialCaptureSettings settings;
+    settings.portName = "CILOGG_TEST_MISSING_PORT";
+    settings.filePath = tempDir.filePath( "stop_failed.log" );
+    StreamSession session( settings );
+    for ( int attempt = 0; attempt < 10; ++attempt ) {
+        session.start();
+        QTest::qSleep( 25 );
+        session.stop();
+        REQUIRE_FALSE( session.isConnectionOpen() );
+    }
+    // Deliver stale events from earlier workers after synchronous stop/restart cycles.
+    QTest::qWait( 25 );
+    REQUIRE_FALSE( session.isConnectionOpen() );
+}
+
+TEST_CASE( "Stream session failed resume keeps paused session available", "[serial][session]" )
 {
     QTemporaryDir tempDir;
     REQUIRE( tempDir.isValid() );
@@ -232,8 +332,58 @@ TEST_CASE( "Stream session hard close clears paused state", "[serial][session]" 
     session.start();
     REQUIRE( session.isConnectionOpen() );
 
+    QTest::qSleep( 25 );
     session.closeConnection();
     REQUIRE_FALSE( session.isPaused() );
     REQUIRE_FALSE( session.isConnectionOpen() );
     REQUIRE_FALSE( session.canResume() );
+    REQUIRE( waitForState( [ & ] { return !session.isConnectionOpen(); } ) );
+    QTest::qWait( 100 );
+    REQUIRE_FALSE( session.isPaused() );
+    REQUIRE_FALSE( session.canResume() );
 }
+
+#ifdef Q_OS_WIN
+TEST_CASE( "An exclusively held device reports a single permission failure safely",
+           "[serial][worker][serialfailure]" )
+{
+    QTemporaryDir tempDir;
+    REQUIRE( tempDir.isValid() );
+    const auto devicePath = QDir::toNativeSeparators( tempDir.filePath( "exclusive_device" ) );
+    const auto handle = CreateFileW( reinterpret_cast<LPCWSTR>( devicePath.utf16() ),
+                                     GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr );
+    REQUIRE( handle != INVALID_HANDLE_VALUE );
+    const std::unique_ptr<void, decltype( &CloseHandle )> deviceLease( handle, &CloseHandle );
+    SerialCaptureSettings settings;
+    settings.portName = QStringLiteral( "\\\\.\\" ) + devicePath;
+    settings.filePath = tempDir.filePath( "busy.log" );
+
+    SECTION( "Worker reports a busy open failure once" )
+    {
+        SerialCaptureWorker worker( settings );
+        QSignalSpy errors( &worker, &SerialCaptureWorker::errorOccurred );
+        QSignalSpy finished( &worker, &SerialCaptureWorker::finished );
+        worker.start();
+        auto* port = worker.findChild<QSerialPort*>();
+        REQUIRE( port != nullptr );
+        // Qt maps Windows access denial to PermissionError and sharing violations to
+        // UnknownError. Both are failed opens of an existing, exclusively held device.
+        REQUIRE( ( port->error() == QSerialPort::PermissionError
+                   || port->error() == QSerialPort::UnknownError ) );
+        REQUIRE( errors.size() == 1 );
+        REQUIRE( finished.size() == 1 );
+    }
+    SECTION( "Delayed GUI handling leaves the unavailable connection retryable" )
+    {
+        StreamSession session( settings );
+        QSignalSpy errors( &session, &StreamSession::errorOccurred );
+        session.start();
+        QTest::qSleep( 25 );
+        REQUIRE( waitForState( [ & ] { return session.canResume(); } ) );
+        REQUIRE( errors.size() == 1 );
+        REQUIRE( session.isPaused() );
+        REQUIRE_FALSE( session.isConnectionOpen() );
+    }
+}
+#endif

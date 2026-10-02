@@ -6,7 +6,7 @@ endif()
 
 project(
   klogg
-  VERSION 26.04.0
+  VERSION 26.04.1
   DESCRIPTION "CILogg log viewer"
   LANGUAGES C CXX ASM
 )

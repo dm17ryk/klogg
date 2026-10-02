@@ -37,6 +37,7 @@
  */
 
 #include <QFileDialog>
+#include <QMessageBox>
 #include <QTimer>
 
 #include <qcheckbox.h>
@@ -46,6 +47,7 @@
 #include <qpushbutton.h>
 #include <utility>
 
+#include "configurationexportdialog.h"
 #include "containers.h"
 #include "dispatch_to.h"
 #include "highlightersdialog.h"
@@ -190,19 +192,49 @@ HighlightersDialog::HighlightersDialog( QWidget* parent )
 
 void HighlightersDialog::exportHighlighters()
 {
-    QString file = QFileDialog::getSaveFileName( this, tr( "Export highlighters configuration" ),
-                                                 "", "Highlighters (*.conf)" );
-
-    if ( file.isEmpty() ) {
+    QStringList names;
+    for ( const auto& set : highlighterSetCollection_.highlighterSets() ) {
+        names.append( set.name() );
+    }
+    ConfigurationExportDialog dialog( ConfigurationExportKind::Highlights, names, this );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        LOG_DEBUG << "Highlight export selection cancelled";
         return;
     }
-
-    if ( !file.endsWith( ".conf" ) ) {
-        file += ".conf";
+    QString error;
+    QStringList savedFiles;
+    bool saved = false;
+    if ( dialog.multipleFiles() ) {
+        const auto directory
+            = QFileDialog::getExistingDirectory( this, tr( "Export highlight groups" ) );
+        if ( directory.isEmpty() ) {
+            return;
+        }
+        saved = ConfigurationExport::exportHighlightFiles(
+            highlighterSetCollection_, dialog.selectedRows(), directory, &error, &savedFiles );
     }
-
-    QSettings settings{ file, QSettings::IniFormat };
-    highlighterSetCollection_.saveToStorage( settings );
+    else {
+        auto file = QFileDialog::getSaveFileName( this, tr( "Export highlights" ), {},
+                                                  tr( "Highlighters (*.conf)" ) );
+        if ( file.isEmpty() ) {
+            return;
+        }
+        if ( !file.endsWith( ".conf", Qt::CaseInsensitive ) ) {
+            file += ".conf";
+        }
+        saved = ConfigurationExport::exportSelected( ConfigurationExportKind::Highlights,
+                                                     dialog.selectedRows(), file, &error,
+                                                     &highlighterSetCollection_ );
+        if ( saved ) {
+            savedFiles.append( file );
+        }
+    }
+    if ( !savedFiles.isEmpty() ) {
+        Q_EMIT configurationsExported( savedFiles );
+    }
+    if ( !saved ) {
+        QMessageBox::warning( this, tr( "Export highlights" ), error );
+    }
 }
 
 void HighlightersDialog::importHighlighters()

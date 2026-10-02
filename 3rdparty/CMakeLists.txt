@@ -450,8 +450,15 @@ cpmaddpackage(
   efsw
   GITHUB_REPOSITORY
   SpartanJ/efsw
+  VERSION
+  1.7.2
   GIT_TAG
-  1.4.1
+  41ddf6822f2d0dec7e14fafa09c4cef391137b20
+  PATCH_COMMAND
+  ${CMAKE_COMMAND}
+  -DPATCH_ROOT=.
+  -P
+  ${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_efsw_windows_pending.cmake
   EXCLUDE_FROM_ALL
   YES
   OPTIONS

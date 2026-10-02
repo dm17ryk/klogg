@@ -40,6 +40,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QMap>
 #include <QMenu>
 #include <QSystemTrayIcon>
 #include <QTemporaryDir>
@@ -88,7 +89,9 @@ class MainWindow : public QMainWindow {
     // (should be done before 'Widget::show()')
     void reloadGeometry();
     // Re-load the files from the previous session
-    void reloadSession();
+    void reloadSession( int preferredFileIndex = -1 );
+    bool saveProject( const QString& path, QString* errorMessage = nullptr );
+    bool loadProject( const QString& path, QString* errorMessage = nullptr );
     // Loads the initial file (parameter passed or from config file)
     void loadInitialFile( QString fileName, bool followFile );
     bool isStartupReadyForDisplay() const;
@@ -238,6 +241,11 @@ class MainWindow : public QMainWindow {
     void createActions();
     void loadIcons();
     void createMenus();
+    void createConfigurationActions();
+    void exportConfiguration( int kind );
+    QMap<QString, QString> registeredExports_;
+    QString projectPath_;
+    bool projectWindowActive_ = true;
     void rebuildComPortsMenu();
     void createToolBars();
     void createTrayIcon();
