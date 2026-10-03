@@ -32,6 +32,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pathline.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/uiautomation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindowtext.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/menu.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/opencomportdialog.h
@@ -122,6 +123,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/uiautomation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowtext.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/menu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/opencomportdialog.cpp

@@ -7,6 +7,7 @@ echo "Copying cilogg binaries..."
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_portable.exe %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_portable.pdb %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg.exe %CILOGG_WORKSPACE%\release\ /y
+xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_grep.exe %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg.pdb %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\cilogg_updater.exe %CILOGG_WORKSPACE%\release\ /y
 
@@ -68,6 +69,7 @@ xcopy %CILOGG_WORKSPACE%\COPYING %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\NOTICE %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\README.md %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\DOCUMENTATION.md %CILOGG_WORKSPACE%\release\ /y
+xcopy %CILOGG_WORKSPACE%\MCP.md %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\python_runtime %CILOGG_WORKSPACE%\release\python_runtime\ /e /i /y
 
 echo "Copying vc runtime..."
@@ -108,6 +110,14 @@ if /i "%CILOGG_ARCH%"=="arm64" (
   "%QTDIR%\bin\windeployqt.exe" --force --no-compiler-runtime --dir %CILOGG_WORKSPACE%\release %CILOGG_WORKSPACE%\release\cilogg.exe
   if errorlevel 1 exit /b 1
 )
+
+rem MCP uses the offscreen Qt platform for its CLI child processes.
+if not exist "%QTDIR%\plugins\platforms\qoffscreen.dll" (
+  echo ERROR: Qt offscreen plugin is required for native MCP commands.
+  exit /b 1
+)
+xcopy "%QTDIR%\plugins\platforms\qoffscreen.dll" "%CILOGG_WORKSPACE%\release\platforms\" /i /y
+if errorlevel 1 exit /b 1
 
 echo "Copying packaging files..."
 md %CILOGG_WORKSPACE%\chocolatey

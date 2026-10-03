@@ -243,20 +243,38 @@ class KloggApp : public QApplication {
         data.insert( QLatin1String( "resultPath" ), resultPath );
         data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
 
-        constexpr int CommanderConnectTimeoutMs = 5000;
+        // Cold dialogs can spend several seconds populating fonts and controls before
+        // their modal event loop starts accepting the next automation command.
+        const bool waitsForUi = request.action == CommanderAction::GetUi
+                                || request.action == CommanderAction::SetUi
+                                || request.action == CommanderAction::ActivateUi
+                                || request.action == CommanderAction::InvokeAction;
+        const int commanderConnectTimeoutMs = waitsForUi ? 30000 : 5000;
         constexpr int CommanderResponseTimeoutMs = 30000;
 
         const QCborValue cbor( data );
-        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(), CommanderConnectTimeoutMs ) ) {
+        QElapsedTimer connectionTimer;
+        connectionTimer.start();
+        LOG_DEBUG << "Commander connection: action="
+                  << commanderActionToString( request.action ).toStdString()
+                  << " waitingForUi=" << waitsForUi << " timeoutMs=" << commanderConnectTimeoutMs;
+        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(),
+                                                         commanderConnectTimeoutMs ) ) {
+            LOG_WARNING << "Commander connection failed after " << connectionTimer.elapsed()
+                        << " ms; waitingForUi=" << waitsForUi;
             QFile::remove( resultPath );
-            return commanderFailure( CommanderResultCode::TransportError,
-                                     QStringLiteral( "Failed to contact the primary CILogg instance." ) );
+            return commanderFailure(
+                CommanderResultCode::TransportError,
+                QStringLiteral( "Failed to contact the primary CILogg instance." ) );
         }
 
+        LOG_DEBUG << "Commander connection acknowledged after " << connectionTimer.elapsed()
+                  << " ms";
         if ( !waitForResponseFile( resultPath, CommanderResponseTimeoutMs ) ) {
             QFile::remove( resultPath );
-            return commanderFailure( CommanderResultCode::TransportError,
-                                     QStringLiteral( "Timed out waiting for commander response." ) );
+            return commanderFailure(
+                CommanderResultCode::TransportError,
+                QStringLiteral( "Timed out waiting for commander response." ) );
         }
 
         QString readError;
@@ -740,6 +758,10 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::Search
               || request.action == CommanderAction::SetFollowMode
               || request.action == CommanderAction::DumpState
+              || request.action == CommanderAction::InvokeAction
+              || request.action == CommanderAction::GetUi
+              || request.action == CommanderAction::SetUi
+              || request.action == CommanderAction::ActivateUi
               || request.action == CommanderAction::SendAction
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
@@ -771,6 +793,10 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::Search
                 || request.action == CommanderAction::SetFollowMode
                 || request.action == CommanderAction::DumpState
+                || request.action == CommanderAction::InvokeAction
+                || request.action == CommanderAction::GetUi
+                || request.action == CommanderAction::SetUi
+                || request.action == CommanderAction::ActivateUi
                 || request.action == CommanderAction::SendAction
                 || request.action == CommanderAction::WaitResponse
                 || request.action == CommanderAction::StartComm

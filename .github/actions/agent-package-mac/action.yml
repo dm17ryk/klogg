@@ -27,7 +27,7 @@ runs:
       shell: sh
       run: |
         cd $CILOGG_BUILD_ROOT
-        macdeployqt ./output/cilogg.app -always-overwrite -verbose=2
+        macdeployqt ./output/cilogg.app -always-overwrite -verbose=2 -executable=./output/cilogg.app/Contents/MacOS/cilogg_grep
 
     - name: Mac deploy Qt fixing
       if: "startsWith(matrix.config.qt_version, '5')"

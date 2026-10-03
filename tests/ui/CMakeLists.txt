@@ -5,6 +5,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/filewatcher_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/crawlerwidget_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/configurationproject_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/uiautomation_test.cpp
 )
 
 if(NOT APPLE)

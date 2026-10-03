@@ -14,6 +14,45 @@
 #include "configuration.h"
 #include "predefinedfilters.h"
 
+TEST_CASE( "Commander exposes dialog controls through CLI and IPC", "[commander][automation]" )
+{
+    for ( const auto& name : { "get_ui", "set_ui", "activate_ui" } ) {
+        const auto action = commanderActionFromString( name );
+        REQUIRE( action.has_value() );
+        REQUIRE( commanderActionToString( *action ) == name );
+        CommanderRequest request;
+        request.action = *action;
+        request.objectName = "ui:123/2";
+        request.definitionPayload = { { "text", "value" } };
+        const auto restored = commanderRequestFromVariantMap( commanderRequestToVariantMap( request ) );
+        REQUIRE( restored.has_value() );
+        REQUIRE( restored->action == request.action );
+        REQUIRE( restored->objectName == request.objectName );
+        REQUIRE( restored->definitionPayload == request.definitionPayload );
+    }
+    CliParameters inspect( { "cilogg", "command", "--action", "get_ui", "--window-index", "2" } );
+    REQUIRE_FALSE( inspect.parse_error );
+    REQUIRE( inspect.commander_request->windowIndex == 2 );
+    CliParameters existingOnly( { "cilogg", "command", "--action", "open_file", "--file",
+                                 "test.log", "--require-running" } );
+    REQUIRE_FALSE( existingOnly.parse_error );
+    REQUIRE( existingOnly.commander_require_running );
+    CliParameters activate( { "cilogg", "command", "--action", "activate_ui", "--object-name", "ok" } );
+    REQUIRE_FALSE( activate.parse_error );
+    REQUIRE( activate.commander_request->objectName == "ok" );
+    CliParameters missing( { "cilogg", "command", "--action", "set_ui" } );
+    REQUIRE( missing.parse_error );
+    QTemporaryDir directory;
+    QFile file( directory.filePath( "properties.json" ) );
+    REQUIRE( file.open( QIODevice::WriteOnly ) );
+    file.write( "{\"text\":\"updated\"}" );
+    file.close();
+    CliParameters edit( { "cilogg", "command", "--action", "set_ui", "--object-name", "field",
+                          "--json-file", file.fileName() } );
+    REQUIRE_FALSE( edit.parse_error );
+    REQUIRE( edit.commander_request->definitionPayload.value( "text" ).toString() == "updated" );
+}
+
 namespace {
 struct ComDefaultsRestoreGuard {
     QSerialPort::BaudRate baudRate = Configuration::get().defaultComBaudRate();

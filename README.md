@@ -37,6 +37,9 @@ Please refer to the
 [documentation](DOCUMENTATION.md)
 page for how to use CILogg.
 
+For command line control, the MCP server, automatic client installation, and
+generated Codex/Claude Code skills, see [MCP automation](MCP.md).
+
 ### Latest testing builds
 
 | Windows | Linux | Mac |

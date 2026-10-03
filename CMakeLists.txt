@@ -6,7 +6,7 @@ endif()
 
 project(
   klogg
-  VERSION 26.04.1
+  VERSION 26.04.2
   DESCRIPTION "CILogg log viewer"
   LANGUAGES C CXX ASM
 )
@@ -517,6 +517,11 @@ set(CPACK_PACKAGE_ICON "${ICON_FILE}")
 install(
   FILES "${CMAKE_CURRENT_SOURCE_DIR}/schemas/actions.schema.json"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/${PRODUCT_EXECUTABLE_NAME}/schemas"
+)
+
+install(
+  FILES "${CMAKE_SOURCE_DIR}/MCP.md"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/${PRODUCT_EXECUTABLE_NAME}"
 )
 
 if(UNIX)

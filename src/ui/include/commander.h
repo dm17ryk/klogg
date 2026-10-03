@@ -63,6 +63,9 @@ enum class CommanderAction {
     SetFollowMode,
     InvokeAction,
     DumpState,
+    GetUi,
+    SetUi,
+    ActivateUi,
 };
 
 enum class CommanderResultCode {

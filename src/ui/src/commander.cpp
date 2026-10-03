@@ -152,6 +152,12 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "set_follow_mode" );
     case CommanderAction::InvokeAction:
         return QStringLiteral( "invoke_action" );
+    case CommanderAction::GetUi:
+        return QStringLiteral( "get_ui" );
+    case CommanderAction::SetUi:
+        return QStringLiteral( "set_ui" );
+    case CommanderAction::ActivateUi:
+        return QStringLiteral( "activate_ui" );
     case CommanderAction::DumpState:
         return QStringLiteral( "dump_state" );
     case CommanderAction::None:
@@ -322,6 +328,15 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "invoke_action" ) ) {
         return CommanderAction::InvokeAction;
+    }
+    if ( normalized == QStringLiteral( "get_ui" ) ) {
+        return CommanderAction::GetUi;
+    }
+    if ( normalized == QStringLiteral( "set_ui" ) ) {
+        return CommanderAction::SetUi;
+    }
+    if ( normalized == QStringLiteral( "activate_ui" ) ) {
+        return CommanderAction::ActivateUi;
     }
     if ( normalized == QStringLiteral( "dump_state" ) ) {
         return CommanderAction::DumpState;

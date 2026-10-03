@@ -100,6 +100,7 @@ run_linuxdeployqt() {
 
 if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
   -bundle-non-qt-libs \
+  -extra-plugins=platforms/libqoffscreen.so \
   "-exclude-libs=${QT_SQL_DRIVER_EXCLUDES}"; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64, skipping AppImage generation." >&2
@@ -116,6 +117,7 @@ cp "${LIB_DIR}"/libssl* appdir/usr/lib
 
 if ! run_linuxdeployqt appdir/usr/share/applications/*.desktop \
   -appimage \
+  -extra-plugins=platforms/libqoffscreen.so \
   "-exclude-libs=${QT_SQL_DRIVER_EXCLUDES}"; then
   if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
     echo "WARNING: linuxdeployqt failed on ARM64 during AppImage stage, skipping." >&2

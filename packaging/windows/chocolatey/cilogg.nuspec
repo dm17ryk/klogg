@@ -2,7 +2,7 @@
 <package>
   <metadata>
     <id>cilogg</id>
-    <version>26.04.1</version>
+    <version>26.04.2</version>
     <owners>dm17ryk</owners>
     <title>CILogg - the fast, smart log explorer</title>
     <authors>Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov</authors>
