@@ -1277,6 +1277,7 @@ void MainWindow::restoreGlobalScriptContext()
 void MainWindow::reTranslateUI()
 {
     using namespace klogg::mainwindow;
+    LOG_DEBUG << "Refreshing main window menu and tool action translations";
     // menu
     fileMenu->setTitle( translateMainWindowMenu( menu::fileTitle ) );
     comPortsMenu->setTitle( translateMainWindowMenu( menu::comPortsTitle ) );
@@ -1369,6 +1370,9 @@ void MainWindow::reTranslateUI()
     showDocumentationAction->setText( transAction( action::showDocumentationText ) );
     showDocumentationAction->setStatusTip( transAction( action::showDocumentationStatusTip ) );
 
+    checkForUpdatesAction->setText( transAction( action::checkForUpdatesText ) );
+    checkForUpdatesAction->setStatusTip( transAction( action::checkForUpdatesStatusTip ) );
+
     aboutAction->setText( transAction( action::aboutText ) );
     aboutAction->setStatusTip( transAction( action::aboutStatusTip ) );
 
@@ -1397,8 +1401,10 @@ void MainWindow::reTranslateUI()
     showResponsesAction->setStatusTip( tr( "Open the response definitions editor" ) );
     showScriptRunnerAction->setText( transAction( action::showScriptRunnerText ) );
     showScriptRunnerAction->setStatusTip( transAction( action::showScriptRunnerStatusTip ) );
+    showScriptRunnerAction->setToolTip( transAction( action::showScriptRunnerToolTip ) );
     showScenarioRunnerAction->setText( transAction( action::showScenarioRunnerText ) );
     showScenarioRunnerAction->setStatusTip( transAction( action::showScenarioRunnerStatusTip ) );
+    showScenarioRunnerAction->setToolTip( transAction( action::showScenarioRunnerToolTip ) );
     showLabQueueAction->setText( transAction( action::showLabQueueText ) );
     showLabQueueAction->setStatusTip( transAction( action::showLabQueueStatusTip ) );
 
@@ -1661,12 +1667,11 @@ void MainWindow::createActions()
     connect( showDocumentationAction, &QAction::triggered, this,
              [ this ]( auto ) { this->documentation(); } );
 
-    checkForUpdatesAction = new QAction( tr( "Check for Updates…" ), this );
+    checkForUpdatesAction = new QAction( tr( action::checkForUpdatesText ), this );
     checkForUpdatesAction->setObjectName( QStringLiteral( "checkForUpdatesAction" ) );
     checkForUpdatesAction->setMenuRole( QAction::NoRole );
     checkForUpdatesAction->setEnabled( false );
-    checkForUpdatesAction->setStatusTip(
-        tr( "Check the selected update channel for a new version" ) );
+    checkForUpdatesAction->setStatusTip( tr( action::checkForUpdatesStatusTip ) );
     aboutAction = new QAction( tr( action::aboutText ), this );
     aboutAction->setStatusTip( tr( action::aboutStatusTip ) );
     connect( aboutAction, &QAction::triggered, this, [ this ]( auto ) { this->about(); } );
@@ -1726,17 +1731,15 @@ void MainWindow::createActions()
 
     showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
     showScriptRunnerAction->setObjectName( QStringLiteral( "showScriptRunnerAction" ) );
-    showScriptRunnerAction->setStatusTip( tr( "Run Python automation on a tab or globally" ) );
-    showScriptRunnerAction->setToolTip( tr( "Script Runner: tab and global Python automation" ) );
+    showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
+    showScriptRunnerAction->setToolTip( tr( action::showScriptRunnerToolTip ) );
     connect( showScriptRunnerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScriptRunner(); } );
 
     showScenarioRunnerAction = new QAction( tr( action::showScenarioRunnerText ), this );
     showScenarioRunnerAction->setObjectName( QStringLiteral( "showScenarioRunnerAction" ) );
-    showScenarioRunnerAction->setStatusTip(
-        tr( "Run Python test scenarios and suites with JSON/JUnit reports" ) );
-    showScenarioRunnerAction->setToolTip(
-        tr( "Scenario Runner: test scenarios, suites and reports" ) );
+    showScenarioRunnerAction->setStatusTip( tr( action::showScenarioRunnerStatusTip ) );
+    showScenarioRunnerAction->setToolTip( tr( action::showScenarioRunnerToolTip ) );
     connect( showScenarioRunnerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScenarioRunner(); } );
 

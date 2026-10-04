@@ -78,6 +78,9 @@ const char* action::editHighlightersText = QT_TR_NOOP( "Configure &highlighters.
 const char* action::editHighlightersStatusTip = QT_TR_NOOP( "Show highlighters configuration" );
 const char* action::showDocumentationText = QT_TR_NOOP( "&Documentation..." );
 const char* action::showDocumentationStatusTip = QT_TR_NOOP( "Show documentation" );
+const char* action::checkForUpdatesText = QT_TR_NOOP( "Check for Updates…" );
+const char* action::checkForUpdatesStatusTip
+    = QT_TR_NOOP( "Check the selected update channel for a new version" );
 const char* action::aboutText = QT_TR_NOOP( "&About" );
 const char* action::aboutStatusTip = QT_TR_NOOP( "Show the About box" );
 const char* action::aboutQtText = QT_TR_NOOP( "About &Qt" );
@@ -100,9 +103,15 @@ const char* action::showActionsResponsesText = QT_TR_NOOP( "Actions/Responses" )
 const char* action::showActionsResponsesStatusTip
     = QT_TR_NOOP( "Show actions and responses" );
 const char* action::showScriptRunnerText = QT_TR_NOOP( "Script Runner" );
-const char* action::showScriptRunnerStatusTip = QT_TR_NOOP( "Show the Python script runner" );
+const char* action::showScriptRunnerStatusTip
+    = QT_TR_NOOP( "Run Python automation on a tab or globally" );
+const char* action::showScriptRunnerToolTip
+    = QT_TR_NOOP( "Script Runner: tab and global Python automation" );
 const char* action::showScenarioRunnerText = QT_TR_NOOP( "Scenario Runner" );
-const char* action::showScenarioRunnerStatusTip = QT_TR_NOOP( "Show the Python scenario runner" );
+const char* action::showScenarioRunnerStatusTip
+    = QT_TR_NOOP( "Run Python test scenarios and suites with JSON/JUnit reports" );
+const char* action::showScenarioRunnerToolTip
+    = QT_TR_NOOP( "Scenario Runner: test scenarios, suites and reports" );
 const char* action::showLabQueueText = QT_TR_NOOP( "Lab Queue" );
 const char* action::showLabQueueStatusTip = QT_TR_NOOP( "Show the remote lab queue monitor" );
 const char* action::addToFavoritesText = QT_TR_NOOP( "Add to favorites" );
