@@ -1069,6 +1069,7 @@ class KloggApp : public QApplication {
         mainWindows_.emplace_back( session, new MainWindow( session ) );
 
         auto& window = mainWindows_.back().second;
+        window->setVersionChecker( versionChecker_ );
         if ( automationModeEnabled_ ) {
             applyAutomationGeometry( window );
         }

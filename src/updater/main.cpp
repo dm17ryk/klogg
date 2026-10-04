@@ -414,8 +414,9 @@ int installSystemPackage( const Arguments& args )
 {
 #ifdef _WIN32
     const auto installDir = args.current.parent_path();
-    const auto parameters = L"/S /D=" + quote( installDir );
-    log( "Launching NSIS setup with visible UAC" );
+    // NSIS requires /D to be last and unquoted, even when the path contains spaces.
+    const auto parameters = L"/S /D=" + installDir.wstring();
+    log( "Launching NSIS setup with visible UAC; install directory=" + installDir.u8string() );
     return runElevated( args.staged, parameters );
 #else
     if ( args.mode != "deb" && args.mode != "rpm" ) {

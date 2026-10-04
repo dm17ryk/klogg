@@ -140,28 +140,9 @@
 #include "streamsession.h"
 #include "styles.h"
 #include "tabbedcrawlerwidget.h"
+#include "versionchecker.h"
 
 namespace {
-
-QIcon makePythonScriptRunnerIcon()
-{
-    constexpr auto iconSize = 20;
-
-    QPixmap pixmap( iconSize, iconSize );
-    pixmap.fill( Qt::transparent );
-
-    QPainter painter( &pixmap );
-    painter.setRenderHint( QPainter::Antialiasing, true );
-
-    auto font = painter.font();
-    font.setBold( true );
-    font.setPixelSize( 11 );
-    painter.setFont( font );
-    painter.setPen( qApp->palette().color( QPalette::WindowText ) );
-    painter.drawText( pixmap.rect(), Qt::AlignCenter, QStringLiteral( "py" ) );
-
-    return QIcon( pixmap );
-}
 
 bool applicationHasMethod( const char* signature )
 {
@@ -1480,6 +1461,45 @@ int MainWindow::installLanguage( QString lang )
 }
 
 // Menu actions
+void MainWindow::setVersionChecker( VersionChecker& checker )
+{
+    LOG_DEBUG << "Binding Help update action to the application updater";
+    connect( checkForUpdatesAction, &QAction::triggered, this, [ this, &checker ] {
+        const auto channel = Configuration::get().updateChannel();
+        LOG_INFO << "Help manual update check clicked; selected channel="
+                 << ( channel == UpdateChannel::Ci ? "CI" : "Stable" );
+        manualUpdateRequested_ = true;
+        checker.forceCheck( channel );
+    } );
+    const auto updateActionState = [ this ]( UpdateState state ) {
+        const bool busy = state == UpdateState::Checking || state == UpdateState::ResolvingPackage
+                          || state == UpdateState::Downloading || state == UpdateState::Verifying
+                          || state == UpdateState::Staging || state == UpdateState::Installing;
+        checkForUpdatesAction->setEnabled( !busy );
+        LOG_DEBUG << "Help update state changed; state=" << updateStateName( state )
+                  << ", action-enabled=" << !busy;
+    };
+    connect( &checker, &VersionChecker::stateChanged, this, updateActionState );
+    updateActionState( checker.state() );
+    connect( &checker, &VersionChecker::checkFinished, this,
+             [ this, &checker ]( bool updateAvailable, const QString& message ) {
+                 if ( !manualUpdateRequested_ ) {
+                     LOG_DEBUG << "Help update feedback skipped: this window did not request it";
+                     return;
+                 }
+                 manualUpdateRequested_ = false;
+                 LOG_INFO << "Help manual update check completed; available=" << updateAvailable
+                          << ", status=" << message;
+                 if ( !updateAvailable && checker.state() != UpdateState::Error && isVisible() ) {
+                     LOG_DEBUG << "Help manual update check presents information message";
+                     QMessageBox::information( this, tr( "CILogg Update" ), message );
+                 }
+                 else {
+                     LOG_DEBUG << "Help update feedback handled by update dialog or window closed";
+                 }
+             } );
+}
+
 void MainWindow::createActions()
 {
     const auto& config = Configuration::get();
@@ -1641,6 +1661,12 @@ void MainWindow::createActions()
     connect( showDocumentationAction, &QAction::triggered, this,
              [ this ]( auto ) { this->documentation(); } );
 
+    checkForUpdatesAction = new QAction( tr( "Check for Updates…" ), this );
+    checkForUpdatesAction->setObjectName( QStringLiteral( "checkForUpdatesAction" ) );
+    checkForUpdatesAction->setMenuRole( QAction::NoRole );
+    checkForUpdatesAction->setEnabled( false );
+    checkForUpdatesAction->setStatusTip(
+        tr( "Check the selected update channel for a new version" ) );
     aboutAction = new QAction( tr( action::aboutText ), this );
     aboutAction->setStatusTip( tr( action::aboutStatusTip ) );
     connect( aboutAction, &QAction::triggered, this, [ this ]( auto ) { this->about(); } );
@@ -1699,16 +1725,23 @@ void MainWindow::createActions()
              [ this ]( auto ) { this->showResponses(); } );
 
     showScriptRunnerAction = new QAction( tr( action::showScriptRunnerText ), this );
-    showScriptRunnerAction->setStatusTip( tr( action::showScriptRunnerStatusTip ) );
+    showScriptRunnerAction->setObjectName( QStringLiteral( "showScriptRunnerAction" ) );
+    showScriptRunnerAction->setStatusTip( tr( "Run Python automation on a tab or globally" ) );
+    showScriptRunnerAction->setToolTip( tr( "Script Runner: tab and global Python automation" ) );
     connect( showScriptRunnerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScriptRunner(); } );
 
     showScenarioRunnerAction = new QAction( tr( action::showScenarioRunnerText ), this );
-    showScenarioRunnerAction->setStatusTip( tr( action::showScenarioRunnerStatusTip ) );
+    showScenarioRunnerAction->setObjectName( QStringLiteral( "showScenarioRunnerAction" ) );
+    showScenarioRunnerAction->setStatusTip(
+        tr( "Run Python test scenarios and suites with JSON/JUnit reports" ) );
+    showScenarioRunnerAction->setToolTip(
+        tr( "Scenario Runner: test scenarios, suites and reports" ) );
     connect( showScenarioRunnerAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showScenarioRunner(); } );
 
     showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
+    showLabQueueAction->setObjectName( QStringLiteral( "showLabQueueAction" ) );
     showLabQueueAction->setStatusTip( tr( action::showLabQueueStatusTip ) );
     connect( showLabQueueAction, &QAction::triggered, this,
              [ this ]( auto ) { this->showLabQueue(); } );
@@ -1826,7 +1859,15 @@ void MainWindow::loadIcons()
     showScratchPadAction->setIcon( iconLoader_.load( "icons8-create" ) );
     showPreviewerAction->setIcon( iconLoader_.load( "icons8-search" ) );
     showActionsResponsesAction->setIcon( iconLoader_.load( "icons8-venn-diagram" ) );
-    showScriptRunnerAction->setIcon( makePythonScriptRunnerIcon() );
+    showResponsesAction->setIcon( QIcon( ":/images/tool-responses.svg" ) );
+    showScriptRunnerAction->setIcon( QIcon( ":/images/tool-script-runner.svg" ) );
+    showScenarioRunnerAction->setIcon( QIcon( ":/images/tool-scenario-runner.svg" ) );
+    showLabQueueAction->setIcon( QIcon( ":/images/tool-lab-queue.svg" ) );
+    checkForUpdatesAction->setIcon( iconLoader_.load( "icons8-search-refresh" ) );
+    LOG_DEBUG << "Tool icons refreshed: responses=" << !showResponsesAction->icon().isNull()
+              << ", script=" << !showScriptRunnerAction->icon().isNull()
+              << ", scenario=" << !showScenarioRunnerAction->icon().isNull()
+              << ", lab-queue=" << !showLabQueueAction->icon().isNull();
     addToFavoritesAction->setIcon( iconLoader_.load( "icons8-star" ) );
     addToFavoritesMenuAction->setIcon( iconLoader_.load( "icons8-star" ) );
 }
@@ -1903,6 +1944,7 @@ void MainWindow::createMenus()
 
     toolsMenu = menuBar()->addMenu( tr( menu::toolsTitle ) );
     toolsMenu->setObjectName( QStringLiteral( "toolsMenu" ) );
+    toolsMenu->setToolTipsVisible( true );
 
     highlightersMenu = new HighlightersMenu( tr( menu::highlightersTitle ), menuBar() );
     highlightersMenu->setObjectName( QStringLiteral( "highlightersMenu" ) );
@@ -1937,6 +1979,7 @@ void MainWindow::createMenus()
     helpMenu = menuBar()->addMenu( tr( menu::helpTitle ) );
     helpMenu->setObjectName( QStringLiteral( "helpMenu" ) );
     helpMenu->addAction( showDocumentationAction );
+    helpMenu->addAction( checkForUpdatesAction );
     helpMenu->addSeparator();
     helpMenu->addAction( reportIssueAction );
     helpMenu->addAction( joinDiscordAction );
@@ -2146,8 +2189,12 @@ void MainWindow::createToolBars()
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
     toolBar->addAction( showActionsResponsesAction );
+    toolBar->addAction( showResponsesAction );
     toolBar->addAction( showScriptRunnerAction );
+    toolBar->addAction( showScenarioRunnerAction );
+    toolBar->addAction( showLabQueueAction );
     toolBar->addAction( showScratchPadAction );
+    LOG_DEBUG << "Main toolbar includes responses, script runner, scenario runner and lab queue";
 
     showInfoLabels( false );
 }

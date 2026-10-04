@@ -24,13 +24,13 @@ XpStyle on
 
 SetCompressor /SOLID lzma
 
-; Registry key to keep track of the directory we are installed in
+; Reuse the location written by previous installers, including custom folders.
 !ifdef ARCH32
   InstallDir "$PROGRAMFILES\cilogg"
 !else
   InstallDir "$PROGRAMFILES64\cilogg"
 !endif
-InstallDirRegKey HKLM Software\cilogg ""
+InstallDirRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "InstallLocation"
 
 ; cilogg icon
 ; !define MUI_ICON cilogg.ico
@@ -69,6 +69,7 @@ Section "CILogg" cilogg
     ; Prevent this section from being unselected
     SectionIn RO
 
+    DetailPrint "CILogg installation directory: $INSTDIR"
     SetOutPath $INSTDIR
 File release\cilogg.exe
 File release\cilogg_grep.exe

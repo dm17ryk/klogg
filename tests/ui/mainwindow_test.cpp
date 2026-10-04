@@ -30,6 +30,8 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTest>
 #include <QVariantMap>
 #include <QWidget>
@@ -47,6 +49,7 @@
 #include "sessioninfo.h"
 #include "startupprogress.h"
 #include "streamsession.h"
+#include "versionchecker.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -834,6 +837,82 @@ SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 0; } ) );
     REQUIRE( tabArea->currentIndex() == -1 );
+}
+
+TEST_CASE( "Help update checks share one updater and respect the selected channel",
+           "[ui][updater][network]" )
+{
+    struct UpdatePreferencesGuard {
+        bool enabled = Configuration::get().versionCheckingEnabled();
+        UpdateChannel channel = Configuration::get().updateChannel();
+        ~UpdatePreferencesGuard()
+        {
+            auto& config = Configuration::get();
+            config.setVersionCheckingEnabled( enabled );
+            config.setUpdateChannel( channel );
+        }
+    } preferencesGuard;
+    Configuration::get().setVersionCheckingEnabled( false );
+    Configuration::get().setUpdateChannel( UpdateChannel::Ci );
+
+    QTcpServer server;
+    REQUIRE( server.listen( QHostAddress::LocalHost ) );
+    int requests = 0;
+    const QByteArray body = R"json([
+      {"tag_name":"v999.0.0","draft":false,"prerelease":false,
+       "published_at":"2026-10-03T12:00:00Z",
+       "html_url":"https://github.com/dm17ryk/klogg/releases/tag/v999.0.0"},
+      {"tag_name":"continuous-999.0.1","draft":false,"prerelease":true,
+       "published_at":"2026-10-04T12:00:00Z",
+       "html_url":"https://github.com/dm17ryk/klogg/releases/tag/continuous-999.0.1"}
+    ])json";
+    const QByteArray response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                                + QByteArray::number( body.size() )
+                                + "\r\nConnection: close\r\n\r\n" + body;
+    QObject::connect( &server, &QTcpServer::newConnection, &server, [ & ] {
+        auto* socket = server.nextPendingConnection();
+        const auto sendResponse = [ &, socket ] {
+            ++requests;
+            socket->readAll();
+            socket->write( response );
+            socket->disconnectFromHost();
+        };
+        QObject::connect( socket, &QTcpSocket::readyRead, socket, sendResponse );
+        if ( socket->bytesAvailable() > 0 ) {
+            sendResponse();
+        }
+    } );
+    VersionChecker checker(
+        QUrl( QStringLiteral( "http://127.0.0.1:%1/releases" ).arg( server.serverPort() ) ) );
+    const auto deadline = VersionCheckerConfig::getSynced().nextDeadline();
+    QSignalSpy completed( &checker, &VersionChecker::checkFinished );
+    QSignalSpy releaseFound( &checker, &VersionChecker::releaseFound );
+
+    auto appSession = std::make_shared<Session>();
+    MainWindow first( WindowSession{ appSession, "Updates", 0 } );
+    MainWindow second( WindowSession{ appSession, "Updates", 1 } );
+    first.setVersionChecker( checker );
+    second.setVersionChecker( checker );
+    auto* firstAction = first.findChild<QAction*>( "checkForUpdatesAction" );
+    auto* secondAction = second.findChild<QAction*>( "checkForUpdatesAction" );
+    REQUIRE( firstAction != nullptr );
+    REQUIRE( secondAction != nullptr );
+    REQUIRE( firstAction->isEnabled() );
+    REQUIRE( secondAction->isEnabled() );
+    REQUIRE( first.findChildren<VersionChecker*>().isEmpty() );
+    REQUIRE( second.findChildren<VersionChecker*>().isEmpty() );
+    firstAction->trigger();
+    REQUIRE_FALSE( firstAction->isEnabled() );
+    REQUIRE_FALSE( secondAction->isEnabled() );
+    secondAction->trigger();
+    REQUIRE( completed.wait( 3000 ) );
+    REQUIRE( requests == 1 );
+    REQUIRE( completed.at( 0 ).at( 0 ).toBool() );
+    REQUIRE( releaseFound.size() == 1 );
+    REQUIRE( qvariant_cast<ReleaseInfo>( releaseFound.at( 0 ).at( 0 ) ).prerelease );
+    REQUIRE( firstAction->isEnabled() );
+    REQUIRE( secondAction->isEnabled() );
+    REQUIRE( VersionCheckerConfig::getSynced().nextDeadline() == deadline );
 }
 
 TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][automation]" )
