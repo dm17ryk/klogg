@@ -41,6 +41,10 @@
     <file>images/olddata_icon.png</file>
     <file>images/olddata_icon@2x.png</file>
     <file>images/regex.png</file>
+    <file>images/tool-responses.svg</file>
+    <file>images/tool-script-runner.svg</file>
+    <file>images/tool-scenario-runner.svg</file>
+    <file>images/tool-lab-queue.svg</file>
     <file>images/splash.png</file>
 
 

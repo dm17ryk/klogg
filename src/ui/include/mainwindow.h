@@ -75,6 +75,7 @@ class RecentFiles;
 class HighlightersMenu;
 class StreamSession;
 class ScriptSupervisor;
+class VersionChecker;
 struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
@@ -103,6 +104,7 @@ class MainWindow : public QMainWindow {
     QVariantMap automationState() const;
     QVariantMap automationUiTree() const;
     void refreshScriptStatusIndicators();
+    void setVersionChecker( VersionChecker& checker );
 
     void reTranslateUI();
 
@@ -405,6 +407,8 @@ class MainWindow : public QMainWindow {
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;
+    QAction* checkForUpdatesAction;
+    bool manualUpdateRequested_ = false;
     QAction* aboutAction;
     QAction* aboutQtAction;
     QAction* predefinedFiltersDialogAction;

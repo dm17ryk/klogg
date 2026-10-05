@@ -19,20 +19,24 @@
 
 #include <catch2/catch.hpp>
 
-#include <algorithm>
-#include <iterator>
-#include <mutex>
 #include <QAction>
 #include <QDir>
 #include <QFile>
 #include <QMenu>
 #include <QMessageBox>
 #include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QTimer>
+#include <QTranslator>
 #include <QVariantMap>
 #include <QWidget>
+#include <algorithm>
+#include <iterator>
+#include <mutex>
 
 #include <QToolBar>
 
@@ -47,6 +51,8 @@
 #include "sessioninfo.h"
 #include "startupprogress.h"
 #include "streamsession.h"
+#include "updateuicontroller.h"
+#include "versionchecker.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -834,6 +840,209 @@ SCENARIO( "Main window skips fully invalid session entries", "[ui][startup]" )
 
     REQUIRE( waitUiState( [ & ] { return tabArea->count() == 0; } ) );
     REQUIRE( tabArea->currentIndex() == -1 );
+}
+
+TEST_CASE( "Help update checks share one updater and respect the selected channel",
+           "[ui][updater][network]" )
+{
+    struct UpdatePreferencesGuard {
+        bool enabled = Configuration::get().versionCheckingEnabled();
+        UpdateChannel channel = Configuration::get().updateChannel();
+        ~UpdatePreferencesGuard()
+        {
+            auto& config = Configuration::get();
+            config.setVersionCheckingEnabled( enabled );
+            config.setUpdateChannel( channel );
+        }
+    } preferencesGuard;
+    Configuration::get().setVersionCheckingEnabled( false );
+    Configuration::get().setUpdateChannel( UpdateChannel::Ci );
+
+    QTcpServer server;
+    REQUIRE( server.listen( QHostAddress::LocalHost ) );
+    int requests = 0;
+    const QByteArray body = R"json([
+      {"tag_name":"v999.0.0","draft":false,"prerelease":false,
+       "published_at":"2026-10-03T12:00:00Z",
+       "html_url":"https://github.com/dm17ryk/klogg/releases/tag/v999.0.0"},
+      {"tag_name":"continuous-999.0.1","draft":false,"prerelease":true,
+       "published_at":"2026-10-04T12:00:00Z",
+       "html_url":"https://github.com/dm17ryk/klogg/releases/tag/continuous-999.0.1"}
+    ])json";
+    const QByteArray response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                                + QByteArray::number( body.size() )
+                                + "\r\nConnection: close\r\n\r\n" + body;
+    QObject::connect( &server, &QTcpServer::newConnection, &server, [ & ] {
+        auto* socket = server.nextPendingConnection();
+        const auto sendResponse = [ &, socket ] {
+            ++requests;
+            socket->readAll();
+            socket->write( response );
+            socket->disconnectFromHost();
+        };
+        QObject::connect( socket, &QTcpSocket::readyRead, socket, sendResponse );
+        if ( socket->bytesAvailable() > 0 ) {
+            sendResponse();
+        }
+    } );
+    VersionChecker checker(
+        QUrl( QStringLiteral( "http://127.0.0.1:%1/releases" ).arg( server.serverPort() ) ) );
+    const auto deadline = VersionCheckerConfig::getSynced().nextDeadline();
+    QSignalSpy completed( &checker, &VersionChecker::checkFinished );
+    QSignalSpy releaseFound( &checker, &VersionChecker::releaseFound );
+
+    auto appSession = std::make_shared<Session>();
+    MainWindow first( WindowSession{ appSession, "Updates", 0 } );
+    MainWindow second( WindowSession{ appSession, "Updates", 1 } );
+    first.setVersionChecker( checker );
+    second.setVersionChecker( checker );
+    auto* firstAction = first.findChild<QAction*>( "checkForUpdatesAction" );
+    auto* secondAction = second.findChild<QAction*>( "checkForUpdatesAction" );
+    REQUIRE( firstAction != nullptr );
+    REQUIRE( secondAction != nullptr );
+    REQUIRE( firstAction->isEnabled() );
+    REQUIRE( secondAction->isEnabled() );
+    REQUIRE( first.findChildren<VersionChecker*>().isEmpty() );
+    REQUIRE( second.findChildren<VersionChecker*>().isEmpty() );
+    firstAction->trigger();
+    REQUIRE_FALSE( firstAction->isEnabled() );
+    REQUIRE_FALSE( secondAction->isEnabled() );
+    secondAction->trigger();
+    REQUIRE( completed.wait( 3000 ) );
+    REQUIRE( requests == 1 );
+    REQUIRE( completed.at( 0 ).at( 0 ).toBool() );
+    REQUIRE( releaseFound.size() == 1 );
+    REQUIRE( qvariant_cast<ReleaseInfo>( releaseFound.at( 0 ).at( 0 ) ).prerelease );
+    REQUIRE( firstAction->isEnabled() );
+    REQUIRE( secondAction->isEnabled() );
+    REQUIRE( VersionCheckerConfig::getSynced().nextDeadline() == deadline );
+}
+
+TEST_CASE( "Help and runner actions refresh every description after a language change",
+           "[ui][translation]" )
+{
+    auto appSession = std::make_shared<Session>();
+    MainWindow window( WindowSession{ appSession, "Translations", 0 } );
+    struct ActionText {
+        const char* name;
+        const char* text;
+        const char* statusTip;
+        const char* toolTip;
+    };
+    const auto expectedActions
+        = { ActionText{ "checkForUpdatesAction", "Check for Updates…",
+                        "Check the selected update channel for a new version",
+                        "Check for Updates…" },
+            ActionText{ "showScriptRunnerAction", "Script Runner",
+                        "Run Python automation on a tab or globally",
+                        "Script Runner: tab and global Python automation" },
+            ActionText{ "showScenarioRunnerAction", "Scenario Runner",
+                        "Run Python test scenarios and suites with JSON/JUnit reports",
+                        "Scenario Runner: test scenarios, suites and reports" } };
+    const auto verifyDescriptions = [ & ]( const QString& prefix ) {
+        for ( const auto& expected : expectedActions ) {
+            auto* action = window.findChild<QAction*>( expected.name );
+            REQUIRE( action != nullptr );
+            REQUIRE( action->text() == prefix + QString::fromUtf8( expected.text ) );
+            REQUIRE( action->statusTip() == prefix + QString::fromUtf8( expected.statusTip ) );
+            REQUIRE( action->toolTip() == prefix + QString::fromUtf8( expected.toolTip ) );
+        }
+    };
+    verifyDescriptions( {} );
+
+    {
+        class ActionTranslator final : public QTranslator {
+        public:
+            bool isEmpty() const override
+            {
+                return false;
+            }
+            QString translate( const char* context, const char* sourceText, const char* = nullptr,
+                               int = -1 ) const override
+            {
+                return qstrcmp( context, "klogg::mainwindow::action" ) == 0
+                           ? QStringLiteral( "translated: " ) + QString::fromUtf8( sourceText )
+                           : QString{};
+            }
+        } translator;
+        struct TranslatorGuard {
+            QTranslator* translator;
+            ~TranslatorGuard()
+            {
+                QApplication::removeTranslator( translator );
+            }
+        } guard{ &translator };
+        REQUIRE( QApplication::installTranslator( &translator ) );
+        QEvent languageChange( QEvent::LanguageChange );
+        QApplication::sendEvent( &window, &languageChange );
+        verifyDescriptions( QStringLiteral( "translated: " ) );
+    }
+    QEvent languageChange( QEvent::LanguageChange );
+    QApplication::sendEvent( &window, &languageChange );
+    verifyDescriptions( {} );
+}
+
+TEST_CASE( "Help update failures show one warning through the shared update controller",
+           "[ui][updater][network]" )
+{
+    QTcpServer server;
+    REQUIRE( server.listen( QHostAddress::LocalHost ) );
+    QObject::connect( &server, &QTcpServer::newConnection, &server, [ & ] {
+        auto* socket = server.nextPendingConnection();
+        const auto sendResponse = [ socket ] {
+            socket->readAll();
+            socket->write( "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n"
+                           "Connection: close\r\n\r\n" );
+            socket->disconnectFromHost();
+        };
+        QObject::connect( socket, &QTcpSocket::readyRead, socket, sendResponse );
+        if ( socket->bytesAvailable() > 0 ) {
+            sendResponse();
+        }
+    } );
+    VersionChecker checker(
+        QUrl( QStringLiteral( "http://127.0.0.1:%1/releases" ).arg( server.serverPort() ) ) );
+    auto appSession = std::make_shared<Session>();
+    MainWindow first( WindowSession{ appSession, "Update errors", 0 } );
+    MainWindow second( WindowSession{ appSession, "Update errors", 1 } );
+    UpdateUiController controller(
+        checker, [ & ] { return &first; }, [] { return Configuration::get().updateAction(); },
+        QStringLiteral( "background" ) );
+    first.setVersionChecker( checker );
+    second.setVersionChecker( checker );
+    first.show();
+    second.show();
+    QSignalSpy completed( &checker, &VersionChecker::checkFinished );
+    QSignalSpy errors( &checker, &VersionChecker::errorOccurred );
+
+    int messageCount = 0;
+    QString warningText;
+    QMessageBox::Icon icon = QMessageBox::NoIcon;
+    QTimer dismissMessages;
+    dismissMessages.setInterval( 10 );
+    QObject::connect( &dismissMessages, &QTimer::timeout, &dismissMessages, [ & ] {
+        for ( auto* widget : QApplication::topLevelWidgets() ) {
+            if ( auto* box = qobject_cast<QMessageBox*>( widget ); box && box->isVisible() ) {
+                ++messageCount;
+                warningText = box->text();
+                icon = box->icon();
+                box->accept();
+            }
+        }
+    } );
+    dismissMessages.start();
+    auto* action = first.findChild<QAction*>( "checkForUpdatesAction" );
+    REQUIRE( action != nullptr );
+    action->trigger();
+    REQUIRE( completed.wait( 3000 ) );
+    REQUIRE( checker.state() == UpdateState::Error );
+    REQUIRE_FALSE( completed.at( 0 ).at( 0 ).toBool() );
+    REQUIRE( errors.size() == 1 );
+    REQUIRE( messageCount == 1 );
+    REQUIRE( icon == QMessageBox::Warning );
+    REQUIRE( warningText == errors.at( 0 ).at( 0 ).toString() );
+    REQUIRE_FALSE( warningText.isEmpty() );
+    REQUIRE( action->isEnabled() );
 }
 
 TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][automation]" )

@@ -16,6 +16,8 @@
 # Headers
 !include "MUI2.nsh"
 !include "FileAssociation.nsh"
+!include "LogicLib.nsh"
+!include "StrFunc.nsh"
 
 # General
 OutFile "cilogg-${VERSION}-${PLATFORM}-${QT_MAJOR}-setup.exe"
@@ -24,13 +26,13 @@ XpStyle on
 
 SetCompressor /SOLID lzma
 
-; Registry key to keep track of the directory we are installed in
+; Reuse the location written by previous installers, including custom folders.
 !ifdef ARCH32
   InstallDir "$PROGRAMFILES\cilogg"
 !else
   InstallDir "$PROGRAMFILES64\cilogg"
 !endif
-InstallDirRegKey HKLM Software\cilogg ""
+InstallDirRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\cilogg" "InstallLocation"
 
 ; cilogg icon
 ; !define MUI_ICON cilogg.ico
@@ -64,11 +66,81 @@ the COPYING and NOTICE files.$\r$\n$\r$\n$_CLICK"
 # Languages
 !insertmacro MUI_LANGUAGE "English"
 
+${StrCase}
+${StrStr}
+
+; Stop every instance, including headless MCP servers launched by different tools.
+; Verify the process list instead of assuming taskkill's exit code means files are free.
+Function StopCILoggProcessesByImage
+    Exch $0
+    Push $1
+    Push $2
+    Push $3
+    Push $4
+    ${StrCase} $0 $0 "L"
+    StrCpy $4 0
+
+    check_processes:
+    nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\tasklist.exe" /FO CSV /NH /FI "IMAGENAME eq $0"'
+    Pop $1
+    Pop $2
+    DetailPrint "CILogg process check: image=$0, attempt=$4, exit=$1"
+    ${If} $1 != "0"
+        DetailPrint "CILogg process query failed: $2"
+        SetErrorLevel 2
+        Abort "Cannot inspect running CILogg processes. Installation cancelled."
+    ${EndIf}
+    ${StrCase} $2 $2 "L"
+    ${StrStr} $3 $2 '"$0","'
+    ${If} $3 == ""
+        DetailPrint "CILogg process check complete: no instances of $0 remain"
+        Goto processes_stopped
+    ${EndIf}
+    ${If} $4 >= 10
+        DetailPrint "CILogg shutdown failed after $4 attempts: image=$0, remaining=$2"
+        SetErrorLevel 2
+        Abort "CILogg processes are still running. Installation cancelled before replacing files."
+    ${EndIf}
+
+    DetailPrint "Stopping all running instances of $0"
+    ; Do not use /T: this installer may be a descendant of an MCP server.
+    nsExec::ExecToStack /TIMEOUT=10000 '"$SYSDIR\taskkill.exe" /F /IM "$0"'
+    Pop $1
+    Pop $2
+    DetailPrint "CILogg shutdown request: image=$0, exit=$1, output=$2"
+    IntOp $4 $4 + 1
+    Sleep 250
+    Goto check_processes
+
+    processes_stopped:
+    Pop $4
+    Pop $3
+    Pop $2
+    Pop $1
+    Pop $0
+FunctionEnd
+
+Function StopRunningCILogg
+    Push "cilogg.exe"
+    Call StopCILoggProcessesByImage
+    Push "cilogg_portable.exe"
+    Call StopCILoggProcessesByImage
+    Push "cilogg_grep.exe"
+    Call StopCILoggProcessesByImage
+    Push "cilogg_crashpad_handler.exe"
+    Call StopCILoggProcessesByImage
+    Push "cilogg_minidump_dump.exe"
+    Call StopCILoggProcessesByImage
+    ; cilogg_updater.exe may be waiting for setup to finish and must stay alive.
+FunctionEnd
+
 # Installer sections
 Section "CILogg" cilogg
     ; Prevent this section from being unselected
     SectionIn RO
 
+    DetailPrint "CILogg installation directory: $INSTDIR"
+    Call StopRunningCILogg
     SetOutPath $INSTDIR
 File release\cilogg.exe
 File release\cilogg_grep.exe
