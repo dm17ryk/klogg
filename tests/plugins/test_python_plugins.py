@@ -186,6 +186,21 @@ class PortableExamples(unittest.TestCase):
         second = {p.name: p.read_bytes() for _m, p in module.package_examples(self.root / "second")}
         self.assertEqual(first, second)
 
+    def test_packages_ignore_checkout_line_endings(self):
+        spec = importlib.util.spec_from_file_location("package_examples", ROOT / "scripts/plugins/package_examples.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        fixture = self.root / "checkout"
+        shutil.copytree(ROOT / "plugins", fixture / "plugins", ignore=shutil.ignore_patterns("__pycache__"))
+        module.ROOT = fixture
+        first = {p.name: p.read_bytes() for _m, p in module.package_examples(self.root / "first")}
+        for file in fixture.rglob("*"):
+            if file.is_file() and file.suffix.lower() in {".py", ".json", ".md", ".txt"}:
+                data = file.read_bytes().replace(b"\r\n", b"\n")
+                file.write_bytes(data.replace(b"\n", b"\r\n"))
+        second = {p.name: p.read_bytes() for _m, p in module.package_examples(self.root / "second")}
+        self.assertEqual(first, second)
+
     def test_producer_waits_for_ack_and_can_cancel(self):
         host = self.host("generated-source")
         host.send("invoke", {"job_id": "job", "action": "start",

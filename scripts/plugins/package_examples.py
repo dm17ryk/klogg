@@ -32,8 +32,11 @@ def package_examples(output: pathlib.Path) -> list[tuple[dict[str, Any], pathlib
                         info = zipfile.ZipInfo(file.relative_to(package).as_posix(), (1980, 1, 1, 0, 0, 0))
                         info.create_system = 3
                         info.external_attr = 0o100644 << 16
+                        data = file.read_bytes()
+                        if file.suffix.lower() in {".py", ".json", ".md", ".txt"}:
+                            data = data.replace(b"\r\n", b"\n")
                         # Stored entries have deterministic bytes across zlib/Python versions.
-                        archive.writestr(info, file.read_bytes(), compress_type=zipfile.ZIP_STORED)
+                        archive.writestr(info, data, compress_type=zipfile.ZIP_STORED)
         packages.append((manifest, archive_path))
     return packages
 
