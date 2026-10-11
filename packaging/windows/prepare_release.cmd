@@ -71,6 +71,11 @@ xcopy %CILOGG_WORKSPACE%\README.md %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\DOCUMENTATION.md %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\MCP.md %CILOGG_WORKSPACE%\release\ /y
 xcopy %CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\python_runtime %CILOGG_WORKSPACE%\release\python_runtime\ /e /i /y
+xcopy "%CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\plugins" "%CILOGG_WORKSPACE%\release\plugins\" /e /i /y
+if errorlevel 1 exit /b 1
+xcopy "%CILOGG_WORKSPACE%\%CILOGG_BUILD_ROOT%\output\plugin-sdk" "%CILOGG_WORKSPACE%\release\plugin-sdk\" /e /i /y
+if errorlevel 1 exit /b 1
+xcopy "%CILOGG_WORKSPACE%\docs\plugin-sdk.md" "%CILOGG_WORKSPACE%\release\" /y
 
 echo "Copying vc runtime..."
 xcopy "%VCToolsRedistDir%%platform%\Microsoft.VC143.CRT\msvcp140.dll" %CILOGG_WORKSPACE%\release\ /y

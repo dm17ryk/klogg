@@ -314,6 +314,11 @@ private:
             "  close_cilogg\n"
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
+            "  get_plugins [--pretty]\n"
+            "  plugin_manage --plugin-operation <install|remove|enable|disable|configure|restart|catalog|update> [--plugin-id <id>] [--json-file <options.json>]\n"
+            "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file <arguments.json>] [tab selector]\n"
+            "  get_plugin_job --plugin-job-id <id>\n"
+            "  cancel_plugin_job --plugin-job-id <id>\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -1544,6 +1549,10 @@ private:
             QStringLiteral( "Require an existing GUI, including for open commands." ) );
         parser.addOption( requireRunningOption );
         parser.addOption( actionOption );
+        parser.addOption( QCommandLineOption( "plugin-id", "Plugin identifier.", "id" ) );
+        parser.addOption( QCommandLineOption( "plugin-operation", "Plugin management operation.", "operation" ) );
+        parser.addOption( QCommandLineOption( "plugin-action", "Plugin action identifier.", "action" ) );
+        parser.addOption( QCommandLineOption( "plugin-job-id", "Plugin job identifier.", "id" ) );
         parser.addOption( fileOption );
         parser.addOption( urlOption );
         parser.addOption( portOption );
@@ -1767,6 +1776,33 @@ private:
         };
 
         switch ( *action ) {
+        case CommanderAction::GetPlugins:
+        case CommanderAction::PluginManage:
+        case CommanderAction::InvokePlugin:
+        case CommanderAction::GetPluginJob:
+        case CommanderAction::CancelPluginJob: {
+            request.pluginId = parser.value( "plugin-id" );
+            request.pluginOperation = parser.value( "plugin-operation" );
+            request.pluginAction = parser.value( "plugin-action" );
+            request.pluginJobId = parser.value( "plugin-job-id" );
+            if ( parser.isSet( jsonFileOption ) ) {
+                QFile pluginJson( parser.value( jsonFileOption ) );
+                if ( !pluginJson.open( QIODevice::ReadOnly ) || pluginJson.size() > 1024 * 1024 ) {
+                    result.output_message = formatParserError( parser, "Cannot read plugin JSON (maximum 1 MiB)." );
+                    return result;
+                }
+                QJsonParseError pluginJsonError;
+                const auto pluginDocument = QJsonDocument::fromJson( pluginJson.readAll(), &pluginJsonError );
+                if ( pluginJsonError.error != QJsonParseError::NoError || !pluginDocument.isObject() ) {
+                    result.output_message = formatParserError( parser, "Plugin JSON must be an object." );
+                    return result;
+                }
+                request.pluginArguments = pluginDocument.object().toVariantMap();
+            }
+            if ( *action == CommanderAction::InvokePlugin
+                 && !validateTabSelector( "invoke_plugin", false ) ) { return result; }
+            break;
+        }
         case CommanderAction::OpenFile:
         case CommanderAction::CloseFile:
             request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );

@@ -107,6 +107,7 @@ target_link_libraries(
   klogg_commander
   PUBLIC project_options
          project_warnings
+         klogg_logging
          Qt${QT_VERSION_MAJOR}::Core
          Qt${QT_VERSION_MAJOR}::Sql
          Qt${QT_VERSION_MAJOR}::SerialPort
@@ -129,6 +130,41 @@ target_compile_definitions(klogg_mcp PRIVATE CILOGG_MCP_GREP_NAME="${PRODUCT_GRE
 add_executable(klogg ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_portable ${OS_BUNDLE} ${MAIN_SOURCES} ${KLOGG_UI_SOURCES})
 add_executable(klogg_grep ${MAIN_SOURCES} ${KLOGG_GREP_SOURCES})
+
+# Keep examples self-contained: each installed package carries its Python SDK helper.
+foreach(app_target klogg klogg_portable)
+  if(APPLE)
+    set(plugin_output "$<TARGET_BUNDLE_CONTENT_DIR:${app_target}>/PlugIns/cilogg")
+  else()
+    set(plugin_output "$<TARGET_FILE_DIR:${app_target}>/plugins")
+  endif()
+  add_custom_command(TARGET ${app_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/plugins/examples" "${plugin_output}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/plugins/sdk" "$<TARGET_FILE_DIR:${app_target}>/plugin-sdk")
+  add_custom_command(TARGET ${app_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py"
+      "$<TARGET_FILE_DIR:${app_target}>/plugin-sdk/python/external-window/cilogg_plugin.py")
+  foreach(example generated-source json-lines log-summary)
+    add_custom_command(TARGET ${app_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py" "${plugin_output}/${example}/cilogg_plugin.py")
+  endforeach()
+endforeach()
+if(APPLE)
+  set(plugin_install "${PRODUCT_EXECUTABLE_NAME}.app/Contents/PlugIns/cilogg")
+  set(plugin_sdk_install "${PRODUCT_EXECUTABLE_NAME}.app/Contents/MacOS/plugin-sdk")
+else()
+  set(plugin_install "${CMAKE_INSTALL_BINDIR}/plugins")
+  set(plugin_sdk_install "${CMAKE_INSTALL_BINDIR}/plugin-sdk")
+endif()
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/plugins/examples/" DESTINATION "${plugin_install}")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/plugins/sdk/" DESTINATION "${plugin_sdk_install}")
+install(FILES "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py"
+        DESTINATION "${plugin_sdk_install}/python/external-window")
+foreach(example generated-source json-lines log-summary)
+  install(FILES "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py" DESTINATION "${plugin_install}/${example}")
+endforeach()
 
 target_include_directories(
   klogg PRIVATE ${CMAKE_SOURCE_DIR}/src/versioncheck/include

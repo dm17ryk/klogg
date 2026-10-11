@@ -103,6 +103,7 @@
 #include <QWindow>
 
 #include "mainwindow.h"
+#include "pluginuicontroller.h"
 #include "uiautomation.h"
 
 #include "actionparametersdialog.h"
@@ -3156,6 +3157,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
     const auto fileName = session_.getFilename( widget );
     publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_close" ) );
+    if ( pluginController_ ) { pluginController_->closeFile( fileName ); }
     const auto tabId = mainTabWidget_.tabIdAt( index );
     remoteFileSources_.erase( fileName );
     if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {

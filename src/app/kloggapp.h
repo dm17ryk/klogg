@@ -71,6 +71,7 @@
 #include <kdsingleapplication.h>
 
 #include "mainwindow.h"
+#include "pluginmanager.h"
 #include "messagereceiver.h"
 #include "labqueuewindow.h"
 #include "scenariorunner.h"
@@ -270,15 +271,9 @@ class KloggApp : public QApplication {
 
         LOG_DEBUG << "Commander connection acknowledged after " << connectionTimer.elapsed()
                   << " ms";
-        if ( !waitForResponseFile( resultPath, CommanderResponseTimeoutMs ) ) {
-            QFile::remove( resultPath );
-            return commanderFailure(
-                CommanderResultCode::TransportError,
-                QStringLiteral( "Timed out waiting for commander response." ) );
-        }
-
         QString readError;
-        const auto result = readCommanderResult( resultPath, &readError );
+        const auto result = waitForCommanderResult( resultPath, CommanderResponseTimeoutMs,
+                                                    &readError );
         QFile::remove( resultPath );
         if ( !result ) {
             return commanderFailure( CommanderResultCode::TransportError,
@@ -546,6 +541,36 @@ class KloggApp : public QApplication {
 
     CommanderResult executeCommanderRequest( const CommanderRequest& request )
     {
+        using cilogg::plugins::Result;
+        const auto pluginResult = []( const Result& result ) {
+            return result.ok() ? commanderSuccess( {}, result.payload )
+                               : commanderFailure( CommanderResultCode::ExecutionFailed, result.error );
+        };
+        if ( request.action == CommanderAction::GetPlugins ) {
+            return commanderSuccess( {}, { { "plugins", pluginManager_.plugins() },
+                                           { "jobs", pluginManager_.jobs() } } );
+        }
+        if ( request.action == CommanderAction::PluginManage ) {
+            return pluginResult( pluginManager_.manage( request.pluginOperation, request.pluginId,
+                                                        request.pluginArguments ) );
+        }
+        if ( request.action == CommanderAction::GetPluginJob ) { return pluginResult( pluginManager_.job( request.pluginJobId ) ); }
+        if ( request.action == CommanderAction::CancelPluginJob ) { return pluginResult( pluginManager_.cancel( request.pluginJobId ) ); }
+        if ( request.action == CommanderAction::InvokePlugin ) {
+            QVariantMap context;
+            if ( !request.tabId.isEmpty() ) {
+                for ( const auto& [ session, window ] : mainWindows_ ) {
+                    Q_UNUSED( session );
+                    if ( window ) { context = window->pluginContext( request ); if ( !context.isEmpty() ) { break; } }
+                }
+            } else {
+                auto* window = request.windowIndex ? windowByIndex( *request.windowIndex ) : activeWindowOrCreate();
+                if ( window ) { context = window->pluginContext( request ); }
+            }
+            if ( context.isEmpty() ) { return commanderFailure( CommanderResultCode::NotFound, "Plugin target window/tab not found." ); }
+            return pluginResult( pluginManager_.invoke( request.pluginId, request.pluginAction,
+                                                        request.pluginArguments, context ) );
+        }
         if ( request.action == CommanderAction::GetInfo ) {
             auto* activeWindow = activeWindowIfAny();
             QVariantList windows;
@@ -1070,6 +1095,9 @@ class KloggApp : public QApplication {
 
         auto& window = mainWindows_.back().second;
         window->setVersionChecker( versionChecker_ );
+        window->setPluginManager( pluginManager_, [ this ]( const CommanderRequest& request ) {
+            return executeCommanderRequest( request );
+        } );
         if ( automationModeEnabled_ ) {
             applyAutomationGeometry( window );
         }
@@ -1233,37 +1261,12 @@ class KloggApp : public QApplication {
         return {};
     }
 
-    static bool waitForResponseFile( const QString& resultPath, int timeoutMs )
-    {
-        constexpr int PollIntervalMs = 20;
-
-        bool received = false;
-        QEventLoop waitLoop;
-        QTimer pollTimer;
-        QTimer timeoutTimer;
-        pollTimer.setInterval( PollIntervalMs );
-        timeoutTimer.setSingleShot( true );
-
-        connect( &pollTimer, &QTimer::timeout, &waitLoop, [ & ]() {
-            if ( QFileInfo::exists( resultPath ) ) {
-                received = true;
-                waitLoop.quit();
-            }
-        } );
-        connect( &timeoutTimer, &QTimer::timeout, &waitLoop, &QEventLoop::quit );
-
-        pollTimer.start();
-        timeoutTimer.start( timeoutMs );
-        waitLoop.exec( QEventLoop::ProcessEventsFlag::ExcludeUserInputEvents );
-
-        return received || QFileInfo::exists( resultPath );
-    }
-
   private:
     KDSingleApplication singleApplication_;
     std::unique_ptr<CrashHandler> crashHandler_;
 
     MessageReceiver messageReceiver_;
+    cilogg::plugins::PluginManager pluginManager_;
     ScriptSupervisor scriptSupervisor_;
     ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
     ScenarioRunner scenarioRunner_;

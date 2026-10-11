@@ -1,0 +1,6 @@
+{
+  "id":"org.cilogg.log-summary", "name":"Log Summary", "version":"1.0.0",
+  "protocol_version":1, "capabilities":["tool"], "executable":"python", "arguments":["main.py"],
+  "description":"Count log records and severity terms in an embedded panel.",
+  "actions":[{"id":"summarize","label":"Summarize Log","capability":"tool","fields":[]}]
+}

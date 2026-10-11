@@ -32,6 +32,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pathline.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginuicontroller.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginuicontroller.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowplugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/uiautomation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindowtext.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/menu.h
@@ -197,6 +200,7 @@ target_link_libraries(
   PUBLIC project_options
          project_warnings
          klogg_commander
+         klogg_plugins
          klogg_lab
          klogg_logdata
          klogg_versioncheck

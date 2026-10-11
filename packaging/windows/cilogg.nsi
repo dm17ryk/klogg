@@ -157,6 +157,12 @@ File release\cilogg_updater.exe
     File release\documentation.html
     SetOutPath $INSTDIR\python_runtime
     File /nonfatal /r release\python_runtime\*
+    SetOutPath $INSTDIR\plugins
+    File /r release\plugins\*
+    SetOutPath $INSTDIR\plugin-sdk
+    File /r release\plugin-sdk\*
+    SetOutPath $INSTDIR
+    File release\plugin-sdk.md
 
     ; Create the 'sendto' link
     CreateShortCut "$SENDTO\cilogg.lnk" "$INSTDIR\cilogg.exe" "" "$INSTDIR\cilogg.exe" 0
@@ -254,6 +260,9 @@ you already have the Microsoft Visual C++ 2017 Redistributable installed."
 
 # Uninstaller
 Section "Uninstall"
+    RMDir /r "$INSTDIR\plugins"
+    RMDir /r "$INSTDIR\plugin-sdk"
+    Delete "$INSTDIR\plugin-sdk.md"
     Delete "$INSTDIR\Uninstall.exe"
 
     Delete "$INSTDIR\cilogg.exe"

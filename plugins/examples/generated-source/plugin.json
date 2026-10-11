@@ -1,0 +1,10 @@
+{
+  "id": "org.cilogg.generated-source", "name": "Generated Log Source", "version": "1.0.0",
+  "protocol_version": 1, "capabilities": ["datasource"],
+  "executable": "python", "arguments": ["main.py"],
+  "description": "Generate a live log without hardware.",
+  "configuration": [{"id":"prefix","label":"Log prefix","type":"text","default":"DEMO"}],
+  "actions": [{"id":"start","label":"Start Log Stream","capability":"datasource",
+    "fields":[{"id":"interval","label":"Interval (seconds)","type":"number","minimum":0.01,"maximum":60,"default":0.1},
+              {"id":"count","label":"Records (0 = unlimited)","type":"integer","minimum":0,"maximum":1000000,"default":100}]}]
+}

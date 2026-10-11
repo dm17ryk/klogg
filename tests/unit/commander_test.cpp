@@ -6,6 +6,10 @@
 #include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 #include "actionruntime.h"
 #include "cli.h"
@@ -13,6 +17,32 @@
 #include "comportutils.h"
 #include "configuration.h"
 #include "predefinedfilters.h"
+
+TEST_CASE( "Commander waits for readable responses without resending", "[commander][transport]" )
+{
+    QTemporaryDir directory;
+    const auto path = directory.filePath( "response.json" );
+    QString error;
+    QTimer::singleShot( 40, [&]() { writeCommanderResult( path, commanderSuccess( "delayed" ) ); } );
+    auto result = waitForCommanderResult( path, 1000, &error );
+    REQUIRE( result );
+    REQUIRE( result->message == "delayed" );
+    REQUIRE( error.isEmpty() );
+#ifdef Q_OS_WIN
+    const auto handle = CreateFileW( reinterpret_cast<LPCWSTR>( path.utf16() ), GENERIC_READ, 0,
+                                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr );
+    REQUIRE( handle != INVALID_HANDLE_VALUE );
+    QTimer::singleShot( 60, [handle]() { CloseHandle( handle ); } );
+    REQUIRE_FALSE( readCommanderResult( path, &error ) );
+    result = waitForCommanderResult( path, 1000, &error );
+    REQUIRE( result );
+    REQUIRE( result->message == "delayed" );
+    REQUIRE( error.isEmpty() );
+#endif
+    QFile::remove( path );
+    REQUIRE_FALSE( waitForCommanderResult( path, 40, &error ) );
+    REQUIRE_FALSE( error.isEmpty() );
+}
 
 TEST_CASE( "Commander exposes dialog controls through CLI and IPC", "[commander][automation]" )
 {
