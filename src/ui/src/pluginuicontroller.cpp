@@ -357,7 +357,7 @@ void PluginUiController::manageDialog()
                   ? table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString()
                   : QString{};
         const auto list = manager_->plugins();
-        table->setRowCount( list.size() );
+        table->setRowCount( static_cast<int>( list.size() ) );
         int index = 0;
         for ( const auto& value : list ) {
             const auto p = value.toMap();
@@ -519,7 +519,7 @@ void PluginUiController::browseDialog()
         status->setText( state + ": " + j.payload.value( "error" ).toString() );
         if ( state == "completed" && j.payload.value( "action" ) == "catalog" ) {
             const auto list = j.payload.value( "result" ).toMap().value( "plugins" ).toList();
-            table->setRowCount( list.size() );
+            table->setRowCount( static_cast<int>( list.size() ) );
             int row = 0;
             for ( const auto& item : list ) {
                 const auto p = item.toMap();
@@ -610,7 +610,8 @@ void PluginUiController::panel( const QString& pluginId, const QJsonObject& defi
                 continue;
             }
             remainingCells -= int( cellCount );
-            auto* table = new QTableWidget( rows.size(), columns.size(), body );
+            auto* table = new QTableWidget( static_cast<int>( rows.size() ),
+                                            static_cast<int>( columns.size() ), body );
             table->setEditTriggers( QAbstractItemView::NoEditTriggers );
             QStringList headers;
             for ( const auto& col : columns ) {

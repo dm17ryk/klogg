@@ -237,17 +237,18 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
     auto* process = entry.process.get();
     connect( process, &PluginProcess::changed, this, &PluginManager::changed );
     connect( process, &PluginProcess::changed, this, [ this, id ] {
-        const auto entry = entries_.find( id );
-        if ( entry != entries_.end() && entry->second->process->state() == "ready" ) {
-            auto* readyProcess = entry->second->process.get();
+        const auto foundEntry = entries_.find( id );
+        if ( foundEntry != entries_.end() && foundEntry->second->process->state() == "ready" ) {
+            auto* readyProcess = foundEntry->second->process.get();
             QJsonParseError parseError;
             const auto document = QJsonDocument::fromJson(
                 settings_.value( configurationKey( id ) + "configuration", "{}" ).toByteArray(),
                 &parseError );
             auto config = document.object();
-            const auto fields = readyProcess->descriptor().contains( "configuration" )
-                                    ? readyProcess->descriptor()[ "configuration" ].toArray()
-                                    : entry->second->manifest.json[ "configuration" ].toArray();
+            const auto fields
+                = readyProcess->descriptor().contains( "configuration" )
+                      ? readyProcess->descriptor()[ "configuration" ].toArray()
+                      : foundEntry->second->manifest.json[ "configuration" ].toArray();
             const auto error = validateValues( fields, &config );
             if ( parseError.error != QJsonParseError::NoError || !document.isObject()
                  || !error.isEmpty() ) {
