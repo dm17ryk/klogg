@@ -1,13 +1,16 @@
 #include "commander.h"
 
 #include <QFile>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QSaveFile>
+#include <QTimer>
 #include <QUrl>
 
 #include "serialcaptureworker.h"
+#include "log.h"
 
 namespace {
 template <typename Enum>
@@ -160,6 +163,16 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "activate_ui" );
     case CommanderAction::DumpState:
         return QStringLiteral( "dump_state" );
+    case CommanderAction::GetPlugins:
+        return QStringLiteral( "get_plugins" );
+    case CommanderAction::PluginManage:
+        return QStringLiteral( "plugin_manage" );
+    case CommanderAction::InvokePlugin:
+        return QStringLiteral( "invoke_plugin" );
+    case CommanderAction::GetPluginJob:
+        return QStringLiteral( "get_plugin_job" );
+    case CommanderAction::CancelPluginJob:
+        return QStringLiteral( "cancel_plugin_job" );
     case CommanderAction::None:
     default:
         return {};
@@ -169,6 +182,11 @@ QString commanderActionToString( CommanderAction action )
 std::optional<CommanderAction> commanderActionFromString( const QString& action )
 {
     const auto normalized = action.trimmed().toLower();
+    if ( normalized == "get_plugins" ) { return CommanderAction::GetPlugins; }
+    if ( normalized == "plugin_manage" ) { return CommanderAction::PluginManage; }
+    if ( normalized == "invoke_plugin" ) { return CommanderAction::InvokePlugin; }
+    if ( normalized == "get_plugin_job" ) { return CommanderAction::GetPluginJob; }
+    if ( normalized == "cancel_plugin_job" ) { return CommanderAction::CancelPluginJob; }
     if ( normalized == QStringLiteral( "open_file" ) ) {
         return CommanderAction::OpenFile;
     }
@@ -399,6 +417,11 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
 {
     QVariantMap map;
     map.insert( QStringLiteral( "action" ), commanderActionToString( request.action ) );
+    map.insert( QStringLiteral( "pluginId" ), request.pluginId );
+    map.insert( QStringLiteral( "pluginOperation" ), request.pluginOperation );
+    map.insert( QStringLiteral( "pluginAction" ), request.pluginAction );
+    map.insert( QStringLiteral( "pluginJobId" ), request.pluginJobId );
+    map.insert( QStringLiteral( "pluginArguments" ), request.pluginArguments );
 
     if ( !request.filePath.isEmpty() ) {
         map.insert( QStringLiteral( "filePath" ), request.filePath );
@@ -565,6 +588,11 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
 
     CommanderRequest request;
     request.action = *action;
+    request.pluginId = map.value( QStringLiteral( "pluginId" ) ).toString();
+    request.pluginOperation = map.value( QStringLiteral( "pluginOperation" ) ).toString();
+    request.pluginAction = map.value( QStringLiteral( "pluginAction" ) ).toString();
+    request.pluginJobId = map.value( QStringLiteral( "pluginJobId" ) ).toString();
+    request.pluginArguments = map.value( QStringLiteral( "pluginArguments" ) ).toMap();
     request.filePath = map.value( QStringLiteral( "filePath" ) ).toString();
     request.url = map.value( QStringLiteral( "url" ) ).toString();
     request.portName = map.value( QStringLiteral( "portName" ) ).toString();
@@ -871,6 +899,51 @@ std::optional<CommanderResult> readCommanderResult( const QString& resultPath,
     }
 
     return commanderResultFromVariantMap( document.toVariant().toMap(), errorMessage );
+}
+
+std::optional<CommanderResult> waitForCommanderResult( const QString& resultPath, int timeoutMs,
+                                                      QString* errorMessage )
+{
+    std::optional<CommanderResult> result;
+    QString lastError;
+    bool loggedRetry = false;
+    QEventLoop loop;
+    QTimer pollTimer;
+    QTimer deadline;
+    pollTimer.setInterval( 20 );
+    deadline.setSingleShot( true );
+    const auto tryRead = [&]() {
+        if ( !QFileInfo::exists( resultPath ) ) {
+            return;
+        }
+        result = readCommanderResult( resultPath, &lastError );
+        if ( result ) {
+            loop.quit();
+        }
+        else if ( !loggedRetry ) {
+            loggedRetry = true;
+            LOG_DEBUG << "Commander response not readable yet: " << lastError.toStdString();
+        }
+    };
+    QObject::connect( &pollTimer, &QTimer::timeout, &loop, tryRead );
+    QObject::connect( &deadline, &QTimer::timeout, &loop, &QEventLoop::quit );
+    tryRead();
+    if ( !result && timeoutMs > 0 ) {
+        pollTimer.start();
+        deadline.start( timeoutMs );
+        loop.exec( QEventLoop::ExcludeUserInputEvents );
+    }
+    if ( !result ) {
+        setError( errorMessage, lastError.isEmpty()
+                                   ? QStringLiteral( "Timed out waiting for commander response." )
+                                   : lastError );
+        LOG_WARNING << "Commander response deadline expired: " << lastError.toStdString();
+    }
+    else {
+        setError( errorMessage, {} );
+        LOG_DEBUG << "Commander response consumed; retried=" << loggedRetry;
+    }
+    return result;
 }
 
 CommanderResult commanderSuccess( const QString& message, const QVariantMap& payload )

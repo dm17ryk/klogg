@@ -66,6 +66,11 @@ enum class CommanderAction {
     GetUi,
     SetUi,
     ActivateUi,
+    GetPlugins,
+    PluginManage,
+    InvokePlugin,
+    GetPluginJob,
+    CancelPluginJob,
 };
 
 enum class CommanderResultCode {
@@ -106,6 +111,11 @@ struct CommanderRequest {
     QString argsJsonFilePath;
     QString scenarioFilePath;
     QString suiteFilePath;
+    QString pluginId;
+    QString pluginOperation;
+    QString pluginAction;
+    QString pluginJobId;
+    QVariantMap pluginArguments;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
@@ -167,6 +177,8 @@ std::optional<CommanderResult> commanderResultFromVariantMap( const QVariantMap&
 bool writeCommanderResult( const QString& resultPath, const CommanderResult& result );
 std::optional<CommanderResult> readCommanderResult( const QString& resultPath,
                                                     QString* errorMessage = nullptr );
+std::optional<CommanderResult> waitForCommanderResult( const QString& resultPath, int timeoutMs,
+                                                      QString* errorMessage = nullptr );
 
 CommanderResult commanderSuccess( const QString& message = {}, const QVariantMap& payload = {} );
 CommanderResult commanderFailure( CommanderResultCode code, const QString& message );

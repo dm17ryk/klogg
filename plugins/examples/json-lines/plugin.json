@@ -1,0 +1,7 @@
+{
+  "id":"org.cilogg.json-lines", "name":"JSON Lines Converter", "version":"1.0.0",
+  "protocol_version":1, "capabilities":["converter"], "executable":"python", "arguments":["main.py"],
+  "description":"Render JSON-lines records as readable text without changing the input.",
+  "actions":[{"id":"convert","label":"Convert JSON Lines","capability":"converter",
+    "fields":[{"id":"input_path","label":"Input file","type":"file","required":true}]}]
+}

@@ -1,0 +1,3 @@
+{"id":"org.example.cpp-plugin","name":"C++ Plugin Example","version":"1.0.0",
+ "protocol_version":1,"capabilities":["tool"],"executable":"cilogg_plugin_example","arguments":[],
+ "actions":[{"id":"hello","label":"Hello","capability":"tool","fields":[]}]}

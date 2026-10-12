@@ -76,6 +76,8 @@ class HighlightersMenu;
 class StreamSession;
 class ScriptSupervisor;
 class VersionChecker;
+class PluginUiController;
+namespace cilogg::plugins { class PluginManager; }
 struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
@@ -105,6 +107,9 @@ class MainWindow : public QMainWindow {
     QVariantMap automationUiTree() const;
     void refreshScriptStatusIndicators();
     void setVersionChecker( VersionChecker& checker );
+    void setPluginManager( cilogg::plugins::PluginManager& manager,
+                           std::function<CommanderResult( const CommanderRequest& )> executor );
+    QVariantMap pluginContext( const CommanderRequest& request ) const;
 
     void reTranslateUI();
 
@@ -345,6 +350,7 @@ class MainWindow : public QMainWindow {
         void restoreGlobalScriptContext();
 
     WindowSession session_;
+    PluginUiController* pluginController_ = nullptr;
     QString loadingFileName;
 
     std::array<QAction*, MAX_RECENT_FILES> recentFileActions;

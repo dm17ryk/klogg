@@ -1,0 +1,3 @@
+{"id":"org.cilogg.external-window","name":"External Window Example","version":"1.0.0",
+ "protocol_version":1,"capabilities":["tool"],"executable":"python","arguments":["main.py"],
+ "actions":[{"id":"show","label":"Show External Window","capability":"tool","fields":[]}]}
