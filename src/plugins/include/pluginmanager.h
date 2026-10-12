@@ -1,6 +1,7 @@
 #pragma once
 #include "pluginprocess.h"
 #include "pluginrepository.h"
+#include "pluginstorage.h"
 #include <QFile>
 #include <QNetworkAccessManager>
 #include <QSettings>
@@ -36,6 +37,7 @@ public:
     void closeWindow( const QString& windowId );
     void shutdown();
     QString catalogUrl() const;
+    QVariantMap storageStatus() const;
     QString dataRoot() const
     {
         return dataRoot_;
@@ -66,6 +68,10 @@ private:
         double progress = 0;
         bool cancelRequested = false;
         bool invocation = false;
+        bool restartStarted = false;
+        bool outputSupervised = false;
+        qint64 outputReservation = 0;
+        qint64 observedOutputBytes = 0;
     };
     struct Stream {
         QString pluginId;
@@ -75,8 +81,8 @@ private:
         std::unique_ptr<QFile> file;
         quint64 nextSequence = 0;
     };
-    QString addJob( const QString& pluginId, const QString& action,
-                    const QVariantMap& context = {} );
+    QString addJob( const QString& pluginId, const QString& action, const QVariantMap& context = {},
+                    bool management = false );
     QVariantMap jobPayload( const Job& job ) const;
     void finishJob( const QString& id, const QString& error, const QVariantMap& result = {} );
     PluginProcess* ensureProcess( Entry& entry );
@@ -93,15 +99,27 @@ private:
                 const QString& expectedVersion = {} );
     void loadCatalog( const QByteArray& bytes, const QString& jobId );
     QString configurationKey( const QString& id ) const;
+    void rememberSecretFields( const QString& id, const QJsonArray& fields );
+    qint64 reservedCaptureBytes() const;
+    void refreshCaptureUsage();
+    void recordCaptureBytes( qint64 delta );
+    void monitorStorage();
+    void failStorageJob( QString pluginId, QString jobId, QString error );
+    Result configureStorage( const QVariantMap& limits );
     QString dataRoot_;
     QString shippedRoot_;
     QSettings settings_;
+    CaptureStorage storage_;
     QNetworkAccessManager network_;
     QNetworkAccessManager* networkAccess_;
     std::map<QString, std::unique_ptr<Entry>> entries_;
     std::map<QString, Job> jobs_;
     std::map<QString, Stream> streams_;
     QJsonArray catalog_;
+    QString catalogJobId_;
+    bool storageScanActive_ = false;
+    int storageTicks_ = 0;
+    quint64 storageScanGeneration_ = 0;
     bool shuttingDown_ = false;
 };
 } // namespace cilogg::plugins

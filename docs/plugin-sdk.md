@@ -138,8 +138,57 @@ architecture such as `x86_64`/`arm64`), `url`, and `sha256`.
 
 Run `python -m unittest discover -s tests/plugins -v` for portable example tests.
 Native runtime/package/Commander tests are in the `[plugins]` Catch2 group.
-The Python SDK requires Python 3.10 or newer. To exercise the built application
+The Python SDK requires Python 3.9 or newer. To exercise the built application
 through GUI actions, CLI, and native MCP in an isolated portable instance, run
 `python tests/plugins/host_integration.py --build build_root/output/RelWithDebInfo --artifacts build_root/plugin-integration`.
 Native UI tests verify window targeting and dock cleanup. ZIP entries use fixed
 metadata and stored bytes so package checksums remain reproducible across checkouts.
+
+## Secrets and capture storage
+
+Declare sensitive configuration fields with `"type":"secret"`. CILogg renders
+password controls and removes secret values and defaults from `get_plugins`,
+management diagnostics, and configuration form descriptions. The
+`configuredSecrets` map reports only whether each secret is set. Omitting a secret
+from a configuration update preserves its stored value; sending an empty string
+clears it. The form offers an explicit clear button. Settings retain secret values
+locally with current-user permissions; this is not encrypted credential storage.
+Plugins must also avoid writing credentials to stderr, results, or panels.
+
+Capture storage defaults to **1 GiB per file and 10 GiB total**, with a 512 MiB
+free-space reserve. Manage Plugins exposes Storage Limits, current usage, and
+Open Captures Folder. Limits persist across updates and application restarts.
+Zero disables the corresponding limit. Exceeding a limit stops capture and
+retains recorded data; no files are automatically deleted. Manual deletion of
+retained files releases space. Converter outputs share these limits, reserve
+capacity before starting, and are monitored while the plugin process runs.
+A violation terminates the converter process and keeps its partial output.
+These checks are not OS sandbox quotas: plugins run with current-user permissions,
+so arbitrary writes elsewhere and writes between monitoring ticks remain possible.
+
+`get_plugins` includes a `storage` object with `directory`, `limits`,
+`captured_bytes`, `reserved_bytes`, and `available_bytes`. Configure host limits
+through `plugin_manage`, operation `configure`, with no plugin ID. For example,
+put this in `storage-limits.json`:
+
+```json
+{"storage_limits":{"max_capture_bytes":1073741824,"max_total_bytes":10737418240,"min_free_bytes":536870912}}
+```
+
+```text
+cilogg command --action plugin_manage --plugin-operation configure --json-file storage-limits.json
+```
+
+Catalog results include a host-generated `entry_id` identifying the exact
+version, platform, URL, and checksum. Pass it as `catalog_entry_id` in install or
+update options. The Browse dialog does this automatically. Selecting only a
+plugin ID is rejected when multiple different entries match. A newer catalog
+request supersedes the previous request; obsolete selections are rejected after
+refresh. Packages reject traversal, links, Windows device names, and path
+components ending in dots or spaces on every platform.
+Plugin IDs use lowercase ASCII letters, digits, dots, underscores, and hyphens
+to prevent case aliases from replacing another plugin on Windows.
+
+Restart jobs complete only after an enabled plugin successfully initializes;
+initialization failures are reported through the job. Streams remain stopped
+after restart and require explicit invocation.

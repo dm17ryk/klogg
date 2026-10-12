@@ -7,10 +7,10 @@ import sys
 import threading
 import time
 import uuid
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 JsonObject = dict[str, Any]
-Action = Callable[["Job", JsonObject], JsonObject | None]
+Action = Callable[["Job", JsonObject], Optional[JsonObject]]
 
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE

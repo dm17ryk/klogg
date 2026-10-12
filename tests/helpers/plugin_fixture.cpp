@@ -104,19 +104,24 @@ int main( int argc, char** argv )
         return 0;
     }
     cilogg_plugin::Server plugin;
-    plugin.action( "source", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
+    plugin.action( "source", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& args ) {
         const auto stream = plugin.openStream( job );
+        const auto records
+            = args.contains( "records" )
+                  ? args.value( "records" ).toArray()
+                  : QJsonArray{ "one", "two",
+                                QString::fromUtf8( "Unicode: \xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D" ) };
+        const auto batches = qBound( 1, args.value( "batches" ).toInt( 1 ), 100 );
         try {
-            plugin.writeStream(
-                job, stream,
-                { "one", "two",
-                  QString::fromUtf8( "Unicode: \xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D" ) } );
+            for ( int batch = 0; batch < batches; ++batch ) {
+                plugin.writeStream( job, stream, records );
+            }
             plugin.closeStream( stream );
         } catch ( ... ) {
             plugin.closeStream( stream );
             throw;
         }
-        return QJsonObject{ { "records", 3 } };
+        return QJsonObject{ { "records", static_cast<double>( records.size() ) * batches } };
     } );
     plugin.action( "convert", []( cilogg_plugin::Job& job, const QJsonObject& args ) {
         job.check();
@@ -128,6 +133,14 @@ int main( int argc, char** argv )
         const auto data = input.readAll().toUpper();
         if ( output.write( data ) != data.size() ) {
             throw std::runtime_error( "Converter write failed" );
+        }
+        if ( args.value( "hold" ).toBool() ) {
+            output.flush();
+            std::cerr << "Fixture converter waiting job=" << job.id.toStdString() << std::endl;
+            for ( int tick = 0; tick < 10000; ++tick ) {
+                job.check();
+                std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+            }
         }
         return QJsonObject{ { "converted", true } };
     } );

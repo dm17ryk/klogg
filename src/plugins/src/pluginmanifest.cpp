@@ -23,8 +23,17 @@ bool safeRelativePath( const QString& path )
         return false;
     }
     for ( const auto& part : path.split( '/' ) ) {
-        if ( part.isEmpty() || part == "." || part == ".." ) {
+        static const QRegularExpression deviceName(
+            "^(?:CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[1-9]|LPT[1-9])(?:\\..*)?$",
+            QRegularExpression::CaseInsensitiveOption );
+        if ( part.isEmpty() || part == "." || part == ".." || part.endsWith( '.' )
+             || part.endsWith( ' ' ) || deviceName.match( part ).hasMatch() ) {
             return false;
+        }
+        for ( const auto character : part ) {
+            if ( character.unicode() < 32 || QStringLiteral( "<>\"|?*" ).contains( character ) ) {
+                return false;
+            }
         }
     }
     return true;
@@ -36,8 +45,8 @@ QString validateFields( const QJsonArray& fields )
         return QStringLiteral( "Too many form fields." );
     }
     QSet<QString> names;
-    const QStringList types{ "text",    "multiline", "number", "integer",
-                             "boolean", "choice",    "file",   "directory" };
+    const QStringList types{ "text",    "secret", "multiline", "number",   "integer",
+                             "boolean", "choice", "file",      "directory" };
     for ( const auto& item : fields ) {
         const auto f = item.toObject();
         const auto name = f.value( "id" ).toString();
@@ -159,12 +168,12 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
         m.executable += ".exe";
     }
 #endif
-    static const QRegularExpression idPattern( "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" );
+    static const QRegularExpression idPattern( "^[a-z0-9][a-z0-9._-]{0,127}$" );
     static const QRegularExpression versionPattern(
         "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$" );
     if ( bytes.size() > MaxMessageBytes || parseError.error != QJsonParseError::NoError
-         || !doc.isObject() || !idPattern.match( m.id ).hasMatch() || m.name.isEmpty()
-         || !versionPattern.match( m.version ).hasMatch()
+         || !doc.isObject() || !idPattern.match( m.id ).hasMatch() || !safeRelativePath( m.id )
+         || m.name.isEmpty() || !versionPattern.match( m.version ).hasMatch()
          || m.json.value( "protocol_version" ) != QJsonValue( ProtocolVersion )
          || ( m.json.contains( "arguments" ) && !m.json.value( "arguments" ).isArray() )
          || ( m.json.contains( "actions" ) && !m.json.value( "actions" ).isArray() )
@@ -181,7 +190,8 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
         }
     }
     // Python is an explicit interpreter choice, not a shell command.
-    if ( m.executable != "python" && !safeRelativePath( m.executable ) ) {
+    if ( m.executable != "python"
+         && !safeRelativePath( m.json.value( "executable" ).toString() ) ) {
         m.error = QStringLiteral( "Executable must be a package-relative path or python." );
     }
     for ( const auto& argument : m.json.value( "arguments" ).toArray() ) {

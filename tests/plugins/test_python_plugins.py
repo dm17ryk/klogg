@@ -171,6 +171,10 @@ class PortableExamples(unittest.TestCase):
             with zipfile.ZipFile(archive) as package:
                 self.assertIn("cilogg_plugin.py", package.namelist())
                 self.assertEqual(json.loads(package.read("plugin.json"))["id"], manifest["id"])
+                entry_point = (manifest["arguments"][0] if manifest["executable"] == "python"
+                               else manifest["executable"])
+                self.assertIn(entry_point, package.namelist())
+                self.assertTrue(package.read(entry_point))
 
     def test_packages_ignore_checkout_timestamps(self):
         spec = importlib.util.spec_from_file_location("package_examples", ROOT / "scripts/plugins/package_examples.py")

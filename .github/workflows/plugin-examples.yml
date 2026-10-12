@@ -13,15 +13,20 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
+        python: ['3.12']
+        include:
+          - os: ubuntu-latest
+            python: '3.9'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests/plugins -v
       - run: python scripts/plugins/package_examples.py --output plugin-packages
       - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.12'
         with:
           name: cilogg-plugin-examples-${{ matrix.os }}
           path: plugin-packages/*.zip

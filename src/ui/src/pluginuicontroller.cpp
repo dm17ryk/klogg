@@ -3,6 +3,7 @@
 #include "mainwindow.h"
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QDoubleValidator>
@@ -78,6 +79,32 @@ bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields
             auto* input = new QLineEdit( initial.toString(), &dialog );
             widget = input;
             getters[ id ] = [ input ] { return QJsonValue( input->text() ); };
+            if ( type == "secret" ) {
+                input->setEchoMode( QLineEdit::Password );
+                if ( field.value( "keep_existing" ).toBool() ) {
+                    input->setPlaceholderText(
+                        QObject::tr( "Leave blank to keep the stored value" ) );
+                    auto* clear = input->addAction(
+                        dialog.style()->standardIcon( QStyle::SP_DialogResetButton ),
+                        QLineEdit::TrailingPosition );
+                    clear->setObjectName( "clearPluginSecret_" + id );
+                    clear->setText( QObject::tr( "Clear stored secret" ) );
+                    clear->setToolTip( clear->text() );
+                    QObject::connect( input, &QLineEdit::textEdited, input, [ input ] {
+                        input->setProperty( "clearStoredSecret", false );
+                    } );
+                    QObject::connect( clear, &QAction::triggered, input, [ input ] {
+                        input->clear();
+                        input->setProperty( "clearStoredSecret", true );
+                    } );
+                    getters[ id ] = [ input ] {
+                        return input->text().isEmpty()
+                                       && !input->property( "clearStoredSecret" ).toBool()
+                                   ? QJsonValue( QJsonValue::Undefined )
+                                   : QJsonValue( input->text() );
+                    };
+                }
+            }
             if ( type == "file" || type == "directory" ) {
                 auto* row = new QWidget( &dialog );
                 auto* rowLayout = new QHBoxLayout( row );
@@ -117,7 +144,13 @@ bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields
     QObject::connect( buttons, &QDialogButtonBox::accepted, &dialog, [ & ] {
         auto updated = *values;
         for ( auto it = getters.cbegin(); it != getters.cend(); ++it ) {
-            updated.insert( it.key(), it.value()() );
+            const auto value = it.value()();
+            if ( value.isUndefined() ) {
+                updated.remove( it.key() );
+            }
+            else {
+                updated.insert( it.key(), value );
+            }
         }
         const auto error = cilogg::plugins::validateValues( fields, &updated );
         if ( !error.isEmpty() ) {
@@ -349,9 +382,18 @@ void PluginUiController::manageDialog()
     details->setObjectName( "pluginDiagnostics" );
     details->setMaximumBlockCount( 2000 );
     layout->addWidget( details );
+    auto* storageUsage = new QLabel( dialog );
+    storageUsage->setObjectName( "pluginStorageUsage" );
+    layout->addWidget( storageUsage );
     auto* row = new QHBoxLayout;
     layout->addLayout( row );
-    const auto refresh = [ this, table, details ] {
+    const auto refresh = [ this, table, details, storageUsage ] {
+        const auto storage = manager_->storageStatus();
+        storageUsage->setText(
+            tr( "Captured: %1 bytes; reserved: %2 bytes; total limit: %3 bytes (0 = unlimited)" )
+                .arg( storage.value( "captured_bytes" ).toLongLong() )
+                .arg( storage.value( "reserved_bytes" ).toLongLong() )
+                .arg( storage.value( "limits" ).toMap().value( "max_total_bytes" ).toLongLong() ) );
         const auto selected
             = table->currentRow() >= 0
                   ? table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString()
@@ -431,10 +473,21 @@ void PluginUiController::manageDialog()
                     }
                     auto config
                         = QJsonObject::fromVariantMap( p.value( "configurationValues" ).toMap() );
-                    if ( !editValues(
-                             dialog, tr( "Configure Plugin" ),
-                             QJsonArray::fromVariantList( p.value( "configuration" ).toList() ),
-                             &config ) ) {
+                    auto fields
+                        = QJsonArray::fromVariantList( p.value( "configuration" ).toList() );
+                    for ( int index = 0; index < fields.size(); ++index ) {
+                        auto field = fields[ index ].toObject();
+                        if ( field.value( "type" ) == "secret"
+                             && p.value( "configuredSecrets" )
+                                    .toMap()
+                                    .value( field.value( "id" ).toString() )
+                                    .toBool() ) {
+                            field[ "required" ] = false;
+                            field[ "keep_existing" ] = true;
+                            fields[ index ] = field;
+                        }
+                    }
+                    if ( !editValues( dialog, tr( "Configure Plugin" ), fields, &config ) ) {
                         return;
                     }
                     r.pluginArguments = { { "configuration", config.toVariantMap() } };
@@ -443,6 +496,33 @@ void PluginUiController::manageDialog()
             report( executor_( r ) );
         } );
     }
+    auto* storage = addButton( tr( "Storage Limits…" ), "pluginStorageLimits" );
+    connect( storage, &QPushButton::clicked, dialog, [ this, dialog ] {
+        const auto status = manager_->storageStatus();
+        auto values = QJsonObject::fromVariantMap( status.value( "limits" ).toMap() );
+        auto fields = QJsonArray::fromVariantList( status.value( "fields" ).toList() );
+        for ( int index = 0; index < fields.size(); ++index ) {
+            auto field = fields[ index ].toObject();
+            const auto id = field.value( "id" ).toString();
+            field[ "label" ] = id == "max_capture_bytes" ? tr( "Per-capture bytes (0: unlimited)" )
+                               : id == "max_total_bytes"
+                                   ? tr( "Total capture bytes (0: unlimited)" )
+                                   : tr( "Free-space reserve bytes (0: disabled)" );
+            fields[ index ] = field;
+        }
+        if ( editValues( dialog, tr( "Plugin Capture Storage" ), fields, &values ) ) {
+            CommanderRequest request;
+            request.action = CommanderAction::PluginManage;
+            request.pluginOperation = "configure";
+            request.pluginArguments = { { "storage_limits", values.toVariantMap() } };
+            report( executor_( request ) );
+        }
+    } );
+    auto* captures = addButton( tr( "Open Captures Folder" ), "pluginCapturesFolder" );
+    connect( captures, &QPushButton::clicked, dialog, [ this ] {
+        QDesktopServices::openUrl(
+            QUrl::fromLocalFile( manager_->storageStatus().value( "directory" ).toString() ) );
+    } );
     auto* timer = new QTimer( dialog );
     timer->setInterval( 1000 );
     connect( timer, &QTimer::timeout, dialog, refresh );
@@ -501,6 +581,9 @@ void PluginUiController::browseDialog()
         r.action = CommanderAction::PluginManage;
         r.pluginOperation = "install";
         r.pluginId = table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString();
+        r.pluginArguments
+            = { { "catalog_entry_id",
+                  table->item( table->currentRow(), 0 )->data( Qt::UserRole + 1 ).toString() } };
         const auto result = executor_( r );
         if ( !result.ok() ) {
             status->setText( result.message );
@@ -529,6 +612,7 @@ void PluginUiController::browseDialog()
                 for ( int col = 0; col < 3; ++col ) {
                     auto* cell = new QTableWidgetItem( texts[ col ] );
                     cell->setData( Qt::UserRole, p.value( "id" ) );
+                    cell->setData( Qt::UserRole + 1, p.value( "entry_id" ) );
                     table->setItem( row, col, cell );
                 }
                 ++row;

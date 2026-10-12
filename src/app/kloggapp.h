@@ -548,6 +548,7 @@ class KloggApp : public QApplication {
         };
         if ( request.action == CommanderAction::GetPlugins ) {
             return commanderSuccess( {}, { { "plugins", pluginManager_.plugins() },
+                                           { "storage", pluginManager_.storageStatus() },
                                            { "jobs", pluginManager_.jobs() } } );
         }
         if ( request.action == CommanderAction::PluginManage ) {

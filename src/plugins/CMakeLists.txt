@@ -2,6 +2,7 @@ add_library(klogg_plugins STATIC
   include/pluginmanifest.h src/pluginmanifest.cpp
   include/pluginprocess.h src/pluginprocess.cpp
   include/pluginrepository.h src/pluginrepository.cpp
+  include/pluginstorage.h src/pluginstorage.cpp
   include/pluginmanager.h src/pluginmanager.cpp)
 set_target_properties(klogg_plugins PROPERTIES AUTOMOC ON)
 target_include_directories(klogg_plugins PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

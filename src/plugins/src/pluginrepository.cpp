@@ -20,12 +20,37 @@ struct Budget {
     int entries = 0;
 };
 
-QString copyDirectory( const QString& source, const QString& destination, Budget& budget,
-                       int depth )
+bool containedDestination( const QString& root, const QString& destination )
 {
-    if ( depth > 32 || !QDir().mkpath( destination ) ) {
+    const QFileInfo info( destination );
+    const auto parent = QDir( info.absolutePath() ).canonicalPath();
+    auto normalized = info.canonicalFilePath();
+    if ( normalized.isEmpty() && !parent.isEmpty() ) {
+        normalized = QDir( parent ).filePath( info.fileName() );
+    }
+#ifdef Q_OS_WIN
+    const auto sensitivity = Qt::CaseInsensitive;
+#else
+    const auto sensitivity = Qt::CaseSensitive;
+#endif
+    const bool contained = !normalized.isEmpty()
+                           && QDir::cleanPath( normalized ).startsWith( root + '/', sensitivity );
+    if ( !contained ) {
+        LOG_WARNING << "Plugin package destination rejected root=" << root.toStdString()
+                    << " destination=" << destination.toStdString();
+    }
+    return contained;
+}
+
+QString copyDirectory( const QString& source, const QString& destination, Budget& budget, int depth,
+                       const QString& stagingRoot = {} )
+{
+    if ( depth > 32
+         || ( !stagingRoot.isEmpty() && !containedDestination( stagingRoot, destination ) )
+         || !QDir().mkpath( destination ) ) {
         return "Cannot create package directory.";
     }
+    const auto root = stagingRoot.isEmpty() ? QDir( destination ).canonicalPath() : stagingRoot;
     for ( const auto& entry :
           QDir( source ).entryInfoList( QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden ) ) {
         if ( ++budget.entries > MaxPackageEntries || entry.isSymLink()
@@ -33,8 +58,12 @@ QString copyDirectory( const QString& source, const QString& destination, Budget
             return "Unsafe package entry or too many files.";
         }
         const auto target = QDir( destination ).filePath( entry.fileName() );
+        if ( !containedDestination( root, target ) ) {
+            return "Package destination escapes staging.";
+        }
         if ( entry.isDir() ) {
-            const auto error = copyDirectory( entry.absoluteFilePath(), target, budget, depth + 1 );
+            const auto error
+                = copyDirectory( entry.absoluteFilePath(), target, budget, depth + 1, root );
             if ( !error.isEmpty() ) {
                 return error;
             }
@@ -55,11 +84,14 @@ QString copyDirectory( const QString& source, const QString& destination, Budget
 }
 
 QString extractDirectory( const KArchiveDirectory* source, const QString& destination,
-                          Budget& budget, int depth )
+                          Budget& budget, int depth, const QString& stagingRoot = {} )
 {
-    if ( depth > 32 || !QDir().mkpath( destination ) ) {
+    if ( depth > 32
+         || ( !stagingRoot.isEmpty() && !containedDestination( stagingRoot, destination ) )
+         || !QDir().mkpath( destination ) ) {
         return "Cannot create package directory.";
     }
+    const auto root = stagingRoot.isEmpty() ? QDir( destination ).canonicalPath() : stagingRoot;
     for ( const auto& name : source->entries() ) {
         const auto* entry = source->entry( name );
         if ( ++budget.entries > MaxPackageEntries || !entry || !safeRelativePath( name )
@@ -67,9 +99,12 @@ QString extractDirectory( const KArchiveDirectory* source, const QString& destin
             return "Unsafe ZIP entry or too many files.";
         }
         const auto target = QDir( destination ).filePath( name );
+        if ( !containedDestination( root, target ) ) {
+            return "ZIP destination escapes staging.";
+        }
         if ( entry->isDirectory() ) {
             const auto error = extractDirectory( static_cast<const KArchiveDirectory*>( entry ),
-                                                 target, budget, depth + 1 );
+                                                 target, budget, depth + 1, root );
             if ( !error.isEmpty() ) {
                 return error;
             }

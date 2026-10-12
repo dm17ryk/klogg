@@ -20,14 +20,14 @@ using namespace cilogg::plugins;
 namespace {
 class MemoryReply final : public QNetworkReply {
 public:
-    MemoryReply( const QNetworkRequest& request, QByteArray data, QObject* parent )
+    MemoryReply( const QNetworkRequest& request, QByteArray data, QObject* parent, int delay = 0 )
         : QNetworkReply( parent )
         , data_( std::move( data ) )
     {
         setRequest( request );
         setUrl( request.url() );
         open( QIODevice::ReadOnly );
-        QTimer::singleShot( 0, this, [ this ] {
+        QTimer::singleShot( delay, this, [ this ] {
             if ( !isFinished() ) {
                 Q_EMIT readyRead();
                 setFinished( true );
@@ -66,11 +66,13 @@ private:
 class MemoryNetwork final : public QNetworkAccessManager {
 public:
     QMap<QString, QByteArray> responses;
+    QMap<QString, int> delays;
 
 protected:
     QNetworkReply* createRequest( Operation, const QNetworkRequest& request, QIODevice* ) override
     {
-        return new MemoryReply( request, responses.value( request.url().toString() ), this );
+        return new MemoryReply( request, responses.value( request.url().toString() ), this,
+                                delays.value( request.url().toString() ) );
     }
 };
 bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
@@ -364,6 +366,14 @@ TEST_CASE( "Plugins restart after re-enable and cancel before initialization", "
     REQUIRE_FALSE( manager.manage( "remove", "org.test.fixture", {} ).ok() );
     REQUIRE(
         waitFor( [ & ] { return finished( manager, restart.payload[ "jobId" ].toString() ); } ) );
+    REQUIRE( manager.job( restart.payload[ "jobId" ].toString() ).payload[ "state" ]
+             == "completed" );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "state" ] == "ready" );
+    auto incompatible = manifest( "org.test.wrong-identity" );
+    writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( incompatible ).toJson() );
+    const auto failedRestart = jobId( manager.manage( "restart", "org.test.fixture", {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, failedRestart ); } ) );
+    REQUIRE( manager.job( failedRestart ).payload[ "state" ] == "failed" );
 }
 
 TEST_CASE( "Closing a target prevents delayed action execution", "[plugins]" )
@@ -537,6 +547,29 @@ TEST_CASE( "Portable plugin storage follows resolved settings format", "[plugins
 #endif
 }
 
+TEST_CASE( "Case-alias plugin packages cannot replace canonical identities", "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto canonical = package( QDir( temp.path() ).filePath( "canonical" ) );
+    const auto alias = package( QDir( temp.path() ).filePath( "alias" ), "org.test.Fixture" );
+    REQUIRE_FALSE( Manifest::read( alias ).valid() );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ),
+                           QDir( temp.path() ).filePath( "empty" ) );
+    const auto first
+        = jobId( manager.manage( "install", "org.test.fixture", { { "path", canonical } } ) );
+    const auto collision
+        = jobId( manager.manage( "install", "org.test.Fixture", { { "path", alias } } ) );
+    REQUIRE(
+        waitFor( [ & ] { return finished( manager, first ) && finished( manager, collision ); } ) );
+    REQUIRE( manager.job( first ).payload[ "state" ] == "completed" );
+    REQUIRE( manager.job( collision ).payload[ "state" ] == "failed" );
+    const auto retry = jobId( manager.manage( "install", {}, { { "path", alias } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, retry ); } ) );
+    REQUIRE( manager.job( retry ).payload[ "state" ] == "failed" );
+    REQUIRE( manager.plugins().size() == 1 );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "id" ] == "org.test.fixture" );
+}
+
 TEST_CASE( "Native SDK producers block until opened and acknowledged", "[plugins]" )
 {
     QTemporaryDir temp;
@@ -566,4 +599,323 @@ TEST_CASE( "Native SDK producers block until opened and acknowledged", "[plugins
     REQUIRE( messages.takeLast()[ 0 ].toJsonObject()[ "id" ] == "source-job" );
     process.stop();
     REQUIRE( waitFor( [ & ] { return process.state() == "stopped"; } ) );
+}
+
+TEST_CASE( "Packages reject Windows-normalized traversal and reserved names", "[plugins]" )
+{
+    for ( const auto& path : { "safe/.. /outside", "safe/../outside", "safe./file", "dir/file ",
+                               "CON.txt", "dir/NUL", "COM1.log", "dir/a?b" } ) {
+        INFO( path );
+        REQUIRE_FALSE( safeRelativePath( path ) );
+    }
+    REQUIRE( safeRelativePath( "dir with spaces/file.log" ) );
+    QTemporaryDir temp;
+    const auto zipPath = QDir( temp.path() ).filePath( "unsafe.zip" );
+    KZip zip( zipPath );
+    REQUIRE( zip.open( QIODevice::WriteOnly ) );
+    REQUIRE( zip.writeFile( "safe/.. /.. /outside", "payload" ) );
+    REQUIRE( zip.close() );
+    const auto installRoot = QDir( temp.path() ).filePath( "installed" );
+    REQUIRE_FALSE( PluginRepository::stage( zipPath, installRoot ).error.isEmpty() );
+    REQUIRE_FALSE( QFileInfo::exists( QDir( installRoot ).filePath( "outside" ) ) );
+}
+
+TEST_CASE( "Converter validates required input after capturing target context", "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = package( shipped );
+    auto json = manifest();
+    auto actions = json[ "actions" ].toArray();
+    auto convert = actions[ 1 ].toObject();
+    convert[ "fields" ] = QJsonArray{ QJsonObject{
+        { "id", "input_path" }, { "type", "file" }, { "required", true } } };
+    actions[ 1 ] = convert;
+    json[ "actions" ] = actions;
+    writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    const auto input = QDir( temp.path() ).filePath( "original.log" );
+    const QByteArray original( "unchanged input\n" );
+    writeFile( input, original );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    QSignalSpy opened( &manager, &PluginManager::fileReady );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    const auto id = jobId( manager.invoke( "org.test.fixture", "convert", {},
+                                           { { "filePath", input }, { "windowId", "target" } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+    REQUIRE( manager.job( id ).payload[ "state" ] == "completed" );
+    REQUIRE( opened.size() == 1 );
+    REQUIRE( opened[ 0 ][ 2 ].toMap()[ "windowId" ] == "target" );
+    QFile file( input );
+    REQUIRE( file.open( QIODevice::ReadOnly ) );
+    REQUIRE( file.readAll() == original );
+}
+
+TEST_CASE( "Secret configuration is redacted and omitted secrets survive updates", "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = package( shipped );
+    auto json = manifest();
+    json[ "configuration" ] = QJsonArray{
+        QJsonObject{ { "id", "token" }, { "type", "secret" }, { "default", "private-default" } },
+        QJsonObject{ { "id", "count" }, { "type", "integer" }, { "default", 1 } }
+    };
+    writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    const auto root = QDir( temp.path() ).filePath( "data" );
+    {
+        PluginManager manager( root, shipped );
+        REQUIRE( manager
+                     .manage( "configure", "org.test.fixture",
+                              { { "configuration",
+                                  QVariantMap{ { "token", "private-value" }, { "count", 2 } } } } )
+                     .ok() );
+        REQUIRE( manager
+                     .manage( "configure", "org.test.fixture",
+                              { { "configuration", QVariantMap{ { "count", 3 } } } } )
+                     .ok() );
+        const auto visible = QJsonDocument::fromVariant( manager.plugins() ).toJson();
+        REQUIRE_FALSE( visible.contains( "private-value" ) );
+        REQUIRE_FALSE( visible.contains( "private-default" ) );
+        REQUIRE(
+            manager.plugins()[ 0 ].toMap()[ "configuredSecrets" ].toMap()[ "token" ].toBool() );
+    }
+    auto downgradedFields = json[ "configuration" ].toArray();
+    auto tokenField = downgradedFields[ 0 ].toObject();
+    tokenField[ "type" ] = "text";
+    downgradedFields[ 0 ] = tokenField;
+    json[ "configuration" ] = downgradedFields;
+    writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    PluginManager restored( root, shipped );
+    REQUIRE( restored.plugins()[ 0 ].toMap()[ "configuration" ].toList()[ 0 ].toMap()[ "type" ]
+             == "secret" );
+    REQUIRE( restored.plugins()[ 0 ].toMap()[ "configuredSecrets" ].toMap()[ "token" ].toBool() );
+    REQUIRE( restored.plugins()[ 0 ].toMap()[ "configurationValues" ].toMap()[ "count" ] == 3 );
+    REQUIRE( restored
+                 .manage( "configure", "org.test.fixture",
+                          { { "configuration", QVariantMap{ { "token", "" } } } } )
+                 .ok() );
+    REQUIRE_FALSE(
+        restored.plugins()[ 0 ].toMap()[ "configuredSecrets" ].toMap()[ "token" ].toBool() );
+}
+
+TEST_CASE( "Concurrent local installations serialize unknown package identities", "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto first = package( QDir( temp.path() ).filePath( "first" ) );
+    const auto second = package( QDir( temp.path() ).filePath( "second" ) );
+    auto json = manifest();
+    json[ "version" ] = "2.0.0";
+    writeFile( QDir( second ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ),
+                           QDir( temp.path() ).filePath( "empty" ) );
+    const auto id = jobId( manager.manage( "install", {}, { { "path", first } } ) );
+    REQUIRE_FALSE( manager.manage( "install", {}, { { "path", second } } ).ok() );
+    REQUIRE_FALSE( manager.manage( "remove", "org.test.fixture", {} ).ok() );
+    REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+    REQUIRE( manager.job( id ).payload[ "state" ] == "completed" );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "version" ] == "1.0.0" );
+    const auto next = jobId( manager.manage( "install", {}, { { "path", second } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, next ); } ) );
+    REQUIRE( manager.job( next ).payload[ "state" ] == "completed" );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "version" ] == "2.0.0" );
+}
+
+TEST_CASE( "Capture quotas persist and retain records when per-file or total limits stop streams",
+           "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    const auto root = QDir( temp.path() ).filePath( "data" );
+    PluginManager manager( root, shipped );
+    REQUIRE( manager.storageStatus()[ "limits" ].toMap()[ "max_capture_bytes" ].toLongLong()
+             == 1024LL * 1024 * 1024 );
+    REQUIRE( manager.storageStatus()[ "limits" ].toMap()[ "max_total_bytes" ].toLongLong()
+             == 10LL * 1024 * 1024 * 1024 );
+    const QVariantMap limits{ { "max_capture_bytes", 8 },
+                              { "max_total_bytes", 12 },
+                              { "min_free_bytes", 0 } };
+    REQUIRE( manager.manage( "configure", {}, { { "storage_limits", limits } } ).ok() );
+    REQUIRE_FALSE(
+        manager
+            .manage( "configure", {},
+                     { { "storage_limits", QVariantMap{ { "max_capture_bytes", -1 } } } } )
+            .ok() );
+    REQUIRE_FALSE(
+        manager
+            .manage( "configure", {},
+                     { { "storage_limits", QVariantMap{ { "max_capture_bytes", 13 } } } } )
+            .ok() );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    QSignalSpy opened( &manager, &PluginManager::fileReady );
+    const auto first
+        = jobId( manager.invoke( "org.test.fixture", "source",
+                                 { { "records", QVariantList{ "one" } }, { "batches", 3 } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, first ); } ) );
+    REQUIRE( manager.job( first ).payload[ "state" ] == "failed" );
+    REQUIRE( opened.size() == 1 );
+    QFile retained( opened[ 0 ][ 0 ].toString() );
+    REQUIRE( retained.open( QIODevice::ReadOnly ) );
+    REQUIRE( retained.readAll() == "one\none\n" );
+    retained.close();
+    REQUIRE( CaptureStorage::directoryUsage( manager.storageStatus()[ "directory" ].toString() )
+             == 8 );
+    const auto second
+        = jobId( manager.invoke( "org.test.fixture", "source",
+                                 { { "records", QVariantList{ "two" } }, { "batches", 2 } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, second ); } ) );
+    INFO( QJsonDocument::fromVariant( manager.storageStatus() ).toJson().toStdString() );
+    INFO( QJsonDocument::fromVariant( manager.job( second ).payload ).toJson().toStdString() );
+    REQUIRE( manager.job( second ).payload[ "state" ] == "failed" );
+    REQUIRE( opened.size() == 2 );
+    QFile aggregate( opened[ 1 ][ 0 ].toString() );
+    REQUIRE( aggregate.open( QIODevice::ReadOnly ) );
+    REQUIRE( aggregate.readAll() == "two\n" );
+    aggregate.close();
+    REQUIRE( QFile::remove( retained.fileName() ) );
+    const auto third
+        = jobId( manager.invoke( "org.test.fixture", "source",
+                                 { { "records", QVariantList{ "new" } }, { "batches", 2 } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, third ); } ) );
+    REQUIRE( manager.job( third ).payload[ "state" ] == "completed" );
+    PluginManager restored( root, shipped );
+    REQUIRE( restored.storageStatus()[ "limits" ].toMap() == limits );
+}
+
+TEST_CASE( "Converter limits reject completed output and stop active writers", "[plugins]" )
+{
+    for ( const bool hold : { false, true } ) {
+        INFO( hold );
+        QTemporaryDir temp;
+        const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+        package( shipped );
+        const auto input = QDir( temp.path() ).filePath( "input.log" );
+        const QByteArray original( "original records exceed eight bytes\n" );
+        writeFile( input, original );
+        PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+        REQUIRE( manager
+                     .manage( "configure", {},
+                              { { "storage_limits", QVariantMap{ { "max_capture_bytes", 8 },
+                                                                 { "max_total_bytes", 12 },
+                                                                 { "min_free_bytes", 0 } } } } )
+                     .ok() );
+        REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+        QSignalSpy opened( &manager, &PluginManager::fileReady );
+        const auto id = jobId( manager.invoke(
+            "org.test.fixture", "convert", { { "input_path", input }, { "hold", hold } }, {} ) );
+        REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+        REQUIRE( manager.job( id ).payload[ "state" ] == "failed" );
+        REQUIRE( opened.isEmpty() );
+        REQUIRE(
+            waitFor( [ & ] { return manager.plugins()[ 0 ].toMap()[ "state" ] == "failed"; } ) );
+        QFile file( input );
+        REQUIRE( file.open( QIODevice::ReadOnly ) );
+        REQUIRE( file.readAll() == original );
+        REQUIRE_FALSE( QDir( QDir( manager.dataRoot() ).filePath( "captures" ) )
+                           .entryList( QDir::Files )
+                           .isEmpty() );
+    }
+}
+
+TEST_CASE( "Catalog requests supersede older results and select exact package versions",
+           "[plugins]" )
+{
+    QTemporaryDir temp;
+    MemoryNetwork network;
+    QJsonArray entries;
+    for ( const auto& version : { "1.0.0", "2.0.0" } ) {
+        const auto folder = package( QDir( temp.path() ).filePath( version ) );
+        auto json = manifest();
+        json[ "version" ] = version;
+        writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+        const auto zipPath = QDir( temp.path() ).filePath( QString( version ) + ".zip" );
+        KZip zip( zipPath );
+        REQUIRE( zip.open( QIODevice::WriteOnly ) );
+        REQUIRE( zip.addLocalDirectory( folder, "" ) );
+        REQUIRE( zip.close() );
+        QFile archive( zipPath );
+        REQUIRE( archive.open( QIODevice::ReadOnly ) );
+        const auto bytes = archive.readAll();
+        const auto url = "https://test.invalid/" + QString( version ) + ".zip";
+        network.responses[ url ] = bytes;
+#ifdef Q_OS_WIN
+        const auto os = "windows";
+#elif defined( Q_OS_MAC )
+        const auto os = "macos";
+#else
+        const auto os = "linux";
+#endif
+        entries.append( QJsonObject{
+            { "id", "org.test.fixture" },
+            { "version", version },
+            { "protocol_version", 1 },
+            { "os", os },
+            { "arch", QSysInfo::buildCpuArchitecture() },
+            { "url", url },
+            { "sha256",
+              QString::fromLatin1(
+                  QCryptographicHash::hash( bytes, QCryptographicHash::Sha256 ).toHex() ) } } );
+    }
+    const auto encode = []( const QJsonArray& plugins ) {
+        return QJsonDocument( QJsonObject{ { "schema_version", 1 }, { "plugins", plugins } } )
+            .toJson();
+    };
+    network.responses[ "https://test.invalid/old.json" ] = encode( { entries[ 0 ] } );
+    network.delays[ "https://test.invalid/old.json" ] = 150;
+    network.responses[ "https://test.invalid/new.json" ] = encode( entries );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ),
+                           QDir( temp.path() ).filePath( "empty" ), nullptr, &network );
+    const auto old
+        = jobId( manager.manage( "catalog", {}, { { "url", "https://test.invalid/old.json" } } ) );
+    const auto current
+        = jobId( manager.manage( "catalog", {}, { { "url", "https://test.invalid/new.json" } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, current ); } ) );
+    REQUIRE( manager.job( old ).payload[ "state" ] == "cancelled" );
+    REQUIRE( manager.job( current ).payload[ "state" ] == "completed" );
+    QTest::qWait( 200 );
+    REQUIRE_FALSE( manager.manage( "install", "org.test.fixture", {} ).ok() );
+    const auto selected
+        = manager.job( current ).payload[ "result" ].toMap()[ "plugins" ].toList()[ 1 ].toMap();
+    const auto installed = jobId( manager.manage(
+        "install", "org.test.fixture", { { "catalog_entry_id", selected[ "entry_id" ] } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, installed ); } ) );
+    REQUIRE( manager.job( installed ).payload[ "state" ] == "completed" );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "version" ] == "2.0.0" );
+    network.responses[ "https://test.invalid/new.json" ] = encode( { entries[ 0 ] } );
+    const auto refreshed
+        = jobId( manager.manage( "catalog", {}, { { "url", "https://test.invalid/new.json" } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, refreshed ); } ) );
+    REQUIRE_FALSE( manager
+                       .manage( "update", "org.test.fixture",
+                                { { "catalog_entry_id", selected[ "entry_id" ] } } )
+                       .ok() );
+}
+
+TEST_CASE( "Full converter history preserves supervision and leaves restart capacity", "[plugins]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    const auto input = QDir( temp.path() ).filePath( "input.log" );
+    writeFile( input, "record\n" );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    for ( int index = 0; index < 240; ++index ) {
+        const auto id = jobId(
+            manager.invoke( "org.test.fixture", "convert", { { "input_path", input } }, {} ) );
+        REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+        REQUIRE( manager.job( id ).payload[ "state" ] == "completed" );
+    }
+    REQUIRE_FALSE(
+        manager.invoke( "org.test.fixture", "convert", { { "input_path", input } }, {} ).ok() );
+    const auto restart = jobId( manager.manage( "restart", "org.test.fixture", {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, restart ); } ) );
+    REQUIRE( manager.job( restart ).payload[ "state" ] == "completed" );
+    const auto next
+        = jobId( manager.invoke( "org.test.fixture", "convert", { { "input_path", input } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, next ); } ) );
+    REQUIRE( manager.job( next ).payload[ "state" ] == "completed" );
+    REQUIRE(
+        QDir( QDir( manager.dataRoot() ).filePath( "captures" ) ).entryList( QDir::Files ).size()
+        == 241 );
 }

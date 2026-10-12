@@ -16,6 +16,7 @@
 #include <QTemporaryFile>
 #include <QUrl>
 #include <QtConcurrent>
+#include <limits>
 
 namespace cilogg::plugins {
 namespace {
@@ -37,6 +38,39 @@ bool pending( const QString& state )
 {
     return state == "pending" || state == "running";
 }
+
+QStringList secretFieldNames( const QJsonArray& fields )
+{
+    QStringList result;
+    for ( const auto& value : fields ) {
+        if ( value.toObject().value( "type" ) == "secret" ) {
+            result.append( value.toObject().value( "id" ).toString() );
+        }
+    }
+    return result;
+}
+
+QJsonArray publicFields( const QJsonArray& fields, const QStringList& secrets = {} )
+{
+    QJsonArray result;
+    for ( const auto& value : fields ) {
+        auto field = value.toObject();
+        field.remove( "keep_existing" );
+        if ( field.value( "type" ) == "secret"
+             || secrets.contains( field.value( "id" ).toString() ) ) {
+            field.remove( "default" );
+            field.insert( "type", "secret" );
+        }
+        result.append( field );
+    }
+    return result;
+}
+
+bool packageOperation( const QString& operation )
+{
+    return operation == "install" || operation == "update" || operation == "remove"
+           || operation == "restart";
+}
 } // namespace
 
 PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoot, QObject* parent,
@@ -45,10 +79,29 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     , dataRoot_( dataRoot.isEmpty() ? PluginRepository::defaultDataRoot() : dataRoot )
     , shippedRoot_( shippedRoot.isEmpty() ? PluginRepository::shippedRoot() : shippedRoot )
     , settings_( QDir( dataRoot_ ).filePath( "settings.ini" ), QSettings::IniFormat )
+    , storage_( QDir( dataRoot_ ).filePath( "captures" ) )
     , networkAccess_( network ? network : &network_ )
 {
     QDir().mkpath( dataRoot_ );
     QDir().mkpath( QDir( dataRoot_ ).filePath( "captures" ) );
+    auto limits = storage_.limits();
+    for ( auto it = limits.begin(); it != limits.end(); ++it ) {
+        bool valid = false;
+        const auto value
+            = settings_.value( "storage/" + it.key(), it.value() ).toLongLong( &valid );
+        if ( valid ) {
+            it.value() = value;
+        }
+    }
+    const auto storageError = storage_.setLimits( limits );
+    if ( !storageError.isEmpty() ) {
+        LOG_WARNING << "Plugin persisted storage limits rejected: " << storageError.toStdString();
+    }
+    refreshCaptureUsage();
+    auto* storageTimer = new QTimer( this );
+    storageTimer->setInterval( 100 );
+    connect( storageTimer, &QTimer::timeout, this, &PluginManager::monitorStorage );
+    storageTimer->start();
     if ( auto* app = QCoreApplication::instance() ) {
         connect( app, &QCoreApplication::aboutToQuit, this, &PluginManager::shutdown );
     }
@@ -149,7 +202,7 @@ QVariantList PluginManager::plugins() const
         value[ "diagnostics" ] = entry->diagnostics;
         const auto config = QJsonDocument::fromJson(
             settings_.value( configurationKey( id ) + "configuration", "{}" ).toByteArray() );
-        value[ "configurationValues" ] = config.object().toVariantMap();
+        auto configValues = config.object().toVariantMap();
         if ( entry->process ) {
             value[ "pid" ] = entry->process->pid();
             const auto descriptor = entry->process->descriptor();
@@ -161,9 +214,260 @@ QVariantList PluginManager::plugins() const
                 }
             }
         }
+        const auto fields = QJsonArray::fromVariantList( value.value( "configuration" ).toList() );
+        auto secrets = settings_.value( configurationKey( id ) + "secretFields" ).toStringList();
+        secrets.append(
+            secretFieldNames( entry->manifest.json.value( "configuration" ).toArray() ) );
+        secrets.append( secretFieldNames( fields ) );
+        secrets.removeDuplicates();
+        QVariantMap secretPresence;
+        for ( const auto& key : secrets ) {
+            auto secret = configValues.take( key );
+            if ( !secret.isValid() ) {
+                for ( const auto& field : fields ) {
+                    if ( field.toObject().value( "id" ) == key ) {
+                        secret = field.toObject().value( "default" ).toVariant();
+                    }
+                }
+            }
+            secretPresence.insert( key, secret.isValid() && !secret.toString().isEmpty() );
+        }
+        value[ "configurationValues" ] = configValues;
+        value[ "configuredSecrets" ] = secretPresence;
+        value[ "configuration" ] = publicFields( fields, secrets ).toVariantList();
+        QJsonArray actions;
+        for ( const auto& definition : value.value( "actions" ).toList() ) {
+            auto action = QJsonObject::fromVariantMap( definition.toMap() );
+            action[ "fields" ] = publicFields( action.value( "fields" ).toArray() );
+            actions.append( action );
+        }
+        value[ "actions" ] = actions.toVariantList();
         result.append( value );
     }
     return result;
+}
+
+void PluginManager::rememberSecretFields( const QString& id, const QJsonArray& fields )
+{
+    auto names = settings_.value( configurationKey( id ) + "secretFields" ).toStringList();
+    names.append( secretFieldNames( fields ) );
+    names.removeDuplicates();
+    settings_.setValue( configurationKey( id ) + "secretFields", names );
+}
+
+qint64 PluginManager::reservedCaptureBytes() const
+{
+    qint64 result = 0;
+    for ( const auto& [ id, job ] : jobs_ ) {
+        Q_UNUSED( id );
+        if ( pending( job.state ) && !job.outputPath.isEmpty() ) {
+            const auto remaining
+                = qMax( qint64( 0 ), job.outputReservation - job.observedOutputBytes );
+            result = remaining > std::numeric_limits<qint64>::max() - result
+                         ? std::numeric_limits<qint64>::max()
+                         : result + remaining;
+        }
+    }
+    return result;
+}
+
+QVariantMap PluginManager::storageStatus() const
+{
+    return storage_.status( reservedCaptureBytes() );
+}
+
+void PluginManager::refreshCaptureUsage()
+{
+    ++storageScanGeneration_;
+    QSet<QString> outputs;
+    for ( const auto& [ id, stream ] : streams_ ) {
+        Q_UNUSED( id );
+        outputs.insert( QFileInfo( stream.path ).absoluteFilePath() );
+    }
+    for ( const auto& [ id, job ] : jobs_ ) {
+        Q_UNUSED( id );
+        if ( !job.outputPath.isEmpty() ) {
+            outputs.insert( QFileInfo( job.outputPath ).absoluteFilePath() );
+        }
+    }
+    auto total = CaptureStorage::directoryUsage( storage_.directory(), outputs );
+    // Directory-entry sizes can lag open handles on Windows.
+    for ( const auto& [ id, stream ] : streams_ ) {
+        Q_UNUSED( id );
+        const auto size = qMax( qint64( 0 ), stream.file->size() );
+        total = size > std::numeric_limits<qint64>::max() - total
+                    ? std::numeric_limits<qint64>::max()
+                    : total + size;
+    }
+    // Measure each independent converter exactly once; its reservation uses the same snapshot.
+    for ( auto& [ id, job ] : jobs_ ) {
+        Q_UNUSED( id );
+        if ( !job.outputPath.isEmpty() ) {
+            job.observedOutputBytes = qMax( qint64( 0 ), QFileInfo( job.outputPath ).size() );
+            total = job.observedOutputBytes > std::numeric_limits<qint64>::max() - total
+                        ? std::numeric_limits<qint64>::max()
+                        : total + job.observedOutputBytes;
+        }
+    }
+    storage_.replaceUsage( total );
+    storage_.refreshSpace();
+}
+
+void PluginManager::recordCaptureBytes( qint64 delta )
+{
+    storage_.addBytes( delta );
+}
+
+void PluginManager::failStorageJob( QString pluginId, QString jobId, QString error )
+{
+    LOG_WARNING << "Plugin storage stopped plugin=" << pluginId.toStdString()
+                << " job=" << jobId.toStdString() << " reason=" << error.toStdString();
+    finishJob( jobId, error );
+    const auto stoppedJob = jobs_.find( jobId );
+    if ( stoppedJob != jobs_.end() ) {
+        stoppedJob->second.cancelRequested = true;
+    }
+    QStringList streams;
+    for ( const auto& [ key, stream ] : streams_ ) {
+        if ( stream.pluginId == pluginId && stream.jobId == jobId ) {
+            streams.append( key );
+        }
+    }
+    for ( const auto& key : streams ) {
+        stopStream( key, true );
+    }
+    const auto entry = entries_.find( pluginId );
+    if ( entry != entries_.end() ) {
+        entry->second->diagnostics = ( entry->second->diagnostics + error + '\n' ).right( 32768 );
+        if ( entry->second->process ) {
+            const auto job = jobs_.find( jobId );
+            if ( job != jobs_.end() && !job->second.outputPath.isEmpty() ) {
+                // A converter writes independently; stop its process once a violation is observed.
+                entry->second->process->fail( error );
+            }
+            else {
+                entry->second->process->notify( "cancel", { { "job_id", jobId } } );
+            }
+        }
+    }
+    Q_EMIT changed();
+}
+
+void PluginManager::monitorStorage()
+{
+    if ( shuttingDown_ ) {
+        return;
+    }
+    QStringList growingOutputs;
+    for ( auto& [ id, job ] : jobs_ ) {
+        if ( !job.outputPath.isEmpty() ) {
+            const auto size = qMax( qint64( 0 ), QFileInfo( job.outputPath ).size() );
+            if ( size > job.observedOutputBytes ) {
+                growingOutputs.append( id );
+            }
+            recordCaptureBytes( size - job.observedOutputBytes );
+            job.observedOutputBytes = size;
+        }
+    }
+    storage_.refreshSpace();
+    QStringList violations;
+    for ( const auto& [ id, job ] : jobs_ ) {
+        const auto entry = entries_.find( job.pluginId );
+        if ( job.outputSupervised && ( pending( job.state ) || growingOutputs.contains( id ) )
+             && !job.outputPath.isEmpty() && entry != entries_.end() && entry->second->process
+             && entry->second->process->isRunning()
+             && !storage_.checkWrite( job.observedOutputBytes, 0, reservedCaptureBytes() )
+                     .isEmpty() ) {
+            violations.append( id );
+        }
+    }
+    for ( const auto& id : violations ) {
+        const auto job = jobs_.find( id );
+        if ( job != jobs_.end() ) {
+            // Rescan before enforcing an aggregate/free-space limit to avoid conservative scan
+            // overlap.
+            refreshCaptureUsage();
+            const auto error
+                = storage_.checkWrite( job->second.observedOutputBytes, 0, reservedCaptureBytes() );
+            if ( !error.isEmpty() ) {
+                failStorageJob( job->second.pluginId, id, error );
+            }
+        }
+    }
+    if ( ++storageTicks_ >= 10 && !storageScanActive_ ) {
+        storageTicks_ = 0;
+        storageScanActive_ = true;
+        const auto generation = ++storageScanGeneration_;
+        QSet<QString> outputs;
+        for ( const auto& [ id, stream ] : streams_ ) {
+            Q_UNUSED( id );
+            outputs.insert( QFileInfo( stream.path ).absoluteFilePath() );
+        }
+        for ( const auto& [ id, job ] : jobs_ ) {
+            Q_UNUSED( id );
+            if ( !job.outputPath.isEmpty() ) {
+                outputs.insert( QFileInfo( job.outputPath ).absoluteFilePath() );
+            }
+        }
+        auto* watcher = new QFutureWatcher<qint64>( this );
+        connect( watcher, &QFutureWatcher<qint64>::finished, this, [ this, watcher, generation ] {
+            const auto scanned = watcher->result();
+            watcher->deleteLater();
+            if ( generation == storageScanGeneration_ ) {
+                auto total = scanned;
+                for ( const auto& [ id, stream ] : streams_ ) {
+                    Q_UNUSED( id );
+                    const auto size = qMax( qint64( 0 ), stream.file->size() );
+                    total = size > std::numeric_limits<qint64>::max() - total
+                                ? std::numeric_limits<qint64>::max()
+                                : total + size;
+                }
+                for ( auto& [ id, job ] : jobs_ ) {
+                    Q_UNUSED( id );
+                    if ( !job.outputPath.isEmpty() ) {
+                        job.observedOutputBytes
+                            = qMax( qint64( 0 ), QFileInfo( job.outputPath ).size() );
+                        total = job.observedOutputBytes > std::numeric_limits<qint64>::max() - total
+                                    ? std::numeric_limits<qint64>::max()
+                                    : total + job.observedOutputBytes;
+                    }
+                }
+                storage_.replaceUsage( total );
+                storage_.refreshSpace();
+            }
+            storageScanActive_ = false;
+        } );
+        const auto directory = storage_.directory();
+        watcher->setFuture( QtConcurrent::run( [ directory, outputs ] {
+            return CaptureStorage::directoryUsage( directory, outputs );
+        } ) );
+    }
+}
+
+Result PluginManager::configureStorage( const QVariantMap& limits )
+{
+    const auto previous = storage_.limits();
+    const auto error = storage_.setLimits( limits );
+    if ( !error.isEmpty() ) {
+        LOG_WARNING << "Plugin storage configuration rejected: " << error.toStdString();
+        return { error, {} };
+    }
+    const auto updated = storage_.limits();
+    for ( auto it = updated.cbegin(); it != updated.cend(); ++it ) {
+        settings_.setValue( "storage/" + it.key(), it.value() );
+    }
+    settings_.sync();
+    if ( settings_.status() != QSettings::NoError ) {
+        storage_.setLimits( previous );
+        for ( auto it = previous.cbegin(); it != previous.cend(); ++it ) {
+            settings_.setValue( "storage/" + it.key(), it.value() );
+        }
+        return { "Cannot persist plugin storage limits.", {} };
+    }
+    refreshCaptureUsage();
+    monitorStorage();
+    Q_EMIT changed();
+    return { {}, { { "storage", storageStatus() } } };
 }
 
 QVariantMap PluginManager::jobPayload( const Job& j ) const
@@ -182,11 +486,13 @@ QVariantList PluginManager::jobs() const
     return result;
 }
 QString PluginManager::addJob( const QString& pluginId, const QString& action,
-                               const QVariantMap& context )
+                               const QVariantMap& context, bool management )
 {
-    if ( jobs_.size() >= 256 ) {
+    ++storageScanGeneration_;
+    if ( jobs_.size() >= ( management ? 256u : 240u ) ) {
         const auto it = std::find_if( jobs_.begin(), jobs_.end(), []( const auto& pair ) {
-            return !pending( pair.second.state );
+            const auto& retained = pair.second;
+            return !pending( retained.state ) && !retained.outputSupervised;
         } );
         if ( it == jobs_.end() ) {
             return {};
@@ -260,6 +566,7 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
             }
             LOG_DEBUG << "Plugin initialization configuration applied plugin=" << id.toStdString()
                       << " fields=" << fields.size();
+            rememberSecretFields( id, fields );
             readyProcess->notify( "configure", { { "configuration", config } } );
             if ( readyProcess->state() != "ready" ) {
                 return;
@@ -383,6 +690,11 @@ void PluginManager::dispatchJob( const QString& jobId )
         return;
     }
     auto params = j.params;
+    if ( selected.value( "capability" ) == "converter" && !params.contains( "input_path" ) ) {
+        params.insert( "input_path", QJsonValue::fromVariant( j.context.value( "filePath" ) ) );
+        LOG_DEBUG << "Plugin converter input from target plugin=" << j.pluginId.toStdString()
+                  << " job=" << jobId.toStdString();
+    }
     const auto validation = validateValues( selected.value( "fields" ).toArray(), &params );
     if ( !validation.isEmpty() ) {
         finishJob( jobId, validation );
@@ -395,9 +707,19 @@ void PluginManager::dispatchJob( const QString& jobId )
             finishJob( jobId, "Converter input file not found." );
             return;
         }
+        refreshCaptureUsage();
+        const auto reservation = storage_.converterReservation();
+        const auto error
+            = storage_.checkWrite( 0, qMax( qint64( 1 ), reservation ), reservedCaptureBytes() );
+        if ( !error.isEmpty() ) {
+            finishJob( jobId, error );
+            return;
+        }
+        j.outputReservation = reservation;
         j.outputPath = QDir( dataRoot_ ).filePath( "captures/converted-" + jobId + ".log" );
         params.insert( "input_path", QFileInfo( input ).absoluteFilePath() );
         params.insert( "output_path", j.outputPath );
+        j.outputSupervised = true;
     }
     j.state = "running";
     process->request( jobId, "invoke",
@@ -441,7 +763,10 @@ void PluginManager::processStopped( const QString& id )
     for ( const auto& key : streams ) {
         stopStream( key, false );
     }
-    for ( const auto& [ key, j ] : jobs_ ) {
+    for ( auto& [ key, j ] : jobs_ ) {
+        if ( j.pluginId == id ) {
+            j.outputSupervised = false;
+        }
         if ( j.pluginId == id && j.invocation && pending( j.state ) ) {
             finishJob( key, terminalError( it->second->process->error() ) );
         }
@@ -461,6 +786,7 @@ void PluginManager::stopStream( const QString& id, bool notify )
     LOG_DEBUG << "Plugin stream stopped plugin=" << pluginId.toStdString()
               << " stream=" << streamId.toStdString();
     streams_.erase( it );
+    ++storageScanGeneration_;
     const auto entry = entries_.find( pluginId );
     if ( notify && entry != entries_.end() && entry->second->process ) {
         entry->second->process->notify( "stream/stop", { { "stream_id", streamId } } );
@@ -550,6 +876,13 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
                 finishJob( id, "Converter produced no output." );
                 return;
             }
+            refreshCaptureUsage();
+            const auto storageError = storage_.checkWrite(
+                QFileInfo( it->second.outputPath ).size(), 0, reservedCaptureBytes() );
+            if ( !storageError.isEmpty() ) {
+                failStorageJob( pluginId, id, storageError );
+                return;
+            }
             Q_EMIT fileReady( it->second.outputPath, false, it->second.context );
         }
         finishJob( id, error, frame.value( "result" ).toObject().toVariantMap() );
@@ -587,6 +920,13 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
         stream.pluginId = pluginId;
         stream.jobId = jobId;
         stream.context = jobIt->second.context;
+        refreshCaptureUsage();
+        const auto storageError = storage_.checkWrite( 0, 1, reservedCaptureBytes() );
+        if ( !storageError.isEmpty() ) {
+            process->notify( "stream/stop", { { "stream_id", streamId } } );
+            failStorageJob( pluginId, jobId, storageError );
+            return;
+        }
         stream.path = QDir( dataRoot_ ).filePath( "captures/stream-" + newId() + ".log" );
         stream.file = std::make_unique<QFile>( stream.path );
         if ( !stream.file->open( QIODevice::WriteOnly ) ) {
@@ -613,17 +953,33 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
             process->fail( "Invalid plugin stream sequence or records." );
             return;
         }
+        QByteArray batch;
         for ( const auto& record : params.value( "records" ).toArray() ) {
             if ( !record.isString() ) {
                 process->fail( "Plugin log record must be text." );
                 return;
             }
-            auto bytes = record.toString().toUtf8();
-            bytes.append( '\n' );
-            if ( stream.file->write( bytes ) != bytes.size() ) {
-                process->fail( "Plugin capture write failed." );
-                return;
-            }
+            batch.append( record.toString().toUtf8() );
+            batch.append( '\n' );
+        }
+        auto storageError
+            = storage_.checkWrite( stream.file->size(), batch.size(), reservedCaptureBytes() );
+        if ( !storageError.isEmpty() ) {
+            refreshCaptureUsage();
+            storageError
+                = storage_.checkWrite( stream.file->size(), batch.size(), reservedCaptureBytes() );
+        }
+        if ( !storageError.isEmpty() ) {
+            failStorageJob( pluginId, stream.jobId, storageError );
+            return;
+        }
+        const auto written = stream.file->write( batch );
+        if ( written > 0 ) {
+            recordCaptureBytes( written );
+        }
+        if ( written != batch.size() ) {
+            process->fail( "Plugin capture write failed." );
+            return;
         }
         if ( !stream.file->flush() ) {
             process->fail( "Plugin capture flush failed." );
@@ -661,11 +1017,16 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         return { "CILogg is shutting down.", {} };
     }
     const auto installRoot = QDir( dataRoot_ ).filePath( "plugins" );
-    if ( operation == "install" || operation == "update" || operation == "restart"
-         || operation == "remove" ) {
+    if ( packageOperation( operation ) ) {
+        const bool unscopedInstall
+            = operation == "install" && options.contains( "path" ) && id.isEmpty();
         for ( const auto& [ jobId, j ] : jobs_ ) {
             Q_UNUSED( jobId );
-            if ( !id.isEmpty() && j.pluginId == id && !j.invocation && pending( j.state ) ) {
+            if ( !j.invocation && pending( j.state ) && packageOperation( j.action )
+                 && ( unscopedInstall || ( j.action == "install" && j.pluginId.isEmpty() )
+                      || ( !id.isEmpty() && j.pluginId == id ) ) ) {
+                LOG_DEBUG << "Plugin management overlap rejected plugin=" << id.toStdString()
+                          << " active_job=" << j.id.toStdString();
                 return { "A plugin management operation is already running.", {} };
             }
         }
@@ -676,15 +1037,19 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             return { "Catalog requires HTTPS.", {} };
         }
         settings_.setValue( "catalogUrl", url );
-        const auto jobId = addJob( {}, "catalog" );
+        const auto jobId = addJob( {}, "catalog", {}, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
+        if ( !catalogJobId_.isEmpty() ) {
+            cancel( catalogJobId_ );
+        }
+        catalogJobId_ = jobId;
         fetch( url, jobId );
         return job( jobId );
     }
     if ( operation == "install" && options.contains( "path" ) ) {
-        const auto jobId = addJob( id, "install" );
+        const auto jobId = addJob( id, "install", {}, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
@@ -693,16 +1058,22 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     }
     if ( operation == "install" || operation == "update" ) {
         QJsonObject package;
+        const auto selector = options.value( "catalog_entry_id" ).toString();
         for ( const auto& value : catalog_ ) {
-            if ( value.toObject().value( "id" ) == id ) {
-                package = value.toObject();
-                break;
+            const auto candidate = value.toObject();
+            if ( candidate.value( "id" ) == id
+                 && ( selector.isEmpty() || candidate.value( "entry_id" ) == selector ) ) {
+                if ( !package.isEmpty()
+                     && package.value( "entry_id" ) != candidate.value( "entry_id" ) ) {
+                    return { "Multiple catalog entries match; supply catalog_entry_id.", {} };
+                }
+                package = candidate;
             }
         }
         if ( package.isEmpty() ) {
             return { "Plugin not in the loaded catalog for this platform.", {} };
         }
-        const auto jobId = addJob( id, operation );
+        const auto jobId = addJob( id, operation, {}, true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
@@ -710,18 +1081,26 @@ Result PluginManager::manage( const QString& operation, const QString& id,
                package.value( "version" ).toString() );
         return job( jobId );
     }
+    if ( operation == "configure" && id.isEmpty() ) {
+        const auto limits = QJsonValue::fromVariant( options.value( "storage_limits" ) );
+        return limits.isObject()
+                   ? configureStorage( limits.toObject().toVariantMap() )
+                   : Result{ "Host configuration requires a storage_limits object.", {} };
+    }
     const auto it = entries_.find( id );
     if ( it == entries_.end() ) {
         return { "Plugin not found.", {} };
     }
     auto& e = *it->second;
     if ( operation == "remove" || operation == "restart" ) {
-        if ( e.process && e.process->isRunning() ) {
-            const auto jobId = addJob( id, operation );
+        if ( operation == "restart" || ( e.process && e.process->isRunning() ) ) {
+            const auto jobId = addJob( id, operation, {}, true );
             if ( jobId.isEmpty() ) {
                 return { "Too many jobs.", {} };
             }
-            e.process->stop();
+            if ( e.process && e.process->isRunning() ) {
+                e.process->stop();
+            }
             QTimer::singleShot( 50, this, [ this, operation, id, jobId ] {
                 completeManagement( operation, id, jobId );
             } );
@@ -756,12 +1135,24 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         const auto fields = e.process && e.process->descriptor().contains( "configuration" )
                                 ? e.process->descriptor()[ "configuration" ].toArray()
                                 : e.manifest.json[ "configuration" ].toArray();
+        const auto previous
+            = QJsonDocument::fromJson(
+                  settings_.value( configurationKey( id ) + "configuration", "{}" ).toByteArray() )
+                  .object();
+        auto secrets = settings_.value( configurationKey( id ) + "secretFields" ).toStringList();
+        secrets.append( secretFieldNames( fields ) );
+        for ( const auto& key : secrets ) {
+            if ( !config.contains( key ) && previous.contains( key ) ) {
+                config.insert( key, previous.value( key ) );
+            }
+        }
         const auto error = validateValues( fields, &config );
         if ( !error.isEmpty() ) {
             return { error, {} };
         }
         settings_.setValue( configurationKey( id ) + "configuration",
                             QJsonDocument( config ).toJson( QJsonDocument::Compact ) );
+        rememberSecretFields( id, fields );
         if ( e.process && e.process->state() == "ready" ) {
             e.process->notify( "configure", { { "configuration", config } } );
         }
@@ -785,6 +1176,23 @@ void PluginManager::completeManagement( const QString& operation, const QString&
         return;
     }
     const auto entry = entries_.find( id );
+    if ( operation == "restart" && j->second.restartStarted ) {
+        const auto state = entry != entries_.end() && entry->second->process
+                               ? entry->second->process->state()
+                               : QStringLiteral( "failed" );
+        if ( state == "starting" || state == "initializing" ) {
+            QTimer::singleShot( 50, this, [ this, operation, id, jobId ] {
+                completeManagement( operation, id, jobId );
+            } );
+            return;
+        }
+        const auto error = state == "ready" ? QString{}
+                           : entry != entries_.end() && entry->second->process
+                               ? terminalError( entry->second->process->error() )
+                               : QStringLiteral( "Plugin not found." );
+        finishJob( jobId, error, { { "plugins", plugins() } } );
+        return;
+    }
     if ( entry != entries_.end() && entry->second->process
          && entry->second->process->isRunning() ) {
         QTimer::singleShot( 50, this, [ this, operation, id, jobId ] {
@@ -809,10 +1217,13 @@ void PluginManager::completeManagement( const QString& operation, const QString&
     }
     else if ( settings_.value( configurationKey( id ) + "enabled", false ).toBool()
               && e.manifest.valid() ) {
+        j->second.restartStarted = true;
         auto* process = ensureProcess( e );
-        if ( process->state() == "failed" ) {
-            error = process->error();
-        }
+        Q_UNUSED( process );
+        QTimer::singleShot( 50, this, [ this, operation, id, jobId ] {
+            completeManagement( operation, id, jobId );
+        } );
+        return;
     }
     settings_.sync();
     if ( settings_.status() != QSettings::NoError ) {
@@ -845,6 +1256,7 @@ void PluginManager::install( const QString& source, const QString& jobId, const 
                      finishJob( jobId, error );
                      return;
                  }
+                 it->second.pluginId = staged.manifest.id;
                  commitWhenStopped( staged, jobId );
              } );
     const auto root = QDir( dataRoot_ ).filePath( "plugins" );
@@ -966,6 +1378,11 @@ void PluginManager::fetch( const QString& url, const QString& jobId, const QStri
 
 void PluginManager::loadCatalog( const QByteArray& bytes, const QString& jobId )
 {
+    if ( jobId != catalogJobId_ ) {
+        LOG_DEBUG << "Plugin stale catalog discarded job=" << jobId.toStdString();
+        finishJob( jobId, "Catalog request was superseded." );
+        return;
+    }
     QJsonParseError error;
     const auto document = QJsonDocument::fromJson( bytes, &error );
     if ( error.error != QJsonParseError::NoError || !document.isObject()
@@ -982,7 +1399,7 @@ void PluginManager::loadCatalog( const QByteArray& bytes, const QString& jobId )
     }
     static const QRegularExpression shaPattern( "^[a-fA-F0-9]{64}$" );
     for ( const auto& value : packages ) {
-        const auto p = value.toObject();
+        auto p = value.toObject();
         if ( p.value( "os" ).toString() != platformName()
              || p.value( "arch" ).toString() != QSysInfo::buildCpuArchitecture() ) {
             continue;
@@ -994,6 +1411,11 @@ void PluginManager::loadCatalog( const QByteArray& bytes, const QString& jobId )
             finishJob( jobId, "Invalid catalog package or missing SHA-256." );
             return;
         }
+        p.remove( "entry_id" );
+        p[ "entry_id" ] = QString::fromLatin1(
+            QCryptographicHash::hash( QJsonDocument( p ).toJson( QJsonDocument::Compact ),
+                                      QCryptographicHash::Sha256 )
+                .toHex() );
         selected.append( p );
     }
     catalog_ = selected;

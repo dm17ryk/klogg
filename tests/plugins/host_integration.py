@@ -134,13 +134,14 @@ def run(build: Path, artifacts: Path) -> None:
                 source_tab_id = tabs[-1]["tabId"]
                 assert len(capture.read_text(encoding="utf-8").splitlines()) == 3
                 original = root / "input.jsonl"
-                original.write_text('{"level":"INFO","message":"hello"}\n', encoding="utf-8")
+                original_bytes = b'{"level":"INFO","message":"hello"}\n'
+                original.write_bytes(original_bytes)
                 arguments = root / "arguments.json"
                 arguments.write_text(json.dumps({"input_path": str(original)}), encoding="utf-8")
                 converted = cli("invoke_plugin", "--plugin-id", converter, "--plugin-action", "convert",
                                 "--json-file", str(arguments))
                 completed(converted["jobId"])
-                assert original.read_text(encoding="utf-8").startswith('{"level"')
+                assert original.read_bytes() == original_bytes, "Converter changed the original input"
                 # Activate the shipped action through the actual Qt QAction surface.
                 time.sleep(0.25)
                 cli("activate_ui", "--object-name", f"pluginAction_{summary}_summarize")
