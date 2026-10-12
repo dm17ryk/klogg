@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 int main( int argc, char** argv )
@@ -146,8 +147,10 @@ int main( int argc, char** argv )
         }
         return QJsonObject{};
     } );
-    plugin.action( "crash", []( cilogg_plugin::Job&, const QJsonObject& ) -> QJsonObject {
-        std::exit( 17 );
+    plugin.action( "crash", []( cilogg_plugin::Job& job, const QJsonObject& ) -> QJsonObject {
+        std::cerr << "Fixture abrupt exit job=" << job.id.toStdString() << std::endl;
+        // Skip stream cleanup: the protocol reader can hold stdin's lock while waiting for input.
+        std::_Exit( 17 );
     } );
     plugin.serve();
 }

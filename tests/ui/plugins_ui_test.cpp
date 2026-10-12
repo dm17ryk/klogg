@@ -61,7 +61,11 @@ TEST_CASE( "Plugin UI routes panels to captured windows and cleans them up", "[u
           { "elements", QJsonArray{ QJsonObject{
                             { "type", "table" }, { "rows", rows }, { "columns", columns } } } } },
         context );
-    QTest::qWait( 150 );
+    wait.restart();
+    while ( !second.findChild<QDockWidget*>( "pluginPanel_fixture_large" )
+            && wait.elapsed() < 2000 ) {
+        QTest::qWait( 10 );
+    }
     auto* bounded = second.findChild<QDockWidget*>( "pluginPanel_fixture_large" );
     REQUIRE( bounded );
     REQUIRE( bounded->findChildren<QTableWidget*>().isEmpty() );
