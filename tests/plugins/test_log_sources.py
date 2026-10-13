@@ -301,6 +301,8 @@ else:
         port = self.available_port()
         result, done = self.async_server(host, port, count=2)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+            # macOS's default UDP send buffer is smaller than this datagram.
+            sender.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 128 * 1024)
             sender.sendto(b"x" * 65000, ("127.0.0.1", port))
             sender.sendto(b"<999>bad\xff\nmore", ("127.0.0.1", port))
         self.assertEqual(self.finish(result, done)["messages"], 2)
