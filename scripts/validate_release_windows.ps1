@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+$preinstalledValidator = Join-Path $PSScriptRoot "plugins/validate_preinstalled.py"
 
 function Assert-PathExists {
     param(
@@ -39,6 +40,10 @@ function Assert-KloggDeployment {
     Assert-PathExists (Join-Path $Root "sqldrivers\\qsqlite.dll") "$Context is missing qsqlite.dll"
     Assert-PathExists (Join-Path $Root "python_runtime\\klogg\\__init__.py") "$Context is missing python_runtime"
     Assert-PathExists (Join-Path $Root "platforms\\qwindows.dll") "$Context is missing qwindows.dll"
+    & python $preinstalledValidator (Join-Path $Root "plugins")
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Context has an invalid preinstalled plugin payload"
+    }
 }
 
 function Resolve-KloggRoot {

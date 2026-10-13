@@ -43,13 +43,13 @@ def metadata(text: str) -> JsonObject:
 
 def printable(text: str) -> str:
     # One datagram stays one capture record even when it contains embedded newlines.
-    return "".join(f"\\x{ord(char):02x}" if ord(char) < 32 or ord(char) == 127
+    return "".join(f"\\x{ord(char):02x}" if ord(char) < 32 or 127 <= ord(char) <= 159
                    else char for char in text)
 
 
 @plugin.action("start")
 def start(job: Job, arguments: JsonObject) -> JsonObject:
-    bind = str(arguments.get("bind", "0.0.0.0")).strip()
+    bind = str(arguments.get("bind", "127.0.0.1")).strip()
     try:
         address = ipaddress.ip_address(bind)
     except ValueError as error:
@@ -100,9 +100,15 @@ def start(job: Job, arguments: JsonObject) -> JsonObject:
                         continue
                     batch = []
                     batch_bytes = 0
+                    cancellation = None
                     # Drain bursts into bounded batches; no unbounded producer queue.
                     for _ in range(32):
-                        job.check_cancelled()
+                        try:
+                            job.check_cancelled()
+                        except Cancelled as error:
+                            debug(f"Finishing received batch before cancellation records={len(batch)}")
+                            cancellation = error
+                            break
                         try:
                             payload, peer = sock.recvfrom(65535)
                         except BlockingIOError:
@@ -133,7 +139,10 @@ def start(job: Job, arguments: JsonObject) -> JsonObject:
                         if (count and accepted >= count) or batch_bytes >= 16384:
                             break
                     if batch:
-                        stream.write(batch)
+                        stream.write(batch, finish_on_cancel=True)
+                    if cancellation is not None:
+                        raise cancellation
+                    if batch:
                         if accepted == len(batch) or accepted // 100 != (accepted - len(batch)) // 100:
                             debug(f"Capture checkpoint messages={accepted} bytes={total_bytes} filtered={filtered}")
                             job.panel("syslog-status", "Syslog Server", [{"type": "text",

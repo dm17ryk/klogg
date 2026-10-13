@@ -22,7 +22,7 @@ class Capture:
         self.records = []
         self.closed = threading.Event()
 
-    def write(self, records):
+    def write(self, records, **_options):
         self.records.extend(records)
 
     def __enter__(self):

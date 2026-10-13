@@ -58,6 +58,9 @@ jobs:
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
     - name: Validate Windows artifacts
       shell: pwsh
       run: ./scripts/validate_release_windows.ps1

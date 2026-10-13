@@ -71,7 +71,9 @@ def run(build: Path, artifacts: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="plugin-host-", dir=artifacts) as directory:
         root = Path(directory)
         extension = ".exe" if os.name == "nt" else ""
-        executable = root / ("cilogg_plugin_integration" + extension)
+        # CILogg's IPC identity uses the executable basename, not its directory.
+        # Give every isolated run its own identity, including after an interrupted run.
+        executable = root / ("cilogg_plugin_integration_" + root.name + extension)
         shutil.copy2(build / ("cilogg_portable" + extension), executable)
         for library in build.glob("*.dll"):
             shutil.copy2(library, root / library.name)
@@ -81,9 +83,10 @@ def run(build: Path, artifacts: Path) -> None:
         environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", CILOGG_AUTOMATION="1",
                            CILOGG_SCRIPT_PYTHON=sys.executable)
         with (artifacts / "host.log").open("w", encoding="utf-8") as diagnostics:
-            application = subprocess.Popen([str(executable), "--new-session"], env=environment,
+            application = subprocess.Popen([str(executable), "--multi", "--new-session", "-d", "1"], env=environment,
                                            stdout=diagnostics, stderr=diagnostics)
             mcp = None
+            verified = False
             def cli(action: str, *options: str) -> dict:
                 response = subprocess.run([str(executable), "command", "--action", action,
                                            "--require-running", *options], env=environment,
@@ -121,6 +124,9 @@ def run(build: Path, artifacts: Path) -> None:
                 assert {"org.cilogg.generated-source", "org.cilogg.json-lines",
                         "org.cilogg.log-summary", "org.cilogg.adb-logcat",
                         "org.cilogg.syslog-server"} <= identifiers, plugins
+                assert all(Path(plugin["directory"]).resolve().is_relative_to(root.resolve())
+                           for plugin in plugins), "Commander reached another application instance"
+                verified = True
                 preinstalled = {"org.cilogg.adb-logcat", "org.cilogg.syslog-server"}
                 for installed in plugins:
                     if installed["id"] in preinstalled:
@@ -331,7 +337,10 @@ def run(build: Path, artifacts: Path) -> None:
                     mcp.close()
                 if application.poll() is None:
                     try:
-                        cli("invoke_action", "--object-name", "exitAction")
+                        if verified:
+                            cli("invoke_action", "--object-name", "exitAction")
+                        else:
+                            application.terminate()
                         application.wait(timeout=5)
                     except (AssertionError, subprocess.TimeoutExpired):
                         application.terminate()

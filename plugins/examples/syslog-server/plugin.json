@@ -11,7 +11,7 @@
   "arguments": [
     "main.py"
   ],
-  "description": "Receive UDP syslog messages from devices, like Tftpd64's syslog server.",
+  "description": "Receive UDP syslog locally by default. For remote devices, select a LAN bind address and restrict allowed sender IPs/CIDRs. UDP syslog has no sender authentication.",
   "configuration": [
     {
       "id": "encoding",
@@ -44,7 +44,7 @@
     },
     {
       "id": "allowed_senders",
-      "label": "Allowed sender IPs or CIDRs (empty = all)",
+      "label": "Allowed sender IPs/CIDRs (empty accepts every reachable sender)",
       "type": "multiline",
       "default": ""
     }
@@ -57,9 +57,9 @@
       "fields": [
         {
           "id": "bind",
-          "label": "Listen address (0.0.0.0 = all IPv4, :: = all IPv6)",
+          "label": "Listen address (127.0.0.1 = local; 0.0.0.0 or :: = network)",
           "type": "text",
-          "default": "0.0.0.0",
+          "default": "127.0.0.1",
           "required": true
         },
         {

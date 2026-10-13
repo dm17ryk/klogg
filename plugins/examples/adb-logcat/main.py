@@ -4,6 +4,7 @@ from __future__ import annotations
 import queue
 import re
 import codecs
+import json
 import os
 import pathlib
 import shutil
@@ -62,9 +63,15 @@ def command(arguments: JsonObject) -> list[str]:
 def output(job: Job, argv: list[str], stream=None, timeout: float = 0):
     """Drain both pipes with bounded storage; keep cancellation responsive while idle."""
     debug("Starting ADB process without a shell")
+    if os.name == "nt" and pathlib.Path(argv[0]).suffix.lower() in {".bat", ".cmd"}:
+        raise ValueError("Configure a native ADB executable, not a Windows batch file")
     try:
+        # Audited: the executable is user-configured or discovered locally; device data stays
+        # in separate arguments. No shell is used, and Windows batch wrappers are rejected.
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
         process = subprocess.Popen(
             argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            shell=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except OSError as error:
@@ -118,6 +125,8 @@ def output(job: Job, argv: list[str], stream=None, timeout: float = 0):
             try:
                 line = lines.get(timeout=0.1)
             except queue.Empty:
+                if stream is not None:
+                    yield None  # Let a live capture flush its partial batch while idle.
                 continue
             if line is None:
                 tail = decoder.decode(b"", final=True)
@@ -166,10 +175,16 @@ def devices(job: Job, arguments: JsonObject) -> JsonObject:
     debug(f"Device discovery completed count={len(rows)}")
     elements = [{"type": "table", "columns": ["Serial", "State", "Description"],
                  "rows": rows}]
-    for serial, state, _description in rows:
-        if state == "device":
-            elements.append({"type": "button", "label": f"Capture {serial}",
-                             "action": "start", "arguments": {"serial": serial}})
+    ready = [row for row in rows if row[1] == "device"]
+    # Reserve table/refresh slots and, for large lists, a notice within the host's 64-element limit.
+    button_limit = 62 if len(ready) <= 62 else 61
+    for serial, _state, _description in ready[:button_limit]:
+        elements.append({"type": "button", "label": f"Capture {serial}",
+                         "action": "start", "arguments": {"serial": serial}})
+    if len(ready) > button_limit:
+        debug(f"Device panel buttons capped ready={len(ready)} buttons={button_limit}")
+        elements.append({"type": "text", "text":
+                         "All devices are listed above. Use Start ADB Logcat with a serial for additional devices."})
     if not rows:
         elements.append({"type": "text", "text": "No ADB devices found. Connect a device and enable USB debugging."})
     elements.append({"type": "button", "label": "Refresh devices", "action": "devices"})
@@ -184,7 +199,8 @@ def start(job: Job, arguments: JsonObject) -> JsonObject:
     if format_name not in FORMATS or buffer not in BUFFERS:
         raise ValueError("Unsupported logcat format or buffer")
     filters = str(arguments.get("filters", "")).split()
-    if any(not re.fullmatch(r"[^\s:]+:[VDIWEFSA*]", item) or item.startswith("-")
+    # Android liblog accepts '*' as ANDROID_LOG_DEFAULT; 'A' is not a logcat priority.
+    if any(not re.fullmatch(r"[^\s:]+:[VDIWEFS*]", item) or item.startswith("-")
            for item in filters):
         raise ValueError("Filters must be space-separated tag:priority values, e.g. MyTag:D *:S")
     argv = command(arguments) + ["logcat", "-v", format_name]
@@ -194,15 +210,38 @@ def start(job: Job, arguments: JsonObject) -> JsonObject:
     debug(f"Logcat configured format={format_name} buffer={buffer} filters={len(filters)}")
     count = 0
     with job.stream() as stream:
+        batch = []
+        batch_bytes = 0
+
+        def flush() -> None:
+            nonlocal batch, batch_bytes, count
+            if not batch:
+                return
+            records = batch
+            batch = []  # Do not retry a batch that was sent but whose acknowledgement failed.
+            batch_bytes = 0
+            stream.write(records, finish_on_cancel=True)
+            count += len(records)
+            debug(f"Logcat capture checkpoint records={count} batch={len(records)}")
+
         reader = output(job, argv, stream)
         try:
             for record in reader:
-                stream.write([record])
-                count += 1
-                if count % 100 == 0:
-                    debug(f"Logcat capture checkpoint records={count}")
+                if record is None:
+                    flush()
+                    continue
+                size = len(json.dumps(record, ensure_ascii=False).encode("utf-8")) + 1
+                if batch and batch_bytes + size > 65536:
+                    flush()
+                batch.append(record)
+                batch_bytes += size
+                if len(batch) >= 64 or batch_bytes >= 65536:
+                    flush()
         finally:
-            reader.close()
+            try:
+                flush()
+            finally:
+                reader.close()
     return {"records": count}
 
 

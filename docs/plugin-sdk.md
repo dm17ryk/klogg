@@ -34,6 +34,8 @@ Logcat**. See `plugins/examples/adb-logcat/README.md` for device selection and f
 
 Preinstalled **Syslog Server** receives UDP logs like the syslog feature in Tftpd64.
 Configure text encoding, severity filtering and optional sender restrictions.
+Syslog defaults to loopback. Remote listeners require an explicit bind address;
+configure allowed sender IPs/CIDRs before accepting network traffic.
 See `plugins/examples/syslog-server/README.md` for addresses, ports and output
 formats. Both plugins use the standard capture, job and
 cancellation paths and are included in self-contained ZIP packaging.
@@ -84,6 +86,11 @@ Stdin/stdout carry UTF-8 JSON-RPC 2.0 objects, one per newline. Diagnostics go t
 stderr. Messages are limited to 1 MiB, pending stream traffic to 8 MiB. Split large
 records into batches; SDK stream writers wait for acknowledgements. The host
 terminates initialization after 10 seconds and shutdown after 3 seconds.
+
+Python SDK accepts `stream.write(records, finish_on_cancel=True)` to finish an
+already-collected batch during job cancellation. This opt-in limits cancellation
+credit/acknowledgement waits to one second and still honors stream stop and plugin
+shutdown. Ordinary writes retain their immediate cancellation checks.
 
 Host requests:
 

@@ -14,6 +14,7 @@ Action = Callable[["Job", JsonObject], Optional[JsonObject]]
 
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE
+CANCEL_FLUSH_TIMEOUT = 1.0
 
 
 class Cancelled(Exception):
@@ -77,21 +78,37 @@ class Stream:
         if self.closed.is_set():
             raise Cancelled("Stream stopped")
 
-    def write(self, records: Iterable[str]) -> None:
-        self.job.check_cancelled()
-        if self.closed.is_set():
-            raise Cancelled("Stream stopped")
+    def write(self, records: Iterable[str], *, finish_on_cancel: bool = False) -> None:
+        """Write a bounded batch; optionally finish it within one second of cancellation."""
+        cancellation_deadline = None
+
+        def check() -> None:
+            nonlocal cancellation_deadline
+            if finish_on_cancel and self.job.cancelled.is_set() and not self.plugin.stopping.is_set():
+                if cancellation_deadline is None:
+                    cancellation_deadline = time.monotonic() + CANCEL_FLUSH_TIMEOUT
+                if time.monotonic() >= cancellation_deadline:
+                    raise Cancelled("Pending batch flush timed out")
+            else:
+                self.job.check_cancelled()
+            if self.closed.is_set():
+                raise Cancelled("Stream stopped")
+
+        check()
         params = {"stream_id": self.id, "sequence": self.sequence, "records": list(records)}
         size = len(self.plugin.encode({"jsonrpc": "2.0", "method": "stream/data", "params": params}))
         with self.plugin.credit:
             while self.plugin.pending_bytes + size > MAX_PENDING:
-                self.job.check_cancelled()
+                check()
                 self.plugin.credit.wait(0.1)
             self.plugin.pending_bytes += size
         try:
             self.ack.clear()
+            check()
             self.plugin.notify("stream/data", params)
-            self._wait(self.ack)
+            while not self.ack.wait(0.1):
+                check()
+            check()
             self.sequence += 1
         finally:
             with self.plugin.credit:
