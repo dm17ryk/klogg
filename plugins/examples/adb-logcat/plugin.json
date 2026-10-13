@@ -1,0 +1,88 @@
+{
+  "id": "org.cilogg.adb-logcat",
+  "name": "ADB Logcat",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "enabled_by_default": true,
+  "capabilities": [
+    "datasource",
+    "tool"
+  ],
+  "executable": "python",
+  "arguments": [
+    "main.py"
+  ],
+  "description": "Stream Android logcat and inspect connected devices.",
+  "configuration": [
+    {
+      "id": "adb_path",
+      "label": "ADB executable",
+      "type": "text",
+      "default": ""
+    },
+    {
+      "id": "serial",
+      "label": "Default device serial",
+      "type": "text",
+      "default": ""
+    }
+  ],
+  "actions": [
+    {
+      "id": "devices",
+      "label": "List ADB Devices",
+      "capability": "tool",
+      "fields": []
+    },
+    {
+      "id": "start",
+      "label": "Start ADB Logcat",
+      "capability": "datasource",
+      "fields": [
+        {
+          "id": "serial",
+          "label": "Device serial (empty uses default)",
+          "type": "text",
+          "default": ""
+        },
+        {
+          "id": "format",
+          "label": "Log format",
+          "type": "choice",
+          "default": "threadtime",
+          "choices": [
+            "threadtime",
+            "time",
+            "brief",
+            "long",
+            "process",
+            "raw",
+            "tag",
+            "thread"
+          ]
+        },
+        {
+          "id": "buffer",
+          "label": "Log buffer",
+          "type": "choice",
+          "default": "default",
+          "choices": [
+            "default",
+            "main",
+            "system",
+            "radio",
+            "events",
+            "crash",
+            "all"
+          ]
+        },
+        {
+          "id": "filters",
+          "label": "Filters (e.g. MyTag:D *:S)",
+          "type": "text",
+          "default": ""
+        }
+      ]
+    }
+  ]
+}

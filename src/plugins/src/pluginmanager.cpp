@@ -145,6 +145,7 @@ QString PluginManager::catalogUrl() const
 void PluginManager::discover()
 {
     std::map<QString, Manifest> found;
+    QStringList enabledByDefault;
     const QStringList roots{ QDir( dataRoot_ ).filePath( "plugins" ), shippedRoot_ };
     for ( const auto& root : roots ) {
         for ( const auto& dir :
@@ -159,6 +160,11 @@ void PluginManager::discover()
             if ( manifest.id.isEmpty() ) {
                 manifest.id = dir.fileName();
             }
+            if ( root == shippedRoot_ && manifest.valid()
+                 && manifest.json.value( "enabled_by_default" ).toBool() ) {
+                enabledByDefault.append( manifest.id );
+                LOG_DEBUG << "Plugin shipped default declared id=" << manifest.id.toStdString();
+            }
             if ( found.count( manifest.id ) ) {
                 LOG_DEBUG << "Plugin discovery shadowed id=" << manifest.id.toStdString();
                 continue;
@@ -166,6 +172,7 @@ void PluginManager::discover()
             found.emplace( manifest.id, std::move( manifest ) );
         }
     }
+    bool settingsChanged = false;
     for ( auto& [ id, manifest ] : found ) {
         const auto existing = entries_.find( id );
         if ( existing != entries_.end() && existing->second->process ) {
@@ -173,6 +180,22 @@ void PluginManager::discover()
         }
         auto entry = std::make_unique<Entry>();
         entry->manifest = std::move( manifest );
+        if ( enabledByDefault.contains( id ) ) {
+            const auto key = configurationKey( id ) + "enabled";
+            if ( !entry->manifest.valid() ) {
+                LOG_DEBUG << "Plugin shipped default skipped for invalid override id="
+                          << id.toStdString();
+            }
+            else if ( settings_.contains( key ) ) {
+                LOG_DEBUG << "Plugin shipped default preserves saved choice id=" << id.toStdString()
+                          << " enabled=" << settings_.value( key ).toBool();
+            }
+            else {
+                settings_.setValue( key, true );
+                settingsChanged = true;
+                LOG_DEBUG << "Plugin preinstalled default enabled id=" << id.toStdString();
+            }
+        }
         entries_[ id ] = std::move( entry );
     }
     for ( auto it = entries_.begin(); it != entries_.end(); ) {
@@ -181,6 +204,12 @@ void PluginManager::discover()
         }
         else {
             ++it;
+        }
+    }
+    if ( settingsChanged ) {
+        settings_.sync();
+        if ( settings_.status() != QSettings::NoError ) {
+            LOG_WARNING << "Plugin preinstalled defaults could not be persisted.";
         }
     }
     LOG_DEBUG << "Plugin discovery entries=" << entries_.size();

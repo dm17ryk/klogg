@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 assert_path() {
   local path="$1"
@@ -16,13 +17,23 @@ validate_app_bundle() {
   assert_path "$app/Contents/Frameworks/QtSql.framework" "Missing QtSql.framework in $app"
   assert_path "$app/Contents/Frameworks/QtSerialPort.framework" "Missing QtSerialPort.framework in $app"
   assert_path "$app/Contents/PlugIns/platforms/libqcocoa.dylib" "Missing qcocoa plugin in $app"
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$app/Contents/PlugIns/cilogg"
 }
 
-validate_dmg() {
+validate_dmg() (
   local dmg="$1"
+  local mountpoint
+  local app
   assert_path "$dmg" "Missing DMG file $dmg"
   hdiutil imageinfo "$dmg" >/dev/null
-}
+  mountpoint="$(mktemp -d)"
+  trap 'rmdir "$mountpoint"' EXIT
+  hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mountpoint" >/dev/null
+  trap 'hdiutil detach "$mountpoint" >/dev/null; rmdir "$mountpoint"' EXIT
+  app="$(find "$mountpoint" -maxdepth 2 -name '*.app' -print -quit)"
+  [[ -n "$app" ]] || { echo "No .app found inside $dmg" >&2; exit 1; }
+  validate_app_bundle "$app"
+)
 
 for dir in ./packages-macos-*; do
   [[ -d "$dir" ]] || continue
