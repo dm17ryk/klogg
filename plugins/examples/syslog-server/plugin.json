@@ -1,0 +1,84 @@
+{
+  "id": "org.cilogg.syslog-server",
+  "name": "Syslog Server",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "enabled_by_default": true,
+  "capabilities": [
+    "datasource"
+  ],
+  "executable": "python",
+  "arguments": [
+    "main.py"
+  ],
+  "description": "Receive UDP syslog locally by default. For remote devices, select a LAN bind address and restrict allowed sender IPs/CIDRs. UDP syslog has no sender authentication.",
+  "configuration": [
+    {
+      "id": "encoding",
+      "label": "Message encoding",
+      "type": "choice",
+      "default": "utf-8",
+      "choices": [
+        "utf-8",
+        "latin-1",
+        "cp1252"
+      ]
+    },
+    {
+      "id": "output",
+      "label": "Capture format",
+      "type": "choice",
+      "default": "annotated",
+      "choices": [
+        "annotated",
+        "raw"
+      ]
+    },
+    {
+      "id": "max_severity",
+      "label": "Maximum severity (0 = emergency, 7 = debug)",
+      "type": "integer",
+      "default": 7,
+      "minimum": 0,
+      "maximum": 7
+    },
+    {
+      "id": "allowed_senders",
+      "label": "Allowed sender IPs/CIDRs (empty accepts every reachable sender)",
+      "type": "multiline",
+      "default": ""
+    }
+  ],
+  "actions": [
+    {
+      "id": "start",
+      "label": "Start Syslog Server",
+      "capability": "datasource",
+      "fields": [
+        {
+          "id": "bind",
+          "label": "Listen address (127.0.0.1 = local; 0.0.0.0 or :: = network)",
+          "type": "text",
+          "default": "127.0.0.1",
+          "required": true
+        },
+        {
+          "id": "port",
+          "label": "UDP port",
+          "type": "integer",
+          "default": 514,
+          "minimum": 1,
+          "maximum": 65535
+        },
+        {
+          "id": "count",
+          "label": "Messages (0 = unlimited)",
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      ]
+    }
+  ]
+}

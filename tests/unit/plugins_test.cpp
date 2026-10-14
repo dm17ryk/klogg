@@ -134,6 +134,107 @@ bool finished( PluginManager& manager, const QString& id )
 }
 } // namespace
 
+TEST_CASE( "Preinstalled plugins are enabled lazily and preserve saved disable choices",
+           "[plugins][preinstalled]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto root = QDir( temp.path() ).filePath( "data" );
+    const QStringList defaults{ "org.cilogg.adb-logcat", "org.cilogg.syslog-server" };
+    for ( const auto& id : defaults ) {
+        const auto folder = package( shipped, id );
+        auto json = manifest( id );
+        json[ "enabled_by_default" ] = true;
+        writeFile( QDir( folder ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    }
+    package( shipped );
+    {
+        PluginManager manager( root, shipped );
+        REQUIRE( manager.plugins().size() == 3 );
+        for ( const auto& value : manager.plugins() ) {
+            const auto plugin = value.toMap();
+            REQUIRE( plugin[ "enabled" ].toBool()
+                     == defaults.contains( plugin[ "id" ].toString() ) );
+            REQUIRE( plugin[ "state" ] == "stopped" );
+            REQUIRE_FALSE( plugin.contains( "pid" ) );
+        }
+        REQUIRE( manager.manage( "disable", defaults.front(), {} ).ok() );
+        manager.discover();
+        for ( const auto& value : manager.plugins() ) {
+            const auto plugin = value.toMap();
+            if ( plugin[ "id" ] == defaults.front() ) {
+                REQUIRE_FALSE( plugin[ "enabled" ].toBool() );
+            }
+        }
+    }
+    PluginManager restored( root, shipped );
+    for ( const auto& value : restored.plugins() ) {
+        const auto plugin = value.toMap();
+        REQUIRE( plugin[ "enabled" ].toBool() == ( plugin[ "id" ] == defaults.back() ) );
+    }
+}
+
+TEST_CASE( "Preinstalled defaults apply to upgrades without enabling user-only packages",
+           "[plugins][preinstalled]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto root = QDir( temp.path() ).filePath( "data" );
+    REQUIRE( QDir().mkpath( root ) );
+    const QString id = "org.cilogg.adb-logcat";
+    const auto bundled = package( shipped, id );
+    auto json = manifest( id );
+    json[ "enabled_by_default" ] = true;
+    writeFile( QDir( bundled ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    const auto userRoot = QDir( root ).filePath( "plugins" );
+    const auto updated = package( userRoot, id );
+    auto update = manifest( id );
+    update[ "version" ] = "1.1.0";
+    writeFile( QDir( updated ).filePath( "plugin.json" ), QJsonDocument( update ).toJson() );
+    const auto userOnly = package( userRoot, "org.test.user" );
+    auto userManifest = manifest( "org.test.user" );
+    userManifest[ "enabled_by_default" ] = true;
+    writeFile( QDir( userOnly ).filePath( "plugin.json" ), QJsonDocument( userManifest ).toJson() );
+    QSettings settings( QDir( root ).filePath( "settings.ini" ), QSettings::IniFormat );
+    settings.setValue( "catalogUrl", "https://example.test/existing-catalog.json" );
+    settings.sync();
+    PluginManager manager( root, shipped );
+    REQUIRE( manager.plugins().size() == 2 );
+    for ( const auto& value : manager.plugins() ) {
+        const auto plugin = value.toMap();
+        if ( plugin[ "id" ] == id ) {
+            REQUIRE( plugin[ "enabled" ].toBool() );
+            REQUIRE( plugin[ "version" ] == "1.1.0" );
+            REQUIRE( plugin[ "directory" ] == updated );
+        }
+        else {
+            REQUIRE_FALSE( plugin[ "enabled" ].toBool() );
+        }
+    }
+    REQUIRE( manager.catalogUrl() == "https://example.test/existing-catalog.json" );
+}
+
+TEST_CASE( "Invalid overrides do not inherit preinstalled enable defaults",
+           "[plugins][preinstalled]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto root = QDir( temp.path() ).filePath( "data" );
+    const QString id = "org.cilogg.syslog-server";
+    const auto bundled = package( shipped, id );
+    auto json = manifest( id );
+    json[ "enabled_by_default" ] = true;
+    writeFile( QDir( bundled ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    const auto user = package( QDir( root ).filePath( "plugins" ), id );
+    json[ "protocol_version" ] = 999;
+    writeFile( QDir( user ).filePath( "plugin.json" ), QJsonDocument( json ).toJson() );
+    PluginManager manager( root, shipped );
+    REQUIRE( manager.plugins().size() == 1 );
+    const auto plugin = manager.plugins().front().toMap();
+    REQUIRE_FALSE( plugin[ "enabled" ].toBool() );
+    REQUIRE_FALSE( plugin[ "error" ].toString().isEmpty() );
+}
+
 TEST_CASE( "Plugin initialization applies advertised configuration before invocation", "[plugins]" )
 {
     QTemporaryDir root;

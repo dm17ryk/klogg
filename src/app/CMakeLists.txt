@@ -145,7 +145,7 @@ foreach(app_target klogg klogg_portable)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py"
       "$<TARGET_FILE_DIR:${app_target}>/plugin-sdk/python/external-window/cilogg_plugin.py")
-  foreach(example generated-source json-lines log-summary)
+  foreach(example generated-source json-lines log-summary adb-logcat syslog-server)
     add_custom_command(TARGET ${app_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py" "${plugin_output}/${example}/cilogg_plugin.py")
@@ -162,7 +162,7 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/plugins/examples/" DESTINATION "${plugin_
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/plugins/sdk/" DESTINATION "${plugin_sdk_install}")
 install(FILES "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py"
         DESTINATION "${plugin_sdk_install}/python/external-window")
-foreach(example generated-source json-lines log-summary)
+foreach(example generated-source json-lines log-summary adb-logcat syslog-server)
   install(FILES "${CMAKE_SOURCE_DIR}/plugins/sdk/python/cilogg_plugin.py" DESTINATION "${plugin_install}/${example}")
 endforeach()
 

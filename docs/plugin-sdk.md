@@ -8,8 +8,12 @@ must be ported to this protocol.
 ## Using plugins
 
 Open **Plugins → Manage Plugins…** to install a folder or ZIP, enable it, configure
-it, inspect jobs/errors, restart it, or remove the user-installed copy. Shipped
-examples are disabled initially. Enabled plugins start on the first action.
+it, inspect jobs/errors, restart it, or remove the user-installed copy. ADB Logcat
+and Syslog Server are preinstalled and enabled by default; the demonstration
+examples are disabled initially. Saved disable choices survive rescans and upgrades.
+Both log sources and their SDK files ship in Windows installers/portable ZIPs,
+Linux DEB/RPM/AppImage packages, and macOS app bundles/DMGs.
+Enabled plugins start on the first action.
 Actions appear in the Plugins menu and toolbar. A failed plugin needs an explicit
 restart. Captured logs survive stream stop or plugin failure.
 
@@ -21,6 +25,20 @@ advertises assets after release publication and verification.
 Python plugins require Python 3.9 or newer. CILogg checks its existing bundled
 Python runtime, `CILOGG_SCRIPT_PYTHON`, then Python on PATH. Each shipped package
 includes its standard-library-only SDK module.
+
+## ADB and syslog log sources
+
+Preinstalled **ADB Logcat** provides device discovery and live Android logcat capture.
+Configure its ADB executable path, then use **List ADB Devices** or **Start ADB
+Logcat**. See `plugins/examples/adb-logcat/README.md` for device selection and filters.
+
+Preinstalled **Syslog Server** receives UDP logs like the syslog feature in Tftpd64.
+Configure text encoding, severity filtering and optional sender restrictions.
+Syslog defaults to loopback. Remote listeners require an explicit bind address;
+configure allowed sender IPs/CIDRs before accepting network traffic.
+See `plugins/examples/syslog-server/README.md` for addresses, ports and output
+formats. Both plugins use the standard capture, job and
+cancellation paths and are included in self-contained ZIP packaging.
 
 ## Authoring
 
@@ -58,10 +76,21 @@ Flat fields use `id`, `label`, `type`, optional `required` and `default`, numeri
 
 ## Protocol
 
+The optional manifest flag `enabled_by_default: true` is honored only for valid
+plugins in CILogg's shipped plugin directory, and only when no enable/disable
+choice has been saved. A user-installed package cannot enable itself with this
+flag. Valid user-installed updates of a preinstalled plugin retain its default;
+invalid overrides are reported without applying a new enable default.
+
 Stdin/stdout carry UTF-8 JSON-RPC 2.0 objects, one per newline. Diagnostics go to
 stderr. Messages are limited to 1 MiB, pending stream traffic to 8 MiB. Split large
 records into batches; SDK stream writers wait for acknowledgements. The host
 terminates initialization after 10 seconds and shutdown after 3 seconds.
+
+Python SDK accepts `stream.write(records, finish_on_cancel=True)` to finish an
+already-collected batch during job cancellation. This opt-in limits cancellation
+credit/acknowledgement waits to one second and still honors stream stop and plugin
+shutdown. Ordinary writes retain their immediate cancellation checks.
 
 Host requests:
 

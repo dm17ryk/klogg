@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import queue
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -70,7 +71,9 @@ def run(build: Path, artifacts: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="plugin-host-", dir=artifacts) as directory:
         root = Path(directory)
         extension = ".exe" if os.name == "nt" else ""
-        executable = root / ("cilogg_plugin_integration" + extension)
+        # CILogg's IPC identity uses the executable basename, not its directory.
+        # Give every isolated run its own identity, including after an interrupted run.
+        executable = root / ("cilogg_plugin_integration_" + root.name + extension)
         shutil.copy2(build / ("cilogg_portable" + extension), executable)
         for library in build.glob("*.dll"):
             shutil.copy2(library, root / library.name)
@@ -80,9 +83,10 @@ def run(build: Path, artifacts: Path) -> None:
         environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", CILOGG_AUTOMATION="1",
                            CILOGG_SCRIPT_PYTHON=sys.executable)
         with (artifacts / "host.log").open("w", encoding="utf-8") as diagnostics:
-            application = subprocess.Popen([str(executable), "--new-session"], env=environment,
+            application = subprocess.Popen([str(executable), "--multi", "--new-session", "-d", "1"], env=environment,
                                            stdout=diagnostics, stderr=diagnostics)
             mcp = None
+            verified = False
             def cli(action: str, *options: str) -> dict:
                 response = subprocess.run([str(executable), "command", "--action", action,
                                            "--require-running", *options], env=environment,
@@ -116,13 +120,28 @@ def run(build: Path, artifacts: Path) -> None:
                 catalog = json.loads(discovery["content"][0]["text"])
                 assert "invoke_plugin" in catalog["commander"]["commands"]
                 plugins = cli("get_plugins")["plugins"]
-                assert len(plugins) == 3, plugins
                 identifiers = {p["id"] for p in plugins}
+                assert {"org.cilogg.generated-source", "org.cilogg.json-lines",
+                        "org.cilogg.log-summary", "org.cilogg.adb-logcat",
+                        "org.cilogg.syslog-server"} <= identifiers, plugins
+                assert all(Path(plugin["directory"]).resolve().is_relative_to(root.resolve())
+                           for plugin in plugins), "Commander reached another application instance"
+                verified = True
+                preinstalled = {"org.cilogg.adb-logcat", "org.cilogg.syslog-server"}
+                for installed in plugins:
+                    if installed["id"] in preinstalled:
+                        assert installed["enabled"], installed
+                        assert installed["state"] == "stopped", installed
+                initial_ui = cli("get_ui")["objects"]
+                for identifier in preinstalled:
+                    assert any(o.get("objectName") == f"pluginAction_{identifier}_start"
+                               for o in initial_ui), "Preinstalled action is missing"
                 for identifier in identifiers:
-                    cli("plugin_manage", "--plugin-operation", "enable", "--plugin-id", identifier)
-                source = next(p["id"] for p in plugins if "datasource" in p["capabilities"])
-                converter = next(p["id"] for p in plugins if "converter" in p["capabilities"])
-                summary = next(p["id"] for p in plugins if "tool" in p["capabilities"])
+                    if identifier not in preinstalled:
+                        cli("plugin_manage", "--plugin-operation", "enable", "--plugin-id", identifier)
+                source = "org.cilogg.generated-source"
+                converter = "org.cilogg.json-lines"
+                summary = "org.cilogg.log-summary"
                 actions = [(source, "start", {"count": 3, "interval": 0.01}),
                            (converter, "convert", {}), (summary, "summarize", {})]
                 start = mcp.command("invoke_plugin", {"plugin_id": source, "plugin_action": "start",
@@ -224,17 +243,104 @@ def run(build: Path, artifacts: Path) -> None:
                         break
                     assert time.monotonic() < deadline
                     time.sleep(0.05)
+                # Syslog crosses real UDP, the plugin protocol and the native capture writer.
+                syslog = "org.cilogg.syslog-server"
+                for protocol in ("cli", "mcp", "gui"):
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                        probe.bind(("127.0.0.1", 0))
+                        port = probe.getsockname()[1]
+                    parameters = {"bind": "127.0.0.1", "port": port, "count": 1}
+                    before_tabs = {tab["tabId"] for window in cli("get_info")["windows"]
+                                   for tab in window["tabs"]}
+                    if protocol == "mcp":
+                        started = mcp.command("invoke_plugin", {"plugin_id": syslog,
+                            "plugin_action": "start", "definition": parameters})
+                    elif protocol == "cli":
+                        arguments.write_text(json.dumps(parameters), encoding="utf-8")
+                        started = cli("invoke_plugin", "--plugin-id", syslog,
+                                      "--plugin-action", "start", "--json-file", str(arguments))
+                    else:
+                        previous_jobs = {j["jobId"] for j in cli("get_plugins")["jobs"]}
+                        activation_errors = []
+                        def activate_syslog() -> None:
+                            try:
+                                cli("activate_ui", "--object-name", f"pluginAction_{syslog}_start")
+                            except BaseException as error:
+                                activation_errors.append(error)
+                        activation = threading.Thread(target=activate_syslog, daemon=True)
+                        activation.start()
+                        deadline = time.monotonic() + 5
+                        while not any(o.get("objectName") == "pluginField_port"
+                                      for o in cli("get_ui")["objects"]):
+                            assert time.monotonic() < deadline, "Syslog form did not open"
+                            time.sleep(0.05)
+                        for key, value in parameters.items():
+                            mcp.command("set_ui", {"object_name": "pluginField_" + key,
+                                        "definition": {"text": str(value)}})
+                        cli("activate_ui", "--object-name", "pluginFormAccept")
+                        activation.join(timeout=5)
+                        assert not activation.is_alive() and not activation_errors, activation_errors
+                        deadline = time.monotonic() + 5
+                        while True:
+                            added = [j for j in cli("get_plugins")["jobs"]
+                                     if j["jobId"] not in previous_jobs]
+                            if added:
+                                started = added[0]
+                                break
+                            assert time.monotonic() < deadline, "Syslog GUI job did not start"
+                            time.sleep(0.05)
+                    deadline = time.monotonic() + 10
+                    while True:
+                        new_tabs = [tab for window in cli("get_info")["windows"]
+                                    for tab in window["tabs"] if tab["tabId"] not in before_tabs]
+                        if new_tabs:
+                            break
+                        assert time.monotonic() < deadline, "Syslog did not open its capture"
+                        time.sleep(0.05)
+                    message = f"<166>1 2026-10-13T00:00:00Z test-host app 1 ID - syslog-{protocol} שלום"
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+                        sender.sendto(message.encode("utf-8"), ("127.0.0.1", port))
+                    completed(started["jobId"])
+                    data = Path(new_tabs[-1]["filePath"]).read_text(encoding="utf-8")
+                    assert message in data and "severity=INFO" in data, data
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                        probe.bind(("127.0.0.1", port))
+                # ADB configuration and launch failures must survive the same public surfaces.
+                adb = "org.cilogg.adb-logcat"
+                arguments.write_text(json.dumps({"configuration": {
+                    "adb_path": str(root / "missing-adb-executable")}}), encoding="utf-8")
+                cli("plugin_manage", "--plugin-id", adb, "--plugin-operation", "configure",
+                    "--json-file", str(arguments))
+                for protocol in ("cli", "mcp"):
+                    if protocol == "mcp":
+                        started = mcp.command("invoke_plugin", {"plugin_id": adb,
+                                              "plugin_action": "devices"})
+                    else:
+                        started = cli("invoke_plugin", "--plugin-id", adb,
+                                      "--plugin-action", "devices")
+                    deadline = time.monotonic() + 10
+                    while True:
+                        job = cli("get_plugin_job", "--plugin-job-id", started["jobId"])
+                        if job["state"] == "failed":
+                            assert "Cannot start ADB" in job["error"], job
+                            break
+                        assert time.monotonic() < deadline, "Missing ADB did not report failure"
+                        time.sleep(0.05)
+                ui = cli("get_ui")
                 (artifacts / "ui.json").write_text(json.dumps(ui, indent=2), encoding="utf-8")
                 (artifacts / "plugins.json").write_text(json.dumps(cli("get_plugins"), indent=2), encoding="utf-8")
                 cli("close_tab", "--tab-id", source_tab_id)
                 assert capture.exists(), "Closing tabs must retain captures"
-                print("PASS: all three examples via GUI, CLI and MCP; forms, embedded panel, capture retention and discovery")
+                print("PASS: examples and syslog via GUI, CLI and MCP; ADB launch failures; capture retention and discovery")
             finally:
                 if mcp:
                     mcp.close()
                 if application.poll() is None:
                     try:
-                        cli("invoke_action", "--object-name", "exitAction")
+                        if verified:
+                            cli("invoke_action", "--object-name", "exitAction")
+                        else:
+                            application.terminate()
                         application.wait(timeout=5)
                     except (AssertionError, subprocess.TimeoutExpired):
                         application.terminate()

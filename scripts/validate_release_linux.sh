@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() {
   echo "$1" >&2
   exit 1
 }
 
-validate_deb() {
+validate_deb() (
   local pkg="$1"
   local contents
   local metadata
+  local workdir
 
   echo "Validating DEB: $pkg"
   contents="$(dpkg-deb -c "$pkg")"
@@ -17,18 +19,29 @@ validate_deb() {
 
   grep -q './usr/bin/cilogg$' <<<"$contents" || fail "DEB missing /usr/bin/cilogg: $pkg"
   grep -q '^ Package: ' <<<"$metadata" || fail "DEB metadata unreadable: $pkg"
-}
+  workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' EXIT
+  dpkg-deb -x "$pkg" "$workdir"
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/usr/bin/plugins"
+)
 
-validate_rpm() {
+validate_rpm() (
   local pkg="$1"
   local requires
+  local pkg_abs
+  local workdir
 
   echo "Validating RPM: $pkg"
   requires="$(rpm -qp --requires "$pkg")"
   [[ -n "$requires" ]] || fail "RPM requires list is empty: $pkg"
-}
+  pkg_abs="$(realpath "$pkg")"
+  workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' EXIT
+  (cd "$workdir"; rpm2cpio "$pkg_abs" | cpio -idm --quiet)
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/usr/bin/plugins"
+)
 
-validate_appimage() {
+validate_appimage() (
   local pkg="$1"
   local pkg_abs
   local workdir
@@ -36,6 +49,7 @@ validate_appimage() {
   echo "Validating AppImage: $pkg"
   pkg_abs="$(realpath "$pkg")"
   workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' EXIT
 
   chmod +x "$pkg_abs"
   (
@@ -46,9 +60,8 @@ validate_appimage() {
   test -f "$workdir/squashfs-root/usr/bin/cilogg" || fail "AppImage missing cilogg binary: $pkg"
   find "$workdir/squashfs-root" -name 'libQt6Sql*.so*' | grep -q . || fail "AppImage missing Qt SQL runtime: $pkg"
   find "$workdir/squashfs-root" -path '*/sqldrivers/*qsqlite*' | grep -q . || fail "AppImage missing qsqlite plugin: $pkg"
-
-  rm -rf "$workdir"
-}
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/squashfs-root/usr/bin/plugins"
+)
 
 shopt -s nullglob
 
