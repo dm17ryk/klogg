@@ -8,6 +8,7 @@ add_executable(cilogg_tests
     mcp_test.cpp
     configuration_test.cpp
     configurationexport_test.cpp
+    encodingdetector_test.cpp
     importpreviewsdialog_test.cpp
     linepositionarray_test.cpp
     patternmatcher_test.cpp
@@ -16,6 +17,7 @@ add_executable(cilogg_tests
     serialcapturesettings_test.cpp
     sessioninfo_test.cpp
     versionchecker_test.cpp
+    wrappedstring_test.cpp
     tests_main.cpp
 )
 

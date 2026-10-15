@@ -43,6 +43,9 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <limits>
+#include <map>
+#include <optional>
 #include <qchar.h>
 #include <string_view>
 #include <utility>
@@ -204,7 +207,8 @@ Q_SIGNALS:
     void followModeChanged( bool enabled );
     // Sent when the view wants the QuickFind widget pattern to change.
     void changeQuickFind( const QString& newPattern, QuickFindMux::QFDirection newDirection );
-    // Sent when a new line has been selected by the user
+    // Sent when a new line has been selected by the user. During a range drag,
+    // nSymbols is zero until the final count is delivered on mouse release.
     void newSelection( LineNumber startLine, LinesCount nLines, LineColumn startCol,
                        LineLength nSymbols );
     // Sent up when quickFind wants to show a message to the user.
@@ -377,6 +381,8 @@ private:
         LineNumber lineNumber;
         size_t wrappedLineIndex;
         WrappedString wrappedString;
+        mutable std::map<std::pair<qsizetype, int>, int> prefixWidths;
+        mutable std::optional<QFontMetrics> prefixMetrics;
     };
     struct VisibleLayoutInfo {
         LinesCount logicalLines = 0_lcount;
@@ -452,7 +458,7 @@ private:
     LinesCount getNbVisibleLines() const;
     LinesCount getNbBottomWrappedVisibleLines() const;
     LineLength getNbVisibleCols() const;
-    LinesCount visualRowsForLine( LineNumber line ) const;
+    LinesCount visualRowsForLine( LineNumber line, size_t maxRows ) const;
     LinesCount visualRowsForRange( LineNumber startLine, LinesCount logicalLines ) const;
     VisibleLayoutInfo visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines ) const;
 

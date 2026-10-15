@@ -17,10 +17,17 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef WRAPPEDSTRING_H
+#define WRAPPEDSTRING_H
+
+#include <QFontMetrics>
 #include <QString>
+#include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <qchar.h>
 #include <qglobal.h>
+#include <utility>
 
 #include <QStringView>
 
@@ -31,37 +38,26 @@ class WrappedString {
 public:
     using WrappedStringPart = QStringView;
 
-    static WrappedStringPart makeWrappedStringPart(const QString& lineText, 
-        LineColumn firstCol, LineLength length ) {
+    static WrappedStringPart makeWrappedStringPart( const QString& lineText, LineColumn firstCol,
+                                                    LineLength length )
+    {
         return QStringView( lineText ).mid( firstCol.get(), length.get() );
     }
 
-    explicit WrappedString( QString longLine, LineLength visibleColumns )
+    explicit WrappedString( QString longLine, LineLength visibleColumns,
+                            size_t maxRows = std::numeric_limits<size_t>::max() )
+        : unwrappedLine_( std::move( longLine ) )
     {
-        unwrappedLine_ = longLine;
-        if ( longLine.isEmpty() ) {
-            wrappedLines_.push_back( WrappedStringPart{} );
-        }
-        else {
-            WrappedStringPart lineToWrap( longLine );
-            while ( lineToWrap.size() > visibleColumns.get() ) {
-                WrappedStringPart stringToWrap = lineToWrap.left( visibleColumns.get() );
-                auto lastSpaceIt = std::find_if( stringToWrap.rbegin(), stringToWrap.rend(),
-                                                 []( QChar c ) { return c.isSpace(); } );
-                if ( lastSpaceIt == stringToWrap.rend() ) {
-                    wrappedLines_.push_back( lineToWrap.left( visibleColumns.get() ) );
-                    lineToWrap = lineToWrap.mid( visibleColumns.get() );
-                }
-                else {
-                    auto spacePos = std::distance( stringToWrap.begin(), lastSpaceIt.base() );
-                    wrappedLines_.push_back( lineToWrap.left( spacePos ) );
-                    lineToWrap = lineToWrap.mid( spacePos );
-                }
-            }
-            if ( lineToWrap.size() > 0 ) {
-                wrappedLines_.push_back( lineToWrap );
-            }
-        }
+        const auto columns = static_cast<int>(
+            std::clamp<qint64>( visibleColumns.get(), 1, std::numeric_limits<int>::max() ) );
+        wrap( nullptr, columns, maxRows );
+    }
+
+    WrappedString( QString longLine, const QFontMetrics& metrics, int pixelWidth,
+                   size_t maxRows = std::numeric_limits<size_t>::max() )
+        : unwrappedLine_( std::move( longLine ) )
+    {
+        wrap( &metrics, std::max( 1, pixelWidth ), maxRows );
     }
 
     size_t wrappedLinesCount() const
@@ -121,15 +117,77 @@ public:
         return unwrappedLine_.isEmpty();
     }
 
-    WrappedStringPart unwrappedLine() const {
-        return WrappedStringPart{unwrappedLine_};
+    WrappedStringPart unwrappedLine() const
+    {
+        return WrappedStringPart{ unwrappedLine_ };
     }
 
-    WrappedStringPart wrappedLine(size_t index) const {
-        return wrappedLines_[index];
+    WrappedStringPart wrappedLine( size_t index ) const
+    {
+        return wrappedLines_[ index ];
     }
 
 private:
+    static int fittingLength( WrappedStringPart text, const QFontMetrics& metrics, int width )
+    {
+        const auto length = klogg::isize( text );
+        const auto measure = [ & ]( int count ) {
+            return metrics.horizontalAdvance( QString::fromRawData( text.data(), count ) );
+        };
+        int low = 0;
+        int high
+            = std::min( length, std::max( 1, width / std::max( 1, metrics.averageCharWidth() ) ) );
+        // Grow from the viewport width, not from half of a potentially enormous line.
+        while ( high < length && measure( high ) <= width ) {
+            low = high;
+            high += std::min( high, length - high );
+        }
+        if ( measure( high ) <= width ) {
+            return high;
+        }
+        while ( low + 1 < high ) {
+            const auto middle = low + ( high - low ) / 2;
+            if ( measure( middle ) <= width ) {
+                low = middle;
+            }
+            else {
+                high = middle;
+            }
+        }
+        return std::max( 1, low );
+    }
+
+    void wrap( const QFontMetrics* metrics, int width, size_t maxRows )
+    {
+        WrappedStringPart remaining( unwrappedLine_ );
+        const auto rowLimit = std::max( size_t{ 1 }, maxRows );
+        if ( remaining.isEmpty() ) {
+            wrappedLines_.push_back( remaining );
+            return;
+        }
+        while ( !remaining.isEmpty() && wrappedLines_.size() < rowLimit ) {
+            auto count = metrics ? fittingLength( remaining, *metrics, width )
+                                 : std::min( klogg::isize( remaining ), width );
+            if ( count < remaining.size() ) {
+                const auto candidate = remaining.left( count );
+                const auto lastSpace = std::find_if( candidate.rbegin(), candidate.rend(),
+                                                     []( QChar c ) { return c.isSpace(); } );
+                if ( lastSpace != candidate.rend() ) {
+                    count
+                        = static_cast<int>( std::distance( candidate.begin(), lastSpace.base() ) );
+                }
+                if ( remaining.at( count - 1 ).isHighSurrogate()
+                     && remaining.at( count ).isLowSurrogate() ) {
+                    count += count == 1 ? 1 : -1;
+                }
+            }
+            wrappedLines_.push_back( remaining.left( count ) );
+            remaining = remaining.mid( count );
+        }
+    }
+
     klogg::vector<WrappedStringPart> wrappedLines_;
     QString unwrappedLine_;
 };
+
+#endif // WRAPPEDSTRING_H
