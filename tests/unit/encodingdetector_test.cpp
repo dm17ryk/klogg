@@ -3,6 +3,7 @@
 #include <QTextCodec>
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -24,7 +25,8 @@ QTextCodec* legacyDetection( const QByteArray& bytes )
 {
     std::unique_ptr<std::remove_pointer_t<uchardet_t>, decltype( &uchardet_delete )> detector(
         uchardet_new(), &uchardet_delete );
-    const auto result = uchardet_handle_data( detector.get(), bytes.constData(), bytes.size() );
+    const auto result = uchardet_handle_data( detector.get(), bytes.constData(),
+                                              static_cast<std::size_t>( bytes.size() ) );
     QTextCodec* fallback = nullptr;
     if ( result == 0 ) {
         uchardet_data_end( detector.get() );

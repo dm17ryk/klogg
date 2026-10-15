@@ -178,7 +178,8 @@ TEST_CASE( "A huge final record keeps wrap and resize tail accounting bounded",
     view.textWrapSet( true );
     view.paintNow();
     const auto checkTailBound = [ & ] {
-        const auto rows = view.viewport()->height() / view.fontMetrics().height() + 1;
+        const auto rows = static_cast<LinesCount::UnderlyingType>(
+            view.viewport()->height() / view.fontMetrics().height() + 1 );
         REQUIRE( view.verticalScrollBar()->maximum() <= data.getNbLine().get() + rows * rows );
     };
     checkTailBound();
