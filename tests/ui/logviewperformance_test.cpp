@@ -148,6 +148,9 @@ TEST_CASE( "Reverse partial selection reports normalized coordinates without rea
     CountingLogData data;
     QuickFindPattern pattern;
     TestLogView view( &data, &pattern );
+    auto font = view.font();
+    font.setPointSize( GENERATE( 6, 12, 20 ) );
+    view.updateFont( font );
     view.paintNow();
     const int y = view.fontMetrics().height() / 2;
     LineColumn selectedColumn;
@@ -157,15 +160,26 @@ TEST_CASE( "Reverse partial selection reports normalized coordinates without rea
                           selectedColumn = column;
                           selectedSymbols = symbols;
                       } );
-    view.sendMouse( QEvent::MouseButtonPress, QPoint( 200, y ) );
-    data.largestRead = 0_lcount;
-    view.sendMouse( QEvent::MouseMove, QPoint( 70, y ) );
+    const QPoint left( 70, y );
+    const QPoint right( 200, y );
+    view.sendMouse( QEvent::MouseButtonPress, left );
+    view.sendMouse( QEvent::MouseMove, right );
+    view.sendMouse( QEvent::MouseButtonRelease, right );
+    const auto forwardColumn = selectedColumn;
+    const auto forwardText = view.getSelectedText();
+    REQUIRE_FALSE( forwardText.isEmpty() );
 
+    view.sendMouse( QEvent::MouseButtonPress, right );
+    data.largestRead = 0_lcount;
+    view.sendMouse( QEvent::MouseMove, left );
+
+    CAPTURE( font.pointSize(), selectedColumn.get(), forwardColumn.get() );
     REQUIRE( view.isPartialSelection() );
     REQUIRE( selectedSymbols.get() == view.getSelectedText().size() );
-    REQUIRE( selectedColumn < LineColumn{ 10 } );
+    REQUIRE( selectedColumn == forwardColumn );
+    REQUIRE( view.getSelectedText() == forwardText );
     REQUIRE( data.largestRead == 0_lcount );
-    view.sendMouse( QEvent::MouseButtonRelease, QPoint( 70, y ) );
+    view.sendMouse( QEvent::MouseButtonRelease, left );
 }
 
 TEST_CASE( "A huge final record keeps wrap and resize tail accounting bounded",
