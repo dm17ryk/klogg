@@ -67,8 +67,8 @@ protected:
 
 class TestLogView final : public AbstractLogView {
 public:
-    TestLogView( const AbstractLogData* data, const QuickFindPattern* pattern )
-        : AbstractLogView( data, pattern )
+    TestLogView( const AbstractLogData* sourceData, const QuickFindPattern* pattern )
+        : AbstractLogView( sourceData, pattern )
     {
         resize( 640, 240 );
         textWrapSet( false );
@@ -180,7 +180,9 @@ TEST_CASE( "A huge final record keeps wrap and resize tail accounting bounded",
     const auto checkTailBound = [ & ] {
         const auto rows = static_cast<LinesCount::UnderlyingType>(
             view.viewport()->height() / view.fontMetrics().height() + 1 );
-        REQUIRE( view.verticalScrollBar()->maximum() <= data.getNbLine().get() + rows * rows );
+        const auto maximum
+            = static_cast<LinesCount::UnderlyingType>( view.verticalScrollBar()->maximum() );
+        REQUIRE( maximum <= data.getNbLine().get() + rows * rows );
     };
     checkTailBound();
     view.resize( 360, 180 );
