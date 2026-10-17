@@ -1373,6 +1373,8 @@ void MainWindow::reTranslateUI()
 
     checkForUpdatesAction->setText( transAction( action::checkForUpdatesText ) );
     checkForUpdatesAction->setStatusTip( transAction( action::checkForUpdatesStatusTip ) );
+    checkForUpdatesAction->setToolTip( transAction( action::checkForUpdatesText ) );
+    LOG_DEBUG << "Translated Help update tooltip=" << checkForUpdatesAction->toolTip();
 
     aboutAction->setText( transAction( action::aboutText ) );
     aboutAction->setStatusTip( transAction( action::aboutStatusTip ) );
@@ -1673,6 +1675,8 @@ void MainWindow::createActions()
     checkForUpdatesAction->setMenuRole( QAction::NoRole );
     checkForUpdatesAction->setEnabled( false );
     checkForUpdatesAction->setStatusTip( tr( action::checkForUpdatesStatusTip ) );
+    checkForUpdatesAction->setToolTip( tr( action::checkForUpdatesText ) );
+    LOG_DEBUG << "Initialized Help update tooltip=" << checkForUpdatesAction->toolTip();
     aboutAction = new QAction( tr( action::aboutText ), this );
     aboutAction->setStatusTip( tr( action::aboutStatusTip ) );
     connect( aboutAction, &QAction::triggered, this, [ this ]( auto ) { this->about(); } );

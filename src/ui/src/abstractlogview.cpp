@@ -294,59 +294,46 @@ public:
     // the coloured // background, going all the way to the element
     // left of the line looks better.
     void draw( QPainter* painter, int initialXPos, int initialYPos, int lineWidth,
-               const WrappedString& wrappedLines, int leftExtraBackgroundPx )
+               const WrappedString& wrappedLines, int leftExtraBackgroundPx,
+               LineColumn firstVisibleColumn )
     {
         QFontMetrics fm = painter->fontMetrics();
         const int fontHeight = fm.height();
         const int fontAscent = fm.ascent();
 
-        int xPos = initialXPos;
-        int yPos = initialYPos;
-        // LOG_INFO << "drawing chunks " << chunks_.size();
-        for ( const auto& chunk : chunks_ ) {
-            // Draw each chunk
-            // LOG_INFO << "draw chunk: " << chunk.start().get() << " " << chunk.size().get()
-            //         << " empty w: " << wrappedLines.isEmpty();
-            const auto& wrappedChunks = wrappedLines.mid( chunk.start(), chunk.size() );
-            bool isFirstLine = true;
-            for ( const auto& chunkText : wrappedChunks ) {
-                if ( !isFirstLine ) {
-                    xPos = initialXPos;
-                    yPos += fontHeight;
-                }
-                isFirstLine = false;
-
-                if ( chunkText.isEmpty() ) {
+        auto firstChunk = chunks_.begin();
+        for ( size_t rowIndex = 0; rowIndex < wrappedLines.wrappedLinesCount(); ++rowIndex ) {
+            const auto sourceBegin = wrappedLines.sourceColumn( rowIndex );
+            const auto rowBegin = std::max( sourceBegin, firstVisibleColumn );
+            const auto row
+                = wrappedLines.wrappedLine( rowIndex ).mid( ( rowBegin - sourceBegin ).get() );
+            const auto rowEnd = rowBegin + LineLength{ klogg::isize( row ) };
+            const auto yPos = initialYPos + static_cast<int>( rowIndex ) * fontHeight;
+            painter->fillRect( initialXPos - leftExtraBackgroundPx, yPos,
+                               lineWidth - initialXPos + leftExtraBackgroundPx, fontHeight,
+                               backColor_ );
+            while ( firstChunk != chunks_.end() && firstChunk->end() < rowBegin ) {
+                ++firstChunk;
+            }
+            for ( auto chunk = firstChunk; chunk != chunks_.end() && chunk->start() < rowEnd;
+                  ++chunk ) {
+                const auto first = std::max( chunk->start(), rowBegin );
+                const auto last = std::min( chunk->end() + 1_length, rowEnd );
+                if ( first >= last ) {
                     continue;
                 }
-
-                auto chunkWidth = textWidth( fm, chunkText );
-                if ( xPos == initialXPos ) {
-                    // First chunk, we extend the left background a bit,
-                    // it looks prettier.
-                    painter->fillRect( xPos - leftExtraBackgroundPx, yPos,
-                                       chunkWidth + leftExtraBackgroundPx, fontHeight,
-                                       chunk.backColor() );
-                }
-                else {
-                    // other chunks...
-                    painter->fillRect( xPos, yPos, chunkWidth, fontHeight, chunk.backColor() );
-                }
-
-                painter->setPen( chunk.foreColor() );
-                painter->drawText(
-                    xPos, yPos + fontAscent,
-                    QString::fromRawData( chunkText.data(), klogg::isize( chunkText ) ) );
-
-                xPos += chunkWidth;
+                const auto offset = ( first - rowBegin ).get();
+                const auto part = row.mid( offset, ( last - first ).get() );
+                const auto xPos = initialXPos + textWidth( fm, row.left( offset ) );
+                const auto width = textWidth( fm, part );
+                const auto extra = first == rowBegin ? leftExtraBackgroundPx : 0;
+                painter->fillRect( xPos - extra, yPos, width + extra, fontHeight,
+                                   chunk->backColor() );
+                painter->setPen( chunk->foreColor() );
+                painter->drawText( xPos, yPos + fontAscent,
+                                   QString::fromRawData( part.data(), klogg::isize( part ) ) );
             }
         }
-
-        // Draw the empty block at the end of the line
-        int blankWidth = lineWidth - xPos;
-
-        if ( blankWidth > 0 )
-            painter->fillRect( xPos, yPos, blankWidth, fontHeight, backColor_ );
     }
 
 private:
@@ -407,6 +394,9 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
 {
     setViewport( nullptr );
 
+    wrappedLayoutTimer_.setSingleShot( true );
+    connect( &wrappedLayoutTimer_, &QTimer::timeout, this, &AbstractLogView::indexWrappedLayouts );
+
     useTextWrap_ = Configuration::get().useTextWrap();
 
     // Hovering
@@ -428,6 +418,25 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
              SIGNAL( followModeChanged( bool ) ) );
 
     connect( verticalScrollBar(), &QAbstractSlider::actionTriggered, this, [ this ]( int action ) {
+        if ( useTextWrap_ ) {
+            const auto page = static_cast<int>( getNbVisibleLines().get() );
+            switch ( action ) {
+            case QAbstractSlider::SliderSingleStepAdd:
+                advanceWrappedRows( 1 );
+                break;
+            case QAbstractSlider::SliderSingleStepSub:
+                advanceWrappedRows( -1 );
+                break;
+            case QAbstractSlider::SliderPageStepAdd:
+                advanceWrappedRows( page );
+                break;
+            case QAbstractSlider::SliderPageStepSub:
+                advanceWrappedRows( -page );
+                break;
+            default:
+                break;
+            }
+        }
         if ( !followMode_ ) {
             return;
         }
@@ -658,11 +667,14 @@ void AbstractLogView::mouseMoveEvent( QMouseEvent* mouseEvent )
                 if ( thisEndPos.line() != selectionCurrentEndPos_.line() ) {
                     // This is a 'range' selection
                     selection_.selectRange( selectionStartPos_.line(), lineNumber );
+                    LOG_DEBUG << "Selection drag: range lines="
+                              << selection_.getSelectedLinesCount()
+                              << " symbol count deferred until release";
 
                     Q_EMIT newSelection(
                         lineNumber, selection_.getSelectedLinesCount(),
-                        0_lcol, // portion selection always starts from the first column
-                        LineLength{ getSelectedText().size() } );
+                        0_lcol,     // portion selection always starts from the first column
+                        0_length ); // Count text after the drag, not on every mouse move.
 
                     update();
                 }
@@ -672,9 +684,10 @@ void AbstractLogView::mouseMoveEvent( QMouseEvent* mouseEvent )
                 // This is a 'portion' selection
                 selection_.selectPortion( lineNumber, selectionStartPos_.column(),
                                           thisEndPos.column() );
-                auto selectionStr = getSelectedText();
-                Q_EMIT newSelection( lineNumber, 1_lcount, selectionStartPos_.column(),
-                                     LineLength( selectionStr.size() ) );
+                const auto portion = selection_.getPortionForLine( lineNumber );
+                LOG_DEBUG << "Selection drag: portion line=" << lineNumber
+                          << " start=" << portion.startColumn() << " symbols=" << portion.size();
+                Q_EMIT newSelection( lineNumber, 1_lcount, portion.startColumn(), portion.size() );
                 update();
             }
             // On the same line, and moving vertically then
@@ -713,6 +726,16 @@ void AbstractLogView::mouseReleaseEvent( QMouseEvent* mouseEvent )
         }
     }
     else {
+        if ( selectionStarted_ && selection_.getSelectedLinesCount() > 1_lcount ) {
+            const auto symbols = LineLength{ getSelectedText().size() };
+            LOG_DEBUG << "Selection drag completed: lines=" << selection_.getSelectedLinesCount()
+                      << " symbols=" << symbols;
+            Q_EMIT newSelection( selectionCurrentEndPos_.line(), selection_.getSelectedLinesCount(),
+                                 0_lcol, symbols );
+        }
+        else {
+            LOG_DEBUG << "Selection drag completed without a range count";
+        }
         selectionStarted_ = false;
         if ( autoScrollTimer_.isActive() )
             autoScrollTimer_.stop();
@@ -824,7 +847,8 @@ void AbstractLogView::doRegisterShortcuts()
     registerShortcut( ShortcutAction::LogViewJumpToTop,
                       [ this ]() { selectAndDisplayLine( 0_lnum ); } );
     registerShortcut( ShortcutAction::LogViewJumpToBottom, [ this ]() {
-        const bool wasAtBottom = verticalScrollBar()->value() == verticalScrollBar()->maximum();
+        const bool wasAtBottom = verticalScrollBar()->value() == verticalScrollBar()->maximum()
+                                 && !isWrappedLayoutPending();
         if ( !wasAtBottom ) {
             selectAndDisplayLine( maxDisplayLineNumber() - 1_lcount );
             jumpToBottom();
@@ -960,7 +984,8 @@ void AbstractLogView::wheelEvent( QWheelEvent* wheelEvent )
         jumpToBottom();
 
     const auto allowFollowOnScroll = Configuration::get().allowFollowOnScroll();
-    if ( verticalScrollBar()->value() == verticalScrollBar()->maximum() ) {
+    if ( verticalScrollBar()->value() == verticalScrollBar()->maximum()
+         && !isWrappedLayoutPending() ) {
         if ( allowFollowOnScroll || yDelta > 0 ) {
             // First see if we need to block the elastic (on Mac)
             if ( wheelEvent->phase() == Qt::ScrollBegin ) {
@@ -1017,14 +1042,27 @@ bool AbstractLogView::event( QEvent* e )
     return QAbstractScrollArea::event( e );
 }
 
-int AbstractLogView::lineNumberToVerticalScroll( LineNumber line ) const
+int AbstractLogView::lineNumberToVerticalScroll( LineNumber line, size_t wrappedRow ) const
 {
+    auto position = line.get();
+    if ( useTextWrap_ ) {
+        for ( const auto& entry : wrappedScrollRows_ ) {
+            if ( entry.first >= line.get() ) {
+                break;
+            }
+            position += static_cast<LineNumber::UnderlyingType>( entry.second - 1 );
+        }
+        position += static_cast<LineNumber::UnderlyingType>( wrappedRow );
+    }
     return static_cast<int>(
-        std::round( static_cast<double>( line.get() ) * verticalScrollMultiplicator() ) );
+        std::round( static_cast<double>( position ) * verticalScrollMultiplicator() ) );
 }
 
 LineNumber AbstractLogView::verticalScrollToLineNumber( int scrollPosition ) const
 {
+    if ( useTextWrap_ ) {
+        return verticalScrollToWrappedPosition( scrollPosition ).first;
+    }
     return LineNumber( static_cast<LineNumber::UnderlyingType>(
         std::round( static_cast<double>( scrollPosition ) / verticalScrollMultiplicator() ) ) );
 }
@@ -1034,7 +1072,8 @@ double AbstractLogView::verticalScrollMultiplicator() const
     return verticalScrollBar()->maximum() < std::numeric_limits<int>::max()
                ? 1.0
                : static_cast<double>( std::numeric_limits<int>::max() )
-                     / static_cast<double>( logData_->getNbLine().get() );
+                     / static_cast<double>( useTextWrap_ ? discoveredVisualRows()
+                                                         : logData_->getNbLine().get() );
 }
 
 void AbstractLogView::scrollContentsBy( int dx, int dy )
@@ -1045,7 +1084,26 @@ void AbstractLogView::scrollContentsBy( int dx, int dy )
 
     const auto scrollPosition = verticalScrollToLineNumber( verticalScrollBar()->value() );
 
-    if ( ( lastTopLine.get() > 0 ) && scrollPosition.get() > lastTopLine.get() ) {
+    if ( useTextWrap_ ) {
+        const auto page = static_cast<int64_t>( getNbVisibleLines().get() );
+        if ( dy && !wrappedAbsoluteJump_ && !verticalScrollBar()->isSliderDown()
+             && verticalScrollBar()->value() != verticalScrollBar()->maximum()
+             && std::abs( static_cast<int64_t>( dy ) ) <= page * 3 ) {
+            advanceWrappedRows( -dy );
+            return;
+        }
+        const auto position = verticalScrollToWrappedPosition( verticalScrollBar()->value() );
+        firstLine_ = position.first;
+        firstWrappedRow_ = position.second;
+        pendingWrapAnchor_.reset();
+        pendingWrapBackRows_ = 0;
+        pendingWrapBottom_ = verticalScrollBar()->value() == verticalScrollBar()->maximum()
+                             && isWrappedLayoutPending();
+        lastLineAligned_ = verticalScrollBar()->value() == verticalScrollBar()->maximum();
+        LOG_DEBUG << "Wrapped scroll anchor: line=" << firstLine_ << " row=" << firstWrappedRow_
+                  << " pendingBottom=" << pendingWrapBottom_;
+    }
+    else if ( ( lastTopLine.get() > 0 ) && scrollPosition.get() > lastTopLine.get() ) {
         // The user is going further than the last line, we need to lock the last line at the bottom
         LOG_DEBUG << "scrollContentsBy beyond!";
         firstLine_ = scrollPosition;
@@ -1098,7 +1156,8 @@ void AbstractLogView::paintEvent( QPaintEvent* paintEvent )
     // Can we use our cache?
     auto deltaY = textAreaCache_.first_line_.get() - firstLine_.get();
 
-    if ( textAreaCache_.invalid_ || ( textAreaCache_.first_column_ != firstCol_ ) ) {
+    if ( textAreaCache_.invalid_ || ( textAreaCache_.first_column_ != firstCol_ )
+         || textAreaCache_.first_wrapped_row_ != firstWrappedRow_ ) {
         // Force a full redraw
         deltaY = std::numeric_limits<decltype( deltaY )>::max();
     }
@@ -1110,6 +1169,7 @@ void AbstractLogView::paintEvent( QPaintEvent* paintEvent )
         textAreaCache_.invalid_ = false;
         textAreaCache_.first_line_ = firstLine_;
         textAreaCache_.first_column_ = firstCol_;
+        textAreaCache_.first_wrapped_row_ = firstWrappedRow_;
 
         LOG_DEBUG << "End of writing "
                   << std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1235,8 +1295,8 @@ void AbstractLogView::setQuickFindResult( bool hasMatch, const Portion& portion 
 {
     if ( portion.isValid() ) {
         LOG_DEBUG << "search " << portion.line();
-        displayLine( portion.line() );
         selection_.selectPortion( portion );
+        displayLine( portion.line() );
         Q_EMIT newSelection( portion.line(), 1_lcount, 0_lcol, 0_length );
     }
     else if ( !hasMatch ) {
@@ -1308,7 +1368,12 @@ void AbstractLogView::followSet( bool checked )
 
 void AbstractLogView::textWrapSet( bool checked )
 {
+    invalidateWrappedLayouts();
     useTextWrap_ = checked;
+    pendingWrapBottom_ = false;
+    if ( !checked ) {
+        pendingWrapAnchor_.reset();
+    }
     updateScrollBars();
     forceRefresh();
 }
@@ -1597,12 +1662,35 @@ void AbstractLogView::setSelectionEnd()
 void AbstractLogView::updateData()
 {
     LOG_DEBUG << "AbstractLogView::updateData";
+    // Appending unrelated records must not restart the earlier record's index.
+    // Compare retained decoded content so replacement/truncation/encoding changes
+    // still invalidate precisely the affected records.
+    if ( useTextWrap_ ) {
+        for ( auto it = wrappedLayouts_.begin(); it != wrappedLayouts_.end(); ) {
+            const auto line = LineNumber{ it->first };
+            const bool gone = line >= logData_->getNbLine();
+            const auto text = gone ? QString{} : logData_->getExpandedLineString( line );
+            if ( gone || QStringView( text ) != it->second.unwrappedLine() ) {
+                if ( line == firstLine_ && firstWrappedRow_ < it->second.wrappedLinesCount() ) {
+                    pendingWrapAnchor_ = it->second.sourceColumn( firstWrappedRow_ );
+                    firstWrappedRow_ = 0;
+                }
+                LOG_DEBUG << "Discarded changed wrapped record: line=" << line
+                          << " removed=" << gone;
+                it = wrappedLayouts_.erase( it );
+            }
+            else {
+                ++it;
+            }
+        }
+    }
 
     const auto lastLineNumber = LineNumber( logData_->getNbLine().get() );
 
     // Check the top Line is within range
     if ( firstLine_ >= lastLineNumber ) {
         firstLine_ = 0_lnum;
+        pendingWrapAnchor_.reset();
         firstCol_ = 0_lcol;
         verticalScrollBar()->setValue( 0 );
         horizontalScrollBar()->setValue( 0 );
@@ -1640,6 +1728,7 @@ void AbstractLogView::updateFont( const QFont& font )
 
 void AbstractLogView::updateDisplaySize()
 {
+    invalidateWrappedLayouts();
     // Font is assumed to be mono-space (is restricted by options dialog)
     charHeight_ = std::max( pixmapFontMetrics_.height(), 1 );
     charWidth_ = textWidth( pixmapFontMetrics_, QString( "m" ) );
@@ -1686,7 +1775,7 @@ LineNumber AbstractLogView::visibleLineEnd() const
         return 0_lnum;
     }
 
-    const auto layout = visibleLayoutFor( firstLine_, getNbVisibleLines() );
+    const auto layout = visibleLayoutFor( firstLine_, getNbVisibleLines(), firstWrappedRow_ );
     if ( layout.lastVisibleLine.has_value() ) {
         return *layout.lastVisibleLine;
     }
@@ -1736,7 +1825,12 @@ void AbstractLogView::selectPortionAndDisplayLine( LineNumber line, LinesCount n
     selection_.selectLine( line );
     selectionStartPos_ = FilePosition{ line, startCol };
     selectionCurrentEndPos_ = FilePosition{ line, startCol + nSymbols };
-    displayLine( line );
+    if ( useTextWrap_ ) {
+        revealWrappedColumn( line, startCol );
+    }
+    else {
+        displayLine( line );
+    }
     Q_EMIT newSelection( line, nLines, startCol, nSymbols );
 }
 
@@ -1744,10 +1838,29 @@ void AbstractLogView::selectPortionAndDisplayLine( LineNumber line, LinesCount n
 // subtle: this one always jump, even if the line passed is visible.
 void AbstractLogView::jumpToLine( LineNumber line )
 {
+    const QScopedValueRollback<bool> absoluteJump( wrappedAbsoluteJump_, true );
+    pendingWrapAnchor_.reset();
+    pendingWrapBottom_ = false;
+    pendingWrapBackRows_ = 0;
+    firstWrappedRow_ = 0;
     // Put the selected line in the middle if possible
-    const auto newTopLine = line - LinesCount( getNbVisibleLines().get() / 2 );
+    auto newTopLine = line - LinesCount( getNbVisibleLines().get() / 2 );
+    if ( useTextWrap_ ) {
+        const auto centeredLayout = visibleLayoutFor( newTopLine, getNbVisibleLines() );
+        if ( centeredLayout.lastVisibleLine && line > *centeredLayout.lastVisibleLine ) {
+            LOG_DEBUG << "Jump to line: wrapped centering would hide target=" << line.get()
+                      << " centeredTop=" << newTopLine.get()
+                      << " centeredLast=" << centeredLayout.lastVisibleLine->get();
+            newTopLine = line;
+        }
+        else {
+            LOG_DEBUG << "Jump to line: wrapped target fits centered viewport target=" << line.get()
+                      << " top=" << newTopLine.get();
+        }
+    }
     // This will also trigger a scrollContents event
     verticalScrollBar()->setValue( lineNumberToVerticalScroll( newTopLine ) );
+    forceRefresh();
 }
 
 void AbstractLogView::setLineNumbersVisible( bool lineNumbersVisible )
@@ -1816,8 +1929,10 @@ FilePosition AbstractLogView::convertCoordToFilePos( const QPoint& pos ) const
                                                         size_t{ 0 }, wrappedLinesInfo_.size() - 1 )
                                           : 0;
 
-    const auto [ lineIndex, wrappedLineIndex, wrappedString ]
-        = wrappedLinesInfo_[ wrappedLineInfoIndex ];
+    const auto& wrappedLineData = wrappedLinesInfo_[ wrappedLineInfoIndex ];
+    const auto lineIndex = wrappedLineData.lineNumber;
+    const auto wrappedLineIndex = wrappedLineData.wrappedLineIndex;
+    const auto& wrappedString = wrappedLineData.wrappedString;
 
     auto clampedLineIndex = lineIndex;
     if ( clampedLineIndex >= logData_->getNbLine() ) {
@@ -1834,31 +1949,41 @@ FilePosition AbstractLogView::convertCoordToFilePos( const QPoint& pos ) const
         = useTextWrap_ ? wrappedString.wrappedLine( wrappedLineIndex )
                        : lineText.mid( firstCol_.get(), getNbVisibleCols().get() );
 
-    klogg::vector<LineColumn> possibleColumns( static_cast<size_t>( visibleText.size() ) );
-    klogg::vector<int> columnsWidth( static_cast<size_t>( visibleText.size() ), -1 );
-    std::iota( possibleColumns.begin(), possibleColumns.end(), 0_lcol );
+    if ( visibleText.isEmpty() ) {
+        LOG_DEBUG << "Hit testing past the visible text: line=" << clampedLineIndex;
+        return FilePosition{ clampedLineIndex,
+                             LineColumn{ type_safe::narrow_cast<LineColumn::UnderlyingType>(
+                                 lineText.size() - 1 ) } };
+    }
+    if ( !wrappedLineData.prefixMetrics || *wrappedLineData.prefixMetrics != pixmapFontMetrics_ ) {
+        wrappedLineData.prefixWidths.clear();
+        wrappedLineData.prefixMetrics = pixmapFontMetrics_;
+    }
 
-    const auto columnIt = std::lower_bound(
-        possibleColumns.cbegin(), possibleColumns.cend(), pos,
-        [ this, &visibleText, &columnsWidth ]( LineColumn c, const QPoint& p ) {
-            const size_t columnIndex = static_cast<size_t>( c.get() );
-            if ( columnsWidth[ columnIndex ] == -1 ) {
-                columnsWidth[ columnIndex ]
-                    = textWidth( pixmapFontMetrics_, visibleText.left( c.get() ) ) + leftMarginPx_;
-            }
-
-            return columnsWidth[ columnIndex ] < p.x();
-        } );
-
-    const auto length
-        = LineColumn{ type_safe::narrow_cast<LineColumn::UnderlyingType>( visibleText.size() ) };
-
-    auto column = ( columnIt != possibleColumns.end() ? *columnIt : length ) - 1_length;
-    if ( useTextWrap_ ) {
-        for ( auto i = 0u; i < wrappedLineIndex; ++i ) {
-            column += LineLength{ type_safe::narrow_cast<LineLength::UnderlyingType>(
-                wrappedString.wrappedLine( i ).size() ) };
+    int low = 0;
+    int high = klogg::isize( visibleText );
+    while ( low < high ) {
+        const auto middle = low + ( high - low ) / 2;
+        const auto key = std::make_pair(
+            static_cast<qsizetype>( visibleText.data() - lineText.data() ), middle );
+        auto cached = wrappedLineData.prefixWidths.find( key );
+        if ( cached == wrappedLineData.prefixWidths.end() ) {
+            cached
+                = wrappedLineData.prefixWidths
+                      .emplace( key, textWidth( pixmapFontMetrics_, visibleText.left( middle ) ) )
+                      .first;
         }
+        if ( cached->second + leftMarginPx_ < pos.x() ) {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    auto column = LineColumn{ low } - 1_length;
+    if ( useTextWrap_ ) {
+        column += LineLength{ type_safe::narrow_cast<LineLength::UnderlyingType>(
+            visibleText.data() - lineText.data() ) };
     }
     else {
         column += LineLength{ firstCol_.get() };
@@ -1881,6 +2006,26 @@ FilePosition AbstractLogView::convertCoordToFilePos( const QPoint& pos ) const
 // Doing so, it will throw itself a scrollContents event.
 void AbstractLogView::displayLine( LineNumber line )
 {
+    if ( useTextWrap_ ) {
+        const auto portion = selection_.getPortionForLine( line );
+        if ( portion.isValid() ) {
+            revealWrappedColumn( line, portion.startColumn() );
+            return;
+        }
+        const auto visible = visibleLayoutFor( firstLine_, getNbVisibleLines(), firstWrappedRow_ );
+        if ( ( line == firstLine_
+               && ( firstWrappedRow_ != 0 || pendingWrapAnchor_ || pendingWrapBottom_ ) )
+             || line < firstLine_ || !visible.lastVisibleLine || line > *visible.lastVisibleLine ) {
+            LOG_DEBUG << "Reveal wrapped whole-line navigation: target=" << line
+                      << " first=" << firstLine_ << " firstRow=" << firstWrappedRow_;
+            revealWrappedColumn( line, 0_lcol );
+        }
+        else {
+            LOG_DEBUG << "Wrapped navigation target already visible: line=" << line;
+            forceRefresh();
+        }
+        return;
+    }
     // If the line is already the screen
     if ( ( line >= firstLine_ ) && ( line < ( firstLine_ + getNbVisibleLines() ) ) ) {
         // Invalidate our cache
@@ -1977,6 +2122,9 @@ void AbstractLogView::jumpToTop()
 // Jump to the last line
 void AbstractLogView::jumpToBottom()
 {
+    const QScopedValueRollback<bool> absoluteJump( wrappedAbsoluteJump_, true );
+    pendingWrapAnchor_.reset();
+    pendingWrapBottom_ = useTextWrap_ && isWrappedLayoutPending();
     // This will also trigger a scrollContents event
     verticalScrollBar()->setValue( verticalScrollBar()->maximum() );
 
@@ -2201,29 +2349,56 @@ LinesCount AbstractLogView::getNbBottomWrappedVisibleLines() const
         return visibleLines;
     }
 
-    const auto totalLines = logData_->getNbLine();
-    const auto tailStartLine
-        = totalLines > visibleLines ? LineNumber{ totalLines.get() - visibleLines.get() } : 0_lnum;
-    const auto tailLogicalLines = LinesCount{ type_safe::narrow_cast<LinesCount::UnderlyingType>(
-        totalLines.get() - tailStartLine.get() ) };
-    return visualRowsForRange( tailStartLine, tailLogicalLines );
+    auto line = LineNumber{ logData_->getNbLine().get() - 1 };
+    LinesCount rows;
+    while ( rows < visibleLines ) {
+        rows += visualRowsForLine( line, static_cast<size_t>( visibleLines.get() ) );
+        wrappedTailStart_ = line;
+        if ( line == 0_lnum ) {
+            break;
+        }
+        line = line - 1_lcount;
+    }
+    return rows;
 }
 
 void AbstractLogView::updateScrollBars()
 {
     const LinesCount visibleLines = getNbVisibleLines();
     const LineLength visibleColumns = getNbVisibleCols();
-    const auto visibleWrappedLines = getNbBottomWrappedVisibleLines();
-    const auto wrappedLinesScrollAdjust = ( visibleWrappedLines - visibleLines ).get();
-    const auto rawVerticalScrollMax = logData_->getNbLine().get() < visibleLines.get()
-                                          ? LinesCount::UnderlyingType{ 0 }
-                                          : logData_->getNbLine().get() - visibleLines.get();
-
-    const auto maxVerticalScroll = std::clamp(
-        rawVerticalScrollMax + LinesCount::UnderlyingType{ 1 } + wrappedLinesScrollAdjust,
-        LinesCount::UnderlyingType{ 0 }, maxValue<LinesCount>().get() );
-
-    verticalScrollBar()->setRange( 0, static_cast<int>( maxVerticalScroll ) );
+    if ( useTextWrap_ ) {
+        // Resolve only the viewport and a bounded tail, not the entire file.
+        getNbBottomWrappedVisibleLines();
+        if ( firstLine_ < logData_->getNbLine() ) {
+            wrappedLayoutForLine( firstLine_ );
+        }
+        const QSignalBlocker blocker( verticalScrollBar() );
+        wrappedScrollRows_.clear();
+        for ( const auto& entry : wrappedLayouts_ ) {
+            // Reserve a page at an unresolved frontier. Single/page scrolling
+            // enters the continuation instead of skipping to the next record.
+            wrappedScrollRows_.emplace( entry.first,
+                                        entry.second.wrappedLinesCount()
+                                            + ( entry.second.hasContinuation()
+                                                    ? static_cast<size_t>( visibleLines.get() )
+                                                    : 0 ) );
+        }
+        const auto total = discoveredVisualRows();
+        const auto maximum = total >= visibleLines.get() ? total - visibleLines.get() + 1 : 0;
+        verticalScrollBar()->setRange(
+            0, static_cast<int>( std::min( maximum, static_cast<LinesCount::UnderlyingType>(
+                                                        std::numeric_limits<int>::max() ) ) ) );
+        verticalScrollBar()->setValue( lineNumberToVerticalScroll( firstLine_, firstWrappedRow_ ) );
+        LOG_DEBUG << "Published wrapped scroll range: rows=" << total << " maximum=" << maximum
+                  << " line=" << firstLine_ << " row=" << firstWrappedRow_;
+    }
+    else {
+        const auto total = logData_->getNbLine().get();
+        const auto maximum = total >= visibleLines.get() ? total - visibleLines.get() + 1 : 0;
+        verticalScrollBar()->setRange(
+            0, static_cast<int>( std::min( maximum, static_cast<LinesCount::UnderlyingType>(
+                                                        std::numeric_limits<int>::max() ) ) ) );
+    }
 
     int64_t hScrollMaxValue = 0;
     if ( !useTextWrap_ && logData_->getMaxLength().get() >= visibleColumns.get() ) {
@@ -2279,15 +2454,6 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     if ( firstLine_ >= linesInFile )
         firstLine_ = LineNumber( linesInFile.get() ? linesInFile.get() - 1 : 0 );
 
-    const auto visibleLayout = visibleLayoutFor( firstLine_, getNbVisibleLines() );
-    const auto nbLines = visibleLayout.logicalLines;
-
-    const int bottomOfTextPx = static_cast<int>( visibleLayout.visualLines.get() ) * fontHeight;
-
-    LOG_DEBUG << "drawing lines from " << firstLine_ << " (" << nbLines << " lines)";
-    LOG_DEBUG << "bottomOfTextPx: " << bottomOfTextPx;
-    LOG_DEBUG << "Height: " << paintDeviceHeight;
-
     painter->fillRect( 0, 0, paintDeviceWidth, paintDeviceHeight,
                        palette.color( QPalette::Window ) );
 
@@ -2333,6 +2499,19 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     // This is the total width of the 'margin' (including line number if any)
     // used for mouse calculation etc...
     leftMarginPx_ = contentStartPosX + SeparatorWidth;
+
+    if ( useTextWrap_
+         && wrappedLayoutWidth_ != std::max( 1, viewport()->width() - leftMarginPx_ - 1 ) ) {
+        invalidateWrappedLayouts();
+        updateScrollBars();
+    }
+
+    const auto visibleLayout
+        = visibleLayoutFor( firstLine_, getNbVisibleLines(), firstWrappedRow_ );
+    const auto nbLines = visibleLayout.logicalLines;
+    LOG_DEBUG << "Drawing viewport layout: firstLine=" << firstLine_ << " logicalLines=" << nbLines
+              << " visualRows=" << visibleLayout.visualLines << " width=" << viewport()->width()
+              << " textMargin=" << leftMarginPx_ << " wrap=" << useTextWrap_;
 
     const auto searchStartIndex = lineIndex( searchStart_ );
     const auto searchEndIndex = [ this ] {
@@ -2489,7 +2668,15 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
 
         const auto wrappedLineLength
             = useTextWrap_ ? nbVisibleCols : LineLength{ klogg::isize( expandedLine ) + 1 };
-        const WrappedString wrappedLineView{ expandedLine, wrappedLineLength };
+        const WrappedString wrappedLineView
+            = useTextWrap_ ? wrappedLayoutForLine( lineNumber )
+                                 .window( currentLine == 0_lcount ? firstWrappedRow_ : 0,
+                                          static_cast<size_t>( getNbVisibleLines().get() ) )
+                           : WrappedString{ expandedLine, wrappedLineLength };
+        LOG_DEBUG << "Prepared line layout: line=" << lineNumber
+                  << " symbols=" << expandedLine.size()
+                  << " rows=" << wrappedLineView.wrappedLinesCount()
+                  << " viewportRowLimit=" << getNbVisibleLines() << " wrap=" << useTextWrap_;
         const auto finalLineHeight
             = fontHeight * static_cast<int>( wrappedLineView.wrappedLinesCount() );
         // LOG_INFO << "Draw line " << lineNumber << ": " << expandedLine;
@@ -2498,8 +2685,9 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
                            backColor );
 
         LineDrawer lineDrawer( backColor );
-        const auto firstVisibleColumn = std::clamp( useTextWrap_ ? 0_lcol : firstCol_, 0_lcol,
-                                                    LineColumn{ klogg::isize( expandedLine ) } );
+        const auto firstVisibleColumn
+            = std::clamp( useTextWrap_ ? wrappedLineView.sourceColumn( 0 ) : firstCol_, 0_lcol,
+                          LineColumn{ klogg::isize( expandedLine ) } );
         const auto lastVisibleColumn
             = useTextWrap_ ? LineColumn{ klogg::isize( expandedLine ) } : firstCol_ + nbVisibleCols;
         allHighlights.clamp( firstVisibleColumn, lastVisibleColumn );
@@ -2542,15 +2730,15 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         }
         else {
             if ( useTextWrap_ ) {
-                lineDrawer.addChunk( 0_lcol, LineColumn{ expandedLine.size() }, foreColor,
-                                     backColor );
+                lineDrawer.addChunk( firstVisibleColumn, LineColumn{ expandedLine.size() },
+                                     foreColor, backColor );
             }
             else {
                 lineDrawer.addChunk( firstCol_, firstCol_ + nbVisibleCols, foreColor, backColor );
             }
         }
         lineDrawer.draw( painter.get(), xPos, yPos, viewport()->width(), wrappedLineView,
-                         ContentMarginWidth );
+                         ContentMarginWidth, firstVisibleColumn );
 
         if ( groupSeparatorBefore( lineNumber ) ) {
             auto separatorPen = QPen( palette.color( QPalette::Disabled, QPalette::Text ) );
@@ -2614,7 +2802,8 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
                                lineNumberStr );
         }
         for ( size_t i = 0u; i < wrappedLineView.wrappedLinesCount(); ++i ) {
-            wrappedLinesInfo_.emplace_back( WrappedLineData{ lineNumber, i, wrappedLineView } );
+            wrappedLinesInfo_.emplace_back(
+                WrappedLineData{ lineNumber, i, wrappedLineView, {}, {} } );
         }
 
         yPos += finalLineHeight;
@@ -2624,15 +2813,15 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     } // For each line
 }
 
-LinesCount AbstractLogView::visualRowsForLine( LineNumber line ) const
+LinesCount AbstractLogView::visualRowsForLine( LineNumber line, size_t maxRows ) const
 {
     if ( !useTextWrap_ || logData_ == nullptr ) {
         return 1_lcount;
     }
 
-    const WrappedString wrapped{ logData_->getExpandedLineString( line ), getNbVisibleCols() };
-    return LinesCount(
-        type_safe::narrow_cast<LinesCount::UnderlyingType>( wrapped.wrappedLinesCount() ) );
+    const auto& wrapped = wrappedLayoutForLine( line );
+    return LinesCount( type_safe::narrow_cast<LinesCount::UnderlyingType>(
+        std::min( wrapped.wrappedLinesCount(), maxRows ) ) );
 }
 
 LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine,
@@ -2648,7 +2837,10 @@ LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine,
     LinesCount visualRows;
 
     while ( currentLine < totalLines && remainingLines > 0_lcount ) {
-        visualRows += visualRowsForLine( currentLine );
+        // Preload a viewport-sized slice per tail record. Continuations are indexed
+        // incrementally and published separately in the scrollbar's row map.
+        visualRows
+            += visualRowsForLine( currentLine, static_cast<size_t>( getNbVisibleLines().get() ) );
         currentLine += 1_lcount;
         remainingLines -= 1_lcount;
     }
@@ -2656,8 +2848,9 @@ LinesCount AbstractLogView::visualRowsForRange( LineNumber startLine,
     return visualRows;
 }
 
-AbstractLogView::VisibleLayoutInfo
-AbstractLogView::visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines ) const
+AbstractLogView::VisibleLayoutInfo AbstractLogView::visibleLayoutFor( LineNumber startLine,
+                                                                      LinesCount maxVisualLines,
+                                                                      size_t firstRow ) const
 {
     VisibleLayoutInfo layout;
 
@@ -2669,12 +2862,299 @@ AbstractLogView::visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLin
     auto currentLine = startLine;
     while ( currentLine < totalLines && layout.visualLines < maxVisualLines ) {
         layout.logicalLines += 1_lcount;
-        layout.visualLines += visualRowsForLine( currentLine );
+        const auto budget = static_cast<size_t>( ( maxVisualLines - layout.visualLines ).get() );
+        if ( useTextWrap_ ) {
+            auto& wrapped = wrappedLayoutForLine( currentLine );
+            const auto first = currentLine == startLine ? firstRow : 0;
+            if ( wrapped.hasContinuation() && first + budget > wrapped.wrappedLinesCount() ) {
+                const auto needed = first + budget - wrapped.wrappedLinesCount();
+                wrapped.appendRows( std::min( needed, budget * 2 ) );
+                wrappedLayoutTimer_.start( 0 );
+            }
+            const auto available
+                = wrapped.wrappedLinesCount() - std::min( first, wrapped.wrappedLinesCount() );
+            layout.visualLines += LinesCount{ type_safe::narrow_cast<LinesCount::UnderlyingType>(
+                std::min( available, budget ) ) };
+        }
+        else {
+            layout.visualLines += 1_lcount;
+        }
         layout.lastVisibleLine = currentLine;
         currentLine += 1_lcount;
     }
 
     return layout;
+}
+
+void AbstractLogView::revealWrappedColumn( LineNumber line, LineColumn column )
+{
+    if ( line >= logData_->getNbLine() ) {
+        return;
+    }
+    pendingWrapAnchor_.reset();
+    pendingWrapBackRows_ = 0;
+    pendingWrapBottom_ = false;
+    firstLine_ = line;
+    auto& wrapped = wrappedLayoutForLine( line );
+    firstWrappedRow_ = wrapped.rowForColumn( column );
+    if ( wrapped.hasContinuation() && wrapped.nextColumn() <= column ) {
+        pendingWrapAnchor_ = column;
+        wrappedLayoutTimer_.start( 1 );
+    }
+    updateScrollBars();
+    lastLineAligned_ = false;
+    forceRefresh();
+    LOG_DEBUG << "Reveal wrapped source column: line=" << line << " column=" << column
+              << " row=" << firstWrappedRow_ << " pending=" << pendingWrapAnchor_.has_value();
+}
+
+void AbstractLogView::advanceWrappedRows( int rows )
+{
+    if ( !useTextWrap_ || logData_->getNbLine() == 0_lcount || rows == 0 ) {
+        return;
+    }
+    pendingWrapAnchor_.reset();
+    pendingWrapBackRows_ = 0;
+    pendingWrapBottom_ = false;
+    const auto page = static_cast<size_t>( getNbVisibleLines().get() );
+    auto remaining = static_cast<size_t>( std::abs( static_cast<int64_t>( rows ) ) );
+    while ( remaining ) {
+        auto& wrapped = wrappedLayoutForLine( firstLine_ );
+        if ( rows > 0 ) {
+            const auto required = firstWrappedRow_ + remaining + 1;
+            if ( wrapped.hasContinuation() && required > wrapped.wrappedLinesCount() ) {
+                wrapped.appendRows( std::min( required - wrapped.wrappedLinesCount(), page * 4 ) );
+            }
+            const auto last = wrapped.wrappedLinesCount() - 1;
+            firstWrappedRow_ = std::min( firstWrappedRow_, last );
+            const auto available = last - firstWrappedRow_;
+            if ( remaining <= available ) {
+                firstWrappedRow_ += remaining;
+                break;
+            }
+            if ( wrapped.hasContinuation() || firstLine_ + 1_lcount >= logData_->getNbLine() ) {
+                firstWrappedRow_ = last;
+                break;
+            }
+            remaining -= available + 1;
+            firstLine_ += 1_lcount;
+            firstWrappedRow_ = 0;
+        }
+        else {
+            if ( remaining <= firstWrappedRow_ ) {
+                firstWrappedRow_ -= remaining;
+                break;
+            }
+            if ( firstLine_ == 0_lnum ) {
+                firstWrappedRow_ = 0;
+                break;
+            }
+            remaining -= firstWrappedRow_ + 1;
+            firstLine_ = firstLine_ - 1_lcount;
+            auto& previous = wrappedLayoutForLine( firstLine_ );
+            if ( previous.hasContinuation() ) {
+                pendingWrapAnchor_ = LineColumn{ type_safe::narrow_cast<LineColumn::UnderlyingType>(
+                    previous.unwrappedLine().size() - 1 ) };
+                pendingWrapBackRows_ = remaining;
+                firstWrappedRow_ = 0;
+                wrappedLayoutTimer_.start( 1 );
+                break;
+            }
+            firstWrappedRow_ = previous.wrappedLinesCount() - 1;
+        }
+    }
+    updateScrollBars();
+    // actionTriggered is delivered before Qt commits the slider position.
+    // Rebasing both value and position prevents a second, logical-line jump.
+    verticalScrollBar()->setSliderPosition(
+        lineNumberToVerticalScroll( firstLine_, firstWrappedRow_ ) );
+    lastLineAligned_ = false;
+    forceRefresh();
+    LOG_DEBUG << "Advanced wrapped visual rows: delta=" << rows << " line=" << firstLine_
+              << " row=" << firstWrappedRow_ << " pending=" << pendingWrapAnchor_.has_value();
+}
+
+bool AbstractLogView::isWrappedLayoutPending() const
+{
+    return useTextWrap_
+           && ( pendingWrapAnchor_.has_value()
+                || std::any_of( wrappedLayouts_.begin(), wrappedLayouts_.end(),
+                                [ this ]( const auto& entry ) {
+                                    return entry.second.hasContinuation()
+                                           && ( entry.first == firstLine_.get()
+                                                || entry.first >= wrappedTailStart_.get() );
+                                } ) );
+}
+
+void AbstractLogView::invalidateWrappedLayouts()
+{
+    const auto found = wrappedLayouts_.find( firstLine_.get() );
+    if ( useTextWrap_ && !pendingWrapAnchor_ && found != wrappedLayouts_.end()
+         && firstWrappedRow_ < found->second.wrappedLinesCount() ) {
+        pendingWrapAnchor_ = found->second.sourceColumn( firstWrappedRow_ );
+    }
+    wrappedLayoutTimer_.stop();
+    wrappedLayouts_.clear();
+    wrappedScrollRows_.clear();
+    firstWrappedRow_ = 0;
+    wrappedLayoutWidth_ = std::max( 1, viewport()->width() - leftMarginPx_ - 1 );
+    LOG_DEBUG << "Invalidated wrapped layouts: line=" << firstLine_
+              << " preserveColumn=" << ( pendingWrapAnchor_ ? pendingWrapAnchor_->get() : -1 )
+              << " width=" << wrappedLayoutWidth_;
+}
+
+WrappedString& AbstractLogView::wrappedLayoutForLine( LineNumber line ) const
+{
+    const auto width = std::max( 1, viewport()->width() - leftMarginPx_ - 1 );
+    if ( width != wrappedLayoutWidth_ ) {
+        // Margins and scrollbar visibility can change while preparing a paint.
+        const_cast<AbstractLogView*>( this )->invalidateWrappedLayouts();
+    }
+    auto found = wrappedLayouts_.find( line.get() );
+    if ( found == wrappedLayouts_.end() ) {
+        const auto rows = static_cast<size_t>( getNbVisibleLines().get() );
+        found = wrappedLayouts_
+                    .emplace( line.get(), WrappedString{ logData_->getExpandedLineString( line ),
+                                                         pixmapFontMetrics_, width, rows } )
+                    .first;
+        wrappedLayoutTimer_.start( 0 );
+        LOG_DEBUG << "Created wrapped layout: line=" << line
+                  << " rows=" << found->second.wrappedLinesCount()
+                  << " pending=" << found->second.hasContinuation();
+    }
+    else if ( found->second.hasContinuation() && !wrappedLayoutTimer_.isActive() ) {
+        wrappedLayoutTimer_.start( 1 );
+    }
+    return found->second;
+}
+
+LinesCount::UnderlyingType AbstractLogView::discoveredVisualRows() const
+{
+    auto rows = logData_->getNbLine().get();
+    for ( const auto& entry : wrappedScrollRows_ ) {
+        rows += static_cast<LinesCount::UnderlyingType>( entry.second - 1 );
+    }
+    return rows;
+}
+
+std::pair<LineNumber, size_t> AbstractLogView::verticalScrollToWrappedPosition( int position ) const
+{
+    auto logical = static_cast<LineNumber::UnderlyingType>( std::round(
+        static_cast<double>( std::max( 0, position ) ) / verticalScrollMultiplicator() ) );
+    for ( const auto& entry : wrappedScrollRows_ ) {
+        if ( logical < entry.first ) {
+            break;
+        }
+        const auto offset = logical - entry.first;
+        if ( offset < entry.second ) {
+            return { LineNumber{ entry.first }, static_cast<size_t>( offset ) };
+        }
+        logical -= static_cast<LineNumber::UnderlyingType>( entry.second - 1 );
+    }
+    const auto lines = logData_->getNbLine().get();
+    return { LineNumber{ std::min( logical, lines ? lines - 1 : 0 ) }, 0 };
+}
+
+void AbstractLogView::indexWrappedLayouts()
+{
+    if ( !useTextWrap_ || logData_ == nullptr ) {
+        LOG_DEBUG << "Ignoring obsolete wrapped layout callback";
+        return;
+    }
+
+    // Bound retained decoded records as the user navigates a huge file. Keep the
+    // current viewport and tail; publication below rebases the slider atomically.
+    const auto visible = getNbVisibleLines().get();
+    const auto total = logData_->getNbLine().get();
+    const auto oldAnchor = std::make_pair( firstLine_, firstWrappedRow_ );
+    uint64_t retainedBytes = 0;
+    for ( const auto& entry : wrappedLayouts_ ) {
+        retainedBytes += entry.second.estimatedRetainedBytes();
+    }
+    for ( auto it = wrappedLayouts_.begin();
+          ( wrappedLayouts_.size() > 64 || retainedBytes > 16 * 1024 * 1024 )
+          && it != wrappedLayouts_.end(); ) {
+        const auto active = it->first == firstLine_.get()
+                            || std::any_of( wrappedLinesInfo_.begin(), wrappedLinesInfo_.end(),
+                                            [ & ]( const auto& row ) {
+                                                return row.lineNumber.get() == it->first;
+                                            } );
+        const auto tail = it->first >= wrappedTailStart_.get();
+        if ( !active && !tail ) {
+            LOG_DEBUG << "Evicting inactive wrapped layout: line=" << it->first;
+            retainedBytes -= it->second.estimatedRetainedBytes();
+            it = wrappedLayouts_.erase( it );
+        }
+        else {
+            ++it;
+        }
+    }
+
+    const bool wantBottom = pendingWrapBottom_ || followMode_;
+    auto next = wrappedLayouts_.end();
+    if ( wantBottom && total ) {
+        next = wrappedLayouts_.find( total - 1 );
+    }
+    if ( next == wrappedLayouts_.end() || !next->second.hasContinuation() ) {
+        next = wrappedLayouts_.find( firstLine_.get() );
+    }
+    if ( next == wrappedLayouts_.end() || !next->second.hasContinuation() ) {
+        next = std::find_if(
+            wrappedLayouts_.begin(), wrappedLayouts_.end(), [ this ]( const auto& entry ) {
+                return entry.second.hasContinuation() && entry.first >= wrappedTailStart_.get();
+            } );
+    }
+    if ( next != wrappedLayouts_.end() && next->second.hasContinuation() ) {
+        const auto before = next->second.processedCharacters();
+        next->second.appendRows( 64 );
+        LOG_DEBUG << "Indexed wrapped continuation slice: line=" << next->first
+                  << " rows=" << next->second.wrappedLinesCount()
+                  << " processedCharacters=" << next->second.processedCharacters() - before
+                  << " more=" << next->second.hasContinuation();
+    }
+
+    if ( pendingWrapAnchor_ ) {
+        const auto current = wrappedLayouts_.find( firstLine_.get() );
+        if ( current != wrappedLayouts_.end() ) {
+            auto& wrapped = current->second;
+            if ( !wrapped.hasContinuation() || wrapped.nextColumn() > *pendingWrapAnchor_ ) {
+                firstWrappedRow_ = wrapped.rowForColumn( *pendingWrapAnchor_ );
+                firstWrappedRow_ -= std::min( firstWrappedRow_, pendingWrapBackRows_ );
+                pendingWrapBackRows_ = 0;
+                LOG_DEBUG << "Restored wrapped source anchor: line=" << firstLine_
+                          << " column=" << *pendingWrapAnchor_ << " row=" << firstWrappedRow_;
+                pendingWrapAnchor_.reset();
+            }
+        }
+    }
+
+    const QSignalBlocker blocker( verticalScrollBar() );
+    updateScrollBars();
+    if ( wantBottom && !isWrappedLayoutPending() ) {
+        auto position = verticalScrollToWrappedPosition( verticalScrollBar()->maximum() );
+        const auto found = wrappedLayouts_.find( position.first.get() );
+        if ( found != wrappedLayouts_.end() && found->second.hasContinuation() ) {
+            const auto known = found->second.wrappedLinesCount();
+            const auto page = static_cast<size_t>( visible );
+            position.second = std::min( position.second, known > page ? known - page : 0 );
+        }
+        firstLine_ = position.first;
+        firstWrappedRow_ = position.second;
+        lastLineAligned_ = true;
+        verticalScrollBar()->setValue( lineNumberToVerticalScroll( firstLine_, firstWrappedRow_ ) );
+        pendingWrapBottom_ = false;
+        LOG_DEBUG << "Advanced pending wrapped tail: line=" << firstLine_
+                  << " row=" << firstWrappedRow_ << " pending=" << pendingWrapBottom_;
+    }
+    else if ( wantBottom ) {
+        pendingWrapBottom_ = true;
+    }
+    if ( oldAnchor != std::make_pair( firstLine_, firstWrappedRow_ ) ) {
+        forceRefresh();
+    }
+    if ( isWrappedLayoutPending() ) {
+        wrappedLayoutTimer_.start( 1 );
+    }
 }
 
 // Draw the "pull to follow" bar and return a pixmap.

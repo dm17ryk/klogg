@@ -18,7 +18,7 @@ The current repo workflow assumes:
 
 - Windows x64
 - Visual Studio 2022 with MSVC tools
-- Qt `6.10.1`
+- Qt `6.12.0` LTS (MSVC 2022 kit)
 - an out-of-tree build directory at `build_root`
 
 Open a clean Visual Studio 2022 developer shell:
@@ -36,7 +36,7 @@ pwsh.exe -NoExit -NoProfile -Command "&{Import-Module 'd:\Program Files\Microsof
 Set the environment expected by the repo:
 
 ```bat
-set QTDIR=C:\Essence_SC\qt6.10.1
+set QTDIR=C:\Essence_SC\QtSDK\6.12.0\msvc2022_64
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
 set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
@@ -71,6 +71,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\codex\run-cilogg-debug.ps1 -C
 
 The build script configures and builds from `build_root`.
 The test and run scripts also deploy the required Qt runtime files.
+
+Windows CI uses Qt 6.12.0 for x64 and ARM64, including matching x64 host tools
+for the cross build. macOS retains Qt 6.10.1 so the Intel package keeps its macOS 13
+deployment target; shared source must continue to compile against that version.
+Linux jobs retain their existing distribution Qt versions.
+
+Install the Windows kit alongside older Qt installations, using a dedicated Python
+environment with `aqtinstall==3.3.0`:
+
+```powershell
+python -m pip install 'aqtinstall==3.3.0'
+python scripts/codex/aqt-windows-612.py install-qt windows desktop 6.12.0 win64_msvc2022_64 --outputdir C:\Essence_SC\QtSDK --modules qt5compat qtserialport qtimageformats --archives qtbase qtsvg qttools qttranslations
+```
+
+The adapter handles Qt 6.12's architecture-specific metadata directory while
+retaining aqt's hash verification and relocation. Add `--dry-run` to inspect
+package selection. Use a fresh build directory under `build_root` when switching
+Qt kits, to avoid mixing cached CMake paths or deployed DLLs from different versions.
 
 ## Manual Windows Build
 

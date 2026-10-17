@@ -943,12 +943,19 @@ TEST_CASE( "Help and runner actions refresh every description after a language c
         for ( const auto& expected : expectedActions ) {
             auto* action = window.findChild<QAction*>( expected.name );
             REQUIRE( action != nullptr );
+            INFO( "action=" << expected.name << " prefix=" << prefix.toStdString()
+                            << " text=" << action->text().toStdString()
+                            << " tooltip=" << action->toolTip().toStdString()
+                            << " statusTip=" << action->statusTip().toStdString() );
             REQUIRE( action->text() == prefix + QString::fromUtf8( expected.text ) );
             REQUIRE( action->statusTip() == prefix + QString::fromUtf8( expected.statusTip ) );
             REQUIRE( action->toolTip() == prefix + QString::fromUtf8( expected.toolTip ) );
         }
     };
     verifyDescriptions( {} );
+    for ( const auto& expected : expectedActions ) {
+        window.findChild<QAction*>( expected.name )->setToolTip( QStringLiteral( "stale tooltip" ) );
+    }
 
     {
         class ActionTranslator final : public QTranslator {
