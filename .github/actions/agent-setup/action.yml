@@ -23,18 +23,34 @@ runs:
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         set-env: false
 
+    - name: Install Qt 6.12 (windows x64)
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_version == '6.12.0' && matrix.config.qt_arch == 'win64_msvc2022_64' && steps.cache-qt.outputs.cache-hit != 'true' }}
+      shell: pwsh
+      run: |
+        python -m pip install "aqtinstall==3.3.0"
+        if ($LASTEXITCODE -ne 0) { throw "aqtinstall installation failed: $LASTEXITCODE" }
+        python tests/scripts/test_aqt_windows_612.py
+        if ($LASTEXITCODE -ne 0) { throw "Qt metadata adapter tests failed: $LASTEXITCODE" }
+        python scripts/codex/aqt-windows-612.py install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport qtimageformats --archives ${{ matrix.config.qt_archives }}
+        if ($LASTEXITCODE -ne 0) { throw "Qt x64 installation failed: $LASTEXITCODE" }
+
     - name: Install Qt (windows arm64 manual)
       if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' && steps.cache-qt.outputs.cache-hit != 'true' }}
       shell: pwsh
       run: |
-        python -m pip install --upgrade "aqtinstall>=3.3.0,<3.4"
-        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_host_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt"
+        python -m pip install "aqtinstall==3.3.0"
+        if ($LASTEXITCODE -ne 0) { throw "aqtinstall installation failed: $LASTEXITCODE" }
+        python tests/scripts/test_aqt_windows_612.py
+        if ($LASTEXITCODE -ne 0) { throw "Qt metadata adapter tests failed: $LASTEXITCODE" }
+        python scripts/codex/aqt-windows-612.py install-qt windows desktop ${{ matrix.config.qt_version }} ${{ matrix.config.qt_host_arch }} --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport qtimageformats --archives qtbase qtsvg qttools qttranslations
+        if ($LASTEXITCODE -ne 0) { throw "Qt host installation failed: $LASTEXITCODE" }
         $armBin = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_arm64\bin"
         New-Item -ItemType Directory -Path $armBin -Force | Out-Null
         foreach ( $tool in @("qmake", "qmake6", "qtpaths", "qtpaths6") ) {
           "@echo off`r`n" | Out-File -FilePath "$armBin\$tool.bat" -Encoding ascii -Force
         }
-        python -m aqt install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --autodesktop --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport
+        python scripts/codex/aqt-windows-612.py install-qt windows desktop ${{ matrix.config.qt_version }} win64_msvc2022_arm64_cross_compiled --autodesktop --outputdir "$env:GITHUB_WORKSPACE\..\Qt" --modules ${{ matrix.config.qt_modules }} qtserialport qtimageformats --archives qtbase qtsvg qttools qttranslations
+        if ($LASTEXITCODE -ne 0) { throw "Qt ARM64 installation failed: $LASTEXITCODE" }
 
     - name: Set Qt6_Dir for windows arm64
       if: ${{ runner.os == 'Windows' && matrix.config.qt_arch == 'win64_msvc2022_arm64_cross_compiled' }}
@@ -59,10 +75,11 @@ runs:
           "Qt6_Dir=$qtRoot" >> $env:GITHUB_ENV
           "Qt6_DIR=$qtRoot" >> $env:GITHUB_ENV
           "CMAKE_PREFIX_PATH=$qtRoot" >> $env:GITHUB_ENV
+          "$qtRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         }
 
     - name: Install Qt (with archives)
-      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
+      if: ${{ matrix.config.qt_arch && matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' && !(runner.os == 'Windows' && matrix.config.qt_version == '6.12.0') }}
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
@@ -72,13 +89,30 @@ runs:
         archives: ${{ matrix.config.qt_archives }}
 
     - name: Install Qt (default archives)
-      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' }}
+      if: ${{ matrix.config.qt_arch && !matrix.config.qt_archives && matrix.config.qt_arch != 'win64_msvc2022_arm64_cross_compiled' && !(runner.os == 'Windows' && matrix.config.qt_version == '6.12.0') }}
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
         arch: ${{ matrix.config.qt_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
+
+    - name: Verify Windows Qt 6.12 kits
+      if: ${{ runner.os == 'Windows' && matrix.config.qt_version == '6.12.0' }}
+      shell: pwsh
+      run: |
+        $hostRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\msvc2022_64"
+        $version = & "$hostRoot\bin\qmake.exe" -query QT_VERSION
+        if ($LASTEXITCODE -ne 0 -or $version.Trim() -ne "${{ matrix.config.qt_version }}") {
+          throw "Unexpected host Qt version: $version (exit $LASTEXITCODE)"
+        }
+        $targetArch = if ("${{ matrix.config.arch }}" -eq "arm64") { "msvc2022_arm64" } else { "msvc2022_64" }
+        $targetRoot = "$env:GITHUB_WORKSPACE\..\Qt\${{ matrix.config.qt_version }}\$targetArch"
+        foreach ($library in @("Qt6Core.dll", "Qt6Core5Compat.dll", "Qt6SerialPort.dll", "Qt6Svg.dll")) {
+          $path = Join-Path $targetRoot "bin\$library"
+          if (-not (Test-Path -LiteralPath $path)) { throw "Required Qt library missing: $path" }
+        }
+        Write-Host "Verified Qt $version host=$hostRoot target=$targetRoot"
 
     - name: Set boost env vars
       shell: sh
