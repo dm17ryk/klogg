@@ -38,12 +38,12 @@ Focused invocations from `build_root/output/RelWithDebInfo` after Qt deployment:
 
 The hidden benchmark prints a `CILOGG_BENCHMARK` record with input bytes, sample count, median and p95 microseconds. It includes the same sample-copy and codec lookup costs in both baseline and updated runs; compare only the same machine/configuration and avoid measuring during a build. The ordinary regression suite has no timing-dependent pass/fail assertion.
 
-The selection test uses an instrumented source and jumps during an active drag. It checks actual source reads rather than relying on elapsed time. The original implementation requests the entire selected range on every changed drag endpoint; the updated behavior must issue zero range reads during that callback, preserve final text/counts, and normalize reverse partial-selection coordinates.
+The selection test uses an instrumented source and jumps during an active drag. It checks both individual-line and bulk source reads rather than relying on elapsed time. The updated behavior must issue zero source reads during that callback, preserve final text/counts, and normalize reverse partial-selection coordinates.
 
 ## Release budgets
 
 - No selected-range reads or selected-text assembly in the mouse-move callback.
-- Wrapping/layout and hit-test caches used for painting are bounded to the visible rows; changing content, width, font, DPI or wrapping must rebuild the corresponding layout.
+- Painted wrapping windows and hit-test caches contain only visible rows. Wrapping retains a resumable source offset and discovers additional rows in bounded slices, so the rest of a long record remains reachable. Width/font changes rebuild layout while restoring a source-column anchor; content updates preserve unchanged cached records.
 - Extra viewport-layout/cache memory target: below 16 MiB per view on the generated corpus. Record a measured result before making a memory-performance claim.
 - Interactive p95 target: below 100 ms on the recorded validation machine. Record hardware/build/backend and measurements before claiming this target passed.
 - Encoding output must agree with legacy fallback for empty, ASCII, escape-based, NUL-bearing, invalid and truncated samples; BOMs take precedence; complete valid short UTF-8 must be recognized.
@@ -78,6 +78,16 @@ Final evidence (2026-10-15):
 - Independent general, C++ and Python smoke reviews: no outstanding blockers. `git diff --check` passed. The available clang-tidy setup lacks an MSVC compilation database and cppcheck lacks its standard configuration; no static-analyzer pass is claimed.
 - CodeGraph synchronized after the final source changes. GitNexus refresh succeeded twice (latest successful index: 11,252 nodes / 32,241 edges); the final attempt timed out parsing the unrelated existing `codex_tasks/fix_preview_ehcp.py`, so it does not establish freshness for the last grep/Python-smoke changes. Full-text search remains unavailable, and no code-review-graph MCP is exposed. Initial class-impact results were conservative; refreshed EncodingDetector analysis is CRITICAL (four direct dependencies, 17 affected items across seven modules), while the localized grep `main` change is LOW (no upstream callers/processes). Final direct review and runtime parity cover those last changes.
 - Hosted Windows/macOS/Linux CI and packaged visual inspection are not covered by these local offscreen results. Extra viewport memory and interactive p95 remain unmeasured P00 gates.
+
+Sourcery follow-up (2026-10-17):
+
+- The initial row cap hid long-record suffixes. The replacement uses incremental wrapping with continuation state, source-column navigation and a published scrollbar row snapshot. A 64 KiB record's suffix is reachable and selectable. Rapid Page Up/Down, filtered-view column reveal, Home during pending restoration, and append preservation have widget regressions.
+- Each font-measurement probe examines at most 4,096 UTF-16 code units. Tests count all code units submitted to measurement and whitespace scans, including repeated probes; 1 MiB and 16 MiB inputs perform the same initial viewport work. A zero-width-character fixture verifies bounded work even when many characters fit in one pixel row.
+- Background indexing extends 64 rows per timer callback and repaints only when the visible source anchor changes. A regression limits source rereads while the index grows. A pixel comparison protects horizontal scrolling in the shared drawing path.
+- Inactive cached layouts are evicted above 64 records or an estimated 16 MiB. Current viewport and tail layouts are protected, so decoded source strings and their accumulated row indexes can exceed that budget for enormous active records. This is a best-effort cache policy, not a measured or strict per-view memory limit; the P00 memory gate remains open.
+- The new navigation/drawing tests first reproduced four failures, then passed after the fixes: 67 assertions across eight focused widget cases. GCC 13 and Clang 23 accept the updated widget test with the complete CI warning sets; the existing literal-operator warning exemption described above is unchanged.
+- Full application, grep, portable and test builds pass with MSVC/Qt 6.10.1. Full CTest passes 4/4 in 361.78 seconds (`build_root/pr36-sourcery-final-ctest.txt`). The updated wrapping unit test also passes the GCC warning check. Isolated native MCP/GUI smoke and CLI/MCP wrap, BOM-detection and Unicode grep parity pass (`build_root/pr36-sourcery-smoke`). Its first temporary deployment omitted `qoffscreen.dll`; deploying that plugin repaired the harness before the successful run.
+- CodeGraph, code-review-graph and GitNexus were refreshed. GitNexus reports 11,316 nodes / 37,583 edges; full-text search remains unavailable. Staged change detection covers the expected six files, but conservatively attributes the shared-view change to all 300 indexed flows at critical risk. Independent C++/general reviews and the complete runtime suite supplement this imprecise flow attribution.
 
 The feature controls used by the parity check are existing public routes, so this batch does not add a parallel API:
 
