@@ -100,6 +100,12 @@ public:
     // of range (shift+click behaviour)
     void selectRangeFromPrevious( LineNumber line, bool additive = false );
 
+    // The shared anchor for mouse and keyboard range extension, including a toggled-off row.
+    OptionalLineNumber anchorLine() const
+    {
+        return anchorLine_;
+    }
+
     // Crop selection so that in fit in the range ending with the line passed.
     void crop( LineNumber lastLine );
 

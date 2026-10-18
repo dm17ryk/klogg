@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <catch2/catch.hpp>
+#include <limits>
 
 #include <QApplication>
 #include <QFile>
 #include <QFileDialog>
+#include <QLineEdit>
 #include <QMouseEvent>
+#include <QMenu>
 #include <QPixmap>
 #include <QScrollBar>
 #include <QTemporaryDir>
@@ -28,6 +31,8 @@ public:
     mutable LinesCount largestRead;
     mutable size_t individualReads = 0;
     mutable size_t bulkReads = 0;
+    bool forbidBulkReads = false;
+    LinesCount virtualLineCount = 2000_lcount;
     bool enormousTail = false;
     bool emptySource = false;
     QString singleRecord;
@@ -55,6 +60,7 @@ protected:
     }
     klogg::vector<QString> doGetLines( LineNumber first, LinesCount count ) const override
     {
+        REQUIRE_FALSE( forbidBulkReads );
         ++bulkReads;
         largestRead = std::max( largestRead, count );
         klogg::vector<QString> lines;
@@ -76,7 +82,7 @@ protected:
         if ( emptySource ) {
             return 0_lcount;
         }
-        return records.empty() ? ( singleRecord.isNull() ? 2000_lcount : 1_lcount )
+        return records.empty() ? ( singleRecord.isNull() ? virtualLineCount : 1_lcount )
                                : LinesCount{ records.size() };
     }
     LineLength doGetMaxLength() const override
@@ -117,6 +123,13 @@ public:
     bool layoutPending() const
     {
         return isWrappedLayoutPending();
+    }
+
+    void openContextMenu( const QPoint& point )
+    {
+        QMouseEvent event( QEvent::MouseButtonPress, QPointF( point ), QPointF( point ),
+                           QPointF( point ), Qt::RightButton, Qt::RightButton, Qt::NoModifier );
+        mousePressEvent( &event );
     }
 
     LineColumn topSourceColumn()
@@ -191,6 +204,134 @@ TEST_CASE( "Ctrl-click toggles separate rows and combines anchored ranges",
     CHECK( text() == "one" );
     click( 1, Qt::ControlModifier );
     CHECK( text().isEmpty() );
+}
+
+TEST_CASE( "Row-set click and keyboard gestures never assemble selected text",
+           "[ui][selection][discontiguous][performance][review]" )
+{
+    const auto modifiers = GENERATE( Qt::KeyboardModifiers{ Qt::ControlModifier },
+                                     Qt::KeyboardModifiers{ Qt::ShiftModifier },
+                                     Qt::KeyboardModifiers{ Qt::ControlModifier | Qt::ShiftModifier } );
+    CAPTURE( static_cast<int>( modifiers ) );
+    CountingLogData data;
+    data.virtualLineCount = 1000000_lcount;
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.registerShortcuts();
+    activateOffscreenView( &view );
+    view.setFocus();
+    view.selectAll();
+    view.paintNow();
+    view.setUpdatesEnabled( false );
+    const auto individualReads = data.individualReads;
+    const auto bulkReads = data.bulkReads;
+    data.forbidBulkReads = true;
+    LinesCount selectedRows;
+    LineLength selectedSymbols{ -1 };
+    QObject::connect( &view, &AbstractLogView::newSelection, &view,
+                      [ & ]( LineNumber, LinesCount rows, LineColumn, LineLength symbols ) {
+                          selectedRows = rows;
+                          selectedSymbols = symbols;
+                      } );
+    const QPoint point( 60, view.fontMetrics().height() * 2 + view.fontMetrics().height() / 2 );
+    view.sendMouse( QEvent::MouseButtonPress, point, modifiers );
+    view.sendMouse( QEvent::MouseButtonRelease, point, modifiers );
+    CHECK( selectedRows > 1_lcount );
+    CHECK( selectedSymbols == 0_length );
+    CHECK( data.individualReads == individualReads );
+    CHECK( data.bulkReads == bulkReads );
+    QTest::keyClick( &view, Qt::Key_Up, Qt::ShiftModifier );
+    CHECK( selectedSymbols == 0_length );
+    CHECK( data.individualReads == individualReads );
+    CHECK( data.bulkReads == bulkReads );
+}
+
+TEST_CASE( "Context-menu mark state inspects compact ranges without expanding every row",
+           "[ui][selection][discontiguous][performance][review]" )
+{
+    CountingLogData data;
+    // Expanding this interval exceeds vector<LineNumber>::max_size(), so the old
+    // metadata path throws before allocating. Its first row is already unmarked.
+    data.virtualLineCount = LinesCount{ std::numeric_limits<LinesCount::UnderlyingType>::max() / 2 };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.selectAll();
+    view.paintNow();
+    size_t selectionChanges = 0;
+    QObject::connect( &view, &AbstractLogView::newSelection, &view,
+                      [ & ]( LineNumber, LinesCount, LineColumn, LineLength ) {
+                          ++selectionChanges;
+                      } );
+    bool opened = false;
+    QTimer::singleShot( 0, &view, [ & ] {
+        if ( auto* menu = qobject_cast<QMenu*>( QApplication::activePopupWidget() ) ) {
+            opened = true;
+            menu->close();
+        }
+    } );
+    QTimer::singleShot( 1000, &view, [ & ] {
+        for ( auto* menu : view.findChildren<QMenu*>() ) {
+            menu->close();
+        }
+    } );
+    view.openContextMenu( QPoint( 60, view.fontMetrics().height() / 2 ) );
+    CHECK( opened );
+    CHECK( selectionChanges == 0 );
+}
+
+TEST_CASE( "Modified mark-gutter clicks mark the row and preserve the selection",
+           "[ui][selection][discontiguous][review]" )
+{
+    const auto modifiers = GENERATE( Qt::KeyboardModifiers{ Qt::ControlModifier },
+                                     Qt::KeyboardModifiers{ Qt::ShiftModifier },
+                                     Qt::KeyboardModifiers{ Qt::ControlModifier | Qt::ShiftModifier } );
+    CAPTURE( static_cast<int>( modifiers ) );
+    CountingLogData data;
+    data.records = { "zero", "one", "two", "three", "four" };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.selectAndDisplayLine( 1_lnum );
+    view.paintNow();
+    klogg::vector<LineNumber> marked;
+    QObject::connect( &view, &AbstractLogView::markLines, &view,
+                      [ & ]( const auto& lines ) { marked = lines; } );
+    const QPoint point( 1, view.fontMetrics().height() * 3 + view.fontMetrics().height() / 2 );
+    view.sendMouse( QEvent::MouseButtonPress, point, modifiers );
+    view.sendMouse( QEvent::MouseButtonRelease, point, modifiers );
+    REQUIRE( marked.size() == 1 );
+    CHECK( marked.front() == 3_lnum );
+    CHECK( view.getSelectedText() == "one" );
+}
+
+TEST_CASE( "QuickFind mouse and keyboard extensions share the model anchor",
+           "[ui][selection][discontiguous][review]" )
+{
+    const auto additive = GENERATE( false, true );
+    CAPTURE( additive );
+    CountingLogData data;
+    data.records = { "zero", "one", "two", "three", "four", "five", "six" };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.registerShortcuts();
+    activateOffscreenView( &view );
+    view.setFocus();
+    view.selectAndDisplayLine( 0_lnum );
+    const Portion result{ 4_lnum, 0_lcol, 3_lcol };
+    REQUIRE( QMetaObject::invokeMethod( &view, "setQuickFindResult", Qt::DirectConnection,
+                                       Q_ARG( bool, true ), Q_ARG( Portion, result ) ) );
+    QTest::keyClick( &view, Qt::Key_Down, Qt::ShiftModifier );
+    CHECK( view.getSelectedText().remove( QChar::CarriageReturn ) == "four\nfive" );
+    REQUIRE( QMetaObject::invokeMethod( &view, "setQuickFindResult", Qt::DirectConnection,
+                                       Q_ARG( bool, true ), Q_ARG( Portion, result ) ) );
+    view.paintNow();
+    const QPoint point( 60, view.fontMetrics().height() * 6 + view.fontMetrics().height() / 2 );
+    const auto modifiers = Qt::KeyboardModifiers{ Qt::ShiftModifier }
+                           | ( additive ? Qt::ControlModifier : Qt::NoModifier );
+    view.sendMouse( QEvent::MouseButtonPress, point, modifiers );
+    view.sendMouse( QEvent::MouseButtonRelease, point, modifiers );
+    CHECK( view.getSelectedText().remove( QChar::CarriageReturn ) == "four\nfive\nsix" );
+    QTest::keyClick( &view, Qt::Key_Up, Qt::ShiftModifier );
+    CHECK( view.getSelectedText().remove( QChar::CarriageReturn ) == "four\nfive" );
 }
 
 TEST_CASE( "Whole-row selection ranges merge split crop and clear without source reads",
@@ -338,19 +479,31 @@ TEST_CASE( "Saving separate selected ranges excludes gaps and retains complete c
         for ( auto* widget : QApplication::topLevelWidgets() ) {
             if ( auto* dialog = qobject_cast<QFileDialog*>( widget );
                  dialog && dialog->isVisible() ) {
-                dialog->selectFile( path );
+                // selectFile() does not update a visible dialog's focused filename edit.
+                // Enter the absolute path as a user would on every offscreen platform.
+                auto* filenameEdit = dialog->findChild<QLineEdit*>( "fileNameEdit" );
+                if ( filenameEdit == nullptr ) {
+                    return;
+                }
+                filenameEdit->setText( path );
                 QMetaObject::invokeMethod( dialog, "accept", Qt::DirectConnection );
+                if ( !dialog->isVisible() ) {
+                    acceptTimer.stop();
+                }
             }
         }
     } );
     acceptTimer.start();
-    QTimer::singleShot( 5000, &view, [] {
+    QTimer watchdog;
+    watchdog.setSingleShot( true );
+    QObject::connect( &watchdog, &QTimer::timeout, &view, [] {
         for ( auto* widget : QApplication::topLevelWidgets() ) {
             if ( auto* dialog = qobject_cast<QFileDialog*>( widget ) ) {
                 dialog->reject();
             }
         }
     } );
+    watchdog.start( 10000 );
     const auto invoked
         = QMetaObject::invokeMethod( &view, "saveSelectedToFile", Qt::DirectConnection );
     QApplication::setAttribute( Qt::AA_DontUseNativeDialogs, wasNonNative );

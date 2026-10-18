@@ -210,8 +210,8 @@ Q_SIGNALS:
     void followModeChanged( bool enabled );
     // Sent when the view wants the QuickFind widget pattern to change.
     void changeQuickFind( const QString& newPattern, QuickFindMux::QFDirection newDirection );
-    // Sent when a new line has been selected by the user. During a range drag,
-    // nSymbols is zero until the final count is delivered on mouse release.
+    // Sent when a new line has been selected by the user. Row-set gestures report
+    // nSymbols as zero; a normal range drag delivers its final count on release.
     void newSelection( LineNumber startLine, LinesCount nLines, LineColumn startCol,
                        LineLength nSymbols );
     // Sent up when quickFind wants to show a message to the user.
@@ -352,7 +352,7 @@ private:
     OverviewWidget* overviewWidget_ = nullptr;
 
     bool selectionStarted_ = false;
-    bool selectionCountPending_ = false;
+    bool rowSetGesture_ = false;
     // Start of the selection (characters)
     FilePosition selectionStartPos_;
     // Current end of the selection (characters)

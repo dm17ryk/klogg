@@ -497,14 +497,22 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
         // Invalidate our cache
         textAreaCache_.invalid_ = true;
         selectionStarted_ = false;
-        selectionCountPending_ = false;
+        rowSetGesture_ = false;
 
         if ( line && *line < logData_->getNbLine()
+             && mouseEvent->pos().x() < bulletZoneWidthPx_ ) {
+            markingClickInitiated_ = true;
+            markingClickLine_ = line;
+            LOG_DEBUG << "Mouse mark-gutter press row=" << *line
+                      << " modifiers=" << static_cast<int>( mouseEvent->modifiers() );
+        }
+        else if ( line && *line < logData_->getNbLine()
              && mouseEvent->modifiers().testFlag( Qt::ShiftModifier ) ) {
             const auto additive = mouseEvent->modifiers().testFlag( Qt::ControlModifier );
             selection_.selectRangeFromPrevious( *line, additive );
+            selectionStartPos_ = FilePosition{ selection_.anchorLine().value_or( 0_lnum ), 0_lcol };
             selectionCurrentEndPos_ = convertCoordToFilePos( mouseEvent->pos() );
-            selectionCountPending_ = true;
+            rowSetGesture_ = true;
             LOG_DEBUG << "Mouse anchored row selection end=" << *line << " additive=" << additive;
             Q_EMIT newSelection( *line, selection_.getSelectedLinesCount(), 0_lcol, 0_length );
             update();
@@ -515,31 +523,18 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
             selection_.toggleLine( *line );
             selectionCurrentEndPos_ = convertCoordToFilePos( mouseEvent->pos() );
             selectionStartPos_ = selectionCurrentEndPos_;
-            selectionCountPending_ = true;
+            rowSetGesture_ = true;
             LOG_DEBUG << "Mouse toggled row=" << *line
                       << " selectedRows=" << selection_.getSelectedLinesCount();
             Q_EMIT newSelection( *line, selection_.getSelectedLinesCount(), 0_lcol, 0_length );
             update();
         }
-        else if ( line.has_value() ) {
-            if ( mouseEvent->pos().x() < bulletZoneWidthPx_ ) {
-                // Mark a line if it is clicked in the left margin
-                // (only if click and release in the same area)
-                markingClickInitiated_ = true;
-                markingClickLine_ = line;
-            }
-            else {
-                // Select the line, and start a selection
-                if ( *line < logData_->getNbLine() ) {
-                    selection_.selectLine( *line );
-                    Q_EMIT newSelection( *line, 1_lcount, 0_lcol, 0_length );
-                }
-
-                // Remember the click in case we're starting a selection
-                selectionStarted_ = true;
-                selectionStartPos_ = convertCoordToFilePos( mouseEvent->pos() );
-                selectionCurrentEndPos_ = selectionStartPos_;
-            }
+        else if ( line && *line < logData_->getNbLine() ) {
+            selection_.selectLine( *line );
+            Q_EMIT newSelection( *line, 1_lcount, 0_lcol, 0_length );
+            selectionStarted_ = true;
+            selectionStartPos_ = convertCoordToFilePos( mouseEvent->pos() );
+            selectionCurrentEndPos_ = selectionStartPos_;
         }
     }
     else if ( mouseEvent->button() == Qt::RightButton ) {
@@ -580,15 +575,25 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
         }
 
         bool hasUnmarkedLines = false;
-        auto lines = selection_.getLines();
-        for ( auto i = 0u; i < lines.size(); ++i ) {
-            using LineTypeFlags = AbstractLogData::LineTypeFlags;
-            const auto currentLineType = lineType( lines[ i ] );
-            if ( !currentLineType.testFlag( LineTypeFlags::Mark ) ) {
-                hasUnmarkedLines = true;
+        for ( const auto& range : selection_.getLineRanges() ) {
+            auto row = range.first;
+            auto remaining = range.second;
+            while ( remaining > 0_lcount ) {
+                using LineTypeFlags = AbstractLogData::LineTypeFlags;
+                if ( !lineType( row ).testFlag( LineTypeFlags::Mark ) ) {
+                    hasUnmarkedLines = true;
+                    break;
+                }
+                remaining -= 1_lcount;
+                if ( remaining > 0_lcount ) {
+                    row += 1_lcount;
+                }
+            }
+            if ( hasUnmarkedLines ) {
                 break;
             }
         }
+        LOG_DEBUG << "Context-menu selection mark state: hasUnmarked=" << hasUnmarkedLines;
         markAction_->setText( hasUnmarkedLines ? tr( "&Mark" ) : tr( "Unmark" ) );
 
         if ( selection_.isPortion() ) {
@@ -746,8 +751,14 @@ void AbstractLogView::mouseReleaseEvent( QMouseEvent* mouseEvent )
         }
     }
     else {
-        if ( selectionCountPending_
-             || ( selectionStarted_ && selection_.getSelectedLinesCount() > 1_lcount ) ) {
+        const bool updatePrimarySelection = selectionStarted_ && !rowSetGesture_;
+        if ( rowSetGesture_ ) {
+            LOG_DEBUG << "Row-set gesture completed: rows=" << selection_.getSelectedLinesCount()
+                      << " character count and primary-clipboard update deferred until copy";
+            Q_EMIT newSelection( selectionCurrentEndPos_.line(), selection_.getSelectedLinesCount(),
+                                 0_lcol, 0_length );
+        }
+        else if ( selectionStarted_ && selection_.getSelectedLinesCount() > 1_lcount ) {
             const auto symbols = LineLength{ getSelectedText().size() };
             LOG_DEBUG << "Selection drag completed: lines=" << selection_.getSelectedLinesCount()
                       << " symbols=" << symbols;
@@ -758,10 +769,12 @@ void AbstractLogView::mouseReleaseEvent( QMouseEvent* mouseEvent )
             LOG_DEBUG << "Selection drag completed without a range count";
         }
         selectionStarted_ = false;
-        selectionCountPending_ = false;
         if ( autoScrollTimer_.isActive() )
             autoScrollTimer_.stop();
-        updateGlobalSelection();
+        if ( updatePrimarySelection ) {
+            updateGlobalSelection();
+        }
+        rowSetGesture_ = false;
     }
 }
 
@@ -1318,6 +1331,11 @@ void AbstractLogView::setQuickFindResult( bool hasMatch, const Portion& portion 
     if ( portion.isValid() ) {
         LOG_DEBUG << "search " << portion.line();
         selection_.selectPortion( portion );
+        selectionStartPos_ = FilePosition{ portion.line(), portion.startColumn() };
+        selectionCurrentEndPos_ = FilePosition{ portion.line(), portion.endColumn() };
+        LOG_DEBUG << "QuickFind synchronized range navigation: anchor=" << portion.line()
+                  << " startColumn=" << portion.startColumn()
+                  << " endColumn=" << portion.endColumn();
         displayLine( portion.line() );
         Q_EMIT newSelection( portion.line(), 1_lcount, 0_lcol, 0_length );
     }
@@ -2252,11 +2270,13 @@ void AbstractLogView::updateGlobalSelection()
 void AbstractLogView::selectAndDisplayRange( FilePosition pos )
 {
     disableFollow();
-    selection_.selectRange( selectionStartPos_.line(), pos.line() );
+    selection_.selectRangeFromPrevious( pos.line() );
+    selectionStartPos_ = FilePosition{ selection_.anchorLine().value_or( 0_lnum ), 0_lcol };
     selectionCurrentEndPos_ = pos;
     displayLine( pos.line() );
-    Q_EMIT newSelection( pos.line(), selection_.getSelectedLinesCount(), 0_lcol,
-                         LineLength{ getSelectedText().size() } );
+    LOG_DEBUG << "Keyboard row range selected: anchor=" << selectionStartPos_.line()
+              << " end=" << pos.line() << " rows=" << selection_.getSelectedLinesCount();
+    Q_EMIT newSelection( pos.line(), selection_.getSelectedLinesCount(), 0_lcol, 0_length );
 }
 
 // Create the pop-up menu
