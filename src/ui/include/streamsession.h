@@ -6,6 +6,9 @@
 #include <QThread>
 #include <QVariantList>
 
+#include <deque>
+#include <optional>
+
 #include "serialcaptureworker.h"
 
 class StreamSession : public QObject {
@@ -67,7 +70,7 @@ class StreamSession : public QObject {
     void setupWorker();
     void setConnectionClosed();
     bool canOpenConfiguredCapture( QString* errorMessage ) const;
-    void handleIncomingLine( const QByteArray& lineBytes, quint64 generation );
+    void handleIncomingLine( const QByteArray& lineBytes, std::optional<quint64> generation );
 
   private Q_SLOTS:
     void handleDataReceived( const QByteArray& data );
@@ -87,5 +90,12 @@ class StreamSession : public QObject {
     bool paused_ = false;
     bool loggingEnabled_ = true;
     QByteArray lineBuffer_;
+    struct BufferedActionsSegment {
+        qsizetype byteCount;
+        std::optional<quint64> generation;
+    };
+    // Coalesce adjacent chunks with identical eligibility. A line spanning any
+    // ineligible or different generation segment is observation-only.
+    std::deque<BufferedActionsSegment> lineBufferActionsSegments_;
     QMap<int, int> responseCounters_;
 };

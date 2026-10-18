@@ -22,10 +22,13 @@
 #include <QAction>
 #include <QComboBox>
 #include <QDir>
+#include <QDialogButtonBox>
 #include <QFile>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPushButton>
 #include <QSignalSpy>
 #include <QTabBar>
 #include <QTcpServer>
@@ -47,6 +50,7 @@
 
 #include "configuration.h"
 #include "actionsmanager.h"
+#include "actionparametersdialog.h"
 #include "actionsresponseswindow.h"
 #include "log.h"
 #include "mainwindow.h"
@@ -1424,4 +1428,116 @@ TEST_CASE( "File and tab context Actions toggles resolve stable identities after
     REQUIRE_FALSE( fixture.streams[0]->actionsEnabled() );
     REQUIRE_FALSE( fixture.streams[1]->actionsEnabled() );
     REQUIRE_FALSE( fixture.streams[2]->actionsEnabled() );
+}
+
+TEST_CASE( "Parameter dialogs cancel a send after the Actions destination changes away and back",
+           "[ui][commander][actions][review]" )
+{
+    const auto changeDestination = GENERATE( false, true );
+    CAPTURE( changeDestination );
+    ActionsDefinitionsRestoreGuard restoreDefinitions;
+    ActionsTabsFixture fixture;
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    fixture.select( 0 );
+    const auto firstGeneration = fixture.streams[0]->actionsGeneration();
+    const auto secondGeneration = fixture.streams[1]->actionsGeneration();
+
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    action.name = "Modal Actions destination probe";
+    action.sequence.value = "PING:${value}\n";
+    ActionParameterDefinition parameter;
+    parameter.name = "value";
+    parameter.type = ActionParameterType::Text;
+    parameter.required = true;
+    parameter.remember = false;
+    parameter.defaultValue = QStringLiteral( "42" );
+    action.parameters.fields = { parameter };
+    QString error;
+    REQUIRE( ActionsManager::instance().createAction( action, &error ) );
+    QSignalSpy firstSent( fixture.streams[0].get(), &StreamSession::actionSent );
+    QSignalSpy secondSent( fixture.streams[1].get(), &StreamSession::actionSent );
+    bool dialogSeen = false;
+    bool defaultValueSeen = false;
+    bool transitionsSucceeded = true;
+    bool accepted = false;
+    bool warningSeen = false;
+    bool timedOut = false;
+    const auto cancellationText = MainWindow::tr(
+        "The selected Actions tab changed or disconnected. Retry the action." );
+
+    QTimer driver;
+    driver.setInterval( 10 );
+    QObject::connect( &driver, &QTimer::timeout, &fixture.window, [ & ] {
+        if ( !dialogSeen ) {
+            for ( auto* dialog : fixture.window.findChildren<ActionParametersDialog*>() ) {
+                if ( !dialog->isVisible() || !dialog->isWindow() ) {
+                    continue;
+                }
+                dialogSeen = true;
+                const auto* editor = dialog->findChild<QLineEdit*>( "actionParameter_value" );
+                defaultValueSeen = editor != nullptr && editor->text() == "42";
+                if ( changeDestination ) {
+                    for ( const auto index : { 1, 0 } ) {
+                        CommanderRequest select;
+                        select.action = CommanderAction::SelectActionsTab;
+                        select.tabId = fixture.tabIds.at( index );
+                        transitionsSucceeded
+                            = fixture.window.executeCommanderRequest( select ).ok()
+                              && transitionsSucceeded;
+                    }
+                }
+                auto* buttons = dialog->findChild<QDialogButtonBox*>();
+                auto* send = buttons != nullptr ? buttons->button( QDialogButtonBox::Ok ) : nullptr;
+                if ( send != nullptr ) {
+                    accepted = true;
+                    send->click();
+                }
+                else {
+                    dialog->reject();
+                }
+                return;
+            }
+        }
+        for ( auto* warning : fixture.window.findChildren<QMessageBox*>() ) {
+            if ( warning->isVisible() && warning->parentWidget() == &fixture.window
+                 && warning->icon() == QMessageBox::Warning
+                 && warning->text() == cancellationText ) {
+                warningSeen = true;
+                warning->accept();
+            }
+        }
+    } );
+    QTimer watchdog;
+    watchdog.setSingleShot( true );
+    QObject::connect( &watchdog, &QTimer::timeout, &fixture.window, [ & ] {
+        timedOut = true;
+        for ( auto* dialog : fixture.window.findChildren<QDialog*>() ) {
+            if ( dialog->isVisible() && dialog->isWindow() ) {
+                dialog->reject();
+            }
+        }
+    } );
+    driver.start();
+    watchdog.start( 10000 );
+    const auto invoked = QMetaObject::invokeMethod( fixture.actionsWindow, "sendActionRequested",
+                                                   Qt::DirectConnection, Q_ARG( int, action.id ) );
+    driver.stop();
+    watchdog.stop();
+    REQUIRE( invoked );
+    REQUIRE_FALSE( timedOut );
+    REQUIRE( dialogSeen );
+    REQUIRE( defaultValueSeen );
+    REQUIRE( transitionsSucceeded );
+    REQUIRE( accepted );
+    REQUIRE( warningSeen == changeDestination );
+    REQUIRE( firstSent.count() == ( changeDestination ? 0 : 1 ) );
+    REQUIRE( secondSent.isEmpty() );
+    if ( !changeDestination ) {
+        REQUIRE( firstSent.front().at( 3 ).toByteArray() == QByteArrayLiteral( "PING:42\n" ) );
+    }
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+    REQUIRE( fixture.streams[0]->actionsGeneration() == firstGeneration );
+    REQUIRE( fixture.streams[1]->actionsGeneration() == secondGeneration );
 }

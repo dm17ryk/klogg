@@ -140,6 +140,137 @@ TEST_CASE( "Automatic response counters are independent and disabled tabs still 
     CHECK( second.responseCounter( response.id ) == 2 );
 }
 
+TEST_CASE( "Buffered response lines preserve text without inheriting newer Actions eligibility",
+           "[serial][session][actions][response-lineage]" )
+{
+    ScopedActionsState restore;
+    const auto transition = GENERATE( 0, 1, 2 );
+    const auto fragmented = GENERATE( false, true );
+    CAPTURE( transition, fragmented );
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7112 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( transition != 2 );
+    StreamSession session(
+        settingsFor( QStringLiteral( "TEST_PARTIAL_ACTIONS" ), transition != 0 ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy observed( &session, &StreamSession::lineObserved );
+    QSignalSpy matched( &session, &StreamSession::responseMatched );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "R" ) );
+    StreamSessionTestAccess::feedData( session, fragmented ? QByteArrayLiteral( "E" )
+                                                           : QByteArrayLiteral( "EA" ) );
+    if ( transition == 1 ) {
+        session.setActionsEnabled( false );
+    }
+    session.setActionsEnabled( true );
+    manager.setAutoResponsesEnabled( true );
+    if ( fragmented ) {
+        StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "A" ) );
+    }
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "DY\r\nREADY\nRE" ) );
+    REQUIRE( observed.size() == 2 );
+    CHECK( observed.at( 0 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( observed.at( 1 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( matched.size() == 1 );
+    CHECK( session.responseCounter( response.id ) == 1 );
+
+    // The remaining partial line belongs to the completing chunk, rather than
+    // the stale first line or the generation in which its newline later arrives.
+    session.setActionsEnabled( false );
+    session.setActionsEnabled( true );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );
+    REQUIRE( observed.size() == 4 );
+    CHECK( observed.at( 2 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( observed.at( 3 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( matched.size() == 2 );
+    CHECK( session.responseCounter( response.id ) == 2 );
+}
+
+TEST_CASE( "A globally disabled middle chunk makes only its partial response line ineligible",
+           "[serial][session][actions][response-lineage]" )
+{
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7113 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( QStringLiteral( "TEST_PARTIAL_GLOBAL_ACTIONS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy observed( &session, &StreamSession::lineObserved );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "R" ) );
+    manager.setAutoResponsesEnabled( false );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "EA" ) );
+    manager.setAutoResponsesEnabled( true );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "DY\nREADY\n" ) );
+    REQUIRE( observed.size() == 2 );
+    CHECK( observed.at( 0 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( observed.at( 1 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( session.responseCounter( response.id ) == 1 );
+}
+
+TEST_CASE( "Reentrant line input retains the lineage and order of already buffered lines",
+           "[serial][session][actions][response-lineage]" )
+{
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7114 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( QStringLiteral( "TEST_REENTRANT_PARTIAL_ACTIONS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy observed( &session, &StreamSession::lineObserved );
+    bool completed = false;
+    QObject::connect( &session, &StreamSession::lineObserved, &session, [ & ] {
+        if ( completed ) {
+            return;
+        }
+        completed = true;
+        session.setActionsEnabled( false );
+        session.setActionsEnabled( true );
+        StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );
+    } );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\nREADY\nRE" ) );
+    REQUIRE( completed );
+    REQUIRE( observed.size() == 4 );
+    for ( const auto& line : observed ) {
+        CHECK( line.front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    }
+    CHECK( session.responseCounter( response.id ) == 1 );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( response.id ) == 2 );
+}
+
+TEST_CASE( "Reentrant data observers cannot make an older completing chunk eligible",
+           "[serial][session][actions][response-lineage]" )
+{
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7115 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( QStringLiteral( "TEST_REENTRANT_DATA_ACTIONS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy observed( &session, &StreamSession::lineObserved );
+    bool completed = false;
+    QObject::connect( &session, &StreamSession::dataObserved, &session, [ & ] {
+        if ( completed ) {
+            return;
+        }
+        completed = true;
+        session.setActionsEnabled( false );
+        session.setActionsEnabled( true );
+        StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "RE" ) );
+    } );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );
+    REQUIRE( completed );
+    REQUIRE( observed.size() == 2 );
+    CHECK( observed.at( 0 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( observed.at( 1 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
+    CHECK( session.responseCounter( response.id ) == 0 );
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\n" ) );
+    CHECK( session.responseCounter( response.id ) == 1 );
+}
+
 TEST_CASE( "Delayed actions validate the tab generation and automatic eligibility",
            "[serial][session][actions][actionruntime]" )
 {

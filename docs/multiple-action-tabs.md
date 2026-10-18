@@ -26,8 +26,11 @@ The screenshot uses logical test sessions; no serial device is opened.
 An unavailable destination is removed from the combobox; Send is disabled when
 none remain. Disabling/re-enabling a tab or closing/reopening its connection
 invalidates previously queued actions and automatic-response work. A parameter
-dialog retains a safe snapshot of its action and target; a changed target cancels
-the send instead of redirecting it.
+dialog retains a safe snapshot of its action and target; any destination change,
+including switching away and back, cancels the send. Buffered lines retain the
+eligibility of every received fragment, so a line partly received while Actions
+was disabled cannot trigger a response after re-enabling it. Line observation
+continues normally.
 
 ## CLI and MCP
 
@@ -66,14 +69,14 @@ gating, generation cancellation, combobox routing/history, menus and persistence
 Hardware-free dispatch fixtures observe logical action notifications; they do not
 claim that bytes were delivered through a physical serial port.
 
-The focused unit suite passes 434 assertions across 19 cases. Native CLI/MCP
+The focused unit suite passes 530 assertions across 23 cases. Native CLI/MCP
 smoke validation restores two unavailable ports as paused sessions and checks
 nine independent enable/disable transitions, status parity, destination rejection,
 failed-send isolation and an empty disabled destination picker. The isolated
 process is closed after the run. Logs are under `build_root/actions-smoke/artifacts`.
 
-Final local validation (2026-10-18): the focused UI suite passes 181 assertions
-in four cases; full CTest passes 4/4 in 357.79 seconds. MSVC with installed Qt
+Final local validation (2026-10-18): the focused UI suite passes 252 assertions
+in five cases; full CTest passes 4/4 in 398.18 seconds. MSVC with installed Qt
 6.10.1 builds the application, portable application, grep and both test binaries.
 Independent C++ and general reviews approved the implementation. CodeGraph,
 code-review-graph and GitNexus were refreshed; GitNexus full-text search remains

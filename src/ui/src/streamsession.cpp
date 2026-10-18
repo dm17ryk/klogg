@@ -400,21 +400,64 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     }
 
     const QPointer<StreamSession> safeSession = this;
-    const auto generation = actionsGeneration_;
+    const auto generation
+        = connectionOpen_ && settings_.useForActions
+                  && ActionsManager::instance().autoResponsesEnabled()
+              ? std::optional<quint64>{ actionsGeneration_ }
+              : std::nullopt;
     Q_EMIT dataObserved( data );
     if ( !safeSession ) {
         return;
     }
 
+    if ( lineBuffer_.isEmpty() ) {
+        // Connection/file changes can clear the text during a direct callback.
+        lineBufferActionsSegments_.clear();
+    }
     lineBuffer_.append( data );
+    if ( !lineBufferActionsSegments_.empty()
+         && lineBufferActionsSegments_.back().generation == generation ) {
+        lineBufferActionsSegments_.back().byteCount += data.size();
+    }
+    else {
+        lineBufferActionsSegments_.push_back( { data.size(), generation } );
+        LOG_DEBUG << "Buffered Actions lineage segment: eligible=" << generation.has_value()
+                  << ", generation=" << generation.value_or( 0 )
+                  << ", bytes=" << data.size();
+    }
     qsizetype newlineIndex = lineBuffer_.indexOf( '\n' );
     while ( newlineIndex >= 0 ) {
         QByteArray lineBytes = lineBuffer_.left( newlineIndex );
         lineBuffer_.remove( 0, newlineIndex + 1 );
+        auto remaining = newlineIndex + 1;
+        std::optional<quint64> lineGeneration;
+        bool firstSegment = true;
+        while ( remaining > 0 && !lineBufferActionsSegments_.empty() ) {
+            auto& segment = lineBufferActionsSegments_.front();
+            const auto consumed = std::min( remaining, segment.byteCount );
+            if ( firstSegment ) {
+                lineGeneration = segment.generation;
+                firstSegment = false;
+            }
+            else if ( lineGeneration != segment.generation ) {
+                lineGeneration.reset();
+            }
+            remaining -= consumed;
+            segment.byteCount -= consumed;
+            if ( segment.byteCount == 0 ) {
+                lineBufferActionsSegments_.pop_front();
+            }
+        }
+        if ( remaining > 0 ) {
+            LOG_ERROR << "Missing buffered Actions lineage for " << remaining << " bytes";
+            lineGeneration.reset();
+        }
         if ( lineBytes.endsWith( '\r' ) ) {
             lineBytes.chop( 1 );
         }
-        handleIncomingLine( lineBytes, generation );
+        // Consume metadata before signals: nested input must see the exact
+        // lineage of the remaining bytes, including already-complete lines.
+        handleIncomingLine( lineBytes, lineGeneration );
         if ( !safeSession ) {
             return;
         }
@@ -483,7 +526,8 @@ void StreamSession::resetAllResponseCounters()
     responseCounters_.clear();
 }
 
-void StreamSession::handleIncomingLine( const QByteArray& lineBytes, quint64 generation )
+void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
+                                       std::optional<quint64> generation )
 {
     if ( lineBytes.isEmpty() ) {
         return;
@@ -495,12 +539,13 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes, quint64 gen
         return;
     }
 
-    if ( generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+    if ( !generation || *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
          || !ActionsManager::instance().autoResponsesEnabled() ) {
         LOG_DEBUG << "Automatic response matching skipped for " << settings_.portName.toStdString()
                   << ": tabEnabled=" << settings_.useForActions
                   << ", globalEnabled=" << ActionsManager::instance().autoResponsesEnabled()
-                  << ", observedGeneration=" << generation
+                  << ", observedEligible=" << generation.has_value()
+                  << ", observedGeneration=" << generation.value_or( 0 )
                   << ", currentGeneration=" << actionsGeneration_;
         return;
     }
@@ -513,7 +558,7 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes, quint64 gen
 
     const QString lineText = QString::fromLatin1( lineBytes );
     for ( const auto& response : responses ) {
-        if ( generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
              || !ActionsManager::instance().autoResponsesEnabled() ) {
             LOG_DEBUG << "Automatic response matching cancelled after eligibility changed";
             break;
@@ -533,7 +578,7 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes, quint64 gen
         if ( !safeSession ) {
             return;
         }
-        if ( generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
              || !ActionsManager::instance().autoResponsesEnabled() ) {
             LOG_DEBUG << "Response id=" << response.id
                       << " cancelled by its match observer; generation=" << actionsGeneration_;

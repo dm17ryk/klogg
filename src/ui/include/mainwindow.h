@@ -298,6 +298,7 @@ class MainWindow : public QMainWindow {
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
     void updateActionsSendState();
+    void setActionsDestination( StreamSession* streamSession );
     QString actionsTabIdForSession( const StreamSession* streamSession ) const;
     bool isAvailableActionsDestination( const StreamSession* streamSession ) const;
     void rememberActionsTab( StreamSession* streamSession );
@@ -466,6 +467,7 @@ class MainWindow : public QMainWindow {
     ActionsResponsesWindow responsesWindow_;
     // Manual destination only. Each session owns its independent Actions enable flag.
     QPointer<StreamSession> actionsStreamSession_;
+    quint64 actionsDestinationRevision_ = 0;
     std::vector<QPointer<StreamSession>> actionTabsMru_;
 
     QTemporaryDir tempDir_;

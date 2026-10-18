@@ -2442,7 +2442,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
             return false;
         }
         if ( actionsStreamSession_ == existingSession ) {
-            actionsStreamSession_.clear();
+            setActionsDestination( nullptr );
         }
         mainTabWidget_.clearStreamSessionForPath( filePath );
     }
@@ -2475,7 +2475,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
             mainTabWidget_.clearStreamSessionForPath( currentFilePath );
         }
         if ( actionsStreamSession_ == safeSession && !session->isPaused() ) {
-            actionsStreamSession_.clear();
+            setActionsDestination( nullptr );
         }
         publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_stop" ) );
         updateActionsSendState();
@@ -2974,6 +2974,7 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
     const auto generation = streamSession->actionsGeneration();
+    const auto destinationRevision = actionsDestinationRevision_;
 
     QVariantMap parameters;
     if ( !actionSnapshot.parameters.fields.isEmpty() ) {
@@ -2990,9 +2991,12 @@ void MainWindow::sendActionById( int actionId )
         LOG_DEBUG << "Action id=" << actionSnapshot.id << " has no typed fields; sending directly";
     }
 
-    if ( streamSession != actionsStreamSession_ || !isAvailableActionsDestination( streamSession )
+    if ( actionsDestinationRevision_ != destinationRevision
+         || streamSession != actionsStreamSession_ || !isAvailableActionsDestination( streamSession )
          || streamSession->actionsGeneration() != generation ) {
-        LOG_DEBUG << "Manual action cancelled: captured Actions destination changed while editing";
+        LOG_DEBUG << "Manual action cancelled: captured Actions destination changed while editing"
+                  << " captured_revision=" << destinationRevision
+                  << " current_revision=" << actionsDestinationRevision_;
         QMessageBox::warning(
             this, tr( "Send action" ),
             tr( "The selected Actions tab changed or disconnected. Retry the action." ) );
@@ -3218,7 +3222,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
         }
         else {
             if ( actionsStreamSession_ == session ) {
-                actionsStreamSession_.clear();
+                setActionsDestination( nullptr );
             }
             mainTabWidget_.clearStreamSessionForPath( fileName );
         }
@@ -3358,7 +3362,7 @@ void MainWindow::closeStreamConnectionForTab( int tab )
     }
     else {
         if ( actionsStreamSession_ == streamSession ) {
-            actionsStreamSession_.clear();
+            setActionsDestination( nullptr );
         }
         mainTabWidget_.clearStreamSessionForPath( filePath );
         updateActionsSendState();
@@ -3655,7 +3659,7 @@ CommanderResult MainWindow::commanderSelectActionsTab( const CommanderRequest& r
                                  tr( "Requested tab must be connected with Actions enabled." ) );
     }
     rememberActionsTab( streamSession );
-    actionsStreamSession_ = streamSession;
+    setActionsDestination( streamSession );
     LOG_DEBUG << "Selected manual Actions destination: tab_id="
               << actionsTabIdForSession( streamSession );
     updateActionsSendState();
@@ -4637,13 +4641,26 @@ void MainWindow::updateActionsSendState()
     if ( selected == nullptr && !eligible.empty() ) {
         selected = eligible.front();
     }
-    actionsStreamSession_ = selected;
+    setActionsDestination( selected );
     const auto selectedTabId = actionsTabIdForSession( selected );
     actionsResponsesWindow_.setActionTabs( tabs, selectedTabId );
     actionsResponsesWindow_.setSendAvailable( selected != nullptr );
     LOG_DEBUG << "Actions destinations refreshed: eligible=" << eligible.size()
               << " remembered=" << actionTabsMru_.size() << " selected_tab=" << selectedTabId;
     updateComPortStatus();
+}
+
+void MainWindow::setActionsDestination( StreamSession* streamSession )
+{
+    if ( actionsStreamSession_.data() == streamSession ) {
+        return;
+    }
+    const auto previousTabId = actionsTabIdForSession( actionsStreamSession_ );
+    actionsStreamSession_ = streamSession;
+    ++actionsDestinationRevision_;
+    LOG_DEBUG << "Manual Actions destination changed: previous_tab=" << previousTabId
+              << " selected_tab=" << actionsTabIdForSession( streamSession )
+              << " revision=" << actionsDestinationRevision_;
 }
 
 QString MainWindow::actionsTabIdForSession( const StreamSession* streamSession ) const
