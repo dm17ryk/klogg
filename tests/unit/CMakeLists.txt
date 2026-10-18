@@ -15,6 +15,7 @@ add_executable(cilogg_tests
     previewdecodeutils_test.cpp
     previewmatchstage_test.cpp
     serialcapturesettings_test.cpp
+    streamsession_actions_test.cpp
     sessioninfo_test.cpp
     versionchecker_test.cpp
     wrappedstring_test.cpp

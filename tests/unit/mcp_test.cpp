@@ -1,4 +1,5 @@
 #include "mcp/mcp.h"
+#include "cli.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -182,4 +183,24 @@ TEST_CASE( "Native command discovery obtains real Commander options from CLI hel
              == QJsonValue( "boolean" ) );
     REQUIRE_FALSE( parsed.value( "options" ).toObject().contains( "action" ) );
     REQUIRE_THROWS( parseCommandHelp( "empty" ) );
+}
+
+TEST_CASE( "Native MCP discovers Actions tab operations from the shipped CLI help",
+           "[mcp][actions]" )
+{
+    const CliParameters help( { "cilogg", "command", "--help" } );
+    REQUIRE( help.exit_requested );
+    REQUIRE_FALSE( help.parse_error );
+    const auto catalog = parseCommandHelp( help.exit_message );
+    const auto commands = catalog.value( "commands" ).toObject();
+    REQUIRE( commands.contains( "set_actions_enabled" ) );
+    REQUIRE( commands.contains( "select_actions_tab" ) );
+    REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--enabled" ) );
+    REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--disabled" ) );
+    REQUIRE( commands.value( "select_actions_tab" ).toString().contains( "--tab-id" ) );
+    REQUIRE_FALSE( commands.value( "select_actions_tab" ).toString().contains( "--enabled" ) );
+    const auto options = catalog.value( "options" ).toObject();
+    REQUIRE( options.value( "enabled" ).toObject().value( "type" ) == QJsonValue( "boolean" ) );
+    REQUIRE( options.value( "disabled" ).toObject().value( "type" ) == QJsonValue( "boolean" ) );
+    REQUIRE( options.value( "tab_id" ).toObject().value( "flag" ) == QJsonValue( "--tab-id" ) );
 }

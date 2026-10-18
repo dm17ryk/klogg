@@ -382,6 +382,29 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
         auto startNewFile = menu.addAction( tr( "Start new file" ) );
         auto pauseOrPlay = menu.addAction( session->isPaused() ? tr( "Play" ) : tr( "Pause" ) );
         QPointer<StreamSession> safeSession = session;
+        const auto tabId = tabIdAt( tab );
+        auto* actionsEnabled = menu.addAction( tr( "Actions enabled" ) );
+        actionsEnabled->setObjectName( QStringLiteral( "actionsEnabledAction" ) );
+        actionsEnabled->setCheckable( true );
+        actionsEnabled->setChecked( tabMetadataValue( tab, ActionsPortKey ).toBool() );
+        actionsEnabled->setEnabled( !tabId.isEmpty() );
+        actionsEnabled->setToolTip( tr( "Enable actions and automatic responses for this tab." ) );
+        LOG_DEBUG << "Created tab Actions toggle: tab_id=" << tabId
+                  << " enabled=" << actionsEnabled->isChecked()
+                  << " available=" << actionsEnabled->isEnabled();
+        connect( actionsEnabled, &QAction::triggered, this,
+                 [ this, tabId, safeSession ]( bool enabled ) {
+                     const auto currentTab = findTabById( tabId );
+                     if ( currentTab < 0 || !safeSession
+                          || streamSessionForTab( currentTab ) != safeSession.data() ) {
+                         LOG_DEBUG << "Ignoring stale tab Actions toggle: tab_id=" << tabId
+                                   << " current_tab=" << currentTab;
+                         return;
+                     }
+                     LOG_DEBUG << "Requested tab Actions toggle: tab_id=" << tabId
+                               << " enabled=" << enabled;
+                     Q_EMIT actionsEnabledChangeRequested( tabId, enabled );
+                 } );
         closeConnection->setEnabled( safeSession
                                      && ( safeSession->isConnectionOpen()
                                           || safeSession->isPaused() ) );

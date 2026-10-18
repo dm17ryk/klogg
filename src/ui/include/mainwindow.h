@@ -51,6 +51,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "commander.h"
 #include "configuration.h"
@@ -236,10 +237,9 @@ class MainWindow : public QMainWindow {
 
   private:
     struct ComCaptureStartOptions {
-        static ComCaptureStartOptions interactive() { return { true, true, false, false }; }
-        static ComCaptureStartOptions restore() { return { false, true, true, true }; }
+        static ComCaptureStartOptions interactive() { return { true, false, false }; }
+        static ComCaptureStartOptions restore() { return { true, true, true }; }
 
-        bool allowActionsPrompt = true;
         bool showErrors = true;
         bool nonBlockingErrors = false;
         bool restoreMode = false;
@@ -272,6 +272,8 @@ class MainWindow : public QMainWindow {
     CommanderResult commanderSetFollowMode( const CommanderRequest& request );
     CommanderResult commanderInvokeAction( const CommanderRequest& request );
     CommanderResult commanderSendAction( const CommanderRequest& request );
+    CommanderResult commanderSetActionsEnabled( const CommanderRequest& request );
+    CommanderResult commanderSelectActionsTab( const CommanderRequest& request );
     CommanderResult commanderWaitResponse( const CommanderRequest& request );
     CommanderResult commanderStartComm( const CommanderRequest& request );
     CommanderResult commanderPlayComm( const CommanderRequest& request );
@@ -296,6 +298,9 @@ class MainWindow : public QMainWindow {
     void updateOpenedFilesMenu();
     void updateHighlightersMenu();
     void updateActionsSendState();
+    QString actionsTabIdForSession( const StreamSession* streamSession ) const;
+    bool isAvailableActionsDestination( const StreamSession* streamSession ) const;
+    void rememberActionsTab( StreamSession* streamSession );
     bool startComCaptureSession( SerialCaptureSettings& settings,
                                  ComCaptureStartOptions options,
                                  QString* errorMessage = nullptr );
@@ -459,7 +464,9 @@ class MainWindow : public QMainWindow {
     PreviewWindow previewWindow_;
     ActionsResponsesWindow actionsResponsesWindow_;
     ActionsResponsesWindow responsesWindow_;
+    // Manual destination only. Each session owns its independent Actions enable flag.
     QPointer<StreamSession> actionsStreamSession_;
+    std::vector<QPointer<StreamSession>> actionTabsMru_;
 
     QTemporaryDir tempDir_;
     std::map<QString, QString> remoteFileSources_;

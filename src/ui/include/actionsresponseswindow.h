@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QVariantList>
 #include <QVariantMap>
 
 class ActionsTableModel;
@@ -8,6 +9,7 @@ class ActionParametersDialog;
 class QLabel;
 class ResponsesTableModel;
 class QCheckBox;
+class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QSortFilterProxyModel;
@@ -25,10 +27,13 @@ class ActionsResponsesWindow : public QWidget {
     void setResponsesOnly( bool responsesOnly );
 
     void setSendAvailable( bool available );
+    void setActionTabs( const QVariantList& tabs, const QString& selectedTabId );
+    QString selectedActionTabId() const;
 
   Q_SIGNALS:
     void sendActionRequested( int actionId );
     void sendActionWithParametersRequested( int actionId, const QVariantMap& parameters );
+    void actionTabSelected( const QString& tabId );
 
   private Q_SLOTS:
     void refreshActions();
@@ -58,6 +63,7 @@ class ActionsResponsesWindow : public QWidget {
     QTableView* actionsTable_ = nullptr;
     QTableView* responsesTable_ = nullptr;
     QWidget* actionsPanel_ = nullptr;
+    QComboBox* actionTabsComboBox_ = nullptr;
     QWidget* responsesPanel_ = nullptr;
     QSplitter* splitter_ = nullptr;
     QCheckBox* autoResponsesCheck_ = nullptr;

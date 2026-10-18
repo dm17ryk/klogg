@@ -216,6 +216,31 @@ bool actionPayloadIsSensitive( const ActionDefinition& action, const QVariantMap
             return field.sensitive && ( parameters.contains( field.name ) || hasDefault );
         } );
 }
+
+bool actionContextIsCurrent( const QPointer<StreamSession>& session, quint64 generation,
+                             bool automatic )
+{
+    if ( !session ) {
+        LOG_DEBUG << "Scheduled action skipped: target session was destroyed";
+        return false;
+    }
+    if ( !session->isConnectionOpen() ) {
+        LOG_DEBUG << "Scheduled action skipped: target connection is closed";
+        return false;
+    }
+    if ( session->actionsGeneration() != generation ) {
+        LOG_DEBUG << "Scheduled action skipped: stale generation=" << generation
+                  << ", currentGeneration=" << session->actionsGeneration();
+        return false;
+    }
+    if ( automatic
+         && ( !session->actionsEnabled() || !ActionsManager::instance().autoResponsesEnabled() ) ) {
+        LOG_DEBUG << "Automatic action skipped: tabEnabled=" << session->actionsEnabled()
+                  << ", globalEnabled=" << ActionsManager::instance().autoResponsesEnabled();
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
@@ -278,12 +303,22 @@ ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
     return result;
 }
 
-bool sendActionDefinition( StreamSession* session, const ActionDefinition& action,
-                           const QVariantMap& parameters, int stepIndex, QString* errorMessage )
+bool sendActionDefinition( StreamSession* session, const ActionDefinition& requestedAction,
+                           const QVariantMap& parameters, int stepIndex, QString* errorMessage,
+                           bool automatic )
 {
+    // Observers may edit the repository synchronously while an action is sent.
+    const auto action = requestedAction;
     if ( session == nullptr || !session->isConnectionOpen() ) {
         LOG_WARNING << "Action id=" << action.id << " rejected because no COM port is active";
         setError( errorMessage, QObject::tr( "No active COM port." ) );
+        return false;
+    }
+
+    const QPointer<StreamSession> safeSession = session;
+    const auto generation = session->actionsGeneration();
+    if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+        setError( errorMessage, QObject::tr( "Automatic actions are disabled for this COM session." ) );
         return false;
     }
 
@@ -304,41 +339,45 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& actio
     const auto repeatCount = effectiveRepeatCount( action );
     const auto firstDelay = qMax( 0, action.parameters.delay );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
-    QPointer<StreamSession> safeSession = session;
     LOG_DEBUG << "Scheduling action id=" << action.id << ", repeats=" << repeatCount
               << ", encoded_bytes=" << encoded.bytes.size()
+              << ", automatic=" << automatic << ", generation=" << generation
               << ( sensitive ? ", sensitive payload" : "" );
 
     for ( int index = 0; index < repeatCount; ++index ) {
         const auto delayMs = firstDelay + ( index * repeatInterval );
+        if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+            setError( errorMessage, QObject::tr( "Action cancelled after its session changed." ) );
+            return false;
+        }
         if ( delayMs <= 0 ) {
-            if ( safeSession ) {
-                LOG_DEBUG << "Sending action id=" << action.id
-                          << " immediately; repeat_index=" << index;
-                safeSession->notifyActionSend( action.id, action.name, stepIndex, observableBytes );
-                safeSession->sendBytes( encoded.bytes, sensitive );
+            LOG_DEBUG << "Sending action id=" << action.id
+                      << " immediately; repeat_index=" << index;
+            safeSession->notifyActionSend( action.id, action.name, stepIndex, observableBytes );
+            if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                setError( errorMessage, QObject::tr( "Action cancelled by its send observer." ) );
+                return false;
             }
-            else {
-                LOG_WARNING << "Skipping immediate action id=" << action.id
-                            << " because its session was destroyed";
-            }
+            safeSession->sendBytes( encoded.bytes, sensitive );
             continue;
         }
 
-        QTimer::singleShot( delayMs, session,
+        QTimer::singleShot( delayMs, safeSession.data(),
                             [ safeSession, actionId = action.id, actionName = action.name,
                               stepIndex, bytes = encoded.bytes, observableBytes, sensitive,
-                              repeatIndex = index ]() {
-                                if ( safeSession && safeSession->isConnectionOpen() ) {
+                              repeatIndex = index, generation, automatic ]() {
+                                if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
                                     LOG_DEBUG << "Sending delayed action id=" << actionId
                                               << "; repeat_index=" << repeatIndex;
                                     safeSession->notifyActionSend( actionId, actionName, stepIndex,
                                                                    observableBytes );
-                                    safeSession->sendBytes( bytes, sensitive );
+                                    if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                                        safeSession->sendBytes( bytes, sensitive );
+                                    }
                                 }
                                 else {
                                     LOG_WARNING << "Skipping delayed action id=" << actionId
-                                                << " because its session is unavailable or closed";
+                                                << " because its execution context changed";
                                 }
                             } );
     }
@@ -347,13 +386,21 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& actio
 }
 
 bool executeResponseDefinition( StreamSession* session,
-                                const ResponseDefinition& response,
+                                const ResponseDefinition& requestedResponse,
                                 const QMap<QString, QString>& captures,
                                 QString* errorMessage )
 {
+    const auto response = requestedResponse;
     if ( session == nullptr ) {
         LOG_WARNING << "Response id=" << response.id << " rejected because target session is null";
         setError( errorMessage, QObject::tr( "No target COM session." ) );
+        return false;
+    }
+
+    const QPointer<StreamSession> safeSession = session;
+    const auto generation = session->actionsGeneration();
+    if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
+        setError( errorMessage, QObject::tr( "No eligible COM session for automatic responses." ) );
         return false;
     }
 
@@ -363,7 +410,7 @@ bool executeResponseDefinition( StreamSession* session,
         inlineAction.sequence = response.response.inlineAction;
         LOG_DEBUG << "Response id=" << response.id << " executing inline action";
         if ( !sendActionDefinition( session, inlineAction, capturesToParameters( captures ), -1,
-                                    errorMessage ) ) {
+                                    errorMessage, true ) ) {
             return false;
         }
     }
@@ -393,43 +440,48 @@ bool executeResponseDefinition( StreamSession* session,
         linkedParameters.push_back( *parameters );
     }
 
-    QPointer<StreamSession> safeSession = session;
     int cumulativeDelay = 0;
     for ( int index = 0; index < linkedActions.size(); ++index ) {
+        if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
+            setError( errorMessage, QObject::tr( "Response cancelled after its session changed." ) );
+            return false;
+        }
         cumulativeDelay += linkedDelays.at( index );
         const auto action = linkedActions.at( index );
         const auto parameters = linkedParameters.at( index );
         if ( cumulativeDelay <= 0 ) {
             LOG_DEBUG << "Response id=" << response.id << " sending linked action index=" << index
                       << " immediately";
-            if ( !sendActionDefinition( session, action, parameters, index, errorMessage ) ) {
+            if ( !sendActionDefinition( safeSession, action, parameters, index, errorMessage, true ) ) {
                 return false;
             }
             continue;
         }
 
         QTimer::singleShot(
-            cumulativeDelay, session,
-            [ safeSession, action, parameters, stepIndex = index, responseId = response.id ]() {
-                if ( safeSession && safeSession->isConnectionOpen() ) {
+            cumulativeDelay, safeSession.data(),
+            [ safeSession, action, parameters, stepIndex = index, responseId = response.id,
+              generation ]() {
+                if ( actionContextIsCurrent( safeSession, generation, true ) ) {
                     LOG_DEBUG << "Response id=" << responseId
                               << " sending delayed linked action index=" << stepIndex;
                     QString ignoredError;
                     if ( !sendActionDefinition( safeSession, action, parameters, stepIndex,
-                                                &ignoredError ) ) {
+                                                &ignoredError, true ) ) {
                         LOG_WARNING << "Response id=" << responseId
                                     << " delayed action failed: " << ignoredError.toStdString();
                     }
                 }
                 else {
                     LOG_WARNING << "Response id=" << responseId
-                                << " skipped delayed action because its session is unavailable";
+                                << " skipped delayed action because its execution context changed";
                 }
             } );
     }
 
-    const auto finalizeResponse = [ safeSession, response, captures ]() {
-        if ( !safeSession ) {
+    const auto finalizeResponse = [ safeSession, response, captures, generation ]() {
+        if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
+            LOG_DEBUG << "Response id=" << response.id << " skipped stale finalization";
             return;
         }
 
@@ -462,7 +514,11 @@ bool executeResponseDefinition( StreamSession* session,
     };
 
     if ( cumulativeDelay > 0 ) {
-        QTimer::singleShot( cumulativeDelay, session, finalizeResponse );
+        if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
+            setError( errorMessage, QObject::tr( "Response cancelled before finalization." ) );
+            return false;
+        }
+        QTimer::singleShot( cumulativeDelay, safeSession.data(), finalizeResponse );
     }
     else {
         finalizeResponse();

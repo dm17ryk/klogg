@@ -789,6 +789,8 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::SetUi
               || request.action == CommanderAction::ActivateUi
               || request.action == CommanderAction::SendAction
+              || request.action == CommanderAction::SetActionsEnabled
+              || request.action == CommanderAction::SelectActionsTab
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
               || request.action == CommanderAction::PlayComm
@@ -824,6 +826,8 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::SetUi
                 || request.action == CommanderAction::ActivateUi
                 || request.action == CommanderAction::SendAction
+                || request.action == CommanderAction::SetActionsEnabled
+                || request.action == CommanderAction::SelectActionsTab
                 || request.action == CommanderAction::WaitResponse
                 || request.action == CommanderAction::StartComm
                 || request.action == CommanderAction::PlayComm

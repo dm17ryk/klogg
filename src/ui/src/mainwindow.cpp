@@ -544,10 +544,19 @@ MainWindow::MainWindow( WindowSession session )
     actionsResponsesWindow_.setWindowTitle( tr( "CILogg - actions" ) );
     connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionRequested, this,
              &MainWindow::sendActionById );
-    connect( &actionsResponsesWindow_,
-             &ActionsResponsesWindow::sendActionWithParametersRequested,
-             this,
-             &MainWindow::sendActionByIdWithParameters );
+    connect( &actionsResponsesWindow_, &ActionsResponsesWindow::sendActionWithParametersRequested,
+             this, &MainWindow::sendActionByIdWithParameters );
+    connect( &actionsResponsesWindow_, &ActionsResponsesWindow::actionTabSelected, this,
+             [ this ]( const QString& tabId ) {
+                 CommanderRequest request;
+                 request.tabId = tabId;
+                 const auto result = commanderSelectActionsTab( request );
+                 if ( !result.ok() ) {
+                     LOG_DEBUG << "Ignoring unavailable Actions destination: tab_id=" << tabId
+                               << " reason=" << result.message;
+                     updateActionsSendState();
+                 }
+             } );
 
     responsesWindow_.setResponsesOnly( true );
     responsesWindow_.setWindowIcon( mainIcon_ );
@@ -569,6 +578,17 @@ MainWindow::MainWindow( WindowSession session )
              &MainWindow::pauseStreamConnectionForTab );
     connect( &mainTabWidget_, &TabbedCrawlerWidget::resumeStreamConnectionRequested, this,
              &MainWindow::resumeStreamConnectionForTab );
+    connect( &mainTabWidget_, &TabbedCrawlerWidget::actionsEnabledChangeRequested, this,
+             [ this ]( const QString& tabId, bool enabled ) {
+                 CommanderRequest request;
+                 request.tabId = tabId;
+                 request.enabled = enabled;
+                 const auto result = commanderSetActionsEnabled( request );
+                 if ( !result.ok() ) {
+                     LOG_DEBUG << "Ignoring tab Actions toggle: tab_id=" << tabId
+                               << " reason=" << result.message;
+                 }
+             } );
     connect( &mainTabWidget_, &TabbedCrawlerWidget::currentChanged, this,
              &MainWindow::currentTabChanged );
 
@@ -728,7 +748,7 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
     case CommanderAction::OpenCom: {
         auto settings = resolveCommanderComSettings( request.comSettings );
         QString errorMessage;
-        if ( !startComCaptureSession( settings, { false, false, true }, &errorMessage ) ) {
+        if ( !startComCaptureSession( settings, { false, true, false }, &errorMessage ) ) {
             return commanderFailure(
                 CommanderResultCode::ExecutionFailed,
                 errorMessage.isEmpty()
@@ -761,6 +781,10 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderFilters( request );
     case CommanderAction::SendAction:
         return commanderSendAction( request );
+    case CommanderAction::SetActionsEnabled:
+        return commanderSetActionsEnabled( request );
+    case CommanderAction::SelectActionsTab:
+        return commanderSelectActionsTab( request );
     case CommanderAction::WaitResponse:
         return commanderWaitResponse( request );
     case CommanderAction::StartComm:
@@ -870,6 +894,10 @@ QVariantMap MainWindow::commanderWindowInfo() const
             comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
             comInfo.insert( QStringLiteral( "isActionsPort" ),
                             isActionsStreamSession( streamSession ) );
+            comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+            comInfo.insert( QStringLiteral( "selectedForActions" ),
+                            streamSession == actionsStreamSession_.data()
+                                && isAvailableActionsDestination( streamSession ) );
             comInfo.insert( QStringLiteral( "responseCounters" ),
                             commanderResponseCounters( streamSession ) );
             tabInfo.insert( QStringLiteral( "com" ), comInfo );
@@ -2072,6 +2100,30 @@ void MainWindow::rebuildComPortsMenu()
         const bool playPauseEnabled = connectionOpen || ( paused && streamSession->canResume() );
         playPauseAction->setEnabled( playPauseEnabled );
 
+        auto* actionsEnabledAction = portMenu->addAction( tr( "Actions enabled" ) );
+        actionsEnabledAction->setObjectName(
+            QStringLiteral( "comPortActionsEnabledAction_%1" ).arg( tabId ) );
+        actionsEnabledAction->setCheckable( true );
+        actionsEnabledAction->setChecked( streamSession->actionsEnabled() );
+        actionsEnabledAction->setToolTip(
+            tr( "Enable actions and automatic responses for this tab." ) );
+        QPointer<StreamSession> safeActionsSession = streamSession;
+        connect( actionsEnabledAction, &QAction::triggered, this,
+                 [ this, tabId, safeActionsSession ]( bool enabled ) {
+                     const auto index = mainTabWidget_.findTabById( tabId );
+                     if ( index < 0 || !safeActionsSession
+                          || mainTabWidget_.streamSessionForTab( index ) != safeActionsSession ) {
+                         LOG_DEBUG << "Ignoring stale COM-menu Actions toggle: tab_id=" << tabId;
+                         return;
+                     }
+                     CommanderRequest request;
+                     request.tabId = tabId;
+                     request.enabled = enabled;
+                     const auto result = commanderSetActionsEnabled( request );
+                     LOG_DEBUG << "COM-menu Actions toggle: tab_id=" << tabId
+                               << " enabled=" << enabled << " success=" << result.ok();
+                 } );
+
         const auto resolveCurrentTab = [ this, tabId, portName ]( const char* actionName ) -> int {
             const auto currentTab = mainTabWidget_.findTabById( tabId );
             if ( currentTab < 0 ) {
@@ -2397,6 +2449,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     auto session = std::make_shared<StreamSession>( settings );
     QPointer<StreamSession> safeSession = session.get();
+    connect( session.get(), &StreamSession::actionsEnabledChanged, this,
+             [ this ]( bool ) { updateActionsSendState(); } );
     connect( session.get(), &StreamSession::connectionOpened, this, [ this, session ] {
         const auto currentFilePath = session->filePath();
         mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
@@ -2475,22 +2529,8 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     session->start();
     mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
 
-    bool designateForActions = settings.useForActions;
-    if ( designateForActions && actionsStreamSession_ && actionsStreamSession_ != session.get() ) {
-        if ( options.allowActionsPrompt ) {
-            const auto reply = QMessageBox::question(
-                this, tr( "Actions COM Port" ),
-                tr( "Are you sure you want to make %1 the actions COM port?" )
-                    .arg( settings.portName ),
-                QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
-            if ( reply != QMessageBox::Yes ) {
-                designateForActions = false;
-            }
-        }
-    }
-    if ( designateForActions ) {
-        actionsStreamSession_ = session.get();
-    }
+    LOG_DEBUG << "Attached independent Actions tab: port=" << settings.portName
+              << " enabled=" << session->actionsEnabled();
 
     updateActionsSendState();
     refreshScriptStatusIndicators();
@@ -2924,41 +2964,50 @@ void MainWindow::sendActionById( int actionId )
         return;
     }
 
-    auto* streamSession = actionsStreamSession_.data();
-    if ( !streamSession || !streamSession->isConnectionOpen() ) {
-        streamSession = currentStreamSession();
-    }
-    if ( ( !streamSession || !streamSession->isConnectionOpen() )
-         && mainTabWidget_.hasOpenStreamSession() ) {
-        streamSession = mainTabWidget_.firstOpenStreamSession();
-    }
-    if ( !streamSession ) {
-        QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
+    // Both the destination and definition must survive a modal parameter editor safely.
+    const ActionDefinition actionSnapshot = *action;
+    updateActionsSendState();
+    QPointer<StreamSession> streamSession = actionsStreamSession_;
+    if ( !isAvailableActionsDestination( streamSession ) ) {
+        LOG_DEBUG << "Manual action rejected: no connected Actions tab";
+        QMessageBox::warning( this, tr( "Send action" ), tr( "No connected Actions tab." ) );
         return;
     }
+    const auto generation = streamSession->actionsGeneration();
 
     QVariantMap parameters;
-    if ( !action->parameters.fields.isEmpty() ) {
-        LOG_DEBUG << "Opening parameter dialog for action id=" << action->id
-                  << ", field_count=" << action->parameters.fields.size();
-        ActionParametersDialog dialog( *action, this );
+    if ( !actionSnapshot.parameters.fields.isEmpty() ) {
+        LOG_DEBUG << "Opening parameter dialog for action id=" << actionSnapshot.id
+                  << ", field_count=" << actionSnapshot.parameters.fields.size();
+        ActionParametersDialog dialog( actionSnapshot, this );
         if ( dialog.exec() != QDialog::Accepted ) {
-            LOG_DEBUG << "Action id=" << action->id << " cancelled in parameter dialog";
+            LOG_DEBUG << "Action id=" << actionSnapshot.id << " cancelled in parameter dialog";
             return;
         }
         parameters = dialog.values();
     }
     else {
-        LOG_DEBUG << "Action id=" << action->id << " has no typed fields; sending directly";
+        LOG_DEBUG << "Action id=" << actionSnapshot.id << " has no typed fields; sending directly";
+    }
+
+    if ( streamSession != actionsStreamSession_ || !isAvailableActionsDestination( streamSession )
+         || streamSession->actionsGeneration() != generation ) {
+        LOG_DEBUG << "Manual action cancelled: captured Actions destination changed while editing";
+        QMessageBox::warning(
+            this, tr( "Send action" ),
+            tr( "The selected Actions tab changed or disconnected. Retry the action." ) );
+        return;
     }
 
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, parameters, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, actionSnapshot, parameters, -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
         return;
     }
+    rememberActionsTab( streamSession );
+    updateActionsSendState();
 }
 
 void MainWindow::sendActionByIdWithParameters( int actionId, const QVariantMap& parameters )
@@ -2969,27 +3018,26 @@ void MainWindow::sendActionByIdWithParameters( int actionId, const QVariantMap& 
         return;
     }
 
-    auto* streamSession = actionsStreamSession_.data();
-    if ( !streamSession || !streamSession->isConnectionOpen() ) {
-        streamSession = currentStreamSession();
-    }
-    if ( ( !streamSession || !streamSession->isConnectionOpen() )
-         && mainTabWidget_.hasOpenStreamSession() ) {
-        streamSession = mainTabWidget_.firstOpenStreamSession();
-    }
-    if ( !streamSession ) {
-        QMessageBox::warning( this, tr( "Send action" ), tr( "No active COM port." ) );
+    const ActionDefinition actionSnapshot = *action;
+    updateActionsSendState();
+    QPointer<StreamSession> streamSession = actionsStreamSession_;
+    if ( !isAvailableActionsDestination( streamSession ) ) {
+        LOG_DEBUG << "Inline manual action rejected: no connected Actions tab";
+        QMessageBox::warning( this, tr( "Send action" ), tr( "No connected Actions tab." ) );
         return;
     }
 
-    LOG_DEBUG << "Sending action id=" << action->id
+    LOG_DEBUG << "Sending action id=" << actionSnapshot.id
               << " with inline parameters, parameter_count=" << parameters.size();
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, parameters, -1, &errorMessage ) ) {
+    if ( !sendActionDefinition( streamSession, actionSnapshot, parameters, -1, &errorMessage ) ) {
         QMessageBox::warning( this, tr( "Send action" ),
                               errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                      : errorMessage );
+        return;
     }
+    rememberActionsTab( streamSession );
+    updateActionsSendState();
 }
 
 void MainWindow::encodingChanged( QAction* action )
@@ -3548,27 +3596,70 @@ CommanderResult MainWindow::commanderSendAction( const CommanderRequest& request
                                  tr( "Action %1 was not found." ).arg( *request.entityId ) );
     }
 
-    auto* crawler = commanderTargetCrawler( request );
-    if ( crawler == nullptr ) {
-        return commanderFailure( CommanderResultCode::NotFound,
-                                 tr( "Requested tab was not found." ) );
-    }
-
-    auto* streamSession = streamSessionForCrawler( crawler );
+    const ActionDefinition actionSnapshot = *action;
+    const bool explicitTab = !request.tabId.isEmpty() || request.tabIndex.has_value();
+    updateActionsSendState();
+    QPointer<StreamSession> streamSession
+        = explicitTab ? streamSessionForCrawler( commanderTargetCrawler( request ) )
+                      : actionsStreamSession_.data();
     if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
+        LOG_DEBUG << "send_action rejected: explicit_tab=" << explicitTab
+                  << " no connected destination";
         return commanderFailure( CommanderResultCode::NotFound,
-                                 tr( "Requested live communication tab was not found." ) );
+                                 explicitTab
+                                     ? tr( "Requested live communication tab was not found." )
+                                     : tr( "No connected Actions tab was found." ) );
     }
 
+    LOG_DEBUG << "send_action routing: explicit_tab=" << explicitTab
+              << " tab_id=" << actionsTabIdForSession( streamSession );
     QString errorMessage;
-    if ( !sendActionDefinition( streamSession, *action, request.actionParameters, -1,
+    if ( !sendActionDefinition( streamSession, actionSnapshot, request.actionParameters, -1,
                                 &errorMessage ) ) {
         return commanderFailure( CommanderResultCode::ExecutionFailed,
                                  errorMessage.isEmpty() ? tr( "Failed to send action." )
                                                         : errorMessage );
     }
 
+    rememberActionsTab( streamSession );
+    updateActionsSendState();
     return commanderSuccess();
+}
+
+CommanderResult MainWindow::commanderSetActionsEnabled( const CommanderRequest& request )
+{
+    if ( !request.enabled.has_value() ) {
+        LOG_DEBUG << "set_actions_enabled rejected: enabled/disabled is missing";
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "set_actions_enabled requires enabled or disabled." ) );
+    }
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        LOG_DEBUG << "set_actions_enabled rejected: requested tab has no communication session";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+    LOG_DEBUG << "Setting tab Actions state: tab_id=" << actionsTabIdForSession( streamSession )
+              << " enabled=" << *request.enabled;
+    streamSession->setActionsEnabled( *request.enabled );
+    updateActionsSendState();
+    return commanderGetCommStatus( request );
+}
+
+CommanderResult MainWindow::commanderSelectActionsTab( const CommanderRequest& request )
+{
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( !isAvailableActionsDestination( streamSession ) ) {
+        LOG_DEBUG << "select_actions_tab rejected: destination is absent, disabled or disconnected";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested tab must be connected with Actions enabled." ) );
+    }
+    rememberActionsTab( streamSession );
+    actionsStreamSession_ = streamSession;
+    LOG_DEBUG << "Selected manual Actions destination: tab_id="
+              << actionsTabIdForSession( streamSession );
+    updateActionsSendState();
+    return commanderGetCommStatus( request );
 }
 
 CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& request )
@@ -3768,6 +3859,10 @@ CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& requ
     comInfo.insert( QStringLiteral( "paused" ), streamSession->isPaused() );
     comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
     comInfo.insert( QStringLiteral( "isActionsPort" ), isActionsStreamSession( streamSession ) );
+    comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+    comInfo.insert( QStringLiteral( "selectedForActions" ),
+                    streamSession == actionsStreamSession_.data()
+                        && isAvailableActionsDestination( streamSession ) );
     comInfo.insert( QStringLiteral( "responseCounters" ),
                     commanderResponseCounters( streamSession ) );
     payload.insert( QStringLiteral( "com" ), comInfo );
@@ -4497,21 +4592,93 @@ StreamSession* MainWindow::currentStreamSession() const
 
 void MainWindow::updateActionsSendState()
 {
-    const auto* streamSession = actionsStreamSession_.data();
-    bool available = false;
-    if ( streamSession != nullptr ) {
-        available = streamSession->isConnectionOpen();
+    refreshComTabIndicators();
+    actionTabsMru_.erase(
+        std::remove_if( actionTabsMru_.begin(), actionTabsMru_.end(),
+                        [ this ]( const QPointer<StreamSession>& candidate ) {
+                            return !candidate || actionsTabIdForSession( candidate ).isEmpty();
+                        } ),
+        actionTabsMru_.end() );
+
+    QVariantList tabs;
+    std::vector<StreamSession*> eligible;
+    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+        auto* candidate = mainTabWidget_.streamSessionForTab( index );
+        if ( !isOpenActionsStreamSession( candidate )
+             || std::find( eligible.cbegin(), eligible.cend(), candidate ) != eligible.cend() ) {
+            continue;
+        }
+        const auto tabId = mainTabWidget_.tabIdAt( index );
+        if ( tabId.isEmpty() ) {
+            LOG_DEBUG << "Skipping Actions destination with no stable tab id: index=" << index;
+            continue;
+        }
+        eligible.push_back( candidate );
+        tabs.push_back( QVariantMap{
+            { QStringLiteral( "tabId" ), tabId },
+            { QStringLiteral( "label" ), tr( "%1 (%2)" )
+                                             .arg( mainTabWidget_.tabDisplayNameAt( index ),
+                                                   candidate->sourceDisplayName() ) } } );
     }
-    else {
-        streamSession = currentStreamSession();
-        available = streamSession && streamSession->isConnectionOpen();
-        if ( !available ) {
-            available = mainTabWidget_.hasOpenStreamSession();
+
+    StreamSession* selected = nullptr;
+    for ( const auto& candidate : actionTabsMru_ ) {
+        if ( std::find( eligible.cbegin(), eligible.cend(), candidate.data() )
+             != eligible.cend() ) {
+            selected = candidate.data();
+            break;
         }
     }
-    actionsResponsesWindow_.setSendAvailable( available );
-    refreshComTabIndicators();
+    if ( selected == nullptr
+         && std::find( eligible.cbegin(), eligible.cend(), actionsStreamSession_.data() )
+                != eligible.cend() ) {
+        selected = actionsStreamSession_.data();
+    }
+    if ( selected == nullptr && !eligible.empty() ) {
+        selected = eligible.front();
+    }
+    actionsStreamSession_ = selected;
+    const auto selectedTabId = actionsTabIdForSession( selected );
+    actionsResponsesWindow_.setActionTabs( tabs, selectedTabId );
+    actionsResponsesWindow_.setSendAvailable( selected != nullptr );
+    LOG_DEBUG << "Actions destinations refreshed: eligible=" << eligible.size()
+              << " remembered=" << actionTabsMru_.size() << " selected_tab=" << selectedTabId;
     updateComPortStatus();
+}
+
+QString MainWindow::actionsTabIdForSession( const StreamSession* streamSession ) const
+{
+    if ( streamSession != nullptr ) {
+        for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+            if ( mainTabWidget_.streamSessionForTab( index ) == streamSession ) {
+                return mainTabWidget_.tabIdAt( index );
+            }
+        }
+    }
+    return {};
+}
+
+bool MainWindow::isAvailableActionsDestination( const StreamSession* streamSession ) const
+{
+    return isOpenActionsStreamSession( streamSession )
+           && !actionsTabIdForSession( streamSession ).isEmpty();
+}
+
+void MainWindow::rememberActionsTab( StreamSession* streamSession )
+{
+    if ( !isAvailableActionsDestination( streamSession ) ) {
+        LOG_DEBUG << "Actions destination was not remembered: no eligible attached tab";
+        return;
+    }
+    actionTabsMru_.erase(
+        std::remove_if( actionTabsMru_.begin(), actionTabsMru_.end(),
+                        [ streamSession ]( const QPointer<StreamSession>& candidate ) {
+                            return !candidate || candidate.data() == streamSession;
+                        } ),
+        actionTabsMru_.end() );
+    actionTabsMru_.insert( actionTabsMru_.begin(), QPointer<StreamSession>{ streamSession } );
+    LOG_DEBUG << "Remembered manual Actions destination: tab_id="
+              << actionsTabIdForSession( streamSession );
 }
 
 void MainWindow::updateComPortStatus()
@@ -4556,7 +4723,7 @@ void MainWindow::refreshComTabIndicators()
 
 bool MainWindow::isActionsStreamSession( const StreamSession* streamSession ) const
 {
-    return streamSession != nullptr && streamSession == actionsStreamSession_.data();
+    return streamSession != nullptr && streamSession->actionsEnabled();
 }
 
 bool MainWindow::isOpenActionsStreamSession( const StreamSession* streamSession ) const
