@@ -1,8 +1,8 @@
 # CILogg log-analysis implementation roadmap
 
-Date: 2026-10-15. Status: first P00-P02 batch implemented and locally validated on `codex/log-analysis-foundation`; remaining P00 release budgets and P03-P24 are pending. All feature entry points require command-line and MCP access.
+Date: 2026-10-15. Status updated 2026-10-18: first P00-P02 batch merged in PR #36; P03a source identity/revisions is implemented and locally validated on `codex/analysis-source-identity`, based on merged master `6c09d654`. Remaining P00 release budgets and P03b-P24 are pending. All feature entry points require command-line and MCP access. Tracking issue: [#37](https://github.com/dm17ryk/klogg/issues/37).
 
-Implementation baseline: `fec85fdf` from `origin/master`. The first batch adds a deterministic benchmark corpus, viewport-bounded pixel wrapping and hit testing, selection-count deferral during drag, wrapped jump visibility, and a BOM/validated-UTF-8 detection fast path with independent fallback detectors. See `docs/log-analysis-baseline.md` for measured evidence and remaining P00 performance gates. No new analysis service or public command is claimed complete in this batch; P03 is the next foundation for counts, charts, and structured analysis.
+Implementation baseline: `fec85fdf` from `origin/master`. The first batch adds a deterministic benchmark corpus, viewport-bounded pixel wrapping and hit testing, selection-count deferral during drag, wrapped jump visibility, and a BOM/validated-UTF-8 detection fast path with independent fallback detectors. See `docs/log-analysis-baseline.md` for measured evidence and remaining P00 performance gates. P03a adds source provenance; P03b bounded scan jobs are next. Public analysis commands remain gated on P03d before counts, charts, and structured analysis are exposed.
 
 ## Objective and baseline
 
@@ -119,6 +119,10 @@ Land four serial PR slices, each usable and testable internally before exposing 
 2. **P03b: bounded scan jobs.** Depends on P03a. Add lifecycle, progress, cancellation, source snapshots and bounded batch delivery, reusing current infrastructure. Exit: a test scan proves backpressure, stale-batch rejection and close/cancel cleanup. Rollback: unregister new internal job types.
 3. **P03c: capture extraction and regex budgets.** Depends on P03b. Add capture semantics and verified engine limits or supervised execution. Exit: exact group/span fixtures and adversarial timeout tests pass without leaked workers. Rollback: remove the new extractor backend; legacy search remains available.
 4. **P03d: shared automation routes.** Depends on P03c. Add command schemas/discovery, dispatch, paged results, status/cancellation and parity tests. Exit: direct-service, CLI and MCP job results agree on fixtures. Rollback: remove the new operation family before reverting services.
+
+P03a contract and validation entry point: `docs/analysis-source-identity.md`. This
+internal slice adds no public feature; P03d remains mandatory before exposing
+analysis consumers.
 
 References to P03 below mean all four slices are available.
 
