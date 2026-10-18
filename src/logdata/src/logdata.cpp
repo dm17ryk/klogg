@@ -96,13 +96,42 @@ LogData::LogData()
 LogData::~LogData()
 {
     LOG_DEBUG << "Destroying log data";
+    {
+        IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+        scopedAccessor.closeSource();
+    }
     operationQueue_.shutdown();
+}
+
+SourceSnapshot LogData::sourceSnapshot() const
+{
+    return IndexingData::ConstAccessor{ indexing_data_.get() }.sourceSnapshot();
+}
+
+bool LogData::isSourceSnapshotCurrent( const SourceSnapshot& snapshot ) const
+{
+    const auto current = sourceSnapshot();
+    const auto accepted = current.sameRevision( snapshot );
+    if ( !accepted ) {
+        LOG_DEBUG << "Source snapshot rejected id=" << snapshot.sourceId.toString()
+                  << " generation=" << snapshot.generation << " revision=" << snapshot.revision
+                  << " currentId=" << current.sourceId.toString()
+                  << " currentGeneration=" << current.generation
+                  << " currentRevision=" << current.revision << " available=" << current.available;
+    }
+    return accepted;
 }
 
 void LogData::setPrefilter( const QString& prefilterPattern )
 {
     IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
-    prefilterPattern_ = prefilterPattern;
+    if ( prefilterPattern_ != prefilterPattern ) {
+        prefilterPattern_ = prefilterPattern;
+        scopedAccessor.invalidateSource( "prefilter-changed" );
+    }
+    else {
+        LOG_DEBUG << "Source prefilter unchanged";
+    }
 }
 
 void LogData::attachFile( const QString& fileName )
@@ -145,7 +174,11 @@ std::unique_ptr<LogFilteredData> LogData::getNewFilteredData() const
 void LogData::reload( QTextCodec* forcedEncoding )
 {
     operationQueue_.interrupt();
-
+    {
+        IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+        scopedAccessor.invalidateSource( "reload-requested" );
+        scopedAccessor.beginSourceUpdate();
+    }
     // Re-open the file, useful in case the file has been moved
     attached_file_->reOpenFile();
 
@@ -182,6 +215,14 @@ void LogData::fileChangedOnDisk( const QString& filename )
 
     if ( !isFileIdChanged && filename != indexingFileName_ ) {
         LOG_INFO << "ignore other file update";
+        return;
+    }
+
+    if ( isFileIdChanged ) {
+        LOG_DEBUG << "Source file identity changed; invalidating even if content is identical";
+        reload();
+        fileChangedOnDisk_ = MonitoredFileStatus::Truncated;
+        Q_EMIT fileChanged( MonitoredFileStatus::Truncated );
         return;
     }
 
@@ -231,10 +272,19 @@ void LogData::checkFileChangesFinished( MonitoredFileStatus status )
     if ( fileChangedOnDisk_ != MonitoredFileStatus::Truncated ) {
         switch ( status ) {
         case MonitoredFileStatus::Truncated:
+            {
+                IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+                scopedAccessor.invalidateSource( "content-changed" );
+                scopedAccessor.beginSourceUpdate();
+            }
             fileChangedOnDisk_ = MonitoredFileStatus::Truncated;
             operationQueue_.enqueueOperation<FullReindexOperation>();
             break;
         case MonitoredFileStatus::DataAdded:
+            {
+                IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+                scopedAccessor.beginSourceUpdate();
+            }
             fileChangedOnDisk_ = MonitoredFileStatus::DataAdded;
             operationQueue_.enqueueOperation<PartialReindexOperation>();
             break;
@@ -280,12 +330,23 @@ LineLength LogData::doGetLineLength( LineNumber line ) const
 void LogData::doSetDisplayEncoding( const char* encoding )
 {
     LOG_DEBUG << "AbstractLogData::setDisplayEncoding: " << encoding;
-    codec_.setCodec( QTextCodec::codecForName( encoding ) );
+    auto* requestedCodec = QTextCodec::codecForName( encoding );
+    if ( !requestedCodec ) {
+        LOG_WARNING << "Source decoding unchanged: unknown encoding " << encoding;
+        return;
+    }
     auto needReload = false;
     auto useGuessedCodec = false;
 
     {
-        IndexingData::ConstAccessor scopedAccessor{ indexing_data_.get() };
+        IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+        if ( codec_.mibEnum() != requestedCodec->mibEnum() ) {
+            codec_.setCodec( requestedCodec );
+            scopedAccessor.invalidateSource( "display-encoding-changed" );
+        }
+        else {
+            LOG_DEBUG << "Source decoding unchanged mib=" << requestedCodec->mibEnum();
+        }
 
         const QTextCodec* currentIndexCodec = scopedAccessor.getForcedEncoding();
         if ( !currentIndexCodec ) {
@@ -295,7 +356,8 @@ void LogData::doSetDisplayEncoding( const char* encoding )
         if ( currentIndexCodec && codec_.mibEnum() != currentIndexCodec->mibEnum() ) {
             if ( codec_.encodingParameters() != EncodingParameters( currentIndexCodec ) ) {
                 needReload = true;
-                useGuessedCodec = codec_.mibEnum() == scopedAccessor.getEncodingGuess()->mibEnum();
+                const auto* guessedCodec = scopedAccessor.getEncodingGuess();
+                useGuessedCodec = guessedCodec && codec_.mibEnum() == guessedCodec->mibEnum();
             }
         }
     }
@@ -375,7 +437,9 @@ LogData::RawLines LogData::getLinesRaw( LineNumber firstLine, LinesCount number 
         klogg::vector<OffsetInFile> endOfLines
             = scopedAccessor.getEndOfLineOffsets( firstLine, number );
 
-        const auto lastByte = endOfLines.back().get();
+        const auto indexedBytes = scopedAccessor.getIndexedSize();
+        rawLines.finalLineProvisional = endOfLines.back().get() > indexedBytes;
+        const auto lastByte = std::min<qint64>( endOfLines.back().get(), indexedBytes );
 
         std::transform(
             endOfLines.begin(), endOfLines.end(), std::back_inserter( rawLines.endOfLines ),
@@ -390,7 +454,10 @@ LogData::RawLines LogData::getLinesRaw( LineNumber firstLine, LinesCount number 
 
         if ( bytesRead != bytesToRead ) {
             LOG_DEBUG << "failed to read " << bytesToRead << " bytes, got " << bytesRead;
+            rawLines.buffer.resize( static_cast<size_t>( std::max( qint64{ 0 }, bytesRead ) ) );
         }
+        LOG_DEBUG << "Raw source batch provisional=" << rawLines.finalLineProvisional
+                  << " firstByte=" << firstByte << " indexedBytes=" << indexedBytes;
 
         LOG_DEBUG << "done reading lines:" << rawLines.buffer.size();
         rawLines.textDecoder = codec_.makeDecoder();
@@ -466,7 +533,9 @@ klogg::vector<QString> LogData::RawLines::decodeLines() const
         size_t currentLineIndex = 0;
         const auto lineFeedWidth = textDecoder.encodingParams.lineFeedWidth;
         for ( const auto& lineEnd : this->endOfLines ) {
-            const auto length = lineEnd - lineStart - lineFeedWidth;
+            const auto syntheticTerminator = finalLineProvisional
+                                             && currentLineIndex + 1 == endOfLines.size();
+            const auto length = lineEnd - lineStart - ( syntheticTerminator ? 1 : lineFeedWidth );
             LOG_DEBUG << "line " << this->startLine.get() + currentLineIndex << ", length "
                       << length;
 
@@ -492,6 +561,7 @@ klogg::vector<QString> LogData::RawLines::decodeLines() const
             decodedLines.push_back( std::move( decodedLine ) );
 
             lineStart = lineEnd;
+            ++currentLineIndex;
         }
     } catch ( const std::bad_alloc& ) {
         LOG_ERROR << "not enough memory";

@@ -61,6 +61,7 @@
 #include "encodingdetector.h"
 #include "linepositionarray.h"
 #include "loadingstatus.h"
+#include "sourcelocation.h"
 
 struct IndexedHash {
     qint64 size = 0;
@@ -84,6 +85,31 @@ public:
     }
 
     ~IndexingDataAccessor() = default;
+
+    SourceSnapshot sourceSnapshot() const
+    {
+        return data_->sourceSnapshot();
+    }
+
+    void invalidateSource( const char* reason )
+    {
+        data_->invalidateSource( reason );
+    }
+
+    quint64 beginSourceUpdate()
+    {
+        return data_->beginSourceUpdate();
+    }
+
+    bool finishSourceUpdate( quint64 updateToken )
+    {
+        return data_->finishSourceUpdate( updateToken );
+    }
+
+    void closeSource()
+    {
+        data_->closeSource();
+    }
 
     qint64 getIndexedSize() const
     {
@@ -192,6 +218,12 @@ public:
     using MutateAccessor = IndexingDataAccessor<IndexingData*, UniqueLock>;
 
 private:
+    SourceSnapshot sourceSnapshot() const;
+    void invalidateSource( const char* reason );
+    quint64 beginSourceUpdate();
+    bool finishSourceUpdate( quint64 updateToken );
+    void closeSource();
+
     qint64 getIndexedSize() const;
 
     IndexedHash getHash() const;
@@ -229,6 +261,13 @@ private:
 
 private:
     mutable SharedMutex dataMutex_;
+
+    const QUuid sourceId_ = QUuid::createUuid();
+    std::shared_ptr<SourceLifetime> sourceLifetime_ = std::make_shared<SourceLifetime>();
+    quint64 sourceGeneration_ = 0;
+    quint64 sourceRevision_ = 0;
+    quint64 sourceUpdateToken_ = 0;
+    bool sourceAvailable_ = false;
 
     using LinePositionArrayType = std::variant<LinePositionArray, FastLinePositionArray>;
     LinePositionArrayType linePosition_;

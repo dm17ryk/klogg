@@ -102,6 +102,10 @@ class LogData : public AbstractLogData {
     // Get the auto-detected encoding for the indexed text.
     QTextCodec* getDetectedEncoding() const;
 
+    // Analysis provenance only; does not hold file contents or pin a mutable file snapshot.
+    SourceSnapshot sourceSnapshot() const;
+    bool isSourceSnapshotCurrent( const SourceSnapshot& snapshot ) const;
+
     void setPrefilter(const QString& prefilterPattern);
 
     struct RawLines {
@@ -109,6 +113,9 @@ class LogData : public AbstractLogData {
 
         klogg::vector<char> buffer;
         klogg::vector<qint64> endOfLines;
+
+        // The final index offset is EOF+1, regardless of the codec's LF width.
+        bool finalLineProvisional = false;
 
         TextDecoder textDecoder;
 
@@ -180,7 +187,7 @@ class LogData : public AbstractLogData {
 
     // Codec to decode text
     TextCodecHolder codec_;
-    MonitoredFileStatus fileChangedOnDisk_;
+    MonitoredFileStatus fileChangedOnDisk_ = MonitoredFileStatus::Unchanged;
 
     QString prefilterPattern_;
 };

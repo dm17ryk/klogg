@@ -68,6 +68,79 @@
 
 constexpr int IndexingBlockSize = 5 * 1024 * 1024;
 
+SourceSnapshot IndexingData::sourceSnapshot() const
+{
+    SourceSnapshot snapshot;
+    snapshot.sourceId = sourceId_;
+    snapshot.generation = sourceGeneration_;
+    snapshot.revision = sourceRevision_;
+    snapshot.indexedBytes = hash_.size;
+    snapshot.lineCount = getNbLines();
+    snapshot.completeLineCount = snapshot.lineCount;
+    snapshot.available = sourceAvailable_ && sourceLifetime_ != nullptr;
+    snapshot.lifetime = sourceLifetime_;
+    if ( snapshot.lineCount > 0_lcount ) {
+        const auto lastLine = LineNumber{ snapshot.lineCount.get() - 1 };
+        // The existing index represents an unterminated final line with EOF + 1.
+        if ( getEndOfLineOffset( lastLine ).get() > snapshot.indexedBytes ) {
+            snapshot.completeLineCount = LinesCount{ lastLine.get() };
+            snapshot.provisionalLineStart
+                = lastLine == 0_lnum ? 0 : getEndOfLineOffset( lastLine - 1_lcount ).get();
+        }
+    }
+    return snapshot;
+}
+
+void IndexingData::invalidateSource( const char* reason )
+{
+    ++sourceGeneration_;
+    ++sourceRevision_;
+    LOG_DEBUG << "Source generation invalidated id=" << sourceId_.toString()
+              << " generation=" << sourceGeneration_ << " revision=" << sourceRevision_
+              << " reason=" << reason;
+}
+
+quint64 IndexingData::beginSourceUpdate()
+{
+    sourceAvailable_ = false;
+    ++sourceRevision_;
+    ++sourceUpdateToken_;
+    LOG_DEBUG << "Source update started id=" << sourceId_.toString()
+              << " generation=" << sourceGeneration_ << " revision=" << sourceRevision_
+              << " updateToken=" << sourceUpdateToken_;
+    return sourceUpdateToken_;
+}
+
+bool IndexingData::finishSourceUpdate( quint64 updateToken )
+{
+    if ( updateToken != sourceUpdateToken_ || !sourceLifetime_ ) {
+        LOG_DEBUG << "Source update rejected id=" << sourceId_.toString()
+                  << " generation=" << sourceGeneration_ << " updateToken=" << updateToken
+                  << " currentUpdateToken=" << sourceUpdateToken_ << " closed="
+                  << ( sourceLifetime_ == nullptr );
+        return false;
+    }
+    sourceAvailable_ = true;
+    ++sourceRevision_;
+    const auto snapshot = sourceSnapshot();
+    LOG_DEBUG << "Source update published id=" << sourceId_.toString()
+              << " generation=" << sourceGeneration_ << " revision=" << sourceRevision_
+              << " indexedBytes=" << snapshot.indexedBytes << " lines=" << snapshot.lineCount
+              << " completeLines=" << snapshot.completeLineCount
+              << " provisional=" << snapshot.provisionalLineStart.has_value();
+    return true;
+}
+
+void IndexingData::closeSource()
+{
+    if ( sourceLifetime_ ) {
+        sourceLifetime_->closed.store( true );
+    }
+    sourceLifetime_.reset();
+    beginSourceUpdate();
+    invalidateSource( "closed" );
+}
+
 qint64 IndexingData::getIndexedSize() const
 {
     return hash_.size;
@@ -128,6 +201,8 @@ void IndexingData::addAll( const klogg::vector<char>& block, LineLength length,
                            const FastLinePositionArray& newLinePosition, QTextCodec* encoding )
 
 {
+    sourceAvailable_ = false;
+    ++sourceRevision_;
     maxLength_ = std::max( maxLength_, length );
     std::visit(
         [ &newLinePosition ]( auto& linePosition ) { linePosition.append_list( newLinePosition ); },
@@ -157,6 +232,8 @@ void IndexingData::setProgress( int progress )
 
 void IndexingData::clear()
 {
+    invalidateSource( "index-cleared" );
+    beginSourceUpdate();
     const auto& config = Configuration::get();
 
     maxLength_ = 0_length;
@@ -605,6 +682,11 @@ void IndexOperation::indexNextBlock( IndexingState& state, const BlockData& bloc
 
 void IndexOperation::doIndex( OffsetInFile initialPosition )
 {
+    quint64 sourceUpdateToken = 0;
+    {
+        IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+        sourceUpdateToken = scopedAccessor.beginSourceUpdate();
+    }
     LOG_INFO << "Indexing file " << fileName_;
     QFile file( fileName_ );
 
@@ -678,11 +760,13 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     LOG_DEBUG << "Indexed up to " << state.pos;
 
     // Check if there is a non LF terminated line at the end of the file
-    if ( !interruptRequest_ && state.file_size > state.pos ) {
+    // Use consumed bytes: a followed file can grow after the initial size sample.
+    const auto indexedBytes = scopedAccessor.getIndexedSize();
+    if ( !interruptRequest_ && indexedBytes > state.pos ) {
         LOG_WARNING << "Non LF terminated file, adding a fake end of line";
 
         FastLinePositionArray line_position;
-        line_position.append( OffsetInFile( state.file_size + 1 ) );
+        line_position.append( OffsetInFile( indexedBytes + 1 ) );
         line_position.setFakeFinalLF();
 
         scopedAccessor.addAll( {}, 0_length, line_position, state.encodingGuess );
@@ -728,8 +812,9 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
         scopedAccessor.clear();
     }
 
-    if ( scopedAccessor.getMaxLength().get()
-         == std::numeric_limits<LineLength::UnderlyingType>::max() ) {
+    const auto linesTooLong = scopedAccessor.getMaxLength().get()
+                              == std::numeric_limits<LineLength::UnderlyingType>::max();
+    if ( linesTooLong ) {
         dispatchToMainThread( [] {
             QMessageBox::critical( nullptr, "CILogg", "Can't index file: some lines are too long",
                                    QMessageBox::Close );
@@ -740,6 +825,9 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
 
     if ( !scopedAccessor.getEncodingGuess() ) {
         scopedAccessor.setEncodingGuess( QTextCodec::codecForLocale() );
+    }
+    if ( !interruptRequest_ && !linesTooLong ) {
+        scopedAccessor.finishSourceUpdate( sourceUpdateToken );
     }
 }
 
