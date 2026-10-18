@@ -9,6 +9,7 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <QUuid>
 
@@ -21,13 +22,51 @@ struct SourceSpan {
     quint64 length = 0;
 };
 
-struct SourceLocation {
-    QUuid sourceId;
-    quint64 generation = 0;
-    quint64 revision = 0;
-    LineNumber line = 0_lnum;
-    bool provisional = false;
+class SourceLocation {
+public:
+    const QUuid& sourceId() const
+    {
+        return sourceId_;
+    }
+    quint64 generation() const
+    {
+        return generation_;
+    }
+    quint64 revision() const
+    {
+        return revision_;
+    }
+    LineNumber line() const
+    {
+        return line_;
+    }
+    bool provisional() const
+    {
+        return provisional_;
+    }
+
+    // Captures can add/change their span; accepts() validates it before use.
     std::optional<SourceSpan> span;
+
+private:
+    SourceLocation( QUuid sourceId, quint64 generation, quint64 revision, LineNumber line,
+                    bool provisional, std::optional<SourceSpan> sourceSpan )
+        : span( std::move( sourceSpan ) )
+        , sourceId_( std::move( sourceId ) )
+        , generation_( generation )
+        , revision_( revision )
+        , line_( line )
+        , provisional_( provisional )
+    {
+    }
+
+    QUuid sourceId_;
+    quint64 generation_;
+    quint64 revision_;
+    LineNumber line_;
+    bool provisional_;
+
+    friend struct SourceSnapshot;
 };
 
 // Weak ownership lets results detect close without keeping LogData/files alive.

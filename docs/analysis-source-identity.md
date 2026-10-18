@@ -37,6 +37,10 @@ same generation. Locations in a provisional line require the exact revision:
 when bytes are appended, consumers must replace that line's contributions
 starting at the previous provisional byte offset, rather than count it twice.
 Generation changes reject all previous locations. Closed sources reject locations.
+Location provenance is private and exposed through read-only accessors; callers
+can adjust the optional span, but cannot relabel an old provisional result as a
+completed-line result. Acceptance also checks current completion status and span
+overflow.
 
 Use `LogData::isSourceSnapshotCurrent(snapshot)` before and after reading a scan
 batch; reject/retry the batch on a revision mismatch. For navigation, obtain a
@@ -56,6 +60,13 @@ remain unavailable. `LogData` invalidates synchronously on explicit reload and
 decoding/prefilter changes. A changed file ID forces full reindexing even when
 replacement bytes are identical; normal same-file appends keep their generation.
 The file-change status now has an explicit initial `Unchanged` value.
+Data-read failures and incomplete header/tail hash reads discard the index and
+report unsuccessful completion. Hashes cover only the consumed byte watermark.
+Encoding changes that require a new line layout mark the source unavailable
+inside the same lock as the codec change. File checks carry a reload epoch;
+superseded callbacks cannot schedule partial indexing, and pending full reloads
+take priority over watcher checks and partial updates. A newer explicit full
+reload can still replace an older pending full reload.
 
 Debug diagnostics record source UUID, generation/revision, update token,
 publication/rejection reason, byte/line watermarks and provisional status without
@@ -66,8 +77,9 @@ The provisional-line fixture exposed an existing UTF-16 tail decoding error:
 the index uses a one-byte synthetic end marker, but decoding subtracted the
 codec's two-byte newline width and lost the last code unit. Raw batches now
 identify provisional tails, subtract only the synthetic marker in that case,
-and read no bytes past the indexed watermark. Search input also excludes unread
-padding after EOF; a short read reduces the buffer to the actual bytes received.
+and read no bytes past the indexed watermark. A short source read discards the
+entire raw batch, including its line offsets, so text decoding and search cannot
+use stale offsets or unread padding. Decoding also validates each buffer range.
 
 ## Validation and rollback
 
@@ -76,6 +88,9 @@ unterminated appends, repeated partial-line extension, UTF-16 byte watermarks an
 Unicode span units, same-size rewrites, truncation, identical-byte replacement,
 forced reindex/decoding changes, prefilters, distinct opens, retained lifetime
 tokens after close, empty/interrupted loads and superseded publication.
+The `[review]` cases add short raw batches, invalid locations, queued stale
+file-check callbacks, repeated forced encodings, and injected data/hash failures
+for both full and partial indexing, including short-positive and EOF hash reads.
 
 Run `cilogg_itests.exe '[source]' -platform offscreen`, then the complete local
 CTest suite. This internal slice can be reverted independently while no analysis
@@ -103,3 +118,17 @@ Evidence (2026-10-18, based on merged master `6c09d654`):
   and complete runtime validation supplement that attribution.
 
 This slice was implemented locally without copying donor source or adding dependencies.
+
+Sourcery review follow-up (2026-10-18):
+
+- Before the fixes, the short-read, malformed-location and queued-reload
+  regressions failed eight assertions across three cases.
+- Final `[source]` coverage passes 524 assertions across 11 cases, including
+  injected negative data reads and negative/short-positive/EOF hash reads in
+  full and partial indexing.
+- Full local CTest passes 4/4 in 420.32 seconds
+  (`build_root/pr38-review-full-ctest.txt`). The application, portable application,
+  grep and both test binaries build with MSVC/installed Qt 6.10.1.
+- Isolated native MCP smoke and CLI/MCP wrap, encoding detection and Unicode
+  grep parity pass; the isolated application closes cleanly. Independent C++
+  and general reviews have no remaining findings.

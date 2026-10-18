@@ -581,8 +581,8 @@ void IndexOperation::guessEncoding( const klogg::vector<char>& block,
               << state.encodingParams.lineFeedWidth;
 }
 
-std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
-                                                            BlockPrefetcher& blockPrefetcher )
+IndexOperation::ReadResult IndexOperation::readFileInBlocks( QFile& file,
+                                                             BlockPrefetcher& blockPrefetcher )
 {
     using namespace std::chrono;
     using clock = high_resolution_clock;
@@ -591,21 +591,24 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
 
     int sentBlocksCount = 0;
 
-    microseconds ioDuration{};
+    ReadResult result;
     while ( !file.atEnd() ) {
 
         if ( interruptRequest_ ) {
             break;
         }
 
-        BlockData blockData{ file.pos(), new klogg::vector<char>( IndexingBlockSize ) };
+        auto buffer = std::make_unique<BlockBuffer>( IndexingBlockSize );
+        BlockData blockData{ file.pos(), buffer.get() };
 
         clock::time_point ioT1 = clock::now();
         const auto readBytes
             = file.read( blockData.second->data(), klogg::ssize( *blockData.second ) );
 
-        if ( readBytes < 0 ) {
-            LOG_ERROR << "Reading past the end of file";
+        if ( readBytes < 0 || ( readBytes == 0 && !file.atEnd() ) ) {
+            LOG_ERROR << "Index read failed offset=" << blockData.first
+                      << " bytes=" << readBytes << " error=" << file.errorString();
+            result.successful = false;
             break;
         }
 
@@ -615,25 +618,39 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
 
         clock::time_point ioT2 = clock::now();
 
-        ioDuration += duration_cast<microseconds>( ioT2 - ioT1 );
+        result.duration += duration_cast<microseconds>( ioT2 - ioT1 );
 
         if ( sentBlocksCount % 10 == 0 ) {
             LOG_INFO << "Sending block " << blockData.first << " size " << blockData.second->size();
         }
 
-        while ( !blockPrefetcher.try_put( std::move( blockData ) ) && !interruptRequest_ ) {
+        bool accepted = false;
+        while ( !interruptRequest_ ) {
+            if ( blockPrefetcher.try_put( blockData ) ) {
+                buffer.release();
+                accepted = true;
+                break;
+            }
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        }
+        if ( !accepted ) {
+            break;
         }
         sentBlocksCount++;
     }
 
-    auto lastBlock = std::make_pair( -1, new klogg::vector<char>{} );
-    while ( !blockPrefetcher.try_put( lastBlock ) && !interruptRequest_ ) {
+    auto lastBuffer = std::make_unique<BlockBuffer>();
+    const BlockData lastBlock{ -1, lastBuffer.get() };
+    while ( !interruptRequest_ ) {
+        if ( blockPrefetcher.try_put( lastBlock ) ) {
+            lastBuffer.release();
+            break;
+        }
         std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
     }
 
     LOG_INFO << "IO thread done";
-    return ioDuration;
+    return result;
 }
 
 void IndexOperation::indexNextBlock( IndexingState& state, const BlockData& blockData )
@@ -680,7 +697,7 @@ void IndexOperation::indexNextBlock( IndexingState& state, const BlockData& bloc
     LOG_DEBUG << "Indexing block " << blockBeginning << " done";
 }
 
-void IndexOperation::doIndex( OffsetInFile initialPosition )
+bool IndexOperation::doIndex( OffsetInFile initialPosition )
 {
     quint64 sourceUpdateToken = 0;
     {
@@ -688,7 +705,8 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
         sourceUpdateToken = scopedAccessor.beginSourceUpdate();
     }
     LOG_INFO << "Indexing file " << fileName_;
-    QFile file( fileName_ );
+    auto ownedFile = createFile();
+    auto& file = *ownedFile;
 
     if ( !( file.isOpen() || file.open( QIODevice::ReadOnly ) ) ) {
         // TODO: Check that the file is seekable?
@@ -702,7 +720,7 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
 
         scopedAccessor.setProgress( 100 );
         Q_EMIT indexingProgressed( 100 );
-        return;
+        return !interruptRequest_;
     }
 
     LOG_INFO << "File size " << file.size();
@@ -751,11 +769,24 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     tbb::flow::make_edge( blockQueue, blockParser );
     tbb::flow::make_edge( blockParser, blockPrefetcher.decrementer() );
 
-    file.seek( state.pos );
-    ioDuration = readFileInBlocks( file, blockPrefetcher );
+    const auto seekSucceeded = file.seek( state.pos );
+    const auto readResult = seekSucceeded ? readFileInBlocks( file, blockPrefetcher )
+                                          : ReadResult{ {}, false };
+    ioDuration = readResult.duration;
     indexingGraph.wait_for_all();
 
     IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
+    const auto discardIndex = [ &scopedAccessor ] {
+        scopedAccessor.clear();
+        scopedAccessor.setEncodingGuess( QTextCodec::codecForLocale() );
+        return false;
+    };
+
+    if ( !readResult.successful ) {
+        LOG_ERROR << "Index discarded after I/O failure source=" << fileName_
+                  << " indexedBytes=" << scopedAccessor.getIndexedSize();
+        return discardIndex();
+    }
 
     LOG_DEBUG << "Indexed up to " << state.pos;
 
@@ -773,9 +804,18 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     }
 
     const auto endFilePos = file.pos();
-    file.reset();
+    if ( !file.reset() ) {
+        LOG_ERROR << "Index discarded: cannot seek for header hash";
+        return discardIndex();
+    }
     QByteArray hashBuffer( IndexingBlockSize, Qt::Uninitialized );
-    const auto headerHashSize = file.read( hashBuffer.data(), hashBuffer.size() );
+    const auto expectedHeaderSize = std::min<qint64>( hashBuffer.size(), endFilePos );
+    const auto headerHashSize = file.read( hashBuffer.data(), expectedHeaderSize );
+    if ( headerHashSize != expectedHeaderSize ) {
+        LOG_ERROR << "Index discarded: incomplete header hash expected=" << expectedHeaderSize
+                  << " actual=" << headerHashSize << " error=" << file.errorString();
+        return discardIndex();
+    }
     FileDigest fastHashDigest;
     fastHashDigest.addData( hashBuffer.data(), static_cast<size_t>( headerHashSize ) );
 
@@ -786,8 +826,16 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     }
     else {
         const auto tailHashOffset = endFilePos - hashBuffer.size();
-        file.seek( tailHashOffset );
+        if ( !file.seek( tailHashOffset ) ) {
+            LOG_ERROR << "Index discarded: cannot seek for tail hash offset=" << tailHashOffset;
+            return discardIndex();
+        }
         const auto tailHashSize = file.read( hashBuffer.data(), hashBuffer.size() );
+        if ( tailHashSize != hashBuffer.size() ) {
+            LOG_ERROR << "Index discarded: incomplete tail hash expected=" << hashBuffer.size()
+                      << " actual=" << tailHashSize << " error=" << file.errorString();
+            return discardIndex();
+        }
         fastHashDigest.reset();
         fastHashDigest.addData( hashBuffer.data(), static_cast<size_t>( tailHashSize ) );
         scopedAccessor.setTailHash( fastHashDigest.digest(), tailHashOffset, tailHashSize );
@@ -827,8 +875,9 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
         scopedAccessor.setEncodingGuess( QTextCodec::codecForLocale() );
     }
     if ( !interruptRequest_ && !linesTooLong ) {
-        scopedAccessor.finishSourceUpdate( sourceUpdateToken );
+        return scopedAccessor.finishSourceUpdate( sourceUpdateToken );
     }
+    return false;
 }
 
 // Called in the worker thread's context
@@ -845,12 +894,11 @@ OperationResult FullIndexOperation::run()
             scopedAccessor.forceEncoding( forcedEncoding_ );
         }
 
-        doIndex( 0_offset );
+        const auto result = doIndex( 0_offset );
 
         LOG_INFO << "FullIndexOperation: ... finished, interrupt = "
                  << static_cast<bool>( interruptRequest_ );
 
-        const auto result = interruptRequest_ ? false : true;
         Q_EMIT indexingFinished( result );
         return result;
     } catch ( const std::exception& err ) {
@@ -882,11 +930,10 @@ OperationResult PartialIndexOperation::run()
 
         Q_EMIT indexingProgressed( 0 );
 
-        doIndex( initialPosition );
+        const auto result = doIndex( initialPosition );
 
         LOG_INFO << "PartialIndexOperation: ... finished counting.";
 
-        const auto result = interruptRequest_ ? false : true;
         Q_EMIT indexingFinished( result );
         return result;
     } catch ( const std::exception& err ) {

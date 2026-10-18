@@ -176,6 +176,8 @@ class LogData : public AbstractLogData {
     std::shared_ptr<IndexingData> indexing_data_;
 
     OperationQueue operationQueue_;
+    // Mutating requests and their completion slots run on this QObject's owner thread.
+    quint64 sourceCheckEpoch_ = 0;
 
     QString indexingFileName_;
     // mutable std::unique_ptr<QFile> attached_file_;

@@ -328,9 +328,15 @@ protected:
     using BlockData = std::pair<OffsetInFile::UnderlyingType, BlockBuffer*>;
     using BlockPrefetcher = tbb::flow::limiter_node<BlockData>;
 
-    // Returns the total size indexed
+    // Failed reads discard the index and return false.
     // Modify the passed linePosition and maxLength
-    void doIndex( OffsetInFile initialPosition );
+    bool doIndex( OffsetInFile initialPosition );
+
+    // Injectable file boundary for deterministic I/O-failure tests.
+    virtual std::unique_ptr<QFile> createFile() const
+    {
+        return std::make_unique<QFile>( fileName_ );
+    }
 
     QString fileName_;
     std::shared_ptr<IndexingData> indexing_data_;
@@ -343,7 +349,11 @@ private:
     void guessEncoding( const BlockBuffer& block, IndexingData::MutateAccessor& scopedAccessor,
                         IndexingState& state ) const;
 
-    std::chrono::microseconds readFileInBlocks( QFile& file, BlockPrefetcher& blockPrefetcher );
+    struct ReadResult {
+        std::chrono::microseconds duration{};
+        bool successful = true;
+    };
+    ReadResult readFileInBlocks( QFile& file, BlockPrefetcher& blockPrefetcher );
     void indexNextBlock( IndexingState& state, const BlockData& blockData );
 };
 

@@ -6,6 +6,7 @@
 #include <catch2/catch.hpp>
 
 #include <limits>
+#include <type_traits>
 
 #include <QFile>
 #include <QSignalSpy>
@@ -16,6 +17,73 @@
 #include "test_utils.h"
 
 namespace {
+enum class ReadFault { Error, Short, Eof };
+
+class FailingReadFile : public QFile {
+public:
+    FailingReadFile( const QString& path, int failOnRead, ReadFault fault,
+                     std::shared_ptr<qint64> observedRead )
+        : QFile( path )
+        , failOnRead_( failOnRead )
+        , fault_( fault )
+        , observedRead_( std::move( observedRead ) )
+    {
+    }
+
+protected:
+    qint64 readData( char* bytes, qint64 size ) override
+    {
+        if ( ++readCount_ == failOnRead_ ) {
+            switch ( fault_ ) {
+            case ReadFault::Error:
+                setErrorString( "injected read failure" );
+                *observedRead_ = -1;
+                break;
+            case ReadFault::Short:
+                *observedRead_ = QFile::readData( bytes, size / 2 );
+                break;
+            case ReadFault::Eof:
+                *observedRead_ = 0;
+                break;
+            }
+            return *observedRead_;
+        }
+        return QFile::readData( bytes, size );
+    }
+
+private:
+    int failOnRead_;
+    ReadFault fault_;
+    std::shared_ptr<qint64> observedRead_;
+    int readCount_ = 0;
+};
+
+template <typename Operation>
+class FailingReadOperation : public Operation {
+public:
+    FailingReadOperation( const QString& path, const std::shared_ptr<IndexingData>& data,
+                          AtomicFlag& interrupt, int failOnRead, ReadFault fault,
+                          std::shared_ptr<qint64> observedRead )
+        : Operation( path, data, interrupt )
+        , failOnRead_( failOnRead )
+        , fault_( fault )
+        , observedRead_( std::move( observedRead ) )
+    {
+    }
+
+protected:
+    std::unique_ptr<QFile> createFile() const override
+    {
+        return std::make_unique<FailingReadFile>( this->fileName_, failOnRead_, fault_,
+                                                  observedRead_ );
+    }
+
+private:
+    int failOnRead_;
+    ReadFault fault_;
+    std::shared_ptr<qint64> observedRead_;
+};
+
 void writeSourceData( const QString& path, const QByteArray& bytes,
                       QIODevice::OpenMode mode = QIODevice::WriteOnly | QIODevice::Truncate )
 {
@@ -251,9 +319,11 @@ TEST_CASE( "Source watermarks use bytes and spans use UTF-16 units", "[logdata][
     CHECK( snapshot.accepts( *location ) );
     CHECK_FALSE(
         snapshot.location( 0_lnum, SourceSpan{ std::numeric_limits<quint64>::max(), 1 } ) );
-    auto future = *location;
-    ++future.revision;
-    CHECK_FALSE( snapshot.accepts( future ) );
+    auto futureSnapshot = snapshot;
+    ++futureSnapshot.revision;
+    const auto future = futureSnapshot.location( 1_lnum );
+    REQUIRE( future );
+    CHECK_FALSE( snapshot.accepts( *future ) );
 
     finished.clear();
     data.reload( QTextCodec::codecForName( "UTF-8" ) );
@@ -310,4 +380,157 @@ TEST_CASE( "Superseded indexing cannot publish an old source watermark", "[logda
     access.closeSource();
     REQUIRE_FALSE( access.finishSourceUpdate( closedUpdate ) );
     REQUIRE_FALSE( access.sourceSnapshot().available );
+}
+
+TEST_CASE( "Short source reads discard incomplete indexed batches", "[logdata][source][review]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "short.log" );
+    writeSourceData( path, "first\nsecond\n" );
+    LogData data;
+    SafeQSignalSpy finished( &data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    data.attachFile( path );
+    REQUIRE( finished.safeWait() );
+    // Do not process watcher events: the line offsets still describe the old bytes.
+    writeSourceData( path, "fir" );
+    const auto raw = data.getLinesRaw( 0_lnum, 2_lcount );
+    CHECK( raw.buffer.empty() );
+    CHECK( raw.endOfLines.empty() );
+    CHECK( raw.decodeLines().empty() );
+    CHECK( raw.buildUtf8View().empty() );
+}
+
+TEST_CASE( "Locations reject malformed spans and inconsistent completion status",
+           "[logdata][source][review]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "locations.log" );
+    writeSourceData( path, "first\npartial" );
+    LogData data;
+    SafeQSignalSpy finished( &data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    data.attachFile( path );
+    REQUIRE( finished.safeWait() );
+    const auto snapshot = data.sourceSnapshot();
+    auto location = snapshot.location( 0_lnum, SourceSpan{ 0, 1 } );
+    REQUIRE( location );
+    location->span = SourceSpan{ std::numeric_limits<quint64>::max(), 1 };
+    CHECK_FALSE( snapshot.accepts( *location ) );
+    location->span = SourceSpan{ 0, 1 };
+    auto inconsistent = snapshot;
+    inconsistent.completeLineCount = 0_lcount;
+    CHECK_FALSE( inconsistent.accepts( *location ) );
+    // Only the snapshot factory may create provenance; consumers can edit validated spans.
+    CHECK_FALSE( std::is_default_constructible_v<SourceLocation> );
+}
+
+TEST_CASE( "A late file check cannot replace an explicit forced reload",
+           "[logdata][source][review]" )
+{
+    const auto newestUtf8 = GENERATE( false, true );
+    CAPTURE( newestUtf8 );
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "reload.log" );
+    writeSourceData( path, "a\nb\n" );
+    LogData data;
+    SafeQSignalSpy finished( &data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    data.attachFile( path );
+    REQUIRE( finished.safeWait() );
+    REQUIRE( data.getNbLine() == 2_lcount );
+    finished.clear();
+    writeSourceData( path, "c\n", QIODevice::WriteOnly | QIODevice::Append );
+    // The queued check completion cannot run until the GUI event loop resumes below.
+    notifySourceChanged( data, path );
+    data.reload( QTextCodec::codecForName( "UTF-16LE" ) );
+    if ( newestUtf8 ) {
+        data.reload( QTextCodec::codecForName( "UTF-8" ) );
+    }
+    notifySourceChanged( data, path );
+    REQUIRE( finished.safeWait() );
+    // UTF-16LE has no LF code point in these byte pairs; a stale ASCII partial index has 3.
+    CHECK( data.getNbLine() == LinesCount{ newestUtf8 ? 3u : 1u } );
+    CHECK( data.sourceSnapshot().available );
+}
+
+TEST_CASE( "Decoding reindex never exposes an available old-layout snapshot",
+           "[logdata][source][review]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "decode-reindex.log" );
+    writeSourceData( path, "a\nb\n" );
+    LogData data;
+    SafeQSignalSpy finished( &data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    data.attachFile( path );
+    REQUIRE( finished.safeWait() );
+    const auto before = data.sourceSnapshot();
+    finished.clear();
+    data.setDisplayEncoding( "UTF-16LE" );
+    const auto pending = data.sourceSnapshot();
+    CHECK_FALSE( data.isSourceSnapshotCurrent( before ) );
+    if ( pending.available ) {
+        CHECK( pending.lineCount == 1_lcount );
+    }
+    REQUIRE( finished.safeWait() );
+    const auto indexed = data.sourceSnapshot();
+    REQUIRE( indexed.available );
+    CHECK( indexed.lineCount == 1_lcount );
+    CHECK( indexed.generation > before.generation );
+}
+
+TEST_CASE( "Read failures never publish successful full or partial indexes",
+           "[logdata][source][review]" )
+{
+    const auto partial = GENERATE( false, true );
+    // First/later data blocks, header hash, tail hash.
+    const auto faultCase
+        = GENERATE( std::make_pair( 1, ReadFault::Error ), std::make_pair( 2, ReadFault::Error ),
+                    std::make_pair( 3, ReadFault::Error ), std::make_pair( 4, ReadFault::Error ),
+                    std::make_pair( 3, ReadFault::Short ), std::make_pair( 4, ReadFault::Short ),
+                    std::make_pair( 3, ReadFault::Eof ), std::make_pair( 4, ReadFault::Eof ) );
+    const auto failOnRead = faultCase.first;
+    const auto fault = faultCase.second;
+    CAPTURE( partial, failOnRead, static_cast<int>( fault ) );
+    auto observedRead = std::make_shared<qint64>( -2 );
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "read-error.log" );
+    writeSourceData( path, "initial\n" );
+    auto data = std::make_shared<IndexingData>();
+    AtomicFlag interrupt;
+    if ( partial ) {
+        FullIndexOperation initial( path, data, interrupt );
+        REQUIRE( std::get<bool>( initial.run() ) );
+        REQUIRE( IndexingData::ConstAccessor{ data.get() }.sourceSnapshot().available );
+    }
+    writeSourceData( path, QByteArray( 6 * 1024 * 1024, 'x' ),
+                     QIODevice::WriteOnly | ( partial ? QIODevice::Append : QIODevice::Truncate ) );
+    std::unique_ptr<IndexOperation> operation;
+    if ( partial ) {
+        operation = std::make_unique<FailingReadOperation<PartialIndexOperation>>(
+            path, data, interrupt, failOnRead, fault, observedRead );
+    }
+    else {
+        operation = std::make_unique<FailingReadOperation<FullIndexOperation>>(
+            path, data, interrupt, failOnRead, fault, observedRead );
+    }
+    QSignalSpy finished( operation.get(), &IndexOperation::indexingFinished );
+    CHECK_FALSE( std::get<bool>( operation->run() ) );
+    if ( fault == ReadFault::Error ) {
+        CHECK( *observedRead == -1 );
+    }
+    else if ( fault == ReadFault::Short ) {
+        CHECK( *observedRead > 0 );
+    }
+    else {
+        CHECK( *observedRead == 0 );
+    }
+    REQUIRE( finished.count() == 1 );
+    CHECK_FALSE( finished.takeFirst().front().toBool() );
+    const auto snapshot = IndexingData::ConstAccessor{ data.get() }.sourceSnapshot();
+    CHECK_FALSE( snapshot.available );
+    CHECK( snapshot.indexedBytes == 0 );
+    CHECK( snapshot.lineCount == 0_lcount );
 }

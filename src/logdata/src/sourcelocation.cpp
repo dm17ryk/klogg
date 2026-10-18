@@ -31,8 +31,12 @@ std::optional<SourceLocation> SourceSnapshot::location( LineNumber line,
 
 bool SourceSnapshot::accepts( const SourceLocation& location ) const
 {
-    return available && isOpen() && sourceId == location.sourceId
-           && generation == location.generation && location.revision <= revision
-           && location.line < lineCount
-           && ( !location.provisional || location.revision == revision );
+    const auto spanValid
+        = !location.span
+          || location.span->length <= std::numeric_limits<quint64>::max() - location.span->start;
+    return available && isOpen() && sourceId == location.sourceId()
+           && generation == location.generation() && location.revision() <= revision
+           && location.line() < lineCount && spanValid
+           && location.provisional() == ( location.line() >= completeLineCount )
+           && ( !location.provisional() || location.revision() == revision );
 }

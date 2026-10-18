@@ -108,8 +108,19 @@ class PartialReindexOperation : public LogDataOperation {
 
 // Attaching a new file (change name + full index)
 class CheckDataChangesOperation : public LogDataOperation {
+  public:
+    explicit CheckDataChangesOperation( quint64 sourceEpoch )
+        : sourceEpoch_( sourceEpoch )
+    {
+    }
+
+    quint64 sourceEpoch() const { return sourceEpoch_; }
+
   protected:
     void doStart( LogDataWorker& workerThread ) const override;
+
+  private:
+    quint64 sourceEpoch_;
 };
 
 class OperationQueue {
@@ -128,6 +139,7 @@ class OperationQueue {
     }
 
     void finishOperationAndStartNext();
+    bool isCurrentFileCheck( quint64 sourceEpoch ) const;
 
   private:
     using OperationVariant = std::variant<std::monostate, AttachOperation, FullReindexOperation,

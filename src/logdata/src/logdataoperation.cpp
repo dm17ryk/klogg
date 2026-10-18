@@ -124,11 +124,23 @@ void OperationQueue::enqueueOperation( OperationVariant&& operation )
     LOG_INFO << "Enqueue operation " << operation.index() << ", now executing "
              << executingOperation_.index();
 
-    pendingOperation_ = std::move(operation);
+    if ( std::holds_alternative<FullReindexOperation>( pendingOperation_ )
+         && !std::holds_alternative<FullReindexOperation>( operation ) ) {
+        LOG_DEBUG << "Preserving pending full reindex; ignored operation=" << operation.index();
+        return;
+    }
+    pendingOperation_ = std::move( operation );
 
     if ( executingOperation_.index() == 0 ) {
         tryStartPendingOperation();
     }
+}
+
+bool OperationQueue::isCurrentFileCheck( quint64 sourceEpoch ) const
+{
+    ScopedLock guard( mutex_ );
+    const auto* check = std::get_if<CheckDataChangesOperation>( &executingOperation_ );
+    return check != nullptr && check->sourceEpoch() == sourceEpoch;
 }
 
 void OperationQueue::finishOperationAndStartNext()

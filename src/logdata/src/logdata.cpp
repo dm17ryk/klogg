@@ -173,6 +173,8 @@ std::unique_ptr<LogFilteredData> LogData::getNewFilteredData() const
 
 void LogData::reload( QTextCodec* forcedEncoding )
 {
+    ++sourceCheckEpoch_;
+    LOG_DEBUG << "Reload supersedes file checks epoch=" << sourceCheckEpoch_;
     operationQueue_.interrupt();
     {
         IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
@@ -234,7 +236,7 @@ void LogData::fileChangedOnDisk( const QString& filename )
         attached_file_->reOpenFile();
     }
 
-    operationQueue_.enqueueOperation<CheckDataChangesOperation>();
+    operationQueue_.enqueueOperation<CheckDataChangesOperation>( sourceCheckEpoch_ );
 }
 
 void LogData::indexingFinished( LoadingStatus status )
@@ -266,6 +268,13 @@ void LogData::indexingFinished( LoadingStatus status )
 void LogData::checkFileChangesFinished( MonitoredFileStatus status )
 {
     attached_file_->detachReader();
+
+    if ( !operationQueue_.isCurrentFileCheck( sourceCheckEpoch_ ) ) {
+        LOG_DEBUG << "Ignoring superseded file-check result epoch=" << sourceCheckEpoch_
+                  << " status=" << static_cast<uint8_t>( status );
+        operationQueue_.finishOperationAndStartNext();
+        return;
+    }
 
     LOG_INFO << "File " << indexingFileName_ << " status " << static_cast<uint8_t>( status );
 
@@ -360,6 +369,10 @@ void LogData::doSetDisplayEncoding( const char* encoding )
                 useGuessedCodec = guessedCodec && codec_.mibEnum() == guessedCodec->mibEnum();
             }
         }
+        if ( needReload ) {
+            scopedAccessor.beginSourceUpdate();
+            LOG_DEBUG << "Source unavailable before decoding reindex mib=" << codec_.mibEnum();
+        }
     }
 
     if ( needReload ) {
@@ -453,8 +466,9 @@ LogData::RawLines LogData::getLinesRaw( LineNumber firstLine, LinesCount number 
         const auto bytesRead = fileHolder.getFile()->read( rawLines.buffer.data(), bytesToRead );
 
         if ( bytesRead != bytesToRead ) {
-            LOG_DEBUG << "failed to read " << bytesToRead << " bytes, got " << bytesRead;
-            rawLines.buffer.resize( static_cast<size_t>( std::max( qint64{ 0 }, bytesRead ) ) );
+            LOG_WARNING << "Discarding short source batch: expected=" << bytesToRead
+                        << " received=" << bytesRead << " firstByte=" << firstByte;
+            return {};
         }
         LOG_DEBUG << "Raw source batch provisional=" << rawLines.finalLineProvisional
                   << " firstByte=" << firstByte << " indexedBytes=" << indexedBytes;
@@ -521,7 +535,7 @@ void LogData::doDetachReader() const
 
 klogg::vector<QString> LogData::RawLines::decodeLines() const
 {
-    if ( this->endOfLines.empty() ) {
+    if ( this->endOfLines.empty() || !textDecoder.decoder ) {
         return klogg::vector<QString>();
     }
 
@@ -535,7 +549,15 @@ klogg::vector<QString> LogData::RawLines::decodeLines() const
         for ( const auto& lineEnd : this->endOfLines ) {
             const auto syntheticTerminator = finalLineProvisional
                                              && currentLineIndex + 1 == endOfLines.size();
-            const auto length = lineEnd - lineStart - ( syntheticTerminator ? 1 : lineFeedWidth );
+            const auto terminatorWidth = syntheticTerminator ? 1 : lineFeedWidth;
+            const auto bufferBytes = klogg::ssize( buffer );
+            if ( terminatorWidth <= 0 || lineStart < 0 || lineStart > bufferBytes
+                 || lineEnd < lineStart || lineEnd - lineStart < terminatorWidth ) {
+                LOG_WARNING << "Discarding malformed raw source offsets line=" << currentLineIndex
+                            << " start=" << lineStart << " end=" << lineEnd;
+                return {};
+            }
+            const auto length = lineEnd - lineStart - terminatorWidth;
             LOG_DEBUG << "line " << this->startLine.get() + currentLineIndex << ", length "
                       << length;
 
@@ -545,10 +567,10 @@ klogg::vector<QString> LogData::RawLines::decodeLines() const
                 break;
             }
 
-            if ( lineStart + length > klogg::ssize( buffer ) ) {
-                decodedLines.emplace_back( "KLOGG WARNING: file read failed" );
-                LOG_WARNING << "not enough data in buffer";
-                break;
+            if ( length > bufferBytes - lineStart ) {
+                LOG_WARNING << "Discarding incomplete raw source offsets line=" << currentLineIndex
+                            << " length=" << length << " remaining=" << bufferBytes - lineStart;
+                return {};
             }
 
             auto decodedLine = textDecoder.decoder->toUnicode(
