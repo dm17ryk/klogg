@@ -98,7 +98,9 @@
 
 #ifdef Q_OS_WIN
 
+#ifdef _MSC_VER
 #pragma warning( disable : 4244 )
+#endif
 
 #include <intrin.h>
 
@@ -108,7 +110,7 @@ inline int countLeadingZeroes( uint64_t value )
     unsigned long leading_zero = 0;
 
     if ( _BitScanReverse64( &leading_zero, value ) ) {
-        return 63ul - leading_zero;
+        return static_cast<int>( 63ul - leading_zero );
     }
     else {
         return 64;
@@ -494,11 +496,29 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
     if ( mouseEvent->button() == Qt::LeftButton ) {
         // Invalidate our cache
         textAreaCache_.invalid_ = true;
+        selectionStarted_ = false;
+        selectionCountPending_ = false;
 
-        if ( line.has_value() && mouseEvent->modifiers() & Qt::ShiftModifier ) {
-            selection_.selectRangeFromPrevious( *line );
+        if ( line && *line < logData_->getNbLine()
+             && mouseEvent->modifiers().testFlag( Qt::ShiftModifier ) ) {
+            const auto additive = mouseEvent->modifiers().testFlag( Qt::ControlModifier );
+            selection_.selectRangeFromPrevious( *line, additive );
             selectionCurrentEndPos_ = convertCoordToFilePos( mouseEvent->pos() );
-            Q_EMIT newSelection( *line, 1_lcount, 0_lcol, 0_length );
+            selectionCountPending_ = true;
+            LOG_DEBUG << "Mouse anchored row selection end=" << *line << " additive=" << additive;
+            Q_EMIT newSelection( *line, selection_.getSelectedLinesCount(), 0_lcol, 0_length );
+            update();
+        }
+        else if ( line && *line < logData_->getNbLine()
+                  && mouseEvent->pos().x() >= bulletZoneWidthPx_
+                  && mouseEvent->modifiers().testFlag( Qt::ControlModifier ) ) {
+            selection_.toggleLine( *line );
+            selectionCurrentEndPos_ = convertCoordToFilePos( mouseEvent->pos() );
+            selectionStartPos_ = selectionCurrentEndPos_;
+            selectionCountPending_ = true;
+            LOG_DEBUG << "Mouse toggled row=" << *line
+                      << " selectedRows=" << selection_.getSelectedLinesCount();
+            Q_EMIT newSelection( *line, selection_.getSelectedLinesCount(), 0_lcol, 0_length );
             update();
         }
         else if ( line.has_value() ) {
@@ -726,7 +746,8 @@ void AbstractLogView::mouseReleaseEvent( QMouseEvent* mouseEvent )
         }
     }
     else {
-        if ( selectionStarted_ && selection_.getSelectedLinesCount() > 1_lcount ) {
+        if ( selectionCountPending_
+             || ( selectionStarted_ && selection_.getSelectedLinesCount() > 1_lcount ) ) {
             const auto symbols = LineLength{ getSelectedText().size() };
             LOG_DEBUG << "Selection drag completed: lines=" << selection_.getSelectedLinesCount()
                       << " symbols=" << symbols;
@@ -737,6 +758,7 @@ void AbstractLogView::mouseReleaseEvent( QMouseEvent* mouseEvent )
             LOG_DEBUG << "Selection drag completed without a range count";
         }
         selectionStarted_ = false;
+        selectionCountPending_ = false;
         if ( autoScrollTimer_.isActive() )
             autoScrollTimer_.stop();
         updateGlobalSelection();
@@ -1500,18 +1522,25 @@ void AbstractLogView::saveToFile()
 
 void AbstractLogView::saveSelectedToFile()
 {
-    const auto selectedLines = selection_.getLines();
-    if ( selectedLines.empty() ) {
+    const auto ranges = selection_.getLineRanges();
+    if ( ranges.empty() ) {
+        LOG_DEBUG << "Save selection skipped: no selected rows";
         return;
     }
-
-    const auto start = selectedLines.front();
-    const auto lastLine = selectedLines.back();
-    const auto end = lastLine + 1_lcount;
-    saveLinesToFile( start, end );
+    saveLineRangesToFile( ranges );
 }
 
 void AbstractLogView::saveLinesToFile( LineNumber begin, LineNumber end )
+{
+    if ( begin >= end ) {
+        LOG_DEBUG << "Save range skipped: empty range";
+        return;
+    }
+    saveLineRangesToFile( { { begin, end - begin } } );
+}
+
+void AbstractLogView::saveLineRangesToFile(
+    const klogg::vector<std::pair<LineNumber, LinesCount>>& ranges )
 {
     auto filename = QFileDialog::getSaveFileName( this, "Save content" );
     if ( filename.isEmpty() ) {
@@ -1527,14 +1556,18 @@ void AbstractLogView::saveLinesToFile( LineNumber begin, LineNumber end )
     QProgressDialog progressDialog( this );
     progressDialog.setLabelText( tr( "Saving content to %1" ).arg( filename ) );
     klogg::vector<std::pair<LineNumber, LinesCount>> offsets;
-    auto lineOffset = begin;
     const auto chunkSize = 5000_lcount;
-    offsets.reserve( ( end - ( lineOffset + chunkSize ) ).get() );
-
-    for ( ; lineOffset + chunkSize < end; lineOffset += LinesCount( chunkSize.get() ) ) {
-        offsets.emplace_back( lineOffset, chunkSize );
+    for ( const auto& range : ranges ) {
+        auto lineOffset = range.first;
+        auto remaining = range.second;
+        while ( remaining > 0_lcount ) {
+            const auto count = std::min( remaining, chunkSize );
+            offsets.emplace_back( lineOffset, count );
+            lineOffset += count;
+            remaining -= count;
+        }
     }
-    offsets.emplace_back( lineOffset, LinesCount( ( end - lineOffset ).get() % chunkSize.get() ) );
+    LOG_DEBUG << "Saving selected row ranges=" << ranges.size() << " chunks=" << offsets.size();
 
     const QTextCodec* codec = logData_->getDisplayEncoding();
     if ( !codec ) {
@@ -1697,7 +1730,21 @@ void AbstractLogView::updateData()
     }
 
     // Crop selection if it become out of range
-    selection_.crop( lastLineNumber - 1_lcount );
+    if ( lastLineNumber == 0_lnum ) {
+        selection_.clear();
+        selectionStartPos_ = {};
+        selectionCurrentEndPos_ = {};
+        LOG_DEBUG << "Selection cleared after source became empty";
+    }
+    else {
+        selection_.crop( lastLineNumber - 1_lcount );
+        if ( selectionStartPos_.line() >= lastLineNumber ) {
+            selectionStartPos_ = FilePosition{ lastLineNumber - 1_lcount, 0_lcol };
+        }
+        if ( selectionCurrentEndPos_.line() >= lastLineNumber ) {
+            selectionCurrentEndPos_ = FilePosition{ lastLineNumber - 1_lcount, 0_lcol };
+        }
+    }
 
     // Adapt the scroll bars to the new content
     updateScrollBars();
@@ -1795,14 +1842,29 @@ bool AbstractLogView::isPartialSelection() const
 
 void AbstractLogView::selectAll()
 {
-    selection_.selectRange( 0_lnum, LineNumber( logData_->getNbLine().get() ) - 1_lcount );
+    const auto count = logData_->getNbLine();
+    if ( count == 0_lcount ) {
+        selection_.clear();
+        LOG_DEBUG << "Select all skipped: source is empty";
+    }
+    else {
+        selection_.selectRange( 0_lnum, LineNumber( count.get() ) - 1_lcount );
+        selectionStartPos_ = FilePosition{ 0_lnum, 0_lcol };
+        selectionCurrentEndPos_ = FilePosition{ LineNumber( count.get() ) - 1_lcount, 0_lcol };
+    }
     forceRefresh();
 }
 
 void AbstractLogView::trySelectLine( LineNumber lineToSelect )
 {
-    if ( lineToSelect >= logData_->getNbLine() ) {
-        lineToSelect = lineToSelect - 1_lcount;
+    const auto count = logData_->getNbLine();
+    if ( count == 0_lcount ) {
+        selection_.clear();
+        LOG_DEBUG << "Line navigation skipped: source is empty";
+        return;
+    }
+    if ( lineToSelect >= count ) {
+        lineToSelect = LineNumber{ count.get() } - 1_lcount;
     }
 
     selectAndDisplayLine( lineToSelect );
@@ -1810,6 +1872,11 @@ void AbstractLogView::trySelectLine( LineNumber lineToSelect )
 
 void AbstractLogView::selectAndDisplayLine( LineNumber line )
 {
+    if ( logData_->getNbLine() == 0_lcount ) {
+        selection_.clear();
+        LOG_DEBUG << "Selection navigation skipped: source is empty";
+        return;
+    }
     disableFollow();
     selection_.selectLine( line );
     selectionStartPos_ = FilePosition{ line, 0_lcol };
@@ -2046,15 +2113,20 @@ void AbstractLogView::displayLine( LineNumber line )
 void AbstractLogView::moveSelection( LinesCount delta, bool isDeltaNegative )
 {
     LOG_DEBUG << "AbstractLogView::moveSelection delta=" << delta;
+    if ( logData_->getNbLine() == 0_lcount ) {
+        selection_.clear();
+        LOG_DEBUG << "Selection movement skipped: source is empty";
+        return;
+    }
 
-    auto selection = selection_.getLines();
+    const auto ranges = selection_.getLineRanges();
     LineNumber newLine;
 
-    if ( !selection.empty() ) {
+    if ( !ranges.empty() ) {
         if ( isDeltaNegative )
-            newLine = selection.front() - delta;
+            newLine = ranges.front().first - delta;
         else
-            newLine = selection.back() + delta;
+            newLine = ranges.back().first + ranges.back().second - 1_lcount + delta;
     }
 
     if ( newLine >= logData_->getNbLine() ) {
@@ -2078,6 +2150,10 @@ void AbstractLogView::jumpToStartOfLine()
 
 LineLength AbstractLogView::maxLineLength( const klogg::vector<LineNumber>& lines ) const
 {
+    if ( lines.empty() ) {
+        LOG_DEBUG << "Maximum selected line length: selection is empty";
+        return 0_length;
+    }
     const auto longestLine = std::max_element(
         lines.cbegin(), lines.cend(), [ this ]( const auto& lhs, const auto& rhs ) {
             const auto lhsLength = logData_->getLineLength( lhs );

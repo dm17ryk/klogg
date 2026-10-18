@@ -352,6 +352,7 @@ private:
     OverviewWidget* overviewWidget_ = nullptr;
 
     bool selectionStarted_ = false;
+    bool selectionCountPending_ = false;
     // Start of the selection (characters)
     FilePosition selectionStartPos_;
     // Current end of the selection (characters)
@@ -512,6 +513,7 @@ private:
 
     // Save specified lines in range [begin, end) to a file
     void saveLinesToFile( LineNumber begin, LineNumber end );
+    void saveLineRangesToFile( const klogg::vector<std::pair<LineNumber, LinesCount>>& ranges );
 
     // Search functions (for n/N)
     using QuickFindSearchFn = void ( QuickFind::* )( Selection, QuickFindMatcher );

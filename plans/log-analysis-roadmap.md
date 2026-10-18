@@ -1,6 +1,6 @@
 # CILogg log-analysis implementation roadmap
 
-Date: 2026-10-15. Status updated 2026-10-18: first P00-P02 batch merged in PR #36; P03a source identity/revisions is implemented and locally validated on `codex/analysis-source-identity`, based on merged master `6c09d654`. Remaining P00 release budgets and P03b-P24 are pending. All feature entry points require command-line and MCP access. Tracking issue: [#37](https://github.com/dm17ryk/klogg/issues/37).
+Date: 2026-10-15. Status updated 2026-10-18: first P00-P02 batch merged in PR #36; P03a source identity/revisions merged in PR #38. P19b discontiguous row selection is implemented and locally validated on `codex/discontiguous-selection`; see `docs/discontiguous-selection.md`. Remaining P00 release budgets and other P03b-P24 slices are pending. All feature entry points require command-line and MCP access. Tracking issue: [#37](https://github.com/dm17ryk/klogg/issues/37).
 
 Implementation baseline: `fec85fdf` from `origin/master`. The first batch adds a deterministic benchmark corpus, viewport-bounded pixel wrapping and hit testing, selection-count deferral during drag, wrapped jump visibility, and a BOM/validated-UTF-8 detection fast path with independent fallback detectors. See `docs/log-analysis-baseline.md` for measured evidence and remaining P00 performance gates. P03a adds source provenance; P03b bounded scan jobs are next. Public analysis commands remain gated on P03d before counts, charts, and structured analysis are exposed.
 

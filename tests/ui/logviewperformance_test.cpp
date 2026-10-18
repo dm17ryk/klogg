@@ -2,23 +2,37 @@
 #include <catch2/catch.hpp>
 
 #include <QApplication>
+#include <QFile>
+#include <QFileDialog>
 #include <QMouseEvent>
 #include <QPixmap>
 #include <QScrollBar>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 
 #include "abstractlogview.h"
 #include "quickfindpattern.h"
 
 namespace {
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+void activateOffscreenView( QWidget* widget )
+{
+    QApplication::setActiveWindow( widget );
+}
+QT_WARNING_POP
+
 class CountingLogData final : public AbstractLogData {
 public:
     mutable LinesCount largestRead;
     mutable size_t individualReads = 0;
     mutable size_t bulkReads = 0;
     bool enormousTail = false;
+    bool emptySource = false;
     QString singleRecord;
     klogg::vector<QString> records;
+    klogg::vector<LineNumber> sourceLines;
 
 protected:
     QString doGetLineString( LineNumber line ) const override
@@ -55,10 +69,13 @@ protected:
     }
     LineNumber doGetLineNumber( LineNumber line ) const override
     {
-        return line;
+        return sourceLines.empty() ? line : sourceLines.at( static_cast<size_t>( line.get() ) );
     }
     LinesCount doGetNbLine() const override
     {
+        if ( emptySource ) {
+            return 0_lcount;
+        }
         return records.empty() ? ( singleRecord.isNull() ? 2000_lcount : 1_lcount )
                                : LinesCount{ records.size() };
     }
@@ -118,12 +135,13 @@ public:
         return result;
     }
 
-    void sendMouse( QEvent::Type type, const QPoint& point )
+    void sendMouse( QEvent::Type type, const QPoint& point,
+                    Qt::KeyboardModifiers modifiers = Qt::NoModifier )
     {
         const auto button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
         const auto buttons = type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton;
         QMouseEvent event( type, QPointF( point ), QPointF( point ), QPointF( point ), button,
-                           buttons, Qt::NoModifier );
+                           buttons, modifiers );
         if ( type == QEvent::MouseButtonPress ) {
             mousePressEvent( &event );
         }
@@ -142,6 +160,205 @@ protected:
     }
 };
 } // namespace
+
+TEST_CASE( "Ctrl-click toggles separate rows and combines anchored ranges",
+           "[ui][selection][discontiguous]" )
+{
+    CountingLogData data;
+    data.records = { "zero", "one", "two", "three", "four", "five", "six" };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.paintNow();
+    const auto click = [ & ]( int row, Qt::KeyboardModifiers modifiers = Qt::NoModifier ) {
+        const QPoint point( 60,
+                            view.fontMetrics().height() * row + view.fontMetrics().height() / 2 );
+        view.sendMouse( QEvent::MouseButtonPress, point, modifiers );
+        view.sendMouse( QEvent::MouseButtonRelease, point, modifiers );
+        view.paintNow();
+    };
+    const auto text = [ & ] { return view.getSelectedText().remove( QChar::CarriageReturn ); };
+    click( 0 );
+    click( 2, Qt::ControlModifier );
+    click( 5, Qt::ControlModifier );
+    CHECK( text() == "zero\ntwo\nfive" );
+    click( 2, Qt::ControlModifier );
+    CHECK( text() == "zero\nfive" );
+    click( 4, Qt::ControlModifier | Qt::ShiftModifier );
+    CHECK( text() == "zero\ntwo\nthree\nfour\nfive" );
+    click( 6, Qt::ShiftModifier );
+    CHECK( text() == "two\nthree\nfour\nfive\nsix" );
+    click( 1 );
+    CHECK( text() == "one" );
+    click( 1, Qt::ControlModifier );
+    CHECK( text().isEmpty() );
+}
+
+TEST_CASE( "Whole-row selection ranges merge split crop and clear without source reads",
+           "[ui][selection][discontiguous]" )
+{
+    Selection selection;
+    CHECK( selection.isEmpty() );
+    selection.selectRange( 0_lnum, 1000000_lnum );
+    selection.toggleLine( 500000_lnum );
+    CHECK( selection.getSelectedLinesCount() == 1000000_lcount );
+    CHECK( selection.getLineRanges().size() == 2 );
+    CHECK_FALSE( selection.isLineSelected( 500000_lnum ) );
+    CHECK( selection.isLineSelected( 499999_lnum ) );
+    CHECK( selection.isLineSelected( 500001_lnum ) );
+    selection.toggleLine( 500000_lnum );
+    CHECK( selection.getLineRanges().size() == 1 );
+    CHECK( selection.getSelectedLinesCount() == 1000001_lcount );
+    selection.crop( 10_lnum );
+    CHECK( selection.getSelectedLinesCount() == 11_lcount );
+    CHECK_FALSE( selection.isLineSelected( 11_lnum ) );
+    selection.clear();
+    CHECK( selection.isEmpty() );
+    CHECK( selection.getLines().empty() );
+    selection.toggleLine( 5_lnum );
+    CHECK( selection.isSingleLine() );
+    REQUIRE( selection.selectedLine() );
+    CHECK( *selection.selectedLine() == 5_lnum );
+    selection.crop( 2_lnum );
+    CHECK( selection.isEmpty() );
+    selection.toggleLine( 2_lnum );
+    selection.toggleLine( 5_lnum );
+    CHECK( selection.getPreviousPosition().line() == 2_lnum );
+    CHECK( selection.getNextPosition().line() == 6_lnum );
+    selection.selectPortion( 3_lnum, 8_lcol, 2_lcol );
+    CHECK( selection.isPortion() );
+    CHECK( selection.getSelectedLinesCount() == 1_lcount );
+    selection.toggleLine( 6_lnum );
+    CHECK_FALSE( selection.isPortion() );
+    CHECK( selection.isSingleLine() );
+    CHECK_FALSE( selection.isLineSelected( 3_lnum ) );
+}
+
+TEST_CASE( "Discontiguous copy preserves blank rows and mapped source order",
+           "[ui][selection][discontiguous]" )
+{
+    CountingLogData data;
+    data.records = { "", "unselected", "", QString::fromUtf8( "\xe2\x98\x83\tUTF-8" ), "" };
+    Selection selection;
+    selection.selectLine( 0_lnum );
+    selection.toggleLine( 2_lnum );
+    selection.toggleLine( 3_lnum );
+    selection.toggleLine( 4_lnum );
+    const auto copied = selection.getSelectedText( &data ).remove( QChar::CarriageReturn );
+    CHECK( copied == QString::fromUtf8( "\n\n\xe2\x98\x83\tUTF-8\n" ) );
+    data.sourceLines = { 40_lnum, 50_lnum, 30_lnum, 10_lnum, 20_lnum };
+    const auto numbered = selection.getSelectedText( &data, true ).remove( QChar::CarriageReturn );
+    CHECK( numbered == QString::fromUtf8( "11: \xe2\x98\x83\tUTF-8\n21: \n31: \n41: " ) );
+}
+
+TEST_CASE( "Ctrl-click anchors keyboard ranges and empty sources clear selection",
+           "[ui][selection][discontiguous]" )
+{
+    CountingLogData data;
+    data.records = { "zero", "one", "two", "three", "four", "five", "six" };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.registerShortcuts();
+    activateOffscreenView( &view );
+    view.setFocus();
+    view.paintNow();
+    const QPoint row( 60, view.fontMetrics().height() * 3 + view.fontMetrics().height() / 2 );
+    view.sendMouse( QEvent::MouseButtonPress, row, Qt::ControlModifier );
+    view.sendMouse( QEvent::MouseButtonRelease, row, Qt::ControlModifier );
+    QTest::keyClick( &view, Qt::Key_Down, Qt::ShiftModifier );
+    CHECK( view.getSelectedText().remove( QChar::CarriageReturn ) == "three\nfour" );
+    QTest::keyClick( &view, Qt::Key_Down, Qt::ShiftModifier );
+    CHECK( view.getSelectedText().remove( QChar::CarriageReturn ) == "three\nfour\nfive" );
+    data.emptySource = true;
+    view.updateData();
+    CHECK( view.getSelectedText().isEmpty() );
+    view.selectAll();
+    CHECK( view.getSelectedText().isEmpty() );
+    for ( const auto key : { Qt::Key_Up, Qt::Key_Down, Qt::Key_Home, Qt::Key_End } ) {
+        QTest::keyClick( &view, key, Qt::ControlModifier );
+        CHECK( view.getSelectedText().isEmpty() );
+    }
+    QTest::keyClick( &view, Qt::Key_Up );
+    QTest::keyClick( &view, Qt::Key_Down );
+    CHECK( view.getSelectedText().isEmpty() );
+}
+
+TEST_CASE( "Ctrl-click on wrapped continuations toggles their physical row",
+           "[ui][selection][discontiguous]" )
+{
+    CountingLogData data;
+    data.records = { QString( 3000, QLatin1Char( 'W' ) ), "second" };
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.textWrapSet( true );
+    view.paintNow();
+    const auto click = [ & ]( int row, Qt::KeyboardModifiers modifiers ) {
+        const QPoint point( 60,
+                            view.fontMetrics().height() * row + view.fontMetrics().height() / 2 );
+        view.sendMouse( QEvent::MouseButtonPress, point, modifiers );
+        view.sendMouse( QEvent::MouseButtonRelease, point, modifiers );
+        view.paintNow();
+    };
+    click( 0, Qt::NoModifier );
+    CHECK( view.getSelectedText() == data.records.front() );
+    click( 1, Qt::ControlModifier );
+    CHECK( view.getSelectedText().isEmpty() );
+    click( 2, Qt::ControlModifier );
+    CHECK( view.getSelectedText() == data.records.front() );
+}
+
+TEST_CASE( "Saving separate selected ranges excludes gaps and retains complete chunks",
+           "[ui][selection][discontiguous]" )
+{
+    const auto trailingCount = GENERATE( 4999, 5000, 5001 );
+    CAPTURE( trailingCount );
+    CountingLogData data;
+    QString expected;
+    for ( int row = 0; row < trailingCount + 3; ++row ) {
+        const auto text = QStringLiteral( "row %1" ).arg( row );
+        data.records.push_back( text );
+        if ( row != 2 ) {
+            expected += text + QChar::LineFeed;
+        }
+    }
+    QuickFindPattern pattern;
+    TestLogView view( &data, &pattern );
+    view.selectAll();
+    view.paintNow();
+    const QPoint gap( 60, view.fontMetrics().height() * 2 + view.fontMetrics().height() / 2 );
+    view.sendMouse( QEvent::MouseButtonPress, gap, Qt::ControlModifier );
+    view.sendMouse( QEvent::MouseButtonRelease, gap, Qt::ControlModifier );
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "selected.txt" );
+    const auto wasNonNative = QApplication::testAttribute( Qt::AA_DontUseNativeDialogs );
+    QApplication::setAttribute( Qt::AA_DontUseNativeDialogs, true );
+    QTimer acceptTimer;
+    acceptTimer.setInterval( 100 );
+    QObject::connect( &acceptTimer, &QTimer::timeout, &view, [ & ] {
+        for ( auto* widget : QApplication::topLevelWidgets() ) {
+            if ( auto* dialog = qobject_cast<QFileDialog*>( widget );
+                 dialog && dialog->isVisible() ) {
+                dialog->selectFile( path );
+                QMetaObject::invokeMethod( dialog, "accept", Qt::DirectConnection );
+            }
+        }
+    } );
+    acceptTimer.start();
+    QTimer::singleShot( 5000, &view, [] {
+        for ( auto* widget : QApplication::topLevelWidgets() ) {
+            if ( auto* dialog = qobject_cast<QFileDialog*>( widget ) ) {
+                dialog->reject();
+            }
+        }
+    } );
+    const auto invoked
+        = QMetaObject::invokeMethod( &view, "saveSelectedToFile", Qt::DirectConnection );
+    QApplication::setAttribute( Qt::AA_DontUseNativeDialogs, wasNonNative );
+    REQUIRE( invoked );
+    QFile saved( path );
+    REQUIRE( saved.open( QIODevice::ReadOnly ) );
+    CHECK( QString::fromUtf8( saved.readAll() ).remove( QChar::CarriageReturn ) == expected );
+}
 
 TEST_CASE( "Dragging a large selection does not read the selected range",
            "[ui][selection][performance]" )
