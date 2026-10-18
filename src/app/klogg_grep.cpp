@@ -88,6 +88,21 @@ int main( int argc, char* argv[] )
 
     logData.connect( &logData, &LogData::loadingFinished, [ & ]() {
         dispatchToMainThread( [ & ] {
+            if ( configuration.defaultEncodingMib() < 0 ) {
+                if ( const auto* codec = logData.getDetectedEncoding() ) {
+                    LOG_DEBUG << "Grep: applying detected display encoding "
+                              << codec->name().constData();
+                    logData.setDisplayEncoding( codec->name().constData() );
+                    filteredData->setDisplayEncoding( codec->name().constData() );
+                }
+                else {
+                    LOG_WARNING << "Grep: no detected encoding; retaining display codec";
+                }
+            }
+            else {
+                LOG_DEBUG << "Grep: preserving configured display encoding MIB="
+                          << configuration.defaultEncodingMib();
+            }
             SearchOptions options;
             options.contextBefore = parameters.before_context;
             options.contextAfter = parameters.after_context;

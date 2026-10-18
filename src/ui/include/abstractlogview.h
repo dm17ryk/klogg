@@ -43,6 +43,9 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <limits>
+#include <map>
+#include <optional>
 #include <qchar.h>
 #include <string_view>
 #include <utility>
@@ -53,6 +56,7 @@
 #include <QColor>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QTimer>
 
 #ifdef GLOGG_PERF_MEASURE_FPS
 #include "perfcounter.h"
@@ -161,6 +165,8 @@ public:
     void registerShortcuts();
 
 protected:
+    bool isWrappedLayoutPending() const;
+
     void mousePressEvent( QMouseEvent* mouseEvent ) override;
     void mouseMoveEvent( QMouseEvent* mouseEvent ) override;
     void mouseReleaseEvent( QMouseEvent* ) override;
@@ -204,7 +210,8 @@ Q_SIGNALS:
     void followModeChanged( bool enabled );
     // Sent when the view wants the QuickFind widget pattern to change.
     void changeQuickFind( const QString& newPattern, QuickFindMux::QFDirection newDirection );
-    // Sent when a new line has been selected by the user
+    // Sent when a new line has been selected by the user. During a range drag,
+    // nSymbols is zero until the final count is delivered on mouse release.
     void newSelection( LineNumber startLine, LinesCount nLines, LineColumn startCol,
                        LineLength nSymbols );
     // Sent up when quickFind wants to show a message to the user.
@@ -369,6 +376,7 @@ private:
     // lastLineAligned == true make the bottom of the last line aligned
     // rather than the top of the top one.
     LineNumber firstLine_;
+    size_t firstWrappedRow_ = 0;
     bool lastLineAligned_ = false;
     bool useTextWrap_ = false;
     LineColumn firstCol_ = 0_lcol;
@@ -377,6 +385,8 @@ private:
         LineNumber lineNumber;
         size_t wrappedLineIndex;
         WrappedString wrappedString;
+        mutable std::map<std::pair<qsizetype, int>, int> prefixWidths;
+        mutable std::optional<QFontMetrics> prefixMetrics;
     };
     struct VisibleLayoutInfo {
         LinesCount logicalLines = 0_lcount;
@@ -384,6 +394,17 @@ private:
         OptionalLineNumber lastVisibleLine;
     };
     klogg::vector<WrappedLineData> wrappedLinesInfo_;
+    mutable std::map<LineNumber::UnderlyingType, WrappedString> wrappedLayouts_;
+    // Publish row counts together with the scrollbar range. Layout discovery during
+    // painting must not change the interpretation of an already displayed slider value.
+    std::map<LineNumber::UnderlyingType, size_t> wrappedScrollRows_;
+    mutable QTimer wrappedLayoutTimer_;
+    mutable int wrappedLayoutWidth_ = -1;
+    std::optional<LineColumn> pendingWrapAnchor_;
+    bool pendingWrapBottom_ = false;
+    size_t pendingWrapBackRows_ = 0;
+    bool wrappedAbsoluteJump_ = false;
+    mutable LineNumber wrappedTailStart_;
 
     LineNumber searchStart_;
     LineNumber searchEnd_;
@@ -440,21 +461,30 @@ private:
         LineNumber first_line_;
         LineNumber last_line_;
         LineColumn first_column_;
+        size_t first_wrapped_row_;
     };
     struct PullToFollowCache {
         QPixmap pixmap_;
         LineLength nb_columns_;
     };
-    TextAreaCache textAreaCache_ = { {}, true, 0_lnum, 0_lnum, 0_lcol };
+    TextAreaCache textAreaCache_ = { {}, true, 0_lnum, 0_lnum, 0_lcol, 0 };
     PullToFollowCache pullToFollowCache_ = { {}, 0_length };
     QFontMetrics pixmapFontMetrics_;
 
     LinesCount getNbVisibleLines() const;
     LinesCount getNbBottomWrappedVisibleLines() const;
     LineLength getNbVisibleCols() const;
-    LinesCount visualRowsForLine( LineNumber line ) const;
+    LinesCount visualRowsForLine( LineNumber line, size_t maxRows ) const;
     LinesCount visualRowsForRange( LineNumber startLine, LinesCount logicalLines ) const;
-    VisibleLayoutInfo visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines ) const;
+    VisibleLayoutInfo visibleLayoutFor( LineNumber startLine, LinesCount maxVisualLines,
+                                        size_t firstRow = 0 ) const;
+    WrappedString& wrappedLayoutForLine( LineNumber line ) const;
+    void indexWrappedLayouts();
+    void invalidateWrappedLayouts();
+    void advanceWrappedRows( int rows );
+    void revealWrappedColumn( LineNumber line, LineColumn column );
+    LinesCount::UnderlyingType discoveredVisualRows() const;
+    std::pair<LineNumber, size_t> verticalScrollToWrappedPosition( int position ) const;
 
     FilePosition convertCoordToFilePos( const QPoint& pos ) const;
     OptionalLineNumber convertCoordToLine( int yPos ) const;
@@ -490,7 +520,7 @@ private:
     void updateScrollBars();
 
     LineNumber verticalScrollToLineNumber( int scrollPosition ) const;
-    int lineNumberToVerticalScroll( LineNumber line ) const;
+    int lineNumberToVerticalScroll( LineNumber line, size_t wrappedRow = 0 ) const;
     double verticalScrollMultiplicator() const;
 
     void drawTextArea( QPaintDevice* paintDevice );

@@ -20,6 +20,8 @@
 #include "encodingdetector.h"
 
 #include <QTextCodec>
+#include <cstring>
+#include <simdutf.h>
 
 #include "containers.h"
 #include "log.h"
@@ -85,13 +87,44 @@ EncodingParameters::EncodingParameters( const QTextCodec* codec )
 
 QTextCodec* EncodingDetector::detectEncoding( const klogg::vector<char>& block ) const
 {
-    UniqueLock lock( mutex_ );
+    const QByteArray blockArray = QByteArray::fromRawData( block.data(), klogg::isize( block ) );
+    if ( auto* bomCodec = QTextCodec::codecForUtfText( blockArray, nullptr ) ) {
+        LOG_DEBUG << "Encoding detection: BOM selected " << bomCodec->name().constData()
+                  << " sampleBytes=" << block.size();
+        return bomCodec;
+    }
 
+    // NUL may indicate BOM-less UTF-16/32; ESC may introduce an ISO-2022 encoding.
+    // Neither should be classified as UTF-8 merely because its bytes validate.
+    const bool ambiguous = block.empty()
+                           || std::memchr( block.data(), '\0', block.size() ) != nullptr
+                           || std::memchr( block.data(), '\x1b', block.size() ) != nullptr;
+    if ( !ambiguous && simdutf::validate_utf8( block.data(), block.size() ) ) {
+        const auto* name = simdutf::validate_ascii( block.data(), block.size() ) ? "US-ASCII" : "UTF-8";
+        auto* codec = QTextCodec::codecForName( name );
+        if ( codec != nullptr ) {
+            LOG_DEBUG << "Encoding detection: validated fast path selected " << name
+                      << " sampleBytes=" << block.size();
+            return codec;
+        }
+        LOG_DEBUG << "Encoding detection: validated codec unavailable, preserving legacy fallback: "
+                  << name;
+    }
+
+    LOG_DEBUG << "Encoding detection: using legacy fallback sampleBytes=" << block.size()
+              << " ambiguous=" << ambiguous;
+
+    // Mutable detector state belongs to this invocation. Qt's codec lookup functions
+    // are thread-safe, so independent file opens do not need a singleton-wide lock.
     UchardetHolder ud;
 
     auto rc = ud.handle_data( block.data(), block.size() );
     if ( rc == 0 ) {
         ud.data_end();
+    }
+    else {
+        LOG_WARNING << "Encoding detection: uchardet rejected the sample rc=" << rc
+                    << " sampleBytes=" << block.size();
     }
 
     QTextCodec* uchardetCodec = nullptr;
@@ -106,8 +139,6 @@ QTextCodec* EncodingDetector::detectEncoding( const klogg::vector<char>& block )
             LOG_DEBUG << "Uchardet codec not found for guess " << uchardetGuess;
         }
     }
-
-    QByteArray blockArray = QByteArray::fromRawData( block.data(), klogg::isize( block ) );
 
     auto encodingGuess = uchardetCodec ? QTextCodec::codecForUtfText( blockArray, uchardetCodec )
                                        : QTextCodec::codecForUtfText( blockArray );

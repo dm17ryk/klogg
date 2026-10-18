@@ -59,7 +59,7 @@ async def run(executable: str, artifacts: Path) -> None:
                 json.dumps(snapshot, indent=2), encoding="utf-8"
             )
             sample = artifacts / "sample.log"
-            sample.write_text("INFO ready\nERROR smoke\nINFO done\n", encoding="utf-8")
+            sample.write_text("INFO ready\nERROR smoke שלום 😀\nINFO done\n", encoding="utf-8")
             await command("open_file", {"file": str(sample)})
             info = await command("get_info")
             tab = info["windows"][0]["tabs"][-1]
@@ -131,7 +131,7 @@ async def run(executable: str, artifacts: Path) -> None:
                 {"mode": "grep", "arguments": ["-e", "ERROR", str(sample)]},
             )
             assert not grep.isError, grep.content
-            assert "ERROR smoke" in json.loads(grep.content[0].text)["stdout"]
+            assert "ERROR smoke שלום 😀" in json.loads(grep.content[0].text)["stdout"]
             dry_run = await session.call_tool(
                 "cilogg_cli",
                 {

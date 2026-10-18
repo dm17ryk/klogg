@@ -79,7 +79,6 @@ class EncodingDetector {
     EncodingDetector() = default;
     ~EncodingDetector() = default;
 
-    mutable SharedMutex mutex_;
 };
 
 struct TextDecoder {
