@@ -69,6 +69,8 @@ struct AnalysisJobService::Private {
         qint64 storedBytes = 0;
         qint64 finishedAt = -1;
         QVariantMap metrics;
+        QVariantMap provenance;
+        qint64 createdAt = 0;
         QVariantMap errorDetails;
         QString backend;
         bool compiled = false;
@@ -86,6 +88,11 @@ struct AnalysisJobService::Private {
     QThreadPool pool;
     QTimer timer;
     QElapsedTimer clock;
+    std::function<qint64()> retentionClock;
+    qint64 elapsed() const
+    {
+        return retentionClock ? retentionClock() : clock.elapsed();
+    }
     bool stopping = false;
 
     void detachLease( const QString& id, std::vector<std::shared_ptr<LogData>>& retired )
@@ -124,11 +131,19 @@ struct AnalysisJobService::Private {
                 initialize = false;
                 if ( !initializing ) {
                     if ( job->source ) {
-                        if ( nextLine >= job->request.snapshot.lineCount.get() ) {
+                        auto endLine
+                            = static_cast<quint64>( job->request.snapshot.lineCount.get() );
+                        if ( !job->request.ranges.empty() ) {
+                            endLine = std::min( endLine, job->request.ranges.back().second + 1 );
+                        }
+                        if ( nextLine >= endLine ) {
                             break;
                         }
-                        const auto block = job->source->readAnalysisBlock(
-                            job->request.snapshot, nextLine, job->request.limits );
+                        auto limits = job->request.limits;
+                        limits.batchLines = static_cast<int>( std::min<quint64>(
+                            static_cast<quint64>( limits.batchLines ), endLine - nextLine ) );
+                        const auto block = job->source->readAnalysisBlock( job->request.snapshot,
+                                                                           nextLine, limits );
                         if ( block.retry ) {
                             QThread::msleep( 5 );
                             continue;
@@ -144,6 +159,8 @@ struct AnalysisJobService::Private {
                                 break;
                             }
                             decoder.reset( codec->makeDecoder() );
+                            std::lock_guard<std::mutex> lock( job->mutex );
+                            job->provenance[ "encoding" ] = QString::fromLatin1( block.codec );
                         }
                         const auto text = decoder->toUnicode( block.bytes );
                         decoded = text.split( '\n' );
@@ -343,10 +360,11 @@ struct AnalysisJobService::Private {
     }
 };
 
-AnalysisJobService::AnalysisJobService( QObject* parent )
+AnalysisJobService::AnalysisJobService( QObject* parent, std::function<qint64()> retentionClock )
     : QObject( parent )
     , d_( std::make_unique<Private>() )
 {
+    d_->retentionClock = std::move( retentionClock );
     d_->pool.setMaxThreadCount( 2 );
     d_->clock.start();
     d_->timer.setInterval( 20 );
@@ -386,7 +404,8 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
     else if ( active >= 10 ) {
         failure = "queue_limit";
     }
-    else if ( request.ranges.size() > 10000 ) {
+    else if ( request.ranges.size() > 10000
+              || rowBytes( request.sourceDescription ) > 256 * 1024 ) {
         failure = "scope_limit";
     }
     else if ( request.scope != "sample" && request.scope != "selection"
@@ -410,6 +429,22 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
     else if ( !request.source
               && ( request.scope != "text" || request.text.size() > 2 * 1024 * 1024 ) ) {
         failure = "invalid_input";
+    }
+    if ( failure.isEmpty() ) {
+        const auto lines
+            = request.source
+                  ? static_cast<quint64>( request.snapshot.lineCount.get() )
+                  : static_cast<quint64>( request.text.count( '\n' ) )
+                        + ( !request.text.isEmpty() && !request.text.endsWith( '\n' ) ? 1u : 0u );
+        std::optional<quint64> previous;
+        for ( const auto& range : request.ranges ) {
+            if ( range.first > range.second || range.second >= lines
+                 || ( previous && range.first <= *previous ) ) {
+                failure = "invalid_scope";
+                break;
+            }
+            previous = range.second;
+        }
     }
     if ( !failure.isEmpty() ) {
         LOG_DEBUG << "Analysis rejected reason=" << failure;
@@ -441,6 +476,29 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
         d_->leases[ job->id ] = std::move( request.source );
     }
     job->request = std::move( request );
+    job->createdAt = d_->elapsed();
+    const auto& snapshot = job->request.snapshot;
+    job->provenance
+        = { { "type", job->source ? "file" : "text" },
+            { "sourceId",
+              job->source ? snapshot.sourceId.toString( QUuid::WithoutBraces ) : job->id },
+            { "generation", job->source ? QString::number( snapshot.generation ) : "1" },
+            { "revision", job->source ? QString::number( snapshot.revision ) : "1" },
+            { "indexedBytes", QString::number( snapshot.indexedBytes ) },
+            { "encoding", job->source ? job->request.sourceDescription.value( "encoding" )
+                                      : QVariant( "QString UTF-16" ) } };
+    if ( !job->source )
+        job->provenance[ "textUtf16Units" ] = job->request.text.size();
+    const auto inlineCompleteLines = static_cast<quint64>( job->request.text.count( '\n' ) );
+    const auto inlineProvisional
+        = !job->request.text.isEmpty() && !job->request.text.endsWith( '\n' );
+    job->provenance[ "physicalLineCount" ]
+        = QVariant::fromValue( job->source ? snapshot.lineCount.get()
+                                           : inlineCompleteLines + ( inlineProvisional ? 1 : 0 ) );
+    job->provenance[ "completePhysicalLineCount" ] = QVariant::fromValue(
+        job->source ? snapshot.completeLineCount.get() : inlineCompleteLines );
+    job->provenance[ "provisionalFinalLine" ]
+        = job->source ? snapshot.provisionalLineStart.has_value() : inlineProvisional;
     job->factory = std::move( factory );
     job->deadline = QDeadlineTimer( timeoutMs );
     const auto id = job->id;
@@ -469,7 +527,7 @@ void AnalysisJobService::poll()
             if ( job->state == "queued" && job->cancelled ) {
                 job->state = "cancelled";
                 job->reason = job->cancelReason;
-                job->finishedAt = d_->clock.elapsed();
+                job->finishedAt = d_->elapsed();
                 notify = true;
             }
             if ( job->state == "queued" && running < 2 ) {
@@ -493,8 +551,19 @@ void AnalysisJobService::poll()
                 job->pendingBytes -= pending.bytes;
                 job->credit.notify_all();
                 for ( const auto& value : pending.rows ) {
-                    const auto bytes = rowBytes( value.toMap() );
+                    auto row = value.toMap();
+                    row[ "jobId" ] = job->id;
+                    row[ "requestRevision" ] = QString::number( job->request.requestRevision );
+                    row[ "source" ] = job->provenance;
+                    const auto bytes = rowBytes( row );
                     if ( job->cancelled ) {
+                        break;
+                    }
+                    if ( bytes > RowBytes || job->rows.size() >= job->request.limits.resultRecords
+                         || job->storedBytes + bytes > job->request.limits.resultBytes ) {
+                        job->cancelled = true;
+                        job->cancelReason = "result_limit";
+                        job->credit.notify_all();
                         break;
                     }
                     qint64 globalBytes = 0;
@@ -520,15 +589,13 @@ void AnalysisJobService::poll()
                         d_->detachLease( victim->first, retired );
                         d_->jobs.erase( victim );
                     }
-                    if ( job->rows.size() >= job->request.limits.resultRecords
-                         || job->storedBytes + bytes > job->request.limits.resultBytes
-                         || globalBytes + bytes > GlobalResultBytes ) {
+                    if ( globalBytes + bytes > GlobalResultBytes ) {
                         job->cancelled = true;
                         job->cancelReason = "result_limit";
                         job->credit.notify_all();
                         break;
                     }
-                    job->rows.push_back( value );
+                    job->rows.push_back( row );
                     job->storedBytes += bytes;
                 }
                 notify = true;
@@ -549,16 +616,15 @@ void AnalysisJobService::poll()
                           : ( job->reason.isEmpty() || limited || job->reason == "scope_limit"
                                   ? "completed"
                                   : "failed" );
-                job->finishedAt = d_->clock.elapsed();
+                job->finishedAt = d_->elapsed();
                 notify = true;
                 LOG_DEBUG << "Analysis finished id=" << job->id << " state=" << job->state
                           << " reason=" << job->reason << " rows=" << job->rows.size();
             }
             job->deliveryUs += delivery.nsecsElapsed() / 1000;
         }
-        const auto expired
-            = terminal( job->state )
-              && ( job->released || d_->clock.elapsed() - job->finishedAt >= 600000 );
+        const auto expired = terminal( job->state )
+                             && ( job->released || d_->elapsed() - job->finishedAt >= 600000 );
         // run() sets workerDone only after its last source access. Workers own
         // no shared LogData pointer, so final destruction stays on this thread.
         if ( terminal( job->state ) ) {
@@ -609,9 +675,16 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
              { "pendingBytes", job->pendingBytes },
              { "retainedBytes", job->storedBytes },
              { "pendingBatches", static_cast<int>( job->pending.size() ) },
-             { "sourceId", snapshot.sourceId.toString( QUuid::WithoutBraces ) },
-             { "sourceGeneration", QString::number( snapshot.generation ) },
-             { "sourceRevision", QString::number( snapshot.revision ) },
+             { "sourceId", job->provenance.value( "sourceId" ) },
+             { "sourceGeneration", job->provenance.value( "generation" ) },
+             { "sourceRevision", job->provenance.value( "revision" ) },
+             { "source", job->provenance },
+             { "sourceDescription", job->request.sourceDescription },
+             { "physicalLineCount", job->provenance.value( "physicalLineCount" ) },
+             { "completePhysicalLineCount", job->provenance.value( "completePhysicalLineCount" ) },
+             { "provisionalFinalLine", job->provenance.value( "provisionalFinalLine" ) },
+             { "elapsedMs",
+               ( job->finishedAt >= 0 ? job->finishedAt : d_->elapsed() ) - job->createdAt },
              { "indexedBytes", QString::number( snapshot.indexedBytes ) },
              { "metrics", job->metrics },
              { "timing", QVariantMap{ { "sourceReadUs", job->readingUs },
@@ -630,7 +703,24 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
                                       { "resultBytes", job->request.limits.resultBytes },
                                       { "resultRecords", job->request.limits.resultRecords },
                                       { "batchTimeoutMs", job->request.limits.batchTimeoutMs },
-                                      { "timeoutMs", job->request.limits.timeoutMs } } } };
+                                      { "timeoutMs", job->request.limits.timeoutMs },
+                                      { "runningJobs", 2 },
+                                      { "queuedJobs", 8 },
+                                      { "globalResultBytes", GlobalResultBytes },
+                                      { "expiryMs", 600000 },
+                                      { "sampleLines", 1000 },
+                                      { "sampleDecodedBytes", 4 * 1024 * 1024 },
+                                      { "pageRecords", 1000 },
+                                      { "pageBytes", 8 * 1024 * 1024 },
+                                      { "scopeRanges", 10000 },
+                                      { "sourceMetadataBytes", 256 * 1024 },
+                                      { "patternBytes", 65536 },
+                                      { "booleanSubpatterns", 64 },
+                                      { "captureGroups", 128 },
+                                      { "batchMatchOccurrences", 10000 },
+                                      { "workerFrameBytes", 8 * 1024 * 1024 },
+                                      { "workerDiagnosticBytes", 65536 },
+                                      { "workerStartupMs", 30000 } } } };
 }
 QVariantMap AnalysisJobService::results( const QString& id, const QString& cursor, int count )
 {
@@ -654,7 +744,7 @@ QVariantMap AnalysisJobService::results( const QString& id, const QString& curso
     while ( offset < job->rows.size() && page.size() < count ) {
         const auto value = job->rows.at( offset );
         const auto size = rowBytes( value.toMap() );
-        if ( bytes + size > 8 * 1024 * 1024 ) {
+        if ( bytes + size > 8 * 1024 * 1024 - 4096 ) {
             break;
         }
         page.push_back( value );
@@ -675,6 +765,8 @@ QVariantMap AnalysisJobService::results( const QString& id, const QString& curso
     }
     return { { "jobId", id },
              { "rows", page },
+             { "requestRevision", QString::number( job->request.requestRevision ) },
+             { "source", job->provenance },
              { "nextCursor", next },
              { "state", job->state },
              { "complete", job->complete },
@@ -710,6 +802,10 @@ bool AnalysisJobService::release( const QString& id )
 }
 void AnalysisJobService::cancelSource( const LogData* source )
 {
+    if ( !source ) {
+        LOG_DEBUG << "Analysis source close ignored for empty source";
+        return;
+    }
     for ( const auto& entry : d_->jobs ) {
         if ( entry.second->weakSource.lock().get() == source ) {
             entry.second->sourceClosed = true;

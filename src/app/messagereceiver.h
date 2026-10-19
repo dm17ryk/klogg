@@ -58,7 +58,7 @@ class MessageReceiver final : public QObject {
     {
         const auto data = QCborValue::fromCbor( message ).toVariant().toMap();
 
-        LOG_INFO << "Message " << QJsonDocument::fromVariant(data).toJson();
+        LOG_DEBUG << "Received IPC message bytes=" << message.size();
 
         if ( data[ "version" ].toString() != kloggVersion() ) {
             return;
@@ -143,6 +143,7 @@ class MessageReceiver final : public QObject {
             return;
         }
 
+        LOG_DEBUG << "Received Commander action=" << commanderActionToString( request->action );
         Q_EMIT executeCommand( *request, resultPath );
     }
 

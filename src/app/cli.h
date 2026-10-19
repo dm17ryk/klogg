@@ -321,6 +321,11 @@ private:
             "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file <arguments.json>] [tab selector]\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
+            "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
+            "  get_analysis_job --job-id <id> [tab selector]\n"
+            "  get_analysis_results --job-id <id> [--cursor <cursor>] [--page-size <count>] [tab selector]\n"
+            "  cancel_analysis_job --job-id <id> [tab selector]\n"
+            "  release_analysis_job --job-id <id> [tab selector]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -1558,6 +1563,10 @@ private:
         parser.addOption( QCommandLineOption( "plugin-operation", "Plugin management operation.", "operation" ) );
         parser.addOption( QCommandLineOption( "plugin-action", "Plugin action identifier.", "action" ) );
         parser.addOption( QCommandLineOption( "plugin-job-id", "Plugin job identifier.", "id" ) );
+        parser.addOption( QCommandLineOption( "analysis-json", "Analysis JSON object: pattern, options, scope, text and limits.", "json" ) );
+        parser.addOption( QCommandLineOption( "job-id", "Analysis job identifier.", "id" ) );
+        parser.addOption( QCommandLineOption( "cursor", "Opaque analysis result continuation cursor.", "cursor" ) );
+        parser.addOption( QCommandLineOption( "page-size", "Analysis records per page (1-1000, default 200).", "count" ) );
         parser.addOption( fileOption );
         parser.addOption( urlOption );
         parser.addOption( portOption );
@@ -1781,6 +1790,63 @@ private:
         };
 
         switch ( *action ) {
+        case CommanderAction::RegexEvaluate: {
+            if ( parser.isSet( "analysis-json" ) == parser.isSet( jsonFileOption ) ) {
+                result.output_message = formatParserError( parser, "Provide exactly one of --analysis-json or --json-file." );
+                return result;
+            }
+            QByteArray bytes;
+            constexpr qint64 AnalysisJsonBytes = 16 * 1024 * 1024;
+            if ( parser.isSet( jsonFileOption ) ) {
+                QFile file( parser.value( jsonFileOption ) );
+                if ( !file.open( QIODevice::ReadOnly ) || file.size() > AnalysisJsonBytes ) {
+                    result.output_message = formatParserError( parser, "Cannot read analysis JSON (maximum 16 MiB)." );
+                    return result;
+                }
+                bytes = file.read( AnalysisJsonBytes + 1 );
+            }
+            else {
+                bytes = parser.value( "analysis-json" ).toUtf8();
+            }
+            if ( bytes.size() > AnalysisJsonBytes ) {
+                result.output_message = formatParserError( parser, "Analysis JSON exceeds 16 MiB." );
+                return result;
+            }
+            QJsonParseError error;
+            const auto document = QJsonDocument::fromJson( bytes, &error );
+            if ( bytes.size() > AnalysisJsonBytes || error.error != QJsonParseError::NoError || !document.isObject() ) {
+                result.output_message = formatParserError( parser, "Analysis JSON must be an object of at most 16 MiB." );
+                return result;
+            }
+            request.analysisArguments = document.object().toVariantMap();
+            if ( !validateTabSelector( "regex_evaluate", false ) ) return result;
+            break;
+        }
+        case CommanderAction::GetAnalysisJob:
+        case CommanderAction::GetAnalysisResults:
+        case CommanderAction::CancelAnalysisJob:
+        case CommanderAction::ReleaseAnalysisJob: {
+            const auto id = parser.value( "job-id" );
+            if ( id.isEmpty() || id.size() > 128 ) {
+                result.output_message = formatParserError( parser, "An analysis --job-id is required (maximum 128 characters)." );
+                return result;
+            }
+            request.analysisArguments[ "jobId" ] = id;
+            if ( *action == CommanderAction::GetAnalysisResults ) {
+                if ( parser.isSet( "cursor" ) ) request.analysisArguments[ "cursor" ] = parser.value( "cursor" );
+                if ( parser.isSet( "page-size" ) ) {
+                    bool valid = false;
+                    const auto count = parser.value( "page-size" ).toInt( &valid );
+                    if ( !valid ) {
+                        result.output_message = formatParserError( parser, "Invalid analysis --page-size." );
+                        return result;
+                    }
+                    request.analysisArguments[ "pageSize" ] = count;
+                }
+            }
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) return result;
+            break;
+        }
         case CommanderAction::GetPlugins:
         case CommanderAction::PluginManage:
         case CommanderAction::InvokePlugin:

@@ -103,6 +103,7 @@
 #include <QWindow>
 
 #include "mainwindow.h"
+#include "analysiscommands.h"
 #include "pluginuicontroller.h"
 #include "uiautomation.h"
 
@@ -732,6 +733,12 @@ void MainWindow::loadInitialFile( QString fileName, bool followFile )
 CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& request )
 {
     switch ( request.action ) {
+    case CommanderAction::RegexEvaluate:
+    case CommanderAction::GetAnalysisJob:
+    case CommanderAction::GetAnalysisResults:
+    case CommanderAction::CancelAnalysisJob:
+    case CommanderAction::ReleaseAnalysisJob:
+        return commanderAnalysis( request );
     case CommanderAction::OpenFile:
         return loadFile( request.filePath, request.followFile )
                    ? commanderSuccess()
@@ -3467,6 +3474,28 @@ CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
     }
 
     return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
+}
+
+CommanderResult MainWindow::commanderAnalysis( const CommanderRequest& request )
+{
+    auto* service = applicationAnalysisService();
+    if ( !service ) return { CommanderResultCode::ExecutionFailed, "Analysis service unavailable.", { { "reason", "service_unavailable" } } };
+    std::optional<AnalysisRequest> source;
+    const auto scope = request.analysisArguments.value( "scope", "sample" ).toString();
+    if ( request.action == CommanderAction::RegexEvaluate && scope != "text" ) {
+        auto* crawler = commanderTargetCrawler( request );
+        if ( !crawler ) return { CommanderResultCode::NotFound, "Requested source was not found.", { { "reason", "source_not_found" } } };
+        QString error;
+        source = crawler->analysisRequest( scope, &error );
+        if ( !source ) return { CommanderResultCode::InvalidRequest, error, { { "reason", error } } };
+        source->sourceDescription[ "filePath" ] = session_.getFilename( crawler );
+        source->sourceDescription[ "windowId" ] = session_.windowId();
+        source->sourceDescription[ "windowIndex" ] = static_cast<int>( session_.windowIndex() );
+        source->sourceDescription[ "tabId" ] = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+    }
+    auto result = executeAnalysisOperation( *service, commanderActionToString( request.action ), request.analysisArguments, std::move( source ) );
+    return { result.ok ? CommanderResultCode::Success : CommanderResultCode::InvalidRequest,
+        result.ok ? QString{} : result.payload.value( "reason" ).toString(), std::move( result.payload ) };
 }
 
 CrawlerWidget* MainWindow::commanderTargetCrawler( const CommanderRequest& request ) const

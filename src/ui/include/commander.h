@@ -73,6 +73,11 @@ enum class CommanderAction {
     CancelPluginJob,
     SetActionsEnabled,
     SelectActionsTab,
+    RegexEvaluate,
+    GetAnalysisJob,
+    GetAnalysisResults,
+    CancelAnalysisJob,
+    ReleaseAnalysisJob,
 };
 
 enum class CommanderResultCode {
@@ -118,6 +123,7 @@ struct CommanderRequest {
     QString pluginAction;
     QString pluginJobId;
     QVariantMap pluginArguments;
+    QVariantMap analysisArguments;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
     std::optional<int> filterIndex;
@@ -168,6 +174,7 @@ QString commanderResultCodeToString( CommanderResultCode code );
 QString normalizeCommanderFilePath( const QString& path );
 QString normalizeCommanderUrl( const QString& url );
 bool isCommanderOpenAction( CommanderAction action );
+bool isCommanderAnalysisAction( CommanderAction action );
 
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request );
 std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMap& map,

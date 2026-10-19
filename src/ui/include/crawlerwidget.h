@@ -48,6 +48,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QSplitter>
@@ -61,6 +62,7 @@
 #include "linetypes.h"
 #include "loadingstatus.h"
 #include "logdata.h"
+#include "analysisjob.h"
 #include "logfiltereddata.h"
 #include "logmainview.h"
 #include "overview.h"
@@ -95,6 +97,7 @@ public:
     QString getSelectedText() const;
     // True for partial selection
     bool isPartialSelection() const;
+    std::optional<AnalysisRequest> analysisRequest( const QString& scope, QString* error ) const;
 
     // Display the QFB at the bottom, remembering where the focus was
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
@@ -186,6 +189,7 @@ protected:
     void changeEvent( QEvent* event ) override;
 
 Q_SIGNALS:
+    void analysisSourceClosing( const LogData* source );
     // Sent to signal the client load has progressed,
     // passing the completion percentage.
     void loadingProgressed( int progress );
@@ -413,10 +417,11 @@ private:
 
     std::shared_ptr<QuickFindPattern> quickFindPattern_;
 
-    LogMainView* logMainView_;
-    FilteredView* filteredView_;
+    LogMainView* logMainView_ = nullptr;
+    QPointer<AbstractLogView> lastAnalysisView_;
+    FilteredView* filteredView_ = nullptr;
     std::unordered_map<FilteredView*, std::shared_ptr<LogFilteredData>> filteredViewsData_;
-    QTabWidget* tabbedFilteredView_;
+    QTabWidget* tabbedFilteredView_ = nullptr;
 
     OverviewWidget* overviewWidget_;
 

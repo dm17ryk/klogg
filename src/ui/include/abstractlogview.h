@@ -140,6 +140,10 @@ public:
     LineNumber visibleLineEnd() const;
     // Return the text of the current selection.
     QString getSelectedText() const;
+    klogg::vector<std::pair<LineNumber, LinesCount>> selectedLineRanges() const
+    {
+        return selection_.getLineRanges();
+    }
     // True for partial selection
     bool isPartialSelection() const;
     // Instructs the widget to select the whole text.
