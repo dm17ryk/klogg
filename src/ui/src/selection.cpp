@@ -20,8 +20,7 @@
 // This file implements Selection.
 // This class implements the selection handling. No check is made on
 // the validity of the selection, it must be handled by the caller.
-// There are three types of selection, only one type might be active
-// at any time.
+// Whole-row ranges and a partial-text selection are mutually exclusive.
 
 #include <numeric>
 
@@ -31,66 +30,116 @@
 #include "log.h"
 #include "selection.h"
 
-Selection::Selection()
-{
-    selectedPartial_.startColumn = 0_lcol;
-    selectedPartial_.endColumn = 0_lcol;
+Selection::Selection() = default;
 
-    selectedRange_.endLine = 0_lnum;
+void Selection::clear()
+{
+    selectedRanges_.clear();
+    selectedPartial_.line = {};
+    anchorLine_ = {};
+    LOG_DEBUG << "Selection cleared";
+}
+
+void Selection::selectLine( LineNumber line )
+{
+    clear();
+    selectedRanges_.emplace( line, line );
+    anchorLine_ = line;
+    LOG_DEBUG << "Selection replaced with row=" << line;
+}
+
+void Selection::addRange( LineNumber first, LineNumber last )
+{
+    auto it = selectedRanges_.lower_bound( first );
+    if ( it != selectedRanges_.begin() ) {
+        const auto previous = std::prev( it );
+        if ( previous->second >= first || first.get() - previous->second.get() == 1 ) {
+            it = previous;
+        }
+    }
+    while ( it != selectedRanges_.end()
+            && ( it->first <= last || it->first.get() - last.get() == 1 ) ) {
+        first = std::min( first, it->first );
+        last = std::max( last, it->second );
+        it = selectedRanges_.erase( it );
+    }
+    selectedRanges_.emplace( first, last );
+    LOG_DEBUG << "Selection range merged first=" << first << " last=" << last
+              << " ranges=" << selectedRanges_.size();
+}
+
+void Selection::toggleLine( LineNumber line )
+{
+    // Starting a row set from a text portion replaces that portion.
+    selectedPartial_.line = {};
+    anchorLine_ = line;
+    auto it = selectedRanges_.upper_bound( line );
+    if ( it != selectedRanges_.begin() && std::prev( it )->second >= line ) {
+        --it;
+        const auto first = it->first;
+        const auto last = it->second;
+        selectedRanges_.erase( it );
+        if ( first < line ) {
+            selectedRanges_.emplace( first, line - 1_lcount );
+        }
+        if ( line < last ) {
+            selectedRanges_.emplace( line + 1_lcount, last );
+        }
+        LOG_DEBUG << "Selection row removed=" << line << " ranges=" << selectedRanges_.size();
+    }
+    else {
+        addRange( line, line );
+        LOG_DEBUG << "Selection row added=" << line << " ranges=" << selectedRanges_.size();
+    }
 }
 
 void Selection::selectPortion( LineNumber line, LineColumn startColumn, LineColumn endColumn )
 {
-    // First unselect any whole line or range
-    selectedLine_ = {};
-    selectedRange_.startLine = {};
+    selectedRanges_.clear();
+    anchorLine_ = line;
 
     selectedPartial_.line = line;
     selectedPartial_.startColumn = std::min( startColumn, endColumn );
     selectedPartial_.endColumn = std::max( startColumn, endColumn );
+    LOG_DEBUG << "Selection replaced with portion row=" << line
+              << " first=" << selectedPartial_.startColumn
+              << " last=" << selectedPartial_.endColumn;
 }
 
 void Selection::selectRange( LineNumber startLine, LineNumber endLine )
 {
-    // First unselect any whole line and portion
-    selectedLine_ = {};
-    selectedPartial_.line = {};
-
-    selectedRange_.startLine = std::min( startLine, endLine );
-    selectedRange_.endLine = std::max( startLine, endLine );
-
-    selectedRange_.firstLine = startLine;
+    clear();
+    anchorLine_ = startLine;
+    addRange( std::min( startLine, endLine ), std::max( startLine, endLine ) );
 }
 
-void Selection::selectRangeFromPrevious( LineNumber line )
+void Selection::selectRangeFromPrevious( LineNumber line, bool additive )
 {
-    LineNumber previous_line;
-
-    if ( selectedLine_.has_value() )
-        previous_line = *selectedLine_;
-    else if ( selectedRange_.startLine.has_value() )
-        previous_line = selectedRange_.firstLine;
-    else if ( selectedPartial_.line.has_value() )
-        previous_line = *selectedPartial_.line;
-    else
-        previous_line = 0_lnum;
-
-    selectRange( previous_line, line );
+    const auto anchor = anchorLine_.value_or( 0_lnum );
+    if ( !additive ) {
+        selectedRanges_.clear();
+    }
+    selectedPartial_.line = {};
+    anchorLine_ = anchor;
+    addRange( std::min( anchor, line ), std::max( anchor, line ) );
+    LOG_DEBUG << "Selection anchored range anchor=" << anchor << " end=" << line
+              << " additive=" << additive;
 }
 
 void Selection::crop( LineNumber last_line )
 {
-    if ( selectedLine_.has_value() && *selectedLine_ > last_line )
-        selectedLine_ = {};
-
     if ( selectedPartial_.line.has_value() && *selectedPartial_.line > last_line )
         selectedPartial_.line = {};
 
-    if ( selectedRange_.endLine > last_line )
-        selectedRange_.endLine = last_line;
-
-    if ( selectedRange_.startLine.has_value() && *selectedRange_.startLine > last_line )
-        selectedRange_.startLine = last_line;
+    selectedRanges_.erase( selectedRanges_.upper_bound( last_line ), selectedRanges_.end() );
+    if ( !selectedRanges_.empty() ) {
+        auto& last = selectedRanges_.rbegin()->second;
+        last = std::min( last, last_line );
+    }
+    if ( anchorLine_ && *anchorLine_ > last_line ) {
+        anchorLine_ = isEmpty() ? OptionalLineNumber{} : OptionalLineNumber{ last_line };
+    }
+    LOG_DEBUG << "Selection cropped last=" << last_line << " ranges=" << selectedRanges_.size();
 }
 
 Portion Selection::getPortionForLine( LineNumber line ) const
@@ -105,12 +154,8 @@ Portion Selection::getPortionForLine( LineNumber line ) const
 
 bool Selection::isLineSelected( LineNumber line ) const
 {
-    if ( selectedLine_.has_value() && line == *selectedLine_ )
-        return true;
-    else if ( selectedRange_.startLine.has_value() )
-        return ( ( line >= *selectedRange_.startLine ) && ( line <= selectedRange_.endLine ) );
-    else
-        return false;
+    const auto it = selectedRanges_.upper_bound( line );
+    return it != selectedRanges_.begin() && line <= std::prev( it )->second;
 }
 
 bool Selection::isPortionSelected( LineNumber line, LineColumn startColumn,
@@ -130,30 +175,46 @@ bool Selection::isPortionSelected( LineNumber line, LineColumn startColumn,
 
 OptionalLineNumber Selection::selectedLine() const
 {
-    return selectedLine_;
+    return isSingleLine() ? OptionalLineNumber{ selectedRanges_.begin()->first }
+                          : OptionalLineNumber{};
 }
 
 klogg::vector<LineNumber> Selection::getLines() const
 {
     klogg::vector<LineNumber> selection;
 
-    if ( selectedLine_.has_value() ) {
-        selection.push_back( *selectedLine_ );
-    }
-    else if ( selectedPartial_.line.has_value() ) {
-        selection.push_back( *selectedPartial_.line );
-    }
-    else if ( selectedRange_.startLine.has_value() ) {
-        selection.resize( selectedRange_.size().get() );
-        std::iota( selection.begin(), selection.end(), *selectedRange_.startLine );
+    for ( const auto& range : getLineRanges() ) {
+        const auto offset = selection.size();
+        selection.resize( offset + static_cast<size_t>( range.second.get() ) );
+        std::iota( selection.begin() + static_cast<ptrdiff_t>( offset ), selection.end(),
+                   range.first );
     }
 
     return selection;
 }
 
+klogg::vector<std::pair<LineNumber, LinesCount>> Selection::getLineRanges() const
+{
+    klogg::vector<std::pair<LineNumber, LinesCount>> ranges;
+    if ( selectedPartial_.line ) {
+        ranges.emplace_back( *selectedPartial_.line, 1_lcount );
+    }
+    else {
+        ranges.reserve( selectedRanges_.size() );
+        for ( const auto& range : selectedRanges_ ) {
+            ranges.emplace_back( range.first, ( range.second - range.first ) + 1_lcount );
+        }
+    }
+    return ranges;
+}
+
 LinesCount Selection::getSelectedLinesCount() const
 {
-    return selectedRange_.size();
+    auto count = selectedPartial_.line ? 1_lcount : 0_lcount;
+    for ( const auto& range : selectedRanges_ ) {
+        count += ( range.second - range.first ) + 1_lcount;
+    }
+    return count;
 }
 
 // The tab behaviour is a bit odd at the moment, full lines are not expanded
@@ -170,13 +231,15 @@ QString Selection::getSelectedText( const AbstractLogData* logData, bool lineNum
 
     text.reserve( selectionSizeEstimate );
 
+    bool first = true;
     for ( const auto& [ lineNumber, line ] : selectionData ) {
-        if ( !text.isEmpty() ) {
+        if ( !first ) {
 #if defined( Q_OS_WIN )
             text.append( QChar::CarriageReturn );
 #endif
             text.append( QChar::LineFeed );
         }
+        first = false;
 
         if ( lineNumbers ) {
             text.append( QStringLiteral( "%1: %2" ).arg( lineNumber.get() ).arg( line ) );
@@ -194,24 +257,20 @@ Selection::getSelectionWithLineNumbers( const AbstractLogData* logData ) const
 {
     std::map<LineNumber, QString> selectionData;
 
-    if ( selectedLine_.has_value() ) {
-        selectionData.emplace( logData->getLineNumber( selectedLine_.value() ),
-                               logData->getLineString( *selectedLine_ ) );
-    }
-    else if ( selectedPartial_.line.has_value() ) {
+    if ( selectedPartial_.line.has_value() ) {
         selectionData.emplace(
             logData->getLineNumber( selectedPartial_.line.value() ),
             logData->getExpandedLineString( *selectedPartial_.line )
-                .mid( selectedPartial_.startColumn.get(),
-                      selectedPartial_.size().get() ) );
+                .mid( selectedPartial_.startColumn.get(), selectedPartial_.size().get() ) );
     }
-    else if ( selectedRange_.startLine.has_value() ) {
-        const auto list = logData->getLines( *selectedRange_.startLine, selectedRange_.size() );
-        LineNumber ln = *selectedRange_.startLine;
-
-        for ( const auto& line : list ) {
-            selectionData.emplace( logData->getLineNumber( ln ), line );
-            ln++;
+    else {
+        for ( const auto& range : getLineRanges() ) {
+            const auto list = logData->getLines( range.first, range.second );
+            auto ln = range.first;
+            for ( const auto& line : list ) {
+                selectionData.emplace( logData->getLineNumber( ln ), line );
+                ln++;
+            }
         }
     }
 
@@ -223,11 +282,8 @@ FilePosition Selection::getNextPosition() const
     LineNumber line;
     LineColumn column = 0_lcol;
 
-    if ( selectedLine_.has_value() ) {
-        line = *selectedLine_ + 1_lcount;
-    }
-    else if ( selectedRange_.startLine.has_value() ) {
-        line = selectedRange_.endLine + 1_lcount;
+    if ( !selectedRanges_.empty() ) {
+        line = selectedRanges_.rbegin()->second + 1_lcount;
     }
     else if ( selectedPartial_.line.has_value() ) {
         line = *selectedPartial_.line;
@@ -242,11 +298,8 @@ FilePosition Selection::getPreviousPosition() const
     LineNumber line = 0_lnum;
     LineColumn column = 0_lcol;
 
-    if ( selectedLine_.has_value() ) {
-        line = *selectedLine_;
-    }
-    else if ( selectedRange_.startLine.has_value() ) {
-        line = *selectedRange_.startLine;
+    if ( !selectedRanges_.empty() ) {
+        line = selectedRanges_.begin()->first;
     }
     else if ( selectedPartial_.line.has_value() ) {
         line = *selectedPartial_.line;

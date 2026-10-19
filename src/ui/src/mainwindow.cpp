@@ -3055,7 +3055,15 @@ void MainWindow::lineNumberHandler( LineNumber startLine, LinesCount nLines, Lin
 
     if ( fileNbLine != 0 ) {
         if ( nSymbols.get() == 0 ) {
-            lineNbField->setText( tr( "Ln:%1/%2" ).arg( startLine.get() + 1 ).arg( fileNbLine ) );
+            if ( nLines > 1_lcount ) {
+                lineNbField->setText( tr( "Ln:%1/%2 Sel:%3 lines" )
+                                          .arg( startLine.get() + 1 )
+                                          .arg( fileNbLine )
+                                          .arg( nLines.get() ) );
+            }
+            else {
+                lineNbField->setText( tr( "Ln:%1/%2" ).arg( startLine.get() + 1 ).arg( fileNbLine ) );
+            }
         }
         else {
             if ( nLines.get() == 1 ) {

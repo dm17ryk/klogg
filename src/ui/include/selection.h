@@ -23,13 +23,14 @@
 #include <QList>
 #include <QString>
 #include <cstddef>
+#include <map>
 
 #include "linetypes.h"
 
 class AbstractLogData;
 
 class Portion {
-  public:
+public:
     Portion()
         : line_{}
         , startColumn_{ -1 }
@@ -67,7 +68,7 @@ class Portion {
         return ( endColumn_ - startColumn_ ) + 1_length;
     }
 
-  private:
+private:
     OptionalLineNumber line_;
     LineColumn startColumn_;
     LineColumn endColumn_;
@@ -75,24 +76,17 @@ class Portion {
 
 // Represents a selection in an AbstractLogView
 class Selection {
-  public:
+public:
     // Construct an empty selection
     Selection();
 
     // Clear the selection
-    void clear()
-    {
-        selectedPartial_.line = {};
-        selectedLine_ = {};
-    }
+    void clear();
 
     // Select one line
-    void selectLine( LineNumber line )
-    {
-        selectedPartial_.line = {};
-        selectedRange_.startLine = {};
-        selectedLine_ = line;
-    }
+    void selectLine( LineNumber line );
+    // Toggle a whole row without changing other selected rows.
+    void toggleLine( LineNumber line );
     // Select a portion of line (both start and end included)
     void selectPortion( LineNumber line, LineColumn startColumn, LineColumn endColumn );
     void selectPortion( const Portion& selection )
@@ -104,7 +98,13 @@ class Selection {
 
     // Select a range from the previously selected line or beginning
     // of range (shift+click behaviour)
-    void selectRangeFromPrevious( LineNumber line );
+    void selectRangeFromPrevious( LineNumber line, bool additive = false );
+
+    // The shared anchor for mouse and keyboard range extension, including a toggled-off row.
+    OptionalLineNumber anchorLine() const
+    {
+        return anchorLine_;
+    }
 
     // Crop selection so that in fit in the range ending with the line passed.
     void crop( LineNumber lastLine );
@@ -112,13 +112,14 @@ class Selection {
     // Returns whether the selection is empty
     bool isEmpty() const
     {
-        return ( !selectedPartial_.line ) && ( !selectedLine_ );
+        return !selectedPartial_.line && selectedRanges_.empty();
     }
 
     // Returns whether the selection is a single line
     bool isSingleLine() const
     {
-        return !!selectedLine_;
+        return selectedRanges_.size() == 1
+               && selectedRanges_.begin()->first == selectedRanges_.begin()->second;
     }
 
     // Returns whether the selection is a portion of line
@@ -138,6 +139,8 @@ class Selection {
     Portion getPortionForLine( LineNumber line ) const;
     // Get a list of selected line(s), in order.
     klogg::vector<LineNumber> getLines() const;
+    // Compact view-row ranges, each represented as (first row, row count).
+    klogg::vector<std::pair<LineNumber, LinesCount>> getLineRanges() const;
 
     LinesCount getSelectedLinesCount() const;
 
@@ -161,38 +164,27 @@ class Selection {
     // Idem from the position immediately before selection.
     FilePosition getPreviousPosition() const;
 
-  private:
+private:
     std::map<LineNumber, QString>
     getSelectionWithLineNumbers( const AbstractLogData* logData ) const;
 
-  private:
-    // Line number currently selected, or -1 if none selected
-    OptionalLineNumber selectedLine_;
+private:
+    // Sorted, non-overlapping and non-adjacent inclusive whole-row ranges.
+    std::map<LineNumber, LineNumber> selectedRanges_;
+    OptionalLineNumber anchorLine_;
+    void addRange( LineNumber first, LineNumber last );
 
     struct SelectedPartial {
         OptionalLineNumber line;
-        LineColumn startColumn;
-        LineColumn endColumn;
+        LineColumn startColumn = 0_lcol;
+        LineColumn endColumn = 0_lcol;
 
         LineLength size() const
         {
             return ( endColumn - startColumn ) + 1_length;
         }
     };
-    struct SelectedRange {
-        // The limits of the range, sorted
-        OptionalLineNumber startLine;
-        LineNumber endLine;
-        // The line selected first, used for shift+click
-        LineNumber firstLine;
-
-        LinesCount size() const
-        {
-            return startLine ? ( endLine - startLine.value() ) + 1_lcount : 0_lcount;
-        }
-    };
     struct SelectedPartial selectedPartial_;
-    struct SelectedRange selectedRange_;
 };
 
 #endif
