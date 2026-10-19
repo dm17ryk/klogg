@@ -133,10 +133,15 @@ struct AnalysisJobService::Private {
                     if ( job->source ) {
                         auto endLine
                             = static_cast<quint64>( job->request.snapshot.lineCount.get() );
+                        const bool sampleLimited = job->request.scope == "sample" && endLine > 1000;
+                        if ( sampleLimited )
+                            endLine = 1000;
                         if ( !job->request.ranges.empty() ) {
                             endLine = std::min( endLine, job->request.ranges.back().second + 1 );
                         }
                         if ( nextLine >= endLine ) {
+                            if ( sampleLimited )
+                                reason = "sample_limit";
                             break;
                         }
                         auto limits = job->request.limits;

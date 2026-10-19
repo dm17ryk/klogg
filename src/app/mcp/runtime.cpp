@@ -183,13 +183,16 @@ public:
         }
         const auto options = catalog.value( "options" ).toObject();
         QStringList argv{ "command", "--action", action, "--require-running" };
-        QTemporaryDir temporary;
+    const bool analysisTransport = action == "regex_evaluate" || action.endsWith( "_analysis_job" )
+                                   || action == "get_analysis_results"
+                                   || action.endsWith( "_regex_lab" )
+                                   || action == "apply_regex_lab_pattern";
+    QTemporaryDir temporary;
         int timeout = 40000;
         for ( auto it = arguments.begin(); it != arguments.end(); ++it ) {
             auto key = it.key();
             QJsonValue value = it.value();
-            if ( key == "pretty" && ( action == "regex_evaluate" || action.endsWith( "_analysis_job" )
-                                      || action == "get_analysis_results" ) ) {
+        if ( key == "pretty" && analysisTransport ) {
                 if ( !value.isBool() ) fail( "pretty must be boolean." );
                 // Preserve the bounded compact CLI transport; MCP formats its own envelope.
                 continue;
@@ -268,8 +271,7 @@ public:
         const auto result = run( executable, argv, timeout );
         if ( result.code != 0 ) {
             const auto document = QJsonDocument::fromJson( result.output.trimmed() );
-            if ( ( action == "regex_evaluate" || action.endsWith( "_analysis_job" )
-                   || action == "get_analysis_results" )
+        if ( analysisTransport
                  && document.isObject() && document.object().contains( "reason" ) ) {
                 return { { "action", action }, { "payload", document.object() }, { "success", false } };
             }

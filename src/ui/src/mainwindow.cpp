@@ -61,6 +61,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
+#include "regexlabdock.h"
 #include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -462,6 +463,7 @@ MainWindow::MainWindow( WindowSession session )
     , tempDir_( QDir::temp().filePath( "cilogg_temp_" ) )
 {
     setObjectName( QStringLiteral( "mainWindow" ) );
+    createRegexLab();
     createActions();
     createMenus();
     createToolBars();
@@ -516,6 +518,8 @@ MainWindow::MainWindow( WindowSession session )
 
     signalMux_.connect( SIGNAL( sendToPreview( QString, QString ) ), this,
                         SLOT( sendToPreview( QString, QString ) ) );
+    signalMux_.connect( SIGNAL( openRegexLabRequested() ), this,
+                       SLOT( showRegexLabForSelection() ) );
 
     // Register for progress status bar
     signalMux_.connect( SIGNAL( loadingProgressed( int ) ), this,
@@ -630,6 +634,11 @@ MainWindow::MainWindow( WindowSession session )
     loadIcons();
     reTranslateUI();
     refreshScriptStatusIndicators();
+    const auto dockState = SessionInfo::getSynced().dockState( session_.windowId() );
+    if ( !dockState.isEmpty() ) {
+        const bool restored = restoreState( dockState, 1 );
+        LOG_DEBUG << "Regex Lab restored layout=" << restored;
+    }
 }
 
 void MainWindow::reloadGeometry()
@@ -739,6 +748,11 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
     case CommanderAction::CancelAnalysisJob:
     case CommanderAction::ReleaseAnalysisJob:
         return commanderAnalysis( request );
+    case CommanderAction::ShowRegexLab:
+    case CommanderAction::GetRegexLab:
+    case CommanderAction::SetRegexLab:
+    case CommanderAction::ApplyRegexLabPattern:
+        return commanderRegexLab( request );
     case CommanderAction::OpenFile:
         return loadFile( request.filePath, request.followFile )
                    ? commanderSuccess()
@@ -1784,6 +1798,9 @@ void MainWindow::createActions()
              [ this ]( auto ) { this->showScenarioRunner(); } );
 
     showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
+    showRegexLabAction = regexLabDock_->toggleViewAction();
+    showRegexLabAction->setObjectName( "showRegexLabAction" );
+    showRegexLabAction->setToolTip( tr( "Regex Lab: evaluate patterns and inspect captures" ) );
     showLabQueueAction->setObjectName( QStringLiteral( "showLabQueueAction" ) );
     showLabQueueAction->setStatusTip( tr( action::showLabQueueStatusTip ) );
     connect( showLabQueueAction, &QAction::triggered, this,
@@ -1906,6 +1923,7 @@ void MainWindow::loadIcons()
     showScriptRunnerAction->setIcon( QIcon( ":/images/tool-script-runner.svg" ) );
     showScenarioRunnerAction->setIcon( QIcon( ":/images/tool-scenario-runner.svg" ) );
     showLabQueueAction->setIcon( QIcon( ":/images/tool-lab-queue.svg" ) );
+    showRegexLabAction->setIcon( QIcon( ":/images/tool-regex-lab.svg" ) );
     checkForUpdatesAction->setIcon( iconLoader_.load( "icons8-search-refresh" ) );
     LOG_DEBUG << "Tool icons refreshed: responses=" << !showResponsesAction->icon().isNull()
               << ", script=" << !showScriptRunnerAction->icon().isNull()
@@ -2010,6 +2028,7 @@ void MainWindow::createMenus()
     toolsMenu->addAction( showScriptRunnerAction );
     toolsMenu->addAction( showScenarioRunnerAction );
     toolsMenu->addAction( showLabQueueAction );
+    toolsMenu->addAction( showRegexLabAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -2260,6 +2279,7 @@ void MainWindow::createToolBars()
     toolBar->addAction( showScriptRunnerAction );
     toolBar->addAction( showScenarioRunnerAction );
     toolBar->addAction( showLabQueueAction );
+    toolBar->addAction( showRegexLabAction );
     toolBar->addAction( showScratchPadAction );
     LOG_DEBUG << "Main toolbar includes responses, script runner, scenario runner and lab queue";
 
@@ -5186,7 +5206,11 @@ void MainWindow::writeSettings()
 
         widget_list.emplace_back( view, 0UL, std::move( context ), streamContext, scriptContext );
     }
-    SessionInfo::getSynced().setGlobalScriptContext( globalScriptContext() );
+    auto& sessionInfo = SessionInfo::getSynced();
+    sessionInfo.setGlobalScriptContext( globalScriptContext() );
+    sessionInfo.setDockState( session_.windowId(), saveState( 1 ) );
+    // WindowSession::save() reloads SessionInfo; publish these fields first.
+    sessionInfo.save();
     session_.save( widget_list, saveGeometry() );
 }
 

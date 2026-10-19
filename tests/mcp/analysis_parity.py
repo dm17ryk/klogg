@@ -15,9 +15,106 @@ import sys
 import threading
 import time
 import uuid
+from typing import Optional
 
 
-def run(executable: Path, artifacts: Path) -> None:
+def peak_working_set(pid: int) -> Optional[int]:
+    """Return the Windows host peak; other platforms explicitly report unavailable."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class Counters(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("faults", wintypes.DWORD)] + [
+            (name, ctypes.c_size_t) for name in (
+                "peak", "working", "peak_paged", "paged", "peak_nonpaged", "nonpaged",
+                "pagefile", "peak_pagefile",
+            )
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    psapi.GetProcessMemoryInfo.argtypes = (wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD)
+    handle = kernel.OpenProcess(0x410, False, pid)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        counters = Counters()
+        counters.cb = ctypes.sizeof(counters)
+        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return counters.peak
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def measure_file_analysis(cli, host, artifacts: Path) -> None:
+    """Measure a frozen 64 MiB scan, append coexistence and public UI round trips."""
+    fixture = artifacts / "throughput.log"
+    block = (b"row " + b"x" * 59 + b"\n") * 16384
+    with fixture.open("wb") as output:
+        for _ in range(64):
+            output.write(block)
+    frozen_bytes = fixture.stat().st_size
+    frozen_lines = 64 * 16384
+    cli("open_file", "--file", str(fixture))
+    request = json.dumps({"pattern": "this_marker_is_absent", "scope": "whole_file",
+                          "limits": {"timeoutMs": 120000}})
+    deadline = time.monotonic() + 60
+    while True:
+        started = time.monotonic()
+        result = cli("regex_evaluate", "--analysis-json", request, success=None)
+        if "jobId" not in result:
+            assert result.get("reason") == "source_not_ready", result
+        else:
+            job = result["jobId"]
+            initial = cli("get_analysis_job", "--job-id", job)
+            if int(initial["source"]["indexedBytes"]) == frozen_bytes:
+                break
+            cli("release_analysis_job", "--job-id", job)
+        assert time.monotonic() < deadline, "Benchmark source did not finish indexing"
+        time.sleep(0.02)
+    peak_before = peak_working_set(host.pid)
+    with fixture.open("ab") as output:
+        output.write(b"appended\n")
+    after_append = cli("get_analysis_job", "--job-id", job)
+    appended_while_active = after_append["state"] in ("queued", "running")
+    latencies = []
+    deadline = time.monotonic() + 140
+    while True:
+        probe = time.monotonic()
+        cli("get_info")
+        latencies.append((time.monotonic() - probe) * 1000)
+        status = cli("get_analysis_job", "--job-id", job)
+        if status["state"] in ("completed", "cancelled", "failed"):
+            break
+        assert time.monotonic() < deadline, "Benchmark analysis did not terminate"
+    elapsed = time.monotonic() - started
+    assert status["complete"] and status["scannedLines"] == frozen_lines, status
+    assert int(status["source"]["indexedBytes"]) == frozen_bytes, status
+    deadline = time.monotonic() + 15
+    while not status["newerDataAvailable"]:
+        assert time.monotonic() < deadline, "Append publication was not observed"
+        status = cli("get_analysis_job", "--job-id", job)
+        time.sleep(0.02)
+    measurements = {"rawBytes": frozen_bytes, "physicalLines": frozen_lines,
+                    "elapsedSecondsIncludingCli": elapsed,
+                    "scanMiBPerSecondIncludingCli": frozen_bytes / (1024 * 1024) / elapsed,
+                    "appendWhileActive": appended_while_active,
+                    "uiCommanderRoundTripMs": latencies,
+                    "peakHostWorkingSetBytesBefore": peak_before,
+                    "peakHostWorkingSetBytesAfter": peak_working_set(host.pid),
+                    "workerMetrics": status["metrics"], "serviceTiming": status["timing"]}
+    (artifacts / "measurements.json").write_text(json.dumps(measurements, indent=2), encoding="utf-8")
+    cli("release_analysis_job", "--job-id", job)
+    print("PASS: frozen-file throughput, append publication and UI round trips measured")
+
+
+def run(executable: Path, artifacts: Path, regex_lab: bool = False, measure: bool = False) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
     payload = artifacts / f"payload-{uuid.uuid4().hex}"
     payload.mkdir()
@@ -45,7 +142,8 @@ def run(executable: Path, artifacts: Path) -> None:
             [str(isolated), "command", "--action", action, "--require-running", *arguments],
             capture_output=True, encoding="utf-8", env=environment, timeout=45,
         )
-        assert (result.returncode == 0) == success, (result.returncode, result.stderr, result.stdout)
+        if success is not None:
+            assert (result.returncode == 0) == success, (result.returncode, result.stderr, result.stdout)
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def send(method: str, params: dict, notification=False) -> dict:
@@ -143,6 +241,35 @@ def run(executable: Path, artifacts: Path) -> None:
             cli_rows, mcp_rows = rows(cli_job, False), rows(mcp_job, True)
             assert normalized(cli_rows) == normalized(mcp_rows), (cli_rows, mcp_rows)
             assert [row["lineNumber"] for row in cli_rows] == [1, 2, 3]
+            if regex_lab:
+                assert all(name in catalog["commander"]["commands"] for name in (
+                    "show_regex_lab", "get_regex_lab", "set_regex_lab", "apply_regex_lab_pattern"))
+                cli("show_regex_lab", "--window-index", "0")
+                definition = {key: value for key, value in request.items() if key != "requestRevision"}
+                command("set_regex_lab", {"window_index": 0, "definition": definition})
+                previous_job = cli("get_regex_lab", "--window-index", "0")["jobId"]
+                # Activate the real GUI Run control; it must use the same service
+                # and produce exact captures equivalent to CLI/native MCP runs.
+                command("activate_ui", {"window_index": 0, "object_name": "regexLabRun"})
+                deadline = time.monotonic() + 30
+                while True:
+                    lab_job = cli("get_regex_lab", "--window-index", "0")["jobId"]
+                    if lab_job and lab_job != previous_job:
+                        break
+                    assert time.monotonic() < deadline, "GUI Run did not publish a new analysis job"
+                    time.sleep(0.02)
+                assert finish(lab_job, True)["complete"]
+                assert normalized(rows(lab_job, True)) == normalized(cli_rows)
+                invalid = command("set_regex_lab", {"definition": {"activateResultIndex": None}}, success=False)
+                assert invalid["reason"] == "invalid_result_index", invalid
+                # A changed draft is not applicable until a new worker compiles it.
+                command("set_regex_lab", {"definition": {"pattern": "["}})
+                invalid = command("apply_regex_lab_pattern", {}, success=False)
+                assert invalid["reason"] == "pattern_not_validated", invalid
+                command("set_regex_lab", {"definition": {"operation": "release"}})
+                print("PASS: GUI Regex Lab Run, CLI/native-MCP captures, semantic errors and draft guards")
+            if measure:
+                measure_file_analysis(cli, host, artifacts)
             error = cli("get_analysis_results", "--job-id", cli_job, "--cursor", "invalid", success=False)
             assert error["reason"] == command("get_analysis_results", {"job_id": mcp_job, "cursor": "invalid"}, success=False)["reason"] == "invalid_cursor"
             # Exceeds Windows argv and Linux per-argument limits; MCP must spool JSON.
@@ -199,5 +326,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
+    parser.add_argument("--regex-lab", action="store_true", help="Also verify dock commands and GUI Run parity")
+    parser.add_argument("--measure", action="store_true", help="Measure a 64 MiB frozen scan and append coexistence")
     options = parser.parse_args()
-    run(options.executable.resolve(), options.artifacts.resolve())
+    run(options.executable.resolve(), options.artifacts.resolve(), options.regex_lab, options.measure)

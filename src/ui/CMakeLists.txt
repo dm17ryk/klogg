@@ -32,6 +32,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pathline.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/regexlabdock.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/regexlabdock.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginuicontroller.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginuicontroller.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowplugins.cpp
@@ -126,6 +128,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowregexlab.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/uiautomation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowtext.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/menu.cpp

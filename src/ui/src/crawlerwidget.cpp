@@ -1920,6 +1920,10 @@ void CrawlerWidget::setup()
     connect( visibilityBox_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &CrawlerWidget::changeFilteredViewVisibility );
 
+    connect( logMainView_, &AbstractLogView::analyzeSelectionRequested, this, [ this ] {
+        lastAnalysisView_ = logMainView_;
+        Q_EMIT openRegexLabRequested();
+    } );
     connect( logMainView_, &LogMainView::newSelection, this,
              [ this ]( auto ) { logMainView_->update(); } );
 
@@ -2128,8 +2132,40 @@ void CrawlerWidget::changeFontSize( bool increase )
     }
 }
 
+CommanderRequest CrawlerWidget::analysisSearchRequest( const CommanderRequest& draft ) const
+{
+    auto request = draft;
+    const auto options = currentSearchOptions();
+    request.beforeContext = options.contextBefore;
+    request.afterContext = options.contextAfter;
+    request.maxMatches = options.maxMatches;
+    request.searchAutoRefresh = searchRefreshButton_->isChecked();
+    request.searchKeepResults = keepSearchResultsButton_->isChecked();
+    LOG_DEBUG << "Regex Lab apply preserves context=" << request.beforeContext << ","
+              << request.afterContext << " refresh=" << request.searchAutoRefresh
+              << " keep=" << request.searchKeepResults;
+    return request;
+}
+
+bool CrawlerWidget::navigateToAnalysisResult( const SourceLocation& location )
+{
+    if ( !logData_ || !logMainView_ || !logData_->sourceSnapshot().accepts( location ) ) {
+        LOG_DEBUG << "Regex Lab navigation rejected source=" << location.sourceId()
+                  << " generation=" << location.generation();
+        return false;
+    }
+    QPointer<LogMainView> view = logMainView_;
+    view->selectAndDisplayLine( location.line() );
+    if ( view ) view->setFocus();
+    return !view.isNull();
+}
+
 void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 {
+    connect( view, &AbstractLogView::analyzeSelectionRequested, this, [ this, view ] {
+        lastAnalysisView_ = view;
+        Q_EMIT openRegexLabRequested();
+    } );
     connect( view, &FilteredView::newSelection, view, [ view ]( auto ) { view->update(); } );
 
     connect( view, &FilteredView::newSelection, this, &CrawlerWidget::jumpToMatchingLine );

@@ -78,6 +78,10 @@ enum class CommanderAction {
     GetAnalysisResults,
     CancelAnalysisJob,
     ReleaseAnalysisJob,
+    ShowRegexLab,
+    GetRegexLab,
+    SetRegexLab,
+    ApplyRegexLabPattern,
 };
 
 enum class CommanderResultCode {

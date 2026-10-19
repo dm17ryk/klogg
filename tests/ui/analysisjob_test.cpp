@@ -39,6 +39,28 @@ QVariantMap finishAnalysis( AnalysisJobService& service, const QString& id )
 }
 } // namespace
 
+TEST_CASE( "Analysis sample never reads an oversized record beyond its line cap", "[logdata][analysis]" )
+{
+    const bool extraRecord = GENERATE( false, true );
+    QTemporaryDir directory;
+    const auto path = directory.filePath( "sample.log" );
+    auto bytes = QByteArray( "small\n" ).repeated( 1000 );
+    if ( extraRecord ) bytes += QByteArray( 1024 * 1024 + 1, 'x' );
+    writeAnalysisFixture( path, bytes );
+    auto data = openAnalysisFixture( path );
+    AnalysisJobService service;
+    AnalysisRequest request;
+    request.source = data;
+    request.snapshot = data->sourceSnapshot();
+    request.scope = "sample";
+    const auto id = service.start( request );
+    REQUIRE_FALSE( id.isEmpty() );
+    const auto status = finishAnalysis( service, id );
+    CHECK( status.value( "scannedLines" ).toInt() == 1000 );
+    CHECK( status.value( "complete" ).toBool() == !extraRecord );
+    CHECK( status.value( "reason" ).toString() == ( extraRecord ? "sample_limit" : "" ) );
+}
+
 TEST_CASE( "Analysis scans freeze the indexed prefix including an unterminated tail",
            "[logdata][analysis]" )
 {
