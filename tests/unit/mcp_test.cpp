@@ -26,6 +26,19 @@ void initialize( Session& session )
         session.dispatch( { { "jsonrpc", "2.0" }, { "method", "notifications/initialized" } } ) );
 }
 } // namespace
+TEST_CASE( "Native MCP retains structured Commander analysis failures", "[mcp][analysiscommands]" )
+{
+    Session session( "test", []( const QString&, const QJsonObject& ) {
+        return QJsonObject{ { "success", false }, { "payload", QJsonObject{ { "reason", "invalid_cursor" } } } };
+    } );
+    initialize( session );
+    const auto response = session.dispatch( request( "tools/call", { { "name", "cilogg_execute" },
+        { "arguments", QJsonObject{ { "action", "get_analysis_results" } } } } ) );
+    REQUIRE( response );
+    const auto result = response->value( "result" ).toObject();
+    CHECK( result.value( "isError" ).toBool() );
+    CHECK( result.value( "structuredContent" ).toObject().value( "payload" ).toObject().value( "reason" ) == "invalid_cursor" );
+}
 TEST_CASE( "Native MCP negotiates lifecycle and reports protocol and tool errors", "[mcp]" )
 {
     int called = 0;

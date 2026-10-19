@@ -56,6 +56,7 @@
 
 #include "logdata.h"
 #include "logfiltereddata.h"
+#include "analysiscommands.h"
 
 #include "configuration.h"
 #include "readablesize.h"
@@ -139,6 +140,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
         compiledRegExp_.reset();
     }
     currentRegExp_ = regExp;
+    searchSourceSnapshot_ = sourceLogData_->sourceSnapshot();
     currentSearchOptions_ = std::move( options );
     currentSearchKey_ = makeCacheKey( regExp, startLine, endLine );
     lastSearchStart_ = startLine;
@@ -254,6 +256,7 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     currentSearchKey_ = {};
 
     attachReader();
+    searchSourceSnapshot_ = sourceLogData_->sourceSnapshot();
     workerThread_.updateSearch( currentRegExp_, compiledRegExp_, startLine, endLine,
                                 LineNumber( nbLinesProcessed_.get() ), searchGeneration_,
                                 currentSearchOptions_ );
@@ -689,6 +692,35 @@ void LogFilteredData::publishSearchProgress( LinesCount nbMatches, int progress,
     else {
         Q_EMIT searchProgressedThrottled();
     }
+}
+
+std::optional<std::vector<std::pair<quint64, quint64>>> LogFilteredData::analysisMatchRanges( QString* error ) const
+{
+    if ( searchRunning_ || !searchCompletionHandled_ || currentRegExp_.pattern.isEmpty() ) {
+        if ( error ) *error = "search_not_completed";
+        return {};
+    }
+    const auto current = sourceLogData_->sourceSnapshot();
+    if ( !current.available || !current.isOpen() || current.sourceId != searchSourceSnapshot_.sourceId
+         || current.generation != searchSourceSnapshot_.generation
+         || current.revision != searchSourceSnapshot_.revision
+         || current.indexedBytes != searchSourceSnapshot_.indexedBytes ) {
+        LOG_DEBUG << "Analysis match scope rejected stale search source=" << current.sourceId
+                  << " searchRevision=" << searchSourceSnapshot_.revision << " currentRevision=" << current.revision;
+        if ( error ) *error = "stale_search";
+        return {};
+    }
+    if ( !limitReached_ && ( !fullScanCompleted_ || nbLinesProcessed_.get() < getExpectedSearchEnd( currentSearchKey_ ).get() ) ) {
+        if ( error ) *error = "search_not_completed";
+        return {};
+    }
+    const auto count = matching_lines_.cardinality();
+    if ( count == 0 ) return std::vector<std::pair<quint64, quint64>>{};
+    return freezeAnalysisRanges( { { 0, count - 1 } }, [ this ]( quint64 ordinal ) {
+        uint64_t physical = 0;
+        matching_lines_.select( ordinal, &physical );
+        return static_cast<quint64>( physical );
+    }, error );
 }
 
 void LogFilteredData::finalizeCurrentSearch( LineNumber initialLine, uint64_t searchGeneration,

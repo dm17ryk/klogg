@@ -261,7 +261,8 @@ std::optional<QJsonObject> Session::dispatch( const QJsonObject& request )
                     }
                 }
             }
-            return response( toolResult( handler_( name, arguments ) ) );
+            const auto result = handler_( name, arguments );
+            return response( toolResult( result, result.value( "success" ) == QJsonValue( false ) ) );
         } catch ( const std::exception& exception ) {
             return response(
                 toolResult( { { "error", QString::fromUtf8( exception.what() ) } }, true ) );

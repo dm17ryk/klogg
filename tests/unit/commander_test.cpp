@@ -18,6 +18,32 @@
 #include "configuration.h"
 #include "predefinedfilters.h"
 
+TEST_CASE( "Analysis commands preserve JSON options through CLI and IPC", "[commander][analysiscommands]" )
+{
+    const QString json = R"json({"scope":"text","text":"first\nsecond","pattern":"(?<v>\\w+)","requestRevision":"9007199254740993"})json";
+    CliParameters evaluate( { "cilogg", "command", "--action", "regex_evaluate", "--analysis-json", json } );
+    REQUIRE_FALSE( evaluate.parse_error );
+    REQUIRE( evaluate.commander_request );
+    const auto restored = commanderRequestFromVariantMap( commanderRequestToVariantMap( *evaluate.commander_request ) );
+    REQUIRE( restored );
+    CHECK( restored->analysisArguments == evaluate.commander_request->analysisArguments );
+    CHECK( restored->analysisArguments.value( "requestRevision" ) == "9007199254740993" );
+    for ( const auto& action : { "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job" } ) {
+        CliParameters command( { "cilogg", "command", "--action", action, "--job-id", "job" } );
+        REQUIRE_FALSE( command.parse_error );
+        CHECK( commanderActionToString( command.commander_request->action ) == action );
+        CHECK( command.commander_request->analysisArguments.value( "jobId" ) == "job" );
+    }
+    CliParameters page( { "cilogg", "command", "--action", "get_analysis_results", "--job-id", "job", "--cursor", "opaque", "--page-size", "12", "--window-index", "0", "--tab-index", "1" } );
+    REQUIRE_FALSE( page.parse_error );
+    CHECK( page.commander_request->analysisArguments.value( "pageSize" ).toInt() == 12 );
+    CHECK( page.commander_request->analysisArguments.value( "cursor" ) == "opaque" );
+    CHECK( page.commander_request->tabIndex == 1 );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "regex_evaluate", "--analysis-json", "[]" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_analysis_job" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_analysis_results", "--job-id", "job", "--page-size", "1.5" } ).parse_error );
+}
+
 TEST_CASE( "Commander waits for readable responses without resending", "[commander][transport]" )
 {
     QTemporaryDir directory;

@@ -188,7 +188,25 @@ public:
         for ( auto it = arguments.begin(); it != arguments.end(); ++it ) {
             auto key = it.key();
             QJsonValue value = it.value();
-            if ( key == "definition" || key == "parameters" ) {
+            if ( key == "pretty" && ( action == "regex_evaluate" || action.endsWith( "_analysis_job" )
+                                      || action == "get_analysis_results" ) ) {
+                if ( !value.isBool() ) fail( "pretty must be boolean." );
+                // Preserve the bounded compact CLI transport; MCP formats its own envelope.
+                continue;
+            }
+            if ( key == "definition" || key == "parameters" || key == "analysis_json" ) {
+                if ( key == "analysis_json" && value.isString() ) {
+                    const auto bytes = value.toString().toUtf8();
+                    QJsonParseError error;
+                    if ( bytes.size() > 16 * 1024 * 1024 ) {
+                        fail( "Analysis JSON exceeds 16 MiB." );
+                    }
+                    const auto document = QJsonDocument::fromJson( bytes, &error );
+                    if ( error.error != QJsonParseError::NoError || !document.isObject() ) {
+                        fail( "analysis_json must contain a JSON object." );
+                    }
+                    value = document.object();
+                }
                 if ( !value.isObject() ) {
                     fail( key + " must be an object." );
                 }
@@ -199,10 +217,13 @@ public:
                 QFile file( path );
                 const auto bytes
                     = QJsonDocument( value.toObject() ).toJson( QJsonDocument::Compact );
+                if ( key == "analysis_json" && bytes.size() > 16 * 1024 * 1024 ) {
+                    fail( "Analysis JSON exceeds 16 MiB." );
+                }
                 if ( !file.open( QIODevice::WriteOnly ) || file.write( bytes ) != bytes.size() ) {
                     fail( "Cannot write inline JSON definition." );
                 }
-                key = key == "definition" ? "json_file" : "params_json_file";
+                key = key == "parameters" ? "params_json_file" : "json_file";
                 if ( arguments.contains( key ) ) {
                     fail( "Do not combine inline JSON and " + key );
                 }
@@ -246,6 +267,12 @@ public:
         }
         const auto result = run( executable, argv, timeout );
         if ( result.code != 0 ) {
+            const auto document = QJsonDocument::fromJson( result.output.trimmed() );
+            if ( ( action == "regex_evaluate" || action.endsWith( "_analysis_job" )
+                   || action == "get_analysis_results" )
+                 && document.isObject() && document.object().contains( "reason" ) ) {
+                return { { "action", action }, { "payload", document.object() }, { "success", false } };
+            }
             fail( "Commander failed: "
                   + QString::fromUtf8( result.diagnostics + result.output ).left( 4096 ) );
         }

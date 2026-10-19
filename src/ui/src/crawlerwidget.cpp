@@ -75,6 +75,7 @@
 #include "regularexpression.h"
 
 #include "crawlerwidget.h"
+#include "analysiscommands.h"
 
 #include <QCryptographicHash>
 
@@ -225,10 +226,24 @@ CrawlerWidget::CrawlerWidget( QWidget* parent )
     : QSplitter( parent )
     , iconLoader_{ this }
 {
+    connect( qApp, &QApplication::focusChanged, this, [ this ]( QWidget*, QWidget* focused ) {
+        for ( auto* candidate = focused; candidate && candidate != this; candidate = candidate->parentWidget() ) {
+            if ( auto* view = qobject_cast<AbstractLogView*>( candidate ); view && isAncestorOf( view ) ) {
+                lastAnalysisView_ = view;
+                break;
+            }
+        }
+    } );
+    connect( this, &CrawlerWidget::analysisSourceClosing, qApp, []( const LogData* source ) {
+        if ( auto* service = applicationAnalysisService( false ) ) {
+            service->cancelSource( source );
+        }
+    } );
 }
 
 CrawlerWidget::~CrawlerWidget()
 {
+    Q_EMIT analysisSourceClosing( logData_.get() );
     QCoreApplication::removePostedEvents( this, QEvent::MetaCall );
 
     // Stop async producers before UI teardown.
@@ -281,6 +296,65 @@ CrawlerWidget::~CrawlerWidget()
 LineNumber CrawlerWidget::getTopLine() const
 {
     return logMainView_->getTopLine();
+}
+
+std::optional<AnalysisRequest> CrawlerWidget::analysisRequest( const QString& scope, QString* error ) const
+{
+    const auto fail = [ error ]( const char* reason ) -> std::optional<AnalysisRequest> {
+        if ( error ) *error = QLatin1String( reason );
+        return {};
+    };
+    if ( !logData_ ) return fail( "source_not_found" );
+    AnalysisRequest request;
+    request.source = logData_;
+    request.snapshot = logData_->sourceSnapshot();
+    request.scope = scope;
+    if ( !request.snapshot.available || !request.snapshot.isOpen() ) return fail( "source_not_ready" );
+    if ( scope == "matches" ) {
+        if ( !logFilteredData_ ) return fail( "search_not_completed" );
+        const auto ranges = logFilteredData_->analysisMatchRanges( error );
+        if ( !ranges ) return {};
+        request.ranges = *ranges;
+        request.scopeLimited = logFilteredData_->limitReached();
+    }
+    else if ( scope == "selection" ) {
+        auto* view = lastAnalysisView_ ? lastAnalysisView_.data() : static_cast<AbstractLogView*>( logMainView_ );
+        if ( !view ) return fail( "source_not_ready" );
+        std::vector<std::pair<quint64, quint64>> selected;
+        for ( const auto& range : view->selectedLineRanges() ) {
+            if ( range.second.get() == 0 ) continue;
+            if ( selected.size() >= 10000 ) return fail( "scope_limit" );
+            selected.emplace_back( range.first.get(), range.first.get() + range.second.get() - 1 );
+        }
+        std::shared_ptr<LogFilteredData> filtered;
+        if ( view != logMainView_ ) {
+            const auto found = filteredViewsData_.find( qobject_cast<FilteredView*>( view ) );
+            if ( found == filteredViewsData_.end() ) return fail( "invalid_scope" );
+            filtered = found->second;
+        }
+        const auto ranges = freezeAnalysisRanges( selected, [ filtered ]( quint64 ordinal ) {
+            return filtered ? static_cast<quint64>( filtered->getMatchingLineNumber( LineNumber{ ordinal } ).get() ) : ordinal;
+        }, error );
+        if ( !ranges ) return {};
+        request.ranges = *ranges;
+    }
+    for ( const auto& range : request.ranges ) {
+        if ( range.second >= request.snapshot.lineCount.get() ) return fail( "stale_scope" );
+    }
+    quint64 scopedRows = ( scope == "selection" || scope == "matches" ) ? 0 : request.snapshot.lineCount.get();
+    for ( const auto& range : request.ranges ) scopedRows += range.second - range.first + 1;
+    request.sourceDescription = { { "encoding", encodingText() },
+        { "scopePhysicalLines", QVariant::fromValue( scopedRows ) }, { "scopeRangeCount", static_cast<int>( request.ranges.size() ) } };
+    if ( scope == "matches" ) {
+        request.sourceDescription[ "searchGeneration" ] = QString::number( logFilteredData_->searchGeneration() );
+        request.sourceDescription[ "searchLimitReached" ] = logFilteredData_->limitReached();
+        const auto maximum = logFilteredData_->currentSearchOptions().maxMatches;
+        if ( maximum ) request.sourceDescription[ "searchMaxMatches" ] = QString::number( *maximum );
+    }
+    LOG_DEBUG << "Analysis scope request source=" << request.snapshot.sourceId
+              << " generation=" << request.snapshot.generation << " scope=" << scope
+              << " ranges=" << request.ranges.size() << " limited=" << request.scopeLimited;
+    return request;
 }
 
 QString CrawlerWidget::getSelectedText() const
