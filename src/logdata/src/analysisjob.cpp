@@ -1,0 +1,678 @@
+// Copyright (C) 2026 CILogg contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "analysisjob.h"
+#include "log.h"
+#include "logdata.h"
+#include <QDeadlineTimer>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRunnable>
+#include <QTextCodec>
+#include <QThread>
+#include <QThreadPool>
+#include <QTimer>
+#include <algorithm>
+#include <condition_variable>
+#include <deque>
+#include <limits>
+#include <map>
+#include <mutex>
+
+namespace {
+constexpr qint64 GlobalResultBytes = 64 * 1024 * 1024;
+constexpr qint64 RowBytes = 4 * 1024 * 1024;
+qint64 rowBytes( const QVariantMap& row )
+{
+    return QJsonDocument( QJsonObject::fromVariantMap( row ) )
+        .toJson( QJsonDocument::Compact )
+        .size();
+}
+bool terminal( const QString& state )
+{
+    return state == "completed" || state == "cancelled" || state == "failed";
+}
+AnalysisOutput rawOutput( const AnalysisBatch& batch )
+{
+    AnalysisOutput output;
+    for ( const auto& line : batch.lines ) {
+        output.rows.push_back( QVariantMap{ { "lineNumber", QVariant::fromValue( line.line + 1 ) },
+                                            { "text", line.text } } );
+    }
+    return output;
+}
+} // namespace
+
+struct AnalysisJobService::Private {
+    struct Pending {
+        QVariantList rows;
+        qint64 bytes = 0;
+    };
+    struct Job {
+        QString id = QUuid::createUuid().toString( QUuid::WithoutBraces );
+        AnalysisRequest request;
+        LogData* source = nullptr; // Protected by the service's owner-thread lease.
+        std::weak_ptr<LogData> weakSource;
+        bool sourceClosed = false;
+        AnalysisProcessorFactory factory;
+        mutable std::mutex mutex;
+        std::condition_variable credit;
+        std::atomic_bool cancelled{ false };
+        QString state = "queued";
+        QString reason;
+        QString cancelReason = "cancelled";
+        bool complete = false;
+        bool workerDone = false;
+        bool released = false;
+        quint64 scanned = 0;
+        qint64 pendingBytes = 0;
+        qint64 storedBytes = 0;
+        qint64 finishedAt = -1;
+        QVariantMap metrics;
+        std::deque<Pending> pending;
+        QVariantList rows;
+        std::map<QString, int> cursors;
+        std::map<int, QString> nextCursors;
+        QDeadlineTimer deadline;
+    };
+    std::map<QString, std::shared_ptr<Job>> jobs;
+    std::map<QString, std::shared_ptr<LogData>> leases;
+    QThreadPool pool;
+    QTimer timer;
+    QElapsedTimer clock;
+    bool stopping = false;
+
+    void detachLease( const QString& id, std::vector<std::shared_ptr<LogData>>& retired )
+    {
+        const auto lease = leases.find( id );
+        if ( lease != leases.end() ) {
+            retired.push_back( std::move( lease->second ) );
+            leases.erase( lease );
+        }
+    }
+
+    static void run( const std::shared_ptr<Job>& job )
+    {
+        AnalysisProcessor processor;
+        std::unique_ptr<QTextDecoder> decoder;
+        quint64 nextLine = 0;
+        quint64 selected = 0;
+        qint64 selectedBytes = 0;
+        qsizetype textOffset = 0;
+        QString reason;
+        bool done = false;
+        try {
+            processor = job->factory ? job->factory() : AnalysisProcessor{};
+            if ( ( job->request.scope == "selection" || job->request.scope == "matches" )
+                 && job->request.ranges.empty() ) {
+                done = true;
+            }
+            while ( !job->cancelled && !job->deadline.hasExpired() && !done ) {
+                AnalysisBatch batch;
+                QStringList decoded;
+                const auto firstLine = nextLine;
+                if ( job->source ) {
+                    if ( nextLine >= job->request.snapshot.lineCount.get() ) {
+                        break;
+                    }
+                    const auto block = job->source->readAnalysisBlock(
+                        job->request.snapshot, nextLine, job->request.limits );
+                    if ( block.retry ) {
+                        QThread::msleep( 5 );
+                        continue;
+                    }
+                    if ( !block.error.isEmpty() ) {
+                        reason = block.error;
+                        break;
+                    }
+                    if ( !decoder ) {
+                        auto* codec = QTextCodec::codecForName( block.codec );
+                        if ( !codec ) {
+                            reason = "unsupported_encoding";
+                            break;
+                        }
+                        decoder.reset( codec->makeDecoder() );
+                    }
+                    const auto text = decoder->toUnicode( block.bytes );
+                    decoded = text.split( '\n' );
+                    if ( text.endsWith( '\n' ) ) {
+                        decoded.removeLast();
+                    }
+                    nextLine = block.nextLine;
+                    if ( decoded.size() != static_cast<qsizetype>( nextLine - firstLine ) ) {
+                        reason = "decode_error";
+                        break;
+                    }
+                }
+                else {
+                    const auto& input = job->request.text;
+                    if ( textOffset >= input.size() ) {
+                        break;
+                    }
+                    qint64 bytes = 0;
+                    while ( textOffset < input.size()
+                            && decoded.size() < job->request.limits.batchLines ) {
+                        const auto newline = input.indexOf( '\n', textOffset );
+                        const auto end = newline < 0 ? input.size() : newline;
+                        if ( end - textOffset > job->request.limits.recordBytes ) {
+                            reason = "record_limit";
+                            done = true;
+                            break;
+                        }
+                        const auto line = input.mid( textOffset, end - textOffset );
+                        const qint64 size = line.toUtf8().size() + ( newline < 0 ? 0 : 1 );
+                        if ( size > job->request.limits.recordBytes ) {
+                            reason = "record_limit";
+                            done = true;
+                            break;
+                        }
+                        if ( bytes + size > job->request.limits.batchBytes ) {
+                            break;
+                        }
+                        decoded.push_back( line );
+                        bytes += size;
+                        textOffset = end + ( newline < 0 ? 0 : 1 );
+                        ++nextLine;
+                    }
+                }
+                for ( int index = 0; index < decoded.size(); ++index ) {
+                    const auto line = firstLine + static_cast<quint64>( index );
+                    const auto& text = decoded.at( index );
+                    if ( text.toUtf8().size() > job->request.limits.recordBytes ) {
+                        reason = "record_limit";
+                        done = true;
+                        break;
+                    }
+                    const auto& ranges = job->request.ranges;
+                    const auto included
+                        = ( ranges.empty() && job->request.scope != "selection"
+                            && job->request.scope != "matches" )
+                          || std::any_of( ranges.begin(), ranges.end(),
+                                          [ line ]( const auto& range ) {
+                                              return line >= range.first && line <= range.second;
+                                          } );
+                    if ( !included ) {
+                        continue;
+                    }
+                    const auto bytes = static_cast<qint64>( text.size() ) * 2;
+                    if ( job->request.scope == "sample"
+                         && ( selected >= 1000 || selectedBytes + bytes > 4 * 1024 * 1024 ) ) {
+                        reason = "sample_limit";
+                        done = true;
+                        break;
+                    }
+                    batch.lines.push_back( { line, text } );
+                    ++selected;
+                    selectedBytes += bytes;
+                }
+                if ( batch.lines.empty() ) {
+                    continue;
+                }
+                const auto remaining = static_cast<int>(
+                    std::min<qint64>( job->request.limits.batchTimeoutMs,
+                                      std::max<qint64>( 0, job->deadline.remainingTime() ) ) );
+                const auto output = processor ? processor( batch, job->cancelled, remaining )
+                                              : rawOutput( batch );
+                if ( !output.error.isEmpty() ) {
+                    reason = output.error;
+                    break;
+                }
+                if ( job->source ) {
+                    const auto current = job->source->sourceSnapshot();
+                    if ( !current.isOpen() || current.sourceId != job->request.snapshot.sourceId
+                         || current.generation != job->request.snapshot.generation ) {
+                        reason = "stale_source";
+                        break;
+                    }
+                }
+                Pending pending;
+                for ( const auto& value : output.rows ) {
+                    if ( value.userType() != QMetaType::QVariantMap ) {
+                        reason = "invalid_worker_output";
+                        done = true;
+                        break;
+                    }
+                    const auto bytes = rowBytes( value.toMap() );
+                    if ( bytes > RowBytes
+                         || pending.bytes + bytes > job->request.limits.pendingBytes ) {
+                        reason = "result_limit";
+                        done = true;
+                        break;
+                    }
+                    pending.rows.push_back( value );
+                    pending.bytes += bytes;
+                }
+                std::unique_lock<std::mutex> lock( job->mutex );
+                for ( auto it = output.metrics.cbegin(); it != output.metrics.cend(); ++it ) {
+                    bool valid = false;
+                    const auto amount = it.value().toLongLong( &valid );
+                    const auto previous = job->metrics.value( it.key() ).toLongLong();
+                    if ( ( it.key() != "compileUs" && it.key() != "matchUs"
+                           && it.key() != "startupUs" )
+                         || !valid || amount < 0
+                         || amount > std::numeric_limits<qint64>::max() - previous ) {
+                        reason = "invalid_worker_output";
+                        done = true;
+                        break;
+                    }
+                    job->metrics[ it.key() ] = previous + amount;
+                }
+                if ( done && reason == "invalid_worker_output" ) {
+                    break;
+                }
+                job->scanned += static_cast<quint64>( batch.lines.size() );
+                while ( !job->cancelled && !job->deadline.hasExpired()
+                        && ( job->pendingBytes + pending.bytes > job->request.limits.pendingBytes
+                             || job->pending.size() >= 8 ) ) {
+                    job->credit.wait_for( lock, std::chrono::milliseconds( 10 ) );
+                }
+                if ( job->cancelled || job->deadline.hasExpired() ) {
+                    break;
+                }
+                if ( !pending.rows.isEmpty() ) {
+                    job->pendingBytes += pending.bytes;
+                    job->pending.push_back( std::move( pending ) );
+                }
+            }
+        } catch ( const std::exception& error ) {
+            LOG_ERROR << "Analysis worker failed id=" << job->id << " error=" << error.what();
+            reason = "worker_failure";
+        }
+        // Completion covers the full worker callable lifetime, including its destructors.
+        processor = {};
+        decoder.reset();
+        std::lock_guard<std::mutex> lock( job->mutex );
+        if ( job->deadline.hasExpired() ) {
+            reason = "timeout";
+        }
+        job->reason = reason;
+        job->workerDone = true;
+        LOG_DEBUG << "Analysis scan stopped id=" << job->id << " reason=" << reason
+                  << " scanned=" << job->scanned << " cancelled=" << job->cancelled.load();
+    }
+};
+
+AnalysisJobService::AnalysisJobService( QObject* parent )
+    : QObject( parent )
+    , d_( std::make_unique<Private>() )
+{
+    d_->pool.setMaxThreadCount( 2 );
+    d_->clock.start();
+    d_->timer.setInterval( 20 );
+    connect( &d_->timer, &QTimer::timeout, this, &AnalysisJobService::poll );
+    d_->timer.start();
+}
+AnalysisJobService::~AnalysisJobService()
+{
+    d_->stopping = true;
+    d_->timer.stop();
+    for ( const auto& entry : d_->jobs ) {
+        entry.second->cancelled = true;
+        entry.second->credit.notify_all();
+    }
+    d_->pool.waitForDone();
+    auto retired = std::move( d_->leases );
+    d_->leases.clear();
+    d_->jobs.clear();
+    // destroyed observers may reenter release/start while d_ is still valid.
+    retired.clear();
+}
+QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFactory factory,
+                                   QString* error )
+{
+    Q_ASSERT( QThread::currentThread() == thread() );
+    const auto& limits = request.limits;
+    int active = 0;
+    for ( const auto& entry : d_->jobs ) {
+        if ( !terminal( entry.second->state ) ) {
+            ++active;
+        }
+    }
+    QString failure;
+    if ( d_->stopping ) {
+        failure = "service_stopping";
+    }
+    else if ( active >= 10 ) {
+        failure = "queue_limit";
+    }
+    else if ( request.ranges.size() > 10000 ) {
+        failure = "scope_limit";
+    }
+    else if ( request.scope != "sample" && request.scope != "selection"
+              && request.scope != "matches" && request.scope != "whole_file"
+              && request.scope != "text" ) {
+        failure = "invalid_scope";
+    }
+    else if ( limits.batchLines < 1 || limits.batchLines > 256 || limits.batchBytes < 1
+              || limits.batchBytes > 1024 * 1024 || limits.recordBytes < 1
+              || limits.recordBytes > limits.batchBytes || limits.pendingBytes < RowBytes
+              || limits.pendingBytes > 4 * 1024 * 1024 || limits.resultBytes < 1
+              || limits.resultBytes > 16 * 1024 * 1024 || limits.resultRecords < 1
+              || limits.resultRecords > 10000 || limits.batchTimeoutMs < 1
+              || limits.batchTimeoutMs > 30000 || limits.timeoutMs < 1
+              || limits.timeoutMs > 600000 ) {
+        failure = "invalid_limits";
+    }
+    else if ( request.source && ( !request.snapshot.available || !request.snapshot.isOpen() ) ) {
+        failure = "source_not_ready";
+    }
+    else if ( !request.source
+              && ( request.scope != "text" || request.text.size() > 2 * 1024 * 1024 ) ) {
+        failure = "invalid_input";
+    }
+    if ( !failure.isEmpty() ) {
+        LOG_DEBUG << "Analysis rejected reason=" << failure;
+        if ( error ) {
+            *error = failure;
+        }
+        return {};
+    }
+    const auto timeoutMs = limits.timeoutMs;
+    // Bound job metadata as well as output bytes, including zero-result jobs.
+    while ( d_->jobs.size() >= 26 ) {
+        auto oldest = d_->jobs.end();
+        for ( auto it = d_->jobs.begin(); it != d_->jobs.end(); ++it ) {
+            if ( terminal( it->second->state )
+                 && ( oldest == d_->jobs.end()
+                      || it->second->finishedAt < oldest->second->finishedAt ) ) {
+                oldest = it;
+            }
+        }
+        if ( oldest == d_->jobs.end() ) {
+            break;
+        }
+        d_->jobs.erase( oldest );
+    }
+    auto job = std::make_shared<Private::Job>();
+    job->source = request.source.get();
+    job->weakSource = request.source;
+    if ( request.source ) {
+        d_->leases[ job->id ] = std::move( request.source );
+    }
+    job->request = std::move( request );
+    job->factory = std::move( factory );
+    job->deadline = QDeadlineTimer( timeoutMs );
+    const auto id = job->id;
+    d_->jobs.emplace( id, std::move( job ) );
+    LOG_DEBUG << "Analysis queued id=" << id << " scope=" << d_->jobs.at( id )->request.scope;
+    return id;
+}
+void AnalysisJobService::poll()
+{
+    // A final lease can synchronously emit destroyed and reenter this service.
+    // Keep destruction outside every registry iterator and job lock below.
+    std::vector<std::shared_ptr<LogData>> retired;
+    int running = 0;
+    for ( const auto& entry : d_->jobs ) {
+        if ( entry.second->state == "running" ) {
+            ++running;
+        }
+    }
+    for ( auto it = d_->jobs.begin(); it != d_->jobs.end(); ) {
+        const auto job = it->second;
+        bool notify = false;
+        {
+            std::lock_guard<std::mutex> lock( job->mutex );
+            if ( job->state == "queued" && job->cancelled ) {
+                job->state = "cancelled";
+                job->reason = job->cancelReason;
+                job->finishedAt = d_->clock.elapsed();
+                notify = true;
+            }
+            if ( job->state == "queued" && running < 2 ) {
+                job->state = "running";
+                ++running;
+                notify = true;
+                d_->pool.start( QRunnable::create( [ job ] { Private::run( job ); } ) );
+                LOG_DEBUG << "Analysis started id=" << job->id;
+            }
+            if ( job->state == "running" && job->source ) {
+                const auto current = job->source->sourceSnapshot();
+                if ( !current.isOpen() || current.generation != job->request.snapshot.generation ) {
+                    job->cancelReason = "stale_source";
+                    job->cancelled = true;
+                    LOG_DEBUG << "Analysis rejected queued stale batch id=" << job->id;
+                }
+            }
+            if ( !job->pending.empty() ) {
+                auto pending = std::move( job->pending.front() );
+                job->pending.pop_front();
+                job->pendingBytes -= pending.bytes;
+                job->credit.notify_all();
+                for ( const auto& value : pending.rows ) {
+                    const auto bytes = rowBytes( value.toMap() );
+                    if ( job->cancelled ) {
+                        break;
+                    }
+                    qint64 globalBytes = 0;
+                    for ( const auto& other : d_->jobs ) {
+                        globalBytes += other.second->storedBytes;
+                    }
+                    while ( globalBytes + bytes > GlobalResultBytes ) {
+                        auto victim = d_->jobs.end();
+                        for ( auto candidate = d_->jobs.begin(); candidate != d_->jobs.end();
+                              ++candidate ) {
+                            if ( candidate->second != job && terminal( candidate->second->state )
+                                 && ( victim == d_->jobs.end()
+                                      || candidate->second->finishedAt
+                                             < victim->second->finishedAt ) ) {
+                                victim = candidate;
+                            }
+                        }
+                        if ( victim == d_->jobs.end() ) {
+                            break;
+                        }
+                        LOG_DEBUG << "Analysis result eviction id=" << victim->first;
+                        globalBytes -= victim->second->storedBytes;
+                        d_->detachLease( victim->first, retired );
+                        d_->jobs.erase( victim );
+                    }
+                    if ( job->rows.size() >= job->request.limits.resultRecords
+                         || job->storedBytes + bytes > job->request.limits.resultBytes
+                         || globalBytes + bytes > GlobalResultBytes ) {
+                        job->cancelled = true;
+                        job->cancelReason = "result_limit";
+                        job->credit.notify_all();
+                        break;
+                    }
+                    job->rows.push_back( value );
+                    job->storedBytes += bytes;
+                }
+                notify = true;
+            }
+            if ( job->state == "running" && job->workerDone && job->pending.empty() ) {
+                if ( job->cancelled ) {
+                    job->reason = job->cancelReason;
+                }
+                const auto limited = job->reason.endsWith( "_limit" );
+                job->complete = job->reason.isEmpty() && !job->request.scopeLimited;
+                if ( job->request.scopeLimited && job->reason.isEmpty() ) {
+                    job->reason = "scope_limit";
+                }
+                job->state
+                    = job->cancelled
+                              && ( job->reason == "cancelled" || job->reason == "source_closed" )
+                          ? "cancelled"
+                          : ( job->reason.isEmpty() || limited || job->reason == "scope_limit"
+                                  ? "completed"
+                                  : "failed" );
+                job->finishedAt = d_->clock.elapsed();
+                notify = true;
+                LOG_DEBUG << "Analysis finished id=" << job->id << " state=" << job->state
+                          << " reason=" << job->reason << " rows=" << job->rows.size();
+            }
+        }
+        const auto expired
+            = terminal( job->state )
+              && ( job->released || d_->clock.elapsed() - job->finishedAt >= 600000 );
+        // run() sets workerDone only after its last source access. Workers own
+        // no shared LogData pointer, so final destruction stays on this thread.
+        if ( terminal( job->state ) ) {
+            d_->detachLease( job->id, retired );
+            job->source = nullptr;
+            job->request.text.clear();
+            job->request.text.squeeze();
+            job->request.ranges.clear();
+            job->request.ranges.shrink_to_fit();
+            job->factory = {};
+        }
+        if ( expired ) {
+            it = d_->jobs.erase( it );
+        }
+        else {
+            ++it;
+        }
+        if ( notify ) {
+            // A direct observer may release jobs; do not call it while iterating the registry.
+            const auto id = job->id;
+            QMetaObject::invokeMethod(
+                this, [ this, id ] { Q_EMIT changed( id ); }, Qt::QueuedConnection );
+        }
+    }
+}
+QVariantMap AnalysisJobService::status( const QString& id ) const
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() ) {
+        return { { "reason", "job_expired" } };
+    }
+    const auto job = found->second;
+    const auto source = job->weakSource.lock();
+    std::lock_guard<std::mutex> lock( job->mutex );
+    const auto& snapshot = job->request.snapshot;
+    const auto current = source ? source->sourceSnapshot() : SourceSnapshot{};
+    const auto historical
+        = !snapshot.sourceId.isNull()
+          && ( job->sourceClosed || !source || current.generation != snapshot.generation );
+    return { { "jobId", id },
+             { "state", job->state },
+             { "reason", job->reason },
+             { "complete", job->complete },
+             { "scope", job->request.scope },
+             { "requestRevision", QString::number( job->request.requestRevision ) },
+             { "scannedLines", QVariant::fromValue( job->scanned ) },
+             { "resultRecords", job->rows.size() },
+             { "pendingBytes", job->pendingBytes },
+             { "retainedBytes", job->storedBytes },
+             { "pendingBatches", static_cast<int>( job->pending.size() ) },
+             { "sourceId", snapshot.sourceId.toString( QUuid::WithoutBraces ) },
+             { "sourceGeneration", QString::number( snapshot.generation ) },
+             { "sourceRevision", QString::number( snapshot.revision ) },
+             { "indexedBytes", QString::number( snapshot.indexedBytes ) },
+             { "metrics", job->metrics },
+             { "historical", historical },
+             { "newerDataAvailable",
+               source && !historical && current.revision != snapshot.revision },
+             { "limits", QVariantMap{ { "batchLines", job->request.limits.batchLines },
+                                      { "batchBytes", job->request.limits.batchBytes },
+                                      { "recordBytes", job->request.limits.recordBytes },
+                                      { "pendingBytes", job->request.limits.pendingBytes },
+                                      { "resultBytes", job->request.limits.resultBytes },
+                                      { "resultRecords", job->request.limits.resultRecords },
+                                      { "batchTimeoutMs", job->request.limits.batchTimeoutMs },
+                                      { "timeoutMs", job->request.limits.timeoutMs } } } };
+}
+QVariantMap AnalysisJobService::results( const QString& id, const QString& cursor, int count )
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() ) {
+        return { { "reason", "job_expired" } };
+    }
+    const auto& job = found->second;
+    std::lock_guard<std::mutex> lock( job->mutex );
+    int offset = 0;
+    if ( !cursor.isEmpty() ) {
+        const auto position = job->cursors.find( cursor );
+        if ( position == job->cursors.end() ) {
+            return { { "reason", "invalid_cursor" } };
+        }
+        offset = position->second;
+    }
+    count = std::clamp( count, 1, 1000 );
+    QVariantList page;
+    qint64 bytes = 0;
+    while ( offset < job->rows.size() && page.size() < count ) {
+        const auto value = job->rows.at( offset );
+        const auto size = rowBytes( value.toMap() );
+        if ( bytes + size > 8 * 1024 * 1024 ) {
+            break;
+        }
+        page.push_back( value );
+        bytes += size;
+        ++offset;
+    }
+    QString next;
+    if ( offset < job->rows.size() || !terminal( job->state ) ) {
+        const auto existing = job->nextCursors.find( offset );
+        if ( existing != job->nextCursors.end() ) {
+            next = existing->second;
+        }
+        else {
+            next = QUuid::createUuid().toString( QUuid::WithoutBraces );
+            job->cursors[ next ] = offset;
+            job->nextCursors[ offset ] = next;
+        }
+    }
+    return { { "jobId", id },
+             { "rows", page },
+             { "nextCursor", next },
+             { "state", job->state },
+             { "complete", job->complete },
+             { "reason", job->reason } };
+}
+bool AnalysisJobService::cancel( const QString& id )
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() ) {
+        return false;
+    }
+    found->second->cancelled = true;
+    found->second->credit.notify_all();
+    LOG_DEBUG << "Analysis cancellation requested id=" << id;
+    return true;
+}
+bool AnalysisJobService::release( const QString& id )
+{
+    std::vector<std::shared_ptr<LogData>> retired;
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() ) {
+        return false;
+    }
+    if ( terminal( found->second->state ) ) {
+        d_->detachLease( id, retired );
+        d_->jobs.erase( found );
+    }
+    else {
+        found->second->released = true;
+        cancel( id );
+    }
+    return true;
+}
+void AnalysisJobService::cancelSource( const LogData* source )
+{
+    for ( const auto& entry : d_->jobs ) {
+        if ( entry.second->weakSource.lock().get() == source ) {
+            entry.second->sourceClosed = true;
+            if ( !terminal( entry.second->state ) ) {
+                entry.second->cancelReason = "source_closed";
+                cancel( entry.first );
+            }
+        }
+    }
+}
+std::optional<SourceLocation> AnalysisJobService::location( const QString& id, quint64 line,
+                                                            std::optional<SourceSpan> span ) const
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() ) {
+        return {};
+    }
+    const auto& request = found->second->request;
+    const auto source = found->second->weakSource.lock();
+    if ( !source || found->second->sourceClosed || line >= request.snapshot.lineCount.get() ) {
+        return {};
+    }
+    const auto position = request.snapshot.location(
+        LineNumber{ static_cast<LineNumber::UnderlyingType>( line ) }, span );
+    return position && source->sourceSnapshot().accepts( *position ) ? position : std::nullopt;
+}

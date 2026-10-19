@@ -59,6 +59,8 @@
 #include "logdataworker.h"
 
 class LogFilteredData;
+struct AnalysisLimits;
+struct AnalysisRawBlock;
 
 // Thrown when trying to attach an already attached LogData
 class CantReattachErr {
@@ -105,6 +107,8 @@ class LogData : public AbstractLogData {
     // Analysis provenance only; does not hold file contents or pin a mutable file snapshot.
     SourceSnapshot sourceSnapshot() const;
     bool isSourceSnapshotCurrent( const SourceSnapshot& snapshot ) const;
+    AnalysisRawBlock readAnalysisBlock( const SourceSnapshot& snapshot, quint64 firstLine,
+                                       const AnalysisLimits& limits ) const;
 
     void setPrefilter(const QString& prefilterPattern);
 

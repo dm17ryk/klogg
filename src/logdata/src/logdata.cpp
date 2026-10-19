@@ -58,6 +58,7 @@
 #include "logfiltereddata.h"
 
 #include "logdata.h"
+#include "analysisjob.h"
 
 LogData::LogData()
     : AbstractLogData()
@@ -120,6 +121,92 @@ bool LogData::isSourceSnapshotCurrent( const SourceSnapshot& snapshot ) const
                   << " currentRevision=" << current.revision << " available=" << current.available;
     }
     return accepted;
+}
+
+AnalysisRawBlock LogData::readAnalysisBlock( const SourceSnapshot& snapshot, quint64 firstLine,
+                                             const AnalysisLimits& limits ) const
+{
+    AnalysisRawBlock block;
+    block.firstLine = firstLine;
+    block.nextLine = firstLine;
+    IndexingData::ConstAccessor index{ indexing_data_.get() };
+    const auto current = index.sourceSnapshot();
+    if ( !snapshot.isOpen() || current.sourceId != snapshot.sourceId
+         || current.generation != snapshot.generation ) {
+        block.error = "stale_source";
+        LOG_DEBUG << "Analysis read rejected stale generation firstLine=" << firstLine;
+        return block;
+    }
+    if ( !current.available ) {
+        block.retry = true;
+        return block;
+    }
+    if ( !snapshot.available || firstLine >= snapshot.lineCount.get()
+         || current.indexedBytes < snapshot.indexedBytes || current.lineCount < snapshot.lineCount
+         || limits.batchLines < 1 || limits.batchBytes < 1 || limits.batchBytes > 1024 * 1024
+         || limits.recordBytes < 1 || limits.recordBytes > limits.batchBytes ) {
+        block.error = "invalid_source_range";
+        return block;
+    }
+    const auto asLine = []( quint64 line ) {
+        return LineNumber{ static_cast<LineNumber::UnderlyingType>( line ) };
+    };
+    const qint64 start
+        = firstLine == 0
+              ? 0
+              : ( firstLine == snapshot.completeLineCount.get() && snapshot.provisionalLineStart
+                      ? *snapshot.provisionalLineStart
+                      : index.getEndOfLineOffset( asLine( firstLine - 1 ) ).get() );
+    auto end = start;
+    const auto stop = std::min<quint64>(
+        snapshot.lineCount.get(),
+        firstLine + static_cast<quint64>( std::min( limits.batchLines, 256 ) ) );
+    for ( auto line = firstLine; line < stop; ++line ) {
+        const qint64 lineEnd = line < snapshot.completeLineCount.get()
+                                   ? index.getEndOfLineOffset( asLine( line ) ).get()
+                                   : snapshot.indexedBytes;
+        if ( lineEnd < end || lineEnd > snapshot.indexedBytes ) {
+            block.error = "stale_source";
+            return block;
+        }
+        if ( lineEnd - end > limits.recordBytes ) {
+            if ( line == firstLine ) {
+                block.error = "record_limit";
+                LOG_DEBUG << "Analysis oversized record line=" << line
+                          << " bytes=" << lineEnd - end;
+            }
+            break;
+        }
+        if ( lineEnd - start > limits.batchBytes ) {
+            break;
+        }
+        end = lineEnd;
+        block.nextLine = line + 1;
+    }
+    if ( !block.error.isEmpty() ) {
+        return block;
+    }
+    ScopedFileHolder<FileHolder> file( attached_file_.get() );
+    if ( FileId::getFileId( indexingFileName_ ) != attached_file_->getFileId() ) {
+        block.error = "stale_source";
+        return block;
+    }
+    if ( !file.getFile()->seek( start ) ) {
+        block.error = "io_error";
+        return block;
+    }
+    block.bytes = file.getFile()->read( end - start );
+    if ( block.bytes.size() != end - start ) {
+        block.bytes.clear();
+        block.error = "io_error";
+        LOG_WARNING << "Analysis rejected short read start=" << start
+                    << " expected=" << end - start;
+        return block;
+    }
+    block.codec = codec_.codec()->name();
+    LOG_DEBUG << "Analysis read firstLine=" << firstLine << " nextLine=" << block.nextLine
+              << " bytes=" << block.bytes.size() << " watermark=" << snapshot.indexedBytes;
+    return block;
 }
 
 void LogData::setPrefilter( const QString& prefilterPattern )
