@@ -5,6 +5,7 @@
 #include <QPointer>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
 
 #include "../streamsession_testaccess.h"
 #include "actionruntime.h"
@@ -59,6 +60,18 @@ ResponseDefinition testResponse( int id )
     response.name = QStringLiteral( "Logical response %1" ).arg( id );
     response.match.value = QStringLiteral( "READY" );
     return response;
+}
+
+bool waitForActionTimers()
+{
+    // Negative assertions need event-loop progress, not an immediately true
+    // zero-count predicate. This timer is later than every queued action in
+    // these fixtures (at most 40 ms), with room for slow CI event delivery.
+    QTimer sentinel;
+    sentinel.setSingleShot( true );
+    QSignalSpy elapsed( &sentinel, &QTimer::timeout );
+    sentinel.start( 150 );
+    return QTest::qWaitFor( [&elapsed] { return !elapsed.isEmpty(); }, 5000 );
 }
 } // namespace
 
@@ -302,8 +315,13 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
     else if ( change == 3 ) {
         manager.setAutoResponsesEnabled( false );
     }
-    QTest::qWait( 80 );
     const bool cancelled = change == 1 || change == 2 || ( automatic && change == 3 );
+    if ( cancelled ) {
+        REQUIRE( waitForActionTimers() );
+    }
+    else {
+        REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 3; }, 5000 ) );
+    }
     CHECK( dispatched.size() == ( cancelled ? 0 : 3 ) );
     // An actionSent signal proves logical dispatch only; there is no transport worker.
     CHECK( transmitted.isEmpty() );
@@ -324,7 +342,7 @@ TEST_CASE( "Explicit manual sends remain available on an unmarked tab",
     CHECK( dispatched.size() == 1 );
     action.parameters.delay = 10;
     REQUIRE( sendActionDefinition( &session, action, {}, -1, &error ) );
-    QTest::qWait( 50 );
+    REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 2; }, 5000 ) );
     CHECK( dispatched.size() == 2 );
     CHECK_FALSE( sendActionDefinition( &session, action, {}, -1, &error, true ) );
     CHECK_FALSE( error.isEmpty() );
@@ -347,7 +365,7 @@ TEST_CASE( "Disabling a tab cancels remaining repeats after an immediate dispatc
     REQUIRE( dispatched.size() == 1 );
     session.setActionsEnabled( false );
     session.setActionsEnabled( true );
-    QTest::qWait( 50 );
+    REQUIRE( waitForActionTimers() );
     CHECK( dispatched.size() == 1 );
 }
 
@@ -387,7 +405,13 @@ TEST_CASE( "Delayed response steps and finalization cannot revive after tab chan
     else if ( change == 3 ) {
         manager.setAutoResponsesEnabled( false );
     }
-    QTest::qWait( 80 );
+    if ( change == 0 ) {
+        REQUIRE( QTest::qWaitFor(
+            [&] { return finalize ? !closed.isEmpty() : !dispatched.isEmpty(); }, 5000 ) );
+    }
+    if ( change != 0 || finalize ) {
+        REQUIRE( waitForActionTimers() );
+    }
     CHECK( dispatched.size() == ( change == 0 && !finalize ? 1 : 0 ) );
     CHECK( closed.size() == ( change == 0 && finalize ? 1 : 0 ) );
     CHECK( session.isConnectionOpen() == ( change != 0 || !finalize ) );
@@ -449,7 +473,7 @@ TEST_CASE( "Destroyed action sessions leave no queued logical dispatch",
     action.parameters.delay = 10;
     REQUIRE( sendActionDefinition( session.get(), action, {}, -1, nullptr, true ) );
     session.reset();
-    QTest::qWait( 50 );
+    REQUIRE( waitForActionTimers() );
     CHECK( dispatched.isEmpty() );
 }
 
