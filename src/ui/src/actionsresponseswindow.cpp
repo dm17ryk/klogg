@@ -2,6 +2,7 @@
 
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QMouseEvent>
@@ -11,6 +12,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QScreen>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QSortFilterProxyModel>
 #include <QSplitter>
@@ -431,6 +433,28 @@ ActionsResponsesWindow::ActionsResponsesWindow( QWidget* parent )
     actionsPanel_ = new QWidget( this );
     auto* actionsLayout = new QVBoxLayout( actionsPanel_ );
     actionsLayout->setContentsMargins( 0, 0, 0, 0 );
+    auto* actionTabsLayout = new QHBoxLayout;
+    auto* actionTabsLabel = new QLabel( tr( "Action tabs" ), actionsPanel_ );
+    actionTabsLabel->setObjectName( QStringLiteral( "actionTabsLabel" ) );
+    actionTabsComboBox_ = new QComboBox( actionsPanel_ );
+    actionTabsComboBox_->setObjectName( QStringLiteral( "actionTabsComboBox" ) );
+    actionTabsComboBox_->setAccessibleName( tr( "Action tabs" ) );
+    actionTabsComboBox_->setToolTip( tr( "Choose the enabled tab used to send actions." ) );
+    actionTabsComboBox_->setEnabled( false );
+    actionTabsLabel->setBuddy( actionTabsComboBox_ );
+    actionTabsLayout->addWidget( actionTabsLabel );
+    actionTabsLayout->addWidget( actionTabsComboBox_, 1 );
+    actionsLayout->addLayout( actionTabsLayout );
+    connect( actionTabsComboBox_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
+             [ this ]( int index ) {
+                 const auto tabId = selectedActionTabId();
+                 if ( index < 0 || tabId.isEmpty() ) {
+                     LOG_DEBUG << "Ignoring empty Actions destination selection: index=" << index;
+                     return;
+                 }
+                 LOG_DEBUG << "Actions destination selected: tab_id=" << tabId;
+                 Q_EMIT actionTabSelected( tabId );
+             } );
     auto* actionsButtonsLayout = new QHBoxLayout;
     auto* addActionButton = new QPushButton( tr( "Add" ), actionsPanel_ );
     editActionButton_ = new QPushButton( tr( "Edit" ), actionsPanel_ );
@@ -597,6 +621,38 @@ void ActionsResponsesWindow::setSendAvailable( bool available )
     if ( sendSelectedActionButton_ ) {
         sendSelectedActionButton_->setEnabled( available );
     }
+}
+
+void ActionsResponsesWindow::setActionTabs( const QVariantList& tabs,
+                                           const QString& selectedTabId )
+{
+    const QSignalBlocker blocker( actionTabsComboBox_ );
+    actionTabsComboBox_->clear();
+    QSet<QString> seenTabIds;
+    for ( const auto& entry : tabs ) {
+        const auto tab = entry.toMap();
+        const auto tabId = tab.value( QStringLiteral( "tabId" ) ).toString();
+        if ( tabId.isEmpty() || seenTabIds.contains( tabId ) ) {
+            LOG_DEBUG << "Skipping missing or duplicate Actions destination: tab_id=" << tabId;
+            continue;
+        }
+        seenTabIds.insert( tabId );
+        const auto label = tab.value( QStringLiteral( "label" ) ).toString();
+        actionTabsComboBox_->addItem( label.isEmpty() ? tabId : label, tabId );
+        LOG_DEBUG << "Added Actions destination: tab_id=" << tabId << " label=" << label;
+    }
+    const auto selectedIndex = selectedTabId.isEmpty()
+                                   ? -1
+                                   : actionTabsComboBox_->findData( selectedTabId );
+    actionTabsComboBox_->setCurrentIndex( selectedIndex );
+    actionTabsComboBox_->setEnabled( actionTabsComboBox_->count() > 0 );
+    LOG_DEBUG << "Refreshed Actions destinations: count=" << actionTabsComboBox_->count()
+              << " requested_tab_id=" << selectedTabId << " selected_index=" << selectedIndex;
+}
+
+QString ActionsResponsesWindow::selectedActionTabId() const
+{
+    return actionTabsComboBox_->currentData().toString();
 }
 
 void ActionsResponsesWindow::updateActionParametersPanel()

@@ -71,6 +71,8 @@ enum class CommanderAction {
     InvokePlugin,
     GetPluginJob,
     CancelPluginJob,
+    SetActionsEnabled,
+    SelectActionsTab,
 };
 
 enum class CommanderResultCode {

@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QPointer>
 #include <QSerialPortInfo>
 #include <QVariantMap>
 
@@ -184,6 +185,32 @@ const SerialCaptureSettings& StreamSession::captureSettings() const
     return settings_;
 }
 
+bool StreamSession::actionsEnabled() const
+{
+    return settings_.useForActions;
+}
+
+void StreamSession::setActionsEnabled( bool enabled )
+{
+    if ( settings_.useForActions == enabled ) {
+        LOG_DEBUG << "Actions state unchanged for " << settings_.portName.toStdString()
+                  << ": enabled=" << enabled << ", generation=" << actionsGeneration_;
+        return;
+    }
+
+    settings_.useForActions = enabled;
+    ++actionsGeneration_;
+    LOG_DEBUG << "Actions state changed for " << settings_.portName.toStdString()
+              << ": enabled=" << enabled << ", generation=" << actionsGeneration_
+              << "; previously scheduled work invalidated";
+    Q_EMIT actionsEnabledChanged( enabled );
+}
+
+quint64 StreamSession::actionsGeneration() const
+{
+    return actionsGeneration_;
+}
+
 bool StreamSession::startNewCaptureFile( const QString& filePath, QString* errorMessage )
 {
     if ( !started_ || !connectionOpen_ || worker_ == nullptr ) {
@@ -304,6 +331,9 @@ void StreamSession::setConnectionClosed()
     }
 
     connectionOpen_ = false;
+    ++actionsGeneration_;
+    LOG_DEBUG << "Connection close invalidated scheduled actions for "
+              << settings_.portName.toStdString() << ", generation=" << actionsGeneration_;
     stopping_ = false;
     lineBuffer_.clear();
     StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );     
@@ -369,17 +399,68 @@ void StreamSession::handleDataReceived( const QByteArray& data )
         return;
     }
 
+    const QPointer<StreamSession> safeSession = this;
+    const auto generation
+        = connectionOpen_ && settings_.useForActions
+                  && ActionsManager::instance().autoResponsesEnabled()
+              ? std::optional<quint64>{ actionsGeneration_ }
+              : std::nullopt;
     Q_EMIT dataObserved( data );
+    if ( !safeSession ) {
+        return;
+    }
 
+    if ( lineBuffer_.isEmpty() ) {
+        // Connection/file changes can clear the text during a direct callback.
+        lineBufferActionsSegments_.clear();
+    }
     lineBuffer_.append( data );
+    if ( !lineBufferActionsSegments_.empty()
+         && lineBufferActionsSegments_.back().generation == generation ) {
+        lineBufferActionsSegments_.back().byteCount += data.size();
+    }
+    else {
+        lineBufferActionsSegments_.push_back( { data.size(), generation } );
+        LOG_DEBUG << "Buffered Actions lineage segment: eligible=" << generation.has_value()
+                  << ", generation=" << generation.value_or( 0 )
+                  << ", bytes=" << data.size();
+    }
     qsizetype newlineIndex = lineBuffer_.indexOf( '\n' );
     while ( newlineIndex >= 0 ) {
         QByteArray lineBytes = lineBuffer_.left( newlineIndex );
         lineBuffer_.remove( 0, newlineIndex + 1 );
+        auto remaining = newlineIndex + 1;
+        std::optional<quint64> lineGeneration;
+        bool firstSegment = true;
+        while ( remaining > 0 && !lineBufferActionsSegments_.empty() ) {
+            auto& segment = lineBufferActionsSegments_.front();
+            const auto consumed = std::min( remaining, segment.byteCount );
+            if ( firstSegment ) {
+                lineGeneration = segment.generation;
+                firstSegment = false;
+            }
+            else if ( lineGeneration != segment.generation ) {
+                lineGeneration.reset();
+            }
+            remaining -= consumed;
+            segment.byteCount -= consumed;
+            if ( segment.byteCount == 0 ) {
+                lineBufferActionsSegments_.pop_front();
+            }
+        }
+        if ( remaining > 0 ) {
+            LOG_ERROR << "Missing buffered Actions lineage for " << remaining << " bytes";
+            lineGeneration.reset();
+        }
         if ( lineBytes.endsWith( '\r' ) ) {
             lineBytes.chop( 1 );
         }
-        handleIncomingLine( lineBytes );
+        // Consume metadata before signals: nested input must see the exact
+        // lineage of the remaining bytes, including already-complete lines.
+        handleIncomingLine( lineBytes, lineGeneration );
+        if ( !safeSession ) {
+            return;
+        }
         newlineIndex = lineBuffer_.indexOf( '\n' );
     }
 }
@@ -445,25 +526,43 @@ void StreamSession::resetAllResponseCounters()
     responseCounters_.clear();
 }
 
-void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
+void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
+                                       std::optional<quint64> generation )
 {
     if ( lineBytes.isEmpty() ) {
         return;
     }
 
+    const QPointer<StreamSession> safeSession = this;
     Q_EMIT lineObserved( lineBytes );
-
-    if ( !ActionsManager::instance().autoResponsesEnabled() ) {
+    if ( !safeSession ) {
         return;
     }
 
-    const auto& responses = ActionsManager::instance().responses();
+    if ( !generation || *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+         || !ActionsManager::instance().autoResponsesEnabled() ) {
+        LOG_DEBUG << "Automatic response matching skipped for " << settings_.portName.toStdString()
+                  << ": tabEnabled=" << settings_.useForActions
+                  << ", globalEnabled=" << ActionsManager::instance().autoResponsesEnabled()
+                  << ", observedEligible=" << generation.has_value()
+                  << ", observedGeneration=" << generation.value_or( 0 )
+                  << ", currentGeneration=" << actionsGeneration_;
+        return;
+    }
+
+    // Signal consumers may edit the repository while a match is being reported.
+    const auto responses = ActionsManager::instance().responses();
     if ( responses.isEmpty() ) {
         return;
     }
 
     const QString lineText = QString::fromLatin1( lineBytes );
     for ( const auto& response : responses ) {
+        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+             || !ActionsManager::instance().autoResponsesEnabled() ) {
+            LOG_DEBUG << "Automatic response matching cancelled after eligibility changed";
+            break;
+        }
         if ( !response.enabled ) {
             continue;
         }
@@ -476,12 +575,24 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes )
         responseCounters_[ response.id ] = responseCounters_.value( response.id, 0 ) + 1;
         Q_EMIT responseMatched( response.id, response.name, responseCounters_.value( response.id ),
                                 lineBytes, lineText );
+        if ( !safeSession ) {
+            return;
+        }
+        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+             || !ActionsManager::instance().autoResponsesEnabled() ) {
+            LOG_DEBUG << "Response id=" << response.id
+                      << " cancelled by its match observer; generation=" << actionsGeneration_;
+            return;
+        }
 
         QString errorMessage;
         if ( !executeResponseDefinition( this, response, match.captures, &errorMessage ) ) {
             LOG_WARNING << "Failed to execute response action for "
                         << response.name.toStdString() << ": "
                         << errorMessage.toStdString();
+        }
+        if ( !safeSession ) {
+            return;
         }
 
         if ( response.response.snapshot ) {

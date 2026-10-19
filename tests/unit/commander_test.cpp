@@ -1220,3 +1220,117 @@ TEST_CASE( "Wildcard response matching captures matching lines", "[commander][ac
     REQUIRE( match.matched );
     REQUIRE( match.lineText == "ready 123 ok" );
 }
+
+TEST_CASE( "Actions tab commands preserve enabled states and tab selectors across IPC",
+           "[commander][cli][ipc][actions]" )
+{
+    struct SelectorCase {
+        QStringList arguments;
+        QString tabId;
+        std::optional<int> windowIndex;
+        std::optional<int> tabIndex;
+    };
+    const SelectorCase selectors[] = {
+        { {}, {}, std::nullopt, std::nullopt },
+        { { "--tab-id", "actions-tab" }, "actions-tab", std::nullopt, std::nullopt },
+        { { "--window-index", "1", "--tab-index", "2" }, {}, 1, 2 }
+    };
+    for ( const auto& selector : selectors ) {
+        for ( const bool enabled : { false, true } ) {
+            QStringList arguments{ "cilogg", "command", "--action", "set_actions_enabled",
+                                   enabled ? "--enabled" : "--disabled" };
+            arguments.append( selector.arguments );
+            const CliParameters parameters( arguments );
+            INFO( arguments.join( ' ' ).toStdString() );
+            REQUIRE_FALSE( parameters.parse_error );
+            REQUIRE( parameters.commander_request.has_value() );
+            const auto& request = *parameters.commander_request;
+            REQUIRE( request.action == CommanderAction::SetActionsEnabled );
+            REQUIRE( request.enabled.has_value() );
+            REQUIRE( *request.enabled == enabled );
+            REQUIRE( request.tabId == selector.tabId );
+            REQUIRE( request.windowIndex == selector.windowIndex );
+            REQUIRE( request.tabIndex == selector.tabIndex );
+
+            const auto payload = commanderRequestToVariantMap( request );
+            REQUIRE( payload.value( "action" ).toString() == "set_actions_enabled" );
+            REQUIRE( payload.contains( "enabled" ) );
+            REQUIRE( payload.value( "enabled" ).toBool() == enabled );
+            QString error;
+            const auto restored = commanderRequestFromVariantMap( payload, &error );
+            REQUIRE( restored.has_value() );
+            REQUIRE( error.isEmpty() );
+            REQUIRE( restored->action == request.action );
+            REQUIRE( restored->enabled == request.enabled );
+            REQUIRE( restored->tabId == selector.tabId );
+            REQUIRE( restored->windowIndex == selector.windowIndex );
+            REQUIRE( restored->tabIndex == selector.tabIndex );
+        }
+
+        QStringList arguments{ "cilogg", "command", "--action", "select_actions_tab" };
+        arguments.append( selector.arguments );
+        const CliParameters parameters( arguments );
+        INFO( arguments.join( ' ' ).toStdString() );
+        REQUIRE_FALSE( parameters.parse_error );
+        REQUIRE( parameters.commander_request.has_value() );
+        const auto& request = *parameters.commander_request;
+        REQUIRE( request.action == CommanderAction::SelectActionsTab );
+        REQUIRE_FALSE( request.enabled.has_value() );
+        REQUIRE( request.tabId == selector.tabId );
+        REQUIRE( request.windowIndex == selector.windowIndex );
+        REQUIRE( request.tabIndex == selector.tabIndex );
+        const auto payload = commanderRequestToVariantMap( request );
+        REQUIRE( payload.value( "action" ).toString() == "select_actions_tab" );
+        REQUIRE_FALSE( payload.contains( "enabled" ) );
+        QString error;
+        const auto restored = commanderRequestFromVariantMap( payload, &error );
+        REQUIRE( restored.has_value() );
+        REQUIRE( error.isEmpty() );
+        REQUIRE( restored->action == request.action );
+        REQUIRE_FALSE( restored->enabled.has_value() );
+        REQUIRE( restored->tabId == selector.tabId );
+        REQUIRE( restored->windowIndex == selector.windowIndex );
+        REQUIRE( restored->tabIndex == selector.tabIndex );
+    }
+}
+
+TEST_CASE( "Actions tab commands reject incomplete states and invalid selectors",
+           "[commander][cli][actions]" )
+{
+    const QStringList invalidArguments[] = {
+        { "set_actions_enabled" },
+        { "set_actions_enabled", "--enabled", "--disabled" },
+        { "set_actions_enabled", "--enabled", "--tab-id", "tab", "--window-index", "0",
+          "--tab-index", "0" },
+        { "set_actions_enabled", "--disabled", "--window-index", "0" },
+        { "set_actions_enabled", "--enabled", "--tab-index", "0" },
+        { "set_actions_enabled", "--enabled", "--window-index", "0", "--tab-index", "-1" },
+        { "select_actions_tab", "--enabled" },
+        { "select_actions_tab", "--disabled" },
+        { "select_actions_tab", "--tab-id", "tab", "--window-index", "0", "--tab-index", "0" },
+        { "select_actions_tab", "--window-index", "0" },
+        { "select_actions_tab", "--tab-index", "0" },
+        { "select_actions_tab", "--window-index", "-1", "--tab-index", "0" }
+    };
+    for ( const auto& invalid : invalidArguments ) {
+        QStringList arguments{ "cilogg", "command", "--action" };
+        arguments.append( invalid );
+        const CliParameters parameters( arguments );
+        INFO( arguments.join( ' ' ).toStdString() );
+        REQUIRE( parameters.parse_error );
+        REQUIRE_FALSE( parameters.commander_request.has_value() );
+    }
+}
+
+TEST_CASE( "Actions tab commands are advertised in application and Commander help",
+           "[commander][cli][actions]" )
+{
+    const CliParameters mainHelp( { "cilogg", "--help" } );
+    REQUIRE( mainHelp.exit_requested );
+    REQUIRE( mainHelp.exit_message.contains( "cilogg command --action set_actions_enabled" ) );
+    REQUIRE( mainHelp.exit_message.contains( "cilogg command --action select_actions_tab" ) );
+    REQUIRE( commanderActionFromString( " SET_ACTIONS_ENABLED " )
+             == CommanderAction::SetActionsEnabled );
+    REQUIRE( commanderActionFromString( " SELECT_ACTIONS_TAB " )
+             == CommanderAction::SelectActionsTab );
+}

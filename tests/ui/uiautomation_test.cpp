@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QLineEdit>
 #include <QMouseEvent>
@@ -14,6 +15,7 @@
 #include <QWheelEvent>
 
 #include "uiautomation.h"
+#include "actionsresponseswindow.h"
 
 TEST_CASE( "UI commands inspect and edit dialogs through the normal Qt signals", "[ui][commander]" )
 {
@@ -231,4 +233,52 @@ TEST_CASE( "CLI mouse gestures reach custom rendered widgets and reject invalid 
     REQUIRE( executeUiAutomation( &owner, request ).code == CommanderResultCode::InvalidRequest );
     request.definitionPayload = { { "event", "drag" } };
     REQUIRE( executeUiAutomation( &owner, request ).code == CommanderResultCode::InvalidRequest );
+}
+
+TEST_CASE( "Actions destination refresh stays silent and UI choice emits a stable tab ID",
+           "[ui][commander][actions]" )
+{
+    ActionsResponsesWindow window;
+    window.show();
+    auto* combo = window.findChild<QComboBox*>( "actionTabsComboBox" );
+    REQUIRE( combo != nullptr );
+    REQUIRE( combo->accessibleName() == "Action tabs" );
+    QSignalSpy selected( &window, &ActionsResponsesWindow::actionTabSelected );
+    const QVariantList tabs{
+        QVariantMap{ { "tabId", "tab-a" }, { "label", "Same display name" } },
+        QVariantMap{ { "tabId", "tab-b" }, { "label", "Same display name" } }
+    };
+    window.setActionTabs( tabs, "tab-b" );
+    REQUIRE( combo->isEnabled() );
+    REQUIRE( combo->count() == 2 );
+    REQUIRE( combo->currentIndex() == 1 );
+    REQUIRE( window.selectedActionTabId() == "tab-b" );
+    REQUIRE( selected.isEmpty() );
+
+    CommanderRequest choice;
+    choice.action = CommanderAction::SetUi;
+    choice.objectName = "actionTabsComboBox";
+    choice.definitionPayload = { { "currentIndex", 0 } };
+    REQUIRE( executeUiAutomation( &window, choice ).ok() );
+    REQUIRE( window.selectedActionTabId() == "tab-a" );
+    REQUIRE( selected.count() == 1 );
+    REQUIRE( selected.front().front().toString() == "tab-a" );
+
+    window.setActionTabs( tabs, "tab-b" );
+    REQUIRE( window.selectedActionTabId() == "tab-b" );
+    REQUIRE( selected.count() == 1 );
+    window.setActionTabs( tabs, "closed-tab" );
+    REQUIRE( combo->currentIndex() == -1 );
+    REQUIRE( window.selectedActionTabId().isEmpty() );
+    REQUIRE( selected.count() == 1 );
+
+    window.setResponsesOnly( true );
+    REQUIRE_FALSE( combo->isVisible() );
+    window.setResponsesOnly( false );
+    REQUIRE( combo->isVisible() );
+    window.setActionTabs( {}, {} );
+    REQUIRE_FALSE( combo->isEnabled() );
+    REQUIRE( combo->count() == 0 );
+    REQUIRE( window.selectedActionTabId().isEmpty() );
+    REQUIRE( selected.count() == 1 );
 }

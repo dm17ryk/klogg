@@ -6,6 +6,9 @@
 #include <QThread>
 #include <QVariantList>
 
+#include <deque>
+#include <optional>
+
 #include "serialcaptureworker.h"
 
 class StreamSession : public QObject {
@@ -25,6 +28,9 @@ class StreamSession : public QObject {
     QString sourceDisplayName() const;
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;
+    bool actionsEnabled() const;
+    void setActionsEnabled( bool enabled );
+    quint64 actionsGeneration() const;
     bool startNewCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
     void sendBytes( const QByteArray& data, bool sensitive = false );
     void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
@@ -44,6 +50,7 @@ class StreamSession : public QObject {
     void errorOccurred( const QString& message );
     void connectionClosed();
     void connectionOpened();
+    void actionsEnabledChanged( bool enabled );
     void dataObserved( const QByteArray& dataBytes );
     void dataTransmitted( const QByteArray& dataBytes );
     void lineObserved( const QByteArray& lineBytes );
@@ -63,13 +70,16 @@ class StreamSession : public QObject {
     void setupWorker();
     void setConnectionClosed();
     bool canOpenConfiguredCapture( QString* errorMessage ) const;
-    void handleIncomingLine( const QByteArray& lineBytes );
+    void handleIncomingLine( const QByteArray& lineBytes, std::optional<quint64> generation );
 
   private Q_SLOTS:
     void handleDataReceived( const QByteArray& data );
 
   private:
+    friend struct StreamSessionTestAccess;
+
     SerialCaptureSettings settings_;
+    quint64 actionsGeneration_ = 0;
     QThread thread_;
     SerialCaptureWorker* worker_ = nullptr;
     quint64 workerGeneration_ = 0;
@@ -80,5 +90,12 @@ class StreamSession : public QObject {
     bool paused_ = false;
     bool loggingEnabled_ = true;
     QByteArray lineBuffer_;
+    struct BufferedActionsSegment {
+        qsizetype byteCount;
+        std::optional<quint64> generation;
+    };
+    // Coalesce adjacent chunks with identical eligibility. A line spanning any
+    // ineligible or different generation segment is observation-only.
+    std::deque<BufferedActionsSegment> lineBufferActionsSegments_;
     QMap<int, int> responseCounters_;
 };

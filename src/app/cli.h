@@ -226,6 +226,8 @@ private:
             "  cilogg command --action update_response --id <id> --json-file <path>\n"
             "  cilogg command --action delete_response --id <id>\n"
             "  cilogg command --action send_action --id <id> [tab selector]\n"
+            "  cilogg command --action set_actions_enabled (--enabled | --disabled) [tab selector]\n"
+            "  cilogg command --action select_actions_tab [tab selector]\n"
             "  cilogg command --action wait_response (--id <id> | --name <name>) [tab selector] "
             "--timeout-ms <n>\n"
             "  cilogg command --action get_filters [tab selector] [filter selector] [--predefined] "
@@ -363,6 +365,9 @@ private:
             "  update_response --id <id> --json-file <path>\n"
             "  delete_response --id <id>\n"
             "  send_action --id <id> [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  set_actions_enabled (--enabled | --disabled) [--tab-id <id> | --window-index <n> "
+            "--tab-index <n>]\n"
+            "  select_actions_tab [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  wait_response (--id <id> | --name <name>) [--tab-id <id> | --window-index <n> "
             "--tab-index <n>] --timeout-ms <ms>\n"
             "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> "
@@ -2083,6 +2088,38 @@ private:
                     parser, QStringLiteral( "set_follow_mode requires --enabled or --disabled." ) );
                 return result;
             }
+            break;
+        case CommanderAction::SetActionsEnabled:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                LOG_DEBUG << "Rejected Actions enablement request with invalid tab selectors";
+                return result;
+            }
+            request.enabled = parseOptionalBoolean( parser, enabledOption, disabledOption );
+            if ( !request.enabled.has_value() ) {
+                LOG_DEBUG << "Rejected Actions enablement request without an enabled state";
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "set_actions_enabled requires --enabled or --disabled." ) );
+                return result;
+            }
+            LOG_DEBUG << "Parsed Actions enablement request: enabled=" << *request.enabled
+                      << " tab_id=" << request.tabId
+                      << " explicit_index=" << request.tabIndex.has_value();
+            break;
+        case CommanderAction::SelectActionsTab:
+            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
+                LOG_DEBUG << "Rejected Actions destination request with invalid tab selectors";
+                return result;
+            }
+            if ( parser.isSet( enabledOption ) || parser.isSet( disabledOption ) ) {
+                LOG_DEBUG << "Rejected Actions destination request with an enabled state";
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "select_actions_tab does not accept --enabled or --disabled." ) );
+                return result;
+            }
+            LOG_DEBUG << "Parsed Actions destination request: tab_id=" << request.tabId
+                      << " explicit_index=" << request.tabIndex.has_value();
             break;
         case CommanderAction::InvokeAction:
         case CommanderAction::SetUi:

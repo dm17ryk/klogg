@@ -20,11 +20,17 @@
 #include <catch2/catch.hpp>
 
 #include <QAction>
+#include <QComboBox>
 #include <QDir>
+#include <QDialogButtonBox>
 #include <QFile>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPixmap>
+#include <QPushButton>
 #include <QSignalSpy>
+#include <QTabBar>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -43,6 +49,9 @@
 #include "test_utils.h"
 
 #include "configuration.h"
+#include "actionsmanager.h"
+#include "actionparametersdialog.h"
+#include "actionsresponseswindow.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "predefinedfilters.h"
@@ -53,6 +62,7 @@
 #include "streamsession.h"
 #include "updateuicontroller.h"
 #include "versionchecker.h"
+#include "../streamsession_testaccess.h"
 
 namespace {
 struct SessionFilesRestoreGuard {
@@ -1108,4 +1118,426 @@ TEST_CASE( "Main window exposes automation object names and UI tree", "[ui][auto
     REQUIRE( followAction->toMap().value( "role" ).toString() == "action" );
     REQUIRE( uiTree.value( "role" ).toString() == "widget" );
     REQUIRE( uiTree.contains( "bounds" ) );
+}
+
+namespace {
+struct ActionsDefinitionsRestoreGuard {
+    QVector<ActionDefinition> actions = ActionsManager::instance().actions();
+    QVector<ResponseDefinition> responses = ActionsManager::instance().responses();
+
+    ~ActionsDefinitionsRestoreGuard()
+    {
+        ActionsManager::instance().importFromDefinitions( actions, responses );
+    }
+};
+
+struct ActionsTabsFixture {
+    QTemporaryDir directory;
+    std::shared_ptr<Session> appSession = std::make_shared<Session>();
+    WindowSession windowSession{ appSession, "ActionsTabs", 0 };
+    SessionFilesRestoreGuard savedFiles{
+        SessionInfo::getSynced(), "ActionsTabs", SessionInfo::getSynced().openFiles( "ActionsTabs" )
+    };
+    MainWindow window{ windowSession };
+    TabbedCrawlerWidget* tabs = nullptr;
+    ActionsResponsesWindow* actionsWindow = nullptr;
+    QComboBox* combo = nullptr;
+    QStringList paths;
+    QStringList tabIds;
+    std::vector<std::shared_ptr<StreamSession>> streams;
+
+    ActionsTabsFixture()
+    {
+        REQUIRE( directory.isValid() );
+        window.show();
+        tabs = window.findChild<TabbedCrawlerWidget*>();
+        REQUIRE( tabs != nullptr );
+        for ( int index = 0; index < 3; ++index ) {
+            const auto path = directory.filePath( QStringLiteral( "capture_%1.log" ).arg( index ) );
+            QFile file( path );
+            REQUIRE( file.open( QIODevice::WriteOnly ) );
+            REQUIRE( file.write( "Actions routing fixture\n" ) > 0 );
+            file.close();
+            CommanderRequest open;
+            open.action = CommanderAction::OpenFile;
+            open.filePath = path;
+            REQUIRE( window.executeCommanderRequest( open ).ok() );
+            REQUIRE( waitUiState( [ & ] {
+                return tabs->count() == index + 1 && window.isStartupReadyForDisplay();
+            } ) );
+            paths.append( path );
+            tabIds.append( tabs->tabIdAt( index ) );
+            REQUIRE_FALSE( tabIds.back().isEmpty() );
+
+            SerialCaptureSettings settings;
+            settings.portName = QStringLiteral( "CILOGG_TEST_ACTIONS_%1" ).arg( index );
+            settings.filePath = path;
+            settings.useForActions = false;
+            auto stream = std::make_shared<StreamSession>( settings );
+            // Observe logical dispatch only; this fixture never opens a serial worker/device.
+            StreamSessionTestAccess::openConnection( *stream );
+            tabs->setStreamSessionForPath( path, stream );
+            streams.push_back( std::move( stream ) );
+        }
+        for ( auto* widget : QApplication::topLevelWidgets() ) {
+            if ( auto* candidate = qobject_cast<ActionsResponsesWindow*>( widget );
+                 candidate && candidate->objectName() == "actionsWindow" ) {
+                REQUIRE( actionsWindow == nullptr );
+                actionsWindow = candidate;
+            }
+        }
+        REQUIRE( actionsWindow != nullptr );
+        combo = actionsWindow->findChild<QComboBox*>( "actionTabsComboBox" );
+        REQUIRE( combo != nullptr );
+    }
+
+    void enable( int index, bool enabled )
+    {
+        CommanderRequest request;
+        request.action = CommanderAction::SetActionsEnabled;
+        request.tabId = tabIds.at( index );
+        request.enabled = enabled;
+        const auto result = window.executeCommanderRequest( request );
+        INFO( result.message.toStdString() );
+        REQUIRE( result.ok() );
+    }
+
+    void select( int index )
+    {
+        CommanderRequest request;
+        request.action = CommanderAction::SelectActionsTab;
+        request.tabId = tabIds.at( index );
+        const auto result = window.executeCommanderRequest( request );
+        INFO( result.message.toStdString() );
+        REQUIRE( result.ok() );
+    }
+
+    QVariantMap comState( int index ) const
+    {
+        for ( const auto& value : window.commanderWindowInfo().value( "tabs" ).toList() ) {
+            const auto tab = value.toMap();
+            if ( tab.value( "tabId" ).toString() == tabIds.at( index ) ) {
+                return tab.value( "com" ).toMap();
+            }
+        }
+        return {};
+    }
+};
+} // namespace
+
+TEST_CASE( "Actions picker routes default sends while explicit selectors retain their destination",
+           "[ui][commander][actions]" )
+{
+    ActionsDefinitionsRestoreGuard restoreDefinitions;
+    ActionsTabsFixture fixture;
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    action.name = "Actions routing probe";
+    action.sequence.type = ActionSequenceType::String;
+    action.sequence.value = "PING\n";
+    QString error;
+    REQUIRE( ActionsManager::instance().createAction( action, &error ) );
+    QSignalSpy firstSent( fixture.streams[0].get(), &StreamSession::actionSent );
+    QSignalSpy secondSent( fixture.streams[1].get(), &StreamSession::actionSent );
+    QSignalSpy unmarkedSent( fixture.streams[2].get(), &StreamSession::actionSent );
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    REQUIRE( fixture.combo->count() == 2 );
+    REQUIRE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE( fixture.comState( 1 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 2 ).value( "actionsEnabled" ).toBool() );
+    fixture.select( 0 );
+    fixture.combo->setCurrentIndex( fixture.combo->findData( fixture.tabIds.at( 1 ) ) );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+    REQUIRE( fixture.comState( 1 ).value( "selectedForActions" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "selectedForActions" ).toBool() );
+    REQUIRE( fixture.comState( 0 ).value( "isActionsPort" ).toBool() );
+    REQUIRE( fixture.comState( 1 ).value( "isActionsPort" ).toBool() );
+
+    const auto artifactPath = qEnvironmentVariable( "CILOGG_TEST_ARTIFACT_DIR" );
+    if ( !artifactPath.isEmpty() ) {
+        const QDir artifacts( artifactPath );
+        REQUIRE( artifacts.mkpath( "." ) );
+        fixture.actionsWindow->show();
+        QApplication::processEvents();
+        REQUIRE( fixture.actionsWindow->grab().save( artifacts.filePath( "actions-window.png" ) ) );
+    }
+
+    // The active document is deliberately the disabled third tab, not the picker destination.
+    fixture.tabs->setCurrentIndex( fixture.tabs->findTabById( fixture.tabIds.at( 2 ) ) );
+    REQUIRE( QMetaObject::invokeMethod( fixture.actionsWindow, "sendActionRequested",
+                                       Qt::DirectConnection, Q_ARG( int, action.id ) ) );
+    REQUIRE( firstSent.isEmpty() );
+    REQUIRE( secondSent.count() == 1 );
+    REQUIRE( unmarkedSent.isEmpty() );
+    REQUIRE( secondSent.front().at( 3 ).toByteArray() == QByteArrayLiteral( "PING\n" ) );
+
+    CommanderRequest send;
+    send.action = CommanderAction::SendAction;
+    send.entityId = action.id;
+    REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
+    REQUIRE( secondSent.count() == 2 );
+    REQUIRE( firstSent.isEmpty() );
+    REQUIRE( unmarkedSent.isEmpty() );
+    send.tabId = fixture.tabIds.at( 2 );
+    REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
+    REQUIRE( unmarkedSent.count() == 1 );
+    REQUIRE( secondSent.count() == 2 );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+    send.tabId.clear();
+    send.windowIndex = 0;
+    send.tabIndex = fixture.tabs->findTabById( fixture.tabIds.at( 0 ) );
+    REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
+    REQUIRE( firstSent.count() == 1 );
+    REQUIRE( secondSent.count() == 2 );
+    REQUIRE( unmarkedSent.count() == 1 );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+
+    CommanderRequest selectDisabled;
+    selectDisabled.action = CommanderAction::SelectActionsTab;
+    selectDisabled.tabId = fixture.tabIds.at( 2 );
+    REQUIRE_FALSE( fixture.window.executeCommanderRequest( selectDisabled ).ok() );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+}
+
+TEST_CASE( "Actions enablement falls back to an eligible destination and persists every tab flag",
+           "[ui][commander][actions]" )
+{
+    ActionsTabsFixture fixture;
+    fixture.tabs->setCurrentIndex( fixture.tabs->findTabById( fixture.tabIds.at( 0 ) ) );
+    CommanderRequest currentTab;
+    currentTab.action = CommanderAction::SetActionsEnabled;
+    REQUIRE( fixture.window.executeCommanderRequest( currentTab ).code
+             == CommanderResultCode::InvalidRequest );
+    currentTab.enabled = true;
+    REQUIRE( fixture.window.executeCommanderRequest( currentTab ).ok() );
+    REQUIRE( fixture.streams[0]->actionsEnabled() );
+    REQUIRE_FALSE( fixture.streams[1]->actionsEnabled() );
+    currentTab.action = CommanderAction::SelectActionsTab;
+    currentTab.enabled.reset();
+    REQUIRE( fixture.window.executeCommanderRequest( currentTab ).ok() );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+    fixture.enable( 1, true );
+    fixture.select( 1 );
+    fixture.select( 0 );
+    fixture.enable( 0, false );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+    REQUIRE( fixture.combo->count() == 1 );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE( fixture.comState( 1 ).value( "selectedForActions" ).toBool() );
+    fixture.enable( 0, true );
+    REQUIRE( fixture.combo->count() == 2 );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+    fixture.enable( 0, false );
+    fixture.select( 1 );
+    fixture.enable( 0, true );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+
+    const auto projectPath = fixture.directory.filePath( "multiple-actions.cilogproj" );
+    QString error;
+    REQUIRE( fixture.window.saveProject( projectPath, &error ) );
+    REQUIRE( QFile::exists( projectPath ) );
+    const auto saved = SessionInfo::getSynced().openFiles( "ActionsTabs" );
+    REQUIRE( saved.size() == 3 );
+    for ( const auto& file : saved ) {
+        const auto settings = deserializeSerialCaptureSettings( file.streamContext );
+        REQUIRE( settings.has_value() );
+        const auto index = fixture.paths.indexOf( settings->filePath );
+        REQUIRE( index >= 0 );
+        REQUIRE( settings->useForActions == ( index != 2 ) );
+    }
+
+    fixture.enable( 0, false );
+    fixture.enable( 1, false );
+    REQUIRE( fixture.combo->count() == 0 );
+    REQUIRE_FALSE( fixture.combo->isEnabled() );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId().isEmpty() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "selectedForActions" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 1 ).value( "selectedForActions" ).toBool() );
+}
+
+TEST_CASE( "File and tab context Actions toggles resolve stable identities after tab moves",
+           "[ui][commander][actions]" )
+{
+    ActionsTabsFixture fixture;
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    fixture.select( 1 );
+    auto* fileMenu = fixture.window.findChild<QMenu*>( "fileMenu" );
+    REQUIRE( fileMenu != nullptr );
+    REQUIRE( QMetaObject::invokeMethod( fileMenu, "aboutToShow", Qt::DirectConnection ) );
+    auto* menu = fixture.window.findChild<QMenu*>( "comPortsMenu" );
+    REQUIRE( menu != nullptr );
+    auto* firstToggle = menu->findChild<QAction*>(
+        QStringLiteral( "comPortActionsEnabledAction_%1" ).arg( fixture.tabIds.at( 0 ) ) );
+    auto* secondToggle = menu->findChild<QAction*>(
+        QStringLiteral( "comPortActionsEnabledAction_%1" ).arg( fixture.tabIds.at( 1 ) ) );
+    REQUIRE( firstToggle != nullptr );
+    REQUIRE( secondToggle != nullptr );
+    REQUIRE( firstToggle->isCheckable() );
+    REQUIRE( firstToggle->isChecked() );
+    REQUIRE( secondToggle->isChecked() );
+    auto* bar = fixture.tabs->findChild<QTabBar*>( "mainTabBar" );
+    REQUIRE( bar != nullptr );
+    bar->moveTab( 0, 2 );
+    firstToggle->trigger();
+    REQUIRE_FALSE( fixture.streams[0]->actionsEnabled() );
+    REQUIRE( fixture.streams[1]->actionsEnabled() );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+
+    QSignalSpy requests( fixture.tabs, &TabbedCrawlerWidget::actionsEnabledChangeRequested );
+    bool toggled = false;
+    bool initiallyChecked = false;
+    QTimer trigger;
+    trigger.setInterval( 10 );
+    QObject::connect( &trigger, &QTimer::timeout, fixture.tabs, [ & ] {
+        auto* popup = qobject_cast<QMenu*>( QApplication::activePopupWidget() );
+        if ( popup == nullptr ) {
+            return;
+        }
+        auto* toggle = popup->findChild<QAction*>( "actionsEnabledAction" );
+        if ( toggle == nullptr ) {
+            return;
+        }
+        trigger.stop();
+        initiallyChecked = toggle->isChecked();
+        bar->moveTab( fixture.tabs->findTabById( fixture.tabIds.at( 1 ) ), 2 );
+        toggle->trigger();
+        toggled = true;
+        popup->close();
+    } );
+    QTimer watchdog;
+    watchdog.setSingleShot( true );
+    QObject::connect( &watchdog, &QTimer::timeout, fixture.tabs, [] {
+        if ( auto* popup = qobject_cast<QMenu*>( QApplication::activePopupWidget() ) ) {
+            popup->close();
+        }
+    } );
+    trigger.start();
+    watchdog.start( 5000 );
+    const auto targetIndex = fixture.tabs->findTabById( fixture.tabIds.at( 1 ) );
+    REQUIRE( QMetaObject::invokeMethod( fixture.tabs, "showContextMenu", Qt::DirectConnection,
+                                       Q_ARG( int, targetIndex ), Q_ARG( QPoint, QPoint( 60, 60 ) ) ) );
+    trigger.stop();
+    watchdog.stop();
+    REQUIRE( toggled );
+    REQUIRE( initiallyChecked );
+    REQUIRE( requests.count() == 1 );
+    REQUIRE( requests.front().at( 0 ).toString() == fixture.tabIds.at( 1 ) );
+    REQUIRE_FALSE( requests.front().at( 1 ).toBool() );
+    REQUIRE_FALSE( fixture.streams[0]->actionsEnabled() );
+    REQUIRE_FALSE( fixture.streams[1]->actionsEnabled() );
+    REQUIRE_FALSE( fixture.streams[2]->actionsEnabled() );
+}
+
+TEST_CASE( "Parameter dialogs cancel a send after the Actions destination changes away and back",
+           "[ui][commander][actions][review]" )
+{
+    const auto changeDestination = GENERATE( false, true );
+    CAPTURE( changeDestination );
+    ActionsDefinitionsRestoreGuard restoreDefinitions;
+    ActionsTabsFixture fixture;
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    fixture.select( 0 );
+    const auto firstGeneration = fixture.streams[0]->actionsGeneration();
+    const auto secondGeneration = fixture.streams[1]->actionsGeneration();
+
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    action.name = "Modal Actions destination probe";
+    action.sequence.value = "PING:${value}\n";
+    ActionParameterDefinition parameter;
+    parameter.name = "value";
+    parameter.type = ActionParameterType::Text;
+    parameter.required = true;
+    parameter.remember = false;
+    parameter.defaultValue = QStringLiteral( "42" );
+    action.parameters.fields = { parameter };
+    QString error;
+    REQUIRE( ActionsManager::instance().createAction( action, &error ) );
+    QSignalSpy firstSent( fixture.streams[0].get(), &StreamSession::actionSent );
+    QSignalSpy secondSent( fixture.streams[1].get(), &StreamSession::actionSent );
+    bool dialogSeen = false;
+    bool defaultValueSeen = false;
+    bool transitionsSucceeded = true;
+    bool accepted = false;
+    bool warningSeen = false;
+    bool timedOut = false;
+    const auto cancellationText = MainWindow::tr(
+        "The selected Actions tab changed or disconnected. Retry the action." );
+
+    QTimer driver;
+    driver.setInterval( 10 );
+    QObject::connect( &driver, &QTimer::timeout, &fixture.window, [ & ] {
+        if ( !dialogSeen ) {
+            for ( auto* dialog : fixture.window.findChildren<ActionParametersDialog*>() ) {
+                if ( !dialog->isVisible() || !dialog->isWindow() ) {
+                    continue;
+                }
+                dialogSeen = true;
+                const auto* editor = dialog->findChild<QLineEdit*>( "actionParameter_value" );
+                defaultValueSeen = editor != nullptr && editor->text() == "42";
+                if ( changeDestination ) {
+                    for ( const auto index : { 1, 0 } ) {
+                        CommanderRequest select;
+                        select.action = CommanderAction::SelectActionsTab;
+                        select.tabId = fixture.tabIds.at( index );
+                        transitionsSucceeded
+                            = fixture.window.executeCommanderRequest( select ).ok()
+                              && transitionsSucceeded;
+                    }
+                }
+                auto* buttons = dialog->findChild<QDialogButtonBox*>();
+                auto* send = buttons != nullptr ? buttons->button( QDialogButtonBox::Ok ) : nullptr;
+                if ( send != nullptr ) {
+                    accepted = true;
+                    send->click();
+                }
+                else {
+                    dialog->reject();
+                }
+                return;
+            }
+        }
+        for ( auto* warning : fixture.window.findChildren<QMessageBox*>() ) {
+            if ( warning->isVisible() && warning->parentWidget() == &fixture.window
+                 && warning->icon() == QMessageBox::Warning
+                 && warning->text() == cancellationText ) {
+                warningSeen = true;
+                warning->accept();
+            }
+        }
+    } );
+    QTimer watchdog;
+    watchdog.setSingleShot( true );
+    QObject::connect( &watchdog, &QTimer::timeout, &fixture.window, [ & ] {
+        timedOut = true;
+        for ( auto* dialog : fixture.window.findChildren<QDialog*>() ) {
+            if ( dialog->isVisible() && dialog->isWindow() ) {
+                dialog->reject();
+            }
+        }
+    } );
+    driver.start();
+    watchdog.start( 10000 );
+    const auto invoked = QMetaObject::invokeMethod( fixture.actionsWindow, "sendActionRequested",
+                                                   Qt::DirectConnection, Q_ARG( int, action.id ) );
+    driver.stop();
+    watchdog.stop();
+    REQUIRE( invoked );
+    REQUIRE_FALSE( timedOut );
+    REQUIRE( dialogSeen );
+    REQUIRE( defaultValueSeen );
+    REQUIRE( transitionsSucceeded );
+    REQUIRE( accepted );
+    REQUIRE( warningSeen == changeDestination );
+    REQUIRE( firstSent.count() == ( changeDestination ? 0 : 1 ) );
+    REQUIRE( secondSent.isEmpty() );
+    if ( !changeDestination ) {
+        REQUIRE( firstSent.front().at( 3 ).toByteArray() == QByteArrayLiteral( "PING:42\n" ) );
+    }
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+    REQUIRE( fixture.streams[0]->actionsGeneration() == firstGeneration );
+    REQUIRE( fixture.streams[1]->actionsGeneration() == secondGeneration );
 }
