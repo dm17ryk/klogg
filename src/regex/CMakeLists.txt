@@ -3,6 +3,11 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/hsregularexpression.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/regularexpression.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/booleanevaluator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/booleanparser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/captureevaluator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisworker.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/booleanparser.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/captureevaluator.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/regularexpressionpattern.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/regularexpression.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/hsregularexpression.h

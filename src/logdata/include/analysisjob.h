@@ -48,15 +48,19 @@ struct AnalysisLine {
 };
 struct AnalysisBatch {
     std::vector<AnalysisLine> lines;
+    int jobRemainingMs = 60000;
 };
 struct AnalysisOutput {
     QVariantList rows;
     QString error;
     QVariantMap metrics;
+    QVariantMap errorDetails;
+    QString backend;
 };
 using AnalysisProcessor
     = std::function<AnalysisOutput( const AnalysisBatch&, const std::atomic_bool&, int )>;
-// Construct and destroy processors on their worker thread (important for QProcess).
+// Construct/destroy on the worker thread. The first call has an empty batch and
+// must initialize/compile even for empty scopes; it must not return result rows.
 using AnalysisProcessorFactory = std::function<AnalysisProcessor()>;
 
 class AnalysisJobService : public QObject {

@@ -37,6 +37,7 @@
  */
 
 #include "log.h"
+#include "captureevaluator.h"
 #include <QtGlobal>
 #include <qapplication.h>
 #include <qthreadpool.h>
@@ -525,6 +526,9 @@ bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath
 
 int main( int argc, char* argv[] )
 {
+    if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-analysis-worker" ) {
+        return runAnalysisWorker( argc, argv );
+    }
     if ( argc > 1 && QString::fromLocal8Bit( argv[1] ).compare( "mcp", Qt::CaseInsensitive ) == 0 ) {
         return cilogg::mcp::runCli( argc, argv, QString::fromLatin1( kloggVersion() ) );
     }

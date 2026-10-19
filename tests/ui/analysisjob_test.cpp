@@ -170,16 +170,19 @@ TEST_CASE(
     request.snapshot = data->sourceSnapshot();
     request.scope = "whole_file";
     const auto id = service.start( std::move( request ), [ entered, proceed ] {
-        return
-            [ entered, proceed ]( const AnalysisBatch&, const std::atomic_bool& cancelled, int ) {
-                *entered = true;
-                while ( !*proceed && !cancelled ) {
-                    QThread::msleep( 1 );
-                }
-                AnalysisOutput result;
-                result.rows = { QVariantMap{ { "lineNumber", 1 }, { "text", "stale" } } };
-                return result;
-            };
+        return [ entered, proceed ]( const AnalysisBatch& batch, const std::atomic_bool& cancelled,
+                                     int ) {
+            if ( batch.lines.empty() ) {
+                return AnalysisOutput{};
+            }
+            *entered = true;
+            while ( !*proceed && !cancelled ) {
+                QThread::msleep( 1 );
+            }
+            AnalysisOutput result;
+            result.rows = { QVariantMap{ { "lineNumber", 1 }, { "text", "stale" } } };
+            return result;
+        };
     } );
     REQUIRE( QTest::qWaitFor( [ & ] { return entered->load(); }, 5000 ) );
     if ( close ) {
