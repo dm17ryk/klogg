@@ -103,6 +103,7 @@
 #include <QWindow>
 
 #include "mainwindow.h"
+#include "analysiscommands.h"
 #include "pluginuicontroller.h"
 #include "uiautomation.h"
 
@@ -589,6 +590,15 @@ MainWindow::MainWindow( WindowSession session )
                                << " reason=" << result.message;
                  }
              } );
+    connect( &mainTabWidget_, &TabbedCrawlerWidget::autoResponsesEnabledChangeRequested, this,
+             [ this ]( const QString& tabId, bool enabled ) {
+                 CommanderRequest request;
+                 request.tabId = tabId;
+                 request.enabled = enabled;
+                 const auto result = commanderSetAutoResponsesEnabled( request );
+                 LOG_DEBUG << "Tab automatic responses toggle: tab_id=" << tabId
+                           << " enabled=" << enabled << " success=" << result.ok();
+             } );
     connect( &mainTabWidget_, &TabbedCrawlerWidget::currentChanged, this,
              &MainWindow::currentTabChanged );
 
@@ -732,6 +742,12 @@ void MainWindow::loadInitialFile( QString fileName, bool followFile )
 CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& request )
 {
     switch ( request.action ) {
+    case CommanderAction::RegexEvaluate:
+    case CommanderAction::GetAnalysisJob:
+    case CommanderAction::GetAnalysisResults:
+    case CommanderAction::CancelAnalysisJob:
+    case CommanderAction::ReleaseAnalysisJob:
+        return commanderAnalysis( request );
     case CommanderAction::OpenFile:
         return loadFile( request.filePath, request.followFile )
                    ? commanderSuccess()
@@ -783,6 +799,8 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSendAction( request );
     case CommanderAction::SetActionsEnabled:
         return commanderSetActionsEnabled( request );
+    case CommanderAction::SetAutoResponsesEnabled:
+        return commanderSetAutoResponsesEnabled( request );
     case CommanderAction::SelectActionsTab:
         return commanderSelectActionsTab( request );
     case CommanderAction::WaitResponse:
@@ -895,6 +913,12 @@ QVariantMap MainWindow::commanderWindowInfo() const
             comInfo.insert( QStringLiteral( "isActionsPort" ),
                             isActionsStreamSession( streamSession ) );
             comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+            comInfo.insert( QStringLiteral( "autoResponsesEnabled" ),
+                            streamSession->autoResponsesEnabled() );
+            comInfo.insert( QStringLiteral( "autoResponsesActive" ),
+                            streamSession->autoResponsesEnabled() && streamSession->actionsEnabled()
+                                && streamSession->isConnectionOpen()
+                                && ActionsManager::instance().autoResponsesEnabled() );
             comInfo.insert( QStringLiteral( "selectedForActions" ),
                             streamSession == actionsStreamSession_.data()
                                 && isAvailableActionsDestination( streamSession ) );
@@ -2121,6 +2145,32 @@ void MainWindow::rebuildComPortsMenu()
                      request.enabled = enabled;
                      const auto result = commanderSetActionsEnabled( request );
                      LOG_DEBUG << "COM-menu Actions toggle: tab_id=" << tabId
+                               << " enabled=" << enabled << " success=" << result.ok();
+                 } );
+
+        auto* autoResponsesAction = portMenu->addAction( tr( "Automatic responses enabled" ) );
+        autoResponsesAction->setObjectName(
+            QStringLiteral( "comPortAutoResponsesEnabledAction_%1" ).arg( tabId ) );
+        autoResponsesAction->setCheckable( true );
+        autoResponsesAction->setChecked( streamSession->autoResponsesEnabled() );
+        autoResponsesAction->setToolTip( tr(
+            "Allow automatic replies when Actions and global automatic responses are enabled." ) );
+        LOG_DEBUG << "Created COM-menu automatic responses toggle: tab_id=" << tabId
+                  << " enabled=" << autoResponsesAction->isChecked();
+        connect( autoResponsesAction, &QAction::triggered, this,
+                 [ this, tabId, safeActionsSession ]( bool enabled ) {
+                     const auto index = mainTabWidget_.findTabById( tabId );
+                     if ( index < 0 || !safeActionsSession
+                          || mainTabWidget_.streamSessionForTab( index ) != safeActionsSession ) {
+                         LOG_DEBUG << "Ignoring stale COM-menu automatic responses toggle: tab_id="
+                                   << tabId;
+                         return;
+                     }
+                     CommanderRequest request;
+                     request.tabId = tabId;
+                     request.enabled = enabled;
+                     const auto result = commanderSetAutoResponsesEnabled( request );
+                     LOG_DEBUG << "COM-menu automatic responses toggle: tab_id=" << tabId
                                << " enabled=" << enabled << " success=" << result.ok();
                  } );
 
@@ -3469,6 +3519,28 @@ CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
     return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
 }
 
+CommanderResult MainWindow::commanderAnalysis( const CommanderRequest& request )
+{
+    auto* service = applicationAnalysisService();
+    if ( !service ) return { CommanderResultCode::ExecutionFailed, "Analysis service unavailable.", { { "reason", "service_unavailable" } } };
+    std::optional<AnalysisRequest> source;
+    const auto scope = request.analysisArguments.value( "scope", "sample" ).toString();
+    if ( request.action == CommanderAction::RegexEvaluate && scope != "text" ) {
+        auto* crawler = commanderTargetCrawler( request );
+        if ( !crawler ) return { CommanderResultCode::NotFound, "Requested source was not found.", { { "reason", "source_not_found" } } };
+        QString error;
+        source = crawler->analysisRequest( scope, &error );
+        if ( !source ) return { CommanderResultCode::InvalidRequest, error, { { "reason", error } } };
+        source->sourceDescription[ "filePath" ] = session_.getFilename( crawler );
+        source->sourceDescription[ "windowId" ] = session_.windowId();
+        source->sourceDescription[ "windowIndex" ] = static_cast<int>( session_.windowIndex() );
+        source->sourceDescription[ "tabId" ] = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+    }
+    auto result = executeAnalysisOperation( *service, commanderActionToString( request.action ), request.analysisArguments, std::move( source ) );
+    return { result.ok ? CommanderResultCode::Success : CommanderResultCode::InvalidRequest,
+        result.ok ? QString{} : result.payload.value( "reason" ).toString(), std::move( result.payload ) };
+}
+
 CrawlerWidget* MainWindow::commanderTargetCrawler( const CommanderRequest& request ) const
 {
     if ( !request.tabId.isEmpty() ) {
@@ -3654,6 +3726,26 @@ CommanderResult MainWindow::commanderSetActionsEnabled( const CommanderRequest& 
     LOG_DEBUG << "Setting tab Actions state: tab_id=" << actionsTabIdForSession( streamSession )
               << " enabled=" << *request.enabled;
     streamSession->setActionsEnabled( *request.enabled );
+    updateActionsSendState();
+    return commanderGetCommStatus( request );
+}
+
+CommanderResult MainWindow::commanderSetAutoResponsesEnabled( const CommanderRequest& request )
+{
+    if ( !request.enabled.has_value() ) {
+        LOG_DEBUG << "set_auto_responses_enabled rejected: enabled state is missing";
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "set_auto_responses_enabled requires enabled or disabled." ) );
+    }
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        LOG_DEBUG << "set_auto_responses_enabled rejected: no matching communication session";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+    LOG_DEBUG << "Setting tab automatic responses: tab_id="
+              << actionsTabIdForSession( streamSession ) << " enabled=" << *request.enabled;
+    streamSession->setAutoResponsesEnabled( *request.enabled );
     updateActionsSendState();
     return commanderGetCommStatus( request );
 }
@@ -3872,6 +3964,12 @@ CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& requ
     comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
     comInfo.insert( QStringLiteral( "isActionsPort" ), isActionsStreamSession( streamSession ) );
     comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+    comInfo.insert( QStringLiteral( "autoResponsesEnabled" ),
+                    streamSession->autoResponsesEnabled() );
+    comInfo.insert( QStringLiteral( "autoResponsesActive" ),
+                    streamSession->autoResponsesEnabled() && streamSession->actionsEnabled()
+                        && streamSession->isConnectionOpen()
+                        && ActionsManager::instance().autoResponsesEnabled() );
     comInfo.insert( QStringLiteral( "selectedForActions" ),
                     streamSession == actionsStreamSession_.data()
                         && isAvailableActionsDestination( streamSession ) );

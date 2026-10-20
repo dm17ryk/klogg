@@ -31,6 +31,9 @@ class StreamSession : public QObject {
     bool actionsEnabled() const;
     void setActionsEnabled( bool enabled );
     quint64 actionsGeneration() const;
+    bool autoResponsesEnabled() const;
+    void setAutoResponsesEnabled( bool enabled );
+    quint64 autoResponsesGeneration() const;
     bool startNewCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
     void sendBytes( const QByteArray& data, bool sensitive = false );
     void notifyActionSend( int actionId, const QString& actionName, int stepIndex,
@@ -51,6 +54,7 @@ class StreamSession : public QObject {
     void connectionClosed();
     void connectionOpened();
     void actionsEnabledChanged( bool enabled );
+    void autoResponsesEnabledChanged( bool enabled );
     void dataObserved( const QByteArray& dataBytes );
     void dataTransmitted( const QByteArray& dataBytes );
     void lineObserved( const QByteArray& lineBytes );
@@ -80,6 +84,7 @@ class StreamSession : public QObject {
 
     SerialCaptureSettings settings_;
     quint64 actionsGeneration_ = 0;
+    quint64 autoResponsesGeneration_ = 0;
     QThread thread_;
     SerialCaptureWorker* worker_ = nullptr;
     quint64 workerGeneration_ = 0;

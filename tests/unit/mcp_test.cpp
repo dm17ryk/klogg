@@ -26,6 +26,19 @@ void initialize( Session& session )
         session.dispatch( { { "jsonrpc", "2.0" }, { "method", "notifications/initialized" } } ) );
 }
 } // namespace
+TEST_CASE( "Native MCP retains structured Commander analysis failures", "[mcp][analysiscommands]" )
+{
+    Session session( "test", []( const QString&, const QJsonObject& ) {
+        return QJsonObject{ { "success", false }, { "payload", QJsonObject{ { "reason", "invalid_cursor" } } } };
+    } );
+    initialize( session );
+    const auto response = session.dispatch( request( "tools/call", { { "name", "cilogg_execute" },
+        { "arguments", QJsonObject{ { "action", "get_analysis_results" } } } } ) );
+    REQUIRE( response );
+    const auto result = response->value( "result" ).toObject();
+    CHECK( result.value( "isError" ).toBool() );
+    CHECK( result.value( "structuredContent" ).toObject().value( "payload" ).toObject().value( "reason" ) == "invalid_cursor" );
+}
 TEST_CASE( "Native MCP negotiates lifecycle and reports protocol and tool errors", "[mcp]" )
 {
     int called = 0;
@@ -194,6 +207,9 @@ TEST_CASE( "Native MCP discovers Actions tab operations from the shipped CLI hel
     const auto catalog = parseCommandHelp( help.exit_message );
     const auto commands = catalog.value( "commands" ).toObject();
     REQUIRE( commands.contains( "set_actions_enabled" ) );
+    REQUIRE( commands.contains( "set_auto_responses_enabled" ) );
+    REQUIRE( commands.value( "set_auto_responses_enabled" ).toString().contains( "--enabled" ) );
+    REQUIRE( commands.value( "set_auto_responses_enabled" ).toString().contains( "--disabled" ) );
     REQUIRE( commands.contains( "select_actions_tab" ) );
     REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--enabled" ) );
     REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--disabled" ) );

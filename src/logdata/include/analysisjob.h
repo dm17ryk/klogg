@@ -36,6 +36,7 @@ struct AnalysisRequest {
     SourceSnapshot snapshot;
     QString scope = QStringLiteral( "sample" );
     QString text;
+    QVariantMap sourceDescription;
     // Inclusive physical ranges; an empty list means every source line.
     std::vector<std::pair<quint64, quint64>> ranges;
     bool scopeLimited = false;
@@ -66,7 +67,9 @@ using AnalysisProcessorFactory = std::function<AnalysisProcessor()>;
 class AnalysisJobService : public QObject {
     Q_OBJECT
 public:
-    explicit AnalysisJobService( QObject* parent = nullptr );
+    // Optional monotonic retention clock permits deterministic expiry verification.
+    explicit AnalysisJobService( QObject* parent = nullptr,
+                                 std::function<qint64()> retentionClock = {} );
     ~AnalysisJobService() override;
     QString start( AnalysisRequest request, AnalysisProcessorFactory factory = {},
                    QString* error = nullptr );

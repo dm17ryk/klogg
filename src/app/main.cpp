@@ -717,6 +717,9 @@ int main( int argc, char* argv[] )
             }
 
             writeCliMessage( result.message, true );
+            if ( isCommanderAnalysisAction( parameters.commander_request->action ) ) {
+                writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
+            }
             return EXIT_FAILURE;
         }
 
@@ -808,6 +811,9 @@ int main( int argc, char* argv[] )
         const auto result = app.executeCommanderRequest( *parameters.commander_request );
         if ( !result.ok() ) {
             writeCliMessage( result.message, true );
+            if ( isCommanderAnalysisAction( parameters.commander_request->action ) ) {
+                writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
+            }
             return EXIT_FAILURE;
         }
 

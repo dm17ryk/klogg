@@ -169,6 +169,8 @@ jobs:
           - os: ubuntu_appimage_arm64
             os_version: 22.04
             arch: arm64
+            # AppImage ELF magic is rejected by QEMU's binfmt handler.
+            runner: ubuntu-24.04-arm
             backend: vectorscan
             artifacts_id: appimage-arm64
             package_suffix: AppImage
@@ -262,12 +264,16 @@ jobs:
             container_platform: linux/arm64
 
 
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.config.runner || 'ubuntu-22.04' }}
     steps:
       - uses: actions/checkout@v3
 
+      - name: Check AppImage packaging orchestration
+        if: ${{ contains(matrix.config.artifacts_id, 'appimage') }}
+        run: bash tests/packaging/appimage_test.sh
+
       - uses: docker/setup-qemu-action@v3
-        if: ${{ matrix.config.container_platform == 'linux/arm64' }}
+        if: ${{ matrix.config.container_platform == 'linux/arm64' && runner.arch != 'ARM64' }}
         with:
           platforms: arm64
 
@@ -329,6 +335,9 @@ jobs:
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     steps:
       - uses: actions/checkout@v3
+
+      - name: Check macOS DMG packaging
+        run: python3 -m unittest discover -s tests/packaging -p test_macos_dmg.py
 
       - name: Setup Xcode
         shell: sh

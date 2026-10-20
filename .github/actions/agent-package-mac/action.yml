@@ -72,21 +72,21 @@ runs:
     - name: Mac pack dmg
       shell: sh
       run: |
-        cd $CILOGG_BUILD_ROOT
-        if ! cpack --verbose -G "DragNDrop"; then
-          echo "CPack DMG generation failed, falling back to hdiutil"
-          for attempt in 1 2 3 4 5; do
-            if [ ! -e "/Volumes/CILogg" ]; then
-              break
-            fi
-            echo "Unmounting stale CILogg volume before fallback attempt ${attempt}"
-            hdiutil detach "/Volumes/CILogg" -force || diskutil unmount force "/Volumes/CILogg" || true
-            sleep 2
-          done
-          mkdir -p ./packages
-          rm -f "./packages/cilogg-${CILOGG_VERSION}-OSX.dmg"
-          hdiutil create -fs HFS+ -srcfolder ./output/cilogg.app -volname "CILogg" -format UDZO "./packages/cilogg-${CILOGG_VERSION}-OSX.dmg"
-        fi
+        cd "$CILOGG_BUILD_ROOT"
+        python3 "$CILOGG_WORKSPACE/scripts/package_macos_dmg.py" --version "$CILOGG_VERSION"
+
+    - name: Mac verify dmg layout
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$CILOGG_BUILD_ROOT"
+        image="./packages/cilogg-${CILOGG_VERSION}-OSX.dmg"
+        mountpoint="$(mktemp -d)"
+        trap 'rmdir "$mountpoint"' EXIT
+        hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mountpoint"
+        trap 'hdiutil detach "$mountpoint"; rmdir "$mountpoint"' EXIT
+        test -x "$mountpoint/cilogg.app/Contents/MacOS/cilogg"
+        test -L "$mountpoint/Applications"
 
     - name: Mac rename dmg
       shell: sh

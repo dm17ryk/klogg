@@ -43,6 +43,7 @@
 #include "logfiltereddata.h"
 
 #include "crawlerwidget.h"
+#include "analysiscommands.h"
 
 static const qint64 SL_NB_LINES = 100LL;
 
@@ -349,6 +350,54 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 };
 
 using CrawlerWidgetVisitor = CrawlerWidget::access_by<CrawlerWidgetPrivate>;
+
+TEST_CASE( "Analysis freezes discontiguous physical selection after focus leaves the viewer", "[ui][analysiscommands]" )
+{
+    QTemporaryFile file;
+    REQUIRE( file.open() );
+    file.write( "first\nsecond\nthird\nfourth\nfifth\n" );
+    file.flush();
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>( session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableTextWrap();
+    visitor.resizeAndShow( 800, 600 );
+    auto* view = visitor.crawler->findChild<LogMainView*>( "logMainView" );
+    REQUIRE( view );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    view->setFocus();
+    REQUIRE( waitUiState( [ & ] { return view->hasFocus(); } ) );
+    visitor.render();
+    const auto height = view->fontMetrics().height();
+    QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint( 60, height / 2 ) );
+    QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::ControlModifier, QPoint( 60, height * 2 + height / 2 ) );
+    auto* edit = visitor.crawler->findChild<QWidget*>( "predefinedFiltersComboBox" );
+    REQUIRE( edit );
+    edit->setFocus();
+    QString error;
+    const auto frozen = visitor.crawler->analysisRequest( "selection", &error );
+    INFO( error.toStdString() );
+    REQUIRE( frozen );
+    REQUIRE( frozen->ranges.size() == 2 );
+    CHECK( frozen->ranges.at( 0 ).first == 0 );
+    CHECK( frozen->ranges.at( 0 ).second == 0 );
+    CHECK( frozen->ranges.at( 1 ).first == 2 );
+    CHECK( frozen->ranges.at( 1 ).second == 2 );
+}
+
+TEST_CASE( "Closing an unattached crawler leaves inline analysis jobs running", "[ui][analysiscommands]" )
+{
+    auto* service = applicationAnalysisService();
+    AnalysisRequest request;
+    request.scope = "text";
+    request.text = "inline";
+    const auto id = service->start( request );
+    { CrawlerWidget empty; }
+    REQUIRE( QTest::qWaitFor( [ & ] { return service->status( id ).value( "state" ) == "completed"; }, 10000 ) );
+    CHECK( service->status( id ).value( "complete" ).toBool() );
+    service->release( id );
+}
 
 SCENARIO( "Crawler widget search", "[ui]" )
 {

@@ -20,7 +20,13 @@ runs:
       if: ${{ contains(matrix.config.artifacts_id, 'appimage') }}
       shell: sh
       run: |
-        docker run $CILOGG_DOCKER_PLATFORM --device /dev/fuse --privileged --env CILOGG_VERSION=$CILOGG_VERSION -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && ../packaging/linux/appimage/generate_appimage.sh"
+        docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_VERSION=$CILOGG_VERSION -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && bash ../packaging/linux/appimage/generate_appimage.sh"
+
+    - name: Validate Linux AppImage
+      if: ${{ contains(matrix.config.artifacts_id, 'appimage') }}
+      shell: sh
+      run: |
+        docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c 'set -euo pipefail; cd /usr/local/build_root; images=(./packages/*.AppImage); test "${#images[@]}" -eq 1; bash ../packaging/linux/appimage/validate_appimage.sh "${images[0]}"'
 
     - name: Copy sym
       shell: sh

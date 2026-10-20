@@ -273,6 +273,7 @@ class MainWindow : public QMainWindow {
     CommanderResult commanderInvokeAction( const CommanderRequest& request );
     CommanderResult commanderSendAction( const CommanderRequest& request );
     CommanderResult commanderSetActionsEnabled( const CommanderRequest& request );
+    CommanderResult commanderSetAutoResponsesEnabled( const CommanderRequest& request );
     CommanderResult commanderSelectActionsTab( const CommanderRequest& request );
     CommanderResult commanderWaitResponse( const CommanderRequest& request );
     CommanderResult commanderStartComm( const CommanderRequest& request );
@@ -328,6 +329,7 @@ class MainWindow : public QMainWindow {
     CrawlerWidget* crawlerWidgetByTabId( const QString& tabId ) const;
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
+    CommanderResult commanderAnalysis( const CommanderRequest& request );
     CommanderResult startNewStreamFileForCrawler( CrawlerWidget* crawler );
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
     StreamSession* commanderTargetStreamSession( const CommanderRequest& request,

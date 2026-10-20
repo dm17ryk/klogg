@@ -175,8 +175,15 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "cancel_plugin_job" );
     case CommanderAction::SetActionsEnabled:
         return QStringLiteral( "set_actions_enabled" );
+    case CommanderAction::SetAutoResponsesEnabled:
+        return QStringLiteral( "set_auto_responses_enabled" );
     case CommanderAction::SelectActionsTab:
         return QStringLiteral( "select_actions_tab" );
+    case CommanderAction::RegexEvaluate: return QStringLiteral( "regex_evaluate" );
+    case CommanderAction::GetAnalysisJob: return QStringLiteral( "get_analysis_job" );
+    case CommanderAction::GetAnalysisResults: return QStringLiteral( "get_analysis_results" );
+    case CommanderAction::CancelAnalysisJob: return QStringLiteral( "cancel_analysis_job" );
+    case CommanderAction::ReleaseAnalysisJob: return QStringLiteral( "release_analysis_job" );
     case CommanderAction::None:
     default:
         return {};
@@ -186,6 +193,11 @@ QString commanderActionToString( CommanderAction action )
 std::optional<CommanderAction> commanderActionFromString( const QString& action )
 {
     const auto normalized = action.trimmed().toLower();
+    if ( normalized == "regex_evaluate" ) return CommanderAction::RegexEvaluate;
+    if ( normalized == "get_analysis_job" ) return CommanderAction::GetAnalysisJob;
+    if ( normalized == "get_analysis_results" ) return CommanderAction::GetAnalysisResults;
+    if ( normalized == "cancel_analysis_job" ) return CommanderAction::CancelAnalysisJob;
+    if ( normalized == "release_analysis_job" ) return CommanderAction::ReleaseAnalysisJob;
     if ( normalized == "get_plugins" ) { return CommanderAction::GetPlugins; }
     if ( normalized == "plugin_manage" ) { return CommanderAction::PluginManage; }
     if ( normalized == "invoke_plugin" ) { return CommanderAction::InvokePlugin; }
@@ -251,6 +263,9 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "set_actions_enabled" ) ) {
         return CommanderAction::SetActionsEnabled;
+    }
+    if ( normalized == QStringLiteral( "set_auto_responses_enabled" ) ) {
+        return CommanderAction::SetAutoResponsesEnabled;
     }
     if ( normalized == QStringLiteral( "select_actions_tab" ) ) {
         return CommanderAction::SelectActionsTab;
@@ -423,6 +438,13 @@ bool isCommanderOpenAction( CommanderAction action )
            || action == CommanderAction::OpenCom;
 }
 
+bool isCommanderAnalysisAction( CommanderAction action )
+{
+    return action == CommanderAction::RegexEvaluate || action == CommanderAction::GetAnalysisJob
+        || action == CommanderAction::GetAnalysisResults || action == CommanderAction::CancelAnalysisJob
+        || action == CommanderAction::ReleaseAnalysisJob;
+}
+
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
 {
     QVariantMap map;
@@ -432,6 +454,7 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     map.insert( QStringLiteral( "pluginAction" ), request.pluginAction );
     map.insert( QStringLiteral( "pluginJobId" ), request.pluginJobId );
     map.insert( QStringLiteral( "pluginArguments" ), request.pluginArguments );
+    if ( !request.analysisArguments.isEmpty() ) map.insert( QStringLiteral( "analysisArguments" ), request.analysisArguments );
 
     if ( !request.filePath.isEmpty() ) {
         map.insert( QStringLiteral( "filePath" ), request.filePath );
@@ -603,6 +626,11 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.pluginAction = map.value( QStringLiteral( "pluginAction" ) ).toString();
     request.pluginJobId = map.value( QStringLiteral( "pluginJobId" ) ).toString();
     request.pluginArguments = map.value( QStringLiteral( "pluginArguments" ) ).toMap();
+    if ( map.contains( "analysisArguments" ) && map.value( "analysisArguments" ).userType() != QMetaType::QVariantMap ) {
+        setError( errorMessage, "Analysis arguments must be an object." );
+        return std::nullopt;
+    }
+    request.analysisArguments = map.value( "analysisArguments" ).toMap();
     request.filePath = map.value( QStringLiteral( "filePath" ) ).toString();
     request.url = map.value( QStringLiteral( "url" ) ).toString();
     request.portName = map.value( QStringLiteral( "portName" ) ).toString();

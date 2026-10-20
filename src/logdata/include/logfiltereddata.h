@@ -57,6 +57,9 @@
 #include "linetypes.h"
 #include "logfiltereddataworker.h"
 #include "synchronization.h"
+#include "sourcelocation.h"
+#include <optional>
+#include <vector>
 
 class LogData;
 class QTimer;
@@ -172,6 +175,7 @@ public:
     {
         return searchRunning_;
     }
+    std::optional<std::vector<std::pair<quint64, quint64>>> analysisMatchRanges( QString* error ) const;
 
     LineType lineTypeByIndex( LineNumber index ) const;
     bool isContextGroupStart( LineNumber index ) const;
@@ -278,6 +282,7 @@ private:
     LineNumber pendingUpdateEnd_{ 0_lnum };
     LineNumber activeSearchInitialLine_{ 0_lnum };
     uint64_t searchGeneration_{ 0 };
+    SourceSnapshot searchSourceSnapshot_;
     uint64_t lastDetachedStaleSearchGeneration_{ 0 };
 
     Visibility visibility_;

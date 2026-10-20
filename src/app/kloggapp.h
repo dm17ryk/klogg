@@ -777,7 +777,8 @@ class KloggApp : public QApplication {
         }
 
         const auto targetSpecificWindow
-            = request.action == CommanderAction::CloseTab
+            = isCommanderAnalysisAction( request.action )
+              || request.action == CommanderAction::CloseTab
               || request.action == CommanderAction::FocusTab
               || request.action == CommanderAction::GetFilters
               || request.action == CommanderAction::SetFilter
@@ -790,6 +791,7 @@ class KloggApp : public QApplication {
               || request.action == CommanderAction::ActivateUi
               || request.action == CommanderAction::SendAction
               || request.action == CommanderAction::SetActionsEnabled
+              || request.action == CommanderAction::SetAutoResponsesEnabled
               || request.action == CommanderAction::SelectActionsTab
               || request.action == CommanderAction::WaitResponse
               || request.action == CommanderAction::StartComm
@@ -816,7 +818,8 @@ class KloggApp : public QApplication {
         }
 
         const auto preferActiveWindow
-            = ( request.action == CommanderAction::GetFilters
+            = ( isCommanderAnalysisAction( request.action )
+                || request.action == CommanderAction::GetFilters
                 || request.action == CommanderAction::SetFilter
                 || request.action == CommanderAction::Search
                 || request.action == CommanderAction::SetFollowMode
@@ -827,6 +830,7 @@ class KloggApp : public QApplication {
                 || request.action == CommanderAction::ActivateUi
                 || request.action == CommanderAction::SendAction
                 || request.action == CommanderAction::SetActionsEnabled
+                || request.action == CommanderAction::SetAutoResponsesEnabled
                 || request.action == CommanderAction::SelectActionsTab
                 || request.action == CommanderAction::WaitResponse
                 || request.action == CommanderAction::StartComm

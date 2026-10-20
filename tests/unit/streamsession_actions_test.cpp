@@ -153,6 +153,84 @@ TEST_CASE( "Automatic response counters are independent and disabled tabs still 
     CHECK( second.responseCounter( response.id ) == 2 );
 }
 
+TEST_CASE( "Per-tab automatic response switches preserve manual actions and persisted state",
+           "[serial][session][actions][auto-responses]" )
+{
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7120 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    StreamSession first( settingsFor( "TEST_AUTO_FIRST" ) );
+    StreamSession second( settingsFor( "TEST_AUTO_SECOND" ) );
+    StreamSessionTestAccess::openConnection( first );
+    StreamSessionTestAccess::openConnection( second );
+    QSignalSpy changes( &first, &StreamSession::autoResponsesEnabledChanged );
+    QSignalSpy observed( &first, &StreamSession::lineObserved );
+    const auto manualGeneration = first.actionsGeneration();
+    const auto automaticGeneration = first.autoResponsesGeneration();
+    CHECK( first.autoResponsesEnabled() );
+    first.setAutoResponsesEnabled( true );
+    CHECK( changes.isEmpty() );
+    first.setAutoResponsesEnabled( false );
+    CHECK( changes.size() == 1 );
+    CHECK( first.actionsEnabled() );
+    CHECK( first.actionsGeneration() == manualGeneration );
+    CHECK( first.autoResponsesGeneration() == automaticGeneration + 1 );
+    first.setAutoResponsesEnabled( false );
+    CHECK( changes.size() == 1 );
+    StreamSessionTestAccess::feedData( first, "READY\n" );
+    StreamSessionTestAccess::feedData( second, "READY\n" );
+    CHECK( observed.size() == 1 );
+    CHECK( first.responseCounter( response.id ) == 0 );
+    CHECK( second.responseCounter( response.id ) == 1 );
+    const auto saved = serializeSerialCaptureSettings( first.captureSettings() );
+    const auto restored = deserializeSerialCaptureSettings( saved );
+    REQUIRE( restored );
+    CHECK_FALSE( restored->autoResponsesEnabled );
+    const auto legacy
+        = deserializeSerialCaptureSettings( "{\"portName\":\"LEGACY\",\"useForActions\":true}" );
+    REQUIRE( legacy );
+    CHECK( legacy->autoResponsesEnabled );
+    first.setAutoResponsesEnabled( true );
+    StreamSessionTestAccess::feedData( first, "READY\n" );
+    CHECK( first.responseCounter( response.id ) == 1 );
+}
+
+TEST_CASE( "Per-tab response changes invalidate buffered lineage and automatic timers only",
+           "[serial][session][actions][auto-responses]" )
+{
+    ScopedActionsState restore;
+    auto& manager = ActionsManager::instance();
+    const auto response = testResponse( 7121 );
+    REQUIRE( manager.importFromDefinitions( {}, { response } ).ok );
+    manager.setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( "TEST_AUTO_LINEAGE" ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy observed( &session, &StreamSession::lineObserved );
+    StreamSessionTestAccess::feedData( session, "REA" );
+    session.setAutoResponsesEnabled( false );
+    session.setAutoResponsesEnabled( true );
+    StreamSessionTestAccess::feedData( session, "DY\nREADY\n" );
+    CHECK( observed.size() == 2 );
+    CHECK( session.responseCounter( response.id ) == 1 );
+
+    auto manual = testAction( 7122 );
+    manual.parameters.delay = 30;
+    auto automatic = testAction( 7123 );
+    automatic.parameters.delay = 10;
+    automatic.parameters.repeatCount = 2;
+    automatic.parameters.repeatInterval = 10;
+    QSignalSpy sent( &session, &StreamSession::actionSent );
+    REQUIRE( sendActionDefinition( &session, manual, {}, -1, nullptr, false ) );
+    REQUIRE( sendActionDefinition( &session, automatic, {}, -1, nullptr, true ) );
+    session.setAutoResponsesEnabled( false );
+    session.setAutoResponsesEnabled( true );
+    REQUIRE( waitForActionTimers() );
+    REQUIRE( sent.size() == 1 );
+    CHECK( sent.front().front().toInt() == manual.id );
+}
+
 TEST_CASE( "Buffered response lines preserve text without inheriting newer Actions eligibility",
            "[serial][session][actions][response-lineage]" )
 {
@@ -289,7 +367,7 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
 {
     ScopedActionsState restore;
     const auto automatic = GENERATE( false, true );
-    const auto change = GENERATE( 0, 1, 2, 3 );
+    const auto change = GENERATE( 0, 1, 2, 3, 4 );
     CAPTURE( automatic, change );
     auto& manager = ActionsManager::instance();
     manager.setAutoResponsesEnabled( true );
@@ -315,7 +393,12 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
     else if ( change == 3 ) {
         manager.setAutoResponsesEnabled( false );
     }
-    const bool cancelled = change == 1 || change == 2 || ( automatic && change == 3 );
+    if ( change == 4 ) {
+        session.setAutoResponsesEnabled( false );
+        session.setAutoResponsesEnabled( true );
+    }
+    const bool cancelled
+        = change == 1 || change == 2 || ( automatic && ( change == 3 || change == 4 ) );
     if ( cancelled ) {
         REQUIRE( waitForActionTimers() );
     }
@@ -373,7 +456,7 @@ TEST_CASE( "Delayed response steps and finalization cannot revive after tab chan
            "[serial][session][actions][actionruntime]" )
 {
     ScopedActionsState restore;
-    const auto change = GENERATE( 0, 1, 2, 3 );
+    const auto change = GENERATE( 0, 1, 2, 3, 4 );
     const auto finalize = GENERATE( false, true );
     CAPTURE( change, finalize );
     auto& manager = ActionsManager::instance();
@@ -405,6 +488,10 @@ TEST_CASE( "Delayed response steps and finalization cannot revive after tab chan
     else if ( change == 3 ) {
         manager.setAutoResponsesEnabled( false );
     }
+    if ( change == 4 ) {
+        session.setAutoResponsesEnabled( false );
+        session.setAutoResponsesEnabled( true );
+    }
     if ( change == 0 ) {
         REQUIRE( QTest::qWaitFor(
             [&] { return finalize ? !closed.isEmpty() : !dispatched.isEmpty(); }, 5000 ) );
@@ -422,6 +509,7 @@ TEST_CASE( "Synchronous observers can invalidate automatic work before subsequen
 {
     ScopedActionsState restore;
     const auto observer = GENERATE( 0, 1, 2, 3 );
+    const auto automaticToggle = GENERATE( false, true );
     CAPTURE( observer );
     auto& manager = ActionsManager::instance();
     manager.setAutoResponsesEnabled( true );
@@ -433,9 +521,15 @@ TEST_CASE( "Synchronous observers can invalidate automatic work before subsequen
     REQUIRE( manager.importFromDefinitions( { first, second }, { response } ).ok );
     StreamSession session( settingsFor( QStringLiteral( "TEST_ACTION_OBSERVERS" ) ) );
     StreamSessionTestAccess::openConnection( session );
-    const auto invalidate = [ &session ] {
-        session.setActionsEnabled( false );
-        session.setActionsEnabled( true );
+    const auto invalidate = [ &session, automaticToggle ] {
+        if ( automaticToggle ) {
+            session.setAutoResponsesEnabled( false );
+            session.setAutoResponsesEnabled( true );
+        }
+        else {
+            session.setActionsEnabled( false );
+            session.setActionsEnabled( true );
+        }
     };
     if ( observer == 0 ) {
         QObject::connect( &session, &StreamSession::lineObserved, &session, invalidate );

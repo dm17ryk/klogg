@@ -200,6 +200,7 @@ void StreamSession::setActionsEnabled( bool enabled )
 
     settings_.useForActions = enabled;
     ++actionsGeneration_;
+    ++autoResponsesGeneration_;
     LOG_DEBUG << "Actions state changed for " << settings_.portName.toStdString()
               << ": enabled=" << enabled << ", generation=" << actionsGeneration_
               << "; previously scheduled work invalidated";
@@ -209,6 +210,32 @@ void StreamSession::setActionsEnabled( bool enabled )
 quint64 StreamSession::actionsGeneration() const
 {
     return actionsGeneration_;
+}
+
+bool StreamSession::autoResponsesEnabled() const
+{
+    return settings_.autoResponsesEnabled;
+}
+
+void StreamSession::setAutoResponsesEnabled( bool enabled )
+{
+    if ( settings_.autoResponsesEnabled == enabled ) {
+        LOG_DEBUG << "Automatic responses state unchanged: port=" << settings_.portName
+                  << " enabled=" << enabled << " generation=" << autoResponsesGeneration_;
+        return;
+    }
+    settings_.autoResponsesEnabled = enabled;
+    ++autoResponsesGeneration_;
+    LOG_DEBUG << "Automatic responses state changed: port=" << settings_.portName
+              << " enabled=" << enabled << " generation=" << autoResponsesGeneration_
+              << " manual_generation=" << actionsGeneration_
+              << "; previous automatic work invalidated";
+    Q_EMIT autoResponsesEnabledChanged( enabled );
+}
+
+quint64 StreamSession::autoResponsesGeneration() const
+{
+    return autoResponsesGeneration_;
 }
 
 bool StreamSession::startNewCaptureFile( const QString& filePath, QString* errorMessage )
@@ -332,6 +359,7 @@ void StreamSession::setConnectionClosed()
 
     connectionOpen_ = false;
     ++actionsGeneration_;
+    ++autoResponsesGeneration_;
     LOG_DEBUG << "Connection close invalidated scheduled actions for "
               << settings_.portName.toStdString() << ", generation=" << actionsGeneration_;
     stopping_ = false;
@@ -400,11 +428,11 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     }
 
     const QPointer<StreamSession> safeSession = this;
-    const auto generation
-        = connectionOpen_ && settings_.useForActions
-                  && ActionsManager::instance().autoResponsesEnabled()
-              ? std::optional<quint64>{ actionsGeneration_ }
-              : std::nullopt;
+    const auto generation = connectionOpen_ && settings_.useForActions
+                                    && settings_.autoResponsesEnabled
+                                    && ActionsManager::instance().autoResponsesEnabled()
+                                ? std::optional<quint64>{ autoResponsesGeneration_ }
+                                : std::nullopt;
     Q_EMIT dataObserved( data );
     if ( !safeSession ) {
         return;
@@ -539,14 +567,16 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
         return;
     }
 
-    if ( !generation || *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+    if ( !generation || *generation != autoResponsesGeneration_ || !connectionOpen_
+         || !settings_.useForActions || !settings_.autoResponsesEnabled
          || !ActionsManager::instance().autoResponsesEnabled() ) {
         LOG_DEBUG << "Automatic response matching skipped for " << settings_.portName.toStdString()
                   << ": tabEnabled=" << settings_.useForActions
+                  << ", autoResponsesEnabled=" << settings_.autoResponsesEnabled
                   << ", globalEnabled=" << ActionsManager::instance().autoResponsesEnabled()
                   << ", observedEligible=" << generation.has_value()
                   << ", observedGeneration=" << generation.value_or( 0 )
-                  << ", currentGeneration=" << actionsGeneration_;
+                  << ", currentGeneration=" << autoResponsesGeneration_;
         return;
     }
 
@@ -558,7 +588,8 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
 
     const QString lineText = QString::fromLatin1( lineBytes );
     for ( const auto& response : responses ) {
-        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+        if ( *generation != autoResponsesGeneration_ || !connectionOpen_ || !settings_.useForActions
+             || !settings_.autoResponsesEnabled
              || !ActionsManager::instance().autoResponsesEnabled() ) {
             LOG_DEBUG << "Automatic response matching cancelled after eligibility changed";
             break;
@@ -578,10 +609,12 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
         if ( !safeSession ) {
             return;
         }
-        if ( *generation != actionsGeneration_ || !connectionOpen_ || !settings_.useForActions
+        if ( *generation != autoResponsesGeneration_ || !connectionOpen_ || !settings_.useForActions
+             || !settings_.autoResponsesEnabled
              || !ActionsManager::instance().autoResponsesEnabled() ) {
             LOG_DEBUG << "Response id=" << response.id
-                      << " cancelled by its match observer; generation=" << actionsGeneration_;
+                      << " cancelled by its match observer; generation="
+                      << autoResponsesGeneration_;
             return;
         }
 

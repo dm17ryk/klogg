@@ -18,6 +18,32 @@
 #include "configuration.h"
 #include "predefinedfilters.h"
 
+TEST_CASE( "Analysis commands preserve JSON options through CLI and IPC", "[commander][analysiscommands]" )
+{
+    const QString json = R"json({"scope":"text","text":"first\nsecond","pattern":"(?<v>\\w+)","requestRevision":"9007199254740993"})json";
+    CliParameters evaluate( { "cilogg", "command", "--action", "regex_evaluate", "--analysis-json", json } );
+    REQUIRE_FALSE( evaluate.parse_error );
+    REQUIRE( evaluate.commander_request );
+    const auto restored = commanderRequestFromVariantMap( commanderRequestToVariantMap( *evaluate.commander_request ) );
+    REQUIRE( restored );
+    CHECK( restored->analysisArguments == evaluate.commander_request->analysisArguments );
+    CHECK( restored->analysisArguments.value( "requestRevision" ) == "9007199254740993" );
+    for ( const auto& action : { "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job" } ) {
+        CliParameters command( { "cilogg", "command", "--action", action, "--job-id", "job" } );
+        REQUIRE_FALSE( command.parse_error );
+        CHECK( commanderActionToString( command.commander_request->action ) == action );
+        CHECK( command.commander_request->analysisArguments.value( "jobId" ) == "job" );
+    }
+    CliParameters page( { "cilogg", "command", "--action", "get_analysis_results", "--job-id", "job", "--cursor", "opaque", "--page-size", "12", "--window-index", "0", "--tab-index", "1" } );
+    REQUIRE_FALSE( page.parse_error );
+    CHECK( page.commander_request->analysisArguments.value( "pageSize" ).toInt() == 12 );
+    CHECK( page.commander_request->analysisArguments.value( "cursor" ) == "opaque" );
+    CHECK( page.commander_request->tabIndex == 1 );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "regex_evaluate", "--analysis-json", "[]" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_analysis_job" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_analysis_results", "--job-id", "job", "--page-size", "1.5" } ).parse_error );
+}
+
 TEST_CASE( "Commander waits for readable responses without resending", "[commander][transport]" )
 {
     QTemporaryDir directory;
@@ -1224,6 +1250,9 @@ TEST_CASE( "Wildcard response matching captures matching lines", "[commander][ac
 TEST_CASE( "Actions tab commands preserve enabled states and tab selectors across IPC",
            "[commander][cli][ipc][actions]" )
 {
+    const bool automatic = GENERATE( false, true );
+    const auto operation = automatic ? QStringLiteral( "set_auto_responses_enabled" )
+                                     : QStringLiteral( "set_actions_enabled" );
     struct SelectorCase {
         QStringList arguments;
         QString tabId;
@@ -1237,7 +1266,7 @@ TEST_CASE( "Actions tab commands preserve enabled states and tab selectors acros
     };
     for ( const auto& selector : selectors ) {
         for ( const bool enabled : { false, true } ) {
-            QStringList arguments{ "cilogg", "command", "--action", "set_actions_enabled",
+            QStringList arguments{ "cilogg", "command", "--action", operation,
                                    enabled ? "--enabled" : "--disabled" };
             arguments.append( selector.arguments );
             const CliParameters parameters( arguments );
@@ -1245,7 +1274,9 @@ TEST_CASE( "Actions tab commands preserve enabled states and tab selectors acros
             REQUIRE_FALSE( parameters.parse_error );
             REQUIRE( parameters.commander_request.has_value() );
             const auto& request = *parameters.commander_request;
-            REQUIRE( request.action == CommanderAction::SetActionsEnabled );
+            REQUIRE( request.action
+                     == ( automatic ? CommanderAction::SetAutoResponsesEnabled
+                                    : CommanderAction::SetActionsEnabled ) );
             REQUIRE( request.enabled.has_value() );
             REQUIRE( *request.enabled == enabled );
             REQUIRE( request.tabId == selector.tabId );
@@ -1253,7 +1284,7 @@ TEST_CASE( "Actions tab commands preserve enabled states and tab selectors acros
             REQUIRE( request.tabIndex == selector.tabIndex );
 
             const auto payload = commanderRequestToVariantMap( request );
-            REQUIRE( payload.value( "action" ).toString() == "set_actions_enabled" );
+            REQUIRE( payload.value( "action" ).toString() == operation );
             REQUIRE( payload.contains( "enabled" ) );
             REQUIRE( payload.value( "enabled" ).toBool() == enabled );
             QString error;
@@ -1297,21 +1328,26 @@ TEST_CASE( "Actions tab commands preserve enabled states and tab selectors acros
 TEST_CASE( "Actions tab commands reject incomplete states and invalid selectors",
            "[commander][cli][actions]" )
 {
-    const QStringList invalidArguments[] = {
-        { "set_actions_enabled" },
-        { "set_actions_enabled", "--enabled", "--disabled" },
-        { "set_actions_enabled", "--enabled", "--tab-id", "tab", "--window-index", "0",
-          "--tab-index", "0" },
-        { "set_actions_enabled", "--disabled", "--window-index", "0" },
-        { "set_actions_enabled", "--enabled", "--tab-index", "0" },
-        { "set_actions_enabled", "--enabled", "--window-index", "0", "--tab-index", "-1" },
-        { "select_actions_tab", "--enabled" },
-        { "select_actions_tab", "--disabled" },
-        { "select_actions_tab", "--tab-id", "tab", "--window-index", "0", "--tab-index", "0" },
-        { "select_actions_tab", "--window-index", "0" },
-        { "select_actions_tab", "--tab-index", "0" },
-        { "select_actions_tab", "--window-index", "-1", "--tab-index", "0" }
-    };
+    const QStringList invalidArguments[]
+        = { { "set_auto_responses_enabled" },
+            { "set_auto_responses_enabled", "--enabled", "--disabled" },
+            { "set_auto_responses_enabled", "--enabled", "--window-index", "0" },
+            { "set_auto_responses_enabled", "--enabled", "--tab-index", "0" },
+            { "set_auto_responses_enabled", "--disabled", "--tab-id", "tab", "--window-index", "0",
+              "--tab-index", "0" },
+            { "set_actions_enabled" },
+            { "set_actions_enabled", "--enabled", "--disabled" },
+            { "set_actions_enabled", "--enabled", "--tab-id", "tab", "--window-index", "0",
+              "--tab-index", "0" },
+            { "set_actions_enabled", "--disabled", "--window-index", "0" },
+            { "set_actions_enabled", "--enabled", "--tab-index", "0" },
+            { "set_actions_enabled", "--enabled", "--window-index", "0", "--tab-index", "-1" },
+            { "select_actions_tab", "--enabled" },
+            { "select_actions_tab", "--disabled" },
+            { "select_actions_tab", "--tab-id", "tab", "--window-index", "0", "--tab-index", "0" },
+            { "select_actions_tab", "--window-index", "0" },
+            { "select_actions_tab", "--tab-index", "0" },
+            { "select_actions_tab", "--window-index", "-1", "--tab-index", "0" } };
     for ( const auto& invalid : invalidArguments ) {
         QStringList arguments{ "cilogg", "command", "--action" };
         arguments.append( invalid );
@@ -1328,6 +1364,10 @@ TEST_CASE( "Actions tab commands are advertised in application and Commander hel
     const CliParameters mainHelp( { "cilogg", "--help" } );
     REQUIRE( mainHelp.exit_requested );
     REQUIRE( mainHelp.exit_message.contains( "cilogg command --action set_actions_enabled" ) );
+    REQUIRE(
+        mainHelp.exit_message.contains( "cilogg command --action set_auto_responses_enabled" ) );
+    REQUIRE( commanderActionFromString( " SET_AUTO_RESPONSES_ENABLED " )
+             == CommanderAction::SetAutoResponsesEnabled );
     REQUIRE( mainHelp.exit_message.contains( "cilogg command --action select_actions_tab" ) );
     REQUIRE( commanderActionFromString( " SET_ACTIONS_ENABLED " )
              == CommanderAction::SetActionsEnabled );

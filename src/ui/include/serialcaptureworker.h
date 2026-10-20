@@ -18,6 +18,7 @@ struct SerialCaptureSettings {
     QString timestampFormat = QStringLiteral( "dd/MM/yyyy HH:mm:ss.zzz" );
     bool logTransmits = false;
     bool useForActions = false;
+    bool autoResponsesEnabled = true;
 };
 
 QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings );

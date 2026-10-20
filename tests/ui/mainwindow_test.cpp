@@ -1541,3 +1541,139 @@ TEST_CASE( "Parameter dialogs cancel a send after the Actions destination change
     REQUIRE( fixture.streams[0]->actionsGeneration() == firstGeneration );
     REQUIRE( fixture.streams[1]->actionsGeneration() == secondGeneration );
 }
+
+TEST_CASE( "Per-tab automatic responses share Commander state without changing Actions routing",
+           "[ui][commander][actions][auto-responses]" )
+{
+    ActionsDefinitionsRestoreGuard restoreDefinitions;
+    ActionsTabsFixture fixture;
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    fixture.select( 0 );
+    CommanderRequest request;
+    request.action = CommanderAction::SetAutoResponsesEnabled;
+    request.tabId = fixture.tabIds.at( 0 );
+    REQUIRE( fixture.window.executeCommanderRequest( request ).code
+             == CommanderResultCode::InvalidRequest );
+    request.enabled = false;
+    const auto result = fixture.window.executeCommanderRequest( request );
+    REQUIRE( result.ok() );
+    const auto status = result.payload.value( "com" ).toMap();
+    REQUIRE_FALSE( status.value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE_FALSE( status.value( "autoResponsesActive" ).toBool() );
+    REQUIRE( status.value( "actionsEnabled" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.comState( 1 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.combo->count() == 2 );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 0 ) );
+
+    ActionDefinition action;
+    action.id = ActionsManager::instance().nextActionId();
+    action.name = "Manual send with automatic replies disabled";
+    action.sequence.value = "PING";
+    QString error;
+    REQUIRE( ActionsManager::instance().createAction( action, &error ) );
+    QSignalSpy sent( fixture.streams[ 0 ].get(), &StreamSession::actionSent );
+    CommanderRequest send;
+    send.action = CommanderAction::SendAction;
+    send.entityId = action.id;
+    REQUIRE( fixture.window.executeCommanderRequest( send ).ok() );
+    REQUIRE( sent.count() == 1 );
+
+    const auto project = fixture.directory.filePath( "automatic-responses.cilogproj" );
+    REQUIRE( fixture.window.saveProject( project, &error ) );
+    const auto saved = SessionInfo::getSynced().openFiles( "ActionsTabs" );
+    REQUIRE( saved.size() == 3 );
+    for ( const auto& file : saved ) {
+        const auto settings = deserializeSerialCaptureSettings( file.streamContext );
+        REQUIRE( settings.has_value() );
+        const auto index = fixture.paths.indexOf( settings->filePath );
+        REQUIRE( index >= 0 );
+        REQUIRE( settings->autoResponsesEnabled == ( index != 0 ) );
+    }
+    request.tabId = "missing-auto-responses-tab";
+    REQUIRE( fixture.window.executeCommanderRequest( request ).code
+             == CommanderResultCode::NotFound );
+    REQUIRE_FALSE( fixture.streams[ 0 ]->autoResponsesEnabled() );
+}
+
+TEST_CASE( "Automatic responses menus retain source identity after tab moves and replacement",
+           "[ui][commander][actions][auto-responses]" )
+{
+    ActionsTabsFixture fixture;
+    fixture.enable( 0, true );
+    fixture.enable( 1, true );
+    fixture.select( 1 );
+    auto* fileMenu = fixture.window.findChild<QMenu*>( "fileMenu" );
+    REQUIRE( fileMenu );
+    REQUIRE( QMetaObject::invokeMethod( fileMenu, "aboutToShow", Qt::DirectConnection ) );
+    auto* menu = fixture.window.findChild<QMenu*>( "comPortsMenu" );
+    REQUIRE( menu );
+    auto* firstToggle = menu->findChild<QAction*>(
+        QStringLiteral( "comPortAutoResponsesEnabledAction_%1" ).arg( fixture.tabIds.at( 0 ) ) );
+    REQUIRE( firstToggle );
+    REQUIRE( firstToggle->isCheckable() );
+    REQUIRE( firstToggle->isChecked() );
+    auto* bar = fixture.tabs->findChild<QTabBar*>( "mainTabBar" );
+    REQUIRE( bar );
+    bar->moveTab( 0, 2 );
+    firstToggle->trigger();
+    REQUIRE_FALSE( fixture.streams[ 0 ]->autoResponsesEnabled() );
+    REQUIRE( fixture.streams[ 0 ]->actionsEnabled() );
+    REQUIRE( fixture.streams[ 1 ]->autoResponsesEnabled() );
+    REQUIRE( fixture.actionsWindow->selectedActionTabId() == fixture.tabIds.at( 1 ) );
+
+    REQUIRE( QMetaObject::invokeMethod( fileMenu, "aboutToShow", Qt::DirectConnection ) );
+    auto* staleToggle = menu->findChild<QAction*>(
+        QStringLiteral( "comPortAutoResponsesEnabledAction_%1" ).arg( fixture.tabIds.at( 2 ) ) );
+    REQUIRE( staleToggle );
+    auto replacement = std::make_shared<StreamSession>( fixture.streams[ 2 ]->captureSettings() );
+    StreamSessionTestAccess::openConnection( *replacement );
+    fixture.tabs->setStreamSessionForPath( fixture.paths.at( 2 ), replacement );
+    staleToggle->trigger();
+    REQUIRE( replacement->autoResponsesEnabled() );
+    fixture.tabs->setStreamSessionForPath( fixture.paths.at( 2 ), fixture.streams[ 2 ] );
+
+    QSignalSpy requests( fixture.tabs, &TabbedCrawlerWidget::autoResponsesEnabledChangeRequested );
+    bool toggled = false;
+    QTimer trigger;
+    trigger.setInterval( 10 );
+    QObject::connect( &trigger, &QTimer::timeout, fixture.tabs, [ & ] {
+        auto* popup = qobject_cast<QMenu*>( QApplication::activePopupWidget() );
+        if ( !popup )
+            return;
+        auto* toggle = popup->findChild<QAction*>( "autoResponsesEnabledAction" );
+        if ( !toggle )
+            return;
+        trigger.stop();
+        CHECK( toggle->isCheckable() );
+        CHECK( toggle->isChecked() );
+        const auto capture = qEnvironmentVariable( "CILOGG_AUTO_RESPONSES_CAPTURE" );
+        if ( !capture.isEmpty() )
+            CHECK( popup->grab().save( capture ) );
+        bar->moveTab( fixture.tabs->findTabById( fixture.tabIds.at( 1 ) ), 2 );
+        toggle->trigger();
+        toggled = true;
+        popup->close();
+    } );
+    QTimer watchdog;
+    watchdog.setSingleShot( true );
+    QObject::connect( &watchdog, &QTimer::timeout, fixture.tabs, [] {
+        if ( auto* popup = qobject_cast<QMenu*>( QApplication::activePopupWidget() ) )
+            popup->close();
+    } );
+    trigger.start();
+    watchdog.start( 5000 );
+    const auto target = fixture.tabs->findTabById( fixture.tabIds.at( 1 ) );
+    REQUIRE( QMetaObject::invokeMethod( fixture.tabs, "showContextMenu", Qt::DirectConnection,
+                                        Q_ARG( int, target ), Q_ARG( QPoint, QPoint( 60, 60 ) ) ) );
+    trigger.stop();
+    watchdog.stop();
+    REQUIRE( toggled );
+    REQUIRE( requests.count() == 1 );
+    REQUIRE( requests.front().front().toString() == fixture.tabIds.at( 1 ) );
+    REQUIRE_FALSE( fixture.streams[ 0 ]->autoResponsesEnabled() );
+    REQUIRE_FALSE( fixture.streams[ 1 ]->autoResponsesEnabled() );
+    REQUIRE( fixture.streams[ 0 ]->actionsEnabled() );
+    REQUIRE( fixture.streams[ 1 ]->actionsEnabled() );
+}
