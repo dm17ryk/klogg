@@ -62,9 +62,14 @@ ENV QT_ROOT=/opt/Qt/6.10.1/current
 ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current/lib/cmake
 ENV PATH=/opt/bin:/opt/Qt/6.10.1/current/bin:$PATH
 
-# Check the Qt plugins used by the portable GUI before an expensive app build.
-# Report every missing dependency in one pass; optional SQL backends are excluded.
-RUN missing=0; \
+# ARM64 AppImages use this image; x64 AppImages use the separate Jammy image.
+# The older x64 Qt TIFF plugin ABI is not part of Noble's DEB build contract.
+# Report every missing ARM portable dependency; optional SQL backends are excluded.
+RUN case "$(uname -m)" in \
+        aarch64|arm64) ;; \
+        *) echo "ARM64 portable plugin check: not applicable to this architecture"; exit 0 ;; \
+    esac; \
+    missing=0; \
     for plugin in "$QT_ROOT"/plugins/platforms/*.so \
                   "$QT_ROOT"/plugins/imageformats/*.so \
                   "$QT_ROOT"/plugins/iconengines/*.so \
