@@ -16,7 +16,8 @@ RUN rm -rf /var/lib/apt/lists/* \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
-        libxcb-cursor0 \
+        libxcb-cursor0 libsm6 libice6 libwayland-cursor0 \
+        libtiff6 libwebp7 libwebpdemux2 libwebpmux3 \
         ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file -y \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
