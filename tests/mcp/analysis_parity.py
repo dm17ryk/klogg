@@ -17,7 +17,27 @@ import time
 import uuid
 
 
-def run(executable: Path, artifacts: Path) -> None:
+def seed_routing_session(payload: Path, artifacts: Path) -> None:
+    """Restore two paused, nonexistent ports; never open a real communication device."""
+    settings = ["[General]", "version=2", "", "[Window]", "version=2", r"windows\size=2"]
+    captures = artifacts / "captures"
+    captures.mkdir(exist_ok=True)
+    for index in range(2):
+        capture = captures / f"routing-{index}.log"
+        capture.write_text(f"Routing fixture {index}\n", encoding="utf-8")
+        stream = {"portName": f"CILOGG_TEST_UNAVAILABLE_{uuid.uuid4().hex}",
+                  "filePath": capture.as_posix(), "useForActions": True}
+        prefix = f"windows\\{index + 1}\\"
+        fields = {"id": f"AutoRouting{index}", "OpenFiles\\version": 2,
+                  "OpenFiles\\openFiles\\size": 1,
+                  "OpenFiles\\openFiles\\1\\fileName": capture.as_posix(),
+                  "OpenFiles\\openFiles\\1\\streamContext": json.dumps(stream)}
+        settings.extend(prefix + key + "=" + json.dumps(value, ensure_ascii=False)
+                        for key, value in fields.items())
+    (payload / "cilogg_session.conf").write_text("\n".join(settings) + "\n", encoding="utf-8")
+
+
+def run(executable: Path, artifacts: Path, auto_responses: bool = False) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
     payload = artifacts / f"payload-{uuid.uuid4().hex}"
     payload.mkdir()
@@ -31,7 +51,10 @@ def run(executable: Path, artifacts: Path) -> None:
         if folder.is_dir():
             shutil.copytree(folder, payload / name)
     (payload / "cilogg.conf").write_text("[General]\n", encoding="utf-8")
-    environment = dict(os.environ, CILOGG_AUTOMATION="1", QT_QPA_PLATFORM="offscreen")
+    if auto_responses:
+        seed_routing_session(payload, artifacts)
+    # Normal analysis fixtures skip restoration; routing fixtures explicitly test it.
+    environment = dict(os.environ, CILOGG_AUTOMATION="0" if auto_responses else "1", QT_QPA_PLATFORM="offscreen")
     home = artifacts / "settings"
     home.mkdir(exist_ok=True)
     environment.update(APPDATA=str(home), LOCALAPPDATA=str(home), XDG_CONFIG_HOME=str(home))
@@ -100,7 +123,12 @@ def run(executable: Path, artifacts: Path) -> None:
 
     try:
         with (artifacts / "host.log").open("w", encoding="utf-8") as host_log, (artifacts / "mcp.log").open("w", encoding="utf-8") as mcp_log:
-            host = subprocess.Popen([str(isolated), "--multi", "--new-session", "-d", "4"], env=environment, stdout=host_log, stderr=host_log)
+            host_arguments = [str(isolated), "--multi", "-d", "4", "-platform", "offscreen"]
+            if not auto_responses:
+                host_arguments.append("--new-session")
+            else:
+                host_arguments.append("--load-session")
+            host = subprocess.Popen(host_arguments, env=environment, stdout=host_log, stderr=host_log)
             deadline = time.monotonic() + 40
             # A probe started first can claim the single-instance lock itself.
             # Wait until the host has constructed its IPC server before launching a probe.
@@ -108,6 +136,12 @@ def run(executable: Path, artifacts: Path) -> None:
                 assert host.poll() is None, "Isolated host exited during construction"
                 assert time.monotonic() < deadline, "Host did not publish its startup marker"
                 time.sleep(0.02)
+            if auto_responses:
+                # Restoration pumps events before Commander is ready; wait for its completion.
+                while "startBackgroundTasks" not in (artifacts / "host.log").read_text(encoding="utf-8", errors="replace"):
+                    assert host.poll() is None, "Routing host exited during restoration"
+                    assert time.monotonic() < deadline, "Routing host did not finish restoration"
+                    time.sleep(0.02)
             while True:
                 assert host.poll() is None, "Isolated host exited during startup"
                 probe = subprocess.run([str(isolated), "command", "--action", "get_info", "--require-running", "--timeout-ms", "1000"], capture_output=True, env=environment, timeout=10)
@@ -130,7 +164,61 @@ def run(executable: Path, artifacts: Path) -> None:
             send("notifications/initialized", {}, notification=True)
             catalog = send("tools/call", {"name": "cilogg_commands", "arguments": {"area": "commander"}})["structuredContent"]
             assert all(name in catalog["commander"]["commands"] for name in (
-                "regex_evaluate", "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job"))
+                "regex_evaluate", "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job",
+                "set_auto_responses_enabled"))
+            # Exercise the public operation without opening any real communication device.
+            cli("set_auto_responses_enabled", "--disabled", "--tab-id", "missing-auto-tab", success=False)
+            rejected_toggle = send("tools/call", {"name": "cilogg_execute", "arguments": {
+                "action": "set_auto_responses_enabled",
+                "arguments": {"disabled": True, "tab_id": "missing-auto-tab"},
+            }})
+            assert rejected_toggle.get("isError") and "error" in rejected_toggle["structuredContent"], rejected_toggle
+            if auto_responses:
+                def routing_state():
+                    windows = cli("get_info")["windows"]
+                    assert len(windows) == 2, windows
+                    for window in windows:
+                        assert len(window["tabs"]) == 1, windows
+                        source = window["tabs"][0]["com"]
+                        assert source["portName"].startswith("CILOGG_TEST_UNAVAILABLE_"), source
+                        assert not source["connected"] and source["paused"], source
+                    return {window["windowIndex"]: window for window in windows}
+
+                def flags():
+                    return {index: window["tabs"][0]["com"]["autoResponsesEnabled"]
+                            for index, window in routing_state().items()}
+
+                deadline = time.monotonic() + 30
+                while True:
+                    try:
+                        windows = routing_state()
+                        break
+                    except (AssertionError, KeyError) as error:
+                        if time.monotonic() >= deadline:
+                            raise AssertionError("Two-window routing session did not become ready") from error
+                        time.sleep(0.02)
+                first, second = sorted(windows)
+                assert flags() == {first: True, second: True}
+                changed = cli("set_auto_responses_enabled", "--disabled", "--window-index", str(second), "--tab-index", "0")
+                assert changed["windowIndex"] == second, changed
+                assert flags() == {first: True, second: False}
+                changed = command("set_auto_responses_enabled", {"enabled": True, "window_index": second, "tab_index": 0})
+                assert changed["windowIndex"] == second, changed
+                assert flags() == {first: True, second: True}
+                tab = windows[first]["tabs"][0]["tabId"]
+                command("set_auto_responses_enabled", {"disabled": True, "tab_id": tab})
+                assert flags() == {first: False, second: True}
+                cli("set_auto_responses_enabled", "--enabled", "--tab-id", tab)
+                cli("focus_tab", "--window-index", str(second), "--tab-index", "0")
+                deadline = time.monotonic() + 15
+                while not routing_state()[second]["isActiveWindow"]:
+                    assert time.monotonic() < deadline, "Second routing window did not become active"
+                    time.sleep(0.02)
+                cli("set_auto_responses_enabled", "--disabled")
+                assert flags() == {first: True, second: False}
+                command("set_auto_responses_enabled", {"enabled": True})
+                assert flags() == {first: True, second: True}
+                print("PASS: two-window CLI/native-MCP index, tab ID and active-window response routing")
             request = {"scope": "text", "pattern": r"(?<value>\d)(?<optional>x)?", "text": "ANALYSIS_PRIVATE_BODY_SENTINEL שלום 😀1\r\nsecond2\nlast3", "requestRevision": "9007199254740993"}
             request_path = artifacts / "request.json"
             request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
@@ -149,7 +237,11 @@ def run(executable: Path, artifacts: Path) -> None:
             large = dict(request, text="a" * 200000, pattern="never")
             large_job = command("regex_evaluate", {"analysis_json": large})["jobId"]
             assert finish(large_job, True)["complete"]
-            cancel = dict(request, text="a" * 100000 + "!", pattern="(*NO_JIT)(*LIMIT_MATCH=1000000000)(a+)+$")
+            # Quadratic retries across starting positions avoid a quick per-attempt
+            # backtracking limit, leaving work running during CLI/MCP startup.
+            cancel = dict(request, text="a" * 100000 + "!",
+                          pattern="(*NO_JIT)(*NO_START_OPT)(*NO_AUTO_POSSESS)a+b",
+                          limits={"batchTimeoutMs": 30000})
             cancelled = command("regex_evaluate", {"analysis_json": cancel})["jobId"]
             started = time.monotonic()
             command("cancel_analysis_job", {"job_id": cancelled})
@@ -199,5 +291,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
+    parser.add_argument("--auto-responses", action="store_true")
     options = parser.parse_args()
-    run(options.executable.resolve(), options.artifacts.resolve())
+    run(options.executable.resolve(), options.artifacts.resolve(), options.auto_responses)

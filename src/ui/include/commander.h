@@ -78,6 +78,7 @@ enum class CommanderAction {
     GetAnalysisResults,
     CancelAnalysisJob,
     ReleaseAnalysisJob,
+    SetAutoResponsesEnabled,
 };
 
 enum class CommanderResultCode {

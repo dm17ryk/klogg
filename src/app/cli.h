@@ -226,7 +226,10 @@ private:
             "  cilogg command --action update_response --id <id> --json-file <path>\n"
             "  cilogg command --action delete_response --id <id>\n"
             "  cilogg command --action send_action --id <id> [tab selector]\n"
-            "  cilogg command --action set_actions_enabled (--enabled | --disabled) [tab selector]\n"
+            "  cilogg command --action set_actions_enabled (--enabled | --disabled) [tab "
+            "selector]\n"
+            "  cilogg command --action set_auto_responses_enabled (--enabled | --disabled) [tab "
+            "selector]\n"
             "  cilogg command --action select_actions_tab [tab selector]\n"
             "  cilogg command --action wait_response (--id <id> | --name <name>) [tab selector] "
             "--timeout-ms <n>\n"
@@ -317,13 +320,18 @@ private:
             "  close_all\n"
             "  get_info   [--pretty|--preatty]\n"
             "  get_plugins [--pretty]\n"
-            "  plugin_manage --plugin-operation <install|remove|enable|disable|configure|restart|catalog|update> [--plugin-id <id>] [--json-file <options.json>]\n"
-            "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file <arguments.json>] [tab selector]\n"
+            "  plugin_manage --plugin-operation "
+            "<install|remove|enable|disable|configure|restart|catalog|update> [--plugin-id <id>] "
+            "[--json-file <options.json>]\n"
+            "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file "
+            "<arguments.json>] [tab selector]\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
-            "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
+            "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
+            "selector]\n"
             "  get_analysis_job --job-id <id> [tab selector]\n"
-            "  get_analysis_results --job-id <id> [--cursor <cursor>] [--page-size <count>] [tab selector]\n"
+            "  get_analysis_results --job-id <id> [--cursor <cursor>] [--page-size <count>] [tab "
+            "selector]\n"
             "  cancel_analysis_job --job-id <id> [tab selector]\n"
             "  release_analysis_job --job-id <id> [tab selector]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -373,6 +381,8 @@ private:
             "  set_actions_enabled (--enabled | --disabled) [--tab-id <id> | --window-index <n> "
             "--tab-index <n>]\n"
             "  select_actions_tab [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  set_auto_responses_enabled (--enabled | --disabled) [--tab-id <id> | "
+            "--window-index <n> --tab-index <n>]\n"
             "  wait_response (--id <id> | --name <name>) [--tab-id <id> | --window-index <n> "
             "--tab-index <n>] --timeout-ms <ms>\n"
             "  get_filters [--tab-id <id> | --window-index <n> --tab-index <n>] [--filter-id <id> "
@@ -392,7 +402,8 @@ private:
             "  get_ui [--object-name <name-or-path>] [--window-index <n>] [--pretty]\n"
             "  set_ui --object-name <name-or-path> --json-file <properties.json> "
             "[--window-index <n>]\n"
-            "  activate_ui --object-name <name-or-path> [--text <key-sequence> | --json-file <mouse-gesture.json>] "
+            "  activate_ui --object-name <name-or-path> [--text <key-sequence> | --json-file "
+            "<mouse-gesture.json>] "
             "[--window-index <n>]\n\n"
             "For open_com, omitted serial options inherit the current Preferences values." );
     }
@@ -2156,19 +2167,23 @@ private:
             }
             break;
         case CommanderAction::SetActionsEnabled:
+        case CommanderAction::SetAutoResponsesEnabled:
             if ( !validateTabSelector( commanderActionToString( *action ), false ) ) {
-                LOG_DEBUG << "Rejected Actions enablement request with invalid tab selectors";
+                LOG_DEBUG << "Rejected tab enablement selectors: action="
+                          << commanderActionToString( *action );
                 return result;
             }
             request.enabled = parseOptionalBoolean( parser, enabledOption, disabledOption );
             if ( !request.enabled.has_value() ) {
-                LOG_DEBUG << "Rejected Actions enablement request without an enabled state";
+                LOG_DEBUG << "Rejected tab enablement without a state: action="
+                          << commanderActionToString( *action );
                 result.output_message = formatParserError(
-                    parser,
-                    QStringLiteral( "set_actions_enabled requires --enabled or --disabled." ) );
+                    parser, QStringLiteral( "%1 requires --enabled or --disabled." )
+                                .arg( commanderActionToString( *action ) ) );
                 return result;
             }
-            LOG_DEBUG << "Parsed Actions enablement request: enabled=" << *request.enabled
+            LOG_DEBUG << "Parsed tab enablement request: action="
+                      << commanderActionToString( *action ) << " enabled=" << *request.enabled
                       << " tab_id=" << request.tabId
                       << " explicit_index=" << request.tabIndex.has_value();
             break;

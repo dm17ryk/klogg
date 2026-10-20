@@ -116,8 +116,9 @@ class TabbedCrawlerWidget : public QTabWidget {
     void pauseStreamConnectionRequested( int tab );
     void resumeStreamConnectionRequested( int tab );
     void actionsEnabledChangeRequested( const QString& tabId, bool enabled );
+    void autoResponsesEnabledChangeRequested( const QString& tabId, bool enabled );
 
-  private:
+private:
     void addTabBarItem( int index, const QString& fileName );
     void setTabMetadataValue( int index, const QString& key, const QVariant& value );
     QVariant tabMetadataValue( int index, const QString& key ) const;

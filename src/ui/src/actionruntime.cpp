@@ -228,14 +228,18 @@ bool actionContextIsCurrent( const QPointer<StreamSession>& session, quint64 gen
         LOG_DEBUG << "Scheduled action skipped: target connection is closed";
         return false;
     }
-    if ( session->actionsGeneration() != generation ) {
+    const auto currentGeneration
+        = automatic ? session->autoResponsesGeneration() : session->actionsGeneration();
+    if ( currentGeneration != generation ) {
         LOG_DEBUG << "Scheduled action skipped: stale generation=" << generation
-                  << ", currentGeneration=" << session->actionsGeneration();
+                  << ", currentGeneration=" << currentGeneration;
         return false;
     }
     if ( automatic
-         && ( !session->actionsEnabled() || !ActionsManager::instance().autoResponsesEnabled() ) ) {
+         && ( !session->actionsEnabled() || !session->autoResponsesEnabled()
+              || !ActionsManager::instance().autoResponsesEnabled() ) ) {
         LOG_DEBUG << "Automatic action skipped: tabEnabled=" << session->actionsEnabled()
+                  << ", autoResponsesEnabled=" << session->autoResponsesEnabled()
                   << ", globalEnabled=" << ActionsManager::instance().autoResponsesEnabled();
         return false;
     }
@@ -316,7 +320,8 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     }
 
     const QPointer<StreamSession> safeSession = session;
-    const auto generation = session->actionsGeneration();
+    const auto generation
+        = automatic ? session->autoResponsesGeneration() : session->actionsGeneration();
     if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
         setError( errorMessage, QObject::tr( "Automatic actions are disabled for this COM session." ) );
         return false;
@@ -398,7 +403,7 @@ bool executeResponseDefinition( StreamSession* session,
     }
 
     const QPointer<StreamSession> safeSession = session;
-    const auto generation = session->actionsGeneration();
+    const auto generation = session->autoResponsesGeneration();
     if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
         setError( errorMessage, QObject::tr( "No eligible COM session for automatic responses." ) );
         return false;

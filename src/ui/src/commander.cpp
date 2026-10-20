@@ -175,6 +175,8 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "cancel_plugin_job" );
     case CommanderAction::SetActionsEnabled:
         return QStringLiteral( "set_actions_enabled" );
+    case CommanderAction::SetAutoResponsesEnabled:
+        return QStringLiteral( "set_auto_responses_enabled" );
     case CommanderAction::SelectActionsTab:
         return QStringLiteral( "select_actions_tab" );
     case CommanderAction::RegexEvaluate: return QStringLiteral( "regex_evaluate" );
@@ -261,6 +263,9 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     }
     if ( normalized == QStringLiteral( "set_actions_enabled" ) ) {
         return CommanderAction::SetActionsEnabled;
+    }
+    if ( normalized == QStringLiteral( "set_auto_responses_enabled" ) ) {
+        return CommanderAction::SetAutoResponsesEnabled;
     }
     if ( normalized == QStringLiteral( "select_actions_tab" ) ) {
         return CommanderAction::SelectActionsTab;

@@ -405,6 +405,28 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
                                << " enabled=" << enabled;
                      Q_EMIT actionsEnabledChangeRequested( tabId, enabled );
                  } );
+        auto* autoResponses = menu.addAction( tr( "Automatic responses enabled" ) );
+        autoResponses->setObjectName( QStringLiteral( "autoResponsesEnabledAction" ) );
+        autoResponses->setCheckable( true );
+        autoResponses->setChecked( session->autoResponsesEnabled() );
+        autoResponses->setEnabled( !tabId.isEmpty() );
+        autoResponses->setToolTip( tr(
+            "Allow automatic replies when Actions and global automatic responses are enabled." ) );
+        LOG_DEBUG << "Created tab automatic responses toggle: tab_id=" << tabId
+                  << " enabled=" << autoResponses->isChecked()
+                  << " available=" << autoResponses->isEnabled();
+        connect(
+            autoResponses, &QAction::triggered, this, [ this, tabId, safeSession ]( bool enabled ) {
+                const auto currentTab = findTabById( tabId );
+                if ( currentTab < 0 || !safeSession
+                     || streamSessionForTab( currentTab ) != safeSession.data() ) {
+                    LOG_DEBUG << "Ignoring stale tab automatic responses toggle: tab_id=" << tabId;
+                    return;
+                }
+                LOG_DEBUG << "Requested tab automatic responses toggle: tab_id=" << tabId
+                          << " enabled=" << enabled;
+                Q_EMIT autoResponsesEnabledChangeRequested( tabId, enabled );
+            } );
         closeConnection->setEnabled( safeSession
                                      && ( safeSession->isConnectionOpen()
                                           || safeSession->isPaused() ) );

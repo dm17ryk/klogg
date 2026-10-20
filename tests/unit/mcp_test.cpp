@@ -207,6 +207,9 @@ TEST_CASE( "Native MCP discovers Actions tab operations from the shipped CLI hel
     const auto catalog = parseCommandHelp( help.exit_message );
     const auto commands = catalog.value( "commands" ).toObject();
     REQUIRE( commands.contains( "set_actions_enabled" ) );
+    REQUIRE( commands.contains( "set_auto_responses_enabled" ) );
+    REQUIRE( commands.value( "set_auto_responses_enabled" ).toString().contains( "--enabled" ) );
+    REQUIRE( commands.value( "set_auto_responses_enabled" ).toString().contains( "--disabled" ) );
     REQUIRE( commands.contains( "select_actions_tab" ) );
     REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--enabled" ) );
     REQUIRE( commands.value( "set_actions_enabled" ).toString().contains( "--disabled" ) );

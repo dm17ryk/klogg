@@ -46,6 +46,7 @@ QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings )
     object.insert( QStringLiteral( "timestampFormat" ), settings.timestampFormat );
     object.insert( QStringLiteral( "logTransmits" ), settings.logTransmits );
     object.insert( QStringLiteral( "useForActions" ), settings.useForActions );
+    object.insert( QStringLiteral( "autoResponsesEnabled" ), settings.autoResponsesEnabled );
 
     return QString::fromUtf8( QJsonDocument( object ).toJson( QJsonDocument::Compact ) );
 }
@@ -97,6 +98,8 @@ std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QSt
         = object.value( QStringLiteral( "timestampFormat" ) ).toString( settings.timestampFormat );
     settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
     settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
+    settings.autoResponsesEnabled
+        = object.value( QStringLiteral( "autoResponsesEnabled" ) ).toBool( true );
 
     return settings;
 }

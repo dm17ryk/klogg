@@ -273,6 +273,7 @@ class MainWindow : public QMainWindow {
     CommanderResult commanderInvokeAction( const CommanderRequest& request );
     CommanderResult commanderSendAction( const CommanderRequest& request );
     CommanderResult commanderSetActionsEnabled( const CommanderRequest& request );
+    CommanderResult commanderSetAutoResponsesEnabled( const CommanderRequest& request );
     CommanderResult commanderSelectActionsTab( const CommanderRequest& request );
     CommanderResult commanderWaitResponse( const CommanderRequest& request );
     CommanderResult commanderStartComm( const CommanderRequest& request );

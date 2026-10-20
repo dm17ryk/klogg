@@ -590,6 +590,15 @@ MainWindow::MainWindow( WindowSession session )
                                << " reason=" << result.message;
                  }
              } );
+    connect( &mainTabWidget_, &TabbedCrawlerWidget::autoResponsesEnabledChangeRequested, this,
+             [ this ]( const QString& tabId, bool enabled ) {
+                 CommanderRequest request;
+                 request.tabId = tabId;
+                 request.enabled = enabled;
+                 const auto result = commanderSetAutoResponsesEnabled( request );
+                 LOG_DEBUG << "Tab automatic responses toggle: tab_id=" << tabId
+                           << " enabled=" << enabled << " success=" << result.ok();
+             } );
     connect( &mainTabWidget_, &TabbedCrawlerWidget::currentChanged, this,
              &MainWindow::currentTabChanged );
 
@@ -790,6 +799,8 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSendAction( request );
     case CommanderAction::SetActionsEnabled:
         return commanderSetActionsEnabled( request );
+    case CommanderAction::SetAutoResponsesEnabled:
+        return commanderSetAutoResponsesEnabled( request );
     case CommanderAction::SelectActionsTab:
         return commanderSelectActionsTab( request );
     case CommanderAction::WaitResponse:
@@ -902,6 +913,12 @@ QVariantMap MainWindow::commanderWindowInfo() const
             comInfo.insert( QStringLiteral( "isActionsPort" ),
                             isActionsStreamSession( streamSession ) );
             comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+            comInfo.insert( QStringLiteral( "autoResponsesEnabled" ),
+                            streamSession->autoResponsesEnabled() );
+            comInfo.insert( QStringLiteral( "autoResponsesActive" ),
+                            streamSession->autoResponsesEnabled() && streamSession->actionsEnabled()
+                                && streamSession->isConnectionOpen()
+                                && ActionsManager::instance().autoResponsesEnabled() );
             comInfo.insert( QStringLiteral( "selectedForActions" ),
                             streamSession == actionsStreamSession_.data()
                                 && isAvailableActionsDestination( streamSession ) );
@@ -2128,6 +2145,32 @@ void MainWindow::rebuildComPortsMenu()
                      request.enabled = enabled;
                      const auto result = commanderSetActionsEnabled( request );
                      LOG_DEBUG << "COM-menu Actions toggle: tab_id=" << tabId
+                               << " enabled=" << enabled << " success=" << result.ok();
+                 } );
+
+        auto* autoResponsesAction = portMenu->addAction( tr( "Automatic responses enabled" ) );
+        autoResponsesAction->setObjectName(
+            QStringLiteral( "comPortAutoResponsesEnabledAction_%1" ).arg( tabId ) );
+        autoResponsesAction->setCheckable( true );
+        autoResponsesAction->setChecked( streamSession->autoResponsesEnabled() );
+        autoResponsesAction->setToolTip( tr(
+            "Allow automatic replies when Actions and global automatic responses are enabled." ) );
+        LOG_DEBUG << "Created COM-menu automatic responses toggle: tab_id=" << tabId
+                  << " enabled=" << autoResponsesAction->isChecked();
+        connect( autoResponsesAction, &QAction::triggered, this,
+                 [ this, tabId, safeActionsSession ]( bool enabled ) {
+                     const auto index = mainTabWidget_.findTabById( tabId );
+                     if ( index < 0 || !safeActionsSession
+                          || mainTabWidget_.streamSessionForTab( index ) != safeActionsSession ) {
+                         LOG_DEBUG << "Ignoring stale COM-menu automatic responses toggle: tab_id="
+                                   << tabId;
+                         return;
+                     }
+                     CommanderRequest request;
+                     request.tabId = tabId;
+                     request.enabled = enabled;
+                     const auto result = commanderSetAutoResponsesEnabled( request );
+                     LOG_DEBUG << "COM-menu automatic responses toggle: tab_id=" << tabId
                                << " enabled=" << enabled << " success=" << result.ok();
                  } );
 
@@ -3687,6 +3730,26 @@ CommanderResult MainWindow::commanderSetActionsEnabled( const CommanderRequest& 
     return commanderGetCommStatus( request );
 }
 
+CommanderResult MainWindow::commanderSetAutoResponsesEnabled( const CommanderRequest& request )
+{
+    if ( !request.enabled.has_value() ) {
+        LOG_DEBUG << "set_auto_responses_enabled rejected: enabled state is missing";
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "set_auto_responses_enabled requires enabled or disabled." ) );
+    }
+    auto* streamSession = commanderTargetStreamSession( request, false );
+    if ( streamSession == nullptr ) {
+        LOG_DEBUG << "set_auto_responses_enabled rejected: no matching communication session";
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Requested live communication tab was not found." ) );
+    }
+    LOG_DEBUG << "Setting tab automatic responses: tab_id="
+              << actionsTabIdForSession( streamSession ) << " enabled=" << *request.enabled;
+    streamSession->setAutoResponsesEnabled( *request.enabled );
+    updateActionsSendState();
+    return commanderGetCommStatus( request );
+}
+
 CommanderResult MainWindow::commanderSelectActionsTab( const CommanderRequest& request )
 {
     auto* streamSession = commanderTargetStreamSession( request, false );
@@ -3901,6 +3964,12 @@ CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& requ
     comInfo.insert( QStringLiteral( "loggingEnabled" ), streamSession->isLoggingEnabled() );
     comInfo.insert( QStringLiteral( "isActionsPort" ), isActionsStreamSession( streamSession ) );
     comInfo.insert( QStringLiteral( "actionsEnabled" ), streamSession->actionsEnabled() );
+    comInfo.insert( QStringLiteral( "autoResponsesEnabled" ),
+                    streamSession->autoResponsesEnabled() );
+    comInfo.insert( QStringLiteral( "autoResponsesActive" ),
+                    streamSession->autoResponsesEnabled() && streamSession->actionsEnabled()
+                        && streamSession->isConnectionOpen()
+                        && ActionsManager::instance().autoResponsesEnabled() );
     comInfo.insert( QStringLiteral( "selectedForActions" ),
                     streamSession == actionsStreamSession_.data()
                         && isAvailableActionsDestination( streamSession ) );
