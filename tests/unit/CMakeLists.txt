@@ -7,6 +7,7 @@ add_executable(cilogg_tests
     plugins_test.cpp
     mcp_test.cpp
     configuration_test.cpp
+    captureevaluator_test.cpp
     configurationexport_test.cpp
     encodingdetector_test.cpp
     importpreviewsdialog_test.cpp

@@ -69,6 +69,12 @@ struct AnalysisJobService::Private {
         qint64 storedBytes = 0;
         qint64 finishedAt = -1;
         QVariantMap metrics;
+        QVariantMap errorDetails;
+        QString backend;
+        bool compiled = false;
+        qint64 readingUs = 0;
+        qint64 deliveryUs = 0;
+        qint64 creditUs = 0;
         std::deque<Pending> pending;
         QVariantList rows;
         std::map<QString, int> cursors;
@@ -103,119 +109,137 @@ struct AnalysisJobService::Private {
         bool done = false;
         try {
             processor = job->factory ? job->factory() : AnalysisProcessor{};
+            bool initialize = static_cast<bool>( processor );
             if ( ( job->request.scope == "selection" || job->request.scope == "matches" )
                  && job->request.ranges.empty() ) {
                 done = true;
             }
-            while ( !job->cancelled && !job->deadline.hasExpired() && !done ) {
+            while ( !job->cancelled && !job->deadline.hasExpired() && ( !done || initialize ) ) {
+                QElapsedTimer reading;
+                reading.start();
                 AnalysisBatch batch;
                 QStringList decoded;
                 const auto firstLine = nextLine;
-                if ( job->source ) {
-                    if ( nextLine >= job->request.snapshot.lineCount.get() ) {
-                        break;
-                    }
-                    const auto block = job->source->readAnalysisBlock(
-                        job->request.snapshot, nextLine, job->request.limits );
-                    if ( block.retry ) {
-                        QThread::msleep( 5 );
-                        continue;
-                    }
-                    if ( !block.error.isEmpty() ) {
-                        reason = block.error;
-                        break;
-                    }
-                    if ( !decoder ) {
-                        auto* codec = QTextCodec::codecForName( block.codec );
-                        if ( !codec ) {
-                            reason = "unsupported_encoding";
+                const bool initializing = initialize;
+                initialize = false;
+                if ( !initializing ) {
+                    if ( job->source ) {
+                        if ( nextLine >= job->request.snapshot.lineCount.get() ) {
                             break;
                         }
-                        decoder.reset( codec->makeDecoder() );
+                        const auto block = job->source->readAnalysisBlock(
+                            job->request.snapshot, nextLine, job->request.limits );
+                        if ( block.retry ) {
+                            QThread::msleep( 5 );
+                            continue;
+                        }
+                        if ( !block.error.isEmpty() ) {
+                            reason = block.error;
+                            break;
+                        }
+                        if ( !decoder ) {
+                            auto* codec = QTextCodec::codecForName( block.codec );
+                            if ( !codec ) {
+                                reason = "unsupported_encoding";
+                                break;
+                            }
+                            decoder.reset( codec->makeDecoder() );
+                        }
+                        const auto text = decoder->toUnicode( block.bytes );
+                        decoded = text.split( '\n' );
+                        if ( text.endsWith( '\n' ) ) {
+                            decoded.removeLast();
+                        }
+                        nextLine = block.nextLine;
+                        if ( decoded.size() != static_cast<qsizetype>( nextLine - firstLine ) ) {
+                            reason = "decode_error";
+                            break;
+                        }
                     }
-                    const auto text = decoder->toUnicode( block.bytes );
-                    decoded = text.split( '\n' );
-                    if ( text.endsWith( '\n' ) ) {
-                        decoded.removeLast();
+                    else {
+                        const auto& input = job->request.text;
+                        if ( textOffset >= input.size() ) {
+                            break;
+                        }
+                        qint64 bytes = 0;
+                        while ( textOffset < input.size()
+                                && decoded.size() < job->request.limits.batchLines ) {
+                            const auto newline = input.indexOf( '\n', textOffset );
+                            const auto end = newline < 0 ? input.size() : newline;
+                            if ( end - textOffset > job->request.limits.recordBytes ) {
+                                reason = "record_limit";
+                                done = true;
+                                break;
+                            }
+                            const auto line = input.mid( textOffset, end - textOffset );
+                            const qint64 size = line.toUtf8().size() + ( newline < 0 ? 0 : 1 );
+                            if ( size > job->request.limits.recordBytes ) {
+                                reason = "record_limit";
+                                done = true;
+                                break;
+                            }
+                            if ( bytes + size > job->request.limits.batchBytes ) {
+                                break;
+                            }
+                            decoded.push_back( line );
+                            bytes += size;
+                            textOffset = end + ( newline < 0 ? 0 : 1 );
+                            ++nextLine;
+                        }
                     }
-                    nextLine = block.nextLine;
-                    if ( decoded.size() != static_cast<qsizetype>( nextLine - firstLine ) ) {
-                        reason = "decode_error";
-                        break;
-                    }
-                }
-                else {
-                    const auto& input = job->request.text;
-                    if ( textOffset >= input.size() ) {
-                        break;
-                    }
-                    qint64 bytes = 0;
-                    while ( textOffset < input.size()
-                            && decoded.size() < job->request.limits.batchLines ) {
-                        const auto newline = input.indexOf( '\n', textOffset );
-                        const auto end = newline < 0 ? input.size() : newline;
-                        if ( end - textOffset > job->request.limits.recordBytes ) {
+                    for ( int index = 0; index < decoded.size(); ++index ) {
+                        const auto line = firstLine + static_cast<quint64>( index );
+                        const auto& text = decoded.at( index );
+                        if ( !job->source
+                             && text.toUtf8().size() > job->request.limits.recordBytes ) {
                             reason = "record_limit";
                             done = true;
                             break;
                         }
-                        const auto line = input.mid( textOffset, end - textOffset );
-                        const qint64 size = line.toUtf8().size() + ( newline < 0 ? 0 : 1 );
-                        if ( size > job->request.limits.recordBytes ) {
-                            reason = "record_limit";
+                        const auto& ranges = job->request.ranges;
+                        const auto included = ( ranges.empty() && job->request.scope != "selection"
+                                                && job->request.scope != "matches" )
+                                              || std::any_of( ranges.begin(), ranges.end(),
+                                                              [ line ]( const auto& range ) {
+                                                                  return line >= range.first
+                                                                         && line <= range.second;
+                                                              } );
+                        if ( !included ) {
+                            continue;
+                        }
+                        const auto bytes = static_cast<qint64>( text.size() ) * 2;
+                        if ( job->request.scope == "sample"
+                             && ( selected >= 1000 || selectedBytes + bytes > 4 * 1024 * 1024 ) ) {
+                            reason = "sample_limit";
                             done = true;
                             break;
                         }
-                        if ( bytes + size > job->request.limits.batchBytes ) {
-                            break;
-                        }
-                        decoded.push_back( line );
-                        bytes += size;
-                        textOffset = end + ( newline < 0 ? 0 : 1 );
-                        ++nextLine;
+                        batch.lines.push_back( { line, text } );
+                        ++selected;
+                        selectedBytes += bytes;
                     }
                 }
-                for ( int index = 0; index < decoded.size(); ++index ) {
-                    const auto line = firstLine + static_cast<quint64>( index );
-                    const auto& text = decoded.at( index );
-                    if ( text.toUtf8().size() > job->request.limits.recordBytes ) {
-                        reason = "record_limit";
-                        done = true;
-                        break;
-                    }
-                    const auto& ranges = job->request.ranges;
-                    const auto included
-                        = ( ranges.empty() && job->request.scope != "selection"
-                            && job->request.scope != "matches" )
-                          || std::any_of( ranges.begin(), ranges.end(),
-                                          [ line ]( const auto& range ) {
-                                              return line >= range.first && line <= range.second;
-                                          } );
-                    if ( !included ) {
-                        continue;
-                    }
-                    const auto bytes = static_cast<qint64>( text.size() ) * 2;
-                    if ( job->request.scope == "sample"
-                         && ( selected >= 1000 || selectedBytes + bytes > 4 * 1024 * 1024 ) ) {
-                        reason = "sample_limit";
-                        done = true;
-                        break;
-                    }
-                    batch.lines.push_back( { line, text } );
-                    ++selected;
-                    selectedBytes += bytes;
+                {
+                    std::lock_guard<std::mutex> lock( job->mutex );
+                    job->readingUs += reading.nsecsElapsed() / 1000;
                 }
-                if ( batch.lines.empty() ) {
+                if ( batch.lines.empty() && !initializing ) {
                     continue;
                 }
                 const auto remaining = static_cast<int>(
                     std::min<qint64>( job->request.limits.batchTimeoutMs,
                                       std::max<qint64>( 0, job->deadline.remainingTime() ) ) );
+                batch.jobRemainingMs
+                    = static_cast<int>( std::max<qint64>( 0, job->deadline.remainingTime() ) );
                 const auto output = processor ? processor( batch, job->cancelled, remaining )
                                               : rawOutput( batch );
+                const bool malformedReason = output.error.size() > 64;
+                const bool fatal
+                    = malformedReason
+                      || ( !output.error.isEmpty() && !output.error.endsWith( "_limit" ) );
                 if ( !output.error.isEmpty() ) {
-                    reason = output.error;
-                    break;
+                    reason = malformedReason ? "invalid_worker_output" : output.error;
+                    done = true;
                 }
                 if ( job->source ) {
                     const auto current = job->source->sourceSnapshot();
@@ -227,6 +251,11 @@ struct AnalysisJobService::Private {
                 }
                 Pending pending;
                 for ( const auto& value : output.rows ) {
+                    if ( fatal || initializing ) {
+                        reason = initializing ? "invalid_worker_output" : reason;
+                        done = true;
+                        break;
+                    }
                     if ( value.userType() != QMetaType::QVariantMap ) {
                         reason = "invalid_worker_output";
                         done = true;
@@ -243,6 +272,25 @@ struct AnalysisJobService::Private {
                     pending.bytes += bytes;
                 }
                 std::unique_lock<std::mutex> lock( job->mutex );
+                if ( !output.backend.isEmpty() ) {
+                    if ( output.backend != "Qt QRegularExpression" ) {
+                        reason = "invalid_worker_output";
+                        done = true;
+                    }
+                    else {
+                        job->backend = output.backend;
+                        if ( initializing && output.error.isEmpty() ) {
+                            job->compiled = true;
+                        }
+                    }
+                }
+                if ( rowBytes( output.errorDetails ) > 4096 ) {
+                    reason = "invalid_worker_output";
+                    done = true;
+                }
+                else if ( !output.errorDetails.isEmpty() ) {
+                    job->errorDetails = output.errorDetails;
+                }
                 for ( auto it = output.metrics.cbegin(); it != output.metrics.cend(); ++it ) {
                     bool valid = false;
                     const auto amount = it.value().toLongLong( &valid );
@@ -257,15 +305,18 @@ struct AnalysisJobService::Private {
                     }
                     job->metrics[ it.key() ] = previous + amount;
                 }
-                if ( done && reason == "invalid_worker_output" ) {
+                if ( fatal || ( done && reason == "invalid_worker_output" ) ) {
                     break;
                 }
                 job->scanned += static_cast<quint64>( batch.lines.size() );
+                QElapsedTimer credit;
+                credit.start();
                 while ( !job->cancelled && !job->deadline.hasExpired()
                         && ( job->pendingBytes + pending.bytes > job->request.limits.pendingBytes
                              || job->pending.size() >= 8 ) ) {
                     job->credit.wait_for( lock, std::chrono::milliseconds( 10 ) );
                 }
+                job->creditUs += credit.nsecsElapsed() / 1000;
                 if ( job->cancelled || job->deadline.hasExpired() ) {
                     break;
                 }
@@ -412,6 +463,8 @@ void AnalysisJobService::poll()
         const auto job = it->second;
         bool notify = false;
         {
+            QElapsedTimer delivery;
+            delivery.start();
             std::lock_guard<std::mutex> lock( job->mutex );
             if ( job->state == "queued" && job->cancelled ) {
                 job->state = "cancelled";
@@ -501,6 +554,7 @@ void AnalysisJobService::poll()
                 LOG_DEBUG << "Analysis finished id=" << job->id << " state=" << job->state
                           << " reason=" << job->reason << " rows=" << job->rows.size();
             }
+            job->deliveryUs += delivery.nsecsElapsed() / 1000;
         }
         const auto expired
             = terminal( job->state )
@@ -560,6 +614,12 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
              { "sourceRevision", QString::number( snapshot.revision ) },
              { "indexedBytes", QString::number( snapshot.indexedBytes ) },
              { "metrics", job->metrics },
+             { "timing", QVariantMap{ { "sourceReadUs", job->readingUs },
+                                      { "resultDeliveryUs", job->deliveryUs },
+                                      { "backpressureUs", job->creditUs } } },
+             { "captureBackend", job->backend },
+             { "compiled", job->compiled },
+             { "errorDetails", job->errorDetails },
              { "historical", historical },
              { "newerDataAvailable",
                source && !historical && current.revision != snapshot.revision },
