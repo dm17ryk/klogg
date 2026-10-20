@@ -16,6 +16,7 @@ RUN rm -rf /var/lib/apt/lists/* \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
         libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
+        libxcb-cursor0 \
         ragel ninja-build zlib1g-dev git pkg-config wget ca-certificates fuse file -y \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -59,3 +60,18 @@ RUN python3 -m venv /tmp/aqt-venv && \
 ENV QT_ROOT=/opt/Qt/6.10.1/current
 ENV CMAKE_PREFIX_PATH=/opt/Qt/6.10.1/current/lib/cmake
 ENV PATH=/opt/bin:/opt/Qt/6.10.1/current/bin:$PATH
+
+# Check the Qt plugins used by the portable GUI before an expensive app build.
+# Report every missing dependency in one pass; optional SQL backends are excluded.
+RUN missing=0; \
+    for plugin in "$QT_ROOT"/plugins/platforms/*.so \
+                  "$QT_ROOT"/plugins/imageformats/*.so \
+                  "$QT_ROOT"/plugins/iconengines/*.so \
+                  "$QT_ROOT"/plugins/xcbglintegrations/*.so \
+                  "$QT_ROOT"/plugins/sqldrivers/libqsqlite.so; do \
+        [ -f "$plugin" ] || continue; \
+        echo "Checking Qt plugin dependencies: $plugin"; \
+        deps=$(ldd "$plugin") || exit 1; \
+        if printf '%s\n' "$deps" | grep 'not found'; then missing=1; fi; \
+    done; \
+    test "$missing" -eq 0
