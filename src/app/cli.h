@@ -334,6 +334,10 @@ private:
             "selector]\n"
             "  cancel_analysis_job --job-id <id> [tab selector]\n"
             "  release_analysis_job --job-id <id> [tab selector]\n"
+        "  show_regex_lab [--window-index <index> | tab selector]\n"
+        "  get_regex_lab [--window-index <index> | tab selector]\n"
+        "  set_regex_lab [--analysis-json <json> | --json-file <draft.json>] [tab selector]\n"
+        "  apply_regex_lab_pattern [--window-index <index> | tab selector]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
@@ -1749,7 +1753,8 @@ private:
         const bool hasWindowIndex = parser.isSet( windowIndexOption );
         const bool hasTabIndex = parser.isSet( tabIndexOption );
         const auto validateTabSelector
-            = [ & ]( const QString& actionName, bool selectorRequired ) -> bool {
+            = [ & ]( const QString& actionName, bool selectorRequired,
+                     bool allowWindowOnly = false ) -> bool {
             if ( hasTabId && ( hasWindowIndex || hasTabIndex ) ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral(
@@ -1757,7 +1762,8 @@ private:
                                 .arg( actionName ) );
                 return false;
             }
-            if ( hasWindowIndex != hasTabIndex ) {
+            if ( ( hasTabIndex && !hasWindowIndex )
+                 || ( hasWindowIndex && !hasTabIndex && !allowWindowOnly ) ) {
                 result.output_message = formatParserError(
                     parser,
                     QStringLiteral( "--window-index and --tab-index must be used together for %1." )
@@ -1787,21 +1793,22 @@ private:
                         parser, QStringLiteral( "Invalid --window-index value." ) );
                     return false;
                 }
-                if ( !tabOk || parsedTabIndex < 0 ) {
+                if ( hasTabIndex && ( !tabOk || parsedTabIndex < 0 ) ) {
                     result.output_message = formatParserError(
                         parser, QStringLiteral( "Invalid --tab-index value." ) );
                     return false;
                 }
 
                 request.windowIndex = parsedWindowIndex;
-                request.tabIndex = parsedTabIndex;
+                if ( hasTabIndex ) request.tabIndex = parsedTabIndex;
             }
 
             return true;
         };
 
         switch ( *action ) {
-        case CommanderAction::RegexEvaluate: {
+        case CommanderAction::RegexEvaluate:
+        case CommanderAction::SetRegexLab: {
             if ( parser.isSet( "analysis-json" ) == parser.isSet( jsonFileOption ) ) {
                 result.output_message = formatParserError( parser, "Provide exactly one of --analysis-json or --json-file." );
                 return result;
@@ -1829,8 +1836,11 @@ private:
                 result.output_message = formatParserError( parser, "Analysis JSON must be an object of at most 16 MiB." );
                 return result;
             }
-            request.analysisArguments = document.object().toVariantMap();
-            if ( !validateTabSelector( "regex_evaluate", false ) ) return result;
+            if ( *action == CommanderAction::SetRegexLab )
+                request.definitionPayload = document.object().toVariantMap();
+            else
+                request.analysisArguments = document.object().toVariantMap();
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;
             break;
         }
         case CommanderAction::GetAnalysisJob:
@@ -1855,9 +1865,14 @@ private:
                     request.analysisArguments[ "pageSize" ] = count;
                 }
             }
-            if ( !validateTabSelector( commanderActionToString( *action ), false ) ) return result;
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;
             break;
         }
+        case CommanderAction::ShowRegexLab:
+        case CommanderAction::GetRegexLab:
+        case CommanderAction::ApplyRegexLabPattern:
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;
+            break;
         case CommanderAction::GetPlugins:
         case CommanderAction::PluginManage:
         case CommanderAction::InvokePlugin:

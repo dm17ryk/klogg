@@ -30,6 +30,7 @@
 #include <persistentinfo.h>
 
 #include <logger.h>
+#include "captureevaluator.h"
 
 const bool PersistentInfo::ForcePortable = true;
 
@@ -69,6 +70,8 @@ class TestRunner : public QObject {
 
 int main( int argc, char* argv[] )
 {
+    if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-analysis-worker" )
+        return runAnalysisWorker( argc, argv );
     QApplication a( argc, argv );
 
     logging::enableLogging();

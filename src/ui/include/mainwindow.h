@@ -67,6 +67,7 @@
 #include "signalmux.h"
 #include "tabbedcrawlerwidget.h"
 #include "tabbedscratchpad.h"
+class RegexLabDock;
 
 class QAction;
 class QActionGroup;
@@ -166,6 +167,7 @@ class MainWindow : public QMainWindow {
     void showScriptRunner();
     void showScenarioRunner();
     void showLabQueue();
+    void showRegexLabForSelection();
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
@@ -246,6 +248,8 @@ class MainWindow : public QMainWindow {
     };
 
     void createActions();
+    void createRegexLab();
+    CommanderResult commanderRegexLab( const CommanderRequest& request );
     void loadIcons();
     void createMenus();
     void createConfigurationActions();
@@ -418,6 +422,8 @@ class MainWindow : public QMainWindow {
     QAction* showScriptRunnerAction;
     QAction* showScenarioRunnerAction;
     QAction* showLabQueueAction;
+    QAction* showRegexLabAction;
+    RegexLabDock* regexLabDock_ = nullptr;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;

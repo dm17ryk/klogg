@@ -5,6 +5,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisjob_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisregex_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysiscommands_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/regexlabdock_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logfiltereddata_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/filewatcher_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/crawlerwidget_test.cpp
@@ -15,10 +16,12 @@ set(UI_TEST_SOURCES
 )
 
 if(NOT APPLE)
-    LIST(APPEND UI_TEST_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/mainwindow_test.cpp)
+    LIST(APPEND UI_TEST_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/mainwindow_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/regexlabwindow_test.cpp)
 endif()
 
-add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE})
+add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}
+    ${PROJECT_SOURCE_DIR}/src/app/klogg.qrc)
 add_executable(analysis_worker_fixture ../analysis_worker_fixture.cpp)
 target_link_libraries(analysis_worker_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_compile_definitions(cilogg_itests PRIVATE
@@ -30,6 +33,7 @@ target_link_libraries(cilogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_M
 set_target_properties(
     cilogg_itests
     PROPERTIES AUTOMOC ON
+               AUTORCC ON
                OUTPUT_NAME "${PRODUCT_UI_TEST_EXECUTABLE_NAME}"
 )
 

@@ -44,6 +44,28 @@ TEST_CASE( "Analysis commands preserve JSON options through CLI and IPC", "[comm
     CHECK( CliParameters( { "cilogg", "command", "--action", "get_analysis_results", "--job-id", "job", "--page-size", "1.5" } ).parse_error );
 }
 
+TEST_CASE( "Regex Lab commands support window selectors and round trip definitions", "[commander][regexlab]" )
+{
+    for ( const auto& name : { "show_regex_lab", "get_regex_lab", "set_regex_lab",
+                               "apply_regex_lab_pattern" } ) {
+        QStringList argv{ "cilogg", "command", "--action", name, "--window-index", "0" };
+        if ( QString( name ) == "set_regex_lab" )
+            argv << "--analysis-json" << R"json({"pattern":"(?<v>.+)","scope":"text","text":"sample"})json";
+        CliParameters command( argv );
+        REQUIRE_FALSE( command.parse_error );
+        REQUIRE( command.commander_request );
+        const auto request = *command.commander_request;
+        CHECK( request.windowIndex == 0 );
+        CHECK_FALSE( request.tabIndex );
+        const auto restored = commanderRequestFromVariantMap( commanderRequestToVariantMap( request ) );
+        REQUIRE( restored );
+        CHECK( commanderActionToString( restored->action ) == name );
+        CHECK( restored->definitionPayload == request.definitionPayload );
+    }
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_regex_lab", "--tab-index", "0" } ).parse_error );
+    CHECK_FALSE( CliParameters( { "cilogg", "command", "--action", "get_analysis_job", "--job-id", "id", "--window-index", "0" } ).parse_error );
+}
+
 TEST_CASE( "Commander waits for readable responses without resending", "[commander][transport]" )
 {
     QTemporaryDir directory;

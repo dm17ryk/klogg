@@ -184,6 +184,10 @@ QString commanderActionToString( CommanderAction action )
     case CommanderAction::GetAnalysisResults: return QStringLiteral( "get_analysis_results" );
     case CommanderAction::CancelAnalysisJob: return QStringLiteral( "cancel_analysis_job" );
     case CommanderAction::ReleaseAnalysisJob: return QStringLiteral( "release_analysis_job" );
+    case CommanderAction::ShowRegexLab: return QStringLiteral( "show_regex_lab" );
+    case CommanderAction::GetRegexLab: return QStringLiteral( "get_regex_lab" );
+    case CommanderAction::SetRegexLab: return QStringLiteral( "set_regex_lab" );
+    case CommanderAction::ApplyRegexLabPattern: return QStringLiteral( "apply_regex_lab_pattern" );
     case CommanderAction::None:
     default:
         return {};
@@ -192,6 +196,11 @@ QString commanderActionToString( CommanderAction action )
 
 std::optional<CommanderAction> commanderActionFromString( const QString& action )
 {
+    const auto lab = action.trimmed().toLower();
+    if ( lab == "show_regex_lab" ) return CommanderAction::ShowRegexLab;
+    if ( lab == "get_regex_lab" ) return CommanderAction::GetRegexLab;
+    if ( lab == "set_regex_lab" ) return CommanderAction::SetRegexLab;
+    if ( lab == "apply_regex_lab_pattern" ) return CommanderAction::ApplyRegexLabPattern;
     const auto normalized = action.trimmed().toLower();
     if ( normalized == "regex_evaluate" ) return CommanderAction::RegexEvaluate;
     if ( normalized == "get_analysis_job" ) return CommanderAction::GetAnalysisJob;
@@ -442,7 +451,9 @@ bool isCommanderAnalysisAction( CommanderAction action )
 {
     return action == CommanderAction::RegexEvaluate || action == CommanderAction::GetAnalysisJob
         || action == CommanderAction::GetAnalysisResults || action == CommanderAction::CancelAnalysisJob
-        || action == CommanderAction::ReleaseAnalysisJob;
+        || action == CommanderAction::ReleaseAnalysisJob
+        || action == CommanderAction::ShowRegexLab || action == CommanderAction::GetRegexLab
+        || action == CommanderAction::SetRegexLab || action == CommanderAction::ApplyRegexLabPattern;
 }
 
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
