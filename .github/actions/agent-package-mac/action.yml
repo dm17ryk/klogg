@@ -72,7 +72,6 @@ runs:
     - name: Mac pack dmg
       shell: sh
       run: |
-        python3 -m unittest discover -s "$CILOGG_WORKSPACE/tests/packaging" -p test_macos_dmg.py
         cd "$CILOGG_BUILD_ROOT"
         python3 "$CILOGG_WORKSPACE/scripts/package_macos_dmg.py" --version "$CILOGG_VERSION"
 

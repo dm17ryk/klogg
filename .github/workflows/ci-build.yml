@@ -330,6 +330,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Check macOS DMG packaging
+        run: python3 -m unittest discover -s tests/packaging -p test_macos_dmg.py
+
       - name: Setup Xcode
         shell: sh
         run: |

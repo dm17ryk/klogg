@@ -157,7 +157,7 @@ class NativeDmgTests(unittest.TestCase):
 
             try:
                 real_run(["hdiutil", "create", "-size", "16m", "-fs", "HFS+",
-                          "-volname", "CILogg", "-format", "UDRW", str(stale_image)])
+                          "-volname", "CILogg", str(stale_image)])
                 real_run(["hdiutil", "attach", "-nobrowse", "-mountpoint",
                           str(stale_mount), str(stale_image)])
                 with patch.object(dmg, "_run", fail_cpack):
