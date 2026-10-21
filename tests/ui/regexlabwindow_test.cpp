@@ -9,6 +9,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QFile>
+#include <QJsonDocument>
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPixmap>
@@ -101,6 +102,10 @@ TEST_CASE(
     REQUIRE( crawler );
     REQUIRE( QTest::qWaitFor(
         [ & ] {
+            // Index publication precedes the queued viewer completion callback, which
+            // applies the detected encoding and may advance the source generation.
+            if ( crawler->isLoadingInProgress() )
+                return false;
             QString error;
             const auto request = crawler->analysisRequest( "whole_file", &error );
             return request && request->snapshot.lineCount.get() == 3;
@@ -125,8 +130,15 @@ TEST_CASE(
     REQUIRE( window.executeCommanderRequest( open ).ok() );
     auto* tabs = window.findChild<TabbedCrawlerWidget*>();
     REQUIRE( tabs->currentIndex() == 1 );
+    auto* otherCrawler = qobject_cast<CrawlerWidget*>( tabs->currentWidget() );
+    REQUIRE( otherCrawler );
+    REQUIRE( QTest::qWaitFor( [ & ] { return !otherCrawler->isLoadingInProgress(); }, 10000 ) );
     run->click();
     const auto result = finished( window );
+    INFO( "Regex Lab job: "
+          << QJsonDocument::fromVariant( result.value( "job" ) )
+                 .toJson( QJsonDocument::Compact )
+                 .toStdString() );
     REQUIRE( result.value( "job" ).toMap().value( "complete" ).toBool() );
     CHECK( result.value( "page" ).toMap().value( "rows" ).toInt() == 3 );
     const auto tabId = window.findChild<TabbedCrawlerWidget*>()->tabIdAt( 0 );
