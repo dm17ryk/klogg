@@ -1547,11 +1547,15 @@ TEST_CASE( "Per-tab automatic responses share Commander state without changing A
 {
     ActionsDefinitionsRestoreGuard restoreDefinitions;
     ActionsTabsFixture fixture;
-    fixture.enable( 0, true );
-    fixture.enable( 1, true );
-    fixture.select( 0 );
     CommanderRequest request;
     request.action = CommanderAction::SetAutoResponsesEnabled;
+    request.enabled = true;
+    for ( int index = 0; index < 2; ++index ) {
+        request.tabId = fixture.tabIds.at( index );
+        REQUIRE( fixture.window.executeCommanderRequest( request ).ok() );
+    }
+    fixture.select( 0 );
+    request.enabled.reset();
     request.tabId = fixture.tabIds.at( 0 );
     REQUIRE( fixture.window.executeCommanderRequest( request ).code
              == CommanderResultCode::InvalidRequest );
@@ -1589,7 +1593,7 @@ TEST_CASE( "Per-tab automatic responses share Commander state without changing A
         REQUIRE( settings.has_value() );
         const auto index = fixture.paths.indexOf( settings->filePath );
         REQUIRE( index >= 0 );
-        REQUIRE( settings->autoResponsesEnabled == ( index != 0 ) );
+        REQUIRE( settings->autoResponsesEnabled == ( index == 1 ) );
     }
     request.tabId = "missing-auto-responses-tab";
     REQUIRE( fixture.window.executeCommanderRequest( request ).code
@@ -1597,12 +1601,66 @@ TEST_CASE( "Per-tab automatic responses share Commander state without changing A
     REQUIRE_FALSE( fixture.streams[ 0 ]->autoResponsesEnabled() );
 }
 
+TEST_CASE( "Actions and response menus share the coupled Commander state",
+           "[ui][commander][actions][auto-responses]" )
+{
+    ActionsTabsFixture fixture;
+    for ( int index = 0; index < 3; ++index ) {
+        REQUIRE_FALSE( fixture.comState( index ).value( "actionsEnabled" ).toBool() );
+        REQUIRE_FALSE( fixture.comState( index ).value( "autoResponsesEnabled" ).toBool() );
+    }
+    fixture.enable( 0, true );
+    REQUIRE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.combo->count() == 1 );
+    auto* fileMenu = fixture.window.findChild<QMenu*>( "fileMenu" );
+    REQUIRE( fileMenu );
+    const auto toggle = [&]( const QString& name ) {
+        REQUIRE( QMetaObject::invokeMethod( fileMenu, "aboutToShow", Qt::DirectConnection ) );
+        auto* menu = fixture.window.findChild<QMenu*>( "comPortsMenu" );
+        REQUIRE( menu );
+        QAction* action = nullptr;
+        // clear() removes displayed entries; old submenu QObjects may still be owned.
+        // Follow the current menu entries so repeated toggles use the visible state.
+        for ( auto* entry : menu->actions() ) {
+            if ( auto* portMenu = entry->menu() ) {
+                for ( auto* candidate : portMenu->actions() ) {
+                    if ( candidate->objectName() == name.arg( fixture.tabIds.at( 0 ) ) )
+                        action = candidate;
+                }
+            }
+        }
+        REQUIRE( action );
+        REQUIRE( action->isEnabled() );
+        action->trigger();
+    };
+    toggle( "comPortAutoResponsesEnabledAction_%1" );
+    REQUIRE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    toggle( "comPortActionsEnabledAction_%1" );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.combo->count() == 0 );
+    toggle( "comPortAutoResponsesEnabledAction_%1" );
+    REQUIRE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.combo->count() == 1 );
+    toggle( "comPortAutoResponsesEnabledAction_%1" );
+    REQUIRE( fixture.comState( 0 ).value( "actionsEnabled" ).toBool() );
+    REQUIRE_FALSE( fixture.comState( 0 ).value( "autoResponsesEnabled" ).toBool() );
+    REQUIRE( fixture.combo->count() == 1 );
+}
+
 TEST_CASE( "Automatic responses menus retain source identity after tab moves and replacement",
            "[ui][commander][actions][auto-responses]" )
 {
     ActionsTabsFixture fixture;
-    fixture.enable( 0, true );
-    fixture.enable( 1, true );
+    for ( int index = 0; index < 2; ++index ) {
+        CommanderRequest request;
+        request.action = CommanderAction::SetAutoResponsesEnabled;
+        request.tabId = fixture.tabIds.at( index );
+        request.enabled = true;
+        REQUIRE( fixture.window.executeCommanderRequest( request ).ok() );
+    }
     fixture.select( 1 );
     auto* fileMenu = fixture.window.findChild<QMenu*>( "fileMenu" );
     REQUIRE( fileMenu );
@@ -1631,7 +1689,8 @@ TEST_CASE( "Automatic responses menus retain source identity after tab moves and
     StreamSessionTestAccess::openConnection( *replacement );
     fixture.tabs->setStreamSessionForPath( fixture.paths.at( 2 ), replacement );
     staleToggle->trigger();
-    REQUIRE( replacement->autoResponsesEnabled() );
+    REQUIRE_FALSE( replacement->autoResponsesEnabled() );
+    REQUIRE_FALSE( replacement->actionsEnabled() );
     fixture.tabs->setStreamSessionForPath( fixture.paths.at( 2 ), fixture.streams[ 2 ] );
 
     QSignalSpy requests( fixture.tabs, &TabbedCrawlerWidget::autoResponsesEnabledChangeRequested );

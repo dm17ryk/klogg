@@ -250,6 +250,7 @@ Q_SIGNALS:
     void sendSelectionToScratchpad();
     void replaceScratchpadWithSelection();
     void sendSelectionToPreview( const QString& previewNameOrAuto );
+    void analyzeSelectionRequested();
     void changeFontSize( bool increase );
 
     void addColorLabel( size_t label );

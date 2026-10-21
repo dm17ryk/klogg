@@ -388,7 +388,8 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
         actionsEnabled->setCheckable( true );
         actionsEnabled->setChecked( tabMetadataValue( tab, ActionsPortKey ).toBool() );
         actionsEnabled->setEnabled( !tabId.isEmpty() );
-        actionsEnabled->setToolTip( tr( "Enable actions and automatic responses for this tab." ) );
+        actionsEnabled->setToolTip( tr(
+            "Enable Actions for this tab. Disabling Actions also disables automatic responses." ) );
         LOG_DEBUG << "Created tab Actions toggle: tab_id=" << tabId
                   << " enabled=" << actionsEnabled->isChecked()
                   << " available=" << actionsEnabled->isEnabled();
@@ -410,8 +411,9 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
         autoResponses->setCheckable( true );
         autoResponses->setChecked( session->autoResponsesEnabled() );
         autoResponses->setEnabled( !tabId.isEmpty() );
-        autoResponses->setToolTip( tr(
-            "Allow automatic replies when Actions and global automatic responses are enabled." ) );
+        autoResponses->setToolTip(
+            tr( "Enable automatic responses and Actions for this tab. "
+                "The global response switch still applies." ) );
         LOG_DEBUG << "Created tab automatic responses toggle: tab_id=" << tabId
                   << " enabled=" << autoResponses->isChecked()
                   << " available=" << autoResponses->isEnabled();

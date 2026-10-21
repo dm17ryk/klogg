@@ -2365,6 +2365,10 @@ void AbstractLogView::createMenu()
              [ this ]( auto ) { Q_EMIT replaceScratchpadWithSelection(); } );
 
     popupMenu_ = new QMenu( this );
+    auto* analyze = popupMenu_->addAction( tr( "Analyze selected rows in Regex Lab" ) );
+    analyze->setObjectName( "analyzeInRegexLabAction" );
+    connect( analyze, &QAction::triggered, this,
+             [ this ] { Q_EMIT analyzeSelectionRequested(); } );
     highlightersMenu_ = new HighlightersMenu( tr( "Highlighters" ), popupMenu_ );
     popupMenu_->addMenu( highlightersMenu_ );
     colorLabelsMenu_ = popupMenu_->addMenu( tr( "Color labels" ) );

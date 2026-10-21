@@ -20,6 +20,12 @@ StreamSession::StreamSession( SerialCaptureSettings settings )
     : QObject( nullptr )
     , settings_( std::move( settings ) )
 {
+    const bool requestedResponses = settings_.autoResponsesEnabled;
+    settings_.autoResponsesEnabled = settings_.useForActions && requestedResponses;
+    LOG_DEBUG << "Created stream Actions state: port=" << settings_.portName
+              << " actions=" << settings_.useForActions
+              << " automatic=" << settings_.autoResponsesEnabled
+              << " normalized=" << ( requestedResponses != settings_.autoResponsesEnabled );
 }
 
 StreamSession::~StreamSession()
@@ -192,19 +198,7 @@ bool StreamSession::actionsEnabled() const
 
 void StreamSession::setActionsEnabled( bool enabled )
 {
-    if ( settings_.useForActions == enabled ) {
-        LOG_DEBUG << "Actions state unchanged for " << settings_.portName.toStdString()
-                  << ": enabled=" << enabled << ", generation=" << actionsGeneration_;
-        return;
-    }
-
-    settings_.useForActions = enabled;
-    ++actionsGeneration_;
-    ++autoResponsesGeneration_;
-    LOG_DEBUG << "Actions state changed for " << settings_.portName.toStdString()
-              << ": enabled=" << enabled << ", generation=" << actionsGeneration_
-              << "; previously scheduled work invalidated";
-    Q_EMIT actionsEnabledChanged( enabled );
+    updateActionState( enabled, enabled && settings_.autoResponsesEnabled, "set_actions_enabled" );
 }
 
 quint64 StreamSession::actionsGeneration() const
@@ -219,18 +213,53 @@ bool StreamSession::autoResponsesEnabled() const
 
 void StreamSession::setAutoResponsesEnabled( bool enabled )
 {
-    if ( settings_.autoResponsesEnabled == enabled ) {
-        LOG_DEBUG << "Automatic responses state unchanged: port=" << settings_.portName
-                  << " enabled=" << enabled << " generation=" << autoResponsesGeneration_;
+    updateActionState( enabled || settings_.useForActions, enabled, "set_auto_responses_enabled" );
+}
+
+void StreamSession::updateActionState( bool actionsEnabled, bool autoResponsesEnabled,
+                                     const char* operation )
+{
+    Q_ASSERT( !autoResponsesEnabled || actionsEnabled );
+    const bool actionsChanged = settings_.useForActions != actionsEnabled;
+    const bool responsesChanged = settings_.autoResponsesEnabled != autoResponsesEnabled;
+    if ( !actionsChanged && !responsesChanged ) {
+        LOG_DEBUG << "Actions state unchanged: operation=" << operation
+                  << " port=" << settings_.portName << " actions=" << actionsEnabled
+                  << " automatic=" << autoResponsesEnabled
+                  << " manual_generation=" << actionsGeneration_
+                  << " automatic_generation=" << autoResponsesGeneration_;
         return;
     }
-    settings_.autoResponsesEnabled = enabled;
+
+    // Publish both flags before callbacks can observe the dependent state.
+    settings_.useForActions = actionsEnabled;
+    settings_.autoResponsesEnabled = autoResponsesEnabled;
+    if ( actionsChanged )
+        ++actionsGeneration_;
     ++autoResponsesGeneration_;
-    LOG_DEBUG << "Automatic responses state changed: port=" << settings_.portName
-              << " enabled=" << enabled << " generation=" << autoResponsesGeneration_
+    const auto notificationGeneration = autoResponsesGeneration_;
+    LOG_DEBUG << "Actions state changed: operation=" << operation
+              << " port=" << settings_.portName << " actions=" << actionsEnabled
+              << " automatic=" << autoResponsesEnabled << " actions_changed=" << actionsChanged
+              << " automatic_changed=" << responsesChanged
               << " manual_generation=" << actionsGeneration_
-              << "; previous automatic work invalidated";
-    Q_EMIT autoResponsesEnabledChanged( enabled );
+              << " automatic_generation=" << autoResponsesGeneration_
+              << "; previous automatic work invalidated; manual work invalidated=" << actionsChanged;
+    QPointer<StreamSession> guard( this );
+    if ( actionsChanged ) {
+        Q_EMIT actionsEnabledChanged( actionsEnabled );
+        if ( !guard )
+            return;
+    }
+    if ( responsesChanged ) {
+        if ( autoResponsesGeneration_ != notificationGeneration ) {
+            LOG_DEBUG << "Automatic responses notification superseded by callback: port="
+                      << settings_.portName << " requested=" << autoResponsesEnabled
+                      << " current=" << settings_.autoResponsesEnabled;
+            return;
+        }
+        Q_EMIT autoResponsesEnabledChanged( autoResponsesEnabled );
+    }
 }
 
 quint64 StreamSession::autoResponsesGeneration() const

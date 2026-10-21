@@ -91,6 +91,7 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
 
         QString id;
         QByteArray geometry;
+        QByteArray dockState;
         std::vector<OpenFile> openFiles;
     };
 
@@ -141,6 +142,18 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
     }
 
     // List of the loaded files
+    QByteArray dockState( const QString& windowId ) const
+    {
+        const auto* window = findWindow( windowId );
+        return window ? window->dockState : QByteArray{};
+    }
+
+    void setDockState( const QString& windowId, const QByteArray& state )
+    {
+        if ( auto* window = findWindow( windowId ) )
+            window->dockState = state;
+    }
+
     std::vector<OpenFile> openFiles( const QString& windowId ) const
     {
         auto window = findWindow( windowId );

@@ -98,6 +98,8 @@ public:
     // True for partial selection
     bool isPartialSelection() const;
     std::optional<AnalysisRequest> analysisRequest( const QString& scope, QString* error ) const;
+    CommanderRequest analysisSearchRequest( const CommanderRequest& draft ) const;
+    bool navigateToAnalysisResult( const SourceLocation& location );
 
     // Display the QFB at the bottom, remembering where the focus was
     void displayQuickFindBar( QuickFindMux::QFDirection direction );
@@ -190,6 +192,7 @@ protected:
 
 Q_SIGNALS:
     void analysisSourceClosing( const LogData* source );
+    void openRegexLabRequested();
     // Sent to signal the client load has progressed,
     // passing the completion percentage.
     void loadingProgressed( int progress );
