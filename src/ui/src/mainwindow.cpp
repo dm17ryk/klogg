@@ -62,6 +62,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include "regexlabdock.h"
+#include "valuecountdock.h"
 #include <QDateTime>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -464,6 +465,7 @@ MainWindow::MainWindow( WindowSession session )
 {
     setObjectName( QStringLiteral( "mainWindow" ) );
     createRegexLab();
+    createValueCounts();
     createActions();
     createMenus();
     createToolBars();
@@ -752,11 +754,21 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
 {
     switch ( request.action ) {
     case CommanderAction::RegexEvaluate:
+    case CommanderAction::ValueCounts:
+    case CommanderAction::GetValueCount:
+    case CommanderAction::ExportValueCounts:
     case CommanderAction::GetAnalysisJob:
     case CommanderAction::GetAnalysisResults:
     case CommanderAction::CancelAnalysisJob:
     case CommanderAction::ReleaseAnalysisJob:
         return commanderAnalysis( request );
+    case CommanderAction::ApplyValueCount:
+    case CommanderAction::OpenValueCount:
+        return commanderValueCountResult( request );
+    case CommanderAction::ShowValueCounts:
+    case CommanderAction::GetValueCounts:
+    case CommanderAction::SetValueCounts:
+        return commanderValueCounts( request );
     case CommanderAction::ShowRegexLab:
     case CommanderAction::GetRegexLab:
     case CommanderAction::SetRegexLab:
@@ -1816,6 +1828,9 @@ void MainWindow::createActions()
 
     showLabQueueAction = new QAction( tr( action::showLabQueueText ), this );
     showRegexLabAction = regexLabDock_->toggleViewAction();
+    showValueCountsAction = valueCountDock_->toggleViewAction();
+    showValueCountsAction->setObjectName( "showValueCountsAction" );
+    showValueCountsAction->setToolTip( tr( "Value Counts: exact capture frequencies and literal filters" ) );
     showRegexLabAction->setObjectName( "showRegexLabAction" );
     showRegexLabAction->setToolTip( tr( "Regex Lab: evaluate patterns and inspect captures" ) );
     showLabQueueAction->setObjectName( QStringLiteral( "showLabQueueAction" ) );
@@ -1941,6 +1956,7 @@ void MainWindow::loadIcons()
     showScenarioRunnerAction->setIcon( QIcon( ":/images/tool-scenario-runner.svg" ) );
     showLabQueueAction->setIcon( QIcon( ":/images/tool-lab-queue.svg" ) );
     showRegexLabAction->setIcon( QIcon( ":/images/tool-regex-lab.svg" ) );
+    showValueCountsAction->setIcon( QIcon( ":/images/tool-value-counts.svg" ) );
     checkForUpdatesAction->setIcon( iconLoader_.load( "icons8-search-refresh" ) );
     LOG_DEBUG << "Tool icons refreshed: responses=" << !showResponsesAction->icon().isNull()
               << ", script=" << !showScriptRunnerAction->icon().isNull()
@@ -2046,6 +2062,7 @@ void MainWindow::createMenus()
     toolsMenu->addAction( showScenarioRunnerAction );
     toolsMenu->addAction( showLabQueueAction );
     toolsMenu->addAction( showRegexLabAction );
+    toolsMenu->addAction( showValueCountsAction );
     toolsMenu->addAction( showScratchPadAction );
 
     menuBar()->addMenu( EncodingMenu::generate( encodingGroup ) );
@@ -2324,6 +2341,7 @@ void MainWindow::createToolBars()
     toolBar->addAction( showScenarioRunnerAction );
     toolBar->addAction( showLabQueueAction );
     toolBar->addAction( showRegexLabAction );
+    toolBar->addAction( showValueCountsAction );
     toolBar->addAction( showScratchPadAction );
     LOG_DEBUG << "Main toolbar includes responses, script runner, scenario runner and lab queue";
 
@@ -3546,7 +3564,8 @@ CommanderResult MainWindow::commanderAnalysis( const CommanderRequest& request )
     if ( !service ) return { CommanderResultCode::ExecutionFailed, "Analysis service unavailable.", { { "reason", "service_unavailable" } } };
     std::optional<AnalysisRequest> source;
     const auto scope = request.analysisArguments.value( "scope", "sample" ).toString();
-    if ( request.action == CommanderAction::RegexEvaluate && scope != "text" ) {
+    if ( ( request.action == CommanderAction::RegexEvaluate
+           || request.action == CommanderAction::ValueCounts ) && scope != "text" ) {
         auto* crawler = commanderTargetCrawler( request );
         if ( !crawler ) return { CommanderResultCode::NotFound, "Requested source was not found.", { { "reason", "source_not_found" } } };
         QString error;

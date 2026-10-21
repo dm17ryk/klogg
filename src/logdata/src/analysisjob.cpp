@@ -5,8 +5,10 @@
 #include "logdata.h"
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QRunnable>
 #include <QTextCodec>
 #include <QThread>
@@ -69,6 +71,7 @@ struct AnalysisJobService::Private {
         qint64 storedBytes = 0;
         qint64 finishedAt = -1;
         QVariantMap metrics;
+        QVariantMap aggregation;
         QVariantMap provenance;
         qint64 createdAt = 0;
         QVariantMap errorDetails;
@@ -107,6 +110,7 @@ struct AnalysisJobService::Private {
     static void run( const std::shared_ptr<Job>& job )
     {
         AnalysisProcessor processor;
+        std::unique_ptr<ValueCountJob> counts;
         std::unique_ptr<QTextDecoder> decoder;
         quint64 nextLine = 0;
         quint64 selected = 0;
@@ -116,6 +120,11 @@ struct AnalysisJobService::Private {
         bool done = false;
         try {
             processor = job->factory ? job->factory() : AnalysisProcessor{};
+            if ( job->request.valueCounts ) {
+                counts = std::make_unique<ValueCountJob>( *job->request.valueCounts,
+                    job->request.limits.resultRecords,
+                    std::min( job->request.limits.pendingBytes, job->request.limits.resultBytes ) );
+            }
             bool initialize = static_cast<bool>( processor );
             if ( ( job->request.scope == "selection" || job->request.scope == "matches" )
                  && job->request.ranges.empty() ) {
@@ -253,7 +262,7 @@ struct AnalysisJobService::Private {
                                       std::max<qint64>( 0, job->deadline.remainingTime() ) ) );
                 batch.jobRemainingMs
                     = static_cast<int>( std::max<qint64>( 0, job->deadline.remainingTime() ) );
-                const auto output = processor ? processor( batch, job->cancelled, remaining )
+                auto output = processor ? processor( batch, job->cancelled, remaining )
                                               : rawOutput( batch );
                 const bool malformedReason = output.error.size() > 64;
                 const bool fatal
@@ -269,6 +278,38 @@ struct AnalysisJobService::Private {
                          || current.generation != job->request.snapshot.generation ) {
                         reason = "stale_source";
                         break;
+                    }
+                }
+                if ( counts && !fatal && !initializing ) {
+                    bool invalid = false;
+                    for ( const auto& row : output.rows ) {
+                        if ( row.userType() != QMetaType::QVariantMap ) {
+                            reason = "invalid_worker_output";
+                            invalid = true;
+                            break;
+                        }
+                        if ( rowBytes( row.toMap() ) > RowBytes ) {
+                            reason = "result_limit";
+                            invalid = true;
+                            break;
+                        }
+                    }
+                    if ( invalid ) {
+                        LOG_DEBUG << "Value count rejected processor rows id=" << job->id
+                                  << " reason=" << reason;
+                        break;
+                    }
+                    const auto countError = counts->consume( output.rows, job->cancelled );
+                    output.rows.clear();
+                    {
+                        std::lock_guard<std::mutex> lock( job->mutex );
+                        job->aggregation = counts->status();
+                    }
+                    if ( !countError.isEmpty() ) {
+                        reason = countError;
+                        done = true;
+                        LOG_DEBUG << "Value count reduction stopped id=" << job->id
+                                  << " reason=" << reason;
                     }
                 }
                 Pending pending;
@@ -347,6 +388,27 @@ struct AnalysisJobService::Private {
                     job->pending.push_back( std::move( pending ) );
                 }
             }
+            if ( counts ) {
+                Pending finalCounts;
+                for ( const auto& row : counts->results() ) {
+                    const auto bytes = rowBytes( row.toMap() );
+                    if ( bytes > RowBytes
+                         || finalCounts.bytes + bytes > job->request.limits.pendingBytes ) {
+                        reason = "result_limit";
+                        LOG_DEBUG << "Value count final delivery limit id=" << job->id
+                                  << " bytes=" << finalCounts.bytes << " nextBytes=" << bytes;
+                        break;
+                    }
+                    finalCounts.rows.push_back( row );
+                    finalCounts.bytes += bytes;
+                }
+                std::lock_guard<std::mutex> lock( job->mutex );
+                job->aggregation = counts->status();
+                if ( !finalCounts.rows.isEmpty() ) {
+                    job->pendingBytes += finalCounts.bytes;
+                    job->pending.push_back( std::move( finalCounts ) );
+                }
+            }
         } catch ( const std::exception& error ) {
             LOG_ERROR << "Analysis worker failed id=" << job->id << " error=" << error.what();
             reason = "worker_failure";
@@ -403,7 +465,15 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
         }
     }
     QString failure;
-    if ( d_->stopping ) {
+    if ( request.valueCounts
+         && !parseValueCountOptions( { { "capture", request.valueCounts->capture },
+                                      { "subpattern", request.valueCounts->subpattern },
+                                      { "caseSensitive", request.valueCounts->caseSensitive },
+                                      { "missing", request.valueCounts->includeMissing ? "include" : "skip" },
+                                      { "maxValues", request.valueCounts->maxValues } } ) ) {
+        failure = "invalid_count_options";
+    }
+    else if ( d_->stopping ) {
         failure = "service_stopping";
     }
     else if ( active >= 10 ) {
@@ -670,6 +740,8 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
         = !snapshot.sourceId.isNull()
           && ( job->sourceClosed || !source || current.generation != snapshot.generation );
     return { { "jobId", id },
+             { "kind", job->request.valueCounts ? "value_counts" : "regex" },
+             { "aggregation", job->aggregation },
              { "state", job->state },
              { "reason", job->reason },
              { "complete", job->complete },
@@ -777,6 +849,98 @@ QVariantMap AnalysisJobService::results( const QString& id, const QString& curso
              { "complete", job->complete },
              { "reason", job->reason } };
 }
+QVariantMap AnalysisJobService::valueCountRecord( const QString& id, int index ) const
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() )
+        return { { "reason", "job_expired" } };
+    const auto& job = found->second;
+    std::lock_guard<std::mutex> lock( job->mutex );
+    if ( !job->request.valueCounts )
+        return { { "reason", "not_value_counts" } };
+    if ( !terminal( job->state ) )
+        return { { "reason", "job_not_finished" } };
+    if ( index < 0 || index >= job->rows.size() )
+        return { { "reason", "invalid_result_index" } };
+    return { { "jobId", id }, { "rowIndex", index }, { "row", job->rows.at( index ) },
+             { "complete", job->complete }, { "reason", job->reason } };
+}
+
+QVariantMap AnalysisJobService::exportValueCounts( const QString& id, const QString& path,
+                                                 bool allowPartial )
+{
+    const auto found = d_->jobs.find( id );
+    if ( found == d_->jobs.end() )
+        return { { "reason", "job_expired" } };
+    const auto& job = found->second;
+    std::lock_guard<std::mutex> lock( job->mutex );
+    if ( !job->request.valueCounts )
+        return { { "reason", "not_value_counts" } };
+    if ( !terminal( job->state ) )
+        return { { "reason", "job_not_finished" } };
+    if ( !job->complete && !allowPartial )
+        return { { "reason", "incomplete_job" } };
+    if ( path.isEmpty() || path.size() > 32768 || path.contains( QChar::Null )
+         || !QFileInfo( path ).isAbsolute() )
+        return { { "reason", "invalid_export_path" } };
+    const auto sourcePath = job->request.sourceDescription.value( "filePath" ).toString();
+    const auto target = QFileInfo( path );
+#ifdef Q_OS_WIN
+    constexpr auto pathCase = Qt::CaseInsensitive;
+#else
+    constexpr auto pathCase = Qt::CaseSensitive;
+#endif
+    if ( !sourcePath.isEmpty()
+         && ( target.absoluteFilePath().compare( QFileInfo( sourcePath ).absoluteFilePath(), pathCase ) == 0
+              || ( !target.canonicalFilePath().isEmpty()
+                   && target.canonicalFilePath().compare( QFileInfo( sourcePath ).canonicalFilePath(), pathCase ) == 0 ) ) )
+        return { { "reason", "source_is_export_target" } };
+    QSaveFile file( path );
+    if ( !file.open( QIODevice::WriteOnly ) ) {
+        LOG_DEBUG << "Value count export open failed id=" << id << " path=" << path
+                  << " error=" << file.errorString();
+        return { { "reason", "io_error" } };
+    }
+    const auto quote = []( QString value ) {
+        value.replace( '"', "\"\"" );
+        return '"' + value + '"';
+    };
+    const QByteArray header = "value,is_missing,count,percentage,denominator,first_line,"
+                              "source_id,generation,complete,reason\r\n";
+    qint64 written = header.size();
+    if ( file.write( header ) != header.size() )
+        return { { "reason", "io_error" } };
+    for ( const auto& value : job->rows ) {
+        const auto row = value.toMap();
+        QStringList fields{ row.value( "value" ).toString(),
+            row.value( "missing" ).toBool() ? "true" : "false",
+            row.value( "count" ).toString(),
+            QString::number( row.value( "percentage" ).toDouble(), 'g', 17 ),
+            row.value( "denominator" ).toString(), row.value( "lineNumber" ).toString(),
+            job->provenance.value( "sourceId" ).toString(),
+            job->provenance.value( "generation" ).toString(),
+            job->complete ? "true" : "false", job->reason };
+        for ( auto& field : fields )
+            field = quote( field );
+        const auto bytes = ( fields.join( ',' ) + "\r\n" ).toUtf8();
+        if ( bytes.size() > 16 * 1024 * 1024 - written )
+            return { { "reason", "export_limit" } };
+        if ( file.write( bytes ) != bytes.size() )
+            return { { "reason", "io_error" } };
+        written += bytes.size();
+    }
+    if ( !file.commit() ) {
+        LOG_DEBUG << "Value count export commit failed id=" << id << " path=" << path
+                  << " error=" << file.errorString();
+        return { { "reason", "io_error" } };
+    }
+    LOG_DEBUG << "Value count CSV exported id=" << id << " path=" << path
+              << " rows=" << job->rows.size() << " bytes=" << written
+              << " complete=" << job->complete << " reason=" << job->reason;
+    return { { "jobId", id }, { "filePath", path }, { "exportedRows", job->rows.size() },
+             { "bytes", written }, { "complete", job->complete }, { "reason", job->reason } };
+}
+
 bool AnalysisJobService::cancel( const QString& id )
 {
     const auto found = d_->jobs.find( id );

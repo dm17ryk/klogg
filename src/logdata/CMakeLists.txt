@@ -18,6 +18,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisjob.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisregex.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysiscommands.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountjob.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/valuecountjob.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogdata.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/compressedlinestorage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/encodingdetector.cpp

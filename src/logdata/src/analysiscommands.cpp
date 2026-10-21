@@ -113,9 +113,11 @@ AnalysisCommandResult executeAnalysisOperation( AnalysisJobService& service,
                                                 std::optional<AnalysisRequest> source,
                                                 QString workerExecutable )
 {
-    if ( operation == "regex_evaluate" ) {
-        if ( !onlyKeys( arguments,
-                        { "pattern", "options", "scope", "text", "requestRevision", "limits" } )
+    if ( operation == "regex_evaluate" || operation == "value_counts" ) {
+        auto keys = std::set<QString>{ "pattern", "options", "scope", "text", "requestRevision", "limits" };
+        if ( operation == "value_counts" )
+            keys.insert( "counts" );
+        if ( !onlyKeys( arguments, keys )
              || arguments.value( "pattern" ).userType() != QMetaType::QString
              || ( arguments.contains( "options" )
                   && arguments.value( "options" ).userType() != QMetaType::QVariantMap )
@@ -147,6 +149,14 @@ AnalysisCommandResult executeAnalysisOperation( AnalysisJobService& service,
             request = std::move( *source );
         }
         request.scope = scope;
+        if ( operation == "value_counts" ) {
+            if ( arguments.contains( "counts" )
+                 && arguments.value( "counts" ).userType() != QMetaType::QVariantMap )
+                return failure( "invalid_count_options" );
+            request.valueCounts = parseValueCountOptions( arguments.value( "counts" ).toMap() );
+            if ( !request.valueCounts )
+                return failure( "invalid_count_options" );
+        }
         if ( arguments.contains( "requestRevision" ) ) {
             const auto revision = arguments.value( "requestRevision" ).toString();
             bool valid = false;
@@ -200,6 +210,35 @@ AnalysisCommandResult executeAnalysisOperation( AnalysisJobService& service,
             makeRegexProcessor( std::move( options ), std::move( workerExecutable ) ), &error );
         return id.isEmpty() ? failure( error )
                             : AnalysisCommandResult{ true, service.status( id ) };
+    }
+    if ( operation == "get_value_count" || operation == "export_value_counts" ) {
+        const bool exporting = operation == "export_value_counts";
+        if ( !onlyKeys( arguments, exporting
+                ? std::set<QString>{ "jobId", "filePath", "allowPartial" }
+                : std::set<QString>{ "jobId", "rowIndex" } )
+             || arguments.value( "jobId" ).userType() != QMetaType::QString
+             || arguments.value( "jobId" ).toString().isEmpty()
+             || arguments.value( "jobId" ).toString().size() > 128 )
+            return failure( "invalid_request" );
+        QVariantMap result;
+        if ( exporting ) {
+            if ( arguments.value( "filePath" ).userType() != QMetaType::QString
+                 || ( arguments.contains( "allowPartial" )
+                      && arguments.value( "allowPartial" ).userType() != QMetaType::Bool ) )
+                return failure( "invalid_request" );
+            result = service.exportValueCounts( arguments.value( "jobId" ).toString(),
+                arguments.value( "filePath" ).toString(),
+                arguments.value( "allowPartial" ).toBool() );
+        }
+        else {
+            qint64 index = -1;
+            if ( !integer( arguments.value( "rowIndex" ), index )
+                 || index < 0 || index > std::numeric_limits<int>::max() )
+                return failure( "invalid_result_index" );
+            result = service.valueCountRecord( arguments.value( "jobId" ).toString(),
+                                                static_cast<int>( index ) );
+        }
+        return { result.contains( "jobId" ), std::move( result ) };
     }
     if ( operation != "get_analysis_job" && operation != "get_analysis_results"
          && operation != "cancel_analysis_job" && operation != "release_analysis_job" ) {

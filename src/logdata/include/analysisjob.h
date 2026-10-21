@@ -3,6 +3,7 @@
 #ifndef CILOGG_ANALYSISJOB_H
 #define CILOGG_ANALYSISJOB_H
 #include "sourcelocation.h"
+#include "valuecountjob.h"
 #include <QByteArray>
 #include <QObject>
 #include <QString>
@@ -42,6 +43,7 @@ struct AnalysisRequest {
     bool scopeLimited = false;
     quint64 requestRevision = 0;
     AnalysisLimits limits;
+    std::optional<ValueCountOptions> valueCounts;
 };
 struct AnalysisLine {
     quint64 line = 0;
@@ -75,6 +77,8 @@ public:
                    QString* error = nullptr );
     QVariantMap status( const QString& id ) const;
     QVariantMap results( const QString& id, const QString& cursor = {}, int count = 200 );
+    QVariantMap valueCountRecord( const QString& id, int index ) const;
+    QVariantMap exportValueCounts( const QString& id, const QString& path, bool allowPartial );
     bool cancel( const QString& id );
     bool release( const QString& id );
     void cancelSource( const LogData* source );
