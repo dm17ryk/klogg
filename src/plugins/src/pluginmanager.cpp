@@ -28,7 +28,7 @@ QString platformName()
 {
 #ifdef Q_OS_WIN
     return "windows";
-#elif defined( Q_OS_MAC )
+#elif defined( Q_OS_MACOS )
     return "macos";
 #else
     return "linux";

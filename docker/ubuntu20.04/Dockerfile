@@ -13,7 +13,7 @@ RUN rm -rf /var/lib/apt/lists/* && \
         build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
         libglib2.0-dev \
-        libdbus-1-dev \
+        libdbus-1-dev libgtk-3-dev libwayland-egl1 libwayland-cursor0 \
         libfbclient2 \
         libtiff5 \
         libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \

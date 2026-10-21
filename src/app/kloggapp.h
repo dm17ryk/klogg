@@ -54,7 +54,7 @@
 #include <QUrl>
 #include <QUuid>
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 #include <QFileOpenEvent>
 #endif
 
@@ -1078,7 +1078,7 @@ class KloggApp : public QApplication {
         fallbackWindow->show();
     }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     bool event( QEvent* event ) override
     {
         if ( event->type() == QEvent::FileOpen ) {

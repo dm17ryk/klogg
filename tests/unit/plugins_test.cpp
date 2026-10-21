@@ -560,7 +560,7 @@ TEST_CASE( "Catalog selects platform, verifies checksums and preserves old insta
     PluginManager manager( root, QDir( temp.path() ).filePath( "empty" ), nullptr, &network );
 #ifdef Q_OS_WIN
     const auto os = "windows";
-#elif defined( Q_OS_MAC )
+#elif defined( Q_OS_MACOS )
     const auto os = "macos";
 #else
     const auto os = "linux";
@@ -941,7 +941,7 @@ TEST_CASE( "Catalog requests supersede older results and select exact package ve
         network.responses[ url ] = bytes;
 #ifdef Q_OS_WIN
         const auto os = "windows";
-#elif defined( Q_OS_MAC )
+#elif defined( Q_OS_MACOS )
         const auto os = "macos";
 #else
         const auto os = "linux";

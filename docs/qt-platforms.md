@@ -1,7 +1,8 @@
 # Qt versions and desktop compatibility
 
-The CI matrix upgrades only configurations listed in Qt 6.12's supported-platform
-table. Ubuntu 26.04 remains deferred.
+The CI matrix targets configurations listed in Qt 6.12's supported-platform
+table. RHEL-compatible packages use AlmaLinux for public CI. Ubuntu 26.04 remains
+deferred.
 
 | Target | Qt | Minimum / compatibility choice |
 | --- | --- | --- |
@@ -9,7 +10,7 @@ table. Ubuntu 26.04 remains deferred.
 | Ubuntu 22.04 x64 DEB | 6.12.0 | Jammy, GCC 11 |
 | Ubuntu 24.04 x64 and ARM64 DEB | 6.12.0 | Noble, GCC 13 |
 | Debian 12 x64 DEB | 6.12.0 | Bookworm, GCC 12 |
-| RHEL 9.6 / 10.0 x64 RPM | 6.12.0 | Red Hat UBI 9.6 / 10.0, GCC 11 / 14, Qt-only search backend |
+| RHEL-compatible 9.6 / 10.0 x64 RPM | 6.12.0 | AlmaLinux 9.6 / 10.0, GCC 11 / 14, Qt-only search backend |
 | openSUSE Leap 16.0 x64 RPM | 6.12.0 | GCC 15; manual package installation |
 | AppImage x64 / ARM64 | 6.12.0 | Existing Jammy / Noble build baselines |
 | Modern macOS Intel and Apple Silicon | 6.12.0 | macOS 14.4+, built on macOS 26 with Xcode 16+ |
@@ -21,8 +22,14 @@ Ubuntu 24.04 minimum. ARM desktop support is qualified against Qt's Raspberry
 Pi 5 reference hardware. Adding other supported Linux distributions is separate
 work; platform support alone does not guarantee matching distribution packages.
 Debian ARM64 is not added: the vendor SDK's glibc 2.39 requirement exceeds
-Debian 12's glibc 2.36. Supporting it requires a Qt source build. RHEL packages
-use public UBI repositories without subscription credentials. openSUSE packages
+Debian 12's glibc 2.36. Supporting it requires a Qt source build. RHEL-compatible
+packages use AlmaLinux's public BaseOS, AppStream and CRB repositories without
+subscription credentials. They are built and clean-install tested on AlmaLinux,
+not native RHEL, and do not imply Qt vendor certification for AlmaLinux or Rocky
+Linux. RPM filenames end in `-rhel9-compatible.rpm` or `-rhel10-compatible.rpm`;
+the updater maps them to the exact RHEL 9.6 / 10.0 versions. Installation on
+AlmaLinux or Rocky Linux is manual because updater distro aliases are not added.
+openSUSE packages
 require manual installation because the current updater implements `dnf`, not
 `zypper`; its unsupported-distribution guard remains in effect.
 
@@ -36,7 +43,8 @@ their normal names. The private `qt.conf` and relative RPATH avoid changing
 other applications' Qt discovery or depending on a build-machine `/opt/Qt` path.
 
 Each upgraded DEB job installs the actual package and its system dependencies in
-a clean matching Ubuntu container and runs `cilogg --help` offscreen. Release
+a clean matching distribution container and runs `cilogg --help` offscreen. New
+RHEL-compatible RPMs receive the same check in clean AlmaLinux containers. Release
 validation accepts both the older layout and command symlinks, and rejects a
 resolved executable outside the extracted package. CTest and AppImage runtime
 checks remain part of their respective build jobs. Qt version, compiler, CMake,
@@ -61,4 +69,5 @@ a separately deployed compatibility-aware updater contract.
 
 References: [Qt 6.12 supported platforms](https://doc.qt.io/qt-6.12/supported-platforms.html),
 [Qt Linux deployment](https://doc.qt.io/qt-6.12/linux-deployment.html),
+[AlmaLinux repositories](https://wiki.almalinux.org/repos/AlmaLinux.html),
 [GitHub runner images](https://github.com/actions/runner-images).

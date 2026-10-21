@@ -16,6 +16,7 @@ class ManifestTests(unittest.TestCase):
             "focal.deb": "focal", "jammy.deb": "jammy", "noble.deb": "noble",
             "debian12.deb": "bookworm", "fedora42.rpm": "fedora42",
             "rhel9.rpm": "rhel9.6", "rhel10.rpm": "rhel10.0",
+            "rhel9-compatible.rpm": "rhel9.6", "rhel10-compatible.rpm": "rhel10.0",
             "opensuse16.rpm": "opensuse-leap16.0",
         }
         with tempfile.TemporaryDirectory() as temporary:

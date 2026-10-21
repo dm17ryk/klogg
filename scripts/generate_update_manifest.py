@@ -48,7 +48,7 @@ def classify(path: Path) -> dict[str, object] | None:
         native_variants = {"rhel9": "rhel9.6", "rhel10": "rhel10.0",
                            "opensuse16": "opensuse-leap16.0"}
         for suffix, distro_variant in native_variants.items():
-            if lower.endswith(f"-{suffix}.rpm"):
+            if lower.endswith((f"-{suffix}.rpm", f"-{suffix}-compatible.rpm")):
                 variant = distro_variant
                 break
         result = {"platform": "linux", "architecture": architecture,
