@@ -20,18 +20,18 @@ permissions:
 
 jobs:
   validate-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
       if: ${{ !github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v2
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         workflow_conclusion: success
     - name: Download artifacts for CI workflow with provided run id
       if: ${{ github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v6
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
@@ -45,20 +45,20 @@ jobs:
   validate-windows:
     runs-on: windows-2022
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
       if: ${{ !github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v2
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         workflow_conclusion: success
     - name: Download artifacts for CI workflow with provided run id
       if: ${{ github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v6
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.12'
     - name: Validate Windows artifacts
@@ -68,16 +68,16 @@ jobs:
   validate-macos:
     runs-on: macos-14
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
       if: ${{ !github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v2
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         workflow_conclusion: success
     - name: Download artifacts for CI workflow with provided run id
       if: ${{ github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v6
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
@@ -89,23 +89,23 @@ jobs:
       - validate-linux
       - validate-windows
       - validate-macos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
       CILOGG_GITHUB_TOKEN: ${{ secrets.CILOGG_GITHUB_TOKEN || github.token }}
       DISCORD_NEW_VERSIONS_WEBHOOK: ${{ secrets.DISCORD_NEW_VERSIONS_WEBHOOK }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
       if: ${{ !github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v2
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         workflow_conclusion: success
 
     - name: Download artifacts for CI workflow with provided run id
       if: ${{ github.event.inputs.ci-run-id }}
-      uses: dawidd6/action-download-artifact@v6
+      uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
