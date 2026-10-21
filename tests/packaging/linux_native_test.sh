@@ -39,13 +39,16 @@ esac
 EOF
 cat > "$test_root/bin/rpm" <<'EOF'
 #!/usr/bin/env bash
-if [[ "$*" == *--provides* ]]; then
+if [[ "$*" == *-qpl* ]]; then
+  echo '/usr/lib/cilogg/lib/libQt6Core.so.6'
+elif [[ "$*" == *--provides* ]]; then
   echo 'cilogg = 26.04.2'
   [[ "${TEST_RPM_BAD:-}" != provides ]] || echo 'libQt6Core.so.6()(64bit)'
 else
   if [[ "${TEST_RPM_BAD:-}" != system ]]; then
     echo 'libc.so.6()(64bit)'
     echo 'libstdc++.so.6()(64bit)'
+    echo 'libicui18n.so.67()(64bit)' # An external library stays a valid requirement.
   fi
   [[ "${TEST_RPM_BAD:-}" != requires ]] || echo 'libQt6Core.so.6()(64bit)'
 fi

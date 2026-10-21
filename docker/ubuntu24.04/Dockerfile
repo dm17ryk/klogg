@@ -52,7 +52,7 @@ RUN python3 -m venv /tmp/aqt-venv && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then QT_AQT_OS=linux_arm64; QT_AQT_ARCH=linux_gcc_arm64; QT_DIR=gcc_arm64; CMAKE_ARCH=aarch64; else QT_AQT_OS=linux; QT_AQT_ARCH=linux_gcc_64; QT_DIR=gcc_64; CMAKE_ARCH=x86_64; fi && \
     echo "Installing Qt ${QT_VERSION}: host=${QT_AQT_OS} arch=${QT_AQT_ARCH}" && \
     AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt install-qt ${QT_AQT_OS} desktop ${QT_VERSION} ${QT_AQT_ARCH} -O /opt/Qt \
-        --modules qtimageformats qtserialport qt5compat --archives qtbase qtsvg qttools qttranslations && \
+        --modules qtimageformats qtserialport qt5compat && \
     ln -s "/opt/Qt/${QT_VERSION}/${QT_DIR}" "/opt/Qt/${QT_VERSION}/current" && \
     wget "https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-${CMAKE_ARCH}.sh" && \
     chmod 755 "cmake-3.28.6-linux-${CMAKE_ARCH}.sh" && \

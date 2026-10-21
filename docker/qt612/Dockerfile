@@ -16,7 +16,6 @@ RUN python3 -m venv /tmp/aqt-venv \
  && AQT_CONFIG=/tmp/aqtinstall.ini /tmp/aqt-venv/bin/python -m aqt \
       install-qt linux desktop ${QT_VERSION} linux_gcc_64 -O /opt/Qt \
       --modules qtimageformats qtserialport qt5compat \
-      --archives qtbase qtsvg qttools qttranslations \
  && wget -q https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-x86_64.sh -O /tmp/cmake.sh \
  && sh /tmp/cmake.sh --prefix=/opt --exclude-subdir --skip-license \
  && rm /tmp/cmake.sh
