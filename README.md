@@ -1,28 +1,10 @@
-![media_small](https://github.com/dm17ryk/klogg/blob/master/Resources/logo.png)
+![CILogg](https://github.com/dm17ryk/klogg/blob/master/Resources/logo.png)
 
-[![GitHub license](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](https://github.com/dm17ryk/klogg/blob/master/COPYING)
-[![C++](https://img.shields.io/github/languages/top/dm17ryk/klogg?style=flat)]()
-[![GitHub contributors](https://img.shields.io/github/contributors/dm17ryk/klogg.svg?style=flat)](https://github.com/dm17ryk/klogg/graphs/contributors/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat)](http://makeapullrequest.com)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/f6db6ef0be3a4a5abff94111a5291c45)](https://www.codacy.com/manual/dm17ryk/klogg?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=dm17ryk/klogg&amp;utm_campaign=Badge_Grade)
+[![CI Build](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml/badge.svg?branch=master)](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml)
+[![Downloads](https://img.shields.io/github/downloads/dm17ryk/klogg/total?style=flat)](https://github.com/dm17ryk/klogg/releases)
+[![License](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](COPYING)
 
-
-[![Github all releases](https://img.shields.io/github/downloads/dm17ryk/klogg/total?style=flat)](https://github.com/dm17ryk/klogg/releases/)
-[ ![Github](https://img.shields.io/github/v/release/dm17ryk/klogg?style=flat&label=Stable%20release&)](https://github.com/dm17ryk/klogg/releases/latest)
-
-[![Packaging status](https://repology.org/badge/vertical-allrepos/cilogg.svg)](https://repology.org/project/cilogg/versions)
-
-Check [GitHub releases](https://github.com/dm17ryk/klogg/releases/latest) for Windows installers and Linux/Mac packages.
-
-Development status
-
-[![Next milestone](https://img.shields.io/github/milestones/progress-percent/dm17ryk/klogg/4?style=flat&)](https://github.com/dm17ryk/klogg/milestone/4)
-[![Ready for testing](https://img.shields.io/github/issues-raw/dm17ryk/klogg/status:%20ready%20for%20testing?color=green&label=issues%20ready%20for%20testing&style=flat)](https://github.com/dm17ryk/klogg/issues?q=is%3Aopen+is%3Aissue+label%3A%22status%3A+ready+for+testing%22)
-[![Need documentation](https://img.shields.io/github/issues-search/dm17ryk/klogg?color=yellow&label=features%20need%20documentation&query=is%3Aissue%20label%3A%22status%3A%20need%20documentation%22&style=flat)](https://github.com/dm17ryk/klogg/issues?q=is%3Aissue+label%3A%22status%3A+need+documentation%22)
-[![GitHub commits](https://img.shields.io/github/commits-since/dm17ryk/klogg/v26.04.svg?style=flat)](https://github.com/dm17ryk/klogg/commits/)
-[![CI Build and Release](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml/badge.svg)](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml)
-
-[![Chat on Discord](https://img.shields.io/discord/838452586944266260?label=Discord&style=flat)](https://discord.gg/DruNyQftzB) [![Join the chat at https://gitter.im/klogg_log_viewer/community](https://badges.gitter.im/klogg_log_viewer/community.svg)](https://gitter.im/klogg_log_viewer/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[Download CILogg](https://github.com/dm17ryk/klogg/releases) · [Documentation](DOCUMENTATION.md) · [Roadmap](https://github.com/dm17ryk/klogg/blob/50e37ad6a01fc356c88d23cab035a62007db9d42/plans/cilogg-workbench-2026-10-21/README.md) · [Milestones](https://github.com/dm17ryk/klogg/milestones) · [Questions and ideas](https://github.com/dm17ryk/klogg/discussions) · [Report a bug](https://github.com/dm17ryk/klogg/issues)
 
 ## Overview
 
@@ -40,13 +22,13 @@ page for how to use CILogg.
 For command line control, the MCP server, automatic client installation, and
 generated Codex/Claude Code skills, see [MCP automation](MCP.md).
 
+Development is tracked in the [workbench roadmap](https://github.com/dm17ryk/klogg/blob/50e37ad6a01fc356c88d23cab035a62007db9d42/plans/cilogg-workbench-2026-10-21/README.md) and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones). The current priority is [M00: project readiness and distribution](https://github.com/dm17ryk/klogg/milestone/1), including documentation and packaging work.
+
 ### Latest testing builds
 
-| Windows | Linux | Mac |
-| ------------- |------------- | ------------- |
-| [continuous-win](https://github.com/dm17ryk/klogg/releases/tag/continuous-win) | [continuous-linux](https://github.com/dm17ryk/klogg/releases/tag/continuous-linux) | [continuous-osx](https://github.com/dm17ryk/klogg/releases/tag/continuous-osx) |
+Download testing builds from [GitHub Releases](https://github.com/dm17ryk/klogg/releases). Choose the newest appropriate release and an asset for your operating system and CPU architecture. Read its release notes; a testing build can contain unfinished behavior.
 
-I try to keep a [changelog](CHANGELOG.md) with monthly changes. 
+Changes are recorded in [release notes](https://github.com/dm17ryk/klogg/releases) and [CHANGELOG.md](CHANGELOG.md).
 
 ## Table of Contents
 
@@ -57,11 +39,10 @@ I try to keep a [changelog](CHANGELOG.md) with monthly changes.
   - [Comparing with glogg](#comparing-with-glogg)
   - [Current Functionality](#current-functionality)
 - [Installation](#installation)
-  - [Current stable release builds](#current-stable-release-builds)
+  - [Release downloads](#release-downloads)
     - [Windows](#windows)
     - [Mac OS](#mac-os)
     - [Linux](#linux)
-  - [Testing builds](#testing-builds)
 - [Building](#building)
 - [Command Line Usage](#command-line-usage)
   - [Running the CLI](#running-the-cli)
@@ -75,7 +56,7 @@ I try to keep a [changelog](CHANGELOG.md) with monthly changes.
 
 ## About the Project
 
-CILogg started as a fork of [glogg](https://github.com/nickbnf/glogg) - the fast, smart log explorer in 2016.
+CILogg is a fork of [klogg](https://github.com/variar/klogg), which builds on [glogg](https://github.com/nickbnf/glogg).
 
 Since then it has evolved from fixing small annoying bugs to rewriting core components to
 make it faster and smarter than its predecessor.
@@ -141,9 +122,7 @@ Here is a small demo showing how much faster CILogg is (searching in ~1Gb file s
 
 https://user-images.githubusercontent.com/1620716/117588567-bea39100-b12c-11eb-990a-90a667bcaeaa.mp4
 
-List of glogg issues that have been fixed/implemented in CILogg can be found [here](https://github.com/dm17ryk/klogg/discussions/302).
-
-List of all changes can be found [here](https://github.com/dm17ryk/klogg/milestone/8?closed=1).
+Follow [CILogg milestones](https://github.com/dm17ryk/klogg/milestones) for planned work and [GitHub Releases](https://github.com/dm17ryk/klogg/releases) for published changes.
 
 **[Back to top](#table-of-contents)**
 
@@ -151,43 +130,23 @@ List of all changes can be found [here](https://github.com/dm17ryk/klogg/milesto
 
 This project uses [Calendar Versioning](https://calver.org/). For a list of available versions, see the [repository tag list](https://github.com/dm17ryk/klogg/tags).
 
-### Current stable release builds
+### Release downloads
 
-Binaries for all platforms can be downloaded from GitHub releases.
-
-[ ![Release](https://img.shields.io/github/v/release/dm17ryk/klogg?style=flat)](https://github.com/dm17ryk/klogg/releases/latest)
+[GitHub Releases](https://github.com/dm17ryk/klogg/releases) is the verified download source for this CILogg fork. Check each release’s notes and channel before installing. Current testing artifacts use versioned `continuous-*` release tags. Use the release’s `*-sha256.txt` file to verify downloaded artifacts before installing.
 
 #### Windows
-Windows installer is also available from:
 
-* [ ![Chocolatey](https://img.shields.io/chocolatey/v/cilogg?style=flat)](https://chocolatey.org/packages/cilogg)
-* [ ![Scoop Extras bucket](https://img.shields.io/scoop/v/cilogg?bucket=extras)](https://scoopsearch.github.io/#/apps?q=cilogg)
-* [Winget package](https://winget.run/pkg/dm17ryk/klogg) 
+Choose the Windows installer or portable ZIP for x64 or ARM64, matching your machine and the assets present in that release.
 
 #### Mac OS
-Package for Mac can be installed from Homebrew
 
-[ ![homebrew cask](https://img.shields.io/homebrew/cask/v/cilogg?style=flat)](https://formulae.brew.sh/cask/cilogg)
+Choose the Intel (`*-mac-x64.dmg`) or Apple Silicon (`*-mac-arm64.dmg`) asset published with the selected release.
 
 #### Linux
-It is recommended to use CILogg package from distribution-specific [repositories](https://repology.org/project/cilogg/versions).
 
-Generic packages are published through [GitHub Releases](https://github.com/dm17ryk/klogg/releases/latest).
-If your distribution does not already package CILogg, use the release artifacts directly or the AppImage package described below.
+Choose a published AppImage, DEB or RPM matching your distribution and architecture. To run an AppImage, make it executable with `chmod +x <path_to_CILogg_AppImage>` and launch it. For runtime prerequisites, refer to the [official AppImage troubleshooting guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html).
 
-There is also an AppImage package that can be used without installation. To run CILogg from AppImage, download the package and make in executable with either a file manager or terminal command `chmod +x <path_to_cilogg_AppImage>` and then run the AppImage file.
-
-AppImage uses FUSE2 and Ubuntu 22.04 has moved away from FUSE2 into FUSE3 and therefore you need to install the necessary package to enable compatibility with FUSE2 `sudo apt install libfuse2`.
-
-As indicated by this link from the official appimage documentation: https://docs.appimage.org/user-guide/troubleshooting/fuse.html#setting-up-fuse-2-x-alongside-of-fuse-3-x-on-recent-ubuntu-22-04-debian-and-their-derivatives
-
-### Testing builds
-
-![CI Build and Release](https://github.com/dm17ryk/klogg/workflows/CI%20Build%20and%20Release/badge.svg)
-
-| Windows | Linux | Mac |
-| ------------- |------------- | ------------- |
-| [continuous-win](https://github.com/dm17ryk/klogg/releases/tag/continuous-win) | [continuous-linux](https://github.com/dm17ryk/klogg/releases/tag/continuous-linux) | [continuous-osx](https://github.com/dm17ryk/klogg/releases/tag/continuous-osx) |
+Package-manager installation instructions will be listed here when maintained CILogg catalog entries are published and verified.
 
 **[Back to top](#table-of-contents)**
 
