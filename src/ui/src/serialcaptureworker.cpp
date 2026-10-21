@@ -46,7 +46,11 @@ QString serializeSerialCaptureSettings( const SerialCaptureSettings& settings )
     object.insert( QStringLiteral( "timestampFormat" ), settings.timestampFormat );
     object.insert( QStringLiteral( "logTransmits" ), settings.logTransmits );
     object.insert( QStringLiteral( "useForActions" ), settings.useForActions );
-    object.insert( QStringLiteral( "autoResponsesEnabled" ), settings.autoResponsesEnabled );
+    const bool responsesEnabled = settings.useForActions && settings.autoResponsesEnabled;
+    LOG_DEBUG << "Saving stream Actions state: port=" << settings.portName
+              << " actions=" << settings.useForActions << " automatic=" << responsesEnabled
+              << " normalized=" << ( responsesEnabled != settings.autoResponsesEnabled );
+    object.insert( QStringLiteral( "autoResponsesEnabled" ), responsesEnabled );
 
     return QString::fromUtf8( QJsonDocument( object ).toJson( QJsonDocument::Compact ) );
 }
@@ -98,8 +102,13 @@ std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QSt
         = object.value( QStringLiteral( "timestampFormat" ) ).toString( settings.timestampFormat );
     settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
     settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
-    settings.autoResponsesEnabled
-        = object.value( QStringLiteral( "autoResponsesEnabled" ) ).toBool( true );
+    const bool requestedResponses = object.value( QStringLiteral( "autoResponsesEnabled" ) )
+                                        .toBool( settings.useForActions );
+    settings.autoResponsesEnabled = settings.useForActions && requestedResponses;
+    LOG_DEBUG << "Restored stream Actions state: port=" << settings.portName
+              << " actions=" << settings.useForActions
+              << " automatic=" << settings.autoResponsesEnabled
+              << " normalized=" << ( requestedResponses != settings.autoResponsesEnabled );
 
     return settings;
 }

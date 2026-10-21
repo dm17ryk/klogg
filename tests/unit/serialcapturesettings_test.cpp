@@ -79,6 +79,39 @@ TEST_CASE( "Serial capture settings serialize/deserialize roundtrip", "[serial][
     REQUIRE( restored->timestampFormat == original.timestampFormat );
     REQUIRE( restored->logTransmits == original.logTransmits );
     REQUIRE( restored->useForActions == original.useForActions );
+    REQUIRE( restored->autoResponsesEnabled == original.autoResponsesEnabled );
+}
+
+TEST_CASE( "Persisted automatic responses require Actions and retain explicit off choices",
+           "[serial][session][actions][auto-responses]" )
+{
+    const auto actions = GENERATE( false, true );
+    const auto responses = GENERATE( false, true );
+    CAPTURE( actions, responses );
+    SerialCaptureSettings settings;
+    settings.portName = "TEST_SAVED_FLAGS";
+    settings.useForActions = actions;
+    settings.autoResponsesEnabled = responses;
+    const auto roundtrip
+        = deserializeSerialCaptureSettings( serializeSerialCaptureSettings( settings ) );
+    REQUIRE( roundtrip );
+    CHECK( roundtrip->useForActions == actions );
+    CHECK( roundtrip->autoResponsesEnabled == ( actions && responses ) );
+    StreamSession restored( *roundtrip );
+    CHECK( restored.actionsEnabled() == actions );
+    CHECK( restored.autoResponsesEnabled() == ( actions && responses ) );
+
+    const auto stored = QStringLiteral(
+        "{\"portName\":\"TEST_SAVED_FLAGS\",\"useForActions\":%1,\"autoResponsesEnabled\":%2}" )
+                            .arg( actions ? "true" : "false", responses ? "true" : "false" );
+    const auto decoded = deserializeSerialCaptureSettings( stored );
+    REQUIRE( decoded );
+    CHECK( decoded->autoResponsesEnabled == ( actions && responses ) );
+    const auto legacy = deserializeSerialCaptureSettings(
+        QStringLiteral( "{\"portName\":\"TEST_LEGACY_FLAGS\",\"useForActions\":%1}" )
+            .arg( actions ? "true" : "false" ) );
+    REQUIRE( legacy );
+    CHECK( legacy->autoResponsesEnabled == actions );
 }
 
 TEST_CASE( "Serial capture settings deserialize rejects invalid payload", "[serial][session]" )

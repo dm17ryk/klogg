@@ -2149,7 +2149,7 @@ void MainWindow::rebuildComPortsMenu()
         actionsEnabledAction->setCheckable( true );
         actionsEnabledAction->setChecked( streamSession->actionsEnabled() );
         actionsEnabledAction->setToolTip(
-            tr( "Enable actions and automatic responses for this tab." ) );
+            tr( "Enable Actions for this tab. Disabling Actions also disables automatic responses." ) );
         QPointer<StreamSession> safeActionsSession = streamSession;
         connect( actionsEnabledAction, &QAction::triggered, this,
                  [ this, tabId, safeActionsSession ]( bool enabled ) {
@@ -2172,8 +2172,9 @@ void MainWindow::rebuildComPortsMenu()
             QStringLiteral( "comPortAutoResponsesEnabledAction_%1" ).arg( tabId ) );
         autoResponsesAction->setCheckable( true );
         autoResponsesAction->setChecked( streamSession->autoResponsesEnabled() );
-        autoResponsesAction->setToolTip( tr(
-            "Allow automatic replies when Actions and global automatic responses are enabled." ) );
+        autoResponsesAction->setToolTip(
+            tr( "Enable automatic responses and Actions for this tab. "
+                "The global response switch still applies." ) );
         LOG_DEBUG << "Created COM-menu automatic responses toggle: tab_id=" << tabId
                   << " enabled=" << autoResponsesAction->isChecked();
         connect( autoResponsesAction, &QAction::triggered, this,

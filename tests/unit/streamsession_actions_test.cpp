@@ -109,6 +109,109 @@ TEST_CASE( "Actions setting is authoritative idempotent and persisted per sessio
     CHECK( changes.size() == 1 );
 }
 
+TEST_CASE( "New tabs initialize automatic responses from their Actions choice",
+           "[serial][session][actions][auto-responses]" )
+{
+    const auto actionsEnabled = GENERATE( false, true );
+    StreamSession session( settingsFor( "TEST_INITIAL_ACTIONS", actionsEnabled ) );
+    CHECK( session.actionsEnabled() == actionsEnabled );
+    CHECK( session.autoResponsesEnabled() == actionsEnabled );
+}
+
+TEST_CASE( "Actions and automatic responses transitions publish consistent state",
+           "[serial][session][actions][auto-responses]" )
+{
+    StreamSession session( settingsFor( "TEST_COUPLED_ACTIONS", false ) );
+    QSignalSpy actions( &session, &StreamSession::actionsEnabledChanged );
+    QSignalSpy responses( &session, &StreamSession::autoResponsesEnabledChanged );
+    const auto checkState = [&] {
+        CHECK( ( !session.autoResponsesEnabled() || session.actionsEnabled() ) );
+        CHECK( session.captureSettings().useForActions == session.actionsEnabled() );
+        CHECK( session.captureSettings().autoResponsesEnabled == session.autoResponsesEnabled() );
+    };
+    QObject::connect( &session, &StreamSession::actionsEnabledChanged, &session, checkState );
+    QObject::connect( &session, &StreamSession::autoResponsesEnabledChanged, &session, checkState );
+    const auto manualGeneration = session.actionsGeneration();
+    const auto automaticGeneration = session.autoResponsesGeneration();
+
+    session.setActionsEnabled( true );
+    CHECK( session.actionsEnabled() );
+    CHECK_FALSE( session.autoResponsesEnabled() );
+    session.setAutoResponsesEnabled( true );
+    CHECK( session.actionsEnabled() );
+    CHECK( session.autoResponsesEnabled() );
+    session.setActionsEnabled( false );
+    CHECK_FALSE( session.actionsEnabled() );
+    CHECK_FALSE( session.autoResponsesEnabled() );
+    session.setAutoResponsesEnabled( true );
+    CHECK( session.actionsEnabled() );
+    CHECK( session.autoResponsesEnabled() );
+    session.setAutoResponsesEnabled( false );
+    CHECK( session.actionsEnabled() );
+    CHECK_FALSE( session.autoResponsesEnabled() );
+    CHECK( session.actionsGeneration() == manualGeneration + 3 );
+    CHECK( session.autoResponsesGeneration() == automaticGeneration + 5 );
+    CHECK( actions.count() == 3 );
+    CHECK( responses.count() == 4 );
+
+    session.setActionsEnabled( true );
+    session.setAutoResponsesEnabled( false );
+    CHECK( session.actionsGeneration() == manualGeneration + 3 );
+    CHECK( session.autoResponsesGeneration() == automaticGeneration + 5 );
+    CHECK( actions.count() == 3 );
+    CHECK( responses.count() == 4 );
+}
+
+TEST_CASE( "Coupled notifications tolerate reentrant changes and session deletion",
+           "[serial][session][actions][auto-responses]" )
+{
+    SECTION( "A reentrant Actions observer supersedes the pending response notification" )
+    {
+        StreamSession session( settingsFor( "TEST_REENTRANT_FLAGS", false ) );
+        QSignalSpy responses( &session, &StreamSession::autoResponsesEnabledChanged );
+        QObject::connect( &session, &StreamSession::actionsEnabledChanged, &session,
+                          [&]( bool enabled ) {
+                              if ( enabled ) {
+                                  CHECK( session.autoResponsesEnabled() );
+                                  session.setAutoResponsesEnabled( false );
+                              }
+                          } );
+        session.setAutoResponsesEnabled( true );
+        CHECK( session.actionsEnabled() );
+        CHECK_FALSE( session.autoResponsesEnabled() );
+        REQUIRE( responses.count() == 1 );
+        CHECK_FALSE( responses.front().front().toBool() );
+    }
+    SECTION( "Reentrant off and on does not duplicate the pending response notification" )
+    {
+        StreamSession session( settingsFor( "TEST_REENTRANT_ROUNDTRIP", false ) );
+        QSignalSpy responses( &session, &StreamSession::autoResponsesEnabledChanged );
+        QObject::connect( &session, &StreamSession::actionsEnabledChanged, &session,
+                          [&]( bool enabled ) {
+                              if ( enabled ) {
+                                  session.setAutoResponsesEnabled( false );
+                                  session.setAutoResponsesEnabled( true );
+                              }
+                          } );
+        session.setAutoResponsesEnabled( true );
+        CHECK( session.actionsEnabled() );
+        CHECK( session.autoResponsesEnabled() );
+        REQUIRE( responses.count() == 2 );
+        CHECK_FALSE( responses.at( 0 ).front().toBool() );
+        CHECK( responses.at( 1 ).front().toBool() );
+    }
+    SECTION( "An Actions observer may delete the session before the second notification" )
+    {
+        auto session = std::make_unique<StreamSession>( settingsFor( "TEST_DELETED_FLAGS", false ) );
+        QSignalSpy responses( session.get(), &StreamSession::autoResponsesEnabledChanged );
+        QObject::connect( session.get(), &StreamSession::actionsEnabledChanged,
+                          [&] { session.reset(); } );
+        session->setAutoResponsesEnabled( true );
+        CHECK_FALSE( session );
+        CHECK( responses.isEmpty() );
+    }
+}
+
 TEST_CASE( "Automatic response counters are independent and disabled tabs still observe lines",
            "[serial][session][actions]" )
 {
@@ -145,6 +248,9 @@ TEST_CASE( "Automatic response counters are independent and disabled tabs still 
     CHECK( first.responseCounter( response.id ) == 2 );
     disabled.setActionsEnabled( true );
     manager.setAutoResponsesEnabled( true );
+    StreamSessionTestAccess::feedData( disabled, QByteArrayLiteral( "READY\n" ) );
+    CHECK( disabled.responseCounter( response.id ) == 0 );
+    disabled.setAutoResponsesEnabled( true );
     StreamSessionTestAccess::feedData( disabled, QByteArrayLiteral( "READY\n" ) );
     CHECK( disabled.responseCounter( response.id ) == 1 );
     first.setActionsEnabled( false );
@@ -254,6 +360,7 @@ TEST_CASE( "Buffered response lines preserve text without inheriting newer Actio
         session.setActionsEnabled( false );
     }
     session.setActionsEnabled( true );
+    session.setAutoResponsesEnabled( true );
     manager.setAutoResponsesEnabled( true );
     if ( fragmented ) {
         StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "A" ) );
@@ -269,6 +376,7 @@ TEST_CASE( "Buffered response lines preserve text without inheriting newer Actio
     // the stale first line or the generation in which its newline later arrives.
     session.setActionsEnabled( false );
     session.setActionsEnabled( true );
+    session.setAutoResponsesEnabled( true );
     StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );
     REQUIRE( observed.size() == 4 );
     CHECK( observed.at( 2 ).front().toByteArray() == QByteArrayLiteral( "READY" ) );
@@ -318,6 +426,7 @@ TEST_CASE( "Reentrant line input retains the lineage and order of already buffer
         completed = true;
         session.setActionsEnabled( false );
         session.setActionsEnabled( true );
+        session.setAutoResponsesEnabled( true );
         StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );
     } );
     StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "READY\nREADY\nRE" ) );
@@ -350,6 +459,7 @@ TEST_CASE( "Reentrant data observers cannot make an older completing chunk eligi
         completed = true;
         session.setActionsEnabled( false );
         session.setActionsEnabled( true );
+        session.setAutoResponsesEnabled( true );
         StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "RE" ) );
     } );
     StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "ADY\nREADY\n" ) );

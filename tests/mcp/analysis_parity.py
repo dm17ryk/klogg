@@ -282,6 +282,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                         source = window["tabs"][0]["com"]
                         assert source["portName"].startswith("CILOGG_TEST_UNAVAILABLE_"), source
                         assert not source["connected"] and source["paused"], source
+                        assert not source["autoResponsesEnabled"] or source["actionsEnabled"], source
                     return {window["windowIndex"]: window for window in windows}
 
                 def flags():
@@ -309,6 +310,22 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                 command("set_auto_responses_enabled", {"disabled": True, "tab_id": tab})
                 assert flags() == {first: False, second: True}
                 cli("set_auto_responses_enabled", "--enabled", "--tab-id", tab)
+                cli("set_actions_enabled", "--disabled", "--tab-id", tab)
+                assert not routing_state()[first]["tabs"][0]["com"]["actionsEnabled"]
+                assert flags() == {first: False, second: True}
+                cli("set_actions_enabled", "--enabled", "--tab-id", tab)
+                assert routing_state()[first]["tabs"][0]["com"]["actionsEnabled"]
+                assert flags() == {first: False, second: True}
+                command("set_auto_responses_enabled", {"enabled": True, "tab_id": tab})
+                command("set_auto_responses_enabled", {"disabled": True, "tab_id": tab})
+                assert routing_state()[first]["tabs"][0]["com"]["actionsEnabled"]
+                assert flags() == {first: False, second: True}
+                command("set_actions_enabled", {"disabled": True, "tab_id": tab})
+                assert not routing_state()[first]["tabs"][0]["com"]["actionsEnabled"]
+                assert flags() == {first: False, second: True}
+                command("set_auto_responses_enabled", {"enabled": True, "tab_id": tab})
+                assert routing_state()[first]["tabs"][0]["com"]["actionsEnabled"]
+                assert flags() == {first: True, second: True}
                 cli("focus_tab", "--window-index", str(second), "--tab-index", "0")
                 deadline = time.monotonic() + 15
                 while not routing_state()[second]["isActiveWindow"]:
@@ -318,7 +335,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                 assert flags() == {first: True, second: False}
                 command("set_auto_responses_enabled", {"enabled": True})
                 assert flags() == {first: True, second: True}
-                print("PASS: two-window CLI/native-MCP index, tab ID and active-window response routing")
+                print("PASS: coupled Actions/responses and two-window CLI/native-MCP routing")
             request = {"scope": "text", "pattern": r"(?<value>\d)(?<optional>x)?", "text": "ANALYSIS_PRIVATE_BODY_SENTINEL שלום 😀1\r\nsecond2\nlast3", "requestRevision": "9007199254740993"}
             request_path = artifacts / "request.json"
             request_path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")

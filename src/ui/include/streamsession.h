@@ -70,6 +70,7 @@ class StreamSession : public QObject {
     void captureFileChanged( const QString& oldFilePath, const QString& newFilePath );
 
   private:
+    void updateActionState( bool actionsEnabled, bool autoResponsesEnabled, const char* operation );
     void startInternal( bool resetResponseCounters );
     void setupWorker();
     void setConnectionClosed();

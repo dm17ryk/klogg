@@ -5,6 +5,18 @@ Each communication tab has an **Automatic responses enabled** check box beside
 Disabling automatic responses leaves the tab available for manual Actions and
 keeps its response counters and log observations. Other tabs are unaffected.
 
+Automatic responses can only be enabled when Actions is enabled for that tab:
+
+- Disabling Actions also disables automatic responses.
+- Enabling automatic responses also enables Actions.
+- Disabling automatic responses leaves Actions unchanged.
+- Enabling Actions leaves automatic responses unchanged.
+
+New tabs created with Actions enabled start with automatic responses enabled;
+new tabs created without Actions start with both disabled. Restored tabs preserve
+an explicit automatic-response disable, and invalid saved combinations with
+Actions disabled are normalized to both disabled.
+
 ![Communication tab menu with automatic responses enabled](images/automatic-responses-menu.png)
 
 Automatic replies require an open connection, Actions enabled for that tab,
