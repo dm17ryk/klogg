@@ -4,6 +4,7 @@ add_executable(cilogg_tests
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
+    valuecounts_commands_test.cpp
     plugins_test.cpp
     mcp_test.cpp
     configuration_test.cpp

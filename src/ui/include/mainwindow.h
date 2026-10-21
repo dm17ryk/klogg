@@ -68,6 +68,7 @@
 #include "tabbedcrawlerwidget.h"
 #include "tabbedscratchpad.h"
 class RegexLabDock;
+class ValueCountDock;
 
 class QAction;
 class QActionGroup;
@@ -249,6 +250,9 @@ class MainWindow : public QMainWindow {
 
     void createActions();
     void createRegexLab();
+    void createValueCounts();
+    CommanderResult commanderValueCounts( const CommanderRequest& request );
+    CommanderResult commanderValueCountResult( const CommanderRequest& request );
     CommanderResult commanderRegexLab( const CommanderRequest& request );
     void loadIcons();
     void createMenus();
@@ -424,6 +428,8 @@ class MainWindow : public QMainWindow {
     QAction* showLabQueueAction;
     QAction* showRegexLabAction;
     RegexLabDock* regexLabDock_ = nullptr;
+    ValueCountDock* valueCountDock_ = nullptr;
+    QAction* showValueCountsAction = nullptr;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;

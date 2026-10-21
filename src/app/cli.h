@@ -330,6 +330,14 @@ private:
             "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
             "selector]\n"
             "  get_analysis_job --job-id <id> [tab selector]\n"
+            "  value_counts [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
+            "  get_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
+            "  export_value_counts [--analysis-json <json> | --json-file <export.json>] [tab selector]\n"
+            "  apply_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
+            "  open_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
+            "  show_value_counts [--window-index <index> | tab selector]\n"
+            "  get_value_counts [--window-index <index> | tab selector]\n"
+            "  set_value_counts [--analysis-json <json> | --json-file <draft.json>] [tab selector]\n"
             "  get_analysis_results --job-id <id> [--cursor <cursor>] [--page-size <count>] [tab "
             "selector]\n"
             "  cancel_analysis_job --job-id <id> [tab selector]\n"
@@ -1808,6 +1816,12 @@ private:
 
         switch ( *action ) {
         case CommanderAction::RegexEvaluate:
+        case CommanderAction::ValueCounts:
+        case CommanderAction::GetValueCount:
+        case CommanderAction::ExportValueCounts:
+        case CommanderAction::ApplyValueCount:
+        case CommanderAction::OpenValueCount:
+        case CommanderAction::SetValueCounts:
         case CommanderAction::SetRegexLab: {
             if ( parser.isSet( "analysis-json" ) == parser.isSet( jsonFileOption ) ) {
                 result.output_message = formatParserError( parser, "Provide exactly one of --analysis-json or --json-file." );
@@ -1836,7 +1850,7 @@ private:
                 result.output_message = formatParserError( parser, "Analysis JSON must be an object of at most 16 MiB." );
                 return result;
             }
-            if ( *action == CommanderAction::SetRegexLab )
+            if ( *action == CommanderAction::SetRegexLab || *action == CommanderAction::SetValueCounts )
                 request.definitionPayload = document.object().toVariantMap();
             else
                 request.analysisArguments = document.object().toVariantMap();
@@ -1869,6 +1883,8 @@ private:
             break;
         }
         case CommanderAction::ShowRegexLab:
+        case CommanderAction::ShowValueCounts:
+        case CommanderAction::GetValueCounts:
         case CommanderAction::GetRegexLab:
         case CommanderAction::ApplyRegexLabPattern:
             if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;

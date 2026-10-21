@@ -135,7 +135,7 @@ def measure_file_analysis(cli, host, artifacts: Path) -> None:
 
 
 def run(executable: Path, artifacts: Path, auto_responses: bool = False,
-        regex_lab: bool = False, measure: bool = False) -> None:
+        regex_lab: bool = False, measure: bool = False, value_counts: bool = False) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
     payload = artifacts / f"payload-{uuid.uuid4().hex}"
     payload.mkdir()
@@ -348,6 +348,41 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             cli_rows, mcp_rows = rows(cli_job, False), rows(mcp_job, True)
             assert normalized(cli_rows) == normalized(mcp_rows), (cli_rows, mcp_rows)
             assert [row["lineNumber"] for row in cli_rows] == [1, 2, 3]
+            if auto_responses and (regex_lab or value_counts):
+                # Restoring nonexistent ports deliberately produces warnings. Acknowledge
+                # only those fixture dialogs; any other modal remains a test failure.
+                deadline = time.monotonic() + 20
+                while True:
+                    warnings = 0
+                    for window_index in sorted(windows, reverse=True):
+                        objects = command("get_ui", {"window_index": window_index})["objects"]
+                        dialogs = [item for item in objects
+                                   if item["className"] == "QMessageBox" and item["visible"]]
+                        for dialog in dialogs:
+                            assert dialog["windowTitle"] == "COM connection unavailable", dialog
+                            warning_text = dialog["properties"]["text"]
+                            port = windows[window_index]["tabs"][0]["com"]["portName"]
+                            assert warning_text.startswith(f"COM port {port} is unavailable for "), dialog
+                            capture = Path(windows[window_index]["tabs"][0]["filePath"])
+                            assert capture.resolve().parent == (artifacts / "captures").resolve(), capture
+                            assert capture.as_posix() in warning_text.replace("\\", "/"), dialog
+                            warnings += 1
+                            buttons = [item for item in objects
+                                       if item["objectPath"].startswith(dialog["objectPath"] + "/")
+                                       and item["className"] == "QPushButton" and item["visible"]
+                                       and item["enabled"] and item["activatable"]]
+                            assert len(buttons) == 1, buttons
+                            acknowledged = send("tools/call", {
+                                "name": "cilogg_execute", "arguments": {
+                                    "action": "activate_ui", "arguments": {
+                                        "window_index": window_index,
+                                        "object_name": buttons[0]["objectPath"]}}})
+                            if acknowledged.get("isError"):
+                                assert "A modal dialog blocks this control" in str(acknowledged), acknowledged
+                    if not warnings:
+                        break
+                    assert time.monotonic() < deadline, "Fixture COM warnings did not close"
+                    time.sleep(0.02)
             if regex_lab:
                 assert all(name in catalog["commander"]["commands"] for name in (
                     "show_regex_lab", "get_regex_lab", "set_regex_lab", "apply_regex_lab_pattern"))
@@ -355,41 +390,6 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                 definition = {key: value for key, value in request.items() if key != "requestRevision"}
                 command("set_regex_lab", {"window_index": 0, "definition": definition})
                 previous_job = cli("get_regex_lab", "--window-index", "0")["jobId"]
-                if auto_responses:
-                    # Restoring nonexistent ports deliberately produces warnings. Acknowledge
-                    # only those fixture dialogs; any other modal remains a test failure.
-                    deadline = time.monotonic() + 20
-                    while True:
-                        warnings = 0
-                        for window_index in sorted(windows, reverse=True):
-                            objects = command("get_ui", {"window_index": window_index})["objects"]
-                            dialogs = [item for item in objects
-                                       if item["className"] == "QMessageBox" and item["visible"]]
-                            for dialog in dialogs:
-                                assert dialog["windowTitle"] == "COM connection unavailable", dialog
-                                warning_text = dialog["properties"]["text"]
-                                port = windows[window_index]["tabs"][0]["com"]["portName"]
-                                assert warning_text.startswith(f"COM port {port} is unavailable for "), dialog
-                                capture = Path(windows[window_index]["tabs"][0]["filePath"])
-                                assert capture.resolve().parent == (artifacts / "captures").resolve(), capture
-                                assert capture.as_posix() in warning_text.replace("\\", "/"), dialog
-                                warnings += 1
-                                buttons = [item for item in objects
-                                           if item["objectPath"].startswith(dialog["objectPath"] + "/")
-                                           and item["className"] == "QPushButton" and item["visible"]
-                                           and item["enabled"] and item["activatable"]]
-                                assert len(buttons) == 1, buttons
-                                acknowledged = send("tools/call", {
-                                    "name": "cilogg_execute", "arguments": {
-                                        "action": "activate_ui", "arguments": {
-                                            "window_index": window_index,
-                                            "object_name": buttons[0]["objectPath"]}}})
-                                if acknowledged.get("isError"):
-                                    assert "A modal dialog blocks this control" in str(acknowledged), acknowledged
-                        if not warnings:
-                            break
-                        assert time.monotonic() < deadline, "Fixture COM warnings did not close"
-                        time.sleep(0.02)
                 # Activate the real GUI Run control; it must use the same service
                 # and produce exact captures equivalent to CLI/native MCP runs.
                 command("activate_ui", {"window_index": 0, "object_name": "regexLabRun"})
@@ -412,6 +412,9 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                 print("PASS: GUI Regex Lab Run, CLI/native-MCP captures, semantic errors and draft guards")
             if measure:
                 measure_file_analysis(cli, host, artifacts)
+            if value_counts:
+                from valuecounts_parity import exercise_counts
+                exercise_counts(cli, command, finish, rows, normalized, artifacts)
             error = cli("get_analysis_results", "--job-id", cli_job, "--cursor", "invalid", success=False)
             assert error["reason"] == command("get_analysis_results", {"job_id": mcp_job, "cursor": "invalid"}, success=False)["reason"] == "invalid_cursor"
             # Exceeds Windows argv and Linux per-argument limits; MCP must spool JSON.
@@ -474,8 +477,9 @@ if __name__ == "__main__":
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--auto-responses", action="store_true")
     parser.add_argument("--regex-lab", action="store_true", help="Also verify dock commands and GUI Run parity")
+    parser.add_argument("--value-counts", action="store_true", help="Verify Value Counts CLI, MCP and GUI parity")
     parser.add_argument("--measure", action="store_true", help="Measure a 64 MiB frozen scan and append coexistence")
     options = parser.parse_args()
     run(options.executable.resolve(), options.artifacts.resolve(),
         auto_responses=options.auto_responses, regex_lab=options.regex_lab,
-        measure=options.measure)
+        measure=options.measure, value_counts=options.value_counts)

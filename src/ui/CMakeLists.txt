@@ -33,6 +33,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/regexlabdock.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analysistextedit.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountdock.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/valuecountdock.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowvaluecounts.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/regexlabdock.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginuicontroller.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginuicontroller.cpp

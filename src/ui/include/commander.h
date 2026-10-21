@@ -83,6 +83,14 @@ enum class CommanderAction {
     GetRegexLab,
     SetRegexLab,
     ApplyRegexLabPattern,
+    ValueCounts,
+    GetValueCount,
+    ExportValueCounts,
+    ApplyValueCount,
+    OpenValueCount,
+    ShowValueCounts,
+    GetValueCounts,
+    SetValueCounts,
 };
 
 enum class CommanderResultCode {

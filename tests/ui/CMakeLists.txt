@@ -5,6 +5,8 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisjob_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisregex_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysiscommands_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/valuecounts_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/valuecountdock_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/regexlabdock_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logfiltereddata_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/filewatcher_test.cpp
@@ -17,7 +19,8 @@ set(UI_TEST_SOURCES
 
 if(NOT APPLE)
     LIST(APPEND UI_TEST_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/mainwindow_test.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/regexlabwindow_test.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/regexlabwindow_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/valuecountswindow_test.cpp)
 endif()
 
 add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}

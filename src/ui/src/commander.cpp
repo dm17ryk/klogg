@@ -180,6 +180,14 @@ QString commanderActionToString( CommanderAction action )
     case CommanderAction::SelectActionsTab:
         return QStringLiteral( "select_actions_tab" );
     case CommanderAction::RegexEvaluate: return QStringLiteral( "regex_evaluate" );
+    case CommanderAction::ValueCounts: return QStringLiteral( "value_counts" );
+    case CommanderAction::GetValueCount: return QStringLiteral( "get_value_count" );
+    case CommanderAction::ExportValueCounts: return QStringLiteral( "export_value_counts" );
+    case CommanderAction::ApplyValueCount: return QStringLiteral( "apply_value_count" );
+    case CommanderAction::OpenValueCount: return QStringLiteral( "open_value_count" );
+    case CommanderAction::ShowValueCounts: return QStringLiteral( "show_value_counts" );
+    case CommanderAction::GetValueCounts: return QStringLiteral( "get_value_counts" );
+    case CommanderAction::SetValueCounts: return QStringLiteral( "set_value_counts" );
     case CommanderAction::GetAnalysisJob: return QStringLiteral( "get_analysis_job" );
     case CommanderAction::GetAnalysisResults: return QStringLiteral( "get_analysis_results" );
     case CommanderAction::CancelAnalysisJob: return QStringLiteral( "cancel_analysis_job" );
@@ -197,6 +205,14 @@ QString commanderActionToString( CommanderAction action )
 std::optional<CommanderAction> commanderActionFromString( const QString& action )
 {
     const auto lab = action.trimmed().toLower();
+    if ( lab == "value_counts" ) return CommanderAction::ValueCounts;
+    if ( lab == "get_value_count" ) return CommanderAction::GetValueCount;
+    if ( lab == "export_value_counts" ) return CommanderAction::ExportValueCounts;
+    if ( lab == "apply_value_count" ) return CommanderAction::ApplyValueCount;
+    if ( lab == "open_value_count" ) return CommanderAction::OpenValueCount;
+    if ( lab == "show_value_counts" ) return CommanderAction::ShowValueCounts;
+    if ( lab == "get_value_counts" ) return CommanderAction::GetValueCounts;
+    if ( lab == "set_value_counts" ) return CommanderAction::SetValueCounts;
     if ( lab == "show_regex_lab" ) return CommanderAction::ShowRegexLab;
     if ( lab == "get_regex_lab" ) return CommanderAction::GetRegexLab;
     if ( lab == "set_regex_lab" ) return CommanderAction::SetRegexLab;
@@ -449,7 +465,11 @@ bool isCommanderOpenAction( CommanderAction action )
 
 bool isCommanderAnalysisAction( CommanderAction action )
 {
-    return action == CommanderAction::RegexEvaluate || action == CommanderAction::GetAnalysisJob
+    return action == CommanderAction::ValueCounts || action == CommanderAction::GetValueCount
+        || action == CommanderAction::ExportValueCounts || action == CommanderAction::ApplyValueCount
+        || action == CommanderAction::OpenValueCount || action == CommanderAction::ShowValueCounts
+        || action == CommanderAction::GetValueCounts || action == CommanderAction::SetValueCounts
+        || action == CommanderAction::RegexEvaluate || action == CommanderAction::GetAnalysisJob
         || action == CommanderAction::GetAnalysisResults || action == CommanderAction::CancelAnalysisJob
         || action == CommanderAction::ReleaseAnalysisJob
         || action == CommanderAction::ShowRegexLab || action == CommanderAction::GetRegexLab
