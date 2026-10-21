@@ -10,6 +10,12 @@ runs:
         docker run $CILOGG_DOCKER_PLATFORM -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && cpack -G ${{ matrix.config.cpack_gen }} "
         docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_VERSION=$CILOGG_VERSION -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local/build_root && mv ./packages/cilogg-$CILOGG_VERSION-Linux.${{ matrix.config.package_suffix }} ./packages/cilogg-$CILOGG_VERSION-${{ matrix.config.artifacts_id }}.${{ matrix.config.package_suffix }}"
 
+    - name: Check private RPM dependencies
+      if: ${{ matrix.config.cpack_gen == 'RPM' && matrix.config.qt_version == '6.12.0' }}
+      shell: sh
+      run: |
+        docker run $CILOGG_DOCKER_PLATFORM --rm -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c "cd /usr/local && bash scripts/validate_private_rpm.sh build_root/packages/*.rpm"
+
     - name: Check package
       if: ${{ matrix.config.check_command }}
       shell: sh

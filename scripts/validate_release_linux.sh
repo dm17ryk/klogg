@@ -17,12 +17,16 @@ validate_deb() (
   contents="$(dpkg-deb -c "$pkg")"
   metadata="$(dpkg-deb -I "$pkg")"
 
-  grep -q './usr/bin/cilogg$' <<<"$contents" || fail "DEB missing /usr/bin/cilogg: $pkg"
+  grep -Eq './usr/bin/cilogg( -> [^[:space:]]+)?$' <<<"$contents" || fail "DEB missing /usr/bin/cilogg: $pkg"
   grep -q '^ Package: ' <<<"$metadata" || fail "DEB metadata unreadable: $pkg"
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   dpkg-deb -x "$pkg" "$workdir"
-  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/usr/bin/plugins"
+  local executable
+  executable="$(realpath -e "$workdir/usr/bin/cilogg")"
+  [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "DEB executable escapes package or is not executable: $pkg"
+  echo "DEB executable resolved within package: ${executable#"$workdir/"}"
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"
 )
 
 validate_rpm() (
@@ -30,6 +34,7 @@ validate_rpm() (
   local requires
   local pkg_abs
   local workdir
+  local executable
 
   echo "Validating RPM: $pkg"
   requires="$(rpm -qp --requires "$pkg")"
@@ -38,7 +43,10 @@ validate_rpm() (
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   (cd "$workdir"; rpm2cpio "$pkg_abs" | cpio -idm --quiet)
-  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/usr/bin/plugins"
+  executable="$(realpath -e "$workdir/usr/bin/cilogg")"
+  [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "RPM executable escapes package or is not executable: $pkg"
+  echo "RPM executable resolved within package: ${executable#"$workdir/"}"
+  python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"
 )
 
 validate_appimage() (

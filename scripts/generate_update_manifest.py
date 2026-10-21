@@ -38,11 +38,19 @@ def classify(path: Path) -> dict[str, object] | None:
                   "kind": "appimage", "variant": ""}
     elif lower.endswith(".deb"):
         variant = next((value for value in ("focal", "jammy", "noble") if value in lower), "")
+        if lower.endswith("-debian12.deb"):
+            variant = "bookworm"
         result = {"platform": "linux", "architecture": architecture,
                   "kind": "deb", "variant": variant}
     elif lower.endswith(".rpm"):
         match = re.search(r"fedora(?:-|_)?(\d+)", lower)
         variant = f"fedora{match.group(1)}" if match else ""
+        native_variants = {"rhel9": "rhel9.6", "rhel10": "rhel10.0",
+                           "opensuse16": "opensuse-leap16.0"}
+        for suffix, distro_variant in native_variants.items():
+            if lower.endswith(f"-{suffix}.rpm"):
+                variant = distro_variant
+                break
         result = {"platform": "linux", "architecture": architecture,
                   "kind": "rpm", "variant": variant}
     else:

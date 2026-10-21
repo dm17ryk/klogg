@@ -439,6 +439,7 @@ set(KLOGG_QT_VERSION ${Qt${QT_VERSION_MAJOR}Core_VERSION})
 
 message("Qt version ${KLOGG_QT_VERSION}")
 message("LTO ${KLOGG_USE_LTO}")
+include(cmake/LinuxQtRuntime.cmake)
 if(WIN32)
   # Support Debug app builds with single-config (release-only) Qt installations.
   # In that setup Qt debug libraries are absent and Debug iterator checks can reference
@@ -482,6 +483,9 @@ add_custom_target(ci_build)
 
 add_subdirectory(3rdparty)
 add_subdirectory(src)
+if(KLOGG_BUNDLE_QT_RUNTIME)
+  include(cmake/InstallLinuxQtRuntime.cmake)
+endif()
 add_subdirectory(website)
 
 enable_testing()
@@ -647,6 +651,10 @@ if(UNIX)
     set(CPACK_RPM_PACKAGE_ARCHITECTURE "${_klogg_rpm_arch}")
     set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
     set(CPACK_RPM_PACKAGE_AUTOREQ YES)
+    if(KLOGG_BUNDLE_QT_RUNTIME)
+      configure_file(cmake/PrivateRuntimeRpm.cmake.in "${CMAKE_BINARY_DIR}/PrivateRuntimeRpm.cmake" @ONLY)
+      list(APPEND CPACK_PRE_BUILD_SCRIPTS "${CMAKE_BINARY_DIR}/PrivateRuntimeRpm.cmake")
+    endif()
     #set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= ${KLOGG_QT_VERSION}")
     set(CPACK_RPM_PACKAGE_URL "http://github.com/dm17ryk/klogg")
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION

@@ -1,0 +1,97 @@
+# CPack invokes this after staging the complete runtime, before computing RPM
+# dependency metadata. Private Qt/ICU/TBB capabilities must neither satisfy other
+# applications nor become external requirements of this self-contained package.
+if(NOT
+   CPACK_GENERATOR
+   STREQUAL
+   "RPM"
+)
+  return()
+endif()
+
+set(_private_root "${CPACK_TEMPORARY_DIRECTORY}${CPACK_PACKAGING_INSTALL_PREFIX}/@KLOGG_PRIVATE_DIR@")
+file(GLOB_RECURSE _private_libraries "${_private_root}/*.so*")
+if(NOT _private_libraries)
+  message(FATAL_ERROR "Private RPM runtime is missing from staged package: ${_private_root}")
+endif()
+find_program(_rpmdeps rpmdeps PATHS /usr/lib/rpm /usr/lib64/rpm REQUIRED)
+execute_process(
+  COMMAND "${_rpmdeps}" --provides ${_private_libraries}
+  RESULT_VARIABLE _result
+  OUTPUT_VARIABLE _provided
+  ERROR_VARIABLE _diagnostics
+)
+if(NOT
+   _result
+   EQUAL
+   0
+)
+  message(FATAL_ERROR "Cannot inspect private RPM capabilities: ${_diagnostics}")
+endif()
+string(
+  REPLACE "\n"
+          ";"
+          _provided
+          "${_provided}"
+)
+set(_capabilities "")
+foreach(_capability IN LISTS _provided)
+  string(STRIP "${_capability}" _capability)
+  if(_capability STREQUAL "")
+    continue()
+  endif()
+  # Escape exact capability strings rather than suppressing unrelated system
+  # dependencies with a broad Qt/library-name expression.
+  foreach(
+    _character
+    "\\"
+    "."
+    "+"
+    "*"
+    "?"
+    "^"
+    "$"
+    "("
+    ")"
+    "["
+    "]"
+    "{"
+    "}"
+    "|"
+  )
+    string(
+      REPLACE "${_character}"
+              "\\${_character}"
+              _capability
+              "${_capability}"
+    )
+  endforeach()
+  list(APPEND _capabilities "${_capability}")
+endforeach()
+list(REMOVE_DUPLICATES _capabilities)
+if(NOT _capabilities)
+  message(FATAL_ERROR "Staged private RPM libraries have no discoverable capabilities")
+endif()
+list(
+  JOIN
+  _capabilities
+  "|"
+  _capability_pattern
+)
+# CMake 3.28 exposes path-based requires filtering only. Use RPM's native
+# capability filters through the supported spec extension instead.
+string(
+  REPLACE "\\"
+          "\\\\"
+          _spec_pattern
+          "${_capability_pattern}"
+)
+string(APPEND CPACK_RPM_SPEC_MORE_DEFINE
+       "\n%global __provides_exclude_from .*/@KLOGG_PRIVATE_DIR@/.*\n%global __requires_exclude ^(${_spec_pattern})$\n"
+)
+list(LENGTH _private_libraries _library_count)
+list(LENGTH _capabilities _capability_count)
+message(
+  STATUS
+    "Private RPM dependency decision: root=${_private_root}, libraries=${_library_count}, hidden-capabilities=${_capability_count}; external requirements retained"
+)

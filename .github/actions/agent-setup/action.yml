@@ -83,6 +83,7 @@ runs:
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
+        aqtversion: '==3.3.0'
         arch: ${{ matrix.config.qt_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
@@ -93,6 +94,7 @@ runs:
       uses: jurplel/install-qt-action@v4
       with:
         version: ${{ matrix.config.qt_version }}
+        aqtversion: '==3.3.0'
         arch: ${{ matrix.config.qt_arch }}
         cache: ${{ steps.cache-qt.outputs.cache-hit }}
         modules: ${{ matrix.config.qt_modules }} qtserialport
