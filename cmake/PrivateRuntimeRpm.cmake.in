@@ -15,6 +15,29 @@ if(NOT _private_libraries)
   message(FATAL_ERROR "Private RPM runtime is missing from staged package: ${_private_root}")
 endif()
 find_program(_rpmdeps rpmdeps PATHS /usr/lib/rpm /usr/lib64/rpm REQUIRED)
+# RPM 4.16's ELF classifier uses exeonly. Qt's file(INSTALL) gives deployed
+# libraries mode 0644, so restore the conventional shared-library mode before
+# inspecting capabilities and before rpmbuild computes automatic dependencies.
+foreach(_library IN LISTS _private_libraries)
+  if(NOT IS_SYMLINK "${_library}")
+    file(
+      CHMOD
+      "${_library}"
+      PERMISSIONS
+      OWNER_READ
+      OWNER_WRITE
+      OWNER_EXECUTE
+      GROUP_READ
+      GROUP_EXECUTE
+      WORLD_READ
+      WORLD_EXECUTE
+    )
+  endif()
+endforeach()
+list(LENGTH _private_libraries _library_count)
+message(
+  "Private RPM inspection: root=${_private_root}, libraries=${_library_count}, classifier=${_rpmdeps}; ELF executable permissions restored"
+)
 execute_process(
   COMMAND "${_rpmdeps}" --provides ${_private_libraries}
   RESULT_VARIABLE _result

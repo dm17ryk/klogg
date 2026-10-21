@@ -1,0 +1,13 @@
+# Keep paths relative to the actual executable, independently of the package's
+# lib/lib64/multiarch directory and Qt's deployment-prefix defaults.
+set(_private_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@KLOGG_PRIVATE_DIR@")
+set(_qt_conf "${_private_root}/bin/qt.conf")
+foreach(_plugin platforms/libqoffscreen.so platforms/libqxcb.so sqldrivers/libqsqlite.so)
+  if(NOT EXISTS "${_private_root}/qt-plugins/${_plugin}")
+    message(FATAL_ERROR "Private Qt deployment is missing required plugin: ${_private_root}/qt-plugins/${_plugin}")
+  endif()
+endforeach()
+file(WRITE "${_qt_conf}" "[Paths]\nPrefix=..\nBinaries=bin\nLibraries=lib\nPlugins=qt-plugins\n")
+message(
+  "Private Qt configuration: ${_qt_conf}; prefix=..; plugins=qt-plugins; required platform/SQLite plugins verified"
+)

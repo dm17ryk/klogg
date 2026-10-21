@@ -17,10 +17,15 @@ class PrivateRpmHookTests(unittest.TestCase):
             root = Path(temporary)
             libraries = root / "stage/usr/lib/cilogg/lib"
             libraries.mkdir(parents=True)
-            (libraries / "libQt6Core.so.6").write_bytes(b"fixture")
+            library = libraries / "libQt6Core.so.6"
+            library.write_bytes(b"fixture")
+            library.chmod(0o644)
             windows = sys.platform == "win32"
             rpmdeps = root / ("rpmdeps.cmd" if windows else "rpmdeps")
             lines = ["@echo off"] if windows else ["#!/bin/sh"]
+            if not windows:
+                # RPM 4.16's exeonly ELF classifier ignores non-executable files.
+                lines += ['[ -x "$2" ] || exit 0']
             lines += [f"echo {capability}" if windows else f"echo '{capability}'"
                       for capability in capabilities]
             rpmdeps.write_text("\n".join(lines) + "\n", encoding="utf-8")

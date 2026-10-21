@@ -14,15 +14,16 @@ qt6_deploy_runtime_dependencies(
   EXECUTABLE \"$<TARGET_FILE:klogg>\"
   ADDITIONAL_EXECUTABLES \"$<TARGET_FILE:klogg_grep>\"
                         \"$<TARGET_FILE:cilogg_updater>\"
-  GENERATE_QT_CONF
   NO_TRANSLATIONS
   EXCLUDE_PLUGIN_TYPES sqldrivers
-  INCLUDE_PLUGINS qsqlite
+  INCLUDE_PLUGINS qsqlite qoffscreen
   VERBOSE
 )
 "
 )
 install(SCRIPT "${_klogg_deploy_script}")
+configure_file(cmake/InstallPrivateQtConfig.cmake.in "${CMAKE_BINARY_DIR}/InstallPrivateQtConfig.cmake" @ONLY)
+install(SCRIPT "${CMAKE_BINARY_DIR}/InstallPrivateQtConfig.cmake")
 
 file(
   RELATIVE_PATH

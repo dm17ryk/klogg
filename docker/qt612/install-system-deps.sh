@@ -36,7 +36,7 @@ case "$ID" in
     zypper --non-interactive install --no-recommends \
       gcc15 gcc15-c++ make python3 python3-pip python3-virtualenv rpm-build \
       boost-devel libopenssl-devel libcurl-devel libicu-devel glib2-devel dbus-1-devel \
-      fontconfig freetype2 libglvnd-devel libGLU1 libxkbcommon-x11-0 \
+      fontconfig freetype2 Mesa-libGL-devel libglvnd-devel libGLU1 libxkbcommon-x11-0 \
       libgtk-3-0 libwayland-egl1 \
       libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-cursor0 \
       ragel ninja zlib-devel git pkg-config wget ca-certificates file which
