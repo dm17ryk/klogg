@@ -39,7 +39,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "AUTO18",
         "QUAL03"
