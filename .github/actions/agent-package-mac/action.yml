@@ -59,8 +59,8 @@ runs:
       run: |
         echo "CILOGG_CODESIGN=Developer ID Application: Anton Filimonov (GAW773U324)" >> $GITHUB_ENV
         echo "CILOGG_INSTALLERSIGN=Developer ID Installer: Anton Filimonov (GAW773U324)" >> $GITHUB_ENV
-        echo "CILOGG_DMG=cilogg-${{ env.CILOGG_VERSION }}-mac-${{ env.CILOGG_ARCH }}.dmg" >> $GITHUB_ENV
-        echo "CILOGG_PKG=cilogg-${{ env.CILOGG_VERSION }}-mac-${{ env.CILOGG_ARCH }}.pkg" >> $GITHUB_ENV
+        echo "CILOGG_DMG=cilogg-${{ env.CILOGG_VERSION }}-mac-${{ env.CILOGG_ARCH }}${{ matrix.config.package_suffix }}.dmg" >> $GITHUB_ENV
+        echo "CILOGG_PKG=cilogg-${{ env.CILOGG_VERSION }}-mac-${{ env.CILOGG_ARCH }}${{ matrix.config.package_suffix }}.pkg" >> $GITHUB_ENV
 
     - name: Mac codesign binaries
       if: ${{ github.event_name != 'pull_request' && inputs.p12-file-base64 != '' && inputs.p12-password != '' }}
@@ -153,7 +153,11 @@ runs:
       shell: sh
       run: |
         cd $CILOGG_BUILD_ROOT
-        ditto -c -k --sequesterRsrc --keepParent ./output/cilogg.app \
-          ./packages/cilogg-${CILOGG_VERSION}-mac-${CILOGG_ARCH}-update.zip
+        if [ -z "${{ matrix.config.package_suffix }}" ]; then
+          ditto -c -k --sequesterRsrc --keepParent ./output/cilogg.app \
+            ./packages/cilogg-${CILOGG_VERSION}-mac-${CILOGG_ARCH}-update.zip
+        else
+          echo "Qt 6.12 DMG is manual-install only; automatic updates retain the older-compatible bundle"
+        fi
         cp -a ./output/cilogg.dSym ./packages/cilogg-${{ env.CILOGG_ARCH }}.dSym
         cp -a ./output/cilogg.app ./packages/cilogg-${{ env.CILOGG_ARCH }}.app

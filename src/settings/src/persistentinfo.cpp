@@ -156,7 +156,7 @@ void PersistentInfo::PrepareOsSettings()
         copySettings( *sessionSettings_, legacySessionSettings );
     }
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
     const auto sessionSettingsPath = makeSessionSettingsPath( appSettings_->fileName() );
 
     if ( sessionSettings_->allKeys().isEmpty() ) {

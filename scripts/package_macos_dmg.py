@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import plistlib
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -16,6 +18,35 @@ def _run(args: list[str], *, check: bool = True, capture: bool = False,
     print(f"DMG command: {args!r}", flush=True)
     return subprocess.run(args, check=check, timeout=timeout,
                           stdout=subprocess.PIPE if capture else None)
+
+
+def _run_cpack(build_root: Path, timeout: int = 600) -> subprocess.CompletedProcess:
+    args = ["cpack", "--verbose", "-G", "DragNDrop"]
+    isolated_group = os.name == "posix"
+    print(f"DMG CPack start: cwd={build_root} timeout={timeout}s "
+          f"isolated_group={isolated_group}", flush=True)
+    process = subprocess.Popen(args, cwd=build_root, start_new_session=isolated_group)
+    try:
+        returncode = process.wait(timeout=timeout)
+    except BaseException as error:
+        reason = "timeout" if isinstance(error, subprocess.TimeoutExpired) else type(error).__name__
+        print(f"DMG CPack {reason}: pid={process.pid}; terminating packaging processes",
+              flush=True)
+        try:
+            if isolated_group:
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        except ProcessLookupError:
+            print(f"DMG CPack process group already exited: pid={process.pid}", flush=True)
+        finally:
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired as reap_error:
+                raise RuntimeError("CPack could not be reaped; refusing DMG recovery") from reap_error
+        print(f"DMG CPack reaped: pid={process.pid}; recovery can start", flush=True)
+        raise
+    return subprocess.CompletedProcess(args, returncode)
 
 
 def _within(path: Path, root: Path) -> bool:
@@ -68,13 +99,18 @@ def package(build_root: Path, version: str) -> Path:
     packages = build_root / "packages"
     packages.mkdir(exist_ok=True)
     destination = packages / f"cilogg-{version}-OSX.dmg"
-    result = _run(["cpack", "--verbose", "-G", "DragNDrop"], check=False)
-    if result.returncode == 0:
-        _run(["hdiutil", "verify", str(destination)])
-        print(f"DMG CPack success: {destination}", flush=True)
-        return destination
+    try:
+        result = _run_cpack(build_root)
+    except subprocess.TimeoutExpired as error:
+        reason = f"timeout after {error.timeout}s"
+    else:
+        if result.returncode == 0:
+            _run(["hdiutil", "verify", str(destination)])
+            print(f"DMG CPack success: {destination}", flush=True)
+            return destination
+        reason = f"exit={result.returncode}"
 
-    print(f"DMG CPack failed: exit={result.returncode}; starting recovery", flush=True)
+    print(f"DMG CPack failed: {reason}; starting recovery", flush=True)
     cpack_root = (build_root / "_CPack_Packages").resolve()
     _detach_owned_images([cpack_root])
     temporary = Path(tempfile.mkdtemp(prefix="dmg-recovery-", dir=packages)).resolve()

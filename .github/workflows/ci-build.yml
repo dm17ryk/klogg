@@ -31,6 +31,12 @@ jobs:
       - uses: actions/checkout@v3
       - uses: ./.github/actions/cilogg-version
 
+      - name: Check native packaging contracts
+        run: |
+          python3 -m unittest discover -s tests/packaging -p 'test_*.py'
+          bash tests/packaging/linux_native_test.sh
+          bash tests/packaging/linux_command_launcher_test.sh
+
       - name: Save version
         run: echo $CILOGG_VERSION > cilogg_version.txt
 
@@ -88,33 +94,36 @@ jobs:
           - os: ubuntu_jammy
             os_version: 22.04
             arch: x64
+            qt_version: 6.12.0
             backend: hyperscan
-            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
+            check_command: apt-get update && apt-get install -y /usr/local/cilogg*.deb && QT_QPA_PLATFORM=offscreen cilogg --help
             cpack_gen: DEB
             artifacts_id: jammy
             package_suffix: deb
             check_container: ubuntu:22.04
             container_root: docker/ubuntu22.04
             container: dm17ryk/klogg_ubuntu22.04
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON
             container_platform: linux/amd64
 
           - os: ubuntu_noble
             os_version: 24.04
             arch: x64
+            qt_version: 6.12.0
             backend: hyperscan
-            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
+            check_command: apt-get update && apt-get install -y /usr/local/cilogg*.deb && QT_QPA_PLATFORM=offscreen cilogg --help
             cpack_gen: DEB
             artifacts_id: noble
             package_suffix: deb
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON
             container_platform: linux/amd64
 
           - os: ubuntu_appimage
-            os_version: 20.04
+            os_version: 22.04
+            qt_version: 6.12.0
             arch: x64
             backend: hyperscan
             artifacts_id: appimage
@@ -155,19 +164,22 @@ jobs:
           - os: ubuntu_noble
             os_version: 24.04
             arch: arm64
+            qt_version: 6.12.0
+            runner: ubuntu-24.04-arm
             backend: vectorscan
-            check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
+            check_command: apt-get update && apt-get install -y /usr/local/cilogg*.deb && QT_QPA_PLATFORM=offscreen cilogg --help
             cpack_gen: DEB
             artifacts_id: noble-arm64
             package_suffix: deb
             check_container: ubuntu:24.04
             container_root: docker/ubuntu24.04
             container: dm17ryk/klogg_ubuntu24.04_arm64
-            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON
             container_platform: linux/arm64
 
           - os: ubuntu_appimage_arm64
-            os_version: 22.04
+            os_version: 24.04
+            qt_version: 6.12.0
             arch: arm64
             # AppImage ELF magic is rejected by QEMU's binfmt handler.
             runner: ubuntu-24.04-arm
@@ -178,6 +190,70 @@ jobs:
             container: dm17ryk/klogg_ubuntu24.04_appimage_arm64
             cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_GENERIC_CPU=ON -DKLOGG_USE_SENTRY=OFF
             container_platform: linux/arm64
+
+          - os: debian12
+            os_version: 12
+            arch: x64
+            qt_version: 6.12.0
+            backend: hyperscan
+            check_command: apt-get update && apt-get install -y /usr/local/cilogg*.deb && QT_QPA_PLATFORM=offscreen cilogg --help
+            cpack_gen: DEB
+            artifacts_id: debian12
+            package_suffix: deb
+            check_container: debian:12
+            container_root: docker/qt612
+            base_image: debian:12
+            container: dm17ryk/klogg_debian12
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF
+            container_platform: linux/amd64
+
+          - os: rhel9_compatible
+            os_version: 9.6
+            arch: x64
+            qt_version: 6.12.0
+            backend: qt
+            check_command: dnf install -y /usr/local/cilogg*.rpm && QT_QPA_PLATFORM=offscreen cilogg --help
+            cpack_gen: RPM
+            artifacts_id: rhel9-compatible
+            package_suffix: rpm
+            check_container: almalinux:9.6
+            container_root: docker/qt612
+            base_image: almalinux:9.6
+            container: dm17ryk/klogg_rhel9_compatible
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF
+            container_platform: linux/amd64
+
+          - os: rhel10_compatible
+            os_version: 10.0
+            arch: x64
+            qt_version: 6.12.0
+            backend: qt
+            check_command: dnf install -y /usr/local/cilogg*.rpm && QT_QPA_PLATFORM=offscreen cilogg --help
+            cpack_gen: RPM
+            artifacts_id: rhel10-compatible
+            package_suffix: rpm
+            check_container: almalinux:10.0
+            container_root: docker/qt612
+            base_image: almalinux:10.0
+            container: dm17ryk/klogg_rhel10_compatible
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF
+            container_platform: linux/amd64
+
+          - os: opensuse16
+            os_version: 16.0
+            arch: x64
+            qt_version: 6.12.0
+            backend: hyperscan
+            check_command: zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm /usr/local/cilogg*.rpm && QT_QPA_PLATFORM=offscreen cilogg --help
+            cpack_gen: RPM
+            artifacts_id: opensuse16
+            package_suffix: rpm
+            check_container: opensuse/leap:16.0
+            container_root: docker/qt612
+            base_image: opensuse/leap:16.0
+            container: dm17ryk/klogg_opensuse16
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_BUNDLE_QT_RUNTIME=ON -DKLOGG_USE_SENTRY=OFF -DKLOGG_USE_LTO=OFF
+            container_platform: linux/amd64
 
           - os: fedora40
             os_version: 22.04
@@ -282,10 +358,12 @@ jobs:
       - name: Build container
         run: |
           cd ${{ matrix.config.container_root }}
-          if [ "${{ matrix.config.container_platform }}" = "linux/arm64" ]; then
-            docker buildx build --platform linux/arm64 -t ${{ matrix.config.container }} --load .
+          if [ -n "${{ matrix.config.base_image }}" ]; then
+            docker build --build-arg BASE_IMAGE=${{ matrix.config.base_image }} --build-arg QT_VERSION=${{ matrix.config.qt_version }} -t ${{ matrix.config.container }} .
+          elif [ "${{ matrix.config.container_platform }}" = "linux/arm64" ]; then
+            docker buildx build --platform linux/arm64 --build-arg QT_VERSION=${{ matrix.config.qt_version || '6.10.1' }} -t ${{ matrix.config.container }} --load .
           else
-            docker build -t ${{ matrix.config.container }} .
+            docker build --build-arg QT_VERSION=${{ matrix.config.qt_version || '6.10.1' }} -t ${{ matrix.config.container }} .
           fi
       - name: Configure safe Git directory
         run: git config --global --add safe.directory /usr/local
@@ -305,7 +383,7 @@ jobs:
 
   Mac:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    name: Mac (${{ matrix.config.arch }}, ${{ matrix.config.backend }})
+    name: Mac (${{ matrix.config.arch }}, ${{ matrix.config.backend }}, Qt ${{ matrix.config.qt_version }})
     strategy:
       fail-fast: false
       matrix:
@@ -332,6 +410,28 @@ jobs:
             artifacts_id: macos-arm-qt6
             cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
+          - os: macos
+            os_version: 26-intel
+            arch: x64
+            backend: hyperscan
+            qt_version: 6.12.0
+            qt_arch: clang_64
+            qt_modules: qt5compat
+            package_suffix: -qt612
+            artifacts_id: macos-intel-qt612
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
+
+          - os: macos
+            os_version: 26
+            arch: arm64
+            backend: vectorscan
+            qt_version: 6.12.0
+            qt_arch: clang_64
+            qt_modules: qt5compat
+            package_suffix: -qt612
+            artifacts_id: macos-arm-qt612
+            cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
+
     runs-on: ${{ matrix.config.os }}-${{ matrix.config.os_version }}
     steps:
       - uses: actions/checkout@v3
@@ -342,7 +442,12 @@ jobs:
       - name: Setup Xcode
         shell: sh
         run: |
-          if [ -d /Applications/Xcode_15.2.app ]; then
+          if [ "${{ matrix.config.qt_version }}" = "6.12.0" ]; then
+            # The macOS 26 image selects a supported Xcode 26 SDK by default.
+            xcode-select -p
+            major=$(xcodebuild -version | awk '/^Xcode / { split($2, version, "."); print version[1] }')
+            test "$major" -ge 16 || { echo "Qt 6.12 requires Xcode 16+" >&2; exit 1; }
+          elif [ -d /Applications/Xcode_15.2.app ]; then
             sudo xcode-select -s /Applications/Xcode_15.2.app
           elif [ -d /Applications/Xcode_16.2.app ]; then
             sudo xcode-select -s /Applications/Xcode_16.2.app

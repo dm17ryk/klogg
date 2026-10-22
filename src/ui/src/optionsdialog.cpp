@@ -149,7 +149,7 @@ void OptionsDialog::setupTabs()
     keepFileClosedCheckBox->setVisible( false );
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     minimizeToTrayCheckBox->setVisible( false );
 #endif
 

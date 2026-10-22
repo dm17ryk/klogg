@@ -67,7 +67,7 @@ inline void showPathInFileExplorer( const QString& filePath )
         = QStringList() << QString( "/select,%1" )
                                .arg( QDir::toNativeSeparators( fileInfo.canonicalFilePath() ) );
     QProcess::startDetached( "explorer.exe", explorerArgs );
-#elif defined( Q_OS_MAC )
+#elif defined( Q_OS_MACOS )
     QStringList scriptArgs;
     scriptArgs << QLatin1String( "-e" )
                << QString::fromLatin1( "tell application \"Finder\" to reveal POSIX file \"%1\"" )

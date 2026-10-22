@@ -166,7 +166,7 @@ QString PluginRepository::dataRootForSettings( const QSettings& appSettings )
 
 QString PluginRepository::shippedRoot()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     return QDir( QCoreApplication::applicationDirPath() ).absoluteFilePath( "../PlugIns/cilogg" );
 #else
     return QDir( QCoreApplication::applicationDirPath() ).filePath( "plugins" );

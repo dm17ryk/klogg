@@ -77,7 +77,7 @@ TabbedCrawlerWidget::TabbedCrawlerWidget()
         backgroundHoverImage = ":/images/icons8-close-window-hover-16_inverse.png";
     }
 
-#if defined( Q_OS_MAC )
+#if defined( Q_OS_MACOS )
     // work around Qt MacOSX bug missing tab close icons
     // see: https://bugreports.qt.io/browse/QTBUG-61092
     // still broken in document mode in Qt.5.12.2 !!!!
