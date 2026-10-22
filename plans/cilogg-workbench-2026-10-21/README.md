@@ -2,7 +2,7 @@
 
 Complete implementation package for a general developer logger, visualizer and automation workbench, including Docklight communication testing.
 
-**Scope:** 97 implementation tasks and 173 mapped requirements. Imported and reconciled on 2026-10-22; G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
+**Scope:** 105 implementation tasks and 187 mapped requirements. Imported and reconciled on 2026-10-22; G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
 
 **Execution status:** P05 is merged through PR #45; the next runnable tasks are G02 and G03. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 
@@ -28,7 +28,12 @@ Complete implementation package for a general developer logger, visualizer and a
 | [07-docklight.md](07-docklight.md) | Docklight features and Protocol Lab |
 | [08-ecosystem.md](08-ecosystem.md) | Sources, integrations, packs and sharing |
 | [09-release.md](09-release.md) | Release and product validation |
+| [10-message-decoders.md](10-message-decoders.md) | Real TShark/Lua decoders, nested streams and message inspector |
 
 [Primary sources and reuse references](REFERENCES.md). Each task also carries exact file targets, interfaces, behavioral checks, public automation operations and rollback. Read individual cards from `tasks/TASK_ID.md` after their shared contracts to keep Codex context focused.
 
 Run `python validate_plan.py .` to validate packaged task IDs, dependency order, requirement ownership, local links and document structure. This validates the plan, not the product implementation.
+
+## Decoder addendum and public tracking
+
+Revision 2 is integrated as MD01–MD08 with 14 DEC requirements. All are planned; [the decoder contract](10-message-decoders.md) records dependencies, compatibility and missing runtime inputs. [Public tracking](PUBLIC_TRACKING.md) maps GitHub milestone issues without replacing the execution ledger.

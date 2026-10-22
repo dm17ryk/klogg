@@ -142,3 +142,7 @@ A task is complete when its behavior, limits, tests, GUI/CLI/MCP/Python surface,
 ## How to resume
 
 Use `PROGRESS.json` and the DAG to choose the next task whose hard dependencies are complete. Read its subsystem file and required contracts, inspect current HEAD, and continue from the last recorded evidence. Do not replay effectful automation as part of resuming development. If a task is blocked, record the exact blocker and continue another independent runnable task.
+
+## Message decoder revision-2 integration
+
+Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).

@@ -1,15 +1,16 @@
 {
   "valid": true,
-  "taskCount": 97,
-  "requirementCount": 173,
-  "markdownFiles": 114,
-  "validatedLocalLinks": 333,
-  "topologicalTaskCount": 97,
+  "taskCount": 105,
+  "requirementCount": 187,
+  "markdownFiles": 124,
+  "validatedLocalLinks": 409,
+  "topologicalTaskCount": 105,
   "issues": [],
   "integrationChecks": {
-    "originalTasksPreserved": 97,
+    "originalTasksAndHardEdgesPreserved": 97,
     "originalRequirementsAndOwnershipPreserved": 173,
-    "hardDependencyEdgesPreserved": true,
+    "addedTasks": 8,
+    "addedRequirements": 14,
     "completedTasks": [
       "G01"
     ],
@@ -17,11 +18,9 @@
       "G02",
       "G03"
     ],
-    "priorRoadmapSlicesMapped": 31,
-    "currentSourceAnchorsVerified": 25,
-    "earlyChartsIndependentOfStructuredQuery": true,
-    "importedValidatorUnmodified": true,
-    "externalLocalLinksValid": true,
-    "productBuildRun": false
+    "earlyChartsIndependent": true,
+    "decoderRuntimeRun": false,
+    "productBuildRun": false,
+    "sourcePayloadsPublished": false
   }
 }

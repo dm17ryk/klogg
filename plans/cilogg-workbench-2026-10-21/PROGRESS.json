@@ -810,6 +810,70 @@
       "evidence": [],
       "limitations": [],
       "slices": []
+    },
+    "MD01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "MD08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
     }
   },
   "decisions": [
@@ -819,7 +883,8 @@
     "D04: see ../../docs/workbench/decisions.md",
     "D05: see ../../docs/workbench/decisions.md",
     "D06: see ../../docs/workbench/decisions.md",
-    "D07: see ../../docs/workbench/decisions.md"
+    "D07: see ../../docs/workbench/decisions.md",
+    "D08: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 reconciles current source and prior evidence; G02 benchmarks and G03 reusable parity remain planned.",
@@ -830,5 +895,34 @@
   "runnableTasks": [
     "G02",
     "G03"
-  ]
+  ],
+  "addenda": {
+    "messageDecoders": {
+      "revision": 2,
+      "date": "2026-10-22",
+      "state": "planned",
+      "sourceName": "CILogg_Message_Decoder_Implementation_Addendum.md",
+      "sourceSha256": "feabb255e56a59b363af5f68580c24e321f07e808f432dd8da9a7d9bc4379650",
+      "plan": "10-message-decoders.md",
+      "tasks": [
+        "MD01",
+        "MD02",
+        "MD03",
+        "MD04",
+        "MD05",
+        "MD06",
+        "MD07",
+        "MD08"
+      ],
+      "publicTracking": "PUBLIC_TRACKING.md",
+      "baseline": "ca4c6074fea48643810ff6d92182146c427f1b65",
+      "runtimeEvidence": "Not run; external Lua sources and complete reference captures are not supplied by this Markdown attachment.",
+      "scope": "Integrate requirements and issue tracking only; the document's embedded implementation handoff is reference material, not an instruction to start decoding work.",
+      "inputGates": [
+        "Obtain licensed/version-pinned EHCP/EHCI Lua sources and complete reference captures before MD01 runtime claims.",
+        "Publish sanitized fixtures only; retain supplied account/network payloads outside public commits/issues.",
+        "PR59 G02a remains separate and unmerged at integration; preserve its ledger evidence when merging. Full G02/G03 prerequisites are unchanged."
+      ]
+    }
+  }
 }
