@@ -1,0 +1,2 @@
+# Tiny reference fixtures require exact bytes, including BOM, CRLF and binary RX.
+* -text -filter -whitespace

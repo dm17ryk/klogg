@@ -21,7 +21,7 @@
     "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
-  "activeTask": null,
+  "activeTask": "G02",
   "nextTask": "G02",
   "tasks": {
     "G01": {
@@ -44,12 +44,43 @@
       "slices": []
     },
     "G02": {
-      "status": "planned",
+      "status": "in_progress",
       "commit": null,
       "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
-      "slices": []
+      "evidence": [
+        "../../docs/workbench/benchmarks.md",
+        "../../docs/workbench/g02a-windows-observations.json",
+        "../../test_data/workbench/manifest.json",
+        "G02a: 18 black-box Python tests; deterministic bytes/oracles, invalid setup, malformed protocol, stalled reader, timeout and owned-process cleanup.",
+        "Three actual 100000-row Windows frozen-analysis runs; source 96bf481, package 26.04.2.1043, Qt runtime 6.12.0.0. Not a fresh master build.",
+        "Read-only general/Python reviews completed; all five distinct findings reproduced with failing regressions and corrected before final measurements."
+      ],
+      "limitations": [
+        "Full G02 remains in progress: GUI/scroll p95, direct-service cancellation, worker RSS, sustained memory slope, controlled OS-cache and renderer/native Linux/macOS evidence remain pending.",
+        "No fresh-source C++ build/CTest or hardware pass is claimed by this Python-only benchmark slice; hosted CI remains separate evidence.",
+        "GitNexus refresh exhausted parser worker budgets; changed new Python symbols were absent from the registered primary index. detect-changes could not resolve the integration worktree.",
+        "Code Review Graph refreshed with low downstream impact; CodeGraph reports this linked worktree unindexed, so it was not initialized."
+      ],
+      "slices": [
+        {
+          "rulings": [
+            "Use the existing PROGRESS ledger rather than a duplicate execution ledger.",
+            "GUI event/scroll latency, worker-process peak memory, OS-cache cold runs and sustained/cross-platform measurements remain later G02 slices; CLI/MCP round trips do not establish GUI latency.",
+            "Ruling: measure cancellation through public MCP/CLI round trips against the existing 10-second parity bound; direct service <1 second remains unmeasured, not relaxed.",
+            "Ruling: G02a records operational gates and exact observations, not calibrated release throughput or GUI gates; full G02 stays in_progress.",
+            "Ruling: require a queued/running snapshot before append; terminal snapshots fail explicitly rather than claiming active-scan evidence."
+          ],
+          "scope": "Portable domain fixtures, benchmark gates and frozen analysis measurements",
+          "preflight": [
+            "G01 -> G02: existing source/job/Commander contracts are reused without product changes.",
+            "G02 -> G03: deterministic manifest hashes and structured exit/report states are additive; existing parity harness is preserved.",
+            "G02 -> V02: p95 GUI target remains open until measured; the developer benchmark does not complete charts."
+          ],
+          "status": "completed",
+          "base": "ca4c6074fea48643810ff6d92182146c427f1b65",
+          "id": "G02a"
+        }
+      ]
     },
     "G03": {
       "status": "planned",
@@ -822,10 +853,10 @@
     "D07: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
-    "G01 reconciles current source and prior evidence; G02 benchmarks and G03 reusable parity remain planned.",
-    "P00 unmeasured latency, memory and throughput gates remain open.",
-    "PR #47 platform changes and CI results are independent; they are not merged into this baseline.",
-    "Third-party hardware/project compatibility requires D task conformance; source inspection is not a hardware pass."
+    "G01 reconciliation is merged; G02a fixtures/harness observations are complete while full G02 and G03 remain open.",
+    "P00 unmeasured GUI latency, full-process memory and calibrated throughput release gates remain open.",
+    "Platform PR47 and integration PR58 are merged into the G02a base ca4c6074; their CI does not establish new benchmark results.",
+    "Third-party hardware/project compatibility requires D-task conformance; source inspection is not a hardware pass."
   ],
   "runnableTasks": [
     "G02",

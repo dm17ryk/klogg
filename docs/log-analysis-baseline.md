@@ -107,3 +107,7 @@ Equivalent MCP calls:
 ```
 
 GitNexus method lookups were incomplete on the old index. Class-level analysis reported `AbstractLogView` CRITICAL (five direct dependencies, nine affected items) and `WrappedString` HIGH (one direct dependency, six affected items); no affected execution processes were resolved. EncodingDetector was LOW. CodeGraph and direct selection-signal consumers were inspected to supplement those results. Reindex/change-scope limitations must be reported separately from build/test evidence.
+
+## G02a Workbench benchmark slice (2026-10-22)
+
+The [Workbench benchmark guide](workbench/benchmarks.md) records the new portable fixtures and bounded analysis runner. [Raw Windows observations](workbench/g02a-windows-observations.json) retain three actual 100,000-row runs against package 26.04.2.1043 (source 96bf481, Qt runtime 6.12.0.0), including hashes, separate service/public timings and explicit pending gates. These are operational observations; GUI/scroll latency, direct service cancellation, worker RSS and native Linux/macOS measurements remain pending. G02 and P00 are not complete.
