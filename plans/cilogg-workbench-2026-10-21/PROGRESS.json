@@ -53,8 +53,8 @@
     },
     "G03": {
       "status": "in_progress",
-      "commit": null,
-      "pullRequest": null,
+      "commit": "f96920138d40c86f024b3e59b7837fc01785cef5",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
       "evidence": [
         "../../docs/workbench/automation-contract.md",
         "../../docs/workbench/g03a-windows-observations.json",
@@ -75,9 +75,9 @@
       "slices": [
         {
           "id": "G03a",
-          "status": "in_progress",
-          "commit": null,
-          "pullRequest": null,
+          "status": "implemented_pending_gates",
+          "commit": "f96920138d40c86f024b3e59b7837fc01785cef5",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
           "baseCommit": "ca4c6074fea48643810ff6d92182146c427f1b65",
           "scope": "Registered task runner, exact JSON comparisons, isolated host/process supervision, P03/P04/P05 cases, self-tests, CTest/CI wiring and evidence"
         }
