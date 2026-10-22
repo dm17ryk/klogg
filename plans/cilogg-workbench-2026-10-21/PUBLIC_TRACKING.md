@@ -15,10 +15,12 @@ and 187 requirements. Decoder implementation is planned, not delivered.
 | [#52 M04](https://github.com/dm17ryk/klogg/issues/52) | Investigations, workflows, assertions and CI |
 | [#53 M05](https://github.com/dm17ryk/klogg/issues/53) | Advanced data and visualization families |
 | [#54 M06](https://github.com/dm17ryk/klogg/issues/54) | Protocol Lab, Docklight and MD01–MD08 decoder delivery |
+| [#61 decoders](https://github.com/dm17ryk/klogg/issues/61) | Dedicated MD01–MD08 checklist and decoder acceptance |
 | [#55 M07](https://github.com/dm17ryk/klogg/issues/55) | Sources, integrations and reusable packs |
 | [#56 M08](https://github.com/dm17ryk/klogg/issues/56) | Cross-platform and decoder-enabled release evidence |
 
-The dedicated message-decoder tracker is linked from #54. MD02/MD03/MD04 share
+The dedicated [message-decoder tracker #61](https://github.com/dm17ryk/klogg/issues/61)
+is linked from #54. MD02/MD03/MD04 share
 F/E/U foundations with #50, MD05/MD06/MD08 reuse E09 packs in #55, and MD08 supplies
 capability-conditional release evidence to #56. Cross-links do not duplicate
 implementation ownership or add reverse hard dependency edges.

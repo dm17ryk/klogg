@@ -1,0 +1,5 @@
+# Plan hashes describe exact Git bytes on every platform.
+*.md text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+.gitattributes text eol=lf
