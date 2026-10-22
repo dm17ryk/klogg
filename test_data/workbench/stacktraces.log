@@ -1,0 +1,12 @@
+java.lang.IllegalStateException: fixture
+	at service.Worker.run(Worker.java:12)
+Caused by: java.io.IOException: fixture
+	at service.IO.read(IO.java:8)
+System.InvalidOperationException: fixture
+   at Worker.Run() in Worker.cs:line 12
+Traceback (most recent call last):
+  File "worker.py", line 12, in run
+    raise ValueError("fixture")
+ValueError: fixture
+TypeError: fixture
+    at run (worker.js:12:3)

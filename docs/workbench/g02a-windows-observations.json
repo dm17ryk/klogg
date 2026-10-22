@@ -1,0 +1,185 @@
+{
+  "budgets": {
+    "appendSeconds": 5.0,
+    "hostPeakBytes": 536870912,
+    "jobSeconds": 120.0,
+    "publicCancellationSeconds": 10.0
+  },
+  "build": {
+    "backend": "unreported",
+    "binarySha256": "f06a010d41c34010c353bedc233e9ea32a8dde65e858aef4391c3dbd6f380bcd",
+    "reportedVersion": "cilogg 26.04.2.1043\r\nBuilt 2026-10-22 from 96bf481(96bf481)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\n",
+    "sdk": "unreported",
+    "suppliedMetadata": {
+      "acceleratedSearchBackend": "unreported",
+      "buildSdk": "unreported",
+      "reportedCommit": "96bf481",
+      "runtimeQtProvenance": "Installed Qt6Core.dll VersionInfo",
+      "runtimeQtVersion": "6.12.0.0"
+    }
+  },
+  "cachePolicy": "os_cache_uncontrolled",
+  "corpus": {
+    "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+    "rows": 100000,
+    "seed": 42
+  },
+  "evidenceKind": "application",
+  "harnessModules": {
+    "workbench-benchmark.py": "80c3d910217faa83dd008e6685af092a09951f02f58ed0e6f7c795fa496ade27",
+    "workbench_benchmark.py": "809926c972a4238f810985728f8641830db17dec6626eb569618a26f199d6180",
+    "workbench_corpus.py": "355b4ee1a2f0099dfa4bf94fb416a021420e09a0048aa17a35f54a1a2a1592e7",
+    "workbench_process.py": "dd5fef2c36b85f3d26da5aa058ae54f50ed1e23a56cfed14337ca3bb32e2a9a2",
+    "workbench_runtime.py": "d67a58714d9038d089284a6ec280f64f75f22d89964e29f51b3cf8e59f29207f"
+  },
+  "machine": {
+    "architecture": "AMD64",
+    "logicalProcessors": 12,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "python": "3.14.7"
+  },
+  "passed": true,
+  "recordedAtUtc": "2026-10-22T17:52:50.833476+00:00",
+  "releaseGateStatus": "pending",
+  "runs": [
+    {
+      "appendPublicationSecondsIncludingProtocol": 2.083270200062543,
+      "appendWhileActive": true,
+      "cancelSecondsIncludingProtocol": 1.935249499976635,
+      "captureBackend": "Qt QRegularExpression",
+      "commanderRoundTripSeconds": [
+        0.6752583999186754,
+        0.40838870010338724
+      ],
+      "gates": {
+        "appendPublication": true,
+        "cancellation": true,
+        "counts": true,
+        "frozenScan": true,
+        "hostPeakMemory": "passed"
+      },
+      "hostPeakWorkingSetBytes": 92176384,
+      "indexAndSubmissionSeconds": 2.318051700014621,
+      "processState": "cold_process",
+      "rawBytes": 3398964,
+      "repetition": 0,
+      "scanMiBPerSecondIncludingProtocol": 0.5969894186835893,
+      "scanSecondsIncludingProtocol": 5.429752300027758,
+      "scannedLines": 100000,
+      "serviceTiming": {
+        "backpressureUs": 2,
+        "resultDeliveryUs": 1216,
+        "sourceReadUs": 223777
+      },
+      "sourceSnapshot": {
+        "generation": "1",
+        "indexedBytes": "3398964",
+        "revision": "5",
+        "sourceId": "ae0b8917-643c-49f5-b8f9-de400940ad88"
+      },
+      "workerMetrics": {
+        "compileUs": 532,
+        "matchUs": 956717,
+        "startupUs": 695241
+      }
+    },
+    {
+      "appendPublicationSecondsIncludingProtocol": 0.9332971000112593,
+      "appendWhileActive": true,
+      "cancelSecondsIncludingProtocol": 1.3762187000829726,
+      "captureBackend": "Qt QRegularExpression",
+      "commanderRoundTripSeconds": [
+        0.49278520001098514,
+        0.7032246999442577,
+        0.3536647998262197
+      ],
+      "gates": {
+        "appendPublication": true,
+        "cancellation": true,
+        "counts": true,
+        "frozenScan": true,
+        "hostPeakMemory": "passed"
+      },
+      "hostPeakWorkingSetBytes": 101969920,
+      "indexAndSubmissionSeconds": 2.1930341999977827,
+      "processState": "warm_process",
+      "rawBytes": 3398964,
+      "repetition": 1,
+      "scanMiBPerSecondIncludingProtocol": 0.6105311679664429,
+      "scanSecondsIncludingProtocol": 5.309318900108337,
+      "scannedLines": 100000,
+      "serviceTiming": {
+        "backpressureUs": 1,
+        "resultDeliveryUs": 2720,
+        "sourceReadUs": 222998
+      },
+      "sourceSnapshot": {
+        "generation": "1",
+        "indexedBytes": "3398964",
+        "revision": "5",
+        "sourceId": "1aba1a7c-670a-460b-9dad-b7dd545dd380"
+      },
+      "workerMetrics": {
+        "compileUs": 609,
+        "matchUs": 943127,
+        "startupUs": 1057790
+      }
+    },
+    {
+      "appendPublicationSecondsIncludingProtocol": 0.8980721000116318,
+      "appendWhileActive": true,
+      "cancelSecondsIncludingProtocol": 1.715537500102073,
+      "captureBackend": "Qt QRegularExpression",
+      "commanderRoundTripSeconds": [
+        0.4786600999068469,
+        0.6502603001426905,
+        0.4689097001682967
+      ],
+      "gates": {
+        "appendPublication": true,
+        "cancellation": true,
+        "counts": true,
+        "frozenScan": true,
+        "hostPeakMemory": "passed"
+      },
+      "hostPeakWorkingSetBytes": 102739968,
+      "indexAndSubmissionSeconds": 2.482466100016609,
+      "processState": "warm_process",
+      "rawBytes": 3398964,
+      "repetition": 2,
+      "scanMiBPerSecondIncludingProtocol": 0.6144213591504002,
+      "scanSecondsIncludingProtocol": 5.2757031000219285,
+      "scannedLines": 100000,
+      "serviceTiming": {
+        "backpressureUs": 1,
+        "resultDeliveryUs": 818,
+        "sourceReadUs": 226652
+      },
+      "sourceSnapshot": {
+        "generation": "1",
+        "indexedBytes": "3398964",
+        "revision": "5",
+        "sourceId": "aaf191fb-6ad6-4f92-82a4-10b24120fc00"
+      },
+      "workerMetrics": {
+        "compileUs": 350,
+        "matchUs": 996674,
+        "startupUs": 695434
+      }
+    }
+  ],
+  "scenario": "analysis",
+  "schemaVersion": 1,
+  "startupSeconds": 2.2837742001283914,
+  "state": "passed",
+  "unmeasured": [
+    "guiEventLatency",
+    "scrollLatency",
+    "serviceCancellationLatency",
+    "workerPeakResidentMemory",
+    "sustainedMemorySlope",
+    "osCacheColdRuns",
+    "richRendererOverhead"
+  ]
+}

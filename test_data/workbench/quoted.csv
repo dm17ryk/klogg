@@ -1,0 +1,13 @@
+seq,message,seed
+0,"quoted ""value""
+second line",42
+1,"comma,value",42
+2,"quoted ""value""
+second line",42
+3,"comma,value",42
+4,"quoted ""value""
+second line",42
+5,"comma,value",42
+6,"quoted ""value""
+second line",42
+7,"comma,value",42

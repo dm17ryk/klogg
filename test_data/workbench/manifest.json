@@ -1,0 +1,212 @@
+{
+  "files": [
+    {
+      "bytes": 269,
+      "encoding": "ascii",
+      "expected": {
+        "errorLines": 1,
+        "physicalLines": 8
+      },
+      "path": "ascii.log",
+      "sha256": "447eb80a17c1d71cfd99ff31986ad95d4768d96b361c27c1b14eda9152f898fb"
+    },
+    {
+      "bytes": 304,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 8
+      },
+      "path": "unicode.log",
+      "sha256": "1feef217ca365cc1f756beab77635f60a58b791b4c51fefa6f3cfcc361170d5c"
+    },
+    {
+      "bytes": 556,
+      "encoding": "utf-16-le-bom",
+      "expected": {
+        "physicalLines": 8
+      },
+      "path": "utf16le.log",
+      "sha256": "7c5f775a469fc1f0486a45075b286a4809d3e9ecb07b28b7c56dacc9e01d1995"
+    },
+    {
+      "bytes": 280,
+      "encoding": "utf-8-sig",
+      "expected": {
+        "physicalLines": 8
+      },
+      "path": "utf8bom.log",
+      "sha256": "d28583b7a4e940321492012c6c7a65e3180f09a44f818a5c40db9e9219312660"
+    },
+    {
+      "bytes": 32832,
+      "encoding": "utf-8",
+      "expected": {
+        "payloadBytesPerLine": 4096,
+        "physicalLines": 8
+      },
+      "path": "long-lines.log",
+      "sha256": "340b171747019e6836bb78e7e56bd40b278d86086481efeac283dc354ec29c15"
+    },
+    {
+      "bytes": 144,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 8,
+        "uniqueKeys": 8
+      },
+      "path": "high-cardinality.log",
+      "sha256": "19ad946e0f4198ba0201ffcad1be38f32fe89d993b28fa4b9abc13cdb0edcae9"
+    },
+    {
+      "bytes": 128,
+      "encoding": "utf-8",
+      "expected": {
+        "occurrences": 16,
+        "physicalLines": 8
+      },
+      "path": "dense-matches.log",
+      "sha256": "092411f79ea64de627cfee69ddd14cf51ce03c679258e71c381575003de6932d"
+    },
+    {
+      "bytes": 728,
+      "encoding": "utf-8",
+      "expected": {
+        "jsonRecords": 8,
+        "physicalLines": 8
+      },
+      "path": "structured.jsonl",
+      "sha256": "73191400d7a9ee7fce57124f870cc006d862683a69afe72f836dcf9986444ad4"
+    },
+    {
+      "bytes": 416,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 8
+      },
+      "path": "structured.logfmt",
+      "sha256": "52ef07a728a75d8ca5e523d4b03b6abad30f184eecf21a6fbaacd5498986414b"
+    },
+    {
+      "bytes": 237,
+      "encoding": "utf-8",
+      "expected": {
+        "logicalRecords": 8,
+        "physicalLines": 13
+      },
+      "path": "quoted.csv",
+      "sha256": "a1c057f0eacebfffde19056bd9e5f57ef494e78daf46746dad3e6f10297335ea"
+    },
+    {
+      "bytes": 403,
+      "encoding": "utf-8",
+      "expected": {
+        "languageExamples": [
+          "java",
+          "dotnet",
+          "python",
+          "javascript"
+        ],
+        "physicalLines": 12
+      },
+      "path": "stacktraces.log",
+      "sha256": "cf9385091f07602dc056a7d9f456941e0f46469dcb6f610269fe032c74c6db02"
+    },
+    {
+      "bytes": 416,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 8,
+        "serverErrors": 1
+      },
+      "path": "web.log",
+      "sha256": "0c3d84071ae686635376b0f8ad6b76236685315155d0d104545d4f9a7ff52b86"
+    },
+    {
+      "bytes": 84,
+      "encoding": "utf-8",
+      "expected": {
+        "failedTests": 1,
+        "passedTests": 1,
+        "physicalLines": 4
+      },
+      "path": "build-tests.log",
+      "sha256": "190b927e6513f1dd0eaaf3f4e0ebe4d82b136d00b5e6bbbd69497e86c3bbee71"
+    },
+    {
+      "bytes": 474,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 9
+      },
+      "path": "etl.log",
+      "sha256": "19b575de375882757b0056c1ca24a16777ebe469638108f6e785e33ed88a1a85"
+    },
+    {
+      "bytes": 299,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 8,
+        "spikeLinesOneBased": [
+          1
+        ]
+      },
+      "path": "frames.log",
+      "sha256": "a3be112219f8fca9b70d4779130f227af1367b4f2b5973ba5a0bdbd4f2195871"
+    },
+    {
+      "bytes": 245,
+      "encoding": "utf-8",
+      "expected": {
+        "clockDomains": 2,
+        "physicalLines": 5,
+        "resetLineOneBased": 4
+      },
+      "path": "clock-resets.jsonl",
+      "sha256": "d256157dfdaa9e2153dfc41f8758d7d34e62f0123edfc83499ababef10732554"
+    },
+    {
+      "bytes": 10,
+      "encoding": "binary",
+      "expected": {
+        "bytes": 10,
+        "segments": [
+          [
+            0,
+            4
+          ],
+          [
+            4,
+            10
+          ]
+        ]
+      },
+      "path": "protocol.rx.bin",
+      "sha256": "2d4d1e6512f33b2b776bd703090503225bae3a120a5dfb3a006d704f9d0ab140"
+    },
+    {
+      "bytes": 25,
+      "encoding": "utf-8",
+      "expected": {
+        "physicalLines": 2,
+        "unterminatedFinalLine": true
+      },
+      "path": "partial-final-line.log",
+      "sha256": "3707659a893b6b056984831876ac1033d0de205c3dbb128773b6d8a4e68aa065"
+    },
+    {
+      "bytes": 22,
+      "encoding": "utf-8",
+      "expected": {
+        "malformedRecords": 1,
+        "physicalLines": 2,
+        "validJsonRecords": 1
+      },
+      "path": "malformed.jsonl",
+      "sha256": "8cf6faa9959afe1e30f3629979e9083d240817b032e34231fc92feb75cad3264"
+    }
+  ],
+  "generator": "cilogg-workbench-corpus-v1",
+  "rows": 8,
+  "schemaVersion": 1,
+  "seed": 42
+}

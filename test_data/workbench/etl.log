@@ -1,0 +1,9 @@
+job=42 stage=extract partition=0 rows=100 bytes=2048
+job=42 stage=extract partition=1 rows=101 bytes=2049
+job=42 stage=extract partition=2 rows=102 bytes=2050
+job=42 stage=transform partition=0 rows=100 bytes=2048
+job=42 stage=transform partition=1 rows=101 bytes=2049
+job=42 stage=transform partition=2 rows=102 bytes=2050
+job=42 stage=load partition=0 rows=100 bytes=2048
+job=42 stage=load partition=1 rows=101 bytes=2049
+job=42 stage=load partition=2 rows=102 bytes=2050
