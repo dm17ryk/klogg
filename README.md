@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/github/downloads/dm17ryk/klogg/total?style=flat)](https://github.com/dm17ryk/klogg/releases)
 [![License](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](COPYING)
 
-[Download CILogg](https://github.com/dm17ryk/klogg/releases) · [Documentation](DOCUMENTATION.md) · [Roadmap](https://github.com/dm17ryk/klogg/blob/50e37ad6a01fc356c88d23cab035a62007db9d42/plans/cilogg-workbench-2026-10-21/README.md) · [Milestones](https://github.com/dm17ryk/klogg/milestones) · [Questions and ideas](https://github.com/dm17ryk/klogg/discussions) · [Report a bug](https://github.com/dm17ryk/klogg/issues)
+[Download CILogg](https://github.com/dm17ryk/klogg/releases) · [Documentation](DOCUMENTATION.md) · [Roadmap](plans/cilogg-workbench-2026-10-21/README.md) · [Milestones](https://github.com/dm17ryk/klogg/milestones) · [Questions and ideas](https://github.com/dm17ryk/klogg/discussions) · [Report a bug](https://github.com/dm17ryk/klogg/issues)
 
 ## Overview
 
@@ -22,7 +22,7 @@ page for how to use CILogg.
 For command line control, the MCP server, automatic client installation, and
 generated Codex/Claude Code skills, see [MCP automation](MCP.md).
 
-Development is tracked in the [workbench roadmap](https://github.com/dm17ryk/klogg/blob/50e37ad6a01fc356c88d23cab035a62007db9d42/plans/cilogg-workbench-2026-10-21/README.md) and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones). The current priority is [M00: project readiness and distribution](https://github.com/dm17ryk/klogg/milestone/1), including documentation and packaging work.
+Development is tracked in the [workbench roadmap](plans/cilogg-workbench-2026-10-21/README.md) and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones). The current priority is [M00: project readiness and distribution](https://github.com/dm17ryk/klogg/milestone/1), including documentation and packaging work.
 
 ### Latest testing builds
 

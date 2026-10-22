@@ -1,0 +1,27 @@
+{
+  "valid": true,
+  "taskCount": 97,
+  "requirementCount": 173,
+  "markdownFiles": 114,
+  "validatedLocalLinks": 333,
+  "topologicalTaskCount": 97,
+  "issues": [],
+  "integrationChecks": {
+    "originalTasksPreserved": 97,
+    "originalRequirementsAndOwnershipPreserved": 173,
+    "hardDependencyEdgesPreserved": true,
+    "completedTasks": [
+      "G01"
+    ],
+    "nextRunnableTasks": [
+      "G02",
+      "G03"
+    ],
+    "priorRoadmapSlicesMapped": 31,
+    "currentSourceAnchorsVerified": 25,
+    "earlyChartsIndependentOfStructuredQuery": true,
+    "importedValidatorUnmodified": true,
+    "externalLocalLinksValid": true,
+    "productBuildRun": false
+  }
+}

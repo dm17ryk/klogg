@@ -1,0 +1,2323 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-21",
+  "tasks": [
+    {
+      "id": "G01",
+      "title": "Reconcile current source, prior roadmap, and task ownership",
+      "plan": "01-foundation.md",
+      "anchor": "g01--reconcile-current-source-prior-roadmap-and-task-ownership",
+      "dependencies": [],
+      "status": "completed",
+      "requirements": [
+        "QUAL01",
+        "QUAL08"
+      ],
+      "task_body_chars": 3356,
+      "taskFile": "tasks/G01.md"
+    },
+    {
+      "id": "G02",
+      "title": "Freeze representative fixtures and measured release budgets",
+      "plan": "01-foundation.md",
+      "anchor": "g02--freeze-representative-fixtures-and-measured-release-budgets",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "QUAL02"
+      ],
+      "task_body_chars": 2658,
+      "taskFile": "tasks/G02.md"
+    },
+    {
+      "id": "G03",
+      "title": "Establish a reusable GUI/CLI/MCP parity harness",
+      "plan": "01-foundation.md",
+      "anchor": "g03--establish-a-reusable-guiclimcp-parity-harness",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO18",
+        "QUAL03"
+      ],
+      "task_body_chars": 2476,
+      "taskFile": "tasks/G03.md"
+    },
+    {
+      "id": "U01",
+      "title": "Introduce a coherent Qt design system",
+      "plan": "04-workspace.md",
+      "anchor": "u01--introduce-a-coherent-qt-design-system",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX01",
+        "UX02",
+        "UX17"
+      ],
+      "task_body_chars": 3624,
+      "taskFile": "tasks/U01.md"
+    },
+    {
+      "id": "F01",
+      "title": "Canonical exact values, event identity, source spans, and dataset wire contract",
+      "plan": "02-data.md",
+      "anchor": "f01--canonical-exact-values-event-identity-source-spans-and-dataset-wire-contract",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA01",
+        "DATA02",
+        "DATA13",
+        "DATA20"
+      ],
+      "task_body_chars": 5590,
+      "taskFile": "tasks/F01.md"
+    },
+    {
+      "id": "U02",
+      "title": "Create the welcoming open/connect/run workflow",
+      "plan": "04-workspace.md",
+      "anchor": "u02--create-the-welcoming-openconnectrun-workflow",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX03",
+        "UX18"
+      ],
+      "task_body_chars": 3485,
+      "taskFile": "tasks/U02.md"
+    },
+    {
+      "id": "U09",
+      "title": "Finish visible QuickFind controls and history",
+      "plan": "04-workspace.md",
+      "anchor": "u09--finish-visible-quickfind-controls-and-history",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX10"
+      ],
+      "task_body_chars": 3125,
+      "taskFile": "tasks/U09.md"
+    },
+    {
+      "id": "U10",
+      "title": "Add a command palette from existing action metadata",
+      "plan": "04-workspace.md",
+      "anchor": "u10--add-a-command-palette-from-existing-action-metadata",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX11"
+      ],
+      "task_body_chars": 3325,
+      "taskFile": "tasks/U10.md"
+    },
+    {
+      "id": "U03",
+      "title": "Add the investigation workspace shell",
+      "plan": "04-workspace.md",
+      "anchor": "u03--add-the-investigation-workspace-shell",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U01",
+        "F01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS34",
+        "UX04"
+      ],
+      "task_body_chars": 3599,
+      "taskFile": "tasks/U03.md"
+    },
+    {
+      "id": "A01",
+      "title": "Define workflows as adapters over existing actions and scenarios",
+      "plan": "06-automation.md",
+      "anchor": "a01--define-workflows-as-adapters-over-existing-actions-and-scenarios",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO01",
+        "AUTO02"
+      ],
+      "task_body_chars": 4294,
+      "taskFile": "tasks/A01.md"
+    },
+    {
+      "id": "F02",
+      "title": "Versioned format/profile registry and explainable bounded detection",
+      "plan": "02-data.md",
+      "anchor": "f02--versioned-formatprofile-registry-and-explainable-bounded-detection",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA03",
+        "DATA05"
+      ],
+      "task_body_chars": 4556,
+      "taskFile": "tasks/F02.md"
+    },
+    {
+      "id": "V01",
+      "title": "Freeze panel, dataset binding and capability contracts",
+      "plan": "03-visualization.md",
+      "anchor": "v01--freeze-panel-dataset-binding-and-capability-contracts",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS36"
+      ],
+      "task_body_chars": 4563,
+      "taskFile": "tasks/V01.md"
+    },
+    {
+      "id": "D01",
+      "title": "Binary-safe transport lifecycle, observation and write receipts",
+      "plan": "07-docklight.md",
+      "anchor": "d01--binary-safe-transport-lifecycle-observation-and-write-receipts",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA01",
+        "DATA13",
+        "COM01",
+        "COM02"
+      ],
+      "task_body_chars": 6038,
+      "taskFile": "tasks/D01.md"
+    },
+    {
+      "id": "U06",
+      "title": "Retain independent searches and investigation checkpoints",
+      "plan": "04-workspace.md",
+      "anchor": "u06--retain-independent-searches-and-investigation-checkpoints",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "U03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX07"
+      ],
+      "task_body_chars": 3365,
+      "taskFile": "tasks/U06.md"
+    },
+    {
+      "id": "U08",
+      "title": "Add persistent tab/source groups",
+      "plan": "04-workspace.md",
+      "anchor": "u08--add-persistent-tabsource-groups",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX09"
+      ],
+      "task_body_chars": 3277,
+      "taskFile": "tasks/U08.md"
+    },
+    {
+      "id": "F03",
+      "title": "Shared regex, JSON, logfmt, CSV/TSV, syslog parsers and bounded XML extension",
+      "plan": "02-data.md",
+      "anchor": "f03--shared-regex-json-logfmt-csvtsv-syslog-parsers-and-bounded-xml-extension",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA02",
+        "DATA03",
+        "DATA04",
+        "DATA20"
+      ],
+      "task_body_chars": 5308,
+      "taskFile": "tasks/F03.md"
+    },
+    {
+      "id": "V02",
+      "title": "Ship P06 native capture charts and spike-preserving navigation",
+      "plan": "03-visualization.md",
+      "anchor": "v02--ship-p06-native-capture-charts-and-spike-preserving-navigation",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS01",
+        "VIS02",
+        "VIS36"
+      ],
+      "task_body_chars": 5788,
+      "taskFile": "tasks/V02.md"
+    },
+    {
+      "id": "A05",
+      "title": "Record and replay event-driven investigations",
+      "plan": "06-automation.md",
+      "anchor": "a05--record-and-replay-event-driven-investigations",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A01",
+        "F01",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO10",
+        "AUTO11",
+        "COM25"
+      ],
+      "task_body_chars": 3694,
+      "taskFile": "tasks/A05.md"
+    },
+    {
+      "id": "E01",
+      "title": "Extend the plugin SDK with explicit developer-source capabilities",
+      "plan": "08-ecosystem.md",
+      "anchor": "e01--extend-the-plugin-sdk-with-explicit-developer-source-capabilities",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO01",
+        "ECO02"
+      ],
+      "task_body_chars": 3856,
+      "taskFile": "tasks/E01.md"
+    },
+    {
+      "id": "D02",
+      "title": "ASCII/HEX/DEC/BIN workbench, control characters and keyboard console",
+      "plan": "07-docklight.md",
+      "anchor": "d02--asciihexdecbin-workbench-control-characters-and-keyboard-console",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM03",
+        "COM04"
+      ],
+      "task_body_chars": 3700,
+      "taskFile": "tasks/D02.md"
+    },
+    {
+      "id": "U11",
+      "title": "Save annotated investigations and notebook-style findings",
+      "plan": "04-workspace.md",
+      "anchor": "u11--save-annotated-investigations-and-notebook-style-findings",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U03",
+        "U06",
+        "V01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS32",
+        "VIS34",
+        "INS12",
+        "UX12"
+      ],
+      "task_body_chars": 3583,
+      "taskFile": "tasks/U11.md"
+    },
+    {
+      "id": "F04",
+      "title": "Multiline event assembly, stack traces, exceptions, and provisional replacement",
+      "plan": "02-data.md",
+      "anchor": "f04--multiline-event-assembly-stack-traces-exceptions-and-provisional-replacement",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "F03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA04",
+        "DATA06",
+        "DATA07"
+      ],
+      "task_body_chars": 4839,
+      "taskFile": "tasks/F04.md"
+    },
+    {
+      "id": "F07",
+      "title": "Source-set datasets, shared service, virtual event table, and field exploration",
+      "plan": "02-data.md",
+      "anchor": "f07--source-set-datasets-shared-service-virtual-event-table-and-field-exploration",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "F03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA11",
+        "DATA14",
+        "DATA21"
+      ],
+      "task_body_chars": 7009,
+      "taskFile": "tasks/F07.md"
+    },
+    {
+      "id": "V03",
+      "title": "Add an optional, packaged, offline rich renderer",
+      "plan": "03-visualization.md",
+      "anchor": "v03--add-an-optional-packaged-offline-rich-renderer",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS36",
+        "VIS37"
+      ],
+      "task_body_chars": 4196,
+      "taskFile": "tasks/V03.md"
+    },
+    {
+      "id": "E02",
+      "title": "Add arbitrary command-output and stdin capture",
+      "plan": "08-ecosystem.md",
+      "anchor": "e02--add-arbitrary-command-output-and-stdin-capture",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX03",
+        "AUTO07",
+        "ECO03"
+      ],
+      "task_body_chars": 3894,
+      "taskFile": "tasks/E02.md"
+    },
+    {
+      "id": "D03",
+      "title": "Named sequences and explicit byte parameters",
+      "plan": "07-docklight.md",
+      "anchor": "d03--named-sequences-and-explicit-byte-parameters",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO02",
+        "COM05",
+        "COM06"
+      ],
+      "task_body_chars": 3979,
+      "taskFile": "tasks/D03.md"
+    },
+    {
+      "id": "D11",
+      "title": "TCP client/server, UDP peer/listener and named pipes",
+      "plan": "07-docklight.md",
+      "anchor": "d11--tcp-clientserver-udp-peerlistener-and-named-pipes",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM19",
+        "COM20"
+      ],
+      "task_body_chars": 4140,
+      "taskFile": "tasks/D11.md"
+    },
+    {
+      "id": "F05",
+      "title": "Precise timestamps, timezone policies, device uptime, and resets",
+      "plan": "02-data.md",
+      "anchor": "f05--precise-timestamps-timezone-policies-device-uptime-and-resets",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "F03",
+        "F04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA08",
+        "DATA09"
+      ],
+      "task_body_chars": 4771,
+      "taskFile": "tasks/F05.md"
+    },
+    {
+      "id": "U04",
+      "title": "Build the structured event and exception inspector",
+      "plan": "04-workspace.md",
+      "anchor": "u04--build-the-structured-event-and-exception-inspector",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F04",
+        "F07",
+        "U03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA06",
+        "DATA14",
+        "UX04",
+        "UX05",
+        "UX14"
+      ],
+      "task_body_chars": 3580,
+      "taskFile": "tasks/U04.md"
+    },
+    {
+      "id": "F08",
+      "title": "Typed query AST, filters, formulas, projection, and bounded deterministic sorting",
+      "plan": "02-data.md",
+      "anchor": "f08--typed-query-ast-filters-formulas-projection-and-bounded-deterministic-sorting",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F07"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA02",
+        "DATA15",
+        "DATA20"
+      ],
+      "task_body_chars": 5484,
+      "taskFile": "tasks/F08.md"
+    },
+    {
+      "id": "E03",
+      "title": "Deliver Docker and Compose capture packs",
+      "plan": "08-ecosystem.md",
+      "anchor": "e03--deliver-docker-and-compose-capture-packs",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO04"
+      ],
+      "task_body_chars": 3392,
+      "taskFile": "tasks/E03.md"
+    },
+    {
+      "id": "E04",
+      "title": "Deliver Kubernetes log capture packs",
+      "plan": "08-ecosystem.md",
+      "anchor": "e04--deliver-kubernetes-log-capture-packs",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO05"
+      ],
+      "task_body_chars": 3279,
+      "taskFile": "tasks/E04.md"
+    },
+    {
+      "id": "E05",
+      "title": "Add SSH and OS log-source recipes",
+      "plan": "08-ecosystem.md",
+      "anchor": "e05--add-ssh-and-os-log-source-recipes",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO06",
+        "ECO07"
+      ],
+      "task_body_chars": 3789,
+      "taskFile": "tasks/E05.md"
+    },
+    {
+      "id": "D04",
+      "title": "Incremental byte receive patterns, optional bytes and bitmasks",
+      "plan": "07-docklight.md",
+      "anchor": "d04--incremental-byte-receive-patterns-optional-bytes-and-bitmasks",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA07",
+        "COM05",
+        "COM07",
+        "COM08"
+      ],
+      "task_body_chars": 4462,
+      "taskFile": "tasks/D04.md"
+    },
+    {
+      "id": "E06",
+      "title": "Add OpenTelemetry log, metric and trace ingestion",
+      "plan": "08-ecosystem.md",
+      "anchor": "e06--add-opentelemetry-log-metric-and-trace-ingestion",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E01",
+        "F01",
+        "F05"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA27",
+        "ECO08"
+      ],
+      "task_body_chars": 3627,
+      "taskFile": "tasks/E06.md"
+    },
+    {
+      "id": "E08",
+      "title": "Import real traces and performance profiles",
+      "plan": "08-ecosystem.md",
+      "anchor": "e08--import-real-traces-and-performance-profiles",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E01",
+        "F05",
+        "F07"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS20",
+        "VIS24",
+        "ECO10"
+      ],
+      "task_body_chars": 3597,
+      "taskFile": "tasks/E08.md"
+    },
+    {
+      "id": "F06",
+      "title": "Sparse time lookup, elapsed-time navigation, clock alignment, and explicit chronological merge",
+      "plan": "02-data.md",
+      "anchor": "f06--sparse-time-lookup-elapsed-time-navigation-clock-alignment-and-explicit-chronological-merge",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F05",
+        "F07"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA09",
+        "DATA10",
+        "DATA11",
+        "INS06"
+      ],
+      "task_body_chars": 5244,
+      "taskFile": "tasks/F06.md"
+    },
+    {
+      "id": "U12",
+      "title": "Add checkpointed ANSI rendering with raw/display maps",
+      "plan": "04-workspace.md",
+      "anchor": "u12--add-checkpointed-ansi-rendering-with-rawdisplay-maps",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "U04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX13",
+        "UX14"
+      ],
+      "task_body_chars": 3527,
+      "taskFile": "tasks/U12.md"
+    },
+    {
+      "id": "E11",
+      "title": "Integrate IDE navigation and developer command clients",
+      "plan": "08-ecosystem.md",
+      "anchor": "e11--integrate-ide-navigation-and-developer-command-clients",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO13",
+        "AUTO18",
+        "COM29",
+        "ECO16",
+        "ECO17"
+      ],
+      "task_body_chars": 3727,
+      "taskFile": "tasks/E11.md"
+    },
+    {
+      "id": "E07",
+      "title": "Add remote query connectors for existing log backends",
+      "plan": "08-ecosystem.md",
+      "anchor": "e07--add-remote-query-connectors-for-existing-log-backends",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E01",
+        "F07",
+        "F08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO09"
+      ],
+      "task_body_chars": 3712,
+      "taskFile": "tasks/E07.md"
+    },
+    {
+      "id": "F16",
+      "title": "Recursive folder manifests/search, lazy bounded readers, grouped results, and validated reopen",
+      "plan": "02-data.md",
+      "anchor": "f16--recursive-folder-manifestssearch-lazy-bounded-readers-grouped-results-and-validated-reopen",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F07",
+        "F08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA12",
+        "DATA13",
+        "DATA25"
+      ],
+      "task_body_chars": 27795,
+      "taskFile": "tasks/F16.md"
+    },
+    {
+      "id": "D05",
+      "title": "Receive effects, counters, logging control, stops and triggered snapshots",
+      "plan": "07-docklight.md",
+      "anchor": "d05--receive-effects-counters-logging-control-stops-and-triggered-snapshots",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM09",
+        "COM10"
+      ],
+      "task_body_chars": 4245,
+      "taskFile": "tasks/D05.md"
+    },
+    {
+      "id": "D06",
+      "title": "One checksum/CRC implementation for TX placement, RX validation and previews",
+      "plan": "07-docklight.md",
+      "anchor": "d06--one-checksumcrc-implementation-for-tx-placement-rx-validation-and-previews",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D03",
+        "D04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM11",
+        "COM12"
+      ],
+      "task_body_chars": 3943,
+      "taskFile": "tasks/D06.md"
+    },
+    {
+      "id": "I04",
+      "title": "Correlate requests, sessions and transactions",
+      "plan": "05-insights.md",
+      "anchor": "i04--correlate-requests-sessions-and-transactions",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F05",
+        "F06",
+        "F07",
+        "F08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS20",
+        "INS08",
+        "INS09"
+      ],
+      "task_body_chars": 3515,
+      "taskFile": "tasks/I04.md"
+    },
+    {
+      "id": "F09",
+      "title": "Grouping, buckets, rates, windows, distributions, pivots, and exactness",
+      "plan": "02-data.md",
+      "anchor": "f09--grouping-buckets-rates-windows-distributions-pivots-and-exactness",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F08",
+        "F05",
+        "F06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA16",
+        "DATA17",
+        "DATA18",
+        "DATA19",
+        "DATA20",
+        "VIS03",
+        "VIS06"
+      ],
+      "task_body_chars": 6526,
+      "taskFile": "tasks/F09.md"
+    },
+    {
+      "id": "D08",
+      "title": "Periodic sends, inter-byte delays, deadlines and cancellation",
+      "plan": "07-docklight.md",
+      "anchor": "d08--periodic-sends-inter-byte-delays-deadlines-and-cancellation",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D03",
+        "D05"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM15"
+      ],
+      "task_body_chars": 4007,
+      "taskFile": "tasks/D08.md"
+    },
+    {
+      "id": "D07",
+      "title": "Framing, escaped payloads and byte stuffing",
+      "plan": "07-docklight.md",
+      "anchor": "d07--framing-escaped-payloads-and-byte-stuffing",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D04",
+        "D06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM13",
+        "COM14"
+      ],
+      "task_body_chars": 3604,
+      "taskFile": "tasks/D07.md"
+    },
+    {
+      "id": "U05",
+      "title": "Add facets and a visual field-query builder",
+      "plan": "04-workspace.md",
+      "anchor": "u05--add-facets-and-a-visual-field-query-builder",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F08",
+        "F09",
+        "U04",
+        "V01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS33",
+        "UX06"
+      ],
+      "task_body_chars": 3566,
+      "taskFile": "tasks/U05.md"
+    },
+    {
+      "id": "I01",
+      "title": "Implement explainable message patterns and rarity",
+      "plan": "05-insights.md",
+      "anchor": "i01--implement-explainable-message-patterns-and-rarity",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F03",
+        "F07",
+        "F08",
+        "F09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "INS01",
+        "INS02",
+        "INS03"
+      ],
+      "task_body_chars": 3812,
+      "taskFile": "tasks/I01.md"
+    },
+    {
+      "id": "A02",
+      "title": "Add bounded conditions, windows and missing-event rules",
+      "plan": "06-automation.md",
+      "anchor": "a02--add-bounded-conditions-windows-and-missing-event-rules",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A01",
+        "F08",
+        "F09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO03",
+        "AUTO04",
+        "AUTO05"
+      ],
+      "task_body_chars": 3876,
+      "taskFile": "tasks/A02.md"
+    },
+    {
+      "id": "F10",
+      "title": "Dataset lineage, derived-value explanation, and bounded drilldown",
+      "plan": "02-data.md",
+      "anchor": "f10--dataset-lineage-derived-value-explanation-and-bounded-drilldown",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F08",
+        "F09",
+        "F04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA01",
+        "DATA13",
+        "DATA18",
+        "DATA28",
+        "VIS30"
+      ],
+      "task_body_chars": 6547,
+      "taskFile": "tasks/F10.md"
+    },
+    {
+      "id": "V05",
+      "title": "Add categorical rankings, proportions, Pareto and summary cards",
+      "plan": "03-visualization.md",
+      "anchor": "v05--add-categorical-rankings-proportions-pareto-and-summary-cards",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02",
+        "F09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA18",
+        "VIS05",
+        "VIS06",
+        "VIS07",
+        "VIS08",
+        "INS03"
+      ],
+      "task_body_chars": 3831,
+      "taskFile": "tasks/V05.md"
+    },
+    {
+      "id": "V08",
+      "title": "Reuse the virtual table for aggregate, pivot and JSON inspection",
+      "plan": "03-visualization.md",
+      "anchor": "v08--reuse-the-virtual-table-for-aggregate-pivot-and-json-inspection",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F09",
+        "V01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA14",
+        "DATA19",
+        "DATA28",
+        "VIS15",
+        "VIS37",
+        "UX16"
+      ],
+      "task_body_chars": 3706,
+      "taskFile": "tasks/V08.md"
+    },
+    {
+      "id": "D09",
+      "title": "Serial handshake, break, parity control and honest diagnostics",
+      "plan": "07-docklight.md",
+      "anchor": "d09--serial-handshake-break-parity-control-and-honest-diagnostics",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM16",
+        "COM17"
+      ],
+      "task_body_chars": 4718,
+      "taskFile": "tasks/D09.md"
+    },
+    {
+      "id": "U07",
+      "title": "Add reusable filter groups and virtual streams",
+      "plan": "04-workspace.md",
+      "anchor": "u07--add-reusable-filter-groups-and-virtual-streams",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U05",
+        "U06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX08"
+      ],
+      "task_body_chars": 3304,
+      "taskFile": "tasks/U07.md"
+    },
+    {
+      "id": "I03",
+      "title": "Group exceptions and navigate stack traces",
+      "plan": "05-insights.md",
+      "anchor": "i03--group-exceptions-and-navigate-stack-traces",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F04",
+        "I01",
+        "U04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA06",
+        "INS07"
+      ],
+      "task_body_chars": 3499,
+      "taskFile": "tasks/I03.md"
+    },
+    {
+      "id": "A03",
+      "title": "Compose capture, command, analysis and action workflows",
+      "plan": "06-automation.md",
+      "anchor": "a03--compose-capture-command-analysis-and-action-workflows",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A01",
+        "A02",
+        "E02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO02",
+        "AUTO06",
+        "AUTO07",
+        "AUTO17",
+        "COM29"
+      ],
+      "task_body_chars": 4020,
+      "taskFile": "tasks/A03.md"
+    },
+    {
+      "id": "A04",
+      "title": "Add developer assertions and data-driven tests",
+      "plan": "06-automation.md",
+      "anchor": "a04--add-developer-assertions-and-data-driven-tests",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A01",
+        "A02",
+        "I04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO04",
+        "AUTO08",
+        "AUTO09"
+      ],
+      "task_body_chars": 3699,
+      "taskFile": "tasks/A04.md"
+    },
+    {
+      "id": "F11",
+      "title": "Compatible scan sharing, bounded multi-panel execution, and incremental live datasets",
+      "plan": "02-data.md",
+      "anchor": "f11--compatible-scan-sharing-bounded-multi-panel-execution-and-incremental-live-datasets",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F08",
+        "F09",
+        "F10"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA07",
+        "DATA21",
+        "DATA22",
+        "VIS35"
+      ],
+      "task_body_chars": 6010,
+      "taskFile": "tasks/F11.md"
+    },
+    {
+      "id": "F12",
+      "title": "Lookup enrichment, Value Names, and stable raw/display separation",
+      "plan": "02-data.md",
+      "anchor": "f12--lookup-enrichment-value-names-and-stable-rawdisplay-separation",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "F08",
+        "F10"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA23"
+      ],
+      "task_body_chars": 4642,
+      "taskFile": "tasks/F12.md"
+    },
+    {
+      "id": "F15",
+      "title": "Snapshot dataset export and optional OpenTelemetry record mapping",
+      "plan": "02-data.md",
+      "anchor": "f15--snapshot-dataset-export-and-optional-opentelemetry-record-mapping",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F08",
+        "F09",
+        "F10"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA26",
+        "DATA27",
+        "UX05"
+      ],
+      "task_body_chars": 5670,
+      "taskFile": "tasks/F15.md"
+    },
+    {
+      "id": "V14",
+      "title": "Unify linked selection, filters, variables, annotations and drilldown",
+      "plan": "03-visualization.md",
+      "anchor": "v14--unify-linked-selection-filters-variables-annotations-and-drilldown",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02",
+        "V08",
+        "U03",
+        "F10"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS29",
+        "VIS30",
+        "VIS31",
+        "VIS32"
+      ],
+      "task_body_chars": 4557,
+      "taskFile": "tasks/V14.md"
+    },
+    {
+      "id": "D10",
+      "title": "Two-port passive communication monitoring",
+      "plan": "07-docklight.md",
+      "anchor": "d10--two-port-passive-communication-monitoring",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D02",
+        "D09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM18"
+      ],
+      "task_body_chars": 3747,
+      "taskFile": "tasks/D10.md"
+    },
+    {
+      "id": "D13",
+      "title": "USB/Bluetooth HID reports and Bluetooth SPP",
+      "plan": "07-docklight.md",
+      "anchor": "d13--usbbluetooth-hid-reports-and-bluetooth-spp",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D02",
+        "D03",
+        "D09",
+        "E01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM22"
+      ],
+      "task_body_chars": 5172,
+      "taskFile": "tasks/D13.md"
+    },
+    {
+      "id": "E09",
+      "title": "Create shareable packs and Git-backed team configuration",
+      "plan": "08-ecosystem.md",
+      "anchor": "e09--create-shareable-packs-and-git-backed-team-configuration",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "E01",
+        "U07",
+        "U11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX18",
+        "ECO02",
+        "ECO11",
+        "ECO12",
+        "ECO13"
+      ],
+      "task_body_chars": 3793,
+      "taskFile": "tasks/E09.md"
+    },
+    {
+      "id": "A08",
+      "title": "Add the execution journal and failure diagnostics",
+      "plan": "06-automation.md",
+      "anchor": "a08--add-the-execution-journal-and-failure-diagnostics",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A03",
+        "A05"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS32",
+        "AUTO16",
+        "AUTO17",
+        "COM02",
+        "QUAL09"
+      ],
+      "task_body_chars": 3634,
+      "taskFile": "tasks/A08.md"
+    },
+    {
+      "id": "A06",
+      "title": "Build a friendly automation recipe and rule editor",
+      "plan": "06-automation.md",
+      "anchor": "a06--build-a-friendly-automation-recipe-and-rule-editor",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A01",
+        "A02",
+        "A04",
+        "U03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX15",
+        "AUTO12",
+        "AUTO13"
+      ],
+      "task_body_chars": 3773,
+      "taskFile": "tasks/A06.md"
+    },
+    {
+      "id": "A07",
+      "title": "Deliver headless CI execution, schedules and reports",
+      "plan": "06-automation.md",
+      "anchor": "a07--deliver-headless-ci-execution-schedules-and-reports",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "A03",
+        "A04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO14",
+        "AUTO15"
+      ],
+      "task_body_chars": 3934,
+      "taskFile": "tasks/A07.md"
+    },
+    {
+      "id": "F13",
+      "title": "Disposable indexes/caches and shared bounded zstd/lz4 inputs",
+      "plan": "02-data.md",
+      "anchor": "f13--disposable-indexescaches-and-shared-bounded-zstdlz4-inputs",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F05",
+        "F07",
+        "F11",
+        "F16"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA24",
+        "DATA25"
+      ],
+      "task_body_chars": 6087,
+      "taskFile": "tasks/F13.md"
+    },
+    {
+      "id": "F14",
+      "title": "Typed transform registry for advanced visual dataset shapes",
+      "plan": "02-data.md",
+      "anchor": "f14--typed-transform-registry-for-advanced-visual-dataset-shapes",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA17"
+      ],
+      "task_body_chars": 5226,
+      "taskFile": "tasks/F14.md"
+    },
+    {
+      "id": "V04",
+      "title": "Render time-aware trends, bands, areas and event rates",
+      "plan": "03-visualization.md",
+      "anchor": "v04--render-time-aware-trends-bands-areas-and-event-rates",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02",
+        "F05",
+        "F09",
+        "F11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS01",
+        "VIS02",
+        "VIS03",
+        "VIS04",
+        "VIS10",
+        "INS03"
+      ],
+      "task_body_chars": 3775,
+      "taskFile": "tasks/V04.md"
+    },
+    {
+      "id": "V07",
+      "title": "Add scatter/bubble correlation and honest boxplots",
+      "plan": "03-visualization.md",
+      "anchor": "v07--add-scatterbubble-correlation-and-honest-boxplots",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "F09",
+        "F11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS13",
+        "VIS14"
+      ],
+      "task_body_chars": 3462,
+      "taskFile": "tasks/V07.md"
+    },
+    {
+      "id": "V15",
+      "title": "Deliver simple chart creation, inspectable suggestions and dashboards",
+      "plan": "03-visualization.md",
+      "anchor": "v15--deliver-simple-chart-creation-inspectable-suggestions-and-dashboards",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02",
+        "V08",
+        "V14",
+        "U03",
+        "U05"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA28",
+        "VIS33",
+        "VIS34",
+        "UX15"
+      ],
+      "task_body_chars": 5939,
+      "taskFile": "tasks/V15.md"
+    },
+    {
+      "id": "D12",
+      "title": "Explicit bridges, forwarding monitors and additional channels",
+      "plan": "07-docklight.md",
+      "anchor": "d12--explicit-bridges-forwarding-monitors-and-additional-channels",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D07",
+        "D08",
+        "D10",
+        "D11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM21"
+      ],
+      "task_body_chars": 4260,
+      "taskFile": "tasks/D12.md"
+    },
+    {
+      "id": "E12",
+      "title": "Add optional inspectable AI assistance",
+      "plan": "08-ecosystem.md",
+      "anchor": "e12--add-optional-inspectable-ai-assistance",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U05",
+        "A06",
+        "E11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO18",
+        "ECO19"
+      ],
+      "task_body_chars": 3802,
+      "taskFile": "tasks/E12.md"
+    },
+    {
+      "id": "I02",
+      "title": "Compare files, runs, periods and distributions",
+      "plan": "05-insights.md",
+      "anchor": "i02--compare-files-runs-periods-and-distributions",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "I01",
+        "F09",
+        "F14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS28",
+        "INS04",
+        "INS05",
+        "INS06"
+      ],
+      "task_body_chars": 3766,
+      "taskFile": "tasks/I02.md"
+    },
+    {
+      "id": "V09",
+      "title": "Implement hierarchy, Sankey and explicit relationship panels",
+      "plan": "03-visualization.md",
+      "anchor": "v09--implement-hierarchy-sankey-and-explicit-relationship-panels",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V03",
+        "V08",
+        "F14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS16",
+        "VIS17",
+        "VIS18"
+      ],
+      "task_body_chars": 4090,
+      "taskFile": "tasks/V09.md"
+    },
+    {
+      "id": "V11",
+      "title": "Add funnels, parallel coordinates and normalized radar comparisons",
+      "plan": "03-visualization.md",
+      "anchor": "v11--add-funnels-parallel-coordinates-and-normalized-radar-comparisons",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V03",
+        "V08",
+        "F14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS21",
+        "VIS22"
+      ],
+      "task_body_chars": 3655,
+      "taskFile": "tasks/V11.md"
+    },
+    {
+      "id": "V12",
+      "title": "Add maps and equipment/layout overlays from explicit coordinates",
+      "plan": "03-visualization.md",
+      "anchor": "v12--add-maps-and-equipmentlayout-overlays-from-explicit-coordinates",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V03",
+        "V08",
+        "F14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS23"
+      ],
+      "task_body_chars": 3792,
+      "taskFile": "tasks/V12.md"
+    },
+    {
+      "id": "V13",
+      "title": "Gate flame graphs on actual profiling input",
+      "plan": "03-visualization.md",
+      "anchor": "v13--gate-flame-graphs-on-actual-profiling-input",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V03",
+        "V08",
+        "F14",
+        "E08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS24"
+      ],
+      "task_body_chars": 4026,
+      "taskFile": "tasks/V13.md"
+    },
+    {
+      "id": "V06",
+      "title": "Distinguish distributions, time buckets and both heatmaps",
+      "plan": "03-visualization.md",
+      "anchor": "v06--distinguish-distributions-time-buckets-and-both-heatmaps",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "F09",
+        "F11",
+        "V04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS09",
+        "VIS10",
+        "VIS11",
+        "VIS12"
+      ],
+      "task_body_chars": 3639,
+      "taskFile": "tasks/V06.md"
+    },
+    {
+      "id": "V10",
+      "title": "Distinguish state intervals, observations, event lanes and waterfalls",
+      "plan": "03-visualization.md",
+      "anchor": "v10--distinguish-state-intervals-observations-event-lanes-and-waterfalls",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V04",
+        "V08",
+        "F14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS19",
+        "VIS20"
+      ],
+      "task_body_chars": 3740,
+      "taskFile": "tasks/V10.md"
+    },
+    {
+      "id": "U13",
+      "title": "Polish onboarding, accessibility and progressive disclosure",
+      "plan": "04-workspace.md",
+      "anchor": "u13--polish-onboarding-accessibility-and-progressive-disclosure",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U02",
+        "U04",
+        "U05",
+        "U10",
+        "V15",
+        "A06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS37",
+        "UX02",
+        "UX15",
+        "UX16",
+        "UX17",
+        "UX18"
+      ],
+      "task_body_chars": 3670,
+      "taskFile": "tasks/U13.md"
+    },
+    {
+      "id": "V16",
+      "title": "Add custom charts and markdown/text without opening a second engine",
+      "plan": "03-visualization.md",
+      "anchor": "v16--add-custom-charts-and-markdowntext-without-opening-a-second-engine",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V03",
+        "V08",
+        "V15"
+      ],
+      "status": "planned",
+      "requirements": [
+        "VIS25",
+        "VIS26"
+      ],
+      "task_body_chars": 4250,
+      "taskFile": "tasks/V16.md"
+    },
+    {
+      "id": "D14",
+      "title": "Dynamic replies, script console and file-driven communication",
+      "plan": "07-docklight.md",
+      "anchor": "d14--dynamic-replies-script-console-and-file-driven-communication",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D03",
+        "D04",
+        "D05",
+        "D06",
+        "D07",
+        "D08",
+        "D11",
+        "D12",
+        "D13"
+      ],
+      "status": "planned",
+      "requirements": [
+        "AUTO02",
+        "AUTO13",
+        "COM23",
+        "COM24"
+      ],
+      "task_body_chars": 4841,
+      "taskFile": "tasks/D14.md"
+    },
+    {
+      "id": "D15",
+      "title": "Lossless recording, timing-aware replay and deliberate fault injection",
+      "plan": "07-docklight.md",
+      "anchor": "d15--lossless-recording-timing-aware-replay-and-deliberate-fault-injection",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D07",
+        "D08",
+        "D12",
+        "A05",
+        "A08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM01",
+        "COM25",
+        "COM26"
+      ],
+      "task_body_chars": 6517,
+      "taskFile": "tasks/D15.md"
+    },
+    {
+      "id": "I05",
+      "title": "Add explainable baselines, anomalies and forecast experiments",
+      "plan": "05-insights.md",
+      "anchor": "i05--add-explainable-baselines-anomalies-and-forecast-experiments",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F09",
+        "F14",
+        "I02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "INS10",
+        "INS11"
+      ],
+      "task_body_chars": 3564,
+      "taskFile": "tasks/I05.md"
+    },
+    {
+      "id": "V17",
+      "title": "Add live/pause semantics, small multiples and comparison overlays",
+      "plan": "03-visualization.md",
+      "anchor": "v17--add-livepause-semantics-small-multiples-and-comparison-overlays",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V01",
+        "V02",
+        "V14",
+        "V15",
+        "F11",
+        "I02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA22",
+        "VIS27",
+        "VIS28",
+        "VIS35"
+      ],
+      "task_body_chars": 4761,
+      "taskFile": "tasks/V17.md"
+    },
+    {
+      "id": "D16",
+      "title": "Native project schema, Docklight import/export and reproducible workspace setup",
+      "plan": "07-docklight.md",
+      "anchor": "d16--native-project-schema-docklight-importexport-and-reproducible-workspace-setup",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D03",
+        "D04",
+        "D05",
+        "D06",
+        "D07",
+        "D08",
+        "D09",
+        "D10",
+        "D11",
+        "D12",
+        "D13",
+        "D14",
+        "D15"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM27"
+      ],
+      "task_body_chars": 5061,
+      "taskFile": "tasks/D16.md"
+    },
+    {
+      "id": "V18",
+      "title": "Export reproducible images/data/reports and close release gates",
+      "plan": "03-visualization.md",
+      "anchor": "v18--export-reproducible-imagesdatareports-and-close-release-gates",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "V08",
+        "V15",
+        "V17"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DATA26",
+        "VIS38"
+      ],
+      "task_body_chars": 9655,
+      "taskFile": "tasks/V18.md"
+    },
+    {
+      "id": "D17",
+      "title": "Protocol Lab, shared byte analysis jobs, scenario and automation parity",
+      "plan": "07-docklight.md",
+      "anchor": "d17--protocol-lab-shared-byte-analysis-jobs-scenario-and-automation-parity",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D02",
+        "D03",
+        "D04",
+        "D05",
+        "D06",
+        "D07",
+        "D08",
+        "D09",
+        "D10",
+        "D11",
+        "D12",
+        "D13",
+        "D14",
+        "D15",
+        "D16",
+        "F01",
+        "F07"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM28",
+        "COM29"
+      ],
+      "task_body_chars": 6168,
+      "taskFile": "tasks/D17.md"
+    },
+    {
+      "id": "E10",
+      "title": "Export portable evidence with optional redaction",
+      "plan": "08-ecosystem.md",
+      "anchor": "e10--export-portable-evidence-with-optional-redaction",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "U11",
+        "A08",
+        "V18"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO14",
+        "ECO15"
+      ],
+      "task_body_chars": 3657,
+      "taskFile": "tasks/E10.md"
+    },
+    {
+      "id": "D18",
+      "title": "Timestamp provenance, adapter certification and release conformance",
+      "plan": "07-docklight.md",
+      "anchor": "d18--timestamp-provenance-adapter-certification-and-release-conformance",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "D01",
+        "D08",
+        "D09",
+        "D10",
+        "D11",
+        "D12",
+        "D13",
+        "D14",
+        "D15",
+        "D17",
+        "F06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "COM17",
+        "COM30"
+      ],
+      "task_body_chars": 12992,
+      "taskFile": "tasks/D18.md"
+    },
+    {
+      "id": "R01",
+      "title": "Build end-to-end developer workflow acceptance suites",
+      "plan": "09-release.md",
+      "anchor": "r01--build-end-to-end-developer-workflow-acceptance-suites",
+      "dependencies": [
+        "G03",
+        "U13",
+        "V18",
+        "A07",
+        "D17",
+        "E10",
+        "E11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX14",
+        "AUTO18",
+        "QUAL04",
+        "QUAL09"
+      ],
+      "task_body_chars": 2371,
+      "taskFile": "tasks/R01.md"
+    },
+    {
+      "id": "R02",
+      "title": "Close stress, performance and long-run resource gates",
+      "plan": "09-release.md",
+      "anchor": "r02--close-stress-performance-and-long-run-resource-gates",
+      "dependencies": [
+        "G02",
+        "R01",
+        "F13",
+        "V18",
+        "A08",
+        "D18",
+        "E08",
+        "E10"
+      ],
+      "status": "planned",
+      "requirements": [
+        "QUAL05",
+        "QUAL09"
+      ],
+      "task_body_chars": 2117,
+      "taskFile": "tasks/R02.md"
+    },
+    {
+      "id": "R03",
+      "title": "Validate migrations, recoverability and platform packages",
+      "plan": "09-release.md",
+      "anchor": "r03--validate-migrations-recoverability-and-platform-packages",
+      "dependencies": [
+        "U03",
+        "U11",
+        "E01",
+        "E09",
+        "E10",
+        "V03",
+        "D13",
+        "R01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO19",
+        "QUAL06",
+        "QUAL07",
+        "QUAL08"
+      ],
+      "task_body_chars": 2245,
+      "taskFile": "tasks/R03.md"
+    },
+    {
+      "id": "R04",
+      "title": "Publish developer documentation, examples and completion ledger",
+      "plan": "09-release.md",
+      "anchor": "r04--publish-developer-documentation-examples-and-completion-ledger",
+      "dependencies": [
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "U06",
+        "U07",
+        "U08",
+        "U09",
+        "U10",
+        "U11",
+        "U12",
+        "U13",
+        "I01",
+        "I02",
+        "I03",
+        "I04",
+        "I05",
+        "A01",
+        "A02",
+        "A03",
+        "A04",
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "E01",
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E06",
+        "E07",
+        "E08",
+        "E09",
+        "E10",
+        "E11",
+        "E12",
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15",
+        "F16",
+        "V01",
+        "V02",
+        "V03",
+        "V04",
+        "V05",
+        "V06",
+        "V07",
+        "V08",
+        "V09",
+        "V10",
+        "V11",
+        "V12",
+        "V13",
+        "V14",
+        "V15",
+        "V16",
+        "V17",
+        "V18",
+        "R01",
+        "R02",
+        "R03",
+        "D01",
+        "D02",
+        "D03",
+        "D04",
+        "D05",
+        "D06",
+        "D07",
+        "D08",
+        "D09",
+        "D10",
+        "D11",
+        "D12",
+        "D13",
+        "D14",
+        "D15",
+        "D16",
+        "D17",
+        "D18"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX18",
+        "QUAL10"
+      ],
+      "task_body_chars": 2613,
+      "taskFile": "tasks/R04.md"
+    }
+  ],
+  "suggestedTopologicalOrder": [
+    "G01",
+    "G02",
+    "G03",
+    "U01",
+    "F01",
+    "U02",
+    "U09",
+    "U10",
+    "U03",
+    "A01",
+    "F02",
+    "V01",
+    "D01",
+    "U06",
+    "U08",
+    "F03",
+    "V02",
+    "A05",
+    "E01",
+    "D02",
+    "U11",
+    "F04",
+    "F07",
+    "V03",
+    "E02",
+    "D03",
+    "D11",
+    "F05",
+    "U04",
+    "F08",
+    "E03",
+    "E04",
+    "E05",
+    "D04",
+    "E06",
+    "E08",
+    "F06",
+    "U12",
+    "E11",
+    "E07",
+    "F16",
+    "D05",
+    "D06",
+    "I04",
+    "F09",
+    "D08",
+    "D07",
+    "U05",
+    "I01",
+    "A02",
+    "F10",
+    "V05",
+    "V08",
+    "D09",
+    "U07",
+    "I03",
+    "A03",
+    "A04",
+    "F11",
+    "F12",
+    "F15",
+    "V14",
+    "D10",
+    "D13",
+    "E09",
+    "A08",
+    "A06",
+    "A07",
+    "F13",
+    "F14",
+    "V04",
+    "V07",
+    "V15",
+    "D12",
+    "E12",
+    "I02",
+    "V09",
+    "V11",
+    "V12",
+    "V13",
+    "V06",
+    "V10",
+    "U13",
+    "V16",
+    "D14",
+    "D15",
+    "I05",
+    "V17",
+    "D16",
+    "V18",
+    "D17",
+    "E10",
+    "D18",
+    "R01",
+    "R02",
+    "R03",
+    "R04"
+  ],
+  "notes": [
+    "Exact hard dependencies include shared G01-G03 prerequisites. Optional capability descriptions are not backwards hard edges.",
+    "P03/P04 and P05 state is refreshed and credited in G01; no new tasks repeat that implemented work.",
+    "R04 is the full-program completion gate."
+  ],
+  "reconciledDate": "2026-10-22"
+}

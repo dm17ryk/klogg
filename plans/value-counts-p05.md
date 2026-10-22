@@ -1,5 +1,7 @@
 # P05 — bounded exact value counts
 
+Status: merged through PR #45 (`ed2d70ba`). This remains the existing feature/regression contract. The [merged Workbench plan](cilogg-workbench-2026-10-21/README.md) reuses it through F09/V05; it is not a request to rebuild Value Counts.
+
 Baseline: merged PR #44, `bd74c338`. Deliver P05 before P06 charts. Preserve C++17,
 Qt compatibility and the Commander execution route used by GUI, CLI and native MCP.
 

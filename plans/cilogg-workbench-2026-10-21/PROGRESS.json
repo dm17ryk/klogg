@@ -1,0 +1,834 @@
+{
+  "schemaVersion": 1,
+  "product": "CILogg Developer Workbench",
+  "planDate": "2026-10-21",
+  "implementationState": "in_progress",
+  "baseline": {
+    "repository": "https://github.com/dm17ryk/klogg",
+    "researchMaster": "bd74c338424845a2caac03d62fdff5187e7e8f0a",
+    "researchP05": "01cb637be7c96f2c9e3925247510c162380736b7",
+    "executionHead": "177f73861b3bc58ddf5c8b15021471a814673a1d",
+    "toolchain": {
+      "language": "C++17",
+      "coreQtCompatibility": "Qt5/Qt6",
+      "localQt": "6.10.1",
+      "localQtDir": "C:/Essence_SC/qt6.10.1",
+      "ciQt": "6.12 on selected supported targets; legacy macOS retained",
+      "buildRoot": "build_root",
+      "freshBuildRun": false
+    },
+    "p05State": "merged",
+    "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
+    "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
+  },
+  "activeTask": null,
+  "nextTask": "G02",
+  "tasks": {
+    "G01": {
+      "status": "completed",
+      "commit": "06976337c3ec47f4ff490268d44b37386666e391",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/58",
+      "evidence": [
+        "../../docs/workbench/baseline.md",
+        "../../docs/workbench/decisions.md",
+        "MERGE_MAP.md",
+        "PLAN_VALIDATION.json",
+        "P05 PR #45 merge verified; src/tests unchanged between researchP05 and executionHead",
+        "Code-review graph refreshed: 453 files; review context reports low impact, zero impacted nodes."
+      ],
+      "limitations": [
+        "Documentation/source reconciliation only; no fresh product build or runtime/performance/hardware pass.",
+        "GitNexus integration worktree is not indexed; no function is edited. Primary P05 index is current and source/tests are identical.",
+        "Product signature impact checks and relevant index refresh remain mandatory before implementation edits."
+      ],
+      "slices": []
+    },
+    "G02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "G03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "I04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "I01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "I03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F15": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V14": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D13": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "A07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F13": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "F14": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V15": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "I02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V13": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U13": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D14": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D15": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "I05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V17": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "V18": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D17": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "E10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "D18": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "R01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "R02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "R03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "R04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    }
+  },
+  "decisions": [
+    "D01: see ../../docs/workbench/decisions.md",
+    "D02: see ../../docs/workbench/decisions.md",
+    "D03: see ../../docs/workbench/decisions.md",
+    "D04: see ../../docs/workbench/decisions.md",
+    "D05: see ../../docs/workbench/decisions.md",
+    "D06: see ../../docs/workbench/decisions.md",
+    "D07: see ../../docs/workbench/decisions.md"
+  ],
+  "knownEvidenceLimits": [
+    "G01 reconciles current source and prior evidence; G02 benchmarks and G03 reusable parity remain planned.",
+    "P00 unmeasured latency, memory and throughput gates remain open.",
+    "PR #47 platform changes and CI results are independent; they are not merged into this baseline.",
+    "Third-party hardware/project compatibility requires D task conformance; source inspection is not a hardware pass."
+  ],
+  "runnableTasks": [
+    "G02",
+    "G03"
+  ]
+}
