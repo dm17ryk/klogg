@@ -1,0 +1,1475 @@
+[
+  {
+    "id": "DATA01",
+    "group": "Exploration, fields, time and data",
+    "description": "Preserve raw bytes and exact source navigation",
+    "tasks": [
+      "F01",
+      "F10",
+      "D01"
+    ]
+  },
+  {
+    "id": "DATA02",
+    "group": "Exploration, fields, time and data",
+    "description": "Exact signed/unsigned integers, decimals and typed units",
+    "tasks": [
+      "F01",
+      "F03",
+      "F08"
+    ]
+  },
+  {
+    "id": "DATA03",
+    "group": "Exploration, fields, time and data",
+    "description": "Regex, JSON, logfmt, CSV/TSV and syslog parsing",
+    "tasks": [
+      "F02",
+      "F03"
+    ]
+  },
+  {
+    "id": "DATA04",
+    "group": "Exploration, fields, time and data",
+    "description": "Bounded XML parser extension",
+    "tasks": [
+      "F03",
+      "F04"
+    ]
+  },
+  {
+    "id": "DATA05",
+    "group": "Exploration, fields, time and data",
+    "description": "Explainable format detection and versioned profiles",
+    "tasks": [
+      "F02"
+    ]
+  },
+  {
+    "id": "DATA06",
+    "group": "Exploration, fields, time and data",
+    "description": "Multiline events, stack traces and cause chains",
+    "tasks": [
+      "F04",
+      "I03",
+      "U04"
+    ]
+  },
+  {
+    "id": "DATA07",
+    "group": "Exploration, fields, time and data",
+    "description": "Provisional tail replacement and late/chunked input",
+    "tasks": [
+      "F04",
+      "F11",
+      "D04"
+    ]
+  },
+  {
+    "id": "DATA08",
+    "group": "Exploration, fields, time and data",
+    "description": "Time zones, ambiguity, precision and unknown time",
+    "tasks": [
+      "F05"
+    ]
+  },
+  {
+    "id": "DATA09",
+    "group": "Exploration, fields, time and data",
+    "description": "Device uptime, reboot epochs and separate clock domains",
+    "tasks": [
+      "F05",
+      "F06"
+    ]
+  },
+  {
+    "id": "DATA10",
+    "group": "Exploration, fields, time and data",
+    "description": "Time seeking, delta/elapsed time and range navigation",
+    "tasks": [
+      "F06"
+    ]
+  },
+  {
+    "id": "DATA11",
+    "group": "Exploration, fields, time and data",
+    "description": "Explicit cross-source clock alignment and chronological merge",
+    "tasks": [
+      "F06",
+      "F07"
+    ]
+  },
+  {
+    "id": "DATA12",
+    "group": "Exploration, fields, time and data",
+    "description": "Recursive folder search, manifest limits and per-file errors",
+    "tasks": [
+      "F16"
+    ]
+  },
+  {
+    "id": "DATA13",
+    "group": "Exploration, fields, time and data",
+    "description": "Deferred-file and managed-byte provenance with validated reopening",
+    "tasks": [
+      "F01",
+      "F10",
+      "F16",
+      "D01"
+    ]
+  },
+  {
+    "id": "DATA14",
+    "group": "Exploration, fields, time and data",
+    "description": "Virtual structured event tables and JSON detail",
+    "tasks": [
+      "F07",
+      "U04",
+      "V08"
+    ]
+  },
+  {
+    "id": "DATA15",
+    "group": "Exploration, fields, time and data",
+    "description": "Field queries, projection, formulas and deterministic sorting",
+    "tasks": [
+      "F08"
+    ]
+  },
+  {
+    "id": "DATA16",
+    "group": "Exploration, fields, time and data",
+    "description": "Grouping, exact counts, sums, averages and unique values",
+    "tasks": [
+      "F09"
+    ]
+  },
+  {
+    "id": "DATA17",
+    "group": "Exploration, fields, time and data",
+    "description": "Rates, ratios, percentiles and window calculations",
+    "tasks": [
+      "F09",
+      "F14"
+    ]
+  },
+  {
+    "id": "DATA18",
+    "group": "Exploration, fields, time and data",
+    "description": "Top N plus Other, denominators and visible coverage",
+    "tasks": [
+      "F09",
+      "F10",
+      "V05"
+    ]
+  },
+  {
+    "id": "DATA19",
+    "group": "Exploration, fields, time and data",
+    "description": "Pivot tables and multi-field Value Counts",
+    "tasks": [
+      "F09",
+      "V08"
+    ]
+  },
+  {
+    "id": "DATA20",
+    "group": "Exploration, fields, time and data",
+    "description": "Distinguish missing, null, empty, invalid and zero",
+    "tasks": [
+      "F01",
+      "F03",
+      "F08",
+      "F09"
+    ]
+  },
+  {
+    "id": "DATA21",
+    "group": "Exploration, fields, time and data",
+    "description": "Shared scans, cancellation, backpressure and bounded results",
+    "tasks": [
+      "F07",
+      "F11"
+    ]
+  },
+  {
+    "id": "DATA22",
+    "group": "Exploration, fields, time and data",
+    "description": "Incremental live datasets and append/reload invalidation",
+    "tasks": [
+      "F11",
+      "V17"
+    ]
+  },
+  {
+    "id": "DATA23",
+    "group": "Exploration, fields, time and data",
+    "description": "Lookup enrichment, enum/error catalogs and Value Names",
+    "tasks": [
+      "F12"
+    ]
+  },
+  {
+    "id": "DATA24",
+    "group": "Exploration, fields, time and data",
+    "description": "Disposable persistent indexes and derived caches",
+    "tasks": [
+      "F13"
+    ]
+  },
+  {
+    "id": "DATA25",
+    "group": "Exploration, fields, time and data",
+    "description": "Streaming zstd/lz4 inputs and compressed folder integration",
+    "tasks": [
+      "F13",
+      "F16"
+    ]
+  },
+  {
+    "id": "DATA26",
+    "group": "Exploration, fields, time and data",
+    "description": "Typed CSV/JSON export and explicit raw/display export",
+    "tasks": [
+      "F15",
+      "V18"
+    ]
+  },
+  {
+    "id": "DATA27",
+    "group": "Exploration, fields, time and data",
+    "description": "Optional OpenTelemetry field-role mapping",
+    "tasks": [
+      "F15",
+      "E06"
+    ]
+  },
+  {
+    "id": "DATA28",
+    "group": "Exploration, fields, time and data",
+    "description": "Inspect query, dataset, precision, completeness and lineage",
+    "tasks": [
+      "F10",
+      "V08",
+      "V15"
+    ]
+  },
+  {
+    "id": "VIS01",
+    "group": "Charts and linked dashboards",
+    "description": "Line, step and point charts",
+    "tasks": [
+      "V02",
+      "V04"
+    ]
+  },
+  {
+    "id": "VIS02",
+    "group": "Charts and linked dashboards",
+    "description": "Min/max envelopes that preserve spikes",
+    "tasks": [
+      "V02",
+      "V04"
+    ]
+  },
+  {
+    "id": "VIS03",
+    "group": "Charts and linked dashboards",
+    "description": "Average/percentile bands and reference lines",
+    "tasks": [
+      "F09",
+      "V04"
+    ]
+  },
+  {
+    "id": "VIS04",
+    "group": "Charts and linked dashboards",
+    "description": "Area, stacked and 100-percent stacked charts",
+    "tasks": [
+      "V04"
+    ]
+  },
+  {
+    "id": "VIS05",
+    "group": "Charts and linked dashboards",
+    "description": "Categorical bars, rankings and Top N",
+    "tasks": [
+      "V05"
+    ]
+  },
+  {
+    "id": "VIS06",
+    "group": "Charts and linked dashboards",
+    "description": "Pareto cumulative comparisons",
+    "tasks": [
+      "F09",
+      "V05"
+    ]
+  },
+  {
+    "id": "VIS07",
+    "group": "Charts and linked dashboards",
+    "description": "Pie and donut composition",
+    "tasks": [
+      "V05"
+    ]
+  },
+  {
+    "id": "VIS08",
+    "group": "Charts and linked dashboards",
+    "description": "Stat, gauge, bar-gauge and sparkline summaries",
+    "tasks": [
+      "V05"
+    ]
+  },
+  {
+    "id": "VIS09",
+    "group": "Charts and linked dashboards",
+    "description": "Numeric distributions and histograms",
+    "tasks": [
+      "V06"
+    ]
+  },
+  {
+    "id": "VIS10",
+    "group": "Charts and linked dashboards",
+    "description": "Event-time count/rate histograms",
+    "tasks": [
+      "V04",
+      "V06"
+    ]
+  },
+  {
+    "id": "VIS11",
+    "group": "Charts and linked dashboards",
+    "description": "Distribution-over-time heatmaps",
+    "tasks": [
+      "V06"
+    ]
+  },
+  {
+    "id": "VIS12",
+    "group": "Charts and linked dashboards",
+    "description": "Categorical matrix and density heatmaps",
+    "tasks": [
+      "V06"
+    ]
+  },
+  {
+    "id": "VIS13",
+    "group": "Charts and linked dashboards",
+    "description": "Scatter and bubble charts with explicit paired fields",
+    "tasks": [
+      "V07"
+    ]
+  },
+  {
+    "id": "VIS14",
+    "group": "Charts and linked dashboards",
+    "description": "Box plots, outliers and distribution comparison",
+    "tasks": [
+      "V07"
+    ]
+  },
+  {
+    "id": "VIS15",
+    "group": "Charts and linked dashboards",
+    "description": "Aggregate, pivot, structured table and JSON panels",
+    "tasks": [
+      "V08"
+    ]
+  },
+  {
+    "id": "VIS16",
+    "group": "Charts and linked dashboards",
+    "description": "Treemap and sunburst hierarchies",
+    "tasks": [
+      "V09"
+    ]
+  },
+  {
+    "id": "VIS17",
+    "group": "Charts and linked dashboards",
+    "description": "Sankey flows and state-transition weights",
+    "tasks": [
+      "V09"
+    ]
+  },
+  {
+    "id": "VIS18",
+    "group": "Charts and linked dashboards",
+    "description": "Node and directed relationship graphs",
+    "tasks": [
+      "V09"
+    ]
+  },
+  {
+    "id": "VIS19",
+    "group": "Charts and linked dashboards",
+    "description": "State timelines versus discrete status history",
+    "tasks": [
+      "V10"
+    ]
+  },
+  {
+    "id": "VIS20",
+    "group": "Charts and linked dashboards",
+    "description": "Event lanes, intervals, requests and trace waterfalls",
+    "tasks": [
+      "V10",
+      "I04",
+      "E08"
+    ]
+  },
+  {
+    "id": "VIS21",
+    "group": "Charts and linked dashboards",
+    "description": "Funnels with cohorts and ordered steps",
+    "tasks": [
+      "V11"
+    ]
+  },
+  {
+    "id": "VIS22",
+    "group": "Charts and linked dashboards",
+    "description": "Parallel coordinates and normalized radar views",
+    "tasks": [
+      "V11"
+    ]
+  },
+  {
+    "id": "VIS23",
+    "group": "Charts and linked dashboards",
+    "description": "Geographic points/regions/tracks and equipment layouts",
+    "tasks": [
+      "V12"
+    ]
+  },
+  {
+    "id": "VIS24",
+    "group": "Charts and linked dashboards",
+    "description": "Flame graphs from real samples/weighted stacks",
+    "tasks": [
+      "V13",
+      "E08"
+    ]
+  },
+  {
+    "id": "VIS25",
+    "group": "Charts and linked dashboards",
+    "description": "Custom chart definitions and bounded custom drawing",
+    "tasks": [
+      "V16"
+    ]
+  },
+  {
+    "id": "VIS26",
+    "group": "Charts and linked dashboards",
+    "description": "Markdown and explanatory text panels",
+    "tasks": [
+      "V16"
+    ]
+  },
+  {
+    "id": "VIS27",
+    "group": "Charts and linked dashboards",
+    "description": "Small multiples with common scales",
+    "tasks": [
+      "V17"
+    ]
+  },
+  {
+    "id": "VIS28",
+    "group": "Charts and linked dashboards",
+    "description": "A/B and shifted/aligned comparison overlays",
+    "tasks": [
+      "I02",
+      "V17"
+    ]
+  },
+  {
+    "id": "VIS29",
+    "group": "Charts and linked dashboards",
+    "description": "Shared brush, zoom, cursor and selected time range",
+    "tasks": [
+      "V14"
+    ]
+  },
+  {
+    "id": "VIS30",
+    "group": "Charts and linked dashboards",
+    "description": "Click chart point/bucket/cell to contributing logs",
+    "tasks": [
+      "F10",
+      "V14"
+    ]
+  },
+  {
+    "id": "VIS31",
+    "group": "Charts and linked dashboards",
+    "description": "Dashboard variables, dependencies and common filter controls",
+    "tasks": [
+      "V14"
+    ]
+  },
+  {
+    "id": "VIS32",
+    "group": "Charts and linked dashboards",
+    "description": "Bookmarks, deployment/scenario/action annotations",
+    "tasks": [
+      "V14",
+      "U11",
+      "A08"
+    ]
+  },
+  {
+    "id": "VIS33",
+    "group": "Charts and linked dashboards",
+    "description": "Field-to-chart suggestions and readable panel editor",
+    "tasks": [
+      "U05",
+      "V15"
+    ]
+  },
+  {
+    "id": "VIS34",
+    "group": "Charts and linked dashboards",
+    "description": "Dashboard layouts, tabs, save/restore and template gallery",
+    "tasks": [
+      "U03",
+      "U11",
+      "V15"
+    ]
+  },
+  {
+    "id": "VIS35",
+    "group": "Charts and linked dashboards",
+    "description": "Live refresh, pause/freeze, requery and stale state",
+    "tasks": [
+      "F11",
+      "V17"
+    ]
+  },
+  {
+    "id": "VIS36",
+    "group": "Charts and linked dashboards",
+    "description": "Native first charts and optional offline rich renderer",
+    "tasks": [
+      "V01",
+      "V02",
+      "V03"
+    ]
+  },
+  {
+    "id": "VIS37",
+    "group": "Charts and linked dashboards",
+    "description": "Keyboard-accessible data fallback for every chart",
+    "tasks": [
+      "V03",
+      "V08",
+      "U13"
+    ]
+  },
+  {
+    "id": "VIS38",
+    "group": "Charts and linked dashboards",
+    "description": "PNG/SVG/CSV/JSON/PDF panel and dashboard export",
+    "tasks": [
+      "V18"
+    ]
+  },
+  {
+    "id": "INS01",
+    "group": "Insights and investigation workflows",
+    "description": "Similar-message templates with variable masking",
+    "tasks": [
+      "I01"
+    ]
+  },
+  {
+    "id": "INS02",
+    "group": "Insights and investigation workflows",
+    "description": "Rarest/new/unmatched patterns and representative examples",
+    "tasks": [
+      "I01"
+    ]
+  },
+  {
+    "id": "INS03",
+    "group": "Insights and investigation workflows",
+    "description": "Pattern frequency and token distributions",
+    "tasks": [
+      "I01",
+      "V04",
+      "V05"
+    ]
+  },
+  {
+    "id": "INS04",
+    "group": "Insights and investigation workflows",
+    "description": "Compare files, runs, sources and shifted time windows",
+    "tasks": [
+      "I02"
+    ]
+  },
+  {
+    "id": "INS05",
+    "group": "Insights and investigation workflows",
+    "description": "New/gone patterns, count/share/rate and distribution deltas",
+    "tasks": [
+      "I02"
+    ]
+  },
+  {
+    "id": "INS06",
+    "group": "Insights and investigation workflows",
+    "description": "Elapsed/run/marker alignment and unequal-duration normalization",
+    "tasks": [
+      "I02",
+      "F06"
+    ]
+  },
+  {
+    "id": "INS07",
+    "group": "Insights and investigation workflows",
+    "description": "Exception groups, cause chains and first/last occurrence",
+    "tasks": [
+      "I03"
+    ]
+  },
+  {
+    "id": "INS08",
+    "group": "Insights and investigation workflows",
+    "description": "Requests, sessions and transactions with explicit correlation",
+    "tasks": [
+      "I04"
+    ]
+  },
+  {
+    "id": "INS09",
+    "group": "Insights and investigation workflows",
+    "description": "Duration, outcome, maximum severity and orphan events",
+    "tasks": [
+      "I04"
+    ]
+  },
+  {
+    "id": "INS10",
+    "group": "Insights and investigation workflows",
+    "description": "Moving baselines, anomalies and explainable bands",
+    "tasks": [
+      "I05"
+    ]
+  },
+  {
+    "id": "INS11",
+    "group": "Insights and investigation workflows",
+    "description": "Explicit forecast experiments with holdout and assumptions",
+    "tasks": [
+      "I05"
+    ]
+  },
+  {
+    "id": "INS12",
+    "group": "Insights and investigation workflows",
+    "description": "Saved findings, notes and preserved investigation scope",
+    "tasks": [
+      "U11"
+    ]
+  },
+  {
+    "id": "UX01",
+    "group": "Usability, workspace and developer experience",
+    "description": "Readable consistent design system and iconography",
+    "tasks": [
+      "U01"
+    ]
+  },
+  {
+    "id": "UX02",
+    "group": "Usability, workspace and developer experience",
+    "description": "System/light/dark themes, high DPI and high contrast",
+    "tasks": [
+      "U01",
+      "U13"
+    ]
+  },
+  {
+    "id": "UX03",
+    "group": "Usability, workspace and developer experience",
+    "description": "Open file/drop folder/connect/run without mandatory project",
+    "tasks": [
+      "U02",
+      "E02"
+    ]
+  },
+  {
+    "id": "UX04",
+    "group": "Usability, workspace and developer experience",
+    "description": "Source sidebar, resizable panes and contextual event details",
+    "tasks": [
+      "U03",
+      "U04"
+    ]
+  },
+  {
+    "id": "UX05",
+    "group": "Usability, workspace and developer experience",
+    "description": "Raw/decoded/structured inspection and exact copy modes",
+    "tasks": [
+      "U04",
+      "F15"
+    ]
+  },
+  {
+    "id": "UX06",
+    "group": "Usability, workspace and developer experience",
+    "description": "Facets, typed filter chips, visual query construction and undo",
+    "tasks": [
+      "U05"
+    ]
+  },
+  {
+    "id": "UX07",
+    "group": "Usability, workspace and developer experience",
+    "description": "Retained independent searches and historical state",
+    "tasks": [
+      "U06"
+    ]
+  },
+  {
+    "id": "UX08",
+    "group": "Usability, workspace and developer experience",
+    "description": "Reusable filter groups and virtual streams",
+    "tasks": [
+      "U07"
+    ]
+  },
+  {
+    "id": "UX09",
+    "group": "Usability, workspace and developer experience",
+    "description": "Persistent tab/source groups with stable IDs",
+    "tasks": [
+      "U08"
+    ]
+  },
+  {
+    "id": "UX10",
+    "group": "Usability, workspace and developer experience",
+    "description": "QuickFind literal/regex/whole-word flags and history",
+    "tasks": [
+      "U09"
+    ]
+  },
+  {
+    "id": "UX11",
+    "group": "Usability, workspace and developer experience",
+    "description": "Keyboard command palette from shared action metadata",
+    "tasks": [
+      "U10"
+    ]
+  },
+  {
+    "id": "UX12",
+    "group": "Usability, workspace and developer experience",
+    "description": "Projects, saved views, notebook findings and annotations",
+    "tasks": [
+      "U11"
+    ]
+  },
+  {
+    "id": "UX13",
+    "group": "Usability, workspace and developer experience",
+    "description": "ANSI rendering with raw/display offset maps",
+    "tasks": [
+      "U12"
+    ]
+  },
+  {
+    "id": "UX14",
+    "group": "Usability, workspace and developer experience",
+    "description": "Preserve discontiguous selection, wrapping and highlighting",
+    "tasks": [
+      "U04",
+      "U12",
+      "R01"
+    ]
+  },
+  {
+    "id": "UX15",
+    "group": "Usability, workspace and developer experience",
+    "description": "Progressive disclosure, inline validation and helpful empty states",
+    "tasks": [
+      "U13",
+      "V15",
+      "A06"
+    ]
+  },
+  {
+    "id": "UX16",
+    "group": "Usability, workspace and developer experience",
+    "description": "Keyboard-only use, accessible names and table alternatives",
+    "tasks": [
+      "U13",
+      "V08"
+    ]
+  },
+  {
+    "id": "UX17",
+    "group": "Usability, workspace and developer experience",
+    "description": "Translations and discoverable tooltips/shortcuts",
+    "tasks": [
+      "U01",
+      "U13"
+    ]
+  },
+  {
+    "id": "UX18",
+    "group": "Usability, workspace and developer experience",
+    "description": "Guided sample projects across all developer domains",
+    "tasks": [
+      "U02",
+      "U13",
+      "E09",
+      "R04"
+    ]
+  },
+  {
+    "id": "AUTO01",
+    "group": "Automation, tests and reproducibility",
+    "description": "Versioned workflows, variables and schema validation",
+    "tasks": [
+      "A01"
+    ]
+  },
+  {
+    "id": "AUTO02",
+    "group": "Automation, tests and reproducibility",
+    "description": "Reuse existing parameterized actions and Python scenarios",
+    "tasks": [
+      "A01",
+      "A03",
+      "D03",
+      "D14"
+    ]
+  },
+  {
+    "id": "AUTO03",
+    "group": "Automation, tests and reproducibility",
+    "description": "Conditions, thresholds, rates and sustained windows",
+    "tasks": [
+      "A02"
+    ]
+  },
+  {
+    "id": "AUTO04",
+    "group": "Automation, tests and reproducibility",
+    "description": "Missing events/heartbeats and A-then-B deadlines",
+    "tasks": [
+      "A02",
+      "A04"
+    ]
+  },
+  {
+    "id": "AUTO05",
+    "group": "Automation, tests and reproducibility",
+    "description": "Debounce, cooldown, hysteresis and feedback suppression",
+    "tasks": [
+      "A02"
+    ]
+  },
+  {
+    "id": "AUTO06",
+    "group": "Automation, tests and reproducibility",
+    "description": "Run/capture/wait/analyze/action/report workflow composition",
+    "tasks": [
+      "A03"
+    ]
+  },
+  {
+    "id": "AUTO07",
+    "group": "Automation, tests and reproducibility",
+    "description": "Supervised cancellation and process/resource cleanup",
+    "tasks": [
+      "A03",
+      "E02"
+    ]
+  },
+  {
+    "id": "AUTO08",
+    "group": "Automation, tests and reproducibility",
+    "description": "Assertions on values, counts, latency and protocol outcomes",
+    "tasks": [
+      "A04"
+    ]
+  },
+  {
+    "id": "AUTO09",
+    "group": "Automation, tests and reproducibility",
+    "description": "Data-driven parameterized test suites",
+    "tasks": [
+      "A04"
+    ]
+  },
+  {
+    "id": "AUTO10",
+    "group": "Automation, tests and reproducibility",
+    "description": "Deterministic event recording and virtual-time replay",
+    "tasks": [
+      "A05"
+    ]
+  },
+  {
+    "id": "AUTO11",
+    "group": "Automation, tests and reproducibility",
+    "description": "Pause/step/seek/replay-speed controls and state reconstruction",
+    "tasks": [
+      "A05"
+    ]
+  },
+  {
+    "id": "AUTO12",
+    "group": "Automation, tests and reproducibility",
+    "description": "Friendly rule/recipe editor and previews",
+    "tasks": [
+      "A06"
+    ]
+  },
+  {
+    "id": "AUTO13",
+    "group": "Automation, tests and reproducibility",
+    "description": "Python escape hatch with existing supported API",
+    "tasks": [
+      "A06",
+      "D14",
+      "E11"
+    ]
+  },
+  {
+    "id": "AUTO14",
+    "group": "Automation, tests and reproducibility",
+    "description": "Headless CI, explicit exit codes and JSON/JUnit reports",
+    "tasks": [
+      "A07"
+    ]
+  },
+  {
+    "id": "AUTO15",
+    "group": "Automation, tests and reproducibility",
+    "description": "Schedules and bounded overlap policies",
+    "tasks": [
+      "A07"
+    ]
+  },
+  {
+    "id": "AUTO16",
+    "group": "Automation, tests and reproducibility",
+    "description": "Execution journal, attempted/acknowledged actions and evidence",
+    "tasks": [
+      "A08"
+    ]
+  },
+  {
+    "id": "AUTO17",
+    "group": "Automation, tests and reproducibility",
+    "description": "Crash recovery without automatically repeating effects",
+    "tasks": [
+      "A03",
+      "A08"
+    ]
+  },
+  {
+    "id": "AUTO18",
+    "group": "Automation, tests and reproducibility",
+    "description": "GUI/CLI/Python/MCP parity for every public capability",
+    "tasks": [
+      "G03",
+      "E11",
+      "R01"
+    ]
+  },
+  {
+    "id": "COM01",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Binary-safe RX/TX and immutable byte provenance",
+    "tasks": [
+      "D01",
+      "D15"
+    ]
+  },
+  {
+    "id": "COM02",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Write receipts, generations and actual completion stages",
+    "tasks": [
+      "D01",
+      "A08"
+    ]
+  },
+  {
+    "id": "COM03",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "ASCII/HEX/DEC/BIN views and control-character visibility",
+    "tasks": [
+      "D02"
+    ]
+  },
+  {
+    "id": "COM04",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Keyboard communication console and echo policy",
+    "tasks": [
+      "D02"
+    ]
+  },
+  {
+    "id": "COM05",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Named send/receive sequence lists",
+    "tasks": [
+      "D03",
+      "D04"
+    ]
+  },
+  {
+    "id": "COM06",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Typed placeholders, byte parameters and fixed-width encodings",
+    "tasks": [
+      "D03"
+    ]
+  },
+  {
+    "id": "COM07",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Chunk-spanning exact/optional/wildcard byte matching",
+    "tasks": [
+      "D04"
+    ]
+  },
+  {
+    "id": "COM08",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Bitmask comparison and separate legacy text dialect",
+    "tasks": [
+      "D04"
+    ]
+  },
+  {
+    "id": "COM09",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Receive actions, replies, counters and descriptions",
+    "tasks": [
+      "D05"
+    ]
+  },
+  {
+    "id": "COM10",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Logging/display controls, stop conditions and trigger snapshots",
+    "tasks": [
+      "D05"
+    ]
+  },
+  {
+    "id": "COM11",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Shared checksum/CRC algorithms and TX insertion",
+    "tasks": [
+      "D06"
+    ]
+  },
+  {
+    "id": "COM12",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "RX checksum validation and independent known vectors",
+    "tasks": [
+      "D06"
+    ]
+  },
+  {
+    "id": "COM13",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Delimited/fixed/length/gap framing and resynchronization",
+    "tasks": [
+      "D07"
+    ]
+  },
+  {
+    "id": "COM14",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Byte stuffing/escaping and raw-to-payload mapping",
+    "tasks": [
+      "D07"
+    ]
+  },
+  {
+    "id": "COM15",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Periodic/repeated sends, inter-byte delays and deadlines",
+    "tasks": [
+      "D08"
+    ]
+  },
+  {
+    "id": "COM16",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "RTS/DTR and CTS/DSR/DCD/RI, break/parity capability controls",
+    "tasks": [
+      "D09"
+    ]
+  },
+  {
+    "id": "COM17",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Adapter-specific error/signal observations and limitations",
+    "tasks": [
+      "D09",
+      "D18"
+    ]
+  },
+  {
+    "id": "COM18",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Two-port passive monitoring and direction-labelled merge",
+    "tasks": [
+      "D10"
+    ]
+  },
+  {
+    "id": "COM19",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "TCP client/server and UDP peer/listener",
+    "tasks": [
+      "D11"
+    ]
+  },
+  {
+    "id": "COM20",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Windows named pipes and platform alternatives",
+    "tasks": [
+      "D11"
+    ]
+  },
+  {
+    "id": "COM21",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Explicit forwarding bridges and monitor modes",
+    "tasks": [
+      "D12"
+    ]
+  },
+  {
+    "id": "COM22",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "USB/Bluetooth HID reports and Bluetooth SPP serial",
+    "tasks": [
+      "D13"
+    ]
+  },
+  {
+    "id": "COM23",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Dynamic scripted replies and send/receive hooks",
+    "tasks": [
+      "D14"
+    ]
+  },
+  {
+    "id": "COM24",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Script console and file-driven communication",
+    "tasks": [
+      "D14"
+    ]
+  },
+  {
+    "id": "COM25",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Lossless segmented recordings and timing-aware active replay",
+    "tasks": [
+      "D15",
+      "A05"
+    ]
+  },
+  {
+    "id": "COM26",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Controlled delay/drop/duplicate/corruption fault simulation",
+    "tasks": [
+      "D15"
+    ]
+  },
+  {
+    "id": "COM27",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "CILogg project persistence and Docklight project interchange",
+    "tasks": [
+      "D16"
+    ]
+  },
+  {
+    "id": "COM28",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Protocol Lab framing/field/chart/query integration",
+    "tasks": [
+      "D17"
+    ]
+  },
+  {
+    "id": "COM29",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Scenario scripting, lab and native automation integration",
+    "tasks": [
+      "D17",
+      "A03",
+      "E11"
+    ]
+  },
+  {
+    "id": "COM30",
+    "group": "Docklight communication and Protocol Lab",
+    "description": "Timestamp quality, hardware certification and TAP adapter path",
+    "tasks": [
+      "D18"
+    ]
+  },
+  {
+    "id": "ECO01",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Compatible versioned SDK with explicit source capabilities",
+    "tasks": [
+      "E01"
+    ]
+  },
+  {
+    "id": "ECO02",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Parser, analysis and action extension contracts",
+    "tasks": [
+      "E01",
+      "E09"
+    ]
+  },
+  {
+    "id": "ECO03",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Arbitrary command/stdout/stderr capture and explicit stdin",
+    "tasks": [
+      "E02"
+    ]
+  },
+  {
+    "id": "ECO04",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Docker and Compose logs with container metadata",
+    "tasks": [
+      "E03"
+    ]
+  },
+  {
+    "id": "ECO05",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Kubernetes pod/container capture and rollover coverage",
+    "tasks": [
+      "E04"
+    ]
+  },
+  {
+    "id": "ECO06",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "SSH and OS journal/Event Log recipes",
+    "tasks": [
+      "E05"
+    ]
+  },
+  {
+    "id": "ECO07",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Preserve and improve existing ADB and syslog sources",
+    "tasks": [
+      "E05"
+    ]
+  },
+  {
+    "id": "ECO08",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "OTLP logs, metrics, explicit spans and resources",
+    "tasks": [
+      "E06"
+    ]
+  },
+  {
+    "id": "ECO09",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Loki/OpenSearch/Elasticsearch/OpenObserve query connectors",
+    "tasks": [
+      "E07"
+    ]
+  },
+  {
+    "id": "ECO10",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Chrome Trace Event, OTLP span, Speedscope and folded profile imports",
+    "tasks": [
+      "E08"
+    ]
+  },
+  {
+    "id": "ECO11",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Reusable domain packs with templates/parsers/recipes",
+    "tasks": [
+      "E09"
+    ]
+  },
+  {
+    "id": "ECO12",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Pack dependency/version validation and reversible import",
+    "tasks": [
+      "E09"
+    ]
+  },
+  {
+    "id": "ECO13",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Git Team Folder, diffs, conflicts and explicit synchronization",
+    "tasks": [
+      "E09"
+    ]
+  },
+  {
+    "id": "ECO14",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Portable evidence bundles with raw excerpts and manifests",
+    "tasks": [
+      "E10"
+    ]
+  },
+  {
+    "id": "ECO15",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Optional previewed redaction on exported copies",
+    "tasks": [
+      "E10"
+    ]
+  },
+  {
+    "id": "ECO16",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "IDE file/line/column navigation and path mappings",
+    "tasks": [
+      "E11"
+    ]
+  },
+  {
+    "id": "ECO17",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Capability introspection and supported Python/MCP clients",
+    "tasks": [
+      "E11"
+    ]
+  },
+  {
+    "id": "ECO18",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Optional AI parser/query/chart/rule proposals with normal validation",
+    "tasks": [
+      "E12"
+    ]
+  },
+  {
+    "id": "ECO19",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Core operation without cloud account or AI provider",
+    "tasks": [
+      "E12",
+      "R03"
+    ]
+  },
+  {
+    "id": "QUAL01",
+    "group": "Quality, compatibility and delivery",
+    "description": "Current-source reconciliation and credit existing work",
+    "tasks": [
+      "G01"
+    ]
+  },
+  {
+    "id": "QUAL02",
+    "group": "Quality, compatibility and delivery",
+    "description": "Representative deterministic fixtures and recorded budgets",
+    "tasks": [
+      "G02"
+    ]
+  },
+  {
+    "id": "QUAL03",
+    "group": "Quality, compatibility and delivery",
+    "description": "Meaningful failing-first tests and public parity harness",
+    "tasks": [
+      "G03"
+    ]
+  },
+  {
+    "id": "QUAL04",
+    "group": "Quality, compatibility and delivery",
+    "description": "Developer journey acceptance across multiple domains",
+    "tasks": [
+      "R01"
+    ]
+  },
+  {
+    "id": "QUAL05",
+    "group": "Quality, compatibility and delivery",
+    "description": "Large-file/live saturation, cancellation and long-run memory",
+    "tasks": [
+      "R02"
+    ]
+  },
+  {
+    "id": "QUAL06",
+    "group": "Quality, compatibility and delivery",
+    "description": "Versioned migration, atomic saves and recoverable backups",
+    "tasks": [
+      "R03"
+    ]
+  },
+  {
+    "id": "QUAL07",
+    "group": "Quality, compatibility and delivery",
+    "description": "Windows/macOS/Linux and native/optional renderer packages",
+    "tasks": [
+      "R03"
+    ]
+  },
+  {
+    "id": "QUAL08",
+    "group": "Quality, compatibility and delivery",
+    "description": "C++17 and supported Qt5/Qt6 core compatibility",
+    "tasks": [
+      "G01",
+      "R03"
+    ]
+  },
+  {
+    "id": "QUAL09",
+    "group": "Quality, compatibility and delivery",
+    "description": "Useful diagnostics, capability errors and truthful partial results",
+    "tasks": [
+      "A08",
+      "R01",
+      "R02"
+    ]
+  },
+  {
+    "id": "QUAL10",
+    "group": "Quality, compatibility and delivery",
+    "description": "Documentation, examples, screenshots and traceable completion",
+    "tasks": [
+      "R04"
+    ]
+  }
+]
