@@ -11,11 +11,14 @@ import sys
 import threading
 import time
 import uuid
+from time import perf_counter as clock
 
 from workbench_process import ProcessOwner, peak_host_working_set
 
 LOG = logging.getLogger("workbench.runtime")
 MESSAGE_BYTES = 8 * 1024 * 1024
+# Windows Python 3.12 can use a coarse monotonic clock. The monotonic
+# performance counter resolves fast fixtures and also supplies all deadlines.
 
 
 class RunError(RuntimeError):
@@ -103,7 +106,7 @@ class BenchmarkHost:
         host_log = (self.output / "host.log").open("wb")
         server_log = (self.output / "mcp.log").open("wb")
         self.logs.extend((host_log, server_log))
-        started = time.monotonic()
+        started = clock()
         self.host = self.owner.spawn(
             self.prefix
             + ["--multi", "--new-session", "-d", "4", "-platform", "offscreen"],
@@ -118,7 +121,7 @@ class BenchmarkHost:
             with (self.output / "host.log").open("rb") as source:
                 if b"Klogg instance" in source.read(1024 * 1024):
                     break
-            if time.monotonic() >= deadline:
+            if clock() >= deadline:
                 raise RunError("host_startup_timeout")
             time.sleep(0.02)
         self.server = self.owner.spawn(
@@ -157,7 +160,7 @@ class BenchmarkHost:
         if not required.issubset(commands):
             raise RunError("required_operations_missing")
         self.command("get_info")
-        self.startup_seconds = time.monotonic() - started
+        self.startup_seconds = clock() - started
         LOG.info(
             "host_ready pid=%d startup_seconds=%.6f",
             self.host.pid,
@@ -210,7 +213,7 @@ class BenchmarkHost:
         )
 
     def send(self, method, parameters, timeout=15):
-        deadline = time.monotonic() + max(0.001, timeout)
+        deadline = clock() + max(0.001, timeout)
         self.sequence += 1
         request = {
             "jsonrpc": "2.0",
@@ -222,8 +225,8 @@ class BenchmarkHost:
         if len(encoded) > MESSAGE_BYTES:
             raise RunError("request_message_limit")
         try:
-            self.outgoing.put(encoded, timeout=max(0.001, deadline - time.monotonic()))
-            reply = self.replies.get(timeout=max(0.001, deadline - time.monotonic()))
+            self.outgoing.put(encoded, timeout=max(0.001, deadline - clock()))
+            reply = self.replies.get(timeout=max(0.001, deadline - clock()))
         except (queue.Empty, queue.Full) as error:
             raise RunError("transport_timeout") from error
         if (
@@ -237,7 +240,7 @@ class BenchmarkHost:
         return reply["result"]
 
     def command(self, action, arguments=None, timeout=15, allow_error=False):
-        started = time.monotonic()
+        started = clock()
         LOG.debug(
             "commander_request action=%s sequence=%d timeout_seconds=%.6f",
             action,
@@ -259,13 +262,13 @@ class BenchmarkHost:
                 "commander_failed action=%s reason=%s elapsed_seconds=%.6f",
                 action,
                 error,
-                time.monotonic() - started,
+                clock() - started,
             )
             raise
         LOG.debug(
             "commander_response action=%s elapsed_seconds=%.6f",
             action,
-            time.monotonic() - started,
+            clock() - started,
         )
         structured = result.get("structuredContent", {})
         if not isinstance(structured, dict):
@@ -288,13 +291,13 @@ class BenchmarkHost:
         return self.command("get_analysis_job", {"job_id": job}, timeout=timeout)
 
     def finish(self, job, seconds, observe=None):
-        deadline = time.monotonic() + seconds
+        deadline = clock() + seconds
         probes = []
-        while time.monotonic() < deadline:
-            started = time.monotonic()
+        while clock() < deadline:
+            started = clock()
             self.command("get_info", timeout=deadline - started)
-            probes.append(time.monotonic() - started)
-            status = self.status(job, max(0.001, deadline - time.monotonic()))
+            probes.append(clock() - started)
+            status = self.status(job, max(0.001, deadline - clock()))
             LOG.debug(
                 "analysis_observed job_id=%s state=%s complete=%s scanned=%s",
                 job,
@@ -306,7 +309,7 @@ class BenchmarkHost:
                 observe(status)
             if status["state"] in ("completed", "failed", "cancelled"):
                 return status, probes
-            time.sleep(min(0.02, max(0, deadline - time.monotonic())))
+            time.sleep(min(0.02, max(0, deadline - clock())))
         raise RunError("job_timeout")
 
     def release(self, job):
@@ -363,7 +366,7 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         raise RunError("corpus_changed_during_run")
     size = source.stat().st_size
     rows = manifest["rows"]
-    indexing_started = time.monotonic()
+    indexing_started = clock()
     deadline = indexing_started + budgets["jobSeconds"]
     host.command("open_file", {"file": str(source)}, timeout=budgets["jobSeconds"])
     request = {
@@ -371,11 +374,11 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         "pattern": "WORKBENCH_NO_SUCH_TOKEN",
         "limits": {"timeoutMs": 60000},
     }
-    while time.monotonic() < deadline:
+    while clock() < deadline:
         result = host.start_job(request)
         if "jobId" in result:
             job = result["jobId"]
-            snapshot = host.status(job, deadline - time.monotonic())
+            snapshot = host.status(job, deadline - clock())
             if int(snapshot["source"]["indexedBytes"]) == size:
                 LOG.debug(
                     "snapshot_frozen job_id=%s source_id=%s generation=%s indexed_bytes=%d lines=%d",
@@ -393,32 +396,30 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         time.sleep(0.02)
     else:
         raise RunError("job_timeout")
-    ready_seconds = time.monotonic() - indexing_started
+    ready_seconds = clock() - indexing_started
     if snapshot["state"] not in ("queued", "running"):
         raise RunError("append_workload_already_terminal")
     # This is a frozen run: the mutable working copy is separate from the corpus.
     with source.open("ab") as stream:
         stream.write(b"appended\n")
-    append_started = time.monotonic()
+    append_started = clock()
     publication = []
 
     def observe_append(status):
-        elapsed = time.monotonic() - append_started
+        elapsed = clock() - append_started
         if status.get("newerDataAvailable") and not publication:
             publication.append(elapsed)
         if not publication and elapsed > budgets["appendSeconds"]:
             raise RunError("append_publication_timeout")
 
-    terminal, probes = host.finish(
-        job, max(0.001, deadline - time.monotonic()), observe_append
-    )
-    elapsed = time.monotonic() - indexing_started
+    terminal, probes = host.finish(job, max(0.001, deadline - clock()), observe_append)
+    elapsed = clock() - indexing_started
     if not terminal.get("complete") or int(terminal["scannedLines"]) != rows:
         raise RunError("scan_incomplete")
     if int(terminal["source"]["indexedBytes"]) != size:
         raise RunError("snapshot_extended_after_append")
     while not terminal.get("newerDataAvailable"):
-        if time.monotonic() - append_started >= budgets["appendSeconds"]:
+        if clock() - append_started >= budgets["appendSeconds"]:
             raise RunError("append_publication_timeout")
         terminal = host.status(job, budgets["appendSeconds"])
         time.sleep(0.02)
@@ -455,7 +456,7 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
     before_cancel = host.status(cancel_job)
     if before_cancel["state"] not in ("queued", "running"):
         raise RunError("cancel_workload_already_terminal")
-    cancel_started = time.monotonic()
+    cancel_started = clock()
     host.command(
         "cancel_analysis_job",
         {"job_id": cancel_job},
@@ -465,10 +466,10 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         cancel_job,
         max(
             0.001,
-            budgets["publicCancellationSeconds"] - (time.monotonic() - cancel_started),
+            budgets["publicCancellationSeconds"] - (clock() - cancel_started),
         ),
     )
-    cancel_seconds = time.monotonic() - cancel_started
+    cancel_seconds = clock() - cancel_started
     if (
         cancelled["state"] != "cancelled"
         or cancel_seconds > budgets["publicCancellationSeconds"]
@@ -486,6 +487,8 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         elapsed,
         cancel_seconds,
     )
+    if elapsed <= 0:
+        LOG.warning("scan_rate_unavailable reason=clock_resolution bytes=%d", size)
     return {
         "repetition": repetition,
         "processState": "cold_process" if repetition == 0 else "warm_process",
@@ -493,7 +496,11 @@ def measure_analysis(host, corpus, manifest, output, budgets, repetition):
         "scannedLines": rows,
         "indexAndSubmissionSeconds": ready_seconds,
         "scanSecondsIncludingProtocol": elapsed,
-        "scanMiBPerSecondIncludingProtocol": size / (1024 * 1024) / elapsed,
+        "scanMiBPerSecondIncludingProtocol": size / (1024 * 1024) / elapsed
+        if elapsed > 0
+        else None,
+        "scanTimingStatus": "measured" if elapsed > 0 else "below_clock_resolution",
+        "timingClock": "perf_counter",
         "appendPublicationSecondsIncludingProtocol": append_seconds,
         "appendWhileActive": snapshot["state"] in ("queued", "running"),
         "cancelSecondsIncludingProtocol": cancel_seconds,

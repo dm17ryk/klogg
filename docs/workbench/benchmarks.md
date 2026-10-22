@@ -118,6 +118,14 @@ calibrate and freeze the remaining performance gates before feature-release clai
 
 ## Verification and next slices
 
+Timing uses Python's monotonic high-resolution `perf_counter`, including request
+deadlines. Older Windows Python versions can use a coarse `monotonic` clock,
+which reported zero elapsed time for fast protocol fixtures. If a duration still
+cannot be resolved, throughput is `null` with `scanTimingStatus:
+below_clock_resolution`; the harness does not invent an epsilon duration or rate.
+Tests force both coarse and unresolved clocks in isolated subprocesses. Historical
+observations below retain the hashes and timings of the harness actually used.
+
 ```powershell
 python -m unittest discover -s tests/benchmarks -v
 python scripts/benchmarks/workbench-benchmark.py --verify-corpus test_data/workbench

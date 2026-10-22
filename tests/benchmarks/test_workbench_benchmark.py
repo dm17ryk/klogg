@@ -167,6 +167,11 @@ class WorkbenchBenchmarkTests(unittest.TestCase):
             path.write_text(json.dumps(budgets), encoding="utf-8")
             arguments.extend(["--budgets", path])
         result = self.invoke(*arguments, environment=environment)
+        self.assertTrue(
+            (output / "result.json").is_file(),
+            f"Missing benchmark report; exit={result.returncode}\n"
+            f"stdout={result.stdout}\nstderr={result.stderr}",
+        )
         return result, json.loads((output / "result.json").read_text(encoding="utf-8"))
 
     def test_runtime_report_labels_cache_scope_test_double_and_open_release_gates(self):
@@ -184,6 +189,33 @@ class WorkbenchBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["budgets"].get("publicCancellationSeconds"), 10)
         self.assertEqual(report["runs"][0]["scannedLines"], 20)
         self.assertEqual(report["runs"][0]["captureBackend"], "benchmark-test-double")
+
+    def test_fast_scan_survives_coarse_monotonic_clock(self):
+        shim = self.directory / "clock-shim"
+        shim.mkdir()
+        (shim / "sitecustomize.py").write_text(
+            "import time\ntime.monotonic = lambda: 1.0\n", encoding="utf-8"
+        )
+        result, report = self.fake_run(
+            environment=dict(os.environ, PYTHONPATH=str(shim))
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["state"], "passed")
+        self.assertEqual(report["runs"][0]["scannedLines"], 20)
+
+    def test_unresolved_scan_duration_does_not_invent_throughput(self):
+        shim = self.directory / "clock-shim"
+        shim.mkdir()
+        (shim / "sitecustomize.py").write_text(
+            "import time\ntime.perf_counter = lambda: 1.0\n", encoding="utf-8"
+        )
+        result, report = self.fake_run(
+            environment=dict(os.environ, PYTHONPATH=str(shim))
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for run in report["runs"]:
+            self.assertIsNone(run["scanMiBPerSecondIncludingProtocol"])
+            self.assertEqual(run["scanTimingStatus"], "below_clock_resolution")
 
     def test_slow_fixture_fails_the_execution_gate_with_exit_one(self):
         environment = dict(os.environ, CILOGG_BENCHMARK_FAKE_DELAY_MS="300")
