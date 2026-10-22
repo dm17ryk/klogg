@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/packaging -p 'test_*.py'
           bash tests/packaging/linux_native_test.sh
+          bash tests/packaging/linux_command_launcher_test.sh
 
       - name: Save version
         run: echo $CILOGG_VERSION > cilogg_version.txt
@@ -416,7 +417,6 @@ jobs:
             qt_version: 6.12.0
             qt_arch: clang_64
             qt_modules: qt5compat
-            qt_archives: qtbase qtsvg qttools qttranslations
             package_suffix: -qt612
             artifacts_id: macos-intel-qt612
             cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
@@ -428,7 +428,6 @@ jobs:
             qt_version: 6.12.0
             qt_arch: clang_64
             qt_modules: qt5compat
-            qt_archives: qtbase qtsvg qttools qttranslations
             package_suffix: -qt612
             artifacts_id: macos-arm-qt612
             cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.4 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations

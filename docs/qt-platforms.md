@@ -38,14 +38,16 @@ require manual installation because the current updater implements `dnf`, not
 Supported native DEBs and the new RPMs enable `KLOGG_BUNDLE_QT_RUNTIME`. Qt's deployment API
 installs the vendor runtime and selected plugins under a private CILogg library
 directory. Executables, updater/search helpers, preinstalled plugins and plugin
-SDK files move together. Public `cilogg` and `cilogg_grep` command symlinks retain
-their normal names. The private `qt.conf` and relative RPATH avoid changing
+SDK files move together. Public `cilogg` and `cilogg_grep` launchers retain
+their normal names and execute the canonical private binary path. This matters
+for Qt 6.12, which preserves the original execution path rather than resolving
+the public symlink when locating `qt.conf`. The private configuration and relative RPATH avoid changing
 other applications' Qt discovery or depending on a build-machine `/opt/Qt` path.
 
 Each upgraded DEB job installs the actual package and its system dependencies in
 a clean matching distribution container and runs `cilogg --help` offscreen. New
 RHEL-compatible RPMs receive the same check in clean AlmaLinux containers. Release
-validation accepts both the older layout and command symlinks, and rejects a
+validation accepts the older layout, command symlinks and launchers, and rejects a
 resolved executable outside the extracted package. CTest and AppImage runtime
 checks remain part of their respective build jobs. Qt version, compiler, CMake,
 selected SDK architecture and deployment decisions appear in CI logs.

@@ -32,16 +32,10 @@ file(
   "/${CMAKE_INSTALL_BINDIR}"
 )
 foreach(_klogg_command "${PRODUCT_EXECUTABLE_NAME}" "${PRODUCT_GREP_EXECUTABLE_NAME}")
+  configure_file(cmake/LinuxCommandLauncher.sh.in "${CMAKE_BINARY_DIR}/${_klogg_command}-launcher" @ONLY)
   install(
-    CODE "
-    file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KLOGG_PUBLIC_BINDIR}\")
-    file(CREATE_LINK \"${_klogg_public_to_private}/${_klogg_command}\"
-      \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KLOGG_PUBLIC_BINDIR}/${_klogg_command}\"
-      SYMBOLIC RESULT _klogg_link_result)
-    if(NOT _klogg_link_result STREQUAL \"0\")
-      message(FATAL_ERROR \"Cannot install ${_klogg_command} command link: \${_klogg_link_result}\")
-    endif()
-    message(STATUS \"Installed command link: ${KLOGG_PUBLIC_BINDIR}/${_klogg_command} -> ${_klogg_public_to_private}/${_klogg_command}\")
-  "
+    PROGRAMS "${CMAKE_BINARY_DIR}/${_klogg_command}-launcher"
+    DESTINATION "${KLOGG_PUBLIC_BINDIR}"
+    RENAME "${_klogg_command}"
   )
 endforeach()

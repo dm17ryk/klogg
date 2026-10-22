@@ -1,0 +1,14 @@
+#!/bin/sh
+# CILOGG_PRIVATE_EXECUTABLE=@_klogg_public_to_private@/@_klogg_command@
+set -eu
+# Qt 6.12 uses AT_EXECFN without resolving the public command's symlink.
+# Exec the canonical private binary so Qt finds qt.conf beside that binary.
+launcher="$0"
+case "$launcher" in
+  */*) ;;
+  *) launcher=$(command -v "$launcher") ;;
+esac
+launcher=$(realpath -e -- "$launcher")
+launcher_dir=$(CDPATH= cd -- "$(dirname -- "$launcher")" && pwd -P)
+executable=$(realpath -e -- "$launcher_dir/@_klogg_public_to_private@/@_klogg_command@")
+exec "$executable" "$@"

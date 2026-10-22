@@ -7,6 +7,18 @@ fail() {
   exit 1
 }
 
+resolve_package_executable() {
+  local executable launcher_target
+  executable="$(realpath -e "$1")"
+  # Inspect only the bounded launcher header; never execute extracted packages.
+  launcher_target=$(head -c 4096 "$executable" | sed -n 's/^# CILOGG_PRIVATE_EXECUTABLE=//p')
+  if [[ -n "$launcher_target" ]]; then
+    [[ "$launcher_target" != /* && "$launcher_target" != *$'\n'* ]] || fail "Invalid private launcher target: $launcher_target"
+    executable="$(realpath -e "$(dirname "$executable")/$launcher_target")"
+  fi
+  printf '%s\n' "$executable"
+}
+
 validate_deb() (
   local pkg="$1"
   local contents
@@ -23,7 +35,7 @@ validate_deb() (
   trap 'rm -rf "$workdir"' EXIT
   dpkg-deb -x "$pkg" "$workdir"
   local executable
-  executable="$(realpath -e "$workdir/usr/bin/cilogg")"
+  executable="$(resolve_package_executable "$workdir/usr/bin/cilogg")"
   [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "DEB executable escapes package or is not executable: $pkg"
   echo "DEB executable resolved within package: ${executable#"$workdir/"}"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"
@@ -43,7 +55,7 @@ validate_rpm() (
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   (cd "$workdir"; rpm2cpio "$pkg_abs" | cpio -idm --quiet)
-  executable="$(realpath -e "$workdir/usr/bin/cilogg")"
+  executable="$(resolve_package_executable "$workdir/usr/bin/cilogg")"
   [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "RPM executable escapes package or is not executable: $pkg"
   echo "RPM executable resolved within package: ${executable#"$workdir/"}"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"

@@ -12,7 +12,7 @@ set -euo pipefail
 cp -a "$TEST_FIXTURE/." "$1"
 # NTFS/MSYS cp can rebase a relative symlink to the original fixture. Recreate
 # the literal package entry so extraction has the same semantics on both hosts.
-if [[ "$TEST_LAYOUT" != legacy ]]; then
+if [[ "$TEST_LAYOUT" != legacy && "$TEST_LAYOUT" != launcher* ]]; then
   rm "$1/usr/bin/cilogg"
   if [[ "$TEST_LAYOUT" == escape ]]; then
     ln -s "$TEST_OUTSIDE" "$1/usr/bin/cilogg"
@@ -28,7 +28,7 @@ cat > "$test_root/bin/dpkg-deb" <<'EOF'
 set -euo pipefail
 case "$1" in
   -c)
-    if [[ "$TEST_LAYOUT" == legacy ]]; then
+    if [[ "$TEST_LAYOUT" == legacy || "$TEST_LAYOUT" == launcher* ]]; then
       echo '-rwxr-xr-x root/root 20 2026-01-01 ./usr/bin/cilogg'
     else
       echo 'lrwxrwxrwx root/root 0 2026-01-01 ./usr/bin/cilogg -> ../lib/cilogg/bin/cilogg'
@@ -69,7 +69,7 @@ export PATH="$test_root/bin:$PATH"
 export TEST_FIXTURE="$test_root/fixture"
 
 for kind in deb rpm; do
-  for layout in legacy private escape missing-plugin; do
+  for layout in legacy private launcher launcher-escape escape missing-plugin; do
     export TEST_LAYOUT="$layout"
     rm -rf -- "$TEST_FIXTURE"
     mkdir -p "$TEST_FIXTURE/usr/bin"
@@ -91,15 +91,23 @@ for kind in deb rpm; do
       ln -s "$test_root/outside" "$TEST_FIXTURE/usr/bin/cilogg"
       printf '#!/bin/sh\nexit 0\n' > "$test_root/outside"
       chmod +x "$test_root/outside"
+    elif [[ "$layout" == launcher* ]]; then
+      rm "$TEST_FIXTURE/usr/bin/cilogg"
+      target='../lib/cilogg/bin/cilogg'
+      if [[ "$layout" == launcher-escape ]]; then
+        target="$test_root/outside"
+      fi
+      printf '#!/bin/sh\n# CILOGG_PRIVATE_EXECUTABLE=%s\nexit 0\n' "$target" > "$TEST_FIXTURE/usr/bin/cilogg"
+      chmod +x "$TEST_FIXTURE/usr/bin/cilogg"
     elif [[ "$layout" == missing-plugin ]]; then
       rm "$bindir/plugins/adb-logcat/cilogg_plugin.py"
     fi
     package="$test_root/packages-fixture/cilogg.$kind"
     touch "$package"
     if (cd "$test_root"; bash "$repo_root/scripts/validate_release_linux.sh") > "$test_root/$kind-$layout.log" 2>&1; then
-      [[ "$layout" == legacy || "$layout" == private ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
+      [[ "$layout" == legacy || "$layout" == private || "$layout" == launcher ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
     else
-      [[ "$layout" == escape || "$layout" == missing-plugin ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
+      [[ "$layout" == escape || "$layout" == launcher-escape || "$layout" == missing-plugin ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
     fi
     rm "$package"
     echo "PASS: $kind $layout"
