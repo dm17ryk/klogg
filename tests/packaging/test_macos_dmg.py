@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import package_macos_dmg as dmg
@@ -30,6 +30,10 @@ class DmgTests(unittest.TestCase):
         self.patch_run = patch.object(dmg.subprocess, "run", self.run_tool)
         self.patch_run.start()
         self.addCleanup(self.patch_run.stop)
+        self.patch_cpack = patch.object(dmg, "_run_cpack", lambda root: self.run_tool(
+            ["cpack", "--verbose", "-G", "DragNDrop"], check=False), create=True)
+        self.patch_cpack.start()
+        self.addCleanup(self.patch_cpack.stop)
         self.sleep = patch.object(dmg.time, "sleep").start()
         self.addCleanup(patch.stopall)
 
@@ -100,6 +104,24 @@ class DmgTests(unittest.TestCase):
         outputs = [call[-1] for call in self.calls if call[:2] == ["hdiutil", "create"]]
         self.assertEqual(len(set(outputs)), 2)
 
+    def test_cpack_timeout_detaches_owned_image_and_publishes_verified_fallback(self):
+        unrelated = {"image-path": str(self.root / "unrelated.dmg"),
+                     "system-entities": [{"dev-entry": "/dev/disk2"}]}
+        self.images = [self.owned_image(), unrelated]
+        timeout = subprocess.TimeoutExpired(["cpack"], 600)
+        with patch.object(dmg, "_run_cpack", side_effect=timeout) as run_cpack:
+            result = dmg.package(self.root, "test")
+        run_cpack.assert_called_once_with(self.root.resolve())
+        self.assertEqual(result.read_bytes(), b"fallback image")
+        self.assertEqual(self.images, [unrelated])
+        self.assertTrue(any(call[:2] == ["hdiutil", "verify"] for call in self.calls))
+
+    def test_interruption_does_not_start_image_recovery(self):
+        with patch.object(dmg, "_run_cpack", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                dmg.package(self.root, "test")
+        self.assertFalse(self.calls)
+
     def test_stuck_mount_fails_without_starting_fallback(self):
         self.images, self.stuck = [self.owned_image()], True
         with self.assertRaisesRegex(RuntimeError, "still mounted"):
@@ -132,6 +154,63 @@ class DmgTests(unittest.TestCase):
         self.assertFalse(self.calls)
 
 
+class CpackSupervisorTests(unittest.TestCase):
+    def test_completed_exit_status_is_preserved(self):
+        for status in (0, 1):
+            with self.subTest(status=status):
+                process = Mock()
+                process.wait.return_value = status
+                with patch.object(dmg.subprocess, "Popen", return_value=process):
+                    self.assertEqual(dmg._run_cpack(Path.cwd()).returncode, status)
+
+    def test_timeout_kills_process_group_and_reaps_before_propagating(self):
+        root = Path.cwd()
+        process = Mock(pid=4321)
+        timeout = subprocess.TimeoutExpired(["cpack"], 3)
+        process.wait.side_effect = [timeout, -9]
+        with patch.object(dmg.os, "name", "posix"), \
+                patch.object(dmg.signal, "SIGKILL", 9, create=True), \
+                patch.object(dmg.os, "killpg", create=True) as kill_group, \
+                patch.object(dmg.subprocess, "Popen", return_value=process) as popen:
+            events = Mock()
+            events.attach_mock(process, "process")
+            events.attach_mock(kill_group, "kill_group")
+            with self.assertRaises(subprocess.TimeoutExpired):
+                dmg._run_cpack(root, timeout=3)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], root)
+        self.assertEqual(events.mock_calls, [call.process.wait(timeout=3),
+                                            call.kill_group(4321, 9),
+                                            call.process.wait(timeout=30)])
+
+    def test_unreaped_process_is_a_hard_failure(self):
+        root = Path.cwd()
+        process = Mock(pid=4321)
+        process.wait.side_effect = [subprocess.TimeoutExpired(["cpack"], 3),
+                                    subprocess.TimeoutExpired(["cpack"], 30)]
+        with patch.object(dmg.os, "name", "posix"), \
+                patch.object(dmg.signal, "SIGKILL", 9, create=True), \
+                patch.object(dmg.os, "killpg", create=True), \
+                patch.object(dmg.subprocess, "Popen", return_value=process):
+            with self.assertRaisesRegex(RuntimeError, "refusing DMG recovery"):
+                dmg._run_cpack(root, timeout=3)
+
+    def test_interruption_terminates_and_reaps_before_propagating(self):
+        root = Path.cwd()
+        process = Mock(pid=4321)
+        interrupted = KeyboardInterrupt()
+        process.wait.side_effect = [interrupted, -9]
+        with patch.object(dmg.os, "name", "posix"), \
+                patch.object(dmg.signal, "SIGKILL", 9, create=True), \
+                patch.object(dmg.os, "killpg", create=True) as kill_group, \
+                patch.object(dmg.subprocess, "Popen", return_value=process):
+            with self.assertRaises(KeyboardInterrupt) as caught:
+                dmg._run_cpack(root)
+        self.assertIs(caught.exception, interrupted)
+        kill_group.assert_called_once_with(4321, 9)
+        self.assertEqual(process.wait.call_count, 2)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "requires native macOS disk images")
 class NativeDmgTests(unittest.TestCase):
     def test_real_fallback_recovers_own_mount_and_has_installable_layout(self):
@@ -150,17 +229,13 @@ class NativeDmgTests(unittest.TestCase):
             final_mount.mkdir()
             real_run = dmg._run
 
-            def fail_cpack(args, **kwargs):
-                if args[0] == "cpack":
-                    return subprocess.CompletedProcess(args, 1)
-                return real_run(args, **kwargs)
-
             try:
                 real_run(["hdiutil", "create", "-size", "16m", "-fs", "HFS+",
                           "-volname", "CILogg", str(stale_image)])
                 real_run(["hdiutil", "attach", "-nobrowse", "-mountpoint",
                           str(stale_mount), str(stale_image)])
-                with patch.object(dmg, "_run", fail_cpack):
+                with patch.object(dmg, "_run_cpack", side_effect=subprocess.TimeoutExpired(
+                        ["cpack"], 600)):
                     image = dmg.package(root, "native-test")
                 self.assertFalse(stale_mount.is_mount())
                 real_run(["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint",
