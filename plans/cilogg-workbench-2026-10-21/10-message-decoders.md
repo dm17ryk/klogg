@@ -15,7 +15,7 @@
 - Existing analysis admission/read/page/deadline caps remain binding. Plugin-v1 envelopes remain 1 MiB with 8 MiB pending stream traffic; retained segments/pages carry larger byte streams. A reviewed schema/measurement change is required to alter any cap.
 - Add explicit tested limits for frames, flows, pending bytes, expansion, nesting depth/cycles, fields, output and session windows. Their numeric profiles are frozen with G02/MD08 evidence before release; an unmeasured allocation bound is not a performance pass.
 - Owners describe responsibility, not reverse hard edges. MD01 is a proof using existing tools; it does not wait for E09's complete Git Team Folder feature. D07 live transports, D17 Protocol Lab and R01 decoder-enabled release paths are conditional integration gates, not prerequisites for historical text inspection or early charts.
-- Preserve all previous completed work. MD tasks are planned; importing this document does not pass runtime, package, performance or hardware checks. G02a PR59 is independently pending and its evidence must survive later merges.
+- Preserve all previous completed work. MD tasks are planned; importing this document does not pass runtime, package, performance or hardware checks. G02a PR59 is merged; its evidence is preserved, while full G02 remains in progress.
 
 ## Shared pipeline and result contract
 

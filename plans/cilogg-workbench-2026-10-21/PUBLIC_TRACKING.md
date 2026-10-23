@@ -29,9 +29,9 @@ implementation ownership or add reverse hard dependency edges.
 
 - G01 is complete through merged PR58. Credit existing P01/P02/P03a–d/P04/P05 and
   P19b work through MERGE_MAP.md; P00's unmeasured performance gates stay open.
-- G02a PR59 remains independently open at this integration. Its fixture/harness
-  evidence is not full G02 completion. Preserve that evidence when both branches
-  merge. G02/G03 remain the next execution work; decoder tasks do not jump them.
+- G02a PR59 merged as `c164e842acd5eadffb985c2528d83654ceefaa66`. Its fixture/harness
+  evidence is preserved in this branch and does not complete full G02. G02/G03
+  remain the next execution work; decoder tasks do not jump them.
 - The existing M00 issue's H01–H10 publication/readiness checklist is retained as
   a separate issue-level backlog. Those IDs are not in the reconciled task DAG;
   do not silently count them as canonical task cards or delete their obligations.

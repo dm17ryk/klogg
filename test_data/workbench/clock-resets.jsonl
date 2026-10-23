@@ -1,0 +1,5 @@
+{"source": "device", "boot": "A", "uptimeMs": 0}
+{"source": "device", "boot": "A", "uptimeMs": 1}
+{"source": "device", "boot": "A", "uptimeMs": 2}
+{"source": "device", "boot": "B", "uptimeMs": 0}
+{"source": "device", "boot": "B", "uptimeMs": 1}

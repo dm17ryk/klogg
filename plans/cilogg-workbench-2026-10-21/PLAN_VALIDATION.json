@@ -21,6 +21,12 @@
     "earlyChartsIndependent": true,
     "decoderRuntimeRun": false,
     "productBuildRun": false,
-    "sourcePayloadsPublished": false
+    "sourcePayloadsPublished": false,
+    "storedTopologicalOrderComplete": true,
+    "storedTopologicalOrderDependencyValid": true,
+    "decoderChainGatesR04": true,
+    "decoderPythonTestsMatchDiscovery": true,
+    "mergedG02EvidencePreserved": true,
+    "reconciledMaster": "c164e842acd5eadffb985c2528d83654ceefaa66"
   }
 }

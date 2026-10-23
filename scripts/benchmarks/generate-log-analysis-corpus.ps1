@@ -6,10 +6,17 @@ param(
     [ValidateRange(1, 4096)]
     [int]$LongLineKiB = 256,
     [ValidateRange(1, 1024)]
-    [int]$FileCount = 64
+    [int]$FileCount = 64,
+    [switch]$IncludeWorkbench,
+    [ValidateRange(0, 2147483647)]
+    [int]$Seed = 42,
+    [string]$PythonExecutable = 'python'
 )
 
 $ErrorActionPreference = 'Stop'
+if ($IncludeWorkbench -and $Lines -gt 1000000) {
+    throw 'Workbench fixtures support at most 1,000,000 records per scalable file.'
+}
 $outputPath = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $outputPath) {
     throw "Choose a new corpus directory; the destination already exists: $outputPath"
@@ -102,3 +109,13 @@ $manifest = [ordered]@{
 $manifestPath = Join-Path $outputPath 'manifest.json'
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), $utf8)
 Write-Output $manifestPath
+
+if ($IncludeWorkbench) {
+    $workbenchRunner = Join-Path $PSScriptRoot 'workbench-benchmark.py'
+    $workbenchOutput = Join-Path $outputPath 'workbench'
+    Write-Verbose "Generating Workbench fixtures rows=$Lines seed=$Seed"
+    & $PythonExecutable $workbenchRunner --generate-corpus $workbenchOutput --rows $Lines --seed $Seed
+    if ($LASTEXITCODE -ne 0) {
+        throw "Workbench fixture generation failed with exit code $LASTEXITCODE."
+    }
+}

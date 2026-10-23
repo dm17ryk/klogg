@@ -24,7 +24,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "QUAL02"
       ],
@@ -2204,14 +2204,15 @@
         "D15",
         "D16",
         "D17",
-        "D18"
+        "D18",
+        "MD08"
       ],
       "status": "planned",
       "requirements": [
         "UX18",
         "QUAL10"
       ],
-      "task_body_chars": 2613,
+      "task_body_chars": 2628,
       "taskFile": "tasks/R04.md"
     },
     {
@@ -2231,7 +2232,7 @@
         "DEC13",
         "DEC14"
       ],
-      "task_body_chars": 2627,
+      "task_body_chars": 2632,
       "taskFile": "tasks/MD01.md"
     },
     {
@@ -2277,7 +2278,7 @@
         "DEC09",
         "DEC10"
       ],
-      "task_body_chars": 2992,
+      "task_body_chars": 2997,
       "taskFile": "tasks/MD03.md"
     },
     {
@@ -2297,7 +2298,7 @@
         "DEC11",
         "DEC14"
       ],
-      "task_body_chars": 2595,
+      "task_body_chars": 2600,
       "taskFile": "tasks/MD04.md"
     },
     {
@@ -2321,7 +2322,7 @@
         "DEC04",
         "DEC13"
       ],
-      "task_body_chars": 2701,
+      "task_body_chars": 2706,
       "taskFile": "tasks/MD05.md"
     },
     {
@@ -2345,7 +2346,7 @@
         "DEC11",
         "DEC12"
       ],
-      "task_body_chars": 2922,
+      "task_body_chars": 2927,
       "taskFile": "tasks/MD06.md"
     },
     {
@@ -2390,7 +2391,7 @@
         "DEC13",
         "DEC14"
       ],
-      "task_body_chars": 2980,
+      "task_body_chars": 2985,
       "taskFile": "tasks/MD08.md"
     }
   ],
@@ -2491,6 +2492,14 @@
     "R01",
     "R02",
     "R03",
+    "MD01",
+    "MD03",
+    "MD02",
+    "MD04",
+    "MD05",
+    "MD06",
+    "MD07",
+    "MD08",
     "R04"
   ],
   "notes": [
