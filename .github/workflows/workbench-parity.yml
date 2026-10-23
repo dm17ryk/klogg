@@ -1,0 +1,24 @@
+name: Workbench parity harness
+on:
+  pull_request:
+    paths: ['tests/mcp/**', 'test_data/workbench/command-cases/**', 'tests/CMakeLists.txt', '.github/workflows/workbench-parity.yml']
+  push:
+    branches: [master]
+    paths: ['tests/mcp/**', 'test_data/workbench/command-cases/**', 'tests/CMakeLists.txt', '.github/workflows/workbench-parity.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  self-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04, macos-14]
+        python: ['3.9', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests/mcp -p test_workbench_parity.py -v
