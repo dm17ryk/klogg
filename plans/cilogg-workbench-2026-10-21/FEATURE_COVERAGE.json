@@ -1471,5 +1471,132 @@
     "tasks": [
       "R04"
     ]
+  },
+  {
+    "id": "DEC01",
+    "group": "Message decoding and protocol inspection",
+    "description": "Eleven EHCP reference frame/checksum outcomes and exhaustive split provenance",
+    "tasks": [
+      "MD01",
+      "MD02",
+      "MD05"
+    ]
+  },
+  {
+    "id": "DEC02",
+    "group": "Message decoding and protocol inspection",
+    "description": "Multiple/split messages with source/device/direction isolation",
+    "tasks": [
+      "MD02",
+      "MD05"
+    ]
+  },
+  {
+    "id": "DEC03",
+    "group": "Message decoding and protocol inspection",
+    "description": "Incomplete EHCI split CNT, interleaved diagnostics, length mismatch and missing CRC",
+    "tasks": [
+      "MD05"
+    ]
+  },
+  {
+    "id": "DEC04",
+    "group": "Message decoding and protocol inspection",
+    "description": "EHCI tag-length framing, repeated maps, empty/NUL data and honest recovery/fidelity",
+    "tasks": [
+      "MD02",
+      "MD05"
+    ]
+  },
+  {
+    "id": "DEC05",
+    "group": "Message decoding and protocol inspection",
+    "description": "Explicit payload codecs, Unicode/file-byte/logical offsets and unknown bytes",
+    "tasks": [
+      "MD02",
+      "MD04"
+    ]
+  },
+  {
+    "id": "DEC06",
+    "group": "Message decoding and protocol inspection",
+    "description": "AT CSQ transaction/URC with 40 ms log duration, -67 dBm and unknown BER",
+    "tasks": [
+      "MD06"
+    ]
+  },
+  {
+    "id": "DEC07",
+    "group": "Message decoding and protocol inspection",
+    "description": "Contextual AT grammar, echo/result modes, schemas and ambiguous correlation",
+    "tasks": [
+      "MD06"
+    ]
+  },
+  {
+    "id": "DEC08",
+    "group": "Message decoding and protocol inspection",
+    "description": "AT SMS/prompts/data mode and truncated observations without false transactions",
+    "tasks": [
+      "MD06"
+    ]
+  },
+  {
+    "id": "DEC09",
+    "group": "Message decoding and protocol inspection",
+    "description": "Supervised bounded decoder state/output, crash/deadline/cancellation/backpressure",
+    "tasks": [
+      "MD03",
+      "MD08"
+    ]
+  },
+  {
+    "id": "DEC10",
+    "group": "Message decoding and protocol inspection",
+    "description": "Legacy JSON/v1 plugins and GUI/CLI/MCP/Python typed-data/error parity",
+    "tasks": [
+      "MD03",
+      "MD07"
+    ]
+  },
+  {
+    "id": "DEC11",
+    "group": "Message decoding and protocol inspection",
+    "description": "Nested SRING hex-to-EHCP with independent wrapper/child diagnostics and exact maps",
+    "tasks": [
+      "MD01",
+      "MD04",
+      "MD06"
+    ]
+  },
+  {
+    "id": "DEC12",
+    "group": "Message decoding and protocol inspection",
+    "description": "Cross-notification child assembly, parent/child query scopes and nesting/cycle limits",
+    "tasks": [
+      "MD02",
+      "MD06",
+      "MD07"
+    ]
+  },
+  {
+    "id": "DEC13",
+    "group": "Message decoding and protocol inspection",
+    "description": "Actual supplied Lua execution, engine/script provenance and reference comparison",
+    "tasks": [
+      "MD01",
+      "MD05",
+      "MD08"
+    ]
+  },
+  {
+    "id": "DEC14",
+    "group": "Message decoding and protocol inspection",
+    "description": "Byte-exact Exported-PDU sidecars versus genuine PCAP transport/reassembly semantics",
+    "tasks": [
+      "MD01",
+      "MD04",
+      "MD08"
+    ]
   }
 ]

@@ -68,3 +68,19 @@ G03 supplies the reusable parity harness. Historical successes, source inspectio
 new local runs, hosted checks, skipped checks and hardware tests remain distinct.
 Task completion cannot be inferred from a plan checkbox. This integration can be
 reverted without changing product code, settings, sources, captures or protocols.
+
+## D08 — Message decoders reuse the real Wireshark engine
+
+The revision-2 addendum is integrated as MD01–MD08 and DEC01–DEC14 in the canonical
+package. Use supervised TShark/native/Lua dissectors, Exported-PDU application
+records and explicit transformation sidecars. Do not implement a second Proto,
+Tvb or TreeItem runtime or duplicate EHCP/EHCI semantic parsers. Preserve legacy
+JSON previews, plugin v1, bounded analysis jobs and GUI/CLI/MCP/Python parity.
+
+Owner references do not add reverse DAG edges: MD01 proves actual script/PDU
+dispatch first; G02/G03 remain prerequisites, while V02's early native charts
+stay independent. D07 live adapters, D17 Protocol Lab and R01 decoder-enabled
+release acceptance are capability-conditional integration gates. Missing Lua
+sources/complete captures and all unrun runtime/platform evidence stay explicit.
+The private source addendum is recorded by name/hash; account-bearing payloads
+are not copied to public plans, fixtures or GitHub issues.
