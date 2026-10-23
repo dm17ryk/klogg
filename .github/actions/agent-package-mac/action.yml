@@ -73,7 +73,7 @@ runs:
       shell: sh
       run: |
         cd "$CILOGG_BUILD_ROOT"
-        python3 "$CILOGG_WORKSPACE/scripts/package_macos_dmg.py" --version "$CILOGG_VERSION"
+        python3 "$CILOGG_WORKSPACE/scripts/package_macos_dmg.py" --version "$CILOGG_VERSION" --headless
 
     - name: Mac verify dmg layout
       shell: bash
