@@ -1,0 +1,33 @@
+name: Workbench benchmark checks
+
+on:
+  pull_request:
+    paths: ['scripts/benchmarks/**', 'tests/benchmarks/**', 'test_data/workbench/**', '.github/workflows/workbench-benchmarks.yml']
+  push:
+    branches: [master]
+    paths: ['scripts/benchmarks/**', 'tests/benchmarks/**', 'test_data/workbench/**', '.github/workflows/workbench-benchmarks.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04, macos-15]
+        python: ['3.12']
+        include:
+          - os: ubuntu-24.04
+            python: '3.9'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify committed fixture bytes
+        run: python scripts/benchmarks/workbench-benchmark.py --verify-corpus test_data/workbench
+      - name: Test corpus, process ownership and failure gates
+        run: python -m unittest discover -s tests/benchmarks -v

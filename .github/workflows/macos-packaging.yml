@@ -1,0 +1,23 @@
+name: macOS DMG packaging checks
+on:
+  pull_request:
+    paths: ['scripts/package_macos_dmg.py', 'tests/packaging/test_macos_dmg.py', '.github/actions/agent-package-mac/**', '.github/workflows/macos-packaging.yml']
+  push:
+    branches: [master]
+    paths: ['scripts/package_macos_dmg.py', 'tests/packaging/test_macos_dmg.py', '.github/actions/agent-package-mac/**', '.github/workflows/macos-packaging.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests/packaging -p test_macos_dmg.py -v

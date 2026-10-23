@@ -1,0 +1,8 @@
+GET /api/items status=500 duration_ms=0.125 seed=42
+GET /api/items status=200 duration_ms=1.125 seed=42
+GET /api/items status=200 duration_ms=2.125 seed=42
+GET /api/items status=200 duration_ms=3.125 seed=42
+GET /api/items status=200 duration_ms=4.125 seed=42
+GET /api/items status=200 duration_ms=5.125 seed=42
+GET /api/items status=200 duration_ms=6.125 seed=42
+GET /api/items status=200 duration_ms=7.125 seed=42

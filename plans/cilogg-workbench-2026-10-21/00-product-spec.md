@@ -99,3 +99,7 @@ All software features get deterministic fixtures and virtual transports; hardwar
 ## Reference approach
 
 The comparison tools are functionality and interaction references. Reuse practical components and schemas where they fit. Primary documentation and verified repository paths are linked in the task sections and reference catalog. Licensing is not a prioritization dimension for this plan.
+
+## Message decoder revision-2 integration
+
+Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).

@@ -1,0 +1,4 @@
+BUILD start
+TEST alpha PASS duration_ms=2
+TEST beta FAIL duration_ms=3
+BUILD failed

@@ -24,7 +24,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "QUAL02"
       ],
@@ -83,7 +83,7 @@
         "DATA13",
         "DATA20"
       ],
-      "task_body_chars": 5590,
+      "task_body_chars": 5992,
       "taskFile": "tasks/F01.md"
     },
     {
@@ -196,7 +196,7 @@
         "DATA03",
         "DATA05"
       ],
-      "task_body_chars": 4556,
+      "task_body_chars": 4977,
       "taskFile": "tasks/F02.md"
     },
     {
@@ -356,7 +356,7 @@
         "ECO01",
         "ECO02"
       ],
-      "task_body_chars": 3856,
+      "task_body_chars": 4315,
       "taskFile": "tasks/E01.md"
     },
     {
@@ -420,7 +420,7 @@
         "DATA06",
         "DATA07"
       ],
-      "task_body_chars": 4839,
+      "task_body_chars": 5260,
       "taskFile": "tasks/F04.md"
     },
     {
@@ -442,7 +442,7 @@
         "DATA14",
         "DATA21"
       ],
-      "task_body_chars": 7009,
+      "task_body_chars": 7411,
       "taskFile": "tasks/F07.md"
     },
     {
@@ -569,7 +569,7 @@
         "UX05",
         "UX14"
       ],
-      "task_body_chars": 3580,
+      "task_body_chars": 4001,
       "taskFile": "tasks/U04.md"
     },
     {
@@ -946,7 +946,7 @@
         "COM13",
         "COM14"
       ],
-      "task_body_chars": 3604,
+      "task_body_chars": 4025,
       "taskFile": "tasks/D07.md"
     },
     {
@@ -1354,7 +1354,7 @@
         "ECO12",
         "ECO13"
       ],
-      "task_body_chars": 3793,
+      "task_body_chars": 4252,
       "taskFile": "tasks/E09.md"
     },
     {
@@ -1978,7 +1978,7 @@
         "COM28",
         "COM29"
       ],
-      "task_body_chars": 6168,
+      "task_body_chars": 6608,
       "taskFile": "tasks/D17.md"
     },
     {
@@ -2052,7 +2052,7 @@
         "QUAL04",
         "QUAL09"
       ],
-      "task_body_chars": 2371,
+      "task_body_chars": 2773,
       "taskFile": "tasks/R01.md"
     },
     {
@@ -2204,15 +2204,195 @@
         "D15",
         "D16",
         "D17",
-        "D18"
+        "D18",
+        "MD08"
       ],
       "status": "planned",
       "requirements": [
         "UX18",
         "QUAL10"
       ],
-      "task_body_chars": 2613,
+      "task_body_chars": 2628,
       "taskFile": "tasks/R04.md"
+    },
+    {
+      "id": "MD01",
+      "title": "Prove real TShark and Lua application-PDU decoding",
+      "plan": "10-message-decoders.md",
+      "anchor": "md01--prove-real-tshark-and-lua-application-pdu-decoding",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC01",
+        "DEC11",
+        "DEC13",
+        "DEC14"
+      ],
+      "task_body_chars": 2632,
+      "taskFile": "tasks/MD01.md"
+    },
+    {
+      "id": "MD02",
+      "title": "Extract envelopes and assemble bounded nested message streams",
+      "plan": "10-message-decoders.md",
+      "anchor": "md02--extract-envelopes-and-assemble-bounded-nested-message-streams",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F02",
+        "F04",
+        "MD03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC01",
+        "DEC02",
+        "DEC04",
+        "DEC05",
+        "DEC12"
+      ],
+      "task_body_chars": 2790,
+      "taskFile": "tasks/MD02.md"
+    },
+    {
+      "id": "MD03",
+      "title": "Negotiate the supervised decoder contract and preserve JSON previews",
+      "plan": "10-message-decoders.md",
+      "anchor": "md03--negotiate-the-supervised-decoder-contract-and-preserve-json-previews",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "F01",
+        "F02",
+        "E01",
+        "MD01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC09",
+        "DEC10"
+      ],
+      "task_body_chars": 2997,
+      "taskFile": "tasks/MD03.md"
+    },
+    {
+      "id": "MD04",
+      "title": "Import typed field trees with exact transformation provenance",
+      "plan": "10-message-decoders.md",
+      "anchor": "md04--import-typed-field-trees-with-exact-transformation-provenance",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "MD03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC05",
+        "DEC11",
+        "DEC14"
+      ],
+      "task_body_chars": 2600,
+      "taskFile": "tasks/MD04.md"
+    },
+    {
+      "id": "MD05",
+      "title": "Reuse EHCP and EHCI packs with bounded partial inspection",
+      "plan": "10-message-decoders.md",
+      "anchor": "md05--reuse-ehcp-and-ehci-packs-with-bounded-partial-inspection",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "MD01",
+        "MD02",
+        "MD04"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC01",
+        "DEC02",
+        "DEC03",
+        "DEC04",
+        "DEC13"
+      ],
+      "task_body_chars": 2706,
+      "taskFile": "tasks/MD05.md"
+    },
+    {
+      "id": "MD06",
+      "title": "Decode AT conversations and nested SRING payloads in Wireshark",
+      "plan": "10-message-decoders.md",
+      "anchor": "md06--decode-at-conversations-and-nested-sring-payloads-in-wireshark",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "MD02",
+        "MD04",
+        "MD05"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC06",
+        "DEC07",
+        "DEC08",
+        "DEC11",
+        "DEC12"
+      ],
+      "task_body_chars": 2927,
+      "taskFile": "tasks/MD06.md"
+    },
+    {
+      "id": "MD07",
+      "title": "Integrate the inspector, analytics and shared automation",
+      "plan": "10-message-decoders.md",
+      "anchor": "md07--integrate-the-inspector-analytics-and-shared-automation",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "MD04",
+        "MD05",
+        "MD06",
+        "U04",
+        "F07",
+        "V02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC10",
+        "DEC12"
+      ],
+      "task_body_chars": 3087,
+      "taskFile": "tasks/MD07.md"
+    },
+    {
+      "id": "MD08",
+      "title": "Validate engine distribution, performance and decoder release evidence",
+      "plan": "10-message-decoders.md",
+      "anchor": "md08--validate-engine-distribution-performance-and-decoder-release-evidence",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03",
+        "MD07",
+        "E09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "DEC09",
+        "DEC13",
+        "DEC14"
+      ],
+      "task_body_chars": 2985,
+      "taskFile": "tasks/MD08.md"
     }
   ],
   "suggestedTopologicalOrder": [
@@ -2312,6 +2492,14 @@
     "R01",
     "R02",
     "R03",
+    "MD01",
+    "MD03",
+    "MD02",
+    "MD04",
+    "MD05",
+    "MD06",
+    "MD07",
+    "MD08",
     "R04"
   ],
   "notes": [

@@ -1,6 +1,6 @@
 # Complete Feature Coverage
 
-173 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
+187 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
 
 ## Exploration, fields, time and data
 
@@ -214,3 +214,22 @@
 | QUAL08 | C++17 and supported Qt5/Qt6 core compatibility | G01, R03 |
 | QUAL09 | Useful diagnostics, capability errors and truthful partial results | A08, R01, R02 |
 | QUAL10 | Documentation, examples, screenshots and traceable completion | R04 |
+
+## Message decoding and protocol inspection
+
+| Requirement | Feature | Owning tasks |
+|---|---|---|
+| DEC01 | Eleven EHCP reference frame/checksum outcomes and exhaustive split provenance | MD01, MD02, MD05 |
+| DEC02 | Multiple/split messages with source/device/direction isolation | MD02, MD05 |
+| DEC03 | Incomplete EHCI split CNT, interleaved diagnostics, length mismatch and missing CRC | MD05 |
+| DEC04 | EHCI tag-length framing, repeated maps, empty/NUL data and honest recovery/fidelity | MD02, MD05 |
+| DEC05 | Explicit payload codecs, Unicode/file-byte/logical offsets and unknown bytes | MD02, MD04 |
+| DEC06 | AT CSQ transaction/URC with 40 ms log duration, -67 dBm and unknown BER | MD06 |
+| DEC07 | Contextual AT grammar, echo/result modes, schemas and ambiguous correlation | MD06 |
+| DEC08 | AT SMS/prompts/data mode and truncated observations without false transactions | MD06 |
+| DEC09 | Supervised bounded decoder state/output, crash/deadline/cancellation/backpressure | MD03, MD08 |
+| DEC10 | Legacy JSON/v1 plugins and GUI/CLI/MCP/Python typed-data/error parity | MD03, MD07 |
+| DEC11 | Nested SRING hex-to-EHCP with independent wrapper/child diagnostics and exact maps | MD01, MD04, MD06 |
+| DEC12 | Cross-notification child assembly, parent/child query scopes and nesting/cycle limits | MD02, MD06, MD07 |
+| DEC13 | Actual supplied Lua execution, engine/script provenance and reference comparison | MD01, MD05, MD08 |
+| DEC14 | Byte-exact Exported-PDU sidecars versus genuine PCAP transport/reassembly semantics | MD01, MD04, MD08 |

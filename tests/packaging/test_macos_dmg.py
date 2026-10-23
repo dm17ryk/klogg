@@ -90,6 +90,22 @@ class DmgTests(unittest.TestCase):
         self.assertEqual([call[:2] for call in self.calls],
                          [["cpack", "--verbose"], ["hdiutil", "verify"]])
 
+    def test_headless_packaging_never_starts_finder_or_cpack(self):
+        self.cpack_ok = True
+        result = dmg.package(self.root, "test", headless=True)
+        self.assertEqual(result.read_bytes(), b"fallback image")
+        self.assertEqual(self.sources, [["Applications", "cilogg.app"]])
+        self.assertFalse(any(call[0] in ("cpack", "osascript") for call in self.calls))
+        self.assertTrue(any(call[:2] == ["hdiutil", "verify"] for call in self.calls))
+
+    def test_headless_packaging_keeps_bounded_create_retries(self):
+        self.busy = 2
+        result = dmg.package(self.root, "test", headless=True)
+        self.assertEqual(result.read_bytes(), b"fallback image")
+        outputs = [call[-1] for call in self.calls if call[:2] == ["hdiutil", "create"]]
+        self.assertEqual(len(set(outputs)), 3)
+        self.assertFalse(any(call[0] in ("cpack", "osascript") for call in self.calls))
+
     def test_finder_failure_cleans_owned_device_and_retries_busy_fallback(self):
         unrelated = {"image-path": str(self.root / "unrelated.dmg"),
                      "system-entities": [{"dev-entry": "/dev/disk2"}]}
@@ -213,6 +229,30 @@ class CpackSupervisorTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin", "requires native macOS disk images")
 class NativeDmgTests(unittest.TestCase):
+    def test_headless_image_has_installable_layout_without_cpack(self):
+        with tempfile.TemporaryDirectory(prefix="cilogg headless dmg ") as directory:
+            root = Path(directory).resolve()
+            app = root / "output/cilogg.app/Contents/MacOS"
+            app.mkdir(parents=True)
+            executable = app / "cilogg"
+            executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            executable.chmod(0o755)
+            mount = root / "mounted image"
+            mount.mkdir()
+            try:
+                with patch.object(dmg, "_run_cpack", side_effect=AssertionError("CPack must not run")):
+                    image = dmg.package(root, "native-headless", headless=True)
+                dmg._run(["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint",
+                          str(mount), str(image)])
+                installed = mount / "cilogg.app/Contents/MacOS/cilogg"
+                self.assertEqual(installed.read_bytes(), executable.read_bytes())
+                self.assertTrue(installed.stat().st_mode & 0o111)
+                self.assertTrue((mount / "Applications").is_symlink())
+                self.assertEqual((mount / "Applications").readlink(), Path("/Applications"))
+            finally:
+                if mount.is_mount():
+                    dmg._run(["hdiutil", "detach", str(mount), "-force"], timeout=30)
+
     def test_real_fallback_recovers_own_mount_and_has_installable_layout(self):
         with tempfile.TemporaryDirectory(prefix="cilogg native dmg ") as directory:
             root = Path(directory).resolve()
