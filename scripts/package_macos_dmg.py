@@ -1,4 +1,4 @@
-"""Build a DMG, recovering from CPack/Finder failures without reusing busy images."""
+"""Build a verified DMG, with Finder-free CI and interactive CPack recovery."""
 from __future__ import annotations
 
 import argparse
@@ -89,7 +89,7 @@ def _detach_owned_images(roots: list[Path]) -> None:
         time.sleep(2)
 
 
-def package(build_root: Path, version: str) -> Path:
+def package(build_root: Path, version: str, *, headless: bool = False) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", version):
         raise ValueError("Invalid package version")
     build_root = build_root.resolve()
@@ -99,20 +99,23 @@ def package(build_root: Path, version: str) -> Path:
     packages = build_root / "packages"
     packages.mkdir(exist_ok=True)
     destination = packages / f"cilogg-{version}-OSX.dmg"
-    try:
-        result = _run_cpack(build_root)
-    except subprocess.TimeoutExpired as error:
-        reason = f"timeout after {error.timeout}s"
-    else:
-        if result.returncode == 0:
-            _run(["hdiutil", "verify", str(destination)])
-            print(f"DMG CPack success: {destination}", flush=True)
-            return destination
-        reason = f"exit={result.returncode}"
-
-    print(f"DMG CPack failed: {reason}; starting recovery", flush=True)
     cpack_root = (build_root / "_CPack_Packages").resolve()
-    _detach_owned_images([cpack_root])
+    if headless:
+        print("DMG strategy=headless: creating a native image without CPack/Finder", flush=True)
+    else:
+        print("DMG strategy=interactive: trying CPack/Finder before native recovery", flush=True)
+        try:
+            result = _run_cpack(build_root)
+        except subprocess.TimeoutExpired as error:
+            reason = f"timeout after {error.timeout}s"
+        else:
+            if result.returncode == 0:
+                _run(["hdiutil", "verify", str(destination)])
+                print(f"DMG CPack success: {destination}", flush=True)
+                return destination
+            reason = f"exit={result.returncode}"
+        print(f"DMG CPack failed: {reason}; starting recovery", flush=True)
+        _detach_owned_images([cpack_root])
     temporary = Path(tempfile.mkdtemp(prefix="dmg-recovery-", dir=packages)).resolve()
     try:
         source = temporary / "source"
@@ -148,5 +151,7 @@ def package(build_root: Path, version: str) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--headless", action="store_true",
+                        help="Create a verified native image without Finder desktop automation")
     options = parser.parse_args()
-    package(Path.cwd(), options.version)
+    package(Path.cwd(), options.version, headless=options.headless)
