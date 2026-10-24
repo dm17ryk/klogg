@@ -53,13 +53,15 @@
         "../../test_data/workbench/manifest.json",
         "G02a: 18 black-box Python tests; deterministic bytes/oracles, invalid setup, malformed protocol, stalled reader, timeout and owned-process cleanup.",
         "Three actual 100000-row Windows frozen-analysis runs; source 96bf481, package 26.04.2.1043, Qt runtime 6.12.0.0. Not a fresh master build.",
-        "Read-only general/Python reviews completed; all five distinct findings reproduced with failing regressions and corrected before final measurements."
+        "Read-only general/Python reviews completed; all five distinct findings reproduced with failing regressions and corrected before final measurements.",
+        "../../docs/workbench/g02b-windows-observations.json",
+        "G02b: fresh Qt6.10.1 build, 5/5 CTest suites and three native Windows GUI/service budget runs passed; see G02b slice for exact boundaries."
       ],
       "limitations": [
-        "Full G02 remains in progress: GUI/scroll p95, direct-service cancellation, worker RSS, sustained memory slope, controlled OS-cache and renderer/native Linux/macOS evidence remain pending.",
-        "No fresh-source C++ build/CTest or hardware pass is claimed by this Python-only benchmark slice; hosted CI remains separate evidence.",
+        "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
+        "G02a installed-package evidence remains historical. G02b adds fresh Qt-only Qt6.10.1 local build/CTest and CPU GUI/service measurements; hosted CI remains separate pending evidence.",
         "GitNexus refresh exhausted parser worker budgets; changed new Python symbols were absent from the registered primary index. detect-changes could not resolve the integration worktree.",
-        "Code Review Graph refreshed with low downstream impact; CodeGraph reports this linked worktree unindexed, so it was not initialized."
+        "G02a refreshed Code Review Graph. During G02b that server is unavailable and CodeGraph reports this linked worktree unindexed; see the slice for current tool limitations."
       ],
       "slices": [
         {
@@ -81,6 +83,48 @@
           "id": "G02a",
           "commit": "1ec9b815d52529e7811d6972dfbbca99226e956f",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/59"
+        },
+        {
+          "id": "G02b",
+          "status": "in_progress",
+          "base": "4deed89722c3df275c08044dd8ac9aa459c5a99d",
+          "scope": "Opt-in native event dispatch, scroll CPU painting and direct service cancellation budgets",
+          "preflight": [
+            "G01 -> G02: real LogData, AbstractLogView, AnalysisJobService and supervised capture worker reused without production changes.",
+            "G02 -> G03: new ui-service scenario is additive; PR62 remains independent.",
+            "G02 -> V02: CPU repaint measurements do not establish compositor presentation latency."
+          ],
+          "rulings": [
+            "Retain full G02 in_progress; worker RSS, sustained-memory slope, OS-cache cold, native Linux/macOS and renderer comparisons remain pending.",
+            "Use approved local Qt6.10.1 in a fresh Qt-only RelWithDebInfo build; CI Qt6.12 remains separate evidence.",
+            "Native timings are explicit opt-in; ordinary CTest excludes the hidden native case, while portable doubles exercise report and failure gates.",
+            "Measure nearest-rank p95 across at least 100 samples per idle/analysis-active context, after ten warmups; reject premature worker completion.",
+            "Increase portable harness CTest timeout from 180 to 300 seconds after 28 tests took 197.689 seconds during the concurrent fresh build."
+          ],
+          "evidence": [
+            "29 Python benchmark tests pass; 9 GUI/service tests also pass on Python3.9.",
+            "Python review found oversized timing and unknown-field NaN failures; black-box regressions failed before fixes and passed afterward.",
+            "C++ and general fresh-context reviews found no actionable defects.",
+            "Fresh source C++ build and Qt deployment passed. Full local CTest: 5/5 suites, zero failures, 258.75 seconds.",
+            "../../docs/workbench/g02b-windows-observations.json",
+            "Three native Windows repetitions: 100 measured samples per idle/active context after ten warmups; 600 raw samples retained. Worst dispatch p95 0.1627ms, CPU paint p95 18.6767ms, service cancellation terminal 32.4369ms. Every worker recovery passed; four owned process roots reaped with zero failures.",
+            "Initial offscreen run correctly rejected a sample before initial painting. Observable initial-paint readiness fixed the probe; rebuilt native and offscreen runs pass. C++ reviewer validated the final predicate.",
+            "Plan validator: 105 tasks, 187 requirements, 409 links; Ruff E9/F and staged whitespace checks pass."
+          ],
+          "limitations": [
+            "Hosted CI and merge remain pending; this slice stays in_progress while under review. Full G02 and releaseGateStatus remain pending.",
+            "Native Windows Qt-only CPU painting is measured; compositor presentation, accelerated-search performance, worker RSS, sustained-memory slope, OS cache cold, native Linux/macOS and renderer comparisons remain open.",
+            "Offscreen Windows warned about missing fonts; native Windows platform runs are the recorded baseline.",
+            "CodeGraph reports this linked worktree unindexed and has no refresh tool. Code Review Graph is unavailable. GitNexus refresh remains unavailable after prior parser worker exhaustion; impact cannot resolve new symbols and detect-changes uses a stale primary index, so no valid graph scope pass is claimed. Manual staged path review confines changes to benchmarks, tests and documentation."
+          ],
+          "localVerification": "passed",
+          "toolchain": {
+            "qt": "6.10.1",
+            "configuration": "RelWithDebInfo",
+            "acceleratedSearch": false,
+            "freshBuildRun": true,
+            "nativePlatform": "windows"
+          }
         }
       ]
     },
