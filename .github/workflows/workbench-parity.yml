@@ -21,4 +21,4 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m unittest discover -s tests/mcp -p test_workbench_parity.py -v
+      - run: python -m unittest discover -s tests/mcp -p 'test_workbench_*.py' -v

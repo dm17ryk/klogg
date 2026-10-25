@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-25",
+  "task": "G03b",
+  "localVerification": "passed",
+  "platform": "Windows x64",
+  "qt": "6.10.1",
+  "configuration": "RelWithDebInfo",
+  "guiMode": "offscreen functional checks; visible usability remains unmeasured",
+  "productSource": "Existing locally built executable has the same src tree as merged master d73b9be5. No production C++ changed in G03b; this is not a claim of a rebuilt G03b binary.",
+  "profiles": [
+    {
+      "sdk": "1.30.0",
+      "passed": true,
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+      "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "sdkChecks": [
+        {
+          "passed": true,
+          "tools": [
+            "cilogg_commands",
+            "cilogg_status",
+            "cilogg_state",
+            "cilogg_execute",
+            "cilogg_cli",
+            "cilogg_jobs"
+          ],
+          "checks": [
+            "initialize",
+            "tools",
+            "resources",
+            "prompts",
+            "file",
+            "search",
+            "follow",
+            "clipboard",
+            "modal-inspect-edit-cancel",
+            "mouse-click",
+            "grep",
+            "native-setup-dry-run",
+            "tool-error"
+          ]
+        },
+        {
+          "passed": true,
+          "sdkVersion": "1.30.0",
+          "checks": [
+            "jobs",
+            "cancellation",
+            "transport"
+          ]
+        }
+      ]
+    },
+    {
+      "sdk": "2.3.0",
+      "passed": true,
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+      "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "sdkChecks": [
+        {
+          "passed": true,
+          "tools": [
+            "cilogg_commands",
+            "cilogg_status",
+            "cilogg_state",
+            "cilogg_execute",
+            "cilogg_cli",
+            "cilogg_jobs"
+          ],
+          "checks": [
+            "initialize",
+            "tools",
+            "resources",
+            "prompts",
+            "file",
+            "search",
+            "follow",
+            "clipboard",
+            "modal-inspect-edit-cancel",
+            "mouse-click",
+            "grep",
+            "native-setup-dry-run",
+            "tool-error"
+          ]
+        },
+        {
+          "passed": true,
+          "sdkVersion": "2.3.0",
+          "checks": [
+            "jobs",
+            "cancellation",
+            "transport"
+          ]
+        }
+      ]
+    }
+  ],
+  "ownedProcessCleanup": "Both complete suites reaped their owned roots with zero cleanup failures.",
+  "budgetEvidence": "SDK2 earlier exhausted the 300-second combined suite budget. It passed with the SDK default600; raw parity retains300. Product execution budgets are unchanged.",
+  "sdk2PhaseSeconds": {
+    "smoke": 41.125,
+    "transportCancellation": 2.703,
+    "backgroundJobs": 7.75
+  },
+  "releaseGateStatus": "pending",
+  "limitations": [
+    "Hosted Windows/Linux/macOS gates are pending.",
+    "Configured CMake backend verification is distinct from runtime attestation.",
+    "Visible packaged UI, broader native/backend conformance and complete G02 performance evidence remain open."
+  ],
+  "fullCTest": {
+    "passed": true,
+    "suites": 6,
+    "failed": 0,
+    "seconds": 577.23
+  },
+  "selfTests": {
+    "passed": true,
+    "count": 32,
+    "python": [
+      "3.9",
+      "3.12"
+    ]
+  }
+}

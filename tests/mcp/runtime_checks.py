@@ -7,13 +7,11 @@ import asyncio
 import json
 import queue
 import socket
+import sys
 import subprocess
 import threading
 import time
 from pathlib import Path
-
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 
 from workbench_contracts import require_operations, sdk_tool_failed
 
@@ -24,6 +22,11 @@ def controller_arguments(directory: Path) -> list[str]:
     token.write_text("cilogg-local-integration-test-token", encoding="utf-8")
     for _ in range(50):
         with socket.socket() as http, socket.socket() as agent:
+            if sys.platform == "win32":
+                # Match Qt's exclusive listener policy; ordinary Windows bind can
+                # accept a port that the actual controller cannot subsequently use.
+                http.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                agent.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             http.bind(("127.0.0.1", 0))
             port = http.getsockname()[1]
             if port >= 65535:
@@ -44,11 +47,14 @@ def controller_arguments(directory: Path) -> list[str]:
     raise RuntimeError("Could not reserve consecutive local test ports")
 
 
-async def jobs(executable: str, artifacts: Path) -> None:
+async def jobs(executable: str, artifacts: Path, environment=None) -> None:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
     with (artifacts / "jobs-stderr.log").open("w", encoding="utf-8") as diagnostics:
         async with (
             stdio_client(
-                StdioServerParameters(command=executable, args=["mcp", "serve"]),
+                StdioServerParameters(command=executable, args=["mcp", "serve"], env=environment),
                 errlog=diagnostics,
             ) as (reader, writer),
             ClientSession(reader, writer) as session,
@@ -98,7 +104,7 @@ async def jobs(executable: str, artifacts: Path) -> None:
             )
 
 
-def cancellation(executable: str, artifacts: Path) -> None:
+def cancellation(executable: str, artifacts: Path, environment=None) -> None:
     lines: queue.Queue[str | None] = queue.Queue()
     with (artifacts / "cancellation-stderr.log").open(
         "w", encoding="utf-8"
@@ -110,6 +116,7 @@ def cancellation(executable: str, artifacts: Path) -> None:
             stderr=diagnostics,
             text=True,
             encoding="utf-8",
+            env=environment,
         )
         assert process.stdin and process.stdout
 

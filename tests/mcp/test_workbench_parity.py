@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 class ParityHarnessTests(unittest.TestCase):
@@ -165,6 +166,47 @@ class ParityHarnessTests(unittest.TestCase):
             self.root,
         )
         self.assertFalse(active)
+
+
+    def sdk_child_result(self, arguments, root, timeout, handshake=False):
+        self.assertIn("--sdk-smoke", arguments)
+        results = [{"id": case["id"], "passed": True} for case in self.runner.select_cases("G03")]
+        (root / "native" / "case-results.json").write_text(json.dumps(results))
+        sdk = root / "native" / "sdk"
+        sdk.mkdir()
+        (sdk / "result.json").write_text(json.dumps({"passed": True, "checks": ["smoke"]}))
+        (sdk / "runtime-result.json").write_text(json.dumps({"passed": True, "sdkVersion": "2.3.0", "checks": ["jobs"]}))
+
+    def test_sdk_request_reaches_owned_child(self):
+        with patch.object(self.runner, "supervise", side_effect=self.sdk_child_result):
+            code = self.runner.main([
+                "--executable", sys.executable, "--task", "G03", "--sdk-smoke",
+                "--artifacts", str(self.root / "sdk-run"),
+            ])
+        self.assertEqual(code, 0)
+
+    def test_requested_sdk_cannot_pass_without_its_reports(self):
+        def no_sdk(arguments, root, timeout, handshake=False):
+            results = [{"id": case["id"], "passed": True} for case in self.runner.select_cases("G03")]
+            (root / "native" / "case-results.json").write_text(json.dumps(results))
+        with patch.object(self.runner, "supervise", side_effect=no_sdk):
+            code = self.runner.main([
+                "--executable", sys.executable, "--task", "G03", "--sdk-smoke",
+                "--artifacts", str(self.root / "missing-sdk"),
+            ])
+        self.assertNotEqual(code, 0)
+
+    def test_sdk_nonfinite_extension_never_passes(self):
+        def nonfinite(arguments, root, timeout, handshake=False):
+            self.sdk_child_result(arguments, root, timeout, handshake)
+            path = root / "native/sdk/result.json"
+            path.write_text(json.dumps({"passed": True, "extra": float("nan")}))
+        with patch.object(self.runner, "supervise", side_effect=nonfinite):
+            code = self.runner.main([
+                "--executable", sys.executable, "--task", "G03", "--sdk-smoke",
+                "--artifacts", str(self.root / "nan-sdk"),
+            ])
+        self.assertNotEqual(code, 0)
 
 
 if __name__ == "__main__":

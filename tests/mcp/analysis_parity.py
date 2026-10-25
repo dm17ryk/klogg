@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import queue
-import shutil
 import subprocess
 import sys
 import threading
@@ -18,6 +17,7 @@ import uuid
 from typing import Optional
 
 from workbench_contracts import require_operations
+from parity_payload import prepare_payload
 
 
 def seed_routing_session(payload: Path, artifacts: Path) -> None:
@@ -138,21 +138,9 @@ def measure_file_analysis(cli, host, artifacts: Path) -> None:
 
 def run(executable: Path, artifacts: Path, auto_responses: bool = False,
         regex_lab: bool = False, measure: bool = False, value_counts: bool = False,
-        required_operations=(), verify=None) -> None:
+        required_operations=(), verify=None, sdk_smoke=False) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
-    payload = artifacts / f"payload-{uuid.uuid4().hex}"
-    payload.mkdir()
-    isolated = payload / f"cilogg-analysis-{uuid.uuid4().hex}{executable.suffix}"
-    shutil.copy2(executable, isolated)
-    for file in executable.parent.iterdir():
-        if file.is_file() and file.suffix.lower() in (".dll", ".qm", ".rcc"):
-            shutil.copy2(file, payload / file.name)
-    for name in ("platforms", "styles", "imageformats", "iconengines", "tls", "networkinformation", "translations", "resources"):
-        folder = executable.parent / name
-        if folder.is_dir():
-            shutil.copytree(folder, payload / name)
-    (payload / "cilogg.conf").write_text(
-        "[General]\nversion=1\nversionchecker.enabled=false\n", encoding="utf-8")
+    payload, isolated = prepare_payload(executable, artifacts)
     if auto_responses:
         seed_routing_session(payload, artifacts)
     # Normal analysis fixtures skip restoration; routing fixtures explicitly test it.
@@ -449,6 +437,31 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                 assert "ANALYSIS_PRIVATE_BODY_SENTINEL" not in log.read_text(encoding="utf-8", errors="replace"), f"Source body leaked to {log}"
             (artifacts / "result.json").write_text(json.dumps({"passed": True, "rows": normalized(cli_rows), "cancelSeconds": cancel_seconds}, ensure_ascii=False, indent=2), encoding="utf-8")
             print("PASS: CLI/native-MCP identity, captures, paging, errors, large JSON, cancellation and release")
+            if sdk_smoke:
+                import asyncio
+                from importlib.metadata import version
+                from smoke_stdio import run as run_sdk_smoke
+                from runtime_checks import cancellation, jobs
+                import logging
+
+                sdk_artifacts = artifacts / "sdk"
+                sdk_artifacts.mkdir()
+                for phase, check in (
+                    ("smoke", lambda: asyncio.run(run_sdk_smoke(str(isolated), sdk_artifacts, environment))),
+                    ("transport-cancellation", lambda: cancellation(str(isolated), sdk_artifacts, environment)),
+                    ("background-jobs", lambda: asyncio.run(jobs(str(isolated), sdk_artifacts, environment))),
+                ):
+                    started = time.monotonic()
+                    logging.getLogger("workbench.sdk").info("phase_started phase=%s", phase)
+                    check()
+                    logging.getLogger("workbench.sdk").info(
+                        "phase_completed phase=%s seconds=%.3f", phase, time.monotonic() - started
+                    )
+                (sdk_artifacts / "runtime-result.json").write_text(
+                    json.dumps({"passed": True, "sdkVersion": version("mcp"),
+                                "checks": ["jobs", "cancellation", "transport"]}),
+                    encoding="utf-8",
+                )
     finally:
         cleanup_errors = []
         if server and server.stdin:
@@ -487,7 +500,8 @@ if __name__ == "__main__":
     parser.add_argument("--regex-lab", action="store_true", help="Also verify dock commands and GUI Run parity")
     parser.add_argument("--value-counts", action="store_true", help="Verify Value Counts CLI, MCP and GUI parity")
     parser.add_argument("--measure", action="store_true", help="Measure a 64 MiB frozen scan and append coexistence")
+    parser.add_argument("--sdk-smoke", action="store_true", help="Run SDK and transport checks inside the private host")
     options = parser.parse_args()
     run(options.executable.resolve(), options.artifacts.resolve(),
         auto_responses=options.auto_responses, regex_lab=options.regex_lab,
-        measure=options.measure, value_counts=options.value_counts)
+        measure=options.measure, value_counts=options.value_counts, sdk_smoke=options.sdk_smoke)

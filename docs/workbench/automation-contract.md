@@ -11,7 +11,7 @@ Run from the repository root, using Python 3.9 or newer and a deployed executabl
 ```powershell
 python tests/mcp/workbench_parity.py --executable C:/Essence_SC/cilogg/cilogg.exe --task G03 --artifacts build_root/workbench-parity/G03
 python tests/mcp/workbench_parity.py --executable build_root/output/RelWithDebInfo/cilogg_portable.exe --task P04 --artifacts build_root/workbench-parity/P04 --backend accelerated
-python -m unittest discover -s tests/mcp -p test_workbench_parity.py -v
+python -m unittest discover -s tests/mcp -p 'test_workbench_*.py' -v
 ```
 
 `G03` selects all three cases. `P03`, `P03b`, `P03c`, `P03d`, `P04` and `P05`
@@ -82,8 +82,9 @@ cases or upload an arbitrary user's artifacts.
 CTest registers `workbench_parity_self_tests` when Python 3.9+ is available.
 Configure `-DKLOGG_TEST_WORKBENCH_PARITY=ON` to also register
 `workbench_parity_native`; this option requires Python and a deployed Qt runtime,
-including the offscreen plugin. The native test uses the current portable target
-and records the configured backend declaration. Reruns use unique artifacts.
+including the offscreen plugin. The native test uses the current application target
+with private portable settings and records the configured backend declaration.
+Reruns use unique artifacts.
 The standalone `Workbench parity harness` workflow tests the runner on Windows,
 Linux and macOS with Python 3.9/3.12. Existing product CTest and MCP smoke tests
 remain in place. Self-test CI is not a native product or backend pass.
@@ -92,7 +93,8 @@ The runtime checks share discovery/error assertions with this harness. They acce
 the Python attribute names used by MCP SDK 1.30 and 2.3 (`isError`/`is_error` and
 `structuredContent`/`structured_content`); the protocol JSON is unchanged. Both
 versions passed the installed-package job/cancellation/transport checks locally.
-The older `smoke_stdio.py` client and complete product suite remain separate gates.
+G03b integrates `smoke_stdio.py` with these checks through `--sdk-smoke`.
+The complete product suite remains a separate gate.
 
 G03a local evidence uses installed Windows CILogg 26.04.2.1043 (source `96bf481`,
 SHA-256 `f06a010d41c34010c353bedc233e9ea32a8dde65e858aef4391c3dbd6f380bcd`).
@@ -103,3 +105,46 @@ stale and are not used as evidence for a full current CTest pass.
 Rollback removes the new runner, registry, workflow and CTest entries, then removes
 the optional analysis hook/shared discovery assertion. Existing Commander/MCP
 operations, legacy smoke tests and feature implementations remain unchanged.
+
+## G03b current-build gates
+
+`workbench_ci_gate.py` verifies the executable belongs to the supplied build tree,
+the CMake source directory is this checkout, and the configured Hyperscan/VectorScan
+flags agree with the requested backend. It records binary/cache SHA-256, source
+revision, product source tree and tracked dirty state. This establishes configured
+build provenance; it is not runtime backend attestation or evidence that an old
+binary was rebuilt. CI runs it immediately after its selected fresh build.
+
+```powershell
+python tests/mcp/workbench_ci_gate.py --executable build_root/output/RelWithDebInfo/cilogg.exe --cache build_root/CMakeCache.txt --backend qt --artifacts build_root/workbench-current
+python tests/mcp/workbench_ci_gate.py --executable build_root/output/RelWithDebInfo/cilogg.exe --cache build_root/CMakeCache.txt --backend qt --sdk-version 2.3.0 --artifacts build_root/workbench-sdk2
+```
+
+The second command requires the requested MCP SDK in that Python environment.
+Pinned CI profiles use SDK 1.30.0 and 2.3.0 on Python 3.12. They run discovery,
+transport/resource/prompt checks, GUI/preferences operations, grep, isolated
+client-setup preview, semantic errors, background jobs, cancellation, timeout and
+subsequent recovery. The Preferences probe restricts controls to its actual modal
+dialog. A failed or missing SDK report fails the outer gate. The entire suite,
+including SDK checks, shares the owned-process supervisor and deadline. The CI
+gate defaults to 600 seconds with SDK checks and 300 seconds without them;
+`--timeout` overrides that bounded suite budget. SDK phase timings are logged.
+
+Private runtimes copy the grep companion, Qt SQLite plugin and runtime libraries.
+macOS copies required Frameworks/PlugIns/Resources into a new bundle, gives the
+executable and bundle unique identities, writes private settings, then ad-hoc signs
+only that bundle. User session/config/plugin directories are not copied. On Windows
+the controller port probe uses exclusive ownership to match Qt's listener policy;
+the interval between reservation and actual listen remains a bounded test race.
+
+The product build matrix enables representative native gates on Windows x64
+Hyperscan (both SDK profiles), RHEL-compatible 10 x64 Qt-only (raw protocol parity),
+and macOS 26 ARM64 Qt 6.12 VectorScan (raw protocol parity after bundle deployment).
+Linux runs inside its build container. Diagnostics upload even after failure and
+exclude copied executable payloads. The standalone harness workflow continues to
+test Python 3.9/3.12 on all three operating systems without requiring an MCP SDK.
+
+These are functional offscreen checks. Hosted results remain pending until their
+jobs finish. Native visible usability, broader backend/platform conformance and
+G02 presentation/memory/throughput measurements remain open; G03b does not mark
+the complete G02/G03 foundations finished.

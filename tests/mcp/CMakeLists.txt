@@ -4,9 +4,9 @@ if(Python3_Interpreter_FOUND)
   add_test(
     NAME workbench_parity_self_tests
     COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}
-            -p test_workbench_parity.py -v
+            -p test_workbench_*.py -v
   )
-  set_tests_properties(workbench_parity_self_tests PROPERTIES TIMEOUT 60 LABELS "workbench;G03;harness")
+  set_tests_properties(workbench_parity_self_tests PROPERTIES TIMEOUT 120 LABELS "workbench;G03;harness")
 endif()
 
 option(KLOGG_TEST_WORKBENCH_PARITY "Run isolated native GUI/CLI/MCP parity (requires deployed Qt runtime)" OFF)
@@ -22,7 +22,7 @@ if(KLOGG_TEST_WORKBENCH_PARITY)
   add_test(
     NAME workbench_parity_native
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/workbench_parity.py
-            --executable $<TARGET_FILE:klogg_portable> --task G03
+            --executable $<TARGET_FILE:klogg> --task G03
             --backend ${workbench_backend} --artifacts ${CMAKE_BINARY_DIR}/workbench-parity
             --new-run
   )
