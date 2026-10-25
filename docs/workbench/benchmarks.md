@@ -1,9 +1,10 @@
 # Workbench benchmarks (G02)
 
 G02a supplies deterministic domain fixtures, a bounded benchmark runner and real
-frozen-analysis observations. Full G02 remains in progress: GUI event/scroll
-latency, direct service cancellation, worker peak resident memory, sustained
-memory slope, OS-cache cold runs and optional renderer overhead need later
+frozen-analysis observations. G02b adds native event dispatch, scroll CPU painting
+and direct service cancellation measurements. Full G02 remains in progress:
+presentation latency, worker peak resident memory, sustained memory slope,
+OS-cache cold runs, native Linux/macOS and optional renderer overhead need later
 measurement slices. A passing scenario is not a full release-performance pass.
 
 ## Generate and verify
@@ -139,9 +140,96 @@ the suite when Python 3.9+ exists. The dedicated workflow checks Windows, Ubuntu
 24.04 and macOS 15, plus Python 3.9 on Ubuntu. These self-tests do not substitute
 for native platform measurements or current-source C++ CTest results.
 
-Next G02 slices add instrumented GUI/scroll and service-boundary timings, worker
-and long-run memory, native Linux/macOS evidence, and renderer comparisons once
-those renderers exist. G03 can independently consume the fixture/report contract.
+G02b adds the opt-in GUI/service scenario below. Worker and long-run memory,
+native Linux/macOS evidence, and renderer comparisons remain later slices.
+G03 can independently consume the fixture/report contract.
+
+## GUI and direct service measurements (G02b)
+
+Build and deploy both the application and `cilogg_itests` from the same source
+and configuration into one flat directory. The runner copies that deployment to
+a private directory and owns the integration process and its worker descendants.
+Existing application instances and their settings are not used.
+
+```powershell
+python scripts/benchmarks/workbench-benchmark.py --scenario ui-service --executable build_root/output/RelWithDebInfo/cilogg.exe --test-executable build_root/output/RelWithDebInfo/cilogg_itests.exe --corpus build_root/workbench-corpus --output build_root/workbench-ui-run --samples 100 --repetitions 3 --metadata build_root/build-metadata.json
+```
+
+The existing integration executable has a hidden `[workbench-native]` case,
+explicitly excluded from ordinary Windows widget CTest selection. Timing gates
+are opt-in; ordinary CI compiles the probe and tests the harness with protocol
+doubles. These doubles are labelled `evidenceKind: test_double`.
+
+The probe opens the fingerprinted ASCII fixture through real `LogData` and paints
+an `AbstractLogView`. In each of two contexts (idle and supervised analysis active)
+it discards ten warmups, then collects 100–1,000 samples. Each sample times a
+posted Qt callback and completion of a changed scroll position's synchronous
+viewport repaint. These are **event dispatch** and **queued-to-CPU-paint completion**
+times, respectively; offscreen painting does not measure compositor presentation
+or hardware input. `--platform native` uses the platform plugin instead of the
+default offscreen plugin; it still does not measure presentation.
+
+The worker evaluates a fixed synthetic input (100,000 `a` characters followed by
+`!`, with optimization disabled for the `a+b` pattern). The viewport continues
+to read the verified ASCII fixture; this scenario measures coexistence, not
+whole-file analysis throughput. An initial viewport paint must finish before
+warmups begin.
+
+The analysis context must remain active throughout sampling; completion before
+the last sample fails the scenario. Cancellation is measured directly from
+`AnalysisJobService::cancel` through its terminal `cancelled` state, including
+supervisor cleanup, followed by successful real-worker recovery. Acknowledgement
+latency is reported separately. Reading/indexing, worker startup, process launch
+and JSON delivery are outside these timing boundaries.
+
+| Gate | Default and interpretation |
+|---|---|
+| `guiEventP95Ms` | Strictly less than 100 ms, worst of the two contexts. |
+| `scrollPaintP95Ms` | Strictly less than 100 ms, worst of the two contexts. |
+| `serviceCancellationMs` | Strictly less than 1,000 ms to terminal state. |
+| `nativeSuiteSeconds` | 120-second process deadline, including setup and recovery. |
+
+Percentiles use nearest rank `ceil(0.95 * N)` on all retained measured samples.
+Raw samples, Qt compile/runtime/platform identity, source hash/size/physical rows,
+test binary hash and per-context summaries remain in the report. Reports with
+missing, nonfinite, mismatched or incomplete measurements fail explicitly.
+Every repetition uses a new integration process; the OS cache is uncontrolled.
+Custom budgets are recorded, as in the analysis scenario. Deliberately slowed
+and timed-out protocol fixtures verify failure gates, not native performance.
+
+The scenario always retains `releaseGateStatus: pending`. Full G02 still needs
+worker RSS, sustained memory, cache conditions, platform and renderer comparisons;
+CPU painting does not close the separate presentation-latency question.
+
+## Windows GUI/service observations (2026-10-24)
+
+[Raw measured report](g02b-windows-observations.json): fresh Qt-only MSVC2022 x64
+RelWithDebInfo build with Qt compile/runtime 6.10.1. Product sources are from
+`4deed897`; G02b adds the integration probe. Application and test binary hashes
+pin the measured executables. The requested `KLOGG_USE_LTO=OFF` flag is recorded;
+MSVC still used LTCG for inherited `/GL` objects, as noted in supplied metadata.
+
+All three new integration processes used the native `windows` platform plugin
+and the same 100,000-row, 3,398,964-byte viewport fixture. Each context retained
+100 samples after ten warmups. All three gates passed in every repetition.
+
+| Repetition | Event dispatch p95, ms | Scroll CPU paint p95, ms | Cancellation to terminal, ms |
+|---|---:|---:|---:|
+| 0 | 0.151 | 15.550 | 32.437 |
+| 1 | 0.163 | 18.677 | 31.820 |
+| 2 | 0.135 | 11.688 | 27.524 |
+
+Each p95 is the worse of idle and analysis-active contexts. The matching batch
+remained active during every sample; each cancellation was followed by successful
+real-worker recovery. All four owned process roots were reaped with zero cleanup
+failures. An additional offscreen run passed after fixing readiness: the first
+experiment had correctly rejected a scroll sample taken before the initial
+viewport paint. Its failed report and logs remain under `build_root`.
+
+Offscreen Windows emitted a missing-font-directory warning, so the native Windows
+runs above are the recorded baseline. No OS-cache, compositor presentation,
+accelerated-search, worker-memory, sustained-load or cross-platform native result
+is inferred from these measurements. `releaseGateStatus` remains `pending`.
 
 ## Initial Windows observations (2026-10-22)
 

@@ -12,6 +12,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/filewatcher_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/crawlerwidget_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logviewperformance_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workbenchbenchmark_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/configurationproject_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/uiautomation_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/plugins_ui_test.cpp
@@ -56,7 +57,7 @@ if(WIN32)
     )
     add_test(
         NAME cilogg_ui_itests
-        COMMAND $<TARGET_FILE:cilogg_itests> "[ui]" -platform offscreen
+        COMMAND $<TARGET_FILE:cilogg_itests> "[ui]~[workbench-native]" -platform offscreen
         WORKING_DIRECTORY "$<TARGET_FILE_DIR:klogg>"
     )
     set_tests_properties(cilogg_itests cilogg_ui_itests PROPERTIES TIMEOUT 900)
