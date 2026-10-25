@@ -205,10 +205,11 @@
             "Fresh Python/general reviews found no actionable remaining issues; macOS catalog isolation suggestion reproduced RED and fixed.",
             "Actionlint baseline comparison:9 existing diagnostics,9 current diagnostics,zero introduced. Ruff E9/F checks pass.",
             "Reconfigured local Qt6.10.1 build tree: complete CTest passed6/6 suites with zero failures in577.23seconds, including C++/UI and benchmark/parity self-tests.",
-            "PR66 review follow-up: all three Sourcery findings reproduced and corrected;47-test suite and both native SDK/forced-port-collision profiles pass. Historical32-test/full6-suite evidence above is preserved; focused harness CTest rerun passes after these Python-only fixes."
+            "PR66 review follow-up: all three Sourcery findings reproduced and corrected;47-test suite and both native SDK/forced-port-collision profiles pass. Historical32-test/full6-suite evidence above is preserved; focused harness CTest rerun passes after these Python-only fixes.",
+            "On4f76c774 the three representative native gates passed: Windows x64 SDK1.30/2.3, RHEL10-compatible Qt-only and macOS ARM64 Qt6.12. The macOS IPC fix is hosted-verified; a separate Intel DMG EBUSY cleanup test prompted the bounded force-unmount repair."
           ],
           "limitations": [
-            "Full G02/G03 remain in_progress; hosted native Windows/Linux/macOS runs and remaining visible usability/performance conformance remain pending.",
+            "Full G02/G03 remain in_progress. Representative hosted native gates passed on4f76c774; latest DMG recovery repair needs hosted confirmation. Visible usability/performance and broader conformance remain pending.",
             "Local approvedQt6.10.1 Qt-only executable is reused with an unchanged src tree; CI establishes selected fresh Qt6.12 accelerated/Qt-only provenance.",
             "CodeGraph has no refresh capability for this unindexed worktree; Code Review Graph server is unavailable. A bounded GitNexus branch-index refresh exited unsuccessfully without a usable index. detect-changes reports critical/291 affected flows from its stale primary index and a corrupt symbol; no graph scope pass claimed. Fresh reviews and staged path checks show no production C++ changes."
           ],
@@ -221,7 +222,14 @@
             "evidence": "../../docs/workbench/g03b-windows-observations.json#reviewFollowUp",
             "tests": "47 tests on Python3.9/3.12; one native Unix socket test skipped locally on Windows; focused CTest1/1 passes.",
             "native": "SDK1.30/2.3 P03 and complete SDK checks pass, including deliberate real background bind collisions.",
-            "macOS": "Short private TMPDIR fixes hosted IPC Name error; hosted confirmation pending."
+            "macOS": "Short private TMPDIR fix confirmed by the macOS ARM64 Qt6.12 native gate on4f76c774."
+          },
+          "ciDmgRepair": {
+            "baseCommit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+            "reason": "Native DMG recovery test repeatedly received hdiutil detach EBUSY16 while its writable image was still mounted.",
+            "evidence": "../../docs/workbench/g03b-windows-observations.json",
+            "localVerification": "68 combined tests on Python3.9/3.12,3 platform-specific skips. Shared-runtime CTest5/6; focused action case81assertions passes, and all207unitcases pass with fresh private portable settings using the same binary. Shared-runtime persistence failures remain recorded; no clean one-shot6/6 claim.",
+            "hostedVerification": "pending for the repair commit"
           }
         }
       ]

@@ -250,7 +250,12 @@
       "job": "https://github.com/dm17ryk/klogg/actions/runs/40210965590/job/121221895339",
       "failure": "Host started but QLocalServer::listen returned Name error for CLI probes; long TMPDIR plus the unique executable name exceeds the Unix socket path limit.",
       "fix": "Lease a short private /tmp directory shared through TMPDIR by the host and every CLI/MCP/SDK child, then release it after process cleanup.",
-      "hostedVerification": "pending"
+      "hostedVerification": "passed on4f76c774",
+      "confirmation": {
+        "platform": "macOS ARM64 Qt6.12 VectorScan",
+        "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266167",
+        "conclusion": "success"
+      }
     },
     "review": "Fresh Python review found no actionable findings in the Sourcery fixes or macOS IPC lifecycle.",
     "graph": "GitNexus refresh retried with two parser workers; parser idle timeout prevented a usable fresh index. Direct diff/caller checks establish harness-only scope; no production C++ changes.",
@@ -293,5 +298,65 @@
       ],
       "ownedProcessCleanup": "One owned root reaped; zero cleanup failures"
     }
+  },
+  "ciDmgRepair": {
+    "date": "2026-10-25",
+    "baseCommit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+    "failedJob": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266077",
+    "cause": "Native DMG recovery test repeatedly received hdiutil detach EBUSY16 while its writable image was still mounted.",
+    "solution": "For EBUSY only, re-read owned image device/backing identities before diskutil unmountDisk force. The bounded loop then verifies actual detach. Other devices and errors do not escalate; failed cleanup cannot publish a fallback image.",
+    "regression": "Before repair the simulated busy-image recovery raised still-mounted and no force-unmount occurred; both failing regressions pass after repair.",
+    "localTests": {
+      "python": [
+        "3.9",
+        "3.12"
+      ],
+      "combinedTests": 68,
+      "passed": 65,
+      "skipped": 3,
+      "skippedCoverage": [
+        "Two native macOS DMG cases",
+        "One native Unix socket case"
+      ]
+    },
+    "fullCTest": {
+      "status": "5_of6_in_shared_runtime_private_unit_passed",
+      "initialPassed": 5,
+      "initialFailed": 1,
+      "initialSeconds": 495.03,
+      "failure": "Unchanged C++ delayed-response test had action-definition persistence/import assertions. Its focused81assertions passed; whole-unit rerun then failed a different preview/project persistence write.",
+      "isolatedUnit": {
+        "passed": true,
+        "testCases": 207,
+        "isolatedPortableSettings": true,
+        "ownedProcessCleanup": true,
+        "binarySha256": "9c412518fa89e41edbd03beb807ac5e4ce9473834c058285fd981471db21bab6",
+        "probeNote": "Executable and owned supervisor completed successfully. A post-run assertion inspected stderr, but Qt logged its private config path to stdout; combined-stream validation corrected that assertion without rerunning the executable."
+      },
+      "observation": "All207 unit cases pass with the identical binary in a fresh private portable runtime. Other5CTest suites passed. No C++ source was modified; shared-runtime persistence failures are retained as separate local evidence."
+    },
+    "nativeFixture": "The macOS fixture injects one EBUSY result, runs real diskutil force-unmount, then verifies recovery and installable DMG layout; test cleanup uses the same owned-image guard.",
+    "hostedVerification": "pending for the repair commit",
+    "baselineHostedGates": {
+      "commit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+      "gates": [
+        {
+          "platform": "Windows x64 Hyperscan SDK1.30/2.3",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266166",
+          "conclusion": "success"
+        },
+        {
+          "platform": "RHEL-compatible10 x64 Qt-only",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266414",
+          "conclusion": "success"
+        },
+        {
+          "platform": "macOS ARM64 Qt6.12 VectorScan",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266167",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "graph": "GitNexus refresh exceeded120seconds and its owned process tree was reaped. Primary-index impact is stale/critical; direct source review limits this repair to the packaging script and tests."
   }
 }

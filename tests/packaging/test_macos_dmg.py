@@ -1,5 +1,6 @@
 """Exercise DMG recovery without requiring macOS tools or mounting disks."""
 import plistlib
+import errno
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,8 @@ class DmgTests(unittest.TestCase):
         self.cpack_ok = False
         self.busy = 0
         self.stuck = False
+        self.detach_busy = False
+        self.unmount_fails = False
         self.verify_ok = True
         self.sources = []
         self.patch_run = patch.object(dmg.subprocess, "run", self.run_tool)
@@ -50,12 +53,19 @@ class DmgTests(unittest.TestCase):
         elif args[:2] == ["hdiutil", "info"]:
             output = plistlib.dumps({"images": self.images})
         elif args[:2] == ["hdiutil", "detach"]:
-            if self.stuck:
+            if self.detach_busy:
+                code = errno.EBUSY
+            elif self.stuck:
                 code = 1
             else:
                 self.images = [image for image in self.images if not any(
                     entity.get("dev-entry") == args[2]
                     for entity in image.get("system-entities", []))]
+        elif args[:3] == ["diskutil", "unmountDisk", "force"]:
+            self.assertEqual(args[3], "/dev/disk9")
+            code = 1 if self.unmount_fails else 0
+            if code == 0:
+                self.detach_busy = False
         elif args[0] == "ditto":
             shutil.copytree(args[1], args[2], symlinks=True)
         elif args[0] == "ln":
@@ -150,6 +160,54 @@ class DmgTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "device"):
             dmg.package(self.root, "test")
         self.assertFalse(any(call[:2] == ["hdiutil", "detach"] for call in self.calls))
+
+    def test_busy_owned_image_is_force_unmounted_before_detach_retry(self):
+        unrelated = {"image-path": str(self.root / "unrelated.dmg"),
+                     "system-entities": [{"dev-entry": "/dev/disk2"}]}
+        self.images = [self.owned_image(), unrelated]
+        self.detach_busy = True
+        result = dmg.package(self.root, "test")
+        self.assertEqual(result.read_bytes(), b"fallback image")
+        self.assertEqual(self.images, [unrelated])
+        unmount = ["diskutil", "unmountDisk", "force", "/dev/disk9"]
+        self.assertIn(unmount, self.calls)
+        first = self.calls.index(unmount)
+        self.assertTrue(any(args[:2] == ["hdiutil", "info"] for args in self.calls[:first]))
+        self.assertIn(["hdiutil", "detach", "/dev/disk9", "-force"], self.calls[first + 1:])
+        self.assertFalse(any("/dev/disk2" in args for args in self.calls))
+
+    def test_force_unmount_failure_never_publishes_a_recovery_image(self):
+        self.images = [self.owned_image()]
+        self.detach_busy = self.unmount_fails = True
+        with self.assertRaisesRegex(RuntimeError, "still mounted"):
+            dmg.package(self.root, "test")
+        self.assertEqual(sum(args[:3] == ["diskutil", "unmountDisk", "force"]
+                             for args in self.calls), 5)
+        self.assertFalse(self.sources)
+        self.assertFalse((self.root / "packages/cilogg-test-OSX.dmg").exists())
+
+    def test_changed_device_identity_is_not_force_unmounted(self):
+        self.images = [self.owned_image()]
+        self.detach_busy = True
+        original = self.run_tool
+
+        def switch_image(args, **options):
+            result = original(args, **options)
+            if args[:2] == ["hdiutil", "detach"]:
+                self.images = [{"image-path": str(self.root / "unrelated.dmg"),
+                                "system-entities": [{"dev-entry": "/dev/disk9"}]}]
+            return result
+
+        with patch.object(dmg.subprocess, "run", switch_image):
+            dmg.package(self.root, "test")
+        self.assertFalse(any(args[0] == "diskutil" for args in self.calls))
+        self.assertEqual(len(self.images), 1)
+
+    def test_other_detach_errors_do_not_force_unmount(self):
+        self.images, self.stuck = [self.owned_image()], True
+        with self.assertRaisesRegex(RuntimeError, "still mounted"):
+            dmg.package(self.root, "test")
+        self.assertFalse(any(args[0] == "diskutil" for args in self.calls))
 
     def test_failed_verification_never_publishes_fallback(self):
         self.verify_ok = False
@@ -250,8 +308,7 @@ class NativeDmgTests(unittest.TestCase):
                 self.assertTrue((mount / "Applications").is_symlink())
                 self.assertEqual((mount / "Applications").readlink(), Path("/Applications"))
             finally:
-                if mount.is_mount():
-                    dmg._run(["hdiutil", "detach", str(mount), "-force"], timeout=30)
+                dmg._detach_owned_images([root])
 
     def test_real_fallback_recovers_own_mount_and_has_installable_layout(self):
         with tempfile.TemporaryDirectory(prefix="cilogg native dmg ") as directory:
@@ -268,6 +325,16 @@ class NativeDmgTests(unittest.TestCase):
             stale_mount.mkdir()
             final_mount.mkdir()
             real_run = dmg._run
+            injected_busy = []
+            forced = []
+
+            def busy_once(args, **options):
+                if args[:2] == ["hdiutil", "detach"] and not injected_busy:
+                    injected_busy.append(args)
+                    return subprocess.CompletedProcess(args, errno.EBUSY)
+                if args[:3] == ["diskutil", "unmountDisk", "force"]:
+                    forced.append(args)
+                return real_run(args, **options)
 
             try:
                 real_run(["hdiutil", "create", "-size", "16m", "-fs", "HFS+",
@@ -275,8 +342,10 @@ class NativeDmgTests(unittest.TestCase):
                 real_run(["hdiutil", "attach", "-nobrowse", "-mountpoint",
                           str(stale_mount), str(stale_image)])
                 with patch.object(dmg, "_run_cpack", side_effect=subprocess.TimeoutExpired(
-                        ["cpack"], 600)):
+                        ["cpack"], 600)), patch.object(dmg, "_run", side_effect=busy_once):
                     image = dmg.package(root, "native-test")
+                self.assertEqual(len(injected_busy), 1)
+                self.assertTrue(forced, "Native force-unmount recovery must be exercised")
                 self.assertFalse(stale_mount.is_mount())
                 real_run(["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint",
                           str(final_mount), str(image)])
@@ -286,9 +355,7 @@ class NativeDmgTests(unittest.TestCase):
                 self.assertTrue((final_mount / "Applications").is_symlink())
                 self.assertEqual((final_mount / "Applications").readlink(), Path("/Applications"))
             finally:
-                for mount in (final_mount, stale_mount):
-                    if mount.is_mount():
-                        real_run(["hdiutil", "detach", str(mount), "-force"], timeout=30)
+                dmg._detach_owned_images([root])
 
 
 if __name__ == "__main__":
