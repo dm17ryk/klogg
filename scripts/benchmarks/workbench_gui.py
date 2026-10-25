@@ -19,6 +19,8 @@ GUI_BUDGETS = {
     "serviceCancellationMs": 1000.0,
     "nativeSuiteSeconds": 120.0,
 }
+if os.name == "nt":
+    GUI_BUDGETS["processTreePeakCommitBytes"] = 512 * 1024 * 1024
 
 
 def native_measurements(data, expected, samples):
@@ -173,6 +175,10 @@ def run_gui(options, manifest, report):
                 "utf-8", errors="replace"
             )
         for repetition in range(options.repetitions):
+            # Exclude the version probe and previous repetitions from this peak.
+            owner.close()
+            owner = ProcessOwner()
+            LOG.debug("native_accounting_started repetition=%d", repetition)
             artifact = output / f"native-{repetition}.json"
             environment["CILOGG_G02_REPORT"] = str(artifact)
             arguments = executable_arguments(private[1]) + ["[workbench-native]"]
@@ -221,6 +227,23 @@ def run_gui(options, manifest, report):
                 measurements = native_measurements(data, expected, options.samples)
             except (ValueError, TypeError, KeyError) as error:
                 raise RunError("invalid_native_report") from error
+            peak = owner.peak_tree_commit_bytes()
+            memory = {
+                "status": "unsupported" if peak is None else "measured",
+                "kind": "committed_bytes",
+                "backend": "unavailable" if peak is None else "windows_job_object",
+                "scope": "native_test_host_and_descendants",
+                "start": "job_assignment_before_start_handshake",
+                "end": "native_test_host_exit",
+                "includesExitedDescendants": peak is not None,
+                "includesHarness": False,
+            }
+            if peak is not None:
+                measurements["processTreePeakCommitBytes"] = peak
+                report["unmeasured"] = [
+                    item for item in report["unmeasured"]
+                    if item != "processTreePeakCommitBytes"
+                ]
             gates = {
                 key: measurements[key] < report["budgets"][key]
                 for key in (
@@ -229,6 +252,10 @@ def run_gui(options, manifest, report):
                     "serviceCancellationMs",
                 )
             }
+            if peak is not None:
+                gates["processTreePeakCommitBytes"] = (
+                    peak < report["budgets"]["processTreePeakCommitBytes"]
+                )
             report["runs"].append(
                 {
                     "repetition": repetition,
@@ -236,6 +263,7 @@ def run_gui(options, manifest, report):
                     "gates": gates,
                     "nativeReportSha256": file_hash(artifact),
                     "native": data,
+                    "memory": memory,
                 }
             )
             report["unmeasured"] = [

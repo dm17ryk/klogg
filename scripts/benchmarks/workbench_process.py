@@ -54,6 +54,15 @@ class ProcessOwner:
                 wintypes.HANDLE,
             )
             self.kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+            self.extended_type = Extended
+            self.kernel.QueryInformationJobObject.argtypes = (
+                wintypes.HANDLE,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.POINTER(wintypes.DWORD),
+            )
+            self.kernel.QueryInformationJobObject.restype = wintypes.BOOL
             self.job = self.kernel.CreateJobObjectW(None, None)
             if not self.job:
                 raise ctypes.WinError(ctypes.get_last_error())
@@ -82,6 +91,26 @@ class ProcessOwner:
             raise error
         LOG.debug("owned_process_started pid=%d", process.pid)
         return process
+
+    def peak_tree_commit_bytes(self):
+        """OS high-water committed bytes; includes exited descendants, not RSS."""
+        if os.name != "nt":
+            LOG.debug("tree_memory_unsupported platform=%s", os.name)
+            return None
+        if not self.job:
+            raise RuntimeError("owned_job_closed")
+        limits = self.extended_type()
+        if not self.kernel.QueryInformationJobObject(
+            self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits), None
+        ):
+            error = ctypes.get_last_error()
+            LOG.error("tree_memory_query_failed winerror=%d", error)
+            raise ctypes.WinError(error)
+        peak = limits.peakJobMemory
+        if not peak:
+            raise RuntimeError("owned_job_memory_unavailable")
+        LOG.info("tree_memory_measured backend=windows_job_object peak_commit_bytes=%d", peak)
+        return peak
 
     def close(self):
         if self.job:
