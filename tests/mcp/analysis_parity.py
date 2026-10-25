@@ -17,6 +17,8 @@ import time
 import uuid
 from typing import Optional
 
+from workbench_contracts import require_operations
+
 
 def seed_routing_session(payload: Path, artifacts: Path) -> None:
     """Restore two paused, nonexistent ports; never open a real communication device."""
@@ -135,7 +137,8 @@ def measure_file_analysis(cli, host, artifacts: Path) -> None:
 
 
 def run(executable: Path, artifacts: Path, auto_responses: bool = False,
-        regex_lab: bool = False, measure: bool = False, value_counts: bool = False) -> None:
+        regex_lab: bool = False, measure: bool = False, value_counts: bool = False,
+        required_operations=(), verify=None) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
     payload = artifacts / f"payload-{uuid.uuid4().hex}"
     payload.mkdir()
@@ -263,6 +266,9 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             send("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "analysis-parity", "version": "1"}})
             send("notifications/initialized", {}, notification=True)
             catalog = send("tools/call", {"name": "cilogg_commands", "arguments": {"area": "commander"}})["structuredContent"]
+            require_operations(catalog, required_operations)
+            (artifacts / "commander-discovery.json").write_text(
+                json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
             assert all(name in catalog["commander"]["commands"] for name in (
                 "regex_evaluate", "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job",
                 "set_auto_responses_enabled"))
@@ -415,6 +421,8 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             if value_counts:
                 from valuecounts_parity import exercise_counts
                 exercise_counts(cli, command, finish, rows, normalized, artifacts)
+            if verify is not None:
+                verify(cli, command, finish, rows, normalized, catalog, artifacts)
             error = cli("get_analysis_results", "--job-id", cli_job, "--cursor", "invalid", success=False)
             assert error["reason"] == command("get_analysis_results", {"job_id": mcp_job, "cursor": "invalid"}, success=False)["reason"] == "invalid_cursor"
             # Exceeds Windows argv and Linux per-argument limits; MCP must spool JSON.

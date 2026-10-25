@@ -21,7 +21,7 @@
     "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
-  "activeTask": "G02",
+  "activeTask": "G03",
   "nextTask": "G02",
   "tasks": {
     "G01": {
@@ -124,17 +124,62 @@
             "acceleratedSearch": false,
             "freshBuildRun": true,
             "nativePlatform": "windows"
+          },
+          "commit": "17883529081e719a091b69d0d1b20847739f5663",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/65",
+          "ciRepair": {
+            "date": "2026-10-25",
+            "baseMerge": "b3782dc169364429c256577f48e06ffeb328cad3",
+            "reason": "GCC -Wshadow -Werror rejects the benchmark constructor parameter data because it shadows QWidget::data. Renamed the local parameter to sourceData.",
+            "conflictResolution": "Preserve merged G02b and G03a ledgers and regenerate all plan checksums from staged Git bytes.",
+            "validation": "passed_with_transient_reruns",
+            "checks": [
+              "Actual benchmark translation unit reproduced GCC -Werror=shadow before the fix, then passed GCC13.2.0 -fsyntax-only with strict warning flags and real Qt6.10.1 headers on Windows. Native Linux CI remains pending.",
+              "Incremental Qt6.10.1 MSVC integration target build passed. Native offscreen probe passed all1131 assertions,200 measured samples,cancellation/recovery and cleanup.",
+              "Combined CTest initial run:4/6 passed in374.29s; plugin/project-preference assertions and one existing worker timeout failed. Seven focused project/plugin cases passed unchanged. A single rerun of the2failed suites passed2/2 in95.68s, completing passing results for all6 suites.",
+              "29benchmark and13parity harness tests pass; Ruff E9/F, plan validation and staged whitespace checks pass.",
+              "C++ and general review found no actionable findings; all130 canonical Git-byte checksums regenerated and checked."
+            ],
+            "graphScope": {
+              "reportedRisk": "critical",
+              "limitation": "GitNexus uses a stale primary index and maps incoming Python test helpers to unrelated production flows. User warned; no graph verification pass claimed.",
+              "verifiedScope": "Staged diff against incoming master has only the11G02b files; src/ and tests/mcp have zero changes. General reviewer independently confirmed this scope."
+            }
           }
         }
       ]
     },
     "G03": {
-      "status": "planned",
-      "commit": null,
-      "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
-      "slices": []
+      "status": "in_progress",
+      "commit": "f96920138d40c86f024b3e59b7837fc01785cef5",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
+      "evidence": [
+        "../../docs/workbench/automation-contract.md",
+        "../../docs/workbench/g03a-windows-observations.json",
+        "build_root/g03-red.txt: ten expected failing tests before runner implementation",
+        "build_root/g03-complete-existing/result.json: all three native cases and legacy P03/P04/P05 fixtures passed on installed Windows package",
+        "build_root/g03-13-py39.txt, g03-13-py312.txt, g03-13-py314.txt: thirteen self-tests passed on Python 3.9/3.12/3.14",
+        "build_root/g03-ctest-final.txt: standalone CTest registration check passed after SDK compatibility fix",
+        "build_root/g03-sdk-final-1.30.0/checks/runtime-result.json and g03-sdk-final-2.3.0/checks/runtime-result.json: isolated MCP SDK runtime checks passed",
+        "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks"
+      ],
+      "limitations": [
+        "G03a is the first independently reviewable harness slice; full G03 is not complete.",
+        "Installed source 96bf481 is not a fresh build of this branch.",
+        "Fresh accelerated and Qt-only builds, complete current product CTest and remaining MCP SDK smoke_stdio, native Linux/macOS and visible packaged UI gates remain open.",
+        "Backend flag records an unverified caller declaration; it does not infer build provenance.",
+        "Primary GitNexus index is stale and this worktree is not registered; Code Review Graph refresh and direct diff review cover the changed test harness."
+      ],
+      "slices": [
+        {
+          "id": "G03a",
+          "status": "implemented_pending_gates",
+          "commit": "f96920138d40c86f024b3e59b7837fc01785cef5",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
+          "baseCommit": "ca4c6074fea48643810ff6d92182146c427f1b65",
+          "scope": "Registered task runner, exact JSON comparisons, isolated host/process supervision, P03/P04/P05 cases, self-tests, CTest/CI wiring and evidence"
+        }
+      ]
     },
     "U01": {
       "status": "planned",

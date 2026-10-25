@@ -15,6 +15,8 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from workbench_contracts import require_operations, sdk_tool_failed
+
 
 def controller_arguments(directory: Path) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
@@ -52,12 +54,18 @@ async def jobs(executable: str, artifacts: Path) -> None:
             ClientSession(reader, writer) as session,
         ):
             await session.initialize()
+            discovery = await session.call_tool("cilogg_commands", {"area": "commander"})
+            assert not sdk_tool_failed(discovery), discovery.content
+            catalog = getattr(discovery, "structured_content", getattr(discovery, "structuredContent", None))
+            if catalog is None:
+                catalog = json.loads(discovery.content[0].text)
+            require_operations(catalog, ["get_info", "regex_evaluate", "get_analysis_job"])
             args = controller_arguments(artifacts / "controller")
             started = await session.call_tool(
                 "cilogg_cli",
                 {"mode": "lab-controller", "arguments": args, "background": True},
             )
-            assert not started.isError, started.content
+            assert not sdk_tool_failed(started), started.content
             job = json.loads(started.content[0].text)
             assert job["pid"] > 0
             for _ in range(50):
@@ -81,13 +89,13 @@ async def jobs(executable: str, artifacts: Path) -> None:
                 "cilogg_cli",
                 {"mode": "lab-controller", "arguments": args, "timeout_ms": 300},
             )
-            assert timed_out.isError
+            assert sdk_tool_failed(timed_out)
             assert "timed out" in timed_out.content[0].text
-            assert not (
+            assert not sdk_tool_failed(
                 await session.call_tool(
                     "cilogg_cli", {"mode": "scenario", "arguments": ["--help"]}
                 )
-            ).isError
+            )
 
 
 def cancellation(executable: str, artifacts: Path) -> None:

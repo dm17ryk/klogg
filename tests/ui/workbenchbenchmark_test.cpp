@@ -22,8 +22,8 @@
 namespace {
 class WorkbenchView final : public AbstractLogView {
 public:
-    WorkbenchView( const AbstractLogData* data, const QuickFindPattern* pattern )
-        : AbstractLogView( data, pattern )
+    WorkbenchView( const AbstractLogData* sourceData, const QuickFindPattern* pattern )
+        : AbstractLogView( sourceData, pattern )
     {
         resize( 1000, 600 );
         textWrapSet( false );

@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "passed": true,
+  "task": "G03",
+  "backendRequested": null,
+  "backendVerified": false,
+  "guiMode": "offscreen controls; interactive usability unmeasured",
+  "executable": "C:\\Essence_SC\\cilogg\\cilogg.exe",
+  "executableSha256": "f06a010d41c34010c353bedc233e9ea32a8dde65e858aef4391c3dbd6f380bcd",
+  "cases": [
+    {
+      "id": "analysis",
+      "passed": true,
+      "rows": [
+        {
+          "lineNumber": 1,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 7,
+                      "value": "1"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 7,
+                      "value": "1"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 7
+                }
+              ]
+            }
+          ],
+          "text": "שלום 1\r"
+        },
+        {
+          "lineNumber": 2,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 6,
+                      "value": "2"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 6,
+                      "value": "2"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 6
+                }
+              ]
+            }
+          ],
+          "text": "second2"
+        },
+        {
+          "lineNumber": 3,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 4,
+                      "value": "3"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 4,
+                      "value": "3"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 4
+                }
+              ]
+            }
+          ],
+          "text": "last3"
+        }
+      ],
+      "guiControl": null
+    },
+    {
+      "id": "regex-lab",
+      "passed": true,
+      "rows": [
+        {
+          "lineNumber": 1,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 7,
+                      "value": "1"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 7,
+                      "value": "1"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 7
+                }
+              ]
+            }
+          ],
+          "text": "שלום 1\r"
+        },
+        {
+          "lineNumber": 2,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 6,
+                      "value": "2"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 6,
+                      "value": "2"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 6
+                }
+              ]
+            }
+          ],
+          "text": "second2"
+        },
+        {
+          "lineNumber": 3,
+          "matched": true,
+          "offsetConvention": "zero-based UTF-16",
+          "subpatterns": [
+            {
+              "index": 0,
+              "matched": true,
+              "matches": [
+                {
+                  "groups": [
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "",
+                      "number": 0,
+                      "startUtf16": 4,
+                      "value": "3"
+                    },
+                    {
+                      "lengthUtf16": 1,
+                      "matched": true,
+                      "name": "value",
+                      "number": 1,
+                      "startUtf16": 4,
+                      "value": "3"
+                    },
+                    {
+                      "lengthUtf16": 0,
+                      "matched": false,
+                      "name": "optional",
+                      "number": 2,
+                      "startUtf16": -1,
+                      "value": null
+                    }
+                  ],
+                  "lengthUtf16": 1,
+                  "startUtf16": 4
+                }
+              ]
+            }
+          ],
+          "text": "last3"
+        }
+      ],
+      "guiControl": {
+        "objectName": "regexLabRun",
+        "accessibleName": "Run analysis"
+      }
+    },
+    {
+      "id": "value-counts",
+      "passed": true,
+      "rows": [
+        {
+          "count": "2",
+          "denominator": "4",
+          "filterCaseSensitive": true,
+          "filterPattern": "a\\.a",
+          "lengthUtf16": 3,
+          "lineNumber": 1,
+          "missing": false,
+          "offsetConvention": "zero-based UTF-16",
+          "percentage": 50,
+          "rowIndex": 0,
+          "startUtf16": 0,
+          "value": "a.a"
+        },
+        {
+          "count": "1",
+          "denominator": "4",
+          "filterCaseSensitive": true,
+          "filterPattern": "b\\+b",
+          "lengthUtf16": 3,
+          "lineNumber": 1,
+          "missing": false,
+          "offsetConvention": "zero-based UTF-16",
+          "percentage": 25,
+          "rowIndex": 1,
+          "startUtf16": 4,
+          "value": "b+b"
+        },
+        {
+          "count": "1",
+          "denominator": "4",
+          "filterCaseSensitive": true,
+          "filterPattern": "\\ש\\ל\\ו\\ם",
+          "lengthUtf16": 4,
+          "lineNumber": 2,
+          "missing": false,
+          "offsetConvention": "zero-based UTF-16",
+          "percentage": 25,
+          "rowIndex": 2,
+          "startUtf16": 0,
+          "value": "שלום"
+        }
+      ],
+      "guiControl": {
+        "objectName": "valueCountsRun",
+        "accessibleName": "Run counts"
+      }
+    }
+  ],
+  "measuredProduct": {
+    "version": "26.04.2.1043",
+    "sourceCommit": "96bf481",
+    "qtRuntime": "6.12.0.0",
+    "freshBranchBuild": false
+  },
+  "command": "python tests/mcp/workbench_parity.py --executable C:/Essence_SC/cilogg/cilogg.exe --task G03 --artifacts build_root/g03-complete-existing --timeout 300",
+  "scope": "Windows installed package; offscreen control parity; full G03 gates remain open"
+}
