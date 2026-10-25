@@ -210,7 +210,9 @@
             "Full G02/G03 remain in_progress; hosted native Windows/Linux/macOS runs and remaining visible usability/performance conformance remain pending.",
             "Local approvedQt6.10.1 Qt-only executable is reused with an unchanged src tree; CI establishes selected fresh Qt6.12 accelerated/Qt-only provenance.",
             "CodeGraph has no refresh capability for this unindexed worktree; Code Review Graph server is unavailable. A bounded GitNexus branch-index refresh exited unsuccessfully without a usable index. detect-changes reports critical/291 affected flows from its stale primary index and a corrupt symbol; no graph scope pass claimed. Fresh reviews and staged path checks show no production C++ changes."
-          ]
+          ],
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/66",
+          "commit": "8009d798b384e9a6aacf8daa0a96600b115c1c2c"
         }
       ]
     },
