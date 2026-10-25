@@ -75,16 +75,18 @@ async def run(executable: str, artifacts: Path, environment=None) -> None:
             )
 
             clipboard = await command("get_ui", {"object_name": "@clipboard"})
-            await command(
-                "set_ui",
-                {"object_name": "@clipboard", "definition": {"text": "MCP smoke"}},
-            )
-            assert (await command("get_ui", {"object_name": "@clipboard"}))[
-                "text"
-            ] == "MCP smoke"
-            await command(
-                "set_ui", {"object_name": "@clipboard", "definition": clipboard}
-            )
+            try:
+                await command(
+                    "set_ui",
+                    {"object_name": "@clipboard", "definition": {"text": "MCP smoke"}},
+                )
+                assert (await command("get_ui", {"object_name": "@clipboard"}))[
+                    "text"
+                ] == "MCP smoke"
+            finally:
+                await command(
+                    "set_ui", {"object_name": "@clipboard", "definition": clipboard}
+                )
 
             await command(
                 "invoke_action", {"object_name": "optionsAction", "window_index": 0}

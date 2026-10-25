@@ -93,6 +93,18 @@ class CiGateTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertFalse(report["passed"])
 
+    def test_null_sdk_metadata_still_writes_failure_report(self):
+        code, report = self.run_gate({"passed": True, "sdk": None}, sdk="2.3.0")
+        self.assertNotEqual(code, 0)
+        self.assertFalse(report["passed"])
+        self.assertIn("invalid_sdk_metadata", report["reason"])
+
+    def test_array_sdk_metadata_still_writes_failure_report(self):
+        code, report = self.run_gate({"passed": True, "sdk": []}, sdk="2.3.0")
+        self.assertNotEqual(code, 0)
+        self.assertFalse(report["passed"])
+        self.assertIn("invalid_sdk_metadata", report["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ and portable settings; only processes created here are terminated.
 """
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ import uuid
 from typing import Optional
 
 from workbench_contracts import require_operations
-from parity_payload import prepare_payload
+from parity_payload import prepare_payload, private_ipc_environment
 
 
 def seed_routing_session(payload: Path, artifacts: Path) -> None:
@@ -152,6 +153,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
     server = None
     sequence = 0
     replies = queue.Queue()
+    resources = ExitStack()
 
     def cli(action: str, *arguments: str, success=True) -> dict:
         result = subprocess.run(
@@ -213,6 +215,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
         return [{key: value for key, value in row.items() if key not in ("jobId", "requestRevision", "source")} for row in values]
 
     try:
+        environment = resources.enter_context(private_ipc_environment(environment))
         with (artifacts / "host.log").open("w", encoding="utf-8") as host_log, (artifacts / "mcp.log").open("w", encoding="utf-8") as mcp_log:
             host_arguments = [str(isolated), "--multi", "-d", "4", "-platform", "offscreen"]
             if not auto_responses:
@@ -483,6 +486,10 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                     cleanup_errors.append(str(error))
         try:
             isolated.unlink(missing_ok=True)
+        except OSError as error:
+            cleanup_errors.append(str(error))
+        try:
+            resources.close()
         except OSError as error:
             cleanup_errors.append(str(error))
         if cleanup_errors:

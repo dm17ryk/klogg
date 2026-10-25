@@ -204,7 +204,8 @@
             "Regression fixtures reject background controls behind Preferences, missing/nonfinite SDK reports, false backend/source provenance, missing private runtime dependencies and copied macOS CILogg plugin catalogs.",
             "Fresh Python/general reviews found no actionable remaining issues; macOS catalog isolation suggestion reproduced RED and fixed.",
             "Actionlint baseline comparison:9 existing diagnostics,9 current diagnostics,zero introduced. Ruff E9/F checks pass.",
-            "Reconfigured local Qt6.10.1 build tree: complete CTest passed6/6 suites with zero failures in577.23seconds, including C++/UI and benchmark/parity self-tests."
+            "Reconfigured local Qt6.10.1 build tree: complete CTest passed6/6 suites with zero failures in577.23seconds, including C++/UI and benchmark/parity self-tests.",
+            "PR66 review follow-up: all three Sourcery findings reproduced and corrected;47-test suite and both native SDK/forced-port-collision profiles pass. Historical32-test/full6-suite evidence above is preserved; focused harness CTest rerun passes after these Python-only fixes."
           ],
           "limitations": [
             "Full G02/G03 remain in_progress; hosted native Windows/Linux/macOS runs and remaining visible usability/performance conformance remain pending.",
@@ -212,7 +213,16 @@
             "CodeGraph has no refresh capability for this unindexed worktree; Code Review Graph server is unavailable. A bounded GitNexus branch-index refresh exited unsuccessfully without a usable index. detect-changes reports critical/291 affected flows from its stale primary index and a corrupt symbol; no graph scope pass claimed. Fresh reviews and staged path checks show no production C++ changes."
           ],
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/66",
-          "commit": "8009d798b384e9a6aacf8daa0a96600b115c1c2c"
+          "commit": "8009d798b384e9a6aacf8daa0a96600b115c1c2c",
+          "reviewFixes": {
+            "review": "Sourcery PR66",
+            "findings": 3,
+            "status": "implemented_and_locally_verified",
+            "evidence": "../../docs/workbench/g03b-windows-observations.json#reviewFollowUp",
+            "tests": "47 tests on Python3.9/3.12; one native Unix socket test skipped locally on Windows; focused CTest1/1 passes.",
+            "native": "SDK1.30/2.3 P03 and complete SDK checks pass, including deliberate real background bind collisions.",
+            "macOS": "Short private TMPDIR fixes hosted IPC Name error; hosted confirmation pending."
+          }
         }
       ]
     },

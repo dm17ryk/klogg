@@ -5,7 +5,9 @@ import plistlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 LOG = logging.getLogger("workbench.payload")
@@ -13,6 +15,19 @@ RUNTIME_DIRECTORIES = (
     "platforms", "styles", "imageformats", "iconengines", "tls",
     "networkinformation", "translations", "resources", "sqldrivers",
 )
+
+
+@contextmanager
+def private_ipc_environment(environment):
+    if sys.platform != "darwin":
+        yield environment
+        return
+    # macOS's usual /var/folders TMPDIR plus the unique application name can
+    # exceed sockaddr_un.sun_path. Share this short lease with every client.
+    with tempfile.TemporaryDirectory(prefix="cg-", dir="/tmp") as directory:
+        LOG.info("private_ipc_directory path=%s", directory)
+        yield dict(environment, TMPDIR=directory)
+    LOG.info("private_ipc_directory_released")
 
 
 def copy_runtime(source, destination):

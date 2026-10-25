@@ -1,7 +1,9 @@
 """Portable runtime isolation, including the native grep and SQLite dependencies."""
 
 import importlib
+import os
 import plistlib
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -74,6 +76,50 @@ class PayloadTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.module.prepare_payload(self.source / "missing", self.artifacts)
         self.assertEqual(list(self.artifacts.iterdir()), [])
+
+    def test_macos_ipc_environment_is_private_and_released_on_failure(self):
+        class Directory:
+            closed = False
+
+            def __enter__(self):
+                return "/tmp/cg-private"
+
+            def __exit__(self, *arguments):
+                self.closed = True
+
+        lease = Directory()
+        original = {"TMPDIR": "/var/folders/" + "long/" * 30, "MARKER": "private"}
+        with patch("parity_payload.sys.platform", "darwin"), patch(
+            "parity_payload.tempfile.TemporaryDirectory", return_value=lease
+        ) as create:
+            with self.assertRaisesRegex(RuntimeError, "fixture failure"):
+                with self.module.private_ipc_environment(original) as environment:
+                    self.assertEqual(environment["TMPDIR"], "/tmp/cg-private")
+                    self.assertEqual(environment["MARKER"], "private")
+                    self.assertFalse(lease.closed)
+                    raise RuntimeError("fixture failure")
+        self.assertTrue(lease.closed)
+        self.assertTrue(original["TMPDIR"].startswith("/var/folders/"))
+        create.assert_called_once_with(prefix="cg-", dir="/tmp")
+
+    def test_other_platforms_preserve_the_existing_environment(self):
+        original = {"TMPDIR": "original"}
+        with patch("parity_payload.sys.platform", "win32"):
+            with self.module.private_ipc_environment(original) as environment:
+                self.assertIs(environment, original)
+
+    @unittest.skipUnless(os.name == "posix", "Native Unix socket check")
+    def test_macos_ipc_socket_fits_the_native_path_limit(self):
+        with patch("parity_payload.sys.platform", "darwin"):
+            with self.module.private_ipc_environment({}) as environment:
+                directory = Path(environment["TMPDIR"])
+                path = directory.resolve() / ("kdsingleapp-501--cilogg-analysis-" + "a" * 32)
+                self.assertLess(len(os.fsencode(path)), 104)
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen()
+                self.assertTrue(directory.exists())
+            self.assertFalse(directory.exists())
 
 
 if __name__ == "__main__":

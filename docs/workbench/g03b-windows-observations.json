@@ -188,5 +188,110 @@
       "3.9",
       "3.12"
     ]
+  },
+  "reviewFollowUp": {
+    "date": "2026-10-25",
+    "baseCommit": "9d92edd99c4457501c2083c2652c501bd3228ac4",
+    "findings": [
+      "Clipboard restoration now runs in finally after write/verification failure.",
+      "Background startup, foreground timeout and cancellation retry only recognized bind failures, with at most three fresh port pairs. Crashes remain failures.",
+      "Non-object SDK metadata fails with invalid_sdk_metadata and retains the outer failure report."
+    ],
+    "regressions": {
+      "before": "Two clipboard failures, two SDK metadata errors; eight port-retry tests failed before implementation.",
+      "after": {
+        "tests": 47,
+        "python": [
+          "3.9",
+          "3.12"
+        ],
+        "skipped": 1,
+        "skipReason": "Native Unix socket check cannot run on Windows"
+      }
+    },
+    "focusedCTest": {
+      "passed": true,
+      "suites": 1,
+      "seconds": 42.17
+    },
+    "nativeProfiles": [
+      {
+        "sdk": "1.30.0",
+        "passed": true,
+        "scope": "P03 plus SDK smoke/jobs/cancellation/transport",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "forcedPortCollision": {
+          "passed": true,
+          "sdk": "1.30.0",
+          "forcedCollisions": [
+            "background-startup"
+          ],
+          "attempts": 3,
+          "foregroundProbe": "Occupied port; may time out before binding"
+        }
+      },
+      {
+        "sdk": "2.3.0",
+        "passed": true,
+        "scope": "P03 plus SDK smoke/jobs/cancellation/transport",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "forcedPortCollision": {
+          "passed": true,
+          "sdk": "2.3.0",
+          "forcedCollisions": [
+            "background-startup"
+          ],
+          "attempts": 3,
+          "foregroundProbe": "Occupied port; may time out before binding"
+        }
+      }
+    ],
+    "macOSCI": {
+      "job": "https://github.com/dm17ryk/klogg/actions/runs/40210965590/job/121221895339",
+      "failure": "Host started but QLocalServer::listen returned Name error for CLI probes; long TMPDIR plus the unique executable name exceeds the Unix socket path limit.",
+      "fix": "Lease a short private /tmp directory shared through TMPDIR by the host and every CLI/MCP/SDK child, then release it after process cleanup.",
+      "hostedVerification": "pending"
+    },
+    "review": "Fresh Python review found no actionable findings in the Sourcery fixes or macOS IPC lifecycle.",
+    "graph": "GitNexus refresh retried with two parser workers; parser idle timeout prevented a usable fresh index. Direct diff/caller checks establish harness-only scope; no production C++ changes.",
+    "finalG03SDK2": {
+      "passed": true,
+      "scope": "Complete G03 and SDK smoke/jobs/cancellation/transport after final source changes",
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "9d92edd99c4457501c2083c2652c501bd3228ac4",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "ownedProcessCleanup": "One owned root reaped; zero cleanup failures"
+    }
   }
 }

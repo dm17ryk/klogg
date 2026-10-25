@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 
 class SdkSmokeTests(unittest.IsolatedAsyncioTestCase):
-    async def exercise(self, version, fail_grep=False, environment=None):
+    async def exercise(self, version, fail_grep=False, environment=None, fail_clipboard=None):
         observed = {}
         checkbox = False
         clipboard = "original"
@@ -75,6 +75,8 @@ class SdkSmokeTests(unittest.IsolatedAsyncioTestCase):
                 if action == "get_ui":
                     target = args.get("object_name")
                     if target == "@clipboard":
+                        if fail_clipboard == "read" and clipboard == "MCP smoke":
+                            raise RuntimeError("injected clipboard read failure")
                         payload = {"text": clipboard}
                     elif target == "dialog/checkbox":
                         payload = {"properties": {"checked": checkbox}}
@@ -91,6 +93,8 @@ class SdkSmokeTests(unittest.IsolatedAsyncioTestCase):
                 if action == "set_ui":
                     if args["object_name"] == "@clipboard":
                         clipboard = args["definition"]["text"]
+                        if fail_clipboard == "write" and clipboard == "MCP smoke":
+                            raise RuntimeError("injected clipboard write failure")
                     elif args["object_name"] == "background":
                         return result({"error": "A modal dialog blocks this control"}, True)
                     else:
@@ -126,6 +130,7 @@ class SdkSmokeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(clipboard, "original")
             finally:
                 sys.modules.pop("smoke_stdio", None)
+                self.assertEqual(clipboard, "original")
 
     async def test_sdk_v1_result_fields(self):
         await self.exercise(1)
@@ -139,6 +144,14 @@ class SdkSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_private_environment_forwarded(self):
         await self.exercise(2, environment={"PRIVATE_MARKER": "isolated"})
+
+    async def test_clipboard_restored_when_verification_raises(self):
+        with self.assertRaisesRegex(RuntimeError, "injected clipboard read failure"):
+            await self.exercise(2, fail_clipboard="read")
+
+    async def test_clipboard_restored_when_write_raises_after_side_effect(self):
+        with self.assertRaisesRegex(RuntimeError, "injected clipboard write failure"):
+            await self.exercise(1, fail_clipboard="write")
 
 
 if __name__ == "__main__":

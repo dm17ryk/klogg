@@ -134,8 +134,15 @@ Private runtimes copy the grep companion, Qt SQLite plugin and runtime libraries
 macOS copies required Frameworks/PlugIns/Resources into a new bundle, gives the
 executable and bundle unique identities, writes private settings, then ad-hoc signs
 only that bundle. User session/config/plugin directories are not copied. On Windows
-the controller port probe uses exclusive ownership to match Qt's listener policy;
-the interval between reservation and actual listen remains a bounded test race.
+the controller port probe uses exclusive ownership to match Qt's listener policy.
+Background startup, foreground timeout and cancellation checks retry recognizable
+bind failures with at most three fresh port pairs. Other failures remain fatal;
+failed background attempts remain visible in the job list. The SDK smoke restores
+its saved clipboard in `finally`, including write and verification failures.
+Malformed SDK metadata produces a structured outer failure report.
+The macOS host and all its CLI/MCP clients also share a short private `TMPDIR`
+under `/tmp`. This keeps the unique local IPC socket name within the native path
+limit; the directory is released after the test-owned processes stop.
 
 The product build matrix enables representative native gates on Windows x64
 Hyperscan (both SDK profiles), RHEL-compatible 10 x64 Qt-only (raw protocol parity),

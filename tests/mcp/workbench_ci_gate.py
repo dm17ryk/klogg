@@ -110,8 +110,12 @@ def main(arguments=None):
         json.dumps(result, allow_nan=False)
         if not isinstance(result, dict) or result.get("passed") is not True:
             raise ParityError("native_report_not_passed")
-        if args.sdk_version and result.get("sdk", {}).get("version") != args.sdk_version:
-            raise ParityError("sdk_version_mismatch")
+        if args.sdk_version:
+            sdk = result.get("sdk")
+            if not isinstance(sdk, dict):
+                raise ParityError("invalid_sdk_metadata")
+            if sdk.get("version") != args.sdk_version:
+                raise ParityError("sdk_version_mismatch")
         report.update(passed=True, parity=result)
         LOG.info("gate_passed backend=%s sdk=%s", args.backend, args.sdk_version)
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
