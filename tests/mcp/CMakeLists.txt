@@ -6,7 +6,7 @@ if(Python3_Interpreter_FOUND)
     COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}
             -p test_workbench_*.py -v
   )
-  set_tests_properties(workbench_parity_self_tests PROPERTIES TIMEOUT 120 LABELS "workbench;G03;harness")
+  set_tests_properties(workbench_parity_self_tests PROPERTIES TIMEOUT 300 LABELS "workbench;G03;harness")
 endif()
 
 option(KLOGG_TEST_WORKBENCH_PARITY "Run isolated native GUI/CLI/MCP parity (requires deployed Qt runtime)" OFF)

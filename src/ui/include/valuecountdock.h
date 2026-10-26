@@ -27,6 +27,7 @@ public:
 private:
     QVariantMap draft() const;
     void draftChanged();
+    void updateApplyState();
     void refresh();
     void refreshSources();
     CommanderResult run();
@@ -55,6 +56,7 @@ private:
     QLabel* status_;
     QTableWidget* table_;
     QPushButton* cancel_;
+    QPushButton* apply_;
     QPushButton* next_;
     QVariantMap limits_;
     QVariantMap extraOptions_;

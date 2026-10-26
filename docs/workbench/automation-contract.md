@@ -4,7 +4,9 @@ G03a provides a reusable runner for the existing analysis (P03), Regex Lab (P04)
 and Value Counts (P05) contracts. G03 remains in progress until fresh accelerated
 and Qt-only builds, the complete relevant CTest/MCP suite and platform gates have
 recorded evidence. Headless control activation does not establish interactive UI
-usability. G02 continues to own performance measurements.
+usability. [G03c](g03c-native-ui.md) adds opt-in native dock interaction and capture
+evidence, with explicit component-level boundaries. G02 continues to own
+performance measurements.
 
 Run from the repository root, using Python 3.9 or newer and a deployed executable:
 

@@ -7,12 +7,30 @@ inputs:
   sdk-smoke:
     default: 'false'
     description: Run both pinned Python MCP SDK profiles
+  native-ui:
+    default: 'false'
+    description: Run the native Windows dock interaction probe
 runs:
   using: composite
   steps:
     - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.12'
+    - name: Native dock interaction
+      if: ${{ inputs.native-ui == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" != Windows ]; then
+          echo 'Native dock interaction CI currently requires a Windows desktop runner' >&2
+          exit 1
+        fi
+        probe="$CILOGG_BUILD_ROOT/output/cilogg_itests.exe"
+        windeployqt "$probe"
+        python tests/mcp/workbench_usability.py \
+          --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" \
+          --test-executable "$probe" \
+          --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-ui"
     - name: Native GUI CLI MCP parity
       shell: bash
       env:

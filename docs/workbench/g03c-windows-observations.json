@@ -1,0 +1,1533 @@
+{
+  "schemaVersion": 1,
+  "slice": "G03c",
+  "recordedAtUtc": "2026-10-26T09:48:56.147628+00:00",
+  "releaseGateStatus": "pending",
+  "sourceBase": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+  "observedSourceFiles": {
+    "src/ui/src/valuecountdock.cpp": "c2640577d54d71c8e248c499dfc4c098988bdcac78a08bac18f68fdb57f738cc",
+    "src/ui/include/valuecountdock.h": "10828ae0e79719d42916046faf406a6d99b70cf6720a6ddd99b90ac24bb66c5f",
+    "tests/ui/workbenchusability_test.cpp": "7638caa5575e6d5f67a202e89983dd7687be3263b450da5bf47d4a79a0ec0cf2",
+    "tests/ui/valuecountdock_test.cpp": "ebbd5faec17193a5dc73469c9a05a6e8954b815afa899624a76ed597340de82b",
+    "tests/mcp/workbench_usability.py": "ff4197766241e812a2cae45e1a048bb0b936b55ba734950fcabbbcde7c58c94a",
+    "tests/mcp/parity_payload.py": "66b2ba498946385f7dd1b18acb1c00530831a59350c2cd6fc7c7794e8ea65010",
+    "tests/mcp/parity_process.py": "4536f526a5ca6f2c70ecb4095bd2a7f8772e2a9868aafe69a0378cd2799590c5",
+    "tests/mcp/analysis_parity.py": "efbde972e4e72d6e65781a6a0ca7bfc723fb16bcdcce26fd610fb4e57631443e",
+    "tests/mcp/test_workbench_startup.py": "8dee444ed59216a8d6cec1f10933a52ba697d740a600647d981ed83a1bcce36e"
+  },
+  "sourceSnapshotMeaning": "Working-copy file hashes at evidence recording; not a claim that historical failed binaries used the final edited sources.",
+  "environment": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.7",
+    "approvedLocalSdk": "Qt 6.10.1 MSVC2022 x64",
+    "buildType": "RelWithDebInfo"
+  },
+  "attempts": [
+    {
+      "artifactDirectory": "build_root/g03c-native-red",
+      "rawReportSha256": "bdbcc0cc338223eeea361e1216007dcbbd1362a9d86f88616d6d283f128e0e21",
+      "report": {
+        "schemaVersion": 1,
+        "passed": false,
+        "state": "failed",
+        "releaseGateStatus": "pending",
+        "evidenceKind": "native_dock_probe",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "testBinarySha256": "59ee74f3c51ca66b6646b225e04722c030a94016e9154a72ad80e1f207cc317d",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+        ],
+        "reason": "native_report_missing_or_oversized"
+      },
+      "role": "Existing binary before native-case implementation: missing report must fail."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-native-first",
+      "rawReportSha256": "9c6b3b355c573b67af026c0bd025841e4d89ae19eead249f1d3c0d0ce236e7b8",
+      "report": {
+        "schemaVersion": 1,
+        "passed": false,
+        "state": "failed",
+        "releaseGateStatus": "pending",
+        "evidenceKind": "native_dock_probe",
+        "binarySha256": "c550bb8dd611aebbfaa25129a295457ea25fab5d4a475259e5a7ac079cd77a3e",
+        "testBinarySha256": "e41c640d690a5672f2e313888d7048cec59abd7fd4fd952e61268fa6cad10308",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+        ],
+        "reason": "native_process_failed"
+      },
+      "role": "Before button fix: 189/190 assertions passed, Value Counts stale Apply availability failed. Four captures retained."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-native-fixed",
+      "rawReportSha256": "8595fdc4009682ff80838782511978fea89a00b50c96d144b80846592cf9346b",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "state": "passed",
+        "releaseGateStatus": "pending",
+        "evidenceKind": "native_dock_probe",
+        "binarySha256": "80966bc8ed1acef5c6a7ee109456bade9fcdacb52244def3bf6ad424ba4ecf13",
+        "testBinarySha256": "c5c976a6cff1b30d9b087a5646a26aa52ff7cd4e7015f503ca7c4983f8d36ada",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+        ],
+        "native": {
+          "cases": [
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "regex-lab",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                "1",
+                "2",
+                "3"
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 41,
+                  "screenshot": "regex-lab-docked.png",
+                  "sha256": "b28fee17c9e0d2591ed045edc21a161cfe40f3ad3b90fd78ba547142bf5a3678",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 40,
+                  "screenshot": "regex-lab-floating.png",
+                  "sha256": "328bba05862c3529510fced237476ed223c3b095d71e494de0177025ceed7d09",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            },
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "value-counts",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                [
+                  "1",
+                  "2"
+                ],
+                [
+                  "2",
+                  "1"
+                ]
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 49,
+                  "screenshot": "value-counts-docked.png",
+                  "sha256": "f07c0c27bf046fb69c98e3792b27bc37effbbb4e1053d72941dc4e17c83856af",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 43,
+                  "screenshot": "value-counts-floating.png",
+                  "sha256": "49fcaa374b7bf701304ed0811166f1bac9521c3871ca740bde1d3c758152c985",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            }
+          ],
+          "ownedJobsReleased": true,
+          "platform": "windows",
+          "qt": {
+            "compile": "6.10.1",
+            "runtime": "6.10.1"
+          },
+          "schemaVersion": 1,
+          "sourceFixtureSha256": "15b6e4c5355f65e11afc42acb83aff9c8229ed52600e90439b183228a07a61fc",
+          "workerBinarySha256": "80966bc8ed1acef5c6a7ee109456bade9fcdacb52244def3bf6ad424ba4ecf13"
+        }
+      },
+      "role": "Historical prototype: 195 assertions passed before the later uniform-capture guard."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-native-final",
+      "rawReportSha256": "9edeb539229afa80f4e1526ef5e49beebc5c2934391aed4c130dd1360c47ece6",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "state": "passed",
+        "releaseGateStatus": "pending",
+        "evidenceKind": "native_dock_probe",
+        "binarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+        "testBinarySha256": "c2769f14bc42a40a81cfe201576f6500dc56fa2fc32abb0071f9c6b3ffa9b69e",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+        ],
+        "native": {
+          "cases": [
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "regex-lab",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                "1",
+                "2",
+                "3"
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 41,
+                  "sampledColors": 55,
+                  "screenshot": "regex-lab-docked.png",
+                  "sha256": "16d2e0ee1e3a2fdafc025c67c40e933bb5aca8c990b902c15b1fc4c2c7ec67b5",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 40,
+                  "sampledColors": 73,
+                  "screenshot": "regex-lab-floating.png",
+                  "sha256": "8ed6745b2d4c007ba6e114cbb3a58c795e139c5dafcb80a730f83f29dace9daa",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            },
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "value-counts",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                [
+                  "1",
+                  "2"
+                ],
+                [
+                  "2",
+                  "1"
+                ]
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 43,
+                  "sampledColors": 64,
+                  "screenshot": "value-counts-docked.png",
+                  "sha256": "f07c0c27bf046fb69c98e3792b27bc37effbbb4e1053d72941dc4e17c83856af",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 43,
+                  "sampledColors": 58,
+                  "screenshot": "value-counts-floating.png",
+                  "sha256": "49fcaa374b7bf701304ed0811166f1bac9521c3871ca740bde1d3c758152c985",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            }
+          ],
+          "ownedJobsReleased": true,
+          "platform": "windows",
+          "qt": {
+            "compile": "6.10.1",
+            "runtime": "6.10.1"
+          },
+          "schemaVersion": 1,
+          "sourceFixtureSha256": "15b6e4c5355f65e11afc42acb83aff9c8229ed52600e90439b183228a07a61fc",
+          "workerBinarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce"
+        }
+      },
+      "role": "Final candidate with the uniform-capture guard."
+    }
+  ],
+  "publicParityAttempts": [
+    {
+      "artifactDirectory": "build_root/g03c-public-parity",
+      "rawReportSha256": "324625d67a405278a19ebd838e806378b555a0ee67262e263f12a856fc87784d",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "guiMode": "offscreen functional checks",
+        "build": {
+          "configuredBackend": "qt",
+          "searchEngine": "qt",
+          "binarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+          "compiler": "unreported",
+          "configuration": "RelWithDebInfo",
+          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        },
+        "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+        "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+        "sourceDirty": true,
+        "parity": {
+          "schemaVersion": 1,
+          "passed": true,
+          "task": "G03",
+          "backendRequested": "qt",
+          "backendVerified": false,
+          "guiMode": "offscreen controls; interactive usability unmeasured",
+          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "sdk": {
+            "version": "2.3.0",
+            "reports": [
+              {
+                "passed": true,
+                "tools": [
+                  "cilogg_commands",
+                  "cilogg_status",
+                  "cilogg_state",
+                  "cilogg_execute",
+                  "cilogg_cli",
+                  "cilogg_jobs"
+                ],
+                "checks": [
+                  "initialize",
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "file",
+                  "search",
+                  "follow",
+                  "clipboard",
+                  "modal-inspect-edit-cancel",
+                  "mouse-click",
+                  "grep",
+                  "native-setup-dry-run",
+                  "tool-error"
+                ]
+              },
+              {
+                "passed": true,
+                "sdkVersion": "2.3.0",
+                "checks": [
+                  "jobs",
+                  "cancellation",
+                  "transport"
+                ]
+              }
+            ]
+          },
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": null
+            },
+            {
+              "id": "regex-lab",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": {
+                "objectName": "regexLabRun",
+                "accessibleName": "Run analysis"
+              }
+            },
+            {
+              "id": "value-counts",
+              "passed": true,
+              "rows": [
+                {
+                  "count": "2",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "a\\.a",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 50,
+                  "rowIndex": 0,
+                  "startUtf16": 0,
+                  "value": "a.a"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "b\\+b",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 1,
+                  "startUtf16": 4,
+                  "value": "b+b"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "\\\u05e9\\\u05dc\\\u05d5\\\u05dd",
+                  "lengthUtf16": 4,
+                  "lineNumber": 2,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 2,
+                  "startUtf16": 0,
+                  "value": "\u05e9\u05dc\u05d5\u05dd"
+                }
+              ],
+              "guiControl": {
+                "objectName": "valueCountsRun",
+                "accessibleName": "Run counts"
+              }
+            }
+          ]
+        }
+      },
+      "role": "SDK2.3 passed before readiness-helper follow-up."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-public-parity-sdk1",
+      "rawReportSha256": "db3583e57687fd2cdf76374cad70fe1a2579e3e60146ba1df462ccb28712283b",
+      "report": {
+        "schemaVersion": 1,
+        "passed": false,
+        "guiMode": "offscreen functional checks",
+        "build": {
+          "configuredBackend": "qt",
+          "searchEngine": "qt",
+          "binarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+          "compiler": "unreported",
+          "configuration": "RelWithDebInfo",
+          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        },
+        "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+        "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+        "sourceDirty": true,
+        "reason": "native_suite_failed: 1"
+      },
+      "role": "Historical failure before SDK checks: a single Commander startup probe timed out before the absolute startup deadline."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-public-parity-sdk1-retry",
+      "rawReportSha256": "b60b82506083bb233bb4ebb0f1480d5b6d38e1cfc2706c93f8e9666766fe6dc4",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "guiMode": "offscreen functional checks",
+        "build": {
+          "configuredBackend": "qt",
+          "searchEngine": "qt",
+          "binarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+          "compiler": "unreported",
+          "configuration": "RelWithDebInfo",
+          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        },
+        "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+        "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+        "sourceDirty": true,
+        "parity": {
+          "schemaVersion": 1,
+          "passed": true,
+          "task": "G03",
+          "backendRequested": "qt",
+          "backendVerified": false,
+          "guiMode": "offscreen controls; interactive usability unmeasured",
+          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "sdk": {
+            "version": "1.30.0",
+            "reports": [
+              {
+                "passed": true,
+                "tools": [
+                  "cilogg_commands",
+                  "cilogg_status",
+                  "cilogg_state",
+                  "cilogg_execute",
+                  "cilogg_cli",
+                  "cilogg_jobs"
+                ],
+                "checks": [
+                  "initialize",
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "file",
+                  "search",
+                  "follow",
+                  "clipboard",
+                  "modal-inspect-edit-cancel",
+                  "mouse-click",
+                  "grep",
+                  "native-setup-dry-run",
+                  "tool-error"
+                ]
+              },
+              {
+                "passed": true,
+                "sdkVersion": "1.30.0",
+                "checks": [
+                  "jobs",
+                  "cancellation",
+                  "transport"
+                ]
+              }
+            ]
+          },
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": null
+            },
+            {
+              "id": "regex-lab",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": {
+                "objectName": "regexLabRun",
+                "accessibleName": "Run analysis"
+              }
+            },
+            {
+              "id": "value-counts",
+              "passed": true,
+              "rows": [
+                {
+                  "count": "2",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "a\\.a",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 50,
+                  "rowIndex": 0,
+                  "startUtf16": 0,
+                  "value": "a.a"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "b\\+b",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 1,
+                  "startUtf16": 4,
+                  "value": "b+b"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "\\\u05e9\\\u05dc\\\u05d5\\\u05dd",
+                  "lengthUtf16": 4,
+                  "lineNumber": 2,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 2,
+                  "startUtf16": 0,
+                  "value": "\u05e9\u05dc\u05d5\u05dd"
+                }
+              ],
+              "guiControl": {
+                "objectName": "valueCountsRun",
+                "accessibleName": "Run counts"
+              }
+            }
+          ]
+        }
+      },
+      "role": "SDK1.30 after bounded readiness-probe retry fix."
+    },
+    {
+      "artifactDirectory": "build_root/g03c-public-parity-final-sdk2",
+      "rawReportSha256": "324625d67a405278a19ebd838e806378b555a0ee67262e263f12a856fc87784d",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "guiMode": "offscreen functional checks",
+        "build": {
+          "configuredBackend": "qt",
+          "searchEngine": "qt",
+          "binarySha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+          "compiler": "unreported",
+          "configuration": "RelWithDebInfo",
+          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        },
+        "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+        "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+        "sourceDirty": true,
+        "parity": {
+          "schemaVersion": 1,
+          "passed": true,
+          "task": "G03",
+          "backendRequested": "qt",
+          "backendVerified": false,
+          "guiMode": "offscreen controls; interactive usability unmeasured",
+          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
+          "sdk": {
+            "version": "2.3.0",
+            "reports": [
+              {
+                "passed": true,
+                "tools": [
+                  "cilogg_commands",
+                  "cilogg_status",
+                  "cilogg_state",
+                  "cilogg_execute",
+                  "cilogg_cli",
+                  "cilogg_jobs"
+                ],
+                "checks": [
+                  "initialize",
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "file",
+                  "search",
+                  "follow",
+                  "clipboard",
+                  "modal-inspect-edit-cancel",
+                  "mouse-click",
+                  "grep",
+                  "native-setup-dry-run",
+                  "tool-error"
+                ]
+              },
+              {
+                "passed": true,
+                "sdkVersion": "2.3.0",
+                "checks": [
+                  "jobs",
+                  "cancellation",
+                  "transport"
+                ]
+              }
+            ]
+          },
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": null
+            },
+            {
+              "id": "regex-lab",
+              "passed": true,
+              "rows": [
+                {
+                  "lineNumber": 1,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 7,
+                              "value": "1"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 7
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "\u05e9\u05dc\u05d5\u05dd 1\r"
+                },
+                {
+                  "lineNumber": 2,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 6,
+                              "value": "2"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 6
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "second2"
+                },
+                {
+                  "lineNumber": 3,
+                  "matched": true,
+                  "offsetConvention": "zero-based UTF-16",
+                  "subpatterns": [
+                    {
+                      "index": 0,
+                      "matched": true,
+                      "matches": [
+                        {
+                          "groups": [
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "",
+                              "number": 0,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 1,
+                              "matched": true,
+                              "name": "value",
+                              "number": 1,
+                              "startUtf16": 4,
+                              "value": "3"
+                            },
+                            {
+                              "lengthUtf16": 0,
+                              "matched": false,
+                              "name": "optional",
+                              "number": 2,
+                              "startUtf16": -1,
+                              "value": null
+                            }
+                          ],
+                          "lengthUtf16": 1,
+                          "startUtf16": 4
+                        }
+                      ]
+                    }
+                  ],
+                  "text": "last3"
+                }
+              ],
+              "guiControl": {
+                "objectName": "regexLabRun",
+                "accessibleName": "Run analysis"
+              }
+            },
+            {
+              "id": "value-counts",
+              "passed": true,
+              "rows": [
+                {
+                  "count": "2",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "a\\.a",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 50,
+                  "rowIndex": 0,
+                  "startUtf16": 0,
+                  "value": "a.a"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "b\\+b",
+                  "lengthUtf16": 3,
+                  "lineNumber": 1,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 1,
+                  "startUtf16": 4,
+                  "value": "b+b"
+                },
+                {
+                  "count": "1",
+                  "denominator": "4",
+                  "filterCaseSensitive": true,
+                  "filterPattern": "\\\u05e9\\\u05dc\\\u05d5\\\u05dd",
+                  "lengthUtf16": 4,
+                  "lineNumber": 2,
+                  "missing": false,
+                  "offsetConvention": "zero-based UTF-16",
+                  "percentage": 25,
+                  "rowIndex": 2,
+                  "startUtf16": 0,
+                  "value": "\u05e9\u05dc\u05d5\u05dd"
+                }
+              ],
+              "guiControl": {
+                "objectName": "valueCountsRun",
+                "accessibleName": "Run counts"
+              }
+            }
+          ]
+        }
+      },
+      "role": "SDK2.3 after bounded readiness-probe retry fix."
+    }
+  ],
+  "limitations": [
+    "Native Qt event/component evidence only; not a packaged MainWindow, physical-input, or compositor-latency pass.",
+    "Qt-only local configuration; hosted accelerated Qt6.12 confirmation remains separate.",
+    "Full raw logs and PNGs remain at the artifact paths; native reports retain image hashes, dimensions, painting and exposure.",
+    "Full G02/G03 remain open for outstanding evidence. Graph indexes remain unavailable/stale."
+  ]
+}
