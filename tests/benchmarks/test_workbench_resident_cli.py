@@ -1,10 +1,16 @@
 """Black-box opt-in RSS reporting and gate contracts; no product API changes."""
 
 import json
+import importlib
 import os
+import sys
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import test_workbench_gui as fixtures
+
+sys.path.insert(0, str(fixtures.ROOT / "scripts/benchmarks"))
 
 
 class ResidentCliTests(unittest.TestCase):
@@ -15,14 +21,126 @@ class ResidentCliTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         self.fixture.setUp()
 
+    def run_inprocess(self, mode="normal", *extra):
+        benchmark = importlib.import_module("workbench_benchmark")
+        output = self.fixture.root / "inprocess-run"
+        args = [
+            "--scenario",
+            "ui-service",
+            "--executable",
+            str(fixtures.FAKE),
+            "--test-executable",
+            str(fixtures.FAKE),
+            "--corpus",
+            str(self.fixture.corpus),
+            "--output",
+            str(output),
+            "--repetitions",
+            "1",
+            *extra,
+        ]
+        with patch.dict(os.environ, FAKE_NATIVE_MODE=mode):
+            with patch.object(benchmark.logging, "basicConfig"):
+                code = benchmark.main(args)
+        return (
+            code,
+            json.loads((output / "result.json").read_text(encoding="utf-8")),
+            output,
+        )
+
+    @staticmethod
+    def controlled_sampler(_owner, host_pid):
+        def result(status="sampled"):
+            return {
+                "status": status,
+                "hostPid": host_pid,
+                "backend": "controlled_fixture",
+                "samples": 3,
+                "measurements": {
+                    "processTreeSampledRssPeakBytes": 100,
+                    "hostSampledRssPeakBytes": 80,
+                    "workersSampledRssPeakBytes": 20,
+                },
+            }
+
+        return SimpleNamespace(
+            sample=lambda: None,
+            wait=lambda process, timeout: process.wait(timeout=timeout),
+            result=result,
+        )
+
     def test_default_does_not_sample_or_install_a_resident_budget(self):
-        result, report, _ = self.fixture.run_fixture()
-        self.assertEqual(result.returncode, 0, result.stderr)
+        with patch(
+            "workbench_gui.ResidentMemorySampler",
+            side_effect=AssertionError("Default constructed RSS sampler"),
+        ) as sampler:
+            with patch(
+                "workbench_resident._WindowsWorkingSet",
+                side_effect=AssertionError("Default constructed RSS backend"),
+            ) as backend:
+                code, report, _ = self.run_inprocess()
+                self.assertEqual(code, 0, report)
+                sampler.assert_not_called()
+                backend.assert_not_called()
         run = report["runs"][0]
         self.assertIn("residentMemory", run)
         self.assertEqual(run["residentMemory"]["status"], "disabled")
         self.assertNotIn("processTreeSampledRssPeakBytes", report["budgets"])
         self.assertNotIn("processTreeSampledRssPeakBytes", run["gates"])
+
+    def test_initialization_failure_retains_failed_sampling_diagnostics(self):
+        resident = importlib.import_module("workbench_resident")
+        with patch(
+            "workbench_gui.ResidentMemorySampler",
+            side_effect=resident.ResidentError("resident_backend_unavailable"),
+        ):
+            code, report, _ = self.run_inprocess("normal", "--sample-resident-memory")
+        self.assertEqual(code, 1, report)
+        self.assertEqual(report["reason"], "resident_backend_unavailable")
+        self.assertIn("residentMemoryFailure", report)
+        failure = report["residentMemoryFailure"]
+        self.assertEqual(failure["status"], "failed")
+        self.assertEqual(failure["stage"], "initialization")
+        self.assertEqual(failure["samples"], 0)
+        self.assertEqual(failure["measurements"], {})
+        self.assertGreater(failure["hostPid"], 0)
+
+    def test_native_validation_failure_keeps_completed_resident_observation(self):
+        with patch(
+            "workbench_gui.ResidentMemorySampler", side_effect=self.controlled_sampler
+        ):
+            code, report, _ = self.run_inprocess(
+                "wrong_source", "--sample-resident-memory"
+            )
+        self.assertEqual(code, 1, report)
+        self.assertEqual(report["reason"], "native_source_mismatch")
+        self.assertIn("residentMemoryObservations", report)
+        observation = report["residentMemoryObservations"][0]
+        self.assertEqual(observation["repetition"], 0)
+        self.assertEqual(
+            observation["measurements"]["processTreeSampledRssPeakBytes"], 100
+        )
+
+    def test_commit_query_failure_keeps_completed_resident_observation(self):
+        with patch(
+            "workbench_gui.ResidentMemorySampler", side_effect=self.controlled_sampler
+        ):
+            with patch(
+                "workbench_gui.ProcessOwner.peak_tree_commit_bytes",
+                side_effect=OSError("controlled query failure"),
+            ):
+                code, report, _ = self.run_inprocess(
+                    "normal", "--sample-resident-memory"
+                )
+        self.assertEqual(code, 1, report)
+        self.assertEqual(report["reason"], "OSError")
+        self.assertIn("residentMemoryObservations", report)
+        self.assertEqual(
+            report["residentMemoryObservations"][0]["measurements"][
+                "processTreeSampledRssPeakBytes"
+            ],
+            100,
+        )
 
     @unittest.skipUnless(os.name == "nt", "Windows owned working sets")
     def test_opt_in_reports_sampled_boundaries_and_keeps_exact_peak_unmeasured(self):

@@ -51,6 +51,59 @@ class ResidentSamplerTests(unittest.TestCase):
         self.assertEqual(report["exitRaces"], 1)
         self.assertEqual(report["end"], "last_poll_while_host_completion_pending")
 
+    def test_host_completed_during_slow_poll_is_not_reported_timed_out(self):
+        owner = ProcessOwner()
+        self.addCleanup(owner.close)
+        sampler = self.resident.ResidentMemorySampler(owner, 1)
+        state = {"now": 0.0}
+        host = SimpleNamespace(pid=1, args=["fixture"], returncode=None)
+        host.poll = lambda: host.returncode
+        host.wait = lambda timeout: self.fail("Already completed host was waited on")
+
+        def snapshot():
+            state["now"] = 0.5  # Host exits before the original 1s deadline.
+            host.returncode = 0
+            state["now"] = 2.0  # In-flight observation returns later.
+            return {"rssByPid": {1: 10}, "exitRaces": 0}
+
+        sampler.backend = SimpleNamespace(snapshot=snapshot)
+        with patch.object(self.resident, "clock", side_effect=lambda: state["now"]):
+            try:
+                code = sampler.wait(host, timeout=1)
+            except subprocess.TimeoutExpired:
+                self.fail("A completed host was incorrectly reported timed out")
+        self.assertEqual(code, 0)
+
+    def test_running_host_deadline_charges_polling_time_without_reset(self):
+        owner = ProcessOwner()
+        self.addCleanup(owner.close)
+        sampler = self.resident.ResidentMemorySampler(owner, 1)
+        state = {"now": 10.0, "polls": 0, "waits": []}
+        host = SimpleNamespace(pid=1, args=["fixture"], returncode=None)
+        host.poll = lambda: None
+
+        def snapshot():
+            state["polls"] += 1
+            self.assertLessEqual(
+                state["polls"], 3, "Polling extended the absolute deadline"
+            )
+            state["now"] += 0.4
+            return {"rssByPid": {1: 10}, "exitRaces": 0}
+
+        def wait(timeout):
+            state["waits"].append(timeout)
+            state["now"] += timeout
+            raise subprocess.TimeoutExpired(host.args, timeout)
+
+        host.wait = wait
+        sampler.backend = SimpleNamespace(snapshot=snapshot)
+        with patch.object(self.resident, "clock", side_effect=lambda: state["now"]):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                sampler.wait(host, timeout=1)
+        self.assertEqual(state["polls"], 3)
+        self.assertEqual(state["waits"], [0.01, 0.01])
+        self.assertAlmostEqual(state["now"], 11.22)
+
     def test_peak_is_maximum_poll_total_not_sum_of_individual_peaks(self):
         samples = self.resident.ResidentSamples(1)
         samples.record({"rssByPid": {1: 10, 2: 50}, "exitRaces": 0}, 1.0, 1.002)

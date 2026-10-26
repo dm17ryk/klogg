@@ -345,6 +345,15 @@ class ResidentMemorySampler:
                 )
                 raise subprocess.TimeoutExpired(process.args, timeout)
             self.sample()
+            code = process.poll()
+            if code is not None:
+                LOG.debug(
+                    "resident_host_completed_after_poll pid=%d code=%d samples=%d",
+                    process.pid,
+                    code,
+                    self.samples.samples,
+                )
+                return code
             remaining = deadline - clock()
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(process.args, timeout)

@@ -50,6 +50,18 @@ cannot silently become zero usage. Diagnostic errors preserve the failing API's
 Win32 code before checking for process exit. Timeout/error reports retain
 `residentMemoryFailure` with incomplete/failed sampling diagnostics.
 
+Constructor failures also retain failed initialization diagnostics with zero
+samples and no invented measurements. Completed polls are persisted in
+`residentMemoryObservations` before native-report or committed-memory validation,
+so a later failure preserves the independent RSS evidence. The observation list
+is bounded by the existing maximum of ten repetitions.
+
+Host completion is checked again after a poll. A host that completed while a
+slow poll was in flight retains its completion result; an expired deadline still
+fails a running host. A controlled-clock regression charges poll time against
+the original absolute deadline, and the default path has backend-construction
+spies in addition to serialized-report checks.
+
 ## Metric meanings
 
 | Metric | Meaning |
@@ -130,4 +142,13 @@ complete 59-case benchmark suite pass on Python 3.14 and 3.9, with four platform
 skips each. The registered benchmark rerun passes in 86.23 s; Python 3.9 takes
 114.514 s. Three fresh enabled native runs also pass with the clarified descriptor
 and the same application/test binaries. The observations preserve both evidence
-epochs and their source hashes; the sampler algorithm differs only in the label.
+epochs and their source hashes; that clarification changed only the descriptor.
+
+The subsequent Sourcery follow-up adds the completion recheck, initialization
+diagnostics and early retention described above. Four targeted failures were
+reproduced before the fixes; all six focused race/coverage cases pass afterward.
+The complete 64-case suite passes on Python 3.14 and 3.9 with four platform skips
+each (registered benchmark 86.42 s; Python 3.9 104.387 s). Three further native
+repetitions pass with retained observation lists and unchanged binaries. Earlier
+epochs remain identifiable by source hashes. Public interpreter provenance uses
+its actual version, platform and executable hash, omitting the local install path.

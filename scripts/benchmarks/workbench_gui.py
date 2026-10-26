@@ -231,13 +231,60 @@ def run_gui(options, manifest, report):
                     )
                     if sampler:
                         resident = sampler.result()
+                        # Retain trusted OS observations before independent native
+                        # report validation or committed-memory queries can fail.
+                        report.setdefault("residentMemoryObservations", []).append(
+                            {
+                                "repetition": repetition,
+                                "hostPid": process.pid,
+                                **resident,
+                            }
+                        )
+                        LOG.debug(
+                            "resident_observation_retained repetition=%d pid=%d status=%s",
+                            repetition,
+                            process.pid,
+                            resident["status"],
+                        )
                 except subprocess.TimeoutExpired as error:
                     if sampler:
                         report["residentMemoryFailure"] = sampler.result("incomplete")
+                        report["residentMemoryFailure"].update(
+                            repetition=repetition,
+                            reason="native_timeout",
+                            stage="sampling",
+                        )
                     raise RunError("native_timeout") from error
-                except ResidentError:
-                    if sampler:
-                        report["residentMemoryFailure"] = sampler.result("failed")
+                except ResidentError as error:
+                    failure = (
+                        sampler.result("failed")
+                        if sampler
+                        else {
+                            "status": "failed",
+                            "kind": "sampled_working_set_bytes",
+                            "backend": "windows_job_members_working_set"
+                            if os.name == "nt"
+                            else "unavailable",
+                            "scope": "native_test_host_and_owned_descendants",
+                            "hostPid": process.pid,
+                            "samples": 0,
+                            "measurements": {},
+                            "includesHarness": False,
+                        }
+                    )
+                    failure.update(
+                        repetition=repetition,
+                        reason=str(error),
+                        stage="sampling" if sampler else "initialization",
+                    )
+                    report["residentMemoryFailure"] = failure
+                    LOG.error(
+                        "resident_failure_retained repetition=%d pid=%d stage=%s reason=%s",
+                        repetition,
+                        process.pid,
+                        failure["stage"],
+                        str(error),
+                    )
                     raise
             if code:
                 if sampler:

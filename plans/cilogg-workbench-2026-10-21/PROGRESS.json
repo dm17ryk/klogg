@@ -233,9 +233,15 @@
               "sha256": "c0a80ee09ccb34fea1d40844615e0662c84d8e36b44c93a458825007d7b59fd2",
               "exitCode": 0,
               "elapsedSeconds": 109.60304049984552,
-              "python": "C:\\Essence_SC\\scoop\\persist\\uv\\python\\versions\\cpython-3.9-windows-x86_64-none\\python.exe",
               "summary": "Ran 58 tests in 108.835s\r",
-              "platformSkips": 4
+              "platformSkips": 4,
+              "interpreterIdentity": {
+                "implementation": "CPython",
+                "version": "3.9.25",
+                "architecture": "AMD64",
+                "system": "Windows",
+                "binarySha256": "ffed286d02cbd97203fad2ac6e147c954851548e06c699b25a8b68c1a18c99b6"
+              }
             },
             "registration": {
               "path": "build_root/g02d-ctest-registration.json",
@@ -302,7 +308,7 @@
             "CodeGraph unindexed; Code Review Graph unavailable. Both bounded GitNexus refresh attempts timed out120s; affected targets remain UNKNOWN in a stale primary index. No graph verification pass claimed."
           ],
           "commit": null,
-          "pullRequest": null,
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/69",
           "reviewFixes": {
             "status": "locally_verified_hosted_pending",
             "baseCommit": "ad516da6930fa4f1f9959e33c71c53ad0c086305",
@@ -348,6 +354,105 @@
               ]
             },
             "ruling": "Reviewer minor; executor treated accurate phase provenance as a correction before publication. Descriptor only: last_poll_while_host_completion_pending. In-flight sequential polls may straddle host exit. No sampling, limit or gate algorithm changed."
+          },
+          "sourceryReview": {
+            "status": "locally_verified_hosted_pending",
+            "reviewedCommit": "ddc389a859a275bb5af26633b33358ef86ddaa95",
+            "evidence": "../../docs/workbench/g02d-windows-observations.json#sourceryFollowUp",
+            "findings": [
+              {
+                "comment": 4381950865,
+                "status": "fixed",
+                "reason": "Recheck completion after polling before timeout classification; still-running deadline remains absolute."
+              },
+              {
+                "comment": 4381950872,
+                "status": "fixed",
+                "reason": "Constructor failures retain explicit failed initialization diagnostics, no invented measurements."
+              },
+              {
+                "comment": 4381950883,
+                "status": "fixed",
+                "reason": "Retain completed OS observations before independent native/report/commit queries can fail."
+              },
+              {
+                "comment": 4381950901,
+                "status": "coverage_added",
+                "reason": "Actual in-process default run asserts both sampler factory and RSS backend are never constructed."
+              },
+              {
+                "comment": 4381950917,
+                "status": "coverage_added",
+                "reason": "Controlled clock charges0.4s polls against original1s deadline; exact poll/wait counts prevent deadline resets."
+              },
+              {
+                "comment": 4381950891,
+                "status": "portable_summary",
+                "reason": "Publish actual interpreter implementation/version/platform/hash instead of its absolute local path."
+              },
+              {
+                "comment": 4381950925,
+                "status": "false_positive",
+                "reason": "Existing Python unittest benchmark suite is explicitly registered by CMake and the dedicated workflow; Catch2/Qt test directories are a different harness."
+              },
+              {
+                "comment": 4381950941,
+                "status": "false_positive",
+                "reason": "TimeoutExpired constructs an exception and never executes process.args; actual spawning remains literal argv without a shell."
+              },
+              {
+                "comment": 4381950948,
+                "status": "false_positive",
+                "reason": "Second TimeoutExpired exception site; no command execution occurs."
+              }
+            ],
+            "verification": {
+              "red": {
+                "path": "build_root/g02d-sourcery-red.log",
+                "sha256": "2134533fe3baadd83aff109d0974e6fd5c69b62e75cfc22220de49b7c688d0b3"
+              },
+              "green": {
+                "path": "build_root/g02d-sourcery-green.log",
+                "sha256": "c531030e8ed9a7c211ab2324790d3af7e41aa9b19d8fa571f7ec4f5e6aca49e3"
+              },
+              "redGreen": "Six targeted cases:4failures before, all6pass after; two additional coverage contracts pass against existing correct behavior.",
+              "ctest": {
+                "path": "build_root/g02d-sourcery-ctest.log",
+                "sha256": "a2ed292dee695f047be12c2a239f66487a51d152f7f4155045c10b0c8d917bc0",
+                "summary": "100% tests passed, 0 tests failed out of 1",
+                "time": "Total Test time (real) =  86.42 sec"
+              },
+              "python39": {
+                "path": "build_root/g02d-sourcery-python39.log",
+                "sha256": "1980ffde8dd3d06daeac3ee02be0ac7ab756d3c4c5a15b578953d1e1c3ca4c1b",
+                "summary": "Ran 64 tests in 104.387s\r",
+                "platformSkips": 4,
+                "interpreterIdentity": {
+                  "implementation": "CPython",
+                  "version": "3.9.25",
+                  "architecture": "AMD64",
+                  "system": "Windows",
+                  "binarySha256": "ffed286d02cbd97203fad2ac6e147c954851548e06c699b25a8b68c1a18c99b6"
+                }
+              },
+              "steps": [
+                {
+                  "name": "ctest",
+                  "exitCode": 0,
+                  "elapsedSeconds": 98.10004319995642
+                },
+                {
+                  "name": "python39",
+                  "exitCode": 0,
+                  "elapsedSeconds": 104.9057455000002
+                },
+                {
+                  "name": "native",
+                  "exitCode": 0,
+                  "elapsedSeconds": 15.083550800103694
+                }
+              ]
+            }
           }
         }
       ]
