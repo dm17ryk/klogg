@@ -13,6 +13,7 @@ from pathlib import Path
 
 from workbench_corpus import generate_corpus, json_bytes, validate_corpus
 from workbench_gui import GUI_BUDGETS, run_gui
+from workbench_resident import RESIDENT_BUDGET
 from workbench_runtime import BenchmarkHost, RunError, file_hash, measure_analysis
 
 LOG = logging.getLogger("workbench.benchmark")
@@ -24,8 +25,10 @@ DEFAULT_BUDGETS = {
 }
 
 
-def load_budgets(path, scenario="analysis"):
+def load_budgets(path, scenario="analysis", sample_resident_memory=False):
     result = dict(GUI_BUDGETS if scenario == "ui-service" else DEFAULT_BUDGETS)
+    if scenario == "ui-service" and sample_resident_memory and os.name == "nt":
+        result.update(RESIDENT_BUDGET)
     if path is not None:
         if not path.is_file() or path.stat().st_size > 8192:
             raise ValueError("invalid_budget_file")
@@ -73,6 +76,11 @@ def main(argv=None):
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--budgets", type=Path)
     parser.add_argument(
+        "--sample-resident-memory",
+        action="store_true",
+        help="Opt in to bounded Windows job-member working-set polls for ui-service",
+    )
+    parser.add_argument(
         "--metadata",
         type=Path,
         help="Build/SDK/backend provenance JSON; unknown fields remain explicit",
@@ -84,6 +92,11 @@ def main(argv=None):
         format="%(name)s %(levelname)s %(message)s",
         stream=sys.stderr,
     )
+    if options.sample_resident_memory and (
+        options.generate_corpus is not None or options.verify_corpus is not None
+    ):
+        LOG.error("setup_rejected reason=resident_sampling_requires_ui_service")
+        return 2
     if options.generate_corpus is not None:
         try:
             generate_corpus(options.generate_corpus, options.rows, options.seed)
@@ -112,6 +125,7 @@ def main(argv=None):
     report = {
         "schemaVersion": 1,
         "scenario": options.scenario,
+        "sampleResidentMemory": options.sample_resident_memory,
         "passed": False,
         "state": "invalid_setup",
         "releaseGateStatus": "pending",
@@ -135,6 +149,9 @@ def main(argv=None):
             "serviceCancellationLatency",
             "workerPeakResidentMemory",
             "processTreePeakCommitBytes",
+            "processTreeSampledRssPeakBytes",
+            "hostSampledRssPeakBytes",
+            "workersSampledRssPeakBytes",
             "sustainedMemorySlope",
             "osCacheColdRuns",
             "richRendererOverhead",
@@ -162,7 +179,11 @@ def main(argv=None):
         if not 1 <= options.repetitions <= 10:
             raise ValueError("invalid_repetitions")
         options.corpus = options.corpus.resolve()
-        report["budgets"] = load_budgets(options.budgets, options.scenario)
+        if options.sample_resident_memory and options.scenario != "ui-service":
+            raise ValueError("resident_sampling_requires_ui_service")
+        report["budgets"] = load_budgets(
+            options.budgets, options.scenario, options.sample_resident_memory
+        )
         if options.scenario == "ui-service":
             if not 100 <= options.samples <= 1000:
                 raise ValueError("invalid_samples")
