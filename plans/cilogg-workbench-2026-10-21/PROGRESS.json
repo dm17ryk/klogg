@@ -21,8 +21,8 @@
     "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
-  "activeTask": "G03",
-  "nextTask": "G02",
+  "activeTask": "G02",
+  "nextTask": "G03",
   "tasks": {
     "G01": {
       "status": "completed",
@@ -147,6 +147,42 @@
             }
           },
           "mergeCommit": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a"
+        },
+        {
+          "id": "G02c",
+          "status": "in_progress",
+          "base": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+          "scope": "Windows owned native host/worker peak committed memory and per-repetition regression gates",
+          "preflight": [
+            "G02b -> G02c: reuse its native ui-service workload and start handshake; no C++ changes.",
+            "G02c -> G03b: branch directly from merged master; PR66 remains independent."
+          ],
+          "rulings": [
+            "Retain full G02 in_progress: job committed bytes supplement but do not replace worker RSS.",
+            "Use a fresh owned job per repetition; exclude runner, version probe and earlier repetitions.",
+            "Only Windows supports this metric; other platforms explicitly retain it as unmeasured.",
+            "Reuse the existing local Qt6.10.1 Qt-only binaries with pinned hashes; do not claim a fresh product build.",
+            "Keep the initial 512MiB committed-memory ceiling distinct from calibrated capacity and resident-memory budgets.",
+            "Keep stalled-peer fixture generation outside its runtime/cleanup stopwatch; preserve its existing 30-second bound and timeout/owned-cleanup assertions."
+          ],
+          "evidence": [
+            "../../docs/workbench/g02c-memory-gates.md",
+            "../../docs/workbench/g02c-windows-observations.json",
+            "Full Python3.14 benchmark suite: 37 tests, 35 passed and 2 platform skips, 488.721 seconds.",
+            "Three quiet native Windows repetitions passed all unchanged timing budgets plus peak committed-memory gate: 79597568, 79790080 and 79405056 bytes. Initial concurrent-run CPU-paint failure remains retained in observations.",
+            "Full local CTest: 6/6 suites, zero failures, 523.25 seconds; benchmark suite 270.46 seconds. This run preceded the subsequent test-only fixture-clock correction.",
+            "Python3.9 initial suite retained: one existing timeout test measured 30.672 seconds including corpus generation; no product failure. Excluding setup keeps its 30-second runtime/cleanup bound unchanged; focused test passed in 28.890 seconds. Final full Python3.9 rerun passed: 37 tests, 35 passed and 2 platform skips, 381.082 seconds.",
+            "Fresh Python and general whole-branch reviews approved; both approved the subsequent fixture-clock correction.",
+            "Plan validation: 105 tasks, 187 requirements, 409 local links; Ruff E9/F and whitespace checks pass."
+          ],
+          "limitations": [
+            "Hosted CI and merge pending. Full G02/G03 remain in_progress.",
+            "GitNexus stale primary index cannot resolve ProcessOwner, run_gui or load_budgets. No graph pass is claimed; CodeGraph unindexed and Code Review Graph unavailable.",
+            "GitNexus refresh attempted with two parser workers and a 120-second deadline; timed out and only its owned process tree was reaped. detect-changes uses stale primary index and reports no changes; this is not a valid graph scope pass."
+          ],
+          "commit": "933d5520bb6fc038e0cbcf7e962a568530d3f852",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/67",
+          "localVerification": "passed"
         }
       ]
     },

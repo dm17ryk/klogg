@@ -147,8 +147,9 @@ class WorkbenchBenchmarkTests(unittest.TestCase):
         )
         self.assertEqual(report["reason"], "corpus_hash_mismatch")
 
-    def fake_run(self, name="run", environment=None, budgets=None):
-        corpus, _ = self.corpus(name + "-corpus")
+    def fake_run(self, name="run", environment=None, budgets=None, corpus=None):
+        if corpus is None:
+            corpus, _ = self.corpus(name + "-corpus")
         output = self.directory / name
         arguments = [
             "--executable",
@@ -244,9 +245,12 @@ class WorkbenchBenchmarkTests(unittest.TestCase):
                 self.assertEqual(report["reason"], "protocol_failure")
 
     def test_nonreading_peer_times_out_and_reaps_owned_processes(self):
+        # Fixture generation is setup, outside the transport/cleanup deadline.
+        corpus, _ = self.corpus("nonreading-corpus")
         started = time.monotonic()
         result, report = self.fake_run(
-            environment=dict(os.environ, CILOGG_BENCHMARK_FAKE_STOP_READING="1")
+            environment=dict(os.environ, CILOGG_BENCHMARK_FAKE_STOP_READING="1"),
+            corpus=corpus,
         )
         self.assertLess(time.monotonic() - started, 30)
         self.assertEqual(result.returncode, 1, result.stderr)

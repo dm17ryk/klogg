@@ -1,0 +1,452 @@
+{
+  "schemaVersion": 1,
+  "slice": "G02c",
+  "releaseGateStatus": "pending",
+  "evidenceKind": "application",
+  "attempts": [
+    {
+      "recordedAtUtc": "2026-10-25T20:44:19.078766+00:00",
+      "state": "failed",
+      "passed": false,
+      "releaseGateStatus": "pending",
+      "budgets": {
+        "guiEventP95Ms": 100.0,
+        "nativeSuiteSeconds": 120.0,
+        "processTreePeakCommitBytes": 536870912,
+        "scrollPaintP95Ms": 100.0,
+        "serviceCancellationMs": 1000.0
+      },
+      "build": {
+        "backend": "unreported",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "reportedVersion": "cilogg 26.4.2.0\r\nBuilt 2026-10-25 from 17883529(v22.06-447-g17883529)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\ncilogg 26.4.2.0\r\nBuilt 2026-10-25 from 17883529(v22.06-447-g17883529)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\n",
+        "sdk": "unreported",
+        "suppliedMetadata": {
+          "acceleratedSearch": "disabled: KLOGG_USE_HYPERSCAN=OFF and KLOGG_USE_VECTORSCAN=OFF",
+          "buildType": "RelWithDebInfo",
+          "captureBackend": "Qt QRegularExpression",
+          "linkerObservation": "Requested KLOGG_USE_LTO=OFF; MSVC automatically restarted application linking with LTCG for inherited /GL object inputs",
+          "lto": "KLOGG_USE_LTO=OFF",
+          "provenance": "Fresh isolated build_root, approved local SDK; native CI and hardware comparisons remain pending",
+          "sdk": "Qt 6.10.1 MSVC2022 x64",
+          "sourceChanges": "G02b benchmark/test-only changes; native probe binary hash pins its build",
+          "sourceCommit": "4deed89722c3df275c08044dd8ac9aa459c5a99d"
+        },
+        "testBinarySha256": "59ee74f3c51ca66b6646b225e04722c030a94016e9154a72ad80e1f207cc317d"
+      },
+      "corpus": {
+        "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+        "rows": 100000,
+        "seed": 42
+      },
+      "machine": {
+        "architecture": "AMD64",
+        "logicalProcessors": 12,
+        "platform": "Windows-11-10.0.26200-SP0",
+        "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+        "python": "3.14.7"
+      },
+      "cachePolicy": "os_cache_uncontrolled",
+      "harnessModules": {
+        "workbench-benchmark.py": "80c3d910217faa83dd008e6685af092a09951f02f58ed0e6f7c795fa496ade27",
+        "workbench_benchmark.py": "cca40b12c6483f540c97e2459904cbf50a62a631b83d917901358a7a41da2b3d",
+        "workbench_corpus.py": "355b4ee1a2f0099dfa4bf94fb416a021420e09a0048aa17a35f54a1a2a1592e7",
+        "workbench_gui.py": "5a8306a13b0cce98f5fe4df5f92bbce55cae3f7dc84f8f7bd96ec2af7af34999",
+        "workbench_process.py": "d4e053f41998186807babeae9e7b0040a24157eea6f858151ac4b431cbc1ea48",
+        "workbench_runtime.py": "5f1d8aae82e3cf00b68bd12a8369acc443152af85fa7ff72860871939abb9b6a"
+      },
+      "unmeasured": [
+        "workerPeakResidentMemory",
+        "sustainedMemorySlope",
+        "osCacheColdRuns",
+        "richRendererOverhead",
+        "scrollPresentationLatency"
+      ],
+      "rawReportSha256": "dc7a75444db7017d16da77bebbe2f3707f29fc6b64eb71eb0c487c6de771d422",
+      "rawReportPath": "build_root/g02c-native-windows/result.json",
+      "runs": [
+        {
+          "repetition": 0,
+          "measurements": {
+            "cancellationAckMs": 0.0018,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.34309999999999996,
+                "samples": 100,
+                "scrollPaintP95Ms": 69.75019999999999
+              },
+              "idle": {
+                "guiEventP95Ms": 0.5539999999999999,
+                "samples": 100,
+                "scrollPaintP95Ms": 58.706799999999994
+              }
+            },
+            "guiEventP95Ms": 0.5539999999999999,
+            "processTreePeakCommitBytes": 79708160,
+            "scrollPaintP95Ms": 69.75019999999999,
+            "serviceCancellationMs": 54.4261
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "36c0d7cf2b319888a0e15dcc6350cd2886c3cab8722d9cdb3ec14a21a89b3649",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        },
+        {
+          "repetition": 1,
+          "measurements": {
+            "cancellationAckMs": 0.0029,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.2532,
+                "samples": 100,
+                "scrollPaintP95Ms": 47.7067
+              },
+              "idle": {
+                "guiEventP95Ms": 0.2647,
+                "samples": 100,
+                "scrollPaintP95Ms": 41.4636
+              }
+            },
+            "guiEventP95Ms": 0.2647,
+            "processTreePeakCommitBytes": 79548416,
+            "scrollPaintP95Ms": 47.7067,
+            "serviceCancellationMs": 45.8765
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "345f86d3e5ed97007d33e08236d36d18f71d0fcf14695302c1f762c581467e88",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        },
+        {
+          "repetition": 2,
+          "measurements": {
+            "cancellationAckMs": 0.0013,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.147,
+                "samples": 100,
+                "scrollPaintP95Ms": 121.51389999999999
+              },
+              "idle": {
+                "guiEventP95Ms": 0.254,
+                "samples": 100,
+                "scrollPaintP95Ms": 120.4683
+              }
+            },
+            "guiEventP95Ms": 0.254,
+            "processTreePeakCommitBytes": 79527936,
+            "scrollPaintP95Ms": 121.51389999999999,
+            "serviceCancellationMs": 373.0745
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": false,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "5df69d8e04bdb6bb7e003f61e37b485e4e7ea544708177f427b2b33b763adf37",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        }
+      ],
+      "reason": "budget_exceeded",
+      "notes": [
+        "Ran concurrently with portable benchmark self-tests. Third CPU paint gate failed; retain failure without relaxing the 100ms budget.",
+        "Supplied metadata was copied from G02b and is historical; its fresh-build/sourceCommit wording is superseded by the subsequent accurate metadata. Binary hashes/reportedVersion in this report remain actual observations."
+      ]
+    },
+    {
+      "recordedAtUtc": "2026-10-25T20:53:54.494048+00:00",
+      "state": "passed",
+      "passed": true,
+      "releaseGateStatus": "pending",
+      "budgets": {
+        "guiEventP95Ms": 100.0,
+        "nativeSuiteSeconds": 120.0,
+        "processTreePeakCommitBytes": 536870912,
+        "scrollPaintP95Ms": 100.0,
+        "serviceCancellationMs": 1000.0
+      },
+      "build": {
+        "backend": "unreported",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "reportedVersion": "cilogg 26.4.2.0\r\nBuilt 2026-10-25 from 17883529(v22.06-447-g17883529)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\ncilogg 26.4.2.0\r\nBuilt 2026-10-25 from 17883529(v22.06-447-g17883529)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\n",
+        "sdk": "unreported",
+        "suppliedMetadata": {
+          "acceleratedSearch": "disabled: KLOGG_USE_HYPERSCAN=OFF and KLOGG_USE_VECTORSCAN=OFF",
+          "benchmarkBase": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+          "buildType": "RelWithDebInfo",
+          "captureBackend": "Qt QRegularExpression",
+          "linkerObservation": "Requested KLOGG_USE_LTO=OFF; MSVC automatically restarted application linking with LTCG for inherited /GL object inputs",
+          "lto": "KLOGG_USE_LTO=OFF",
+          "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+          "provenance": "Reused existing local Qt6.10.1 Qt-only binaries; no fresh product build for Python-only G02c",
+          "sdk": "Qt 6.10.1 MSVC2022 x64",
+          "sourceChanges": "Only benchmark Python/tests/docs changed; binary hashes pin the reused runtime",
+          "sourceCommit": "17883529 (binary reported build identity)"
+        },
+        "testBinarySha256": "59ee74f3c51ca66b6646b225e04722c030a94016e9154a72ad80e1f207cc317d"
+      },
+      "corpus": {
+        "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+        "rows": 100000,
+        "seed": 42
+      },
+      "machine": {
+        "architecture": "AMD64",
+        "logicalProcessors": 12,
+        "platform": "Windows-11-10.0.26200-SP0",
+        "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+        "python": "3.14.7"
+      },
+      "cachePolicy": "os_cache_uncontrolled",
+      "harnessModules": {
+        "workbench-benchmark.py": "80c3d910217faa83dd008e6685af092a09951f02f58ed0e6f7c795fa496ade27",
+        "workbench_benchmark.py": "cca40b12c6483f540c97e2459904cbf50a62a631b83d917901358a7a41da2b3d",
+        "workbench_corpus.py": "355b4ee1a2f0099dfa4bf94fb416a021420e09a0048aa17a35f54a1a2a1592e7",
+        "workbench_gui.py": "5a8306a13b0cce98f5fe4df5f92bbce55cae3f7dc84f8f7bd96ec2af7af34999",
+        "workbench_process.py": "d4e053f41998186807babeae9e7b0040a24157eea6f858151ac4b431cbc1ea48",
+        "workbench_runtime.py": "5f1d8aae82e3cf00b68bd12a8369acc443152af85fa7ff72860871939abb9b6a"
+      },
+      "unmeasured": [
+        "workerPeakResidentMemory",
+        "sustainedMemorySlope",
+        "osCacheColdRuns",
+        "richRendererOverhead",
+        "scrollPresentationLatency"
+      ],
+      "rawReportSha256": "29f7df866a0c0c43792551891c77ce232289a98f5b1876b2994ce0559033c257",
+      "rawReportPath": "build_root/g02c-native-windows-quiet/result.json",
+      "runs": [
+        {
+          "repetition": 0,
+          "measurements": {
+            "cancellationAckMs": 0.0019,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.1464,
+                "samples": 100,
+                "scrollPaintP95Ms": 34.0299
+              },
+              "idle": {
+                "guiEventP95Ms": 0.6476,
+                "samples": 100,
+                "scrollPaintP95Ms": 75.1712
+              }
+            },
+            "guiEventP95Ms": 0.6476,
+            "processTreePeakCommitBytes": 79597568,
+            "scrollPaintP95Ms": 75.1712,
+            "serviceCancellationMs": 29.252599999999997
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "4744860601d6469c7c1a582eb118884af68b6b821687cd05eb71ddd91decd504",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        },
+        {
+          "repetition": 1,
+          "measurements": {
+            "cancellationAckMs": 0.0018,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.23759999999999998,
+                "samples": 100,
+                "scrollPaintP95Ms": 39.6016
+              },
+              "idle": {
+                "guiEventP95Ms": 0.5595,
+                "samples": 100,
+                "scrollPaintP95Ms": 83.7312
+              }
+            },
+            "guiEventP95Ms": 0.5595,
+            "processTreePeakCommitBytes": 79790080,
+            "scrollPaintP95Ms": 83.7312,
+            "serviceCancellationMs": 49.4829
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "4f4ff4d0ce947f875663b6d6d80b9fec1c994334689bb466eeda6cde34f343bc",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        },
+        {
+          "repetition": 2,
+          "measurements": {
+            "cancellationAckMs": 0.0034999999999999996,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.24789999999999998,
+                "samples": 100,
+                "scrollPaintP95Ms": 52.666999999999994
+              },
+              "idle": {
+                "guiEventP95Ms": 0.40159999999999996,
+                "samples": 100,
+                "scrollPaintP95Ms": 52.4893
+              }
+            },
+            "guiEventP95Ms": 0.40159999999999996,
+            "processTreePeakCommitBytes": 79405056,
+            "scrollPaintP95Ms": 52.666999999999994,
+            "serviceCancellationMs": 63.0511
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "nativeReportSha256": "d4008a9c47295fc9f34120f67b45388d5aac3e0e8203addc1a6be0e4220e0e9e",
+          "qt": {
+            "compile": "6.10.1",
+            "platform": "windows",
+            "runtime": "6.10.1"
+          },
+          "source": {
+            "bytes": "3398964",
+            "physicalLines": "100000",
+            "sha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          "workerActiveDuringSamples": true,
+          "recoveryComplete": true
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Compact observations retain exact peak bytes, summary timings, gates and hashes. Full raw timing samples remain at the identified local paths.",
+    "Committed virtual memory is not resident memory; worker RSS and full G02 remain pending.",
+    "Reused local binaries; no fresh C++ build or hosted performance pass is claimed."
+  ]
+}

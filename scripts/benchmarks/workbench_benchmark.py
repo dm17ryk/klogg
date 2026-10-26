@@ -41,12 +41,12 @@ def load_budgets(path, scenario="analysis"):
                 raise ValueError("invalid_budgets")
             maximum = (
                 16 * 1024**3
-                if key == "hostPeakBytes"
+                if key.endswith("Bytes")
                 else (600000 if key.endswith("Ms") else 600)
             )
             if not 0 < value <= maximum or not math.isfinite(value):
                 raise ValueError("invalid_budgets")
-            if key == "hostPeakBytes" and value != int(value):
+            if key.endswith("Bytes") and value != int(value):
                 raise ValueError("invalid_budgets")
             result[key] = value
     return result
@@ -134,6 +134,7 @@ def main(argv=None):
             "scrollLatency",
             "serviceCancellationLatency",
             "workerPeakResidentMemory",
+            "processTreePeakCommitBytes",
             "sustainedMemorySlope",
             "osCacheColdRuns",
             "richRendererOverhead",
