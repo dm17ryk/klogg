@@ -302,7 +302,53 @@
             "CodeGraph unindexed; Code Review Graph unavailable. Both bounded GitNexus refresh attempts timed out120s; affected targets remain UNKNOWN in a stale primary index. No graph verification pass claimed."
           ],
           "commit": null,
-          "pullRequest": null
+          "pullRequest": null,
+          "reviewFixes": {
+            "status": "locally_verified_hosted_pending",
+            "baseCommit": "ad516da6930fa4f1f9959e33c71c53ad0c086305",
+            "review": "Fresh C++ABI/general approved; Python boundary-label clarification addressed.",
+            "evidence": "../../docs/workbench/g02d-windows-observations.json#reviewFollowUp",
+            "verification": {
+              "red": {
+                "path": "build_root/g02d-boundary-red.log",
+                "sha256": "c2128eecaa54a6c87922d463e84090537ff9ac28da6bb130f635a4d83f69461c"
+              },
+              "green": {
+                "path": "build_root/g02d-boundary-green.log",
+                "sha256": "39b13836facd9321f0452a5591720a1abffc09be78a408608176242efeb9481f"
+              },
+              "ctest": {
+                "path": "build_root/g02d-review-ctest.log",
+                "sha256": "cc98b35f429301b8bbfc32c44c58c32563284088221b1ef9ae7d422ffc144a5c",
+                "summary": "100% tests passed, 0 tests failed out of 1",
+                "time": "Total Test time (real) =  86.23 sec"
+              },
+              "python39": {
+                "path": "build_root/g02d-review-python39.log",
+                "sha256": "40658d7cf875bac68366ef79a3c3752045a449475afb65b937eeeb1db62d857b",
+                "summary": "Ran 59 tests in 114.514s\r",
+                "platformSkips": 4
+              },
+              "steps": [
+                {
+                  "name": "ctest",
+                  "exitCode": 0,
+                  "elapsedSeconds": 106.68857600004412
+                },
+                {
+                  "name": "python39",
+                  "exitCode": 0,
+                  "elapsedSeconds": 115.17666639992967
+                },
+                {
+                  "name": "native",
+                  "exitCode": 0,
+                  "elapsedSeconds": 15.910656400024891
+                }
+              ]
+            },
+            "ruling": "Reviewer minor; executor treated accurate phase provenance as a correction before publication. Descriptor only: last_poll_while_host_completion_pending. In-flight sequential polls may straddle host exit. No sampling, limit or gate algorithm changed."
+          }
         }
       ]
     },

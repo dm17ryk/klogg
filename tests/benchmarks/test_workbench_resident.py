@@ -10,6 +10,7 @@ import sys
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/benchmarks"))
@@ -23,6 +24,32 @@ class ResidentSamplerTests(unittest.TestCase):
             "The bounded resident-memory backend is not implemented",
         )
         self.resident = importlib.import_module("workbench_resident")
+
+    def test_in_flight_poll_can_straddle_host_exit_before_completion_is_observed(self):
+        owner = ProcessOwner()
+        self.addCleanup(owner.close)
+        sampler = self.resident.ResidentMemorySampler(owner, 1)
+        host = SimpleNamespace(pid=1, args=["fixture"], returncode=None)
+        host.poll = lambda: host.returncode
+        host.wait = lambda timeout: host.returncode
+        pending = [{"rssByPid": {1: 10}, "exitRaces": 0}]
+
+        def snapshot():
+            if pending:
+                return pending.pop()
+            # Host exits after wait's poll() check. A still-owned descendant
+            # remains readable during this sequential, in-flight snapshot.
+            host.returncode = 0
+            return {"rssByPid": {2: 30}, "exitRaces": 1}
+
+        sampler.backend = SimpleNamespace(snapshot=snapshot)
+        sampler.sample()
+        self.assertEqual(sampler.wait(host, timeout=1), 0)
+        report = sampler.result()
+        self.assertEqual(report["measurements"]["processTreeSampledRssPeakBytes"], 30)
+        self.assertEqual(report["measurements"]["workersSampledRssPeakBytes"], 30)
+        self.assertEqual(report["exitRaces"], 1)
+        self.assertEqual(report["end"], "last_poll_while_host_completion_pending")
 
     def test_peak_is_maximum_poll_total_not_sum_of_individual_peaks(self):
         samples = self.resident.ResidentSamples(1)

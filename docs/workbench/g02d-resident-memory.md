@@ -28,6 +28,12 @@ The runner, version probe, unrelated applications and previous repetitions are
 excluded. Every query handle closes immediately. `ProcessOwner` and its cleanup
 behavior are unchanged; sampling has no background thread.
 
+The final poll runs while host completion is still pending observation. The host
+can exit during that sequential poll while an owned descendant remains readable.
+This is not an exact cutoff at the instant of host exit. Initial observations
+retain the older `last_poll_before_native_test_host_exit` label with a historical
+clarification; current reports use `last_poll_while_host_completion_pending`.
+
 The sampler requests a 10 ms interval while waiting for host completion. Polling
 counts against the original absolute native-suite deadline. The report records
 actual sample counts, maximum gaps and poll durations; 10 ms is not a timing
@@ -96,7 +102,7 @@ application performance evidence.
 
 ## Local evidence
 
-The full local Qt 6.10.1 Qt-only target build and CTest passed: six suites in
+The initial full local Qt 6.10.1 Qt-only target build and CTest passed: six suites in
 249.07 s, including the expanded benchmark suite in 89.62 s. Python 3.9 separately
 passed 58 tests in 108.835 s with four platform skips. All four pre-existing portable
 configuration files were restored byte-for-byte after CTest.
@@ -118,3 +124,10 @@ are sequential observations on an uncontrolled live machine, not a statistical
 overhead or capacity claim. Exact bytes, timings, backend/build identities,
 source hashes and failure history are retained in
 [the observations](g02d-windows-observations.json). Full G02/G03 remain open.
+
+After the review clarification, the deterministic host-exit race case and the
+complete 59-case benchmark suite pass on Python 3.14 and 3.9, with four platform
+skips each. The registered benchmark rerun passes in 86.23 s; Python 3.9 takes
+114.514 s. Three fresh enabled native runs also pass with the clarified descriptor
+and the same application/test binaries. The observations preserve both evidence
+epochs and their source hashes; the sampler algorithm differs only in the label.

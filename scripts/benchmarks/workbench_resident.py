@@ -109,7 +109,7 @@ class ResidentSamples:
             "scope": "native_test_host_and_owned_descendants",
             "workerRole": "all_owned_non_host_members",
             "start": "first_poll_after_job_assignment_before_start_handshake",
-            "end": "last_poll_before_native_test_host_exit",
+            "end": "last_poll_while_host_completion_pending",
             "hostPid": self.host_pid,
             "samples": self.samples,
             "hostSamples": self.host_samples,

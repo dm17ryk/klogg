@@ -736,5 +736,351 @@
     "Compact evidence retains counters, per-run timings/gates/provenance and hashes. Complete raw reports/timing samples remain at the listed local artifact paths.",
     "Local Qt6.10.1 Qt-only Windows measurements; hosted Qt6.12, native Linux/macOS RSS, sustained-memory slope, compositor and optional renderer evidence remain pending.",
     "CodeGraph unindexed; Code Review Graph unavailable. Both bounded GitNexus refresh attempts timed out120s; affected targets remain UNKNOWN in a stale primary index. No graph verification pass claimed."
-  ]
+  ],
+  "initialEvidenceSourceCommit": "ad516da6930fa4f1f9959e33c71c53ad0c086305",
+  "initialEndLabelClarification": "The initial raw last_poll_before_native_test_host_exit labels are retained verbatim. Interpret them as a poll while completion observation is pending; an in-flight poll can straddle actual host exit. Metadata is clarified in the follow-up; initial values are not silently rewritten.",
+  "reviewFollowUp": {
+    "recordedAtUtc": "2026-10-26T20:01:36.790226+00:00",
+    "baseCommit": "ad516da6930fa4f1f9959e33c71c53ad0c086305",
+    "finding": "Python review: end-boundary label overstates actual host-exit cutoff",
+    "classification": "Reviewer minor; executor treated accurate phase provenance as a correction before publication.",
+    "change": "Descriptor only: last_poll_while_host_completion_pending. In-flight sequential polls may straddle host exit. No sampling, limit or gate algorithm changed.",
+    "algorithmIdenticalExceptDescriptor": true,
+    "sourceFiles": {
+      "scripts/benchmarks/workbench_benchmark.py": "1ab34cecda73ccce80e7fb1efe141bea55b3732d2bc58e9ac4ff1ec7338a0985",
+      "scripts/benchmarks/workbench_gui.py": "752f6afc99bf393824627588f3862e1ae12671058b2627f7259b85c6a29166b1",
+      "scripts/benchmarks/workbench_resident.py": "fdbef1251c11c3858f8b557067398bd50625212796061de7d2e32194699e598e",
+      "tests/benchmarks/test_workbench_resident.py": "e51044155df3db2f70fcabfb7b83d8abb28e0a0e5202131531be823048797337",
+      "tests/benchmarks/test_workbench_resident_cli.py": "a6f14cf56f147d08383304e7c3c4c8a89f45cb0accae91eefede264ec5cac0dc",
+      "tests/CMakeLists.txt": "306ea16787a1e306bbf97f8d665a615eaf3c65eaf700edbb51a6ec69ec95dccc"
+    },
+    "verification": {
+      "red": {
+        "path": "build_root/g02d-boundary-red.log",
+        "sha256": "c2128eecaa54a6c87922d463e84090537ff9ac28da6bb130f635a4d83f69461c"
+      },
+      "green": {
+        "path": "build_root/g02d-boundary-green.log",
+        "sha256": "39b13836facd9321f0452a5591720a1abffc09be78a408608176242efeb9481f"
+      },
+      "ctest": {
+        "path": "build_root/g02d-review-ctest.log",
+        "sha256": "cc98b35f429301b8bbfc32c44c58c32563284088221b1ef9ae7d422ffc144a5c",
+        "summary": "100% tests passed, 0 tests failed out of 1",
+        "time": "Total Test time (real) =  86.23 sec"
+      },
+      "python39": {
+        "path": "build_root/g02d-review-python39.log",
+        "sha256": "40658d7cf875bac68366ef79a3c3752045a449475afb65b937eeeb1db62d857b",
+        "summary": "Ran 59 tests in 114.514s\r",
+        "platformSkips": 4
+      },
+      "steps": [
+        {
+          "name": "ctest",
+          "exitCode": 0,
+          "elapsedSeconds": 106.68857600004412
+        },
+        {
+          "name": "python39",
+          "exitCode": 0,
+          "elapsedSeconds": 115.17666639992967
+        },
+        {
+          "name": "native",
+          "exitCode": 0,
+          "elapsedSeconds": 15.910656400024891
+        }
+      ]
+    },
+    "reviews": {
+      "cppAbi": "approved",
+      "general": "approved",
+      "python": "approved with reporting clarification addressed by RED/GREEN"
+    },
+    "native": {
+      "schemaVersion": 1,
+      "recordedAtUtc": "2026-10-26T19:56:02.865337+00:00",
+      "state": "passed",
+      "passed": true,
+      "releaseGateStatus": "pending",
+      "sampleResidentMemory": true,
+      "budgets": {
+        "guiEventP95Ms": 100.0,
+        "nativeSuiteSeconds": 120.0,
+        "processTreePeakCommitBytes": 536870912,
+        "processTreeSampledRssPeakBytes": 536870912,
+        "scrollPaintP95Ms": 100.0,
+        "serviceCancellationMs": 1000.0
+      },
+      "build": {
+        "backend": "unreported",
+        "binarySha256": "87f5785b9c35db4d6859b5432bd5f5f988140d4704d964fdb8066fbc28bb9d58",
+        "reportedVersion": "cilogg 26.4.2.0\r\nBuilt 2026-10-26 from f9adedc4(v22.06-450-gf9adedc4)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\ncilogg 26.4.2.0\r\nBuilt 2026-10-26 from f9adedc4(v22.06-450-gf9adedc4)\r\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\r\nThis is free software.  You may redistribute copies of it under the terms of\r\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\r\nThere is NO WARRANTY, to the extent permitted by law.\r\n",
+        "sdk": "unreported",
+        "suppliedMetadata": {
+          "acceleratedSearch": "disabled: both Hyperscan/VectorScan OFF in CMakeCache",
+          "binaryReportedIdentity": "Preserved verbatim in each benchmark result; not inferred from checkout identity",
+          "buildEvidence": "g02d-build.log: full target build after master checkout and CMake regeneration; incremental objects retained",
+          "buildType": "RelWithDebInfo",
+          "checkedOutHeadAtBuild": "f9adedc487db19fc9490ca1ff015e66be4cfc16b",
+          "ltoDeclared": "KLOGG_USE_LTO=OFF; inherited /GL inputs cause observed MSVC LTCG relinking",
+          "nativeTestSourcesTree": "a34bff0d9fc78b11c0be8b62f1e6223428355cf4",
+          "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+          "sdk": "Qt6.10.1 MSVC2022 x64",
+          "workingTreeChanges": "G02d benchmark Python/tests/docs and aggregate test timeout only; product C++ and native test sources unchanged from HEAD"
+        },
+        "testBinarySha256": "420553d88ec76beecf5655aa54794417a0a7ec8075a5e0ce655a17bf56b9412a"
+      },
+      "corpus": {
+        "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+        "rows": 100000,
+        "seed": 42
+      },
+      "machine": {
+        "architecture": "AMD64",
+        "logicalProcessors": 12,
+        "platform": "Windows-11-10.0.26200-SP0",
+        "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+        "python": "3.14.7"
+      },
+      "cachePolicy": "os_cache_uncontrolled",
+      "harnessModules": {
+        "workbench-benchmark.py": "80c3d910217faa83dd008e6685af092a09951f02f58ed0e6f7c795fa496ade27",
+        "workbench_benchmark.py": "1ab34cecda73ccce80e7fb1efe141bea55b3732d2bc58e9ac4ff1ec7338a0985",
+        "workbench_corpus.py": "355b4ee1a2f0099dfa4bf94fb416a021420e09a0048aa17a35f54a1a2a1592e7",
+        "workbench_gui.py": "752f6afc99bf393824627588f3862e1ae12671058b2627f7259b85c6a29166b1",
+        "workbench_process.py": "d4e053f41998186807babeae9e7b0040a24157eea6f858151ac4b431cbc1ea48",
+        "workbench_resident.py": "fdbef1251c11c3858f8b557067398bd50625212796061de7d2e32194699e598e",
+        "workbench_runtime.py": "5f1d8aae82e3cf00b68bd12a8369acc443152af85fa7ff72860871939abb9b6a"
+      },
+      "unmeasured": [
+        "workerPeakResidentMemory",
+        "sustainedMemorySlope",
+        "osCacheColdRuns",
+        "richRendererOverhead",
+        "scrollPresentationLatency"
+      ],
+      "rawReportPath": "build_root/g02d-native-reviewed-enabled/result.json",
+      "rawReportSha256": "30b8a006316f56e47e5897fb6f42927075b65e9c18efe3a5a91847ee8b8e61a0",
+      "runs": [
+        {
+          "repetition": 0,
+          "measurements": {
+            "cancellationAckMs": 0.0009,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.0847,
+                "samples": 100,
+                "scrollPaintP95Ms": 8.5116
+              },
+              "idle": {
+                "guiEventP95Ms": 0.1265,
+                "samples": 100,
+                "scrollPaintP95Ms": 10.130899999999999
+              }
+            },
+            "guiEventP95Ms": 0.1265,
+            "hostSampledRssPeakBytes": 80998400,
+            "processTreePeakCommitBytes": 80556032,
+            "processTreeSampledRssPeakBytes": 92602368,
+            "scrollPaintP95Ms": 10.130899999999999,
+            "serviceCancellationMs": 29.189799999999998,
+            "workersSampledRssPeakBytes": 28549120
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "residentMemory": {
+            "backend": "windows_job_members_working_set",
+            "countsSharedPagesPerProcess": true,
+            "emptyPolls": 0,
+            "end": "last_poll_while_host_completion_pending",
+            "exitRaces": 0,
+            "hostPid": 60192,
+            "hostSamples": 206,
+            "includesExitedDescendants": false,
+            "includesHarness": false,
+            "intervalRequestedMs": 10.0,
+            "kind": "sampled_working_set_bytes",
+            "maximumSampleDurationMs": 1.6654001083225012,
+            "maximumSampleGapMs": 18.633699975907803,
+            "maximumTrackedPids": 256,
+            "measurements": {
+              "hostSampledRssPeakBytes": 80998400,
+              "processTreeSampledRssPeakBytes": 92602368,
+              "workersSampledRssPeakBytes": 28549120
+            },
+            "observedWorkerPids": 4,
+            "samples": 206,
+            "scope": "native_test_host_and_owned_descendants",
+            "snapshotIsAtomic": false,
+            "start": "first_poll_after_job_assignment_before_start_handshake",
+            "status": "sampled",
+            "workerObserved": true,
+            "workerRole": "all_owned_non_host_members"
+          },
+          "nativeReportSha256": "1b94722cbdf4c9f7aa89888e24bd2253f2ac838f3cbdcbb75d72a14420b0b776"
+        },
+        {
+          "repetition": 1,
+          "measurements": {
+            "cancellationAckMs": 0.0013,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.08209999999999999,
+                "samples": 100,
+                "scrollPaintP95Ms": 16.4238
+              },
+              "idle": {
+                "guiEventP95Ms": 0.1639,
+                "samples": 100,
+                "scrollPaintP95Ms": 12.4193
+              }
+            },
+            "guiEventP95Ms": 0.1639,
+            "hostSampledRssPeakBytes": 81424384,
+            "processTreePeakCommitBytes": 80150528,
+            "processTreeSampledRssPeakBytes": 93024256,
+            "scrollPaintP95Ms": 16.4238,
+            "serviceCancellationMs": 41.4212,
+            "workersSampledRssPeakBytes": 28549120
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "residentMemory": {
+            "backend": "windows_job_members_working_set",
+            "countsSharedPagesPerProcess": true,
+            "emptyPolls": 0,
+            "end": "last_poll_while_host_completion_pending",
+            "exitRaces": 0,
+            "hostPid": 38424,
+            "hostSamples": 234,
+            "includesExitedDescendants": false,
+            "includesHarness": false,
+            "intervalRequestedMs": 10.0,
+            "kind": "sampled_working_set_bytes",
+            "maximumSampleDurationMs": 3.923499956727028,
+            "maximumSampleGapMs": 67.19590001739562,
+            "maximumTrackedPids": 256,
+            "measurements": {
+              "hostSampledRssPeakBytes": 81424384,
+              "processTreeSampledRssPeakBytes": 93024256,
+              "workersSampledRssPeakBytes": 28549120
+            },
+            "observedWorkerPids": 4,
+            "samples": 234,
+            "scope": "native_test_host_and_owned_descendants",
+            "snapshotIsAtomic": false,
+            "start": "first_poll_after_job_assignment_before_start_handshake",
+            "status": "sampled",
+            "workerObserved": true,
+            "workerRole": "all_owned_non_host_members"
+          },
+          "nativeReportSha256": "aa9342d021554f555d72dbe3ae0b8b6489321f471b7bb51d6c49df2f7e8bd6a2"
+        },
+        {
+          "repetition": 2,
+          "measurements": {
+            "cancellationAckMs": 0.0009,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.1686,
+                "samples": 100,
+                "scrollPaintP95Ms": 11.4956
+              },
+              "idle": {
+                "guiEventP95Ms": 0.1437,
+                "samples": 100,
+                "scrollPaintP95Ms": 9.8446
+              }
+            },
+            "guiEventP95Ms": 0.1686,
+            "hostSampledRssPeakBytes": 81317888,
+            "processTreePeakCommitBytes": 80715776,
+            "processTreeSampledRssPeakBytes": 92909568,
+            "scrollPaintP95Ms": 11.4956,
+            "serviceCancellationMs": 28.250999999999998,
+            "workersSampledRssPeakBytes": 28536832
+          },
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "memory": {
+            "backend": "windows_job_object",
+            "end": "native_test_host_exit",
+            "includesExitedDescendants": true,
+            "includesHarness": false,
+            "kind": "committed_bytes",
+            "scope": "native_test_host_and_descendants",
+            "start": "job_assignment_before_start_handshake",
+            "status": "measured"
+          },
+          "residentMemory": {
+            "backend": "windows_job_members_working_set",
+            "countsSharedPagesPerProcess": true,
+            "emptyPolls": 0,
+            "end": "last_poll_while_host_completion_pending",
+            "exitRaces": 0,
+            "hostPid": 11988,
+            "hostSamples": 230,
+            "includesExitedDescendants": false,
+            "includesHarness": false,
+            "intervalRequestedMs": 10.0,
+            "kind": "sampled_working_set_bytes",
+            "maximumSampleDurationMs": 4.201599862426519,
+            "maximumSampleGapMs": 29.79349996894598,
+            "maximumTrackedPids": 256,
+            "measurements": {
+              "hostSampledRssPeakBytes": 81317888,
+              "processTreeSampledRssPeakBytes": 92909568,
+              "workersSampledRssPeakBytes": 28536832
+            },
+            "observedWorkerPids": 4,
+            "samples": 230,
+            "scope": "native_test_host_and_owned_descendants",
+            "snapshotIsAtomic": false,
+            "start": "first_poll_after_job_assignment_before_start_handshake",
+            "status": "sampled",
+            "workerObserved": true,
+            "workerRole": "all_owned_non_host_members"
+          },
+          "nativeReportSha256": "2596323ede163cb4dd5e25dc04d70c38f2611274741bde9020c7f637a94532f9"
+        }
+      ]
+    }
+  }
 }
