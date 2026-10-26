@@ -161,6 +161,7 @@ def main(arguments=None):
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--backend", choices=("accelerated", "qt"))
     parser.add_argument("--timeout", type=float, default=300)
+    parser.add_argument("--sdk-smoke", action="store_true", help="Also run SDK and transport checks inside the private host")
     parser.add_argument(
         "--new-run",
         action="store_true",
@@ -184,6 +185,7 @@ def main(arguments=None):
                 {op for case in cases for op in case["operations"]}
             ),
             verify=lambda *values: exercise(cases, *values),
+            sdk_smoke=args.sdk_smoke,
         )
         return 0
     root = args.artifacts.resolve()
@@ -228,6 +230,8 @@ def main(arguments=None):
             "--artifacts",
             str(native),
         ]
+        if args.sdk_smoke:
+            child.append("--sdk-smoke")
         supervise(child, root, args.timeout, handshake=True)
         results = json.loads((native / "case-results.json").read_text(encoding="utf-8"))
         compare_json(
@@ -235,6 +239,21 @@ def main(arguments=None):
         )
         if not results or not all(result.get("passed") is True for result in results):
             raise ParityError("cases_not_passed")
+        if args.sdk_smoke:
+            sdk_reports = []
+            for name in ("result.json", "runtime-result.json"):
+                path = native / "sdk" / name
+                if path.is_symlink() or path.stat().st_size > 65536:
+                    raise ParityError("invalid_sdk_report")
+                data = json.loads(path.read_text(encoding="utf-8"))
+                json.dumps(data, allow_nan=False)
+                if not isinstance(data, dict) or data.get("passed") is not True:
+                    raise ParityError("sdk_checks_not_passed")
+                sdk_reports.append(data)
+            version = sdk_reports[1].get("sdkVersion")
+            if not isinstance(version, str) or not version:
+                raise ParityError("sdk_version_missing")
+            report["sdk"] = {"version": version, "reports": sdk_reports}
         report.update(passed=True, cases=results)
     except (RuntimeError, OSError, ValueError, KeyError, TypeError) as error:
         report["reason"] = str(error)

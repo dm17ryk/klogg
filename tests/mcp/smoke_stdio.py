@@ -5,17 +5,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 from pathlib import Path
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from workbench_contracts import sdk_tool_failed
 
 
-async def run(executable: str, artifacts: Path) -> None:
+async def run(executable: str, artifacts: Path, environment=None) -> None:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
     artifacts.mkdir(parents=True, exist_ok=True)
     parameters = StdioServerParameters(
         command=executable,
         args=["mcp", "serve"],
+        env=environment,
     )
     with (artifacts / "server-stderr.log").open("w", encoding="utf-8") as diagnostics:
         async with (
@@ -32,7 +36,7 @@ async def run(executable: str, artifacts: Path) -> None:
             assert (await session.list_prompts()).prompts[0].name == "inspect_cilogg"
             await session.read_resource("cilogg://commands")
             catalog = await session.call_tool("cilogg_commands", {})
-            assert not catalog.isError
+            assert not sdk_tool_failed(catalog)
             discovered = json.loads(catalog.content[0].text)
             assert len(discovered["commander"]["commands"]) >= 57
             assert set(discovered["cli"]) == {
@@ -49,7 +53,7 @@ async def run(executable: str, artifacts: Path) -> None:
                 result = await session.call_tool(
                     "cilogg_execute", {"action": action, "arguments": arguments or {}}
                 )
-                assert not result.isError, result.content
+                assert not sdk_tool_failed(result), result.content
                 return json.loads(result.content[0].text)["payload"]
 
             info = await command("get_info")
@@ -66,28 +70,38 @@ async def run(executable: str, artifacts: Path) -> None:
             tab_id = tab["tabId"]
             await command("search", {"tab_id": tab_id, "text": "ERROR"})
             await command("set_follow_mode", {"tab_id": tab_id, "disabled": True})
-            assert not (
+            assert not sdk_tool_failed(
                 await session.call_tool("cilogg_state", {"window_index": 0})
-            ).isError
+            )
 
             clipboard = await command("get_ui", {"object_name": "@clipboard"})
-            await command(
-                "set_ui",
-                {"object_name": "@clipboard", "definition": {"text": "MCP smoke"}},
-            )
-            assert (await command("get_ui", {"object_name": "@clipboard"}))[
-                "text"
-            ] == "MCP smoke"
-            await command(
-                "set_ui", {"object_name": "@clipboard", "definition": clipboard}
-            )
+            try:
+                await command(
+                    "set_ui",
+                    {"object_name": "@clipboard", "definition": {"text": "MCP smoke"}},
+                )
+                assert (await command("get_ui", {"object_name": "@clipboard"}))[
+                    "text"
+                ] == "MCP smoke"
+            finally:
+                await command(
+                    "set_ui", {"object_name": "@clipboard", "definition": clipboard}
+                )
 
             await command(
                 "invoke_action", {"object_name": "optionsAction", "window_index": 0}
             )
             objects = []
-            for _ in range(20):
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
                 objects = (await command("get_ui", {"window_index": 0}))["objects"]
+                dialogs = [obj for obj in objects
+                           if obj["className"] == "OptionsDialog" and obj.get("visible")]
+                if len(dialogs) != 1:
+                    await asyncio.sleep(0.05)
+                    continue
+                prefix = dialogs[0]["objectPath"] + "/"
+                objects = [obj for obj in objects if obj["objectPath"].startswith(prefix)]
                 if any(
                     obj["className"] == "QPushButton"
                     and "Cancel" in obj.get("properties", {}).get("text", "")
@@ -96,6 +110,8 @@ async def run(executable: str, artifacts: Path) -> None:
                 ):
                     break
                 await asyncio.sleep(0.05)
+            else:
+                raise AssertionError("Preferences dialog did not become observable")
             (artifacts / "preferences-ui.json").write_text(
                 json.dumps(objects, indent=2), encoding="utf-8"
             )
@@ -130,7 +146,7 @@ async def run(executable: str, artifacts: Path) -> None:
                 "cilogg_cli",
                 {"mode": "grep", "arguments": ["-e", "ERROR", str(sample)]},
             )
-            assert not grep.isError, grep.content
+            assert not sdk_tool_failed(grep), grep.content
             assert "ERROR smoke שלום 😀" in json.loads(grep.content[0].text)["stdout"]
             dry_run = await session.call_tool(
                 "cilogg_cli",
@@ -146,12 +162,12 @@ async def run(executable: str, artifacts: Path) -> None:
                     ],
                 },
             )
-            assert not dry_run.isError, dry_run.content
+            assert not sdk_tool_failed(dry_run), dry_run.content
             assert not (artifacts / "setup-home").exists()
             error = await session.call_tool(
                 "cilogg_execute", {"action": "invalid_action"}
             )
-            assert error.isError
+            assert sdk_tool_failed(error)
             await command("close_tab", {"tab_id": tab_id})
             (artifacts / "result.json").write_text(
                 json.dumps(
