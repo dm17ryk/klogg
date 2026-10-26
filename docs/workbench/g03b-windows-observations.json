@@ -1,0 +1,362 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-25",
+  "task": "G03b",
+  "localVerification": "passed",
+  "platform": "Windows x64",
+  "qt": "6.10.1",
+  "configuration": "RelWithDebInfo",
+  "guiMode": "offscreen functional checks; visible usability remains unmeasured",
+  "productSource": "Existing locally built executable has the same src tree as merged master d73b9be5. No production C++ changed in G03b; this is not a claim of a rebuilt G03b binary.",
+  "profiles": [
+    {
+      "sdk": "1.30.0",
+      "passed": true,
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+      "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "sdkChecks": [
+        {
+          "passed": true,
+          "tools": [
+            "cilogg_commands",
+            "cilogg_status",
+            "cilogg_state",
+            "cilogg_execute",
+            "cilogg_cli",
+            "cilogg_jobs"
+          ],
+          "checks": [
+            "initialize",
+            "tools",
+            "resources",
+            "prompts",
+            "file",
+            "search",
+            "follow",
+            "clipboard",
+            "modal-inspect-edit-cancel",
+            "mouse-click",
+            "grep",
+            "native-setup-dry-run",
+            "tool-error"
+          ]
+        },
+        {
+          "passed": true,
+          "sdkVersion": "1.30.0",
+          "checks": [
+            "jobs",
+            "cancellation",
+            "transport"
+          ]
+        }
+      ]
+    },
+    {
+      "sdk": "2.3.0",
+      "passed": true,
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+      "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "sdkChecks": [
+        {
+          "passed": true,
+          "tools": [
+            "cilogg_commands",
+            "cilogg_status",
+            "cilogg_state",
+            "cilogg_execute",
+            "cilogg_cli",
+            "cilogg_jobs"
+          ],
+          "checks": [
+            "initialize",
+            "tools",
+            "resources",
+            "prompts",
+            "file",
+            "search",
+            "follow",
+            "clipboard",
+            "modal-inspect-edit-cancel",
+            "mouse-click",
+            "grep",
+            "native-setup-dry-run",
+            "tool-error"
+          ]
+        },
+        {
+          "passed": true,
+          "sdkVersion": "2.3.0",
+          "checks": [
+            "jobs",
+            "cancellation",
+            "transport"
+          ]
+        }
+      ]
+    }
+  ],
+  "ownedProcessCleanup": "Both complete suites reaped their owned roots with zero cleanup failures.",
+  "budgetEvidence": "SDK2 earlier exhausted the 300-second combined suite budget. It passed with the SDK default600; raw parity retains300. Product execution budgets are unchanged.",
+  "sdk2PhaseSeconds": {
+    "smoke": 41.125,
+    "transportCancellation": 2.703,
+    "backgroundJobs": 7.75
+  },
+  "releaseGateStatus": "pending",
+  "limitations": [
+    "Hosted Windows/Linux/macOS gates are pending.",
+    "Configured CMake backend verification is distinct from runtime attestation.",
+    "Visible packaged UI, broader native/backend conformance and complete G02 performance evidence remain open."
+  ],
+  "fullCTest": {
+    "passed": true,
+    "suites": 6,
+    "failed": 0,
+    "seconds": 577.23
+  },
+  "selfTests": {
+    "passed": true,
+    "count": 32,
+    "python": [
+      "3.9",
+      "3.12"
+    ]
+  },
+  "reviewFollowUp": {
+    "date": "2026-10-25",
+    "baseCommit": "9d92edd99c4457501c2083c2652c501bd3228ac4",
+    "findings": [
+      "Clipboard restoration now runs in finally after write/verification failure.",
+      "Background startup, foreground timeout and cancellation retry only recognized bind failures, with at most three fresh port pairs. Crashes remain failures.",
+      "Non-object SDK metadata fails with invalid_sdk_metadata and retains the outer failure report."
+    ],
+    "regressions": {
+      "before": "Two clipboard failures, two SDK metadata errors; eight port-retry tests failed before implementation.",
+      "after": {
+        "tests": 47,
+        "python": [
+          "3.9",
+          "3.12"
+        ],
+        "skipped": 1,
+        "skipReason": "Native Unix socket check cannot run on Windows"
+      }
+    },
+    "focusedCTest": {
+      "passed": true,
+      "suites": 1,
+      "seconds": 42.17
+    },
+    "nativeProfiles": [
+      {
+        "sdk": "1.30.0",
+        "passed": true,
+        "scope": "P03 plus SDK smoke/jobs/cancellation/transport",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "forcedPortCollision": {
+          "passed": true,
+          "sdk": "1.30.0",
+          "forcedCollisions": [
+            "background-startup"
+          ],
+          "attempts": 3,
+          "foregroundProbe": "Occupied port; may time out before binding"
+        }
+      },
+      {
+        "sdk": "2.3.0",
+        "passed": true,
+        "scope": "P03 plus SDK smoke/jobs/cancellation/transport",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "forcedPortCollision": {
+          "passed": true,
+          "sdk": "2.3.0",
+          "forcedCollisions": [
+            "background-startup"
+          ],
+          "attempts": 3,
+          "foregroundProbe": "Occupied port; may time out before binding"
+        }
+      }
+    ],
+    "macOSCI": {
+      "job": "https://github.com/dm17ryk/klogg/actions/runs/40210965590/job/121221895339",
+      "failure": "Host started but QLocalServer::listen returned Name error for CLI probes; long TMPDIR plus the unique executable name exceeds the Unix socket path limit.",
+      "fix": "Lease a short private /tmp directory shared through TMPDIR by the host and every CLI/MCP/SDK child, then release it after process cleanup.",
+      "hostedVerification": "passed on4f76c774",
+      "confirmation": {
+        "platform": "macOS ARM64 Qt6.12 VectorScan",
+        "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266167",
+        "conclusion": "success"
+      }
+    },
+    "review": "Fresh Python review found no actionable findings in the Sourcery fixes or macOS IPC lifecycle.",
+    "graph": "GitNexus refresh retried with two parser workers; parser idle timeout prevented a usable fresh index. Direct diff/caller checks establish harness-only scope; no production C++ changes.",
+    "finalG03SDK2": {
+      "passed": true,
+      "scope": "Complete G03 and SDK smoke/jobs/cancellation/transport after final source changes",
+      "build": {
+        "configuredBackend": "qt",
+        "searchEngine": "qt",
+        "binarySha256": "d26b2a437afd9442adb1caa545a80053952de16968f3fbfb0e52d769110dc46b",
+        "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+      },
+      "sourceRevision": "9d92edd99c4457501c2083c2652c501bd3228ac4",
+      "sourceDirty": true,
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true,
+          "guiControl": null
+        },
+        {
+          "id": "regex-lab",
+          "passed": true,
+          "guiControl": {
+            "objectName": "regexLabRun",
+            "accessibleName": "Run analysis"
+          }
+        },
+        {
+          "id": "value-counts",
+          "passed": true,
+          "guiControl": {
+            "objectName": "valueCountsRun",
+            "accessibleName": "Run counts"
+          }
+        }
+      ],
+      "ownedProcessCleanup": "One owned root reaped; zero cleanup failures"
+    }
+  },
+  "ciDmgRepair": {
+    "date": "2026-10-25",
+    "baseCommit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+    "failedJob": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266077",
+    "cause": "Native DMG recovery test repeatedly received hdiutil detach EBUSY16 while its writable image was still mounted.",
+    "solution": "For EBUSY only, re-read owned image device/backing identities before diskutil unmountDisk force. The bounded loop then verifies actual detach. Other devices and errors do not escalate; failed cleanup cannot publish a fallback image.",
+    "regression": "Before repair the simulated busy-image recovery raised still-mounted and no force-unmount occurred; both failing regressions pass after repair.",
+    "localTests": {
+      "python": [
+        "3.9",
+        "3.12"
+      ],
+      "combinedTests": 68,
+      "passed": 65,
+      "skipped": 3,
+      "skippedCoverage": [
+        "Two native macOS DMG cases",
+        "One native Unix socket case"
+      ]
+    },
+    "fullCTest": {
+      "status": "5_of6_in_shared_runtime_private_unit_passed",
+      "initialPassed": 5,
+      "initialFailed": 1,
+      "initialSeconds": 495.03,
+      "failure": "Unchanged C++ delayed-response test had action-definition persistence/import assertions. Its focused81assertions passed; whole-unit rerun then failed a different preview/project persistence write.",
+      "isolatedUnit": {
+        "passed": true,
+        "testCases": 207,
+        "isolatedPortableSettings": true,
+        "ownedProcessCleanup": true,
+        "binarySha256": "9c412518fa89e41edbd03beb807ac5e4ce9473834c058285fd981471db21bab6",
+        "probeNote": "Executable and owned supervisor completed successfully. A post-run assertion inspected stderr, but Qt logged its private config path to stdout; combined-stream validation corrected that assertion without rerunning the executable."
+      },
+      "observation": "All207 unit cases pass with the identical binary in a fresh private portable runtime. Other5CTest suites passed. No C++ source was modified; shared-runtime persistence failures are retained as separate local evidence."
+    },
+    "nativeFixture": "The macOS fixture injects one EBUSY result, runs real diskutil force-unmount, then verifies recovery and installable DMG layout; test cleanup uses the same owned-image guard.",
+    "hostedVerification": "pending for the repair commit",
+    "baselineHostedGates": {
+      "commit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+      "gates": [
+        {
+          "platform": "Windows x64 Hyperscan SDK1.30/2.3",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266166",
+          "conclusion": "success"
+        },
+        {
+          "platform": "RHEL-compatible10 x64 Qt-only",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266414",
+          "conclusion": "success"
+        },
+        {
+          "platform": "macOS ARM64 Qt6.12 VectorScan",
+          "job": "https://github.com/dm17ryk/klogg/actions/runs/40217023591/job/121240266167",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "graph": "GitNexus refresh exceeded120seconds and its owned process tree was reaped. Primary-index impact is stale/critical; direct source review limits this repair to the packaging script and tests."
+  }
+}

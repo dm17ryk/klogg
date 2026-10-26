@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import plistlib
 import re
@@ -57,35 +58,56 @@ def _within(path: Path, root: Path) -> bool:
         return False
 
 
+def _owned_image_devices(roots: list[Path]) -> dict[str, Path]:
+    """Resolve backing images; a mount point alone does not establish ownership."""
+    state = plistlib.loads(_run(["hdiutil", "info", "-plist"],
+                               capture=True, timeout=30).stdout)
+    owned = {}
+    for image in state.get("images", []):
+        image_path = image.get("image-path")
+        if not image_path:
+            continue
+        path = Path(image_path).resolve()
+        if not any(_within(path, root) for root in roots):
+            continue
+        devices = [entity.get("dev-entry", "")
+                   for entity in image.get("system-entities", [])]
+        device = next((value for value in devices
+                       if re.fullmatch(r"/dev/disk[0-9]+", value)), None)
+        if device is None:
+            raise RuntimeError(f"Cannot identify owned image device: {image_path}")
+        owned[device] = path
+    return owned
+
+
 def _detach_owned_images(roots: list[Path]) -> None:
     """Match backing images, since CPack can mount outside /Volumes/CILogg."""
+    roots = [root.resolve() for root in roots]
     for attempt in range(6):
-        state = plistlib.loads(_run(["hdiutil", "info", "-plist"],
-                                   capture=True, timeout=30).stdout)
-        owned = []
-        for image in state.get("images", []):
-            image_path = image.get("image-path")
-            if not image_path or not any(_within(Path(image_path).resolve(), root)
-                                         for root in roots):
-                continue
-            devices = [entity.get("dev-entry", "")
-                       for entity in image.get("system-entities", [])]
-            device = next((value for value in devices
-                           if re.fullmatch(r"/dev/disk[0-9]+", value)), None)
-            if device is None:
-                raise RuntimeError(f"Cannot identify owned image device: {image_path}")
-            print(f"DMG owned mount: image={image_path!r} device={device} "
-                  f"cleanup_attempt={attempt + 1}", flush=True)
-            owned.append(device)
+        owned = _owned_image_devices(roots)
         if not owned:
             print("DMG cleanup: no owned images remain mounted", flush=True)
             return
         if attempt == 5:
             raise RuntimeError(f"Owned DMG images are still mounted: {owned}")
-        for device in dict.fromkeys(owned):
+        for device, image_path in owned.items():
+            print(f"DMG owned mount: image={str(image_path)!r} device={device} "
+                  f"cleanup_attempt={attempt + 1}/6", flush=True)
             result = _run(["hdiutil", "detach", device, "-force"],
                           check=False, timeout=30)
             print(f"DMG detach: device={device} exit={result.returncode}", flush=True)
+            if result.returncode != errno.EBUSY:
+                continue
+            # A busy mounted filesystem can prevent image detach even with
+            # hdiutil -force. Revalidate the backing identity before escalating.
+            if _owned_image_devices(roots).get(device) != image_path:
+                print(f"DMG force-unmount skipped: device={device} backing identity changed",
+                      flush=True)
+                continue
+            result = _run(["diskutil", "unmountDisk", "force", device],
+                          check=False, timeout=30)
+            print(f"DMG force-unmount: device={device} exit={result.returncode}; "
+                  "next snapshot will verify detach", flush=True)
         time.sleep(2)
 
 

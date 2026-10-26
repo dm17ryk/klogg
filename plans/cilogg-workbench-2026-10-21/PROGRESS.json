@@ -7,7 +7,7 @@
     "repository": "https://github.com/dm17ryk/klogg",
     "researchMaster": "bd74c338424845a2caac03d62fdff5187e7e8f0a",
     "researchP05": "01cb637be7c96f2c9e3925247510c162380736b7",
-    "executionHead": "177f73861b3bc58ddf5c8b15021471a814673a1d",
+    "executionHead": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
     "toolchain": {
       "language": "C++17",
       "coreQtCompatibility": "Qt5/Qt6",
@@ -86,7 +86,7 @@
         },
         {
           "id": "G02b",
-          "status": "in_progress",
+          "status": "merged",
           "base": "4deed89722c3df275c08044dd8ac9aa459c5a99d",
           "scope": "Opt-in native event dispatch, scroll CPU painting and direct service cancellation budgets",
           "preflight": [
@@ -112,7 +112,7 @@
             "Plan validator: 105 tasks, 187 requirements, 409 links; Ruff E9/F and staged whitespace checks pass."
           ],
           "limitations": [
-            "Hosted CI and merge remain pending; this slice stays in_progress while under review. Full G02 and releaseGateStatus remain pending.",
+            "Merged PR65; full G02 and releaseGateStatus remain pending. Hosted native parity gates are a separate G03b slice.",
             "Native Windows Qt-only CPU painting is measured; compositor presentation, accelerated-search performance, worker RSS, sustained-memory slope, OS cache cold, native Linux/macOS and renderer comparisons remain open.",
             "Offscreen Windows warned about missing fonts; native Windows platform runs are the recorded baseline.",
             "CodeGraph reports this linked worktree unindexed and has no refresh tool. Code Review Graph is unavailable. GitNexus refresh remains unavailable after prior parser worker exhaustion; impact cannot resolve new symbols and detect-changes uses a stale primary index, so no valid graph scope pass is claimed. Manual staged path review confines changes to benchmarks, tests and documentation."
@@ -145,7 +145,8 @@
               "limitation": "GitNexus uses a stale primary index and maps incoming Python test helpers to unrelated production flows. User warned; no graph verification pass claimed.",
               "verifiedScope": "Staged diff against incoming master has only the11G02b files; src/ and tests/mcp have zero changes. General reviewer independently confirmed this scope."
             }
-          }
+          },
+          "mergeCommit": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a"
         },
         {
           "id": "G02c",
@@ -179,8 +180,8 @@
             "GitNexus stale primary index cannot resolve ProcessOwner, run_gui or load_budgets. No graph pass is claimed; CodeGraph unindexed and Code Review Graph unavailable.",
             "GitNexus refresh attempted with two parser workers and a 120-second deadline; timed out and only its owned process tree was reaped. detect-changes uses stale primary index and reports no changes; this is not a valid graph scope pass."
           ],
-          "commit": null,
-          "pullRequest": null,
+          "commit": "933d5520bb6fc038e0cbcf7e962a568530d3f852",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/67",
           "localVerification": "passed"
         }
       ]
@@ -197,12 +198,13 @@
         "build_root/g03-13-py39.txt, g03-13-py312.txt, g03-13-py314.txt: thirteen self-tests passed on Python 3.9/3.12/3.14",
         "build_root/g03-ctest-final.txt: standalone CTest registration check passed after SDK compatibility fix",
         "build_root/g03-sdk-final-1.30.0/checks/runtime-result.json and g03-sdk-final-2.3.0/checks/runtime-result.json: isolated MCP SDK runtime checks passed",
-        "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks"
+        "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks",
+        "../../docs/workbench/g03b-windows-observations.json"
       ],
       "limitations": [
         "G03a is the first independently reviewable harness slice; full G03 is not complete.",
         "Installed source 96bf481 is not a fresh build of this branch.",
-        "Fresh accelerated and Qt-only builds, complete current product CTest and remaining MCP SDK smoke_stdio, native Linux/macOS and visible packaged UI gates remain open.",
+        "G03b adds local current-source Qt-only and complete SDK smoke evidence plus representative hosted gates; hosted accelerated/Qt-only native runs and visible packaged UI conformance remain pending.",
         "Backend flag records an unverified caller declaration; it does not infer build provenance.",
         "Primary GitNexus index is stale and this worktree is not registered; Code Review Graph refresh and direct diff review cover the changed test harness."
       ],
@@ -214,6 +216,57 @@
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
           "baseCommit": "ca4c6074fea48643810ff6d92182146c427f1b65",
           "scope": "Registered task runner, exact JSON comparisons, isolated host/process supervision, P03/P04/P05 cases, self-tests, CTest/CI wiring and evidence"
+        },
+        {
+          "id": "G03b",
+          "status": "implemented_pending_gates",
+          "baseCommit": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
+          "scope": "Current-build native parity CI gates, MCP SDK smoke compatibility and portable isolated runtime payloads",
+          "rulings": [
+            "Keep full G02/G03 in_progress until their remaining platform/backend and visible-package gates are measured.",
+            "Use actual configured CMake backend/cache and built executable provenance, not caller labels or installed stale binaries.",
+            "Run native parity on representative Windows accelerated, Linux Qt-only and macOS accelerated builds; keep emulated ARM jobs out of additional native test load.",
+            "Run SDK1.30 and2.3 smoke against the existing isolated host; preserve existing standalone commands and user captures.",
+            "Graph indexes do not resolve the new Python harness correctly; stale run-name impact reports critical unrelated C++ callers. User warned; use current direct references, tests and final branch review.",
+            "Use a600-second SDK suite budget after nativeSDK2 exhausted300seconds while progressing; retain raw300 and explicit overrides. Product analysis budgets are unchanged.",
+            "Keep9 pre-existing actionlint diagnostics outside this focused gate change; baseline/current diagnostic comparison rejects introduced messages.",
+            "Exclude installed macOS PlugIns/cilogg catalogs while preserving Qt plugins; write private settings before ad-hoc signing."
+          ],
+          "localVerification": "passed",
+          "evidence": [
+            "../../docs/workbench/g03b-windows-observations.json",
+            "32 harness self-tests passed on Python3.9 and3.12; expanded CTest self-test registration also passed.",
+            "Complete native GUI/CLI/MCP analysis/P04/P05 and SDK1.30.0/2.3.0 smoke/job/cancellation/transport suites passed with owned-process cleanup.",
+            "Regression fixtures reject background controls behind Preferences, missing/nonfinite SDK reports, false backend/source provenance, missing private runtime dependencies and copied macOS CILogg plugin catalogs.",
+            "Fresh Python/general reviews found no actionable remaining issues; macOS catalog isolation suggestion reproduced RED and fixed.",
+            "Actionlint baseline comparison:9 existing diagnostics,9 current diagnostics,zero introduced. Ruff E9/F checks pass.",
+            "Reconfigured local Qt6.10.1 build tree: complete CTest passed6/6 suites with zero failures in577.23seconds, including C++/UI and benchmark/parity self-tests.",
+            "PR66 review follow-up: all three Sourcery findings reproduced and corrected;47-test suite and both native SDK/forced-port-collision profiles pass. Historical32-test/full6-suite evidence above is preserved; focused harness CTest rerun passes after these Python-only fixes.",
+            "On4f76c774 the three representative native gates passed: Windows x64 SDK1.30/2.3, RHEL10-compatible Qt-only and macOS ARM64 Qt6.12. The macOS IPC fix is hosted-verified; a separate Intel DMG EBUSY cleanup test prompted the bounded force-unmount repair."
+          ],
+          "limitations": [
+            "Full G02/G03 remain in_progress. Representative hosted native gates passed on4f76c774; latest DMG recovery repair needs hosted confirmation. Visible usability/performance and broader conformance remain pending.",
+            "Local approvedQt6.10.1 Qt-only executable is reused with an unchanged src tree; CI establishes selected fresh Qt6.12 accelerated/Qt-only provenance.",
+            "CodeGraph has no refresh capability for this unindexed worktree; Code Review Graph server is unavailable. A bounded GitNexus branch-index refresh exited unsuccessfully without a usable index. detect-changes reports critical/291 affected flows from its stale primary index and a corrupt symbol; no graph scope pass claimed. Fresh reviews and staged path checks show no production C++ changes."
+          ],
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/66",
+          "commit": "8009d798b384e9a6aacf8daa0a96600b115c1c2c",
+          "reviewFixes": {
+            "review": "Sourcery PR66",
+            "findings": 3,
+            "status": "implemented_and_locally_verified",
+            "evidence": "../../docs/workbench/g03b-windows-observations.json#reviewFollowUp",
+            "tests": "47 tests on Python3.9/3.12; one native Unix socket test skipped locally on Windows; focused CTest1/1 passes.",
+            "native": "SDK1.30/2.3 P03 and complete SDK checks pass, including deliberate real background bind collisions.",
+            "macOS": "Short private TMPDIR fix confirmed by the macOS ARM64 Qt6.12 native gate on4f76c774."
+          },
+          "ciDmgRepair": {
+            "baseCommit": "4f76c774465419f35a159b9b43d8b8b16b635086",
+            "reason": "Native DMG recovery test repeatedly received hdiutil detach EBUSY16 while its writable image was still mounted.",
+            "evidence": "../../docs/workbench/g03b-windows-observations.json",
+            "localVerification": "68 combined tests on Python3.9/3.12,3 platform-specific skips. Shared-runtime CTest5/6; focused action case81assertions passes, and all207unitcases pass with fresh private portable settings using the same binary. Shared-runtime persistence failures remain recorded; no clean one-shot6/6 claim.",
+            "hostedVerification": "pending for the repair commit"
+          }
         }
       ]
     },

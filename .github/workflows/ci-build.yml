@@ -224,6 +224,7 @@ jobs:
             container_platform: linux/amd64
 
           - os: rhel10_compatible
+            native_parity: true
             os_version: 10.0
             arch: x64
             qt_version: 6.12.0
@@ -372,6 +373,21 @@ jobs:
       - uses: ./.github/actions/prepare-workspace-env
       - uses: ./.github/actions/docker-build
       - uses: ./.github/actions/docker-run-tests
+      - name: Workbench native parity (Qt-only)
+        if: ${{ matrix.config.native_parity }}
+        run: |
+          docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_BUILD_ROOT=$CILOGG_BUILD_ROOT \
+            -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c \
+            'cd /usr/local && python3 tests/mcp/workbench_ci_gate.py --executable "$CILOGG_BUILD_ROOT/output/cilogg" --cache "$CILOGG_BUILD_ROOT/CMakeCache.txt" --backend qt --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-native"'
+      - name: Upload native parity diagnostics
+        if: ${{ always() && matrix.config.native_parity }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-native-${{ matrix.config.artifacts_id }}
+          path: |
+            ${{ env.CILOGG_BUILD_ROOT }}/reports/workbench-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
+          if-no-files-found: warn
       - uses: ./.github/actions/docker-package
 
 # Final upload of all packages
@@ -424,6 +440,7 @@ jobs:
           - os: macos
             os_version: 26
             arch: arm64
+            native_parity: true
             backend: vectorscan
             qt_version: 6.12.0
             qt_arch: clang_64
@@ -480,6 +497,20 @@ jobs:
           notarization-team: ${{ secrets.NOTARIZATION_TEAM }}
           notarization-password: ${{ secrets.NOTARIZATION_PASSWORD }}
 
+      - uses: ./.github/actions/workbench-parity
+        if: ${{ matrix.config.native_parity }}
+        with:
+          backend: accelerated
+      - name: Upload native parity diagnostics
+        if: ${{ always() && matrix.config.native_parity }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-native-${{ matrix.config.artifacts_id }}
+          path: |
+            ${{ env.CILOGG_BUILD_ROOT }}/reports/workbench-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
+          if-no-files-found: warn
+
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.config.artifacts_id }}
@@ -496,6 +527,7 @@ jobs:
           - os: windows
             os_version: 2022
             backend: hyperscan
+            native_parity: true
             qt_version: 6.12.0
             qt_modules: qt5compat
             qt_arch: win64_msvc2022_64
@@ -623,6 +655,20 @@ jobs:
       - uses: ./.github/actions/agent-build
       - uses: ./.github/actions/agent-run-tests
         if: ${{ matrix.config.arch != 'arm64' }}
+      - uses: ./.github/actions/workbench-parity
+        if: ${{ matrix.config.native_parity }}
+        with:
+          backend: accelerated
+          sdk-smoke: 'true'
+      - name: Upload native parity diagnostics
+        if: ${{ always() && matrix.config.native_parity }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-native-${{ matrix.config.artifacts_id }}
+          path: |
+            ${{ env.CILOGG_BUILD_ROOT }}/reports/workbench-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
+          if-no-files-found: warn
       - uses: ./.github/actions/agent-package-win
         with:
           s3-key-id: ${{ secrets.WIN_CS_KEY_ID }}

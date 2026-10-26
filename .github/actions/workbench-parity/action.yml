@@ -1,0 +1,45 @@
+name: Workbench native parity
+description: Verify current-build public analysis and SDK behavior in a private runtime
+inputs:
+  backend:
+    required: true
+    description: Expected configured search backend (qt or accelerated)
+  sdk-smoke:
+    default: 'false'
+    description: Run both pinned Python MCP SDK profiles
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
+    - name: Native GUI CLI MCP parity
+      shell: bash
+      env:
+        EXPECTED_BACKEND: ${{ inputs.backend }}
+        SDK_SMOKE: ${{ inputs.sdk-smoke }}
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" = Windows ]; then
+          executable="$CILOGG_BUILD_ROOT/output/cilogg.exe"
+        elif [ "$RUNNER_OS" = macOS ]; then
+          executable="$CILOGG_BUILD_ROOT/output/cilogg.app/Contents/MacOS/cilogg"
+        else
+          echo 'This host action supports Windows/macOS; Linux runs inside its build container' >&2
+          exit 1
+        fi
+        if [ "$SDK_SMOKE" = true ]; then
+          for version in 1.30.0 2.3.0; do
+            sdk="$CILOGG_BUILD_ROOT/workbench-sdk-$version"
+            python -m venv "$sdk"
+            if [ "$RUNNER_OS" = Windows ]; then sdk_python="$sdk/Scripts/python.exe"; else sdk_python="$sdk/bin/python"; fi
+            "$sdk_python" -m pip install --disable-pip-version-check "mcp==$version"
+            "$sdk_python" tests/mcp/workbench_ci_gate.py --executable "$executable" \
+              --cache "$CILOGG_BUILD_ROOT/CMakeCache.txt" --backend "$EXPECTED_BACKEND" \
+              --sdk-version "$version" --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-sdk-$version"
+          done
+        else
+          python tests/mcp/workbench_ci_gate.py --executable "$executable" \
+            --cache "$CILOGG_BUILD_ROOT/CMakeCache.txt" --backend "$EXPECTED_BACKEND" \
+            --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-native"
+        fi
