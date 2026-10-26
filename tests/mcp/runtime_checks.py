@@ -75,7 +75,25 @@ async def controller_job(session, directory: Path):
             state = json.loads(read.content[0].text)
             if state["state"] != "running":
                 if state["state"] != "failed" or not bind_failure(state["stderr"]):
-                    raise AssertionError("controller_startup_failed")
+                    # This is our synthetic controller, not source-log output.
+                    # Retain its bounded failure details instead of hiding the
+                    # distinction between a bind error, missing driver and crash.
+                    stdout = state.get("stdout", "")
+                    stderr = state.get("stderr", "")
+                    # 512 code points per stream leave room for both streams
+                    # even with 12-byte ASCII escapes for every Unicode scalar.
+                    details = {
+                        key: state.get(key) for key in (
+                            "job_id", "mode", "state", "pid", "exit_code",
+                            "output_truncated",
+                        )
+                    }
+                    details.update(stdout=stdout[:512], stderr=stderr[:512],
+                                   startup_output_truncated=len(stdout) > 512 or len(stderr) > 512)
+                    diagnostics = json.dumps(details, ensure_ascii=True)
+                    LOG.error("controller_startup_failed attempt=%s job=%s details=%s",
+                              attempt + 1, job["job_id"], diagnostics)
+                    raise AssertionError("controller_startup_failed: " + diagnostics)
                 LOG.warning("controller_bind_retry check=background attempt=%s job=%s",
                             attempt + 1, job["job_id"])
                 break

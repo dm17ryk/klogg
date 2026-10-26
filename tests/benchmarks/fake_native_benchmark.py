@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -15,6 +16,12 @@ if sys.stdin.readline() != "start\n":
     sys.exit(8)
 
 mode = os.environ.get("FAKE_NATIVE_MODE", "normal")
+if mode == "memory_first" and Path(os.environ["CILOGG_G02_REPORT"]).stem == "native-0":
+    subprocess.run(
+        [sys.executable, "-c", "allocation = bytearray(64 * 1024 * 1024)"],
+        check=True,
+        timeout=20,
+    )
 if mode == "stall":
     time.sleep(30)
 if mode == "crash":

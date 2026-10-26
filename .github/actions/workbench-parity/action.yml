@@ -16,6 +16,13 @@ runs:
     - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.12'
+    - name: Deploy Windows application runtime
+      if: ${{ runner.os == 'Windows' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The application uses controller plugins not imported by the test binary.
+        windeployqt "$CILOGG_BUILD_ROOT/output/cilogg.exe"
     - name: Native dock interaction
       if: ${{ inputs.native-ui == 'true' }}
       shell: bash

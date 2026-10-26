@@ -32,6 +32,11 @@ invalidate Apply, releases its retained jobs, and checks docked/floating layouts
 The real input method, hardware keyboard, and compositor latency are not measured.
 No clipboard, communication device, or existing user's application is used.
 
+Temporary probe windows stay above ordinary desktop windows for the run. Input
+waits for activation and an exact widget-or-descendant hit at its current screen
+position before dispatch; geometry diagnostics survive a readiness failure.
+The application's window flags and persisted layout are unaffected.
+
 Both modes require a native exposed window and observed paint events. Four PNGs
 capture their client contents through `QScreen::grabWindow`; the native component
 samples a 64x64 grid and rejects a uniform capture. The runner verifies finite
@@ -100,3 +105,46 @@ The aggregate portable self-test CTest timeout is 300 seconds. A measured
 Python 3.9 run took 160.066 seconds, exceeding its previous 120-second cap.
 This aggregate cap is separate from the native child's timeout and all product
 worker/job budgets. Earlier failed attempts remain recorded alongside reruns.
+
+## PR review and hosted follow-up
+
+The first hosted Windows Qt 6.12 native probe passed all 199 assertions and saved
+four captures. Linux builds exposed a deprecated activation call promoted to an
+error by GCC; the probe now retains `activateWindow()` without the redundant
+`QApplication::setActiveWindow()` call.
+
+Clearing a Value Counts selection can leave its current index set. Apply
+availability and the GUI execution guard now use actual selected rows and react
+to selection changes. The regression verifies immediate disablement, rejection
+through a directly invoked click signal, and successful reselection. Explicit
+Commander operations with a supplied row index retain their existing contract.
+
+The first Windows SDK run failed when its background controller exited, but the
+old assertion omitted the state and child diagnostics. Failure reports now retain
+state, exit code and bounded output from both streams as complete JSON; noisy
+stdout cannot suppress stderr. Unexpected exits remain failures. Local repeated
+controller starts do not establish the cause of that hosted exit.
+
+Windows parity now deploys Qt dependencies for the application as well as the
+native test executable, covering application-only dependencies such as the SQL
+driver. Hosted confirmation is required. The native-UI opt-in remains confined to
+the separate Windows job; Linux uses its existing container parity step.
+
+A private runtime with SQLite deliberately omitted reproduces the opaque
+controller-startup failure, now reported as a failed job with exit code 1 and
+`Driver not loaded`. Restoring the plugin permits startup and cancellation. This
+confirms the deployment mechanism without claiming knowledge of the original
+hosted state. Detailed attempts and broader local suite failures remain in the
+observations rather than being replaced by focused passing checks.
+
+The expanded process-tree benchmark regressions passed all 37 self-tests in
+363.748 seconds when measured without CTest's old 300-second aggregate cap.
+Their aggregate CTest timeout is now 600 seconds. Individual probe deadlines,
+assertions and application execution budgets are unchanged. The earlier
+300-second portable Workbench self-test timeout described above is a separate
+test registration.
+
+Local desktop occlusion also affected both the original and edited native probe.
+Its temporary test windows now stay on top, wait for activation, and require
+observable hit-test readiness before clicking. Production window flags remain
+unchanged; the final probe passed 217 assertions and retained four captures.

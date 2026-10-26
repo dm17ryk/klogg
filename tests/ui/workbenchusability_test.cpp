@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -63,6 +64,16 @@ void click( QWidget* widget, const QPoint& position )
     REQUIRE( widget->isEnabled() );
     REQUIRE( widget->rect().contains( position ) );
     REQUIRE_FALSE( QApplication::activeModalWidget() );
+    const auto global = widget->mapToGlobal( position );
+    qInfo() << "G03c: input_target object=" << widget->objectName() << " point=" << global
+            << " window=" << widget->window()->geometry()
+            << " screen=" << widget->window()->windowHandle()->screen()->availableGeometry();
+    REQUIRE( QTest::qWaitFor(
+        [ & ] {
+            auto* hit = QApplication::widgetAt( widget->mapToGlobal( position ) );
+            return hit && ( hit == widget || widget->isAncestorOf( hit ) );
+        },
+        5000 ) );
     auto* hit = QApplication::widgetAt( widget->mapToGlobal( position ) );
     REQUIRE( hit );
     REQUIRE( ( hit == widget || widget->isAncestorOf( hit ) ) );
@@ -80,13 +91,15 @@ void fitWindow( QWidget* window )
     auto* screen = QGuiApplication::primaryScreen();
     REQUIRE( screen );
     const auto bounds = screen->availableGeometry().adjusted( 20, 20, -20, -20 );
+    // These temporary probe windows must not capture or click through another app.
+    window->setWindowFlags( window->windowFlags() | Qt::WindowStaysOnTopHint );
     window->resize( qMin( 1000, bounds.width() ), qMin( 850, bounds.height() ) );
     window->move( bounds.center() - window->rect().center() );
     window->show();
     window->raise();
     window->activateWindow();
-    QApplication::setActiveWindow( window );
     REQUIRE( QTest::qWaitForWindowExposed( window, 5000 ) );
+    REQUIRE( QTest::qWaitForWindowActive( window, 5000 ) );
 }
 
 QJsonObject captureView( QWidget* top, PaintCounter& counter, const QDir& artifacts,

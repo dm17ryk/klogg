@@ -16,12 +16,14 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
     QMainWindow window;
     auto* service = applicationAnalysisService();
     CommanderRequest applied;
+    int appliedCount = 0;
     auto* dock = new ValueCountDock(
         &window,
         [ & ]( const CommanderRequest& request ) {
             if ( request.action == CommanderAction::ApplyValueCount
                  || request.action == CommanderAction::OpenValueCount ) {
                 applied = request;
+                ++appliedCount;
                 return commanderSuccess();
             }
             auto result
@@ -60,7 +62,16 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
     auto* apply = dock->findChild<QPushButton*>( "valueCountsApply" );
     REQUIRE( apply );
     REQUIRE( apply->isEnabled() );
+    table->clearSelection();
+    CHECK( table->currentRow() == 0 );
+    CHECK_FALSE( apply->isEnabled() );
+    REQUIRE(
+        QMetaObject::invokeMethod( apply, "clicked", Qt::DirectConnection, Q_ARG( bool, false ) ) );
+    CHECK( appliedCount == 0 );
+    table->selectRow( 0 );
+    REQUIRE( apply->isEnabled() );
     apply->click();
+    CHECK( appliedCount == 1 );
     CHECK( applied.action == CommanderAction::ApplyValueCount );
     CHECK( applied.analysisArguments.value( "jobId" ) == state.value( "jobId" ) );
     CHECK( applied.analysisArguments.value( "rowIndex" ).toInt() == 0 );

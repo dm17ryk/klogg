@@ -2,7 +2,9 @@
 
 G02a supplies deterministic domain fixtures, a bounded benchmark runner and real
 frozen-analysis observations. G02b adds native event dispatch, scroll CPU painting
-and direct service cancellation measurements. Full G02 remains in progress:
+and direct service cancellation measurements. [G02c](g02c-memory-gates.md) adds
+Windows process-tree peak committed memory, including exited regex workers.
+Full G02 remains in progress:
 presentation latency, worker peak resident memory, sustained memory slope,
 OS-cache cold runs, native Linux/macOS and optional renderer overhead need later
 measurement slices. A passing scenario is not a full release-performance pass.

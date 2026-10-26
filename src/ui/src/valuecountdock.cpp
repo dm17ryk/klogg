@@ -10,6 +10,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -186,7 +187,7 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     connect( table_, &QTableWidget::cellActivated, this, [ this ]( int, int ) {
         showFailure( selected( CommanderAction::ApplyValueCount ) );
     } );
-    connect( table_, &QTableWidget::currentCellChanged, this, [ this ] { updateApplyState(); } );
+    connect( table_, &QTableWidget::itemSelectionChanged, this, [ this ] { updateApplyState(); } );
     connect( first, &QPushButton::clicked, this, [ this ] { showFailure( page( {} ) ); } );
     connect( next_, &QPushButton::clicked, this, [ this ] { showFailure( page( cursor_ ) ); } );
     connect( exportButton, &QPushButton::clicked, this, [ this ] {
@@ -233,7 +234,8 @@ void ValueCountDock::draftChanged()
 }
 void ValueCountDock::updateApplyState()
 {
-    const auto row = table_->currentRow();
+    const auto selection = table_->selectionModel()->selectedRows();
+    const auto row = selection.size() == 1 ? selection.front().row() : -1;
     const bool enabled
         = !id_.isEmpty() && revision_ == jobRevision_ && row >= 0 && row < rows_.size();
     if ( apply_->isEnabled() == enabled )
@@ -406,11 +408,21 @@ CommanderResult ValueCountDock::page( const QString& cursor )
 }
 CommanderResult ValueCountDock::selected( CommanderAction action )
 {
-    if ( revision_ != jobRevision_ )
+    if ( revision_ != jobRevision_ ) {
+        LOG_DEBUG << "Value Counts selection rejected job=" << id_ << " revision=" << revision_
+                  << " jobRevision=" << jobRevision_ << " reason=draft-changed";
         return failure( "draft_changed" );
-    const auto index = table_->currentRow();
-    if ( index < 0 || index >= rows_.size() )
+    }
+    const auto selection = table_->selectionModel()->selectedRows();
+    const auto index = selection.size() == 1 ? selection.front().row() : -1;
+    if ( index < 0 || index >= rows_.size() ) {
+        LOG_DEBUG << "Value Counts selection rejected job=" << id_
+                  << " selectedRows=" << selection.size() << " row=" << index
+                  << " retainedRows=" << rows_.size() << " reason=invalid-result-index";
         return failure( "invalid_result_index" );
+    }
+    LOG_DEBUG << "Value Counts selected action=" << commanderActionToString( action )
+              << " job=" << id_ << " row=" << index;
     return command( action, { { "rowIndex", rows_.at( index ).toMap().value( "rowIndex" ) } } );
 }
 QVariantMap ValueCountDock::state()

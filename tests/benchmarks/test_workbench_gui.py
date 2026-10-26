@@ -88,6 +88,40 @@ class NativeBenchmarkTests(unittest.TestCase):
         self.assertEqual(report["reason"], "budget_exceeded")
         self.assertEqual(report["runs"][0]["measurements"]["guiEventP95Ms"], 200.0)
 
+    @unittest.skipUnless(os.name == "nt", "Windows process-tree commit gate")
+    def test_tree_memory_is_measured_and_a_tiny_budget_fails(self):
+        budgets = self.root / "memory-budget.json"
+        budgets.write_text(
+            json.dumps({"processTreePeakCommitBytes": 1}), encoding="utf-8"
+        )
+        result, report, _ = self.run_fixture("normal", "--budgets", str(budgets))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(report["reason"], "budget_exceeded")
+        run = report["runs"][0]
+        self.assertFalse(run["gates"]["processTreePeakCommitBytes"])
+        self.assertGreater(run["measurements"]["processTreePeakCommitBytes"], 1)
+        self.assertEqual(run["memory"]["backend"], "windows_job_object")
+        self.assertEqual(run["memory"]["kind"], "committed_bytes")
+        self.assertEqual(run["memory"]["scope"], "native_test_host_and_descendants")
+        self.assertIn("workerPeakResidentMemory", report["unmeasured"])
+
+    @unittest.skipIf(os.name == "nt", "Portable unsupported-platform contract")
+    def test_tree_memory_is_explicitly_unmeasured_on_other_platforms(self):
+        result, report, _ = self.run_fixture()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["runs"][0]["memory"]["status"], "unsupported")
+        self.assertNotIn("processTreePeakCommitBytes", report["runs"][0]["gates"])
+        self.assertIn("processTreePeakCommitBytes", report["unmeasured"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows process-tree commit gate")
+    def test_each_repetition_has_a_fresh_peak(self):
+        result, report, _ = self.run_fixture("memory_first", "--repetitions", "2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first, second = (
+            run["measurements"]["processTreePeakCommitBytes"] for run in report["runs"]
+        )
+        self.assertGreaterEqual(first - second, 32 * 1024 * 1024)
+
     def test_invalid_native_measurements_never_pass(self):
         for mode in ("wrong_source", "short", "nonfinite", "inactive", "invalid_schema"):
             with self.subTest(mode=mode):
