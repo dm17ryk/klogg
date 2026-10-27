@@ -345,7 +345,9 @@ QByteArray jsonString( const QString& value )
             result.append( "\\t" );
             break;
         default:
-            if ( ch.unicode() < 0x20 ) {
+            // Encode surrogate code units as JSON escapes. Converting each half
+            // to UTF-8 separately loses supplementary characters such as emoji.
+            if ( ch.unicode() < 0x20 || ch.isSurrogate() ) {
                 result.append( QStringLiteral( "\\u%1" )
                                    .arg( static_cast<unsigned int>( ch.unicode() ), 4, 16,
                                          QLatin1Char( '0' ) )

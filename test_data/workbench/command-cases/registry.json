@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "tasks": {
-    "G03": ["analysis", "regex-lab", "value-counts"],
+    "G03": ["analysis", "regex-lab", "value-counts", "file-navigation"],
+    "G03d": ["file-navigation"],
     "P03": ["analysis"],
     "P03b": ["analysis"],
     "P03c": ["analysis"],
@@ -32,6 +33,27 @@
       "request": {"scope": "text", "pattern": "(?<v>a\\.a|b\\+b|שלום)", "text": "a.a b+b a.a\r\nשלום", "counts": {"capture": "v"}, "requestRevision": "9007199254740993"},
       "expected": [["a.a", "2"], ["b+b", "1"], ["שלום", "1"]],
       "gui": {"show": "show_value_counts", "set": "set_value_counts", "get": "get_value_counts", "run": "valueCountsRun"}
+    },
+    {
+      "id": "file-navigation",
+      "kind": "file-navigation",
+      "action": "regex_evaluate",
+      "operations": [
+        "open_file",
+        "close_tab",
+        "focus_tab",
+        "get_info",
+        "dump_state",
+        "regex_evaluate",
+        "get_analysis_job",
+        "get_analysis_results",
+        "release_analysis_job",
+        "show_regex_lab",
+        "set_regex_lab",
+        "get_regex_lab",
+        "get_ui",
+        "activate_ui"
+      ]
     }
   ]
 }
