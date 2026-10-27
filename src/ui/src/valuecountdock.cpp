@@ -10,6 +10,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -121,13 +122,13 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
         = named( new QPushButton( tr( "Run" ), body ), "valueCountsRun", tr( "Run counts" ) );
     cancel_ = named( new QPushButton( tr( "Cancel" ), body ), "valueCountsCancel",
                      tr( "Cancel counts" ) );
-    auto* apply = named( new QPushButton( tr( "Apply selected value" ), body ), "valueCountsApply",
-                         tr( "Apply selected literal value to current search" ) );
+    apply_ = named( new QPushButton( tr( "Apply selected value" ), body ), "valueCountsApply",
+                    tr( "Apply selected literal value to current search" ) );
     auto* open = named( new QPushButton( tr( "Go to first occurrence" ), body ), "valueCountsOpen",
                         tr( "Go to first source occurrence" ) );
     buttons->addWidget( runButton, 0, 0 );
     buttons->addWidget( cancel_, 0, 1 );
-    buttons->addWidget( apply, 1, 0 );
+    buttons->addWidget( apply_, 1, 0 );
     buttons->addWidget( open, 1, 1 );
     layout->addLayout( buttons );
     status_ = named( new QLabel( tr( "Run exact counts on a bounded sample." ), body ),
@@ -161,6 +162,7 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     layout->addLayout( footer );
     setWidget( body );
     cancel_->setEnabled( false );
+    apply_->setEnabled( false );
     next_->setEnabled( false );
     for ( auto* edit : { pattern_, capture_ } )
         connect( edit, &QLineEdit::textChanged, this, [ this ] { draftChanged(); } );
@@ -178,13 +180,14 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     connect( runButton, &QPushButton::clicked, this, [ this ] { showFailure( run() ); } );
     connect( cancel_, &QPushButton::clicked, this,
              [ this ] { showFailure( command( CommanderAction::CancelAnalysisJob ) ); } );
-    connect( apply, &QPushButton::clicked, this,
+    connect( apply_, &QPushButton::clicked, this,
              [ this ] { showFailure( selected( CommanderAction::ApplyValueCount ) ); } );
     connect( open, &QPushButton::clicked, this,
              [ this ] { showFailure( selected( CommanderAction::OpenValueCount ) ); } );
     connect( table_, &QTableWidget::cellActivated, this, [ this ]( int, int ) {
         showFailure( selected( CommanderAction::ApplyValueCount ) );
     } );
+    connect( table_, &QTableWidget::itemSelectionChanged, this, [ this ] { updateApplyState(); } );
     connect( first, &QPushButton::clicked, this, [ this ] { showFailure( page( {} ) ); } );
     connect( next_, &QPushButton::clicked, this, [ this ] { showFailure( page( cursor_ ) ); } );
     connect( exportButton, &QPushButton::clicked, this, [ this ] {
@@ -197,7 +200,10 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     } );
     auto* timer = new QTimer( this );
     timer->setInterval( 200 );
-    connect( timer, &QTimer::timeout, this, [ this ] { refresh(); } );
+    connect( timer, &QTimer::timeout, this, [ this ] {
+        refresh();
+        updateApplyState();
+    } );
     timer->start();
     refreshSources();
 }
@@ -218,12 +224,26 @@ void ValueCountDock::draftChanged()
     if ( updating_ )
         return;
     ++revision_;
+    updateApplyState();
     text_->setVisible( scope_->currentData() == "text" );
     source_->setEnabled( scope_->currentData() != "text" );
     next_->setEnabled( false );
     status_->setText(
         tr( "Draft changed; Run to count this revision. Previous output is historical." ) );
     LOG_DEBUG << "Value Counts draft changed revision=" << revision_;
+}
+void ValueCountDock::updateApplyState()
+{
+    const auto selection = table_->selectionModel()->selectedRows();
+    const auto row = selection.size() == 1 ? selection.front().row() : -1;
+    const bool enabled
+        = !id_.isEmpty() && revision_ == jobRevision_ && row >= 0 && row < rows_.size();
+    if ( apply_->isEnabled() == enabled )
+        return;
+    LOG_DEBUG << "Value Counts Apply availability enabled=" << enabled << " job=" << id_
+              << " revision=" << revision_ << " jobRevision=" << jobRevision_
+              << " selectedRow=" << row << " retainedRows=" << rows_.size();
+    apply_->setEnabled( enabled );
 }
 QVariantMap ValueCountDock::draft() const
 {
@@ -388,11 +408,21 @@ CommanderResult ValueCountDock::page( const QString& cursor )
 }
 CommanderResult ValueCountDock::selected( CommanderAction action )
 {
-    if ( revision_ != jobRevision_ )
+    if ( revision_ != jobRevision_ ) {
+        LOG_DEBUG << "Value Counts selection rejected job=" << id_ << " revision=" << revision_
+                  << " jobRevision=" << jobRevision_ << " reason=draft-changed";
         return failure( "draft_changed" );
-    const auto index = table_->currentRow();
-    if ( index < 0 || index >= rows_.size() )
+    }
+    const auto selection = table_->selectionModel()->selectedRows();
+    const auto index = selection.size() == 1 ? selection.front().row() : -1;
+    if ( index < 0 || index >= rows_.size() ) {
+        LOG_DEBUG << "Value Counts selection rejected job=" << id_
+                  << " selectedRows=" << selection.size() << " row=" << index
+                  << " retainedRows=" << rows_.size() << " reason=invalid-result-index";
         return failure( "invalid_result_index" );
+    }
+    LOG_DEBUG << "Value Counts selected action=" << commanderActionToString( action )
+              << " job=" << id_ << " row=" << index;
     return command( action, { { "rowIndex", rows_.at( index ).toMap().value( "rowIndex" ) } } );
 }
 QVariantMap ValueCountDock::state()

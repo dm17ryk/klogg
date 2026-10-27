@@ -152,3 +152,9 @@ each (registered benchmark 86.42 s; Python 3.9 104.387 s). Three further native
 repetitions pass with retained observation lists and unchanged binaries. Earlier
 epochs remain identifiable by source hashes. Public interpreter provenance uses
 its actual version, platform and executable hash, omitting the local install path.
+
+After integration with merged PR68/master b21cb93, the complete local Qt6.10.1
+Qt-only target build and all six CTest suites pass (237.35seconds). The aggregate
+benchmark cap remains900seconds and all master G03 records are preserved. A local
+wrapper filename error occurred before CTest execution and was corrected; all four
+portable settings were restored byte-for-byte after the actual complete run.

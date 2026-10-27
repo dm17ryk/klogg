@@ -16,12 +16,14 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
     QMainWindow window;
     auto* service = applicationAnalysisService();
     CommanderRequest applied;
+    int appliedCount = 0;
     auto* dock = new ValueCountDock(
         &window,
         [ & ]( const CommanderRequest& request ) {
             if ( request.action == CommanderAction::ApplyValueCount
                  || request.action == CommanderAction::OpenValueCount ) {
                 applied = request;
+                ++appliedCount;
                 return commanderSuccess();
             }
             auto result
@@ -37,6 +39,7 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
     CHECK( dock->objectName() == "valueCountsDock" );
     CHECK( dock->features().testFlag( QDockWidget::DockWidgetFloatable ) );
     CHECK( dock->state().value( "draft" ).toMap().value( "scope" ) == "sample" );
+    CHECK_FALSE( dock->findChild<QPushButton*>( "valueCountsApply" )->isEnabled() );
     const auto raw = QString::fromUtf8( "שלום 😀a.a\r\nsecond a.a\nlast b+b" );
     REQUIRE( dock->setDefinition( { { "pattern", "a\\.a|b\\+b" },
                                     { "scope", "text" },
@@ -58,12 +61,23 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
     table->setCurrentCell( 0, 0 );
     auto* apply = dock->findChild<QPushButton*>( "valueCountsApply" );
     REQUIRE( apply );
+    REQUIRE( apply->isEnabled() );
+    table->clearSelection();
+    CHECK( table->currentRow() == 0 );
+    CHECK_FALSE( apply->isEnabled() );
+    REQUIRE(
+        QMetaObject::invokeMethod( apply, "clicked", Qt::DirectConnection, Q_ARG( bool, false ) ) );
+    CHECK( appliedCount == 0 );
+    table->selectRow( 0 );
+    REQUIRE( apply->isEnabled() );
     apply->click();
+    CHECK( appliedCount == 1 );
     CHECK( applied.action == CommanderAction::ApplyValueCount );
     CHECK( applied.analysisArguments.value( "jobId" ) == state.value( "jobId" ) );
     CHECK( applied.analysisArguments.value( "rowIndex" ).toInt() == 0 );
     REQUIRE( dock->setDefinition( { { "pattern", "changed" } } ).ok() );
     CHECK( dock->state().value( "draftChanged" ).toBool() );
+    CHECK_FALSE( apply->isEnabled() );
     CHECK_FALSE( dock->setDefinition( { { "operation", "apply" }, { "rowIndex", 0 } } ).ok() );
     CHECK_FALSE( dock->setDefinition( { { "counts", QVariantMap{ { "maxValues", 0 } } } } ).ok() );
     CHECK_FALSE( dock->setDefinition( { { "operation", "guess" } } ).ok() );

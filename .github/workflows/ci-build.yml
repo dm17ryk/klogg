@@ -660,6 +660,7 @@ jobs:
         with:
           backend: accelerated
           sdk-smoke: 'true'
+          native-ui: 'true'
       - name: Upload native parity diagnostics
         if: ${{ always() && matrix.config.native_parity }}
         uses: actions/upload-artifact@v4

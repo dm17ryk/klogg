@@ -17,6 +17,7 @@ if(Python3_Interpreter_FOUND)
     # The 37-test suite measured 480s locally; RSS adds supervised process cases.
     # This aggregate cap does not change any individual probe or product deadline.
     set_tests_properties(workbench_benchmark_tests PROPERTIES TIMEOUT 900 LABELS "benchmarks;python")
+
 else()
     message(STATUS "Workbench benchmark self-tests skipped: Python 3.9+ is unavailable")
 endif()

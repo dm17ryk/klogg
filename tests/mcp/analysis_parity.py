@@ -7,6 +7,7 @@ and portable settings; only processes created here are terminated.
 import argparse
 from contextlib import ExitStack
 import json
+import logging
 import os
 from pathlib import Path
 import queue
@@ -19,6 +20,32 @@ from typing import Optional
 
 from workbench_contracts import require_operations
 from parity_payload import prepare_payload, private_ipc_environment
+
+LOG = logging.getLogger("analysis.parity")
+
+
+def wait_for_commander(isolated: Path, environment: dict, host, deadline: float) -> None:
+    """A slow readiness probe must not replace the existing absolute startup bound."""
+    while True:
+        assert host.poll() is None, "Isolated host exited during startup"
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, "Isolated host exceeded its startup deadline"
+        try:
+            probe = subprocess.run(
+                [str(isolated), "command", "--action", "get_info", "--require-running",
+                 "--timeout-ms", "1000"],
+                capture_output=True, env=environment, timeout=min(10, remaining),
+            )
+        except subprocess.TimeoutExpired:
+            # subprocess.run kills/reaps this read-only probe before raising.
+            LOG.warning("startup_probe_timeout remaining_seconds=%.3f",
+                        max(0, deadline - time.monotonic()))
+            continue
+        if probe.returncode == 0:
+            LOG.info("commander_ready remaining_seconds=%.3f", deadline - time.monotonic())
+            return
+        LOG.debug("startup_probe_not_ready returncode=%s", probe.returncode)
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
 
 
 def seed_routing_session(payload: Path, artifacts: Path) -> None:
@@ -236,13 +263,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
                     assert host.poll() is None, "Routing host exited during restoration"
                     assert time.monotonic() < deadline, "Routing host did not finish restoration"
                     time.sleep(0.02)
-            while True:
-                assert host.poll() is None, "Isolated host exited during startup"
-                probe = subprocess.run([str(isolated), "command", "--action", "get_info", "--require-running", "--timeout-ms", "1000"], capture_output=True, env=environment, timeout=10)
-                if probe.returncode == 0:
-                    break
-                assert time.monotonic() < deadline, probe.stderr
-                time.sleep(0.05)
+            wait_for_commander(isolated, environment, host, deadline)
             server = subprocess.Popen([str(isolated), "mcp", "serve"], env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=mcp_log, encoding="utf-8", bufsize=1)
 
             def read_replies():

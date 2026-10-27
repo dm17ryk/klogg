@@ -1580,5 +1580,22 @@
       ]
     },
     "hostedVerification": "pending follow-up push"
+  },
+  "mergeFollowUp": {
+    "masterCommit": "fb21cb93eaea179c58a4a5d856445873927182c0",
+    "conflicts": [
+      "tests/CMakeLists.txt",
+      "PACKAGE_SHA256.json"
+    ],
+    "resolution": "Preserve merged G03c and all master task records; retain measured G02d900-second aggregate benchmark cap; regenerate130staged-blob hashes.",
+    "build": "Full local Qt6.10.1 Qt-only target build passed, deployment passed for app/unit/integration executables.",
+    "ctest": "6/6 passed in237.35seconds after correcting an ignored wrapper filename before test execution; all4portable settings restored byte-identically.",
+    "review": "Fresh read-only conflict review approved; exactly11feature paths differ from master; all master product/UI/parity code preserved.",
+    "graph": "CodeGraph unindexed; GitNexus refresh crashed3221226505; stale detect-changes maps291unrelated/inherited flows and cannot establish a pass.",
+    "binaries": {
+      "cilogg.exe": "e250af39c3b2b4ddc9d405b0fff375b872fdc0413f9b8653116cc33d9bec27d9",
+      "cilogg_tests.exe": "59db178afa35256acb1d225bcadfda26305561f6aff10448ea32927f097df256",
+      "cilogg_itests.exe": "50e27b5b92a5d43147f4af61c4fdb8b2dbd7fe16841a00ac6a4c9ec17c794928"
+    }
   }
 }
