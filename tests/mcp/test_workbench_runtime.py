@@ -91,8 +91,23 @@ class ControllerRetryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_background_crash_is_not_retried(self):
         session = self.session([self.failed("worker crashed")])
-        with self.assertRaisesRegex(AssertionError, "controller_startup_failed"):
+        with self.assertRaisesRegex(AssertionError, "controller_startup_failed") as failure:
             await runtime_checks.controller_job(session, Path("private"))
+        self.assertEqual(session.count, 1)
+        self.assertIn('"state": "failed"', str(failure.exception))
+        self.assertIn("worker crashed", str(failure.exception))
+
+    async def test_noisy_stdout_cannot_hide_startup_error_or_break_json(self):
+        state = self.failed("precise startup cause")
+        state["stdout"] = "\U0001f600" * 20000
+        session = self.session([state])
+        with self.assertRaisesRegex(AssertionError, "controller_startup_failed") as failure:
+            await runtime_checks.controller_job(session, Path("private"))
+        diagnostic = str(failure.exception).split(": ", 1)[1]
+        details = json.loads(diagnostic)
+        self.assertEqual(details["stderr"], "precise startup cause")
+        self.assertTrue(details["startup_output_truncated"])
+        self.assertLessEqual(len(diagnostic.encode("ascii")), 16384)
         self.assertEqual(session.count, 1)
 
     async def test_background_collision_retries_are_bounded(self):

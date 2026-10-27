@@ -21,8 +21,8 @@
     "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
-  "activeTask": "G02",
-  "nextTask": "G03",
+  "activeTask": "G03",
+  "nextTask": "G02",
   "tasks": {
     "G01": {
       "status": "completed",
@@ -219,7 +219,7 @@
         },
         {
           "id": "G03b",
-          "status": "implemented_pending_gates",
+          "status": "merged",
           "baseCommit": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
           "scope": "Current-build native parity CI gates, MCP SDK smoke compatibility and portable isolated runtime payloads",
           "rulings": [
@@ -266,6 +266,170 @@
             "evidence": "../../docs/workbench/g03b-windows-observations.json",
             "localVerification": "68 combined tests on Python3.9/3.12,3 platform-specific skips. Shared-runtime CTest5/6; focused action case81assertions passes, and all207unitcases pass with fresh private portable settings using the same binary. Shared-runtime persistence failures remain recorded; no clean one-shot6/6 claim.",
             "hostedVerification": "pending for the repair commit"
+          },
+          "mergeCommit": "7c2a3735c6b511c043b551aa9d26d514d20fa344"
+        },
+        {
+          "id": "G03c",
+          "status": "implemented_pending_gates",
+          "baseCommit": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
+          "scope": "Opt-in native dock interaction, exposure/painting checks and screenshot evidence for Regex Lab and Value Counts",
+          "rulings": [
+            "Use executing-plans inline execution and this canonical PROGRESS ledger; no implementer delegation.",
+            "Branch from merged PR66 master; PR67 memory gate remains independent and open.",
+            "The probe hosts real docks and routes their callbacks through existing analysis commands; it does not claim packaged MainWindow integration or physical input/compositor latency.",
+            "Use a strict native-platform whitelist, real Qt mouse/key/input-method events, observed paints/exposure and four bounded captured images.",
+            "Keep full G02/G03 in_progress; headless/synthetic results never establish native usability.",
+            "Use approved local Qt6.10.1 and retain actual worker/application/test binary identities; CI Qt6.12 evidence remains separate.",
+            "Retain the native failing run and four captures before fixing Value Counts; add ordinary UI regressions for idle, selected, and draft-edited button states.",
+            "Keep the15-second completion wait for the fixed tiny GUI fixture; it does not change arbitrary-pattern worker/job budgets. No observed wait failure.",
+            "Raise only the aggregate CTest harness cap120->300seconds: observed Python3.9 suite160.066seconds exceeds120. Individual probe and production analysis execution budgets remain unchanged.",
+            "Preserve the existing40-second absolute host-startup deadline. Retry a timed-out read-only Commander probe only while time remains; clamp each probe to remaining time and reject host exit before retrying. No product startup or analysis budget changes.",
+            "Generic run-name GitNexus impact reports CRITICAL111 affected symbols from the stale primary index, mapping unrelated production modules. User warned before the shared test helper edit; direct scope and fresh general/Python reviews cover this bounded readiness-only change."
+          ],
+          "preflight": [
+            "G03b -> G03c: reuse isolated payload copying, private IPC leases, process supervision and exact semantic comparison.",
+            "G03c -> G02: no new performance budget or resident-memory pass is inferred.",
+            "Native probe found a Value Counts Apply availability defect; its existing command guard is preserved while UI state follows draft/selection changes."
+          ],
+          "evidence": [
+            "Initial six black-box tests failed before runner implementation; 20 negative cases had no report.",
+            "Six runner tests passed; real existing binary rejected with native_report_missing_or_oversized before native probe implementation.",
+            "IPC lifetime-order regression failed before ExitStack cleanup ordering fix.",
+            "../../docs/workbench/g03c-native-ui.md",
+            "../../docs/workbench/g03c-windows-observations.json",
+            "Eight runner tests pass; native prototype passed195 assertions after the stale Apply button fix. Uniform-capture regression then failed before adding its independent guard.",
+            "Full fresh Qt6.10.1 RelWithDebInfo build passed. Final native probe passed199assertions and all four200+pixel nonuniform capture gates; both retained jobs released and owned process cleanup reports zero failures.",
+            "Actionlint baseline/current9diagnostics,zero introduced; Ruff E9/F passes on all new Python files.",
+            "All three fresh C++/Python/general source reviews approved with zero blocking findings.",
+            "Complete fresh local CTest passed6/6 suites with zero failures in496.71seconds; the new55-test harness took110.38seconds.",
+            "Python3.9 full Workbench harness passed55tests with1native-Unix-only skip in160.066seconds.",
+            "build_root/g03c-startup-red.log: three focused startup tests failed before the helper; g03c-startup-final.log: three pass, including exact10/10/5 probe budgets and25-second deadline.",
+            "build_root/g03c-python39-final.log: full58tests passed in95.646seconds; build_root/g03c-python312-final.log: full58tests passed in127.289seconds. Each has one native-Unix-only skip on Windows.",
+            "build_root/g03c-public-parity-sdk1/result.json retains the pre-SDK startup-probe failure; g03c-public-parity-sdk1-retry/result.json and g03c-public-parity-final-sdk2/result.json pass current-build GUI/CLI/MCP and complete SDK1.30.0/2.3.0 suites after the readiness fix.",
+            "build_root/g03c-ctest-registration.log verifies aggregate Workbench self-test TIMEOUT300.0 after reconfiguration. Full6/6 CTest above preceded only the Python readiness follow-up and aggregate cap; both latest58-test harness runs pass afterward.",
+            "C++/Python/general source reviews approved; the final deadline test now verifies exact clamped budgets and elapsed time. Final evidence and staged canonical hashes independently reviewed."
+          ],
+          "limitations": [
+            "Historical initial6/6 CTest is preserved. PR68 follow-up native/UI/harness/SDK checks pass, and all six registered CTest suites have passing coverage after failed-check reruns. Earlier4/6 and private206/207 attempts remain recorded; no single clean6/6 follow-up run is claimed. Hosted Qt6.12 confirmation remains pending. Full G02/G03 remain open.",
+            "CodeGraph unindexed here; Code Review Graph unavailable. GitNexus query/impact cannot resolve RegexLabDock/ValueCountDock and warns its primary index is stale; no graph scope pass claimed.",
+            "A fresh bounded GitNexus refresh timed out after120 seconds and its owned process tree was reaped; direct scope and fresh reviews are required.",
+            "Nonblocking Python review note: parent validates PNG headers,dimensions and hashes,not arbitrary PNG decoding; the trusted Qt producer requires image.save success and samples its original image.",
+            "Optional static-analysis tooling did not establish passes: clang-tidy lacked compile database/Qt includes; cppcheck could not locate std.cfg. Compiler build and fresh C++ review passed."
+          ],
+          "commit": "c4309a1ba489c4ea934ad231bbf6381321551351",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/68",
+          "review": {
+            "cpp": "approved",
+            "python": "approved",
+            "general": "approved",
+            "status": "approved"
+          },
+          "localVerification": "all_registered_suites_passed_across_full_run_and_failed_check_reruns",
+          "reviewFixes": {
+            "status": "implemented_locally_verified_hosted_confirmation_pending",
+            "review": "Sourcery PR68: deselection fixed; Linux routing false positive explained and resolved.",
+            "evidence": "../../docs/workbench/g03c-windows-observations.json#reviewFollowUp",
+            "localVerification": {
+              "python39": "Ran 59 tests in 114.327s",
+              "pythonWindowsSkip": "One native Unix-only socket case skipped on Windows.",
+              "ctest": "67% tests passed, 2 tests failed out of 6",
+              "ctestTime": "Total Test time (real) = 708.30 sec",
+              "selection": "All10valuecounts cases pass, including cleared-selection dispatch guard.",
+              "native": "217 assertions and four nonuniform captures pass with temporary topmost windows; original and edited probes both failed immediate hit testing before desktop stacking was controlled.",
+              "broadSuiteLimit": "First shared-runtime CTest passed4/6; benchmark self-tests hit300seconds and unit tests had11assertion failures. A separate private runtime passed206/207unitcases. With all four portable configuration files isolated and restored, the entire registered unit suite passed131.26seconds. The remaining registered benchmark suite passed after the measured aggregate timeout correction. All six registered suites have passing coverage across the full run and failed-check reruns; no single clean6/6 follow-up run is claimed. Hosted verification remains pending.",
+              "benchmarkMeasurement": {
+                "artifact": "build_root/pr68-benchmark-measured/result.json",
+                "sha256": "a4cc8f7d25216b1cb591b4824670af83c2f2a8ea7f1579f1ca618cb04e7d0d60",
+                "report": {
+                  "passed": true,
+                  "registeredCommand": [
+                    "C:/Users/DmitryKokotov/AppData/Local/Programs/Python/Python314/python.exe",
+                    "-m",
+                    "unittest",
+                    "discover",
+                    "-s",
+                    "C:/Users/DmitryKokotov/.codex/worktrees/linked-regex-charts-p06/klogg/tests/benchmarks",
+                    "-v"
+                  ],
+                  "testCount": 37,
+                  "unittestSeconds": 363.748,
+                  "supervisedSeconds": 364.9087984999642,
+                  "originalAggregateLimitSeconds": 300,
+                  "measurementDeadlineSeconds": 900,
+                  "meaning": "Same registered suite measured without its CTest aggregate cap; individual test/probe assertions and budgets unchanged."
+                },
+                "workingDirectory": "build_root; registered command invoked under a diagnostic supervisor, with individual assertions unchanged"
+              },
+              "benchmarkTimeout": "Only the aggregate CTest timeout changed300to600seconds; all37self-tests passed363.748seconds without the old cap. Individual assertions, probe and application deadlines are unchanged.",
+              "registeredBenchmarkRerun": {
+                "artifact": "build_root/pr68-benchmark-final.log",
+                "sha256": "d48d126a765b097bd194f47b9aef52a2d1768eddb44b17feadd6265ae1565c3e",
+                "summary": "100% tests passed, 0 tests failed out of 1",
+                "time": "Total Test time (real) = 480.32 sec",
+                "registration": {
+                  "backtrace": 1,
+                  "command": [
+                    "C:/Users/DmitryKokotov/AppData/Local/Programs/Python/Python314/python.exe",
+                    "-m",
+                    "unittest",
+                    "discover",
+                    "-s",
+                    "C:/Users/DmitryKokotov/.codex/worktrees/linked-regex-charts-p06/klogg/tests/benchmarks",
+                    "-v"
+                  ],
+                  "config": "RelWithDebInfo",
+                  "name": "workbench_benchmark_tests",
+                  "properties": [
+                    {
+                      "name": "LABELS",
+                      "value": [
+                        "benchmarks",
+                        "python"
+                      ]
+                    },
+                    {
+                      "name": "TIMEOUT",
+                      "value": 600.0
+                    },
+                    {
+                      "name": "WORKING_DIRECTORY",
+                      "value": "C:/Users/DmitryKokotov/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/tests"
+                    }
+                  ]
+                }
+              },
+              "portableProfileRerun": {
+                "artifact": "build_root/pr68-rerun-ctest.log",
+                "sha256": "a0ecbef543019fa7c8c43ba8e1aaece931077835ed4c5e36f6c07b4d6c36e4d7",
+                "settingsRestored": true
+              },
+              "masterIntegration": {
+                "upstream": "f9adedc487db19fc9490ca1ff015e66be4cfc16b",
+                "incomingPaths": [
+                  "docs/workbench/benchmarks.md",
+                  "docs/workbench/g02c-memory-gates.md",
+                  "docs/workbench/g02c-windows-observations.json",
+                  "plans/cilogg-workbench-2026-10-21/PACKAGE_SHA256.json",
+                  "plans/cilogg-workbench-2026-10-21/PROGRESS.json",
+                  "scripts/benchmarks/workbench_benchmark.py",
+                  "scripts/benchmarks/workbench_gui.py",
+                  "scripts/benchmarks/workbench_process.py",
+                  "tests/benchmarks/fake_native_benchmark.py",
+                  "tests/benchmarks/test_workbench_benchmark.py",
+                  "tests/benchmarks/test_workbench_gui.py",
+                  "tests/benchmarks/test_workbench_process.py"
+                ],
+                "g02ExactlyPreserved": true,
+                "g03ExactlyPreservedBeforeFollowup": true,
+                "activeTask": "G03",
+                "nextTask": "G02",
+                "manifest": "Keys preserved; hashes must be regenerated from final staged blobs before commit."
+              },
+              "diagnostics": "10runtime tests pass; noisy20kemoji stdout cannot break JSON or omit the startup error. Reviewer finding reproduced RED before per-stream bounds.",
+              "reviews": "C++/Python/general approved; final evidence audit required before push."
+            },
+            "windowsFailure": "Original CI omitted final job state/exit/output, so root remains unproven. Deploy application as well as test Qt dependencies; retain bounded valid JSON details on unexpected exits, without retrying or accepting crashes."
           }
         }
       ]
