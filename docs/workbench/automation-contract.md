@@ -163,3 +163,10 @@ These are functional offscreen checks. Hosted results remain pending until their
 jobs finish. Native visible usability, broader backend/platform conformance and
 G02 presentation/memory/throughput measurements remain open; G03b does not mark
 the complete G02/G03 foundations finished.
+
+## File-backed MainWindow coverage
+
+G03 also selects `file-navigation`; `--task G03d` runs that case independently.
+See [G03d](g03d-file-navigation.md) for exact source/row provenance, semantic
+navigation, source-closure rejection and the Unicode JSON regression. These are
+offscreen integration checks; native desktop usability remains a separate gate.

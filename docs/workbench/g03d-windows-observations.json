@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "slice": "G03d",
+  "observedDate": "2026-10-28",
+  "baseCommit": "fb21cb93eaea179c58a4a5d856445873927182c0",
+  "implementationCommit": "04fd1d61e1021dadff848da3ad60e05753d0d79d",
+  "releaseGateStatus": "pending",
+  "fullG02G03Complete": false,
+  "environment": {
+    "os": "Windows x64",
+    "compiler": "MSVC2022",
+    "qt": "6.10.1",
+    "backend": "qt",
+    "guiPlatform": "offscreen"
+  },
+  "sourceSHA256": {
+    "src/app/main.cpp": "a94e92e1d51a0af77026cd5fde4d76f45e26c9b4ebc90b25a274fa33c5bf2041",
+    "tests/mcp/workbench_parity.py": "d56d46f83bffd61f1821a2d922bec9fd70979390aaf6d66856b41dfee1067da6",
+    "tests/mcp/workbench_navigation.py": "2355c76015291e394486e0991fcb3ddb2739b704d735f2f1f5602c48258dc43d",
+    "tests/mcp/test_workbench_navigation.py": "df01053928b9c87695d705482dc3d1c2e137a94338c105bcd0be78c6ff7af67e",
+    "test_data/workbench/command-cases/registry.json": "83fe2ab14257243a7657da029b5a2ebf9e3c976a82bc03238380dd280425e93e"
+  },
+  "binaries": {
+    "cilogg.exe": "f5173e714a1c7ac024e12b64de5170e6d5a665a5f2b6e9945b8f67db5a4e897d",
+    "cilogg_itests.exe": "50e27b5b92a5d43147f4af61c4fdb8b2dbd7fe16841a00ac6a4c9ec17c794928",
+    "cilogg_tests.exe": "59db178afa35256acb1d225bcadfda26305561f6aff10448ea32927f097df256"
+  },
+  "build": "Application target rebuilt after the surrogate fix. Other product/test sources match the merged baseline; complete target build and6/6 merge validation preceded this main.cpp-only fix.",
+  "ctest": {
+    "passed": 6,
+    "total": 6,
+    "elapsedSeconds": 253.66,
+    "originalPortableSettingsRestored": true,
+    "logSHA256": "0c284c7712075aa91b293c62f5c05c85f3f73964f0fde2e03c6d5db4bfd44e0e"
+  },
+  "pythonSelfTests": {
+    "314": {
+      "tests": 77,
+      "passed": 76,
+      "platformSkips": 1,
+      "logSHA256": "d2c7c4bba9207b7271e9a0898224ce5dc4d9dd8e5ffa33891bbb9b189af48f79"
+    },
+    "39": {
+      "tests": 77,
+      "passed": 76,
+      "platformSkips": 1,
+      "logSHA256": "aa0d346594572a66706dcc9af3ce44112c5a6528bc97cd7aae71a93522b200a2"
+    }
+  },
+  "sdkRuns": [
+    {
+      "sdk": "1.30.0",
+      "passed": true,
+      "backend": "qt",
+      "reportSHA256": "d8ed786190871999fb4a696c0ce8e6d93d5aa5bb2ad26e7f87f1d82442b4689d",
+      "cases": [
+        "analysis",
+        "regex-lab",
+        "value-counts",
+        "file-navigation"
+      ]
+    },
+    {
+      "sdk": "2.3.0",
+      "passed": true,
+      "backend": "qt",
+      "reportSHA256": "f1e4c5594b7d9567bafcb9fa5b00112cde803496128f596faa59d12c1c1e0ad5",
+      "cases": [
+        "analysis",
+        "regex-lab",
+        "value-counts",
+        "file-navigation"
+      ]
+    }
+  ],
+  "validationEpochs": {
+    "initial": "Full6/6 CTest in253.66seconds and both SDK gates passed after the production JSON fix, before final Python-only oracle strengthening.",
+    "final": "77self-tests on each Python version, registered harness1/1 and complete4-case native G03 parity pass after oracle fixes.",
+    "ipcFailure": "First final G03 attempt lost an IPC reply during Value Counts before entering G03d. Host logs show the mutation executed. No in-place retry was used; a fresh isolated suite passed. Cause remains unproven."
+  },
+  "finalParityReportSHA256": "0d7fd2a84887abb6ce92b6970d85b93f882276c3cd089d0b5ac8bdd5acf9524c",
+  "reviewFollowUp": {
+    "importantFindings": 2,
+    "status": "fixed_and_verified",
+    "fixes": [
+      "Validate source/jobId/requestRevision on every raw CLI/MCP/GUI and retained row before normalization.",
+      "Observe the other current tab before analysis, GUI Run and each navigation activation."
+    ],
+    "focusedTests": 18,
+    "reviewRed": "Eight false-green negative assertions and one downstream wrong-focus failure before strengthening; all18cases pass afterward."
+  },
+  "fileNavigation": {
+    "passed": true,
+    "fixtureBytes": 31,
+    "physicalRows": 3,
+    "navigationLines": [
+      3,
+      2
+    ],
+    "closedSourceRejected": true,
+    "retainedResultsAfterClose": true,
+    "reportSHA256": "99be6da0c05590a206f4fce502b2b01da28bb2224304769255e39ccc6e1ec4f0"
+  },
+  "regression": {
+    "before": "Second row returned Hebrew plus20 without emoji; numeric match startUtf16 remained7.",
+    "after": "Exact raw Unicode text and capture results preserved across CLI/MCP/GUIRun.",
+    "cause": "Per-QChar UTF8 serialization lost paired surrogate code units.",
+    "fix": "Escape surrogate code units through the existing JSON unicode-escape path."
+  },
+  "failureHistory": {
+    "g03d-navigation-red.log": "85fc8513c93c88aa9b5680498e0c48921af9278700fbf1433ee48a8a9df686a9",
+    "g03d-navigation-initial.log": "9477c4f4613395c1fb20fa7f2d13dce7901a083d8dc39f052f8c854e4c072092",
+    "g03d-native-prototype.log": "23c7f622645f948805662c7d074424c91fdda3df5e3aa58fc3be8b834fd2fa53",
+    "g03d-native-prototype-retry.log": "fc925644268c53fcd182c763f4d22201e265200b64b464806060c8462b3e55a8",
+    "g03d-native-current.log": "57d1440af745d043bf10ed78b6a71ebf02b3ae2886fbc1a6678cb6361b49c79e",
+    "g03d-native-diagnostic.log": "7cdaeea2b161beef95ee3b97f2d614589fa49fec35a63979e8491b80ed2c4b98",
+    "g03d-build-initial.log": "ec3a5be65d6be572e2a40a487fefa3b0714010e0d18161a780a77ace6cad14d0",
+    "g03d-native-diagnostic/navigation-snapshot.json": "bc3be6939f2edc1d5a866498ba6775f0fddcb89eb57e1d275933ceb8b62f7f9f",
+    "g03d-review-red.log": "55290686adbe568bcd662635730cf964e77c7c87d9c3e8e4925c5e6fb7ffb056",
+    "g03d-review-green.log": "cb29cd35853c13f34344273bc9f375cf9328b2551b67d68bf6e516ebc78f32f0",
+    "g03d-final-parity/result.json": "e6a22da16f61c424a86d78abc8fcc718295c6f2bfa89c3691ee089af9b8eccb4",
+    "g03d-final-parity/stderr.log": "30df9521c7dd32dc6cfe26ded9ecdfc8ec607233836e87f3ab2a9e55647512fc"
+  },
+  "limitations": [
+    "Offscreen MainWindow semantic integration; physical/native desktop usability, menus, layout restore and compositor latency unmeasured.",
+    "Full G02/G03 remain open. Hosted Qt6.12 and other platform outcomes remain pending.",
+    "Valid supplementary Unicode is runtime-verified; malformed isolated-surrogate interoperability is not established.",
+    "CodeGraph reports worktree unindexed; Code Review Graph unavailable; GitNexus refresh failed and stale impact is not a verification pass."
+  ]
+}
