@@ -294,7 +294,7 @@ TEST_CASE( "Native docks accept input and expose usable docked and floating resu
     REQUIRE( output.commit() );
 }
 
-#if !defined( Q_OS_MAC )
+#if !defined( Q_OS_DARWIN )
 namespace {
 void chooseData( QComboBox* combo, const QString& value )
 {

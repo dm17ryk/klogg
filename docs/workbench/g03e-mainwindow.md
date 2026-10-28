@@ -103,3 +103,25 @@ introduces no diagnostics against master, while its existing action/runner-label
 findings remain. The post-edit GitNexus refresh crashed after an earlier timeout;
 stale change reports establish no graph pass. Direct source/scope/hash audits and
 independent reviews cover this test-only change. Full G02/G03 remain in progress.
+
+## CI platform guard follow-up (2026-10-28)
+
+The two PR71 macOS Qt 6.12 builds rejected the new test's `Q_OS_MAC` guard:
+Qt deprecates even querying that macro, and CI treats the Clang pragma warning
+as an error. `Q_OS_DARWIN` preserves the existing Apple exclusion and supports
+Qt 5 and Qt 6. The CMake condition excludes MainWindow-specific test files on
+Apple; the product MainWindow remains available there.
+
+A local Clang reproducer fails with the original diagnostic and passes with the
+new guard for Apple and non-Apple configurations. The Windows Qt 6.10.1 target
+build, compact native MainWindow probe and five repetitions of the source
+snapshot append test pass after the change. Hosted macOS Qt 6.12 confirmation
+remains pending. The original full-suite observations retain their historical
+source and binary hashes; `ciFollowUp` records the new validation epoch.
+
+Master has a separate Fedora 41 ARM64 QEMU segmentation fault in the append
+test, without a stack trace. Its single failed job was retried to check
+reproducibility; its cause remains unresolved. Passing local Windows repetitions
+do not establish a QEMU fix. No production change, test skip or warning-policy
+relaxation is included. C++ and general reviews approve the narrow guard fix.
+GitNexus refresh was retried and timed out; no current graph pass is claimed.

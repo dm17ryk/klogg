@@ -687,5 +687,109 @@
     "tests/mcp/test_workbench_mainwindow.py": "bb464442a6d8bd6a2d2e82221c4fa26263c1a6ebecf2a1ddf6856660cd3e4c8d",
     ".github/actions/workbench-parity/action.yml": "11c505276e94b48dd1c644e074684defc5f1ba849a26ba0f742d7bd16346360a"
   },
-  "auditCorrection": "Original local check wrongly compared raw compiled-file SHA against LF-normalized Git SHA. Reproduced before correction; current check verifies both hashes and normalized content equality. No implementation bytes changed."
+  "auditCorrection": "Original local check wrongly compared raw compiled-file SHA against LF-normalized Git SHA. Reproduced before correction; current check verifies both hashes and normalized content equality. No implementation bytes changed.",
+  "ciFollowUp": {
+    "date": "2026-10-28",
+    "baseCommit": "6e62da62f2fb56d37a04704b78ea7408aa7bb157",
+    "scope": "One test-only Apple platform guard; original validation above belongs to the base commit and retains its historical source/binary hashes.",
+    "failure": {
+      "runId": 40662787927,
+      "jobIds": [
+        122729694346,
+        122729694394
+      ],
+      "reason": "Qt 6.12 deprecates Q_OS_MAC with a Clang deprecated-pragma warning; CI correctly treats it as an error."
+    },
+    "change": "Use Q_OS_DARWIN, the Qt 5/6 compatible family macro underlying the deprecated Q_OS_MAC alias. The native MainWindow test remains excluded on Apple, matching the MainWindow-specific test-file CMake condition.",
+    "sourceSHA256": {
+      "tests/ui/workbenchusability_test.cpp": "816fbcb5267ec2671fd7d47838d18fa5d518e18751690cc008f7fe94c21a2e47"
+    },
+    "sourceGitBlobSHA256": {
+      "tests/ui/workbenchusability_test.cpp": "71d3bb17fdd385c7eb2d929d8b73824a50a0d52bb4400f31214dd2867e7775e5"
+    },
+    "clangReproducer": {
+      "scope": "Clang reproducer for Qt 6.12 deprecated macro and Apple/non-Apple guard; not a macOS build",
+      "red": [
+        {
+          "apple": true,
+          "exitCode": 1,
+          "diagnostic": "C:\\Users\\DmitryKokotov\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\pr71-ci-platform.cpp:4:15: error: macro 'Q_OS_MAC' has been marked as deprecated: use Q_OS_MACOS for macOS or Q_OS_APPLE for all Apple platforms instead [-Werror,-Wdeprecated-pragma]\n    4 | #if !defined( Q_OS_MAC )\n      |               ^\nC:\\Users\\DmitryKokotov\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\pr71-ci-platform.cpp:2:108: note: macro marked 'deprecated' here\n    2 | #pragma clang deprecated(Q_OS_MAC, \"use Q_OS_MACOS for macOS or Q_OS_APPLE for all Apple platforms instead\")\n      |                                                                                                            ^\n1 error generated."
+        }
+      ],
+      "green": [
+        {
+          "apple": true,
+          "exitCode": 0,
+          "diagnostic": ""
+        },
+        {
+          "apple": false,
+          "exitCode": 0,
+          "diagnostic": ""
+        }
+      ]
+    },
+    "windowsQt610": {
+      "buildExitCode": 0,
+      "steps": [
+        {
+          "name": "pr71-ci-mainwindow",
+          "exitCode": 0,
+          "seconds": 23.624402099987492
+        },
+        {
+          "name": "pr71-ci-append-1",
+          "exitCode": 0,
+          "seconds": 1.6900188999716192
+        },
+        {
+          "name": "pr71-ci-append-2",
+          "exitCode": 0,
+          "seconds": 0.750650699948892
+        },
+        {
+          "name": "pr71-ci-append-3",
+          "exitCode": 0,
+          "seconds": 0.922489499906078
+        },
+        {
+          "name": "pr71-ci-append-4",
+          "exitCode": 0,
+          "seconds": 0.9649352000560611
+        },
+        {
+          "name": "pr71-ci-append-5",
+          "exitCode": 0,
+          "seconds": 1.0781162998173386
+        }
+      ],
+      "settingsRestored": true,
+      "settingsSHA256": {
+        "cilogg.conf": "4a647aea30c0e478cba82a208fafafa7afe10d4869607a09c22849fe7e28014d",
+        "cilogg_session.conf": "40beb5a4619088652d9bd505d9c6594b15ccd2328f5022cdd64616f5425233b4",
+        "actions.json": "6871fc605f31bbcdea65d226b852ff230a73eb94565ceb8df67d5811a60f4a4b",
+        "previews.json": "314a199a34c910ef1cfc03f9ec10b3cd4c8a937b15dfbcd4b53cfa7a7fd0ecb6"
+      },
+      "binarySHA256": {
+        "cilogg.exe": "653f4079a9e434cc2e5e312c711f48441e4e80c5f39305556ebe32883963484b",
+        "cilogg_itests.exe": "31990337fe83e62066160e7d3f03380d8e5ff4d01f889848396a95753c50c5e2",
+        "cilogg_tests.exe": "a5cb12f30890f783195c71f681a24a02addf79f674f98f1922560b6f5e860ec3"
+      },
+      "nativeProbe": "Both feature cases and six native captures; requested scale 0.75; exact assertions remain enabled.",
+      "appendTest": "Source snapshots distinguish completed and provisional appended lines, including its appended provisional-tail section, passes five consecutive runs."
+    },
+    "review": {
+      "cpp": "Approved, no findings.",
+      "general": "Approved, no findings."
+    },
+    "graph": "GitNexus impact could not resolve exerciseMainWindow against its stale sibling-checkout index; refresh attempted and timed out after 120 seconds. No graph pass claimed. CodeGraph is not indexed for this worktree; CodeReviewGraph is unavailable.",
+    "hostedValidation": "macOS Qt 6.12 builds require a fresh CI run after push; local Windows and synthetic Clang evidence do not establish that hosted pass.",
+    "masterFailure": {
+      "runId": 40645245142,
+      "originalJobId": 122672437974,
+      "retryJobId": 122804084240,
+      "statusAtRecording": "Retry in progress; root cause unresolved.",
+      "observation": "Fedora 41 ARM64 under QEMU: cilogg_itests segfaulted immediately after requesting a file-change check in the source snapshot append test. No stack trace; no speculative production fix or test skip."
+    }
+  }
 }
