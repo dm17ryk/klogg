@@ -4,6 +4,9 @@ inputs:
   backend:
     required: true
     description: Expected configured search backend (qt or accelerated)
+  native-benchmarks:
+    default: 'false'
+    description: Run existing native Windows GUI service and sampled-memory budgets
   sdk-smoke:
     default: 'false'
     description: Run both pinned Python MCP SDK profiles
@@ -68,3 +71,48 @@ runs:
             --cache "$CILOGG_BUILD_ROOT/CMakeCache.txt" --backend "$EXPECTED_BACKEND" \
             --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-native"
         fi
+    - name: Native GUI service and sampled-memory budgets
+      if: ${{ inputs.native-benchmarks == 'true' }}
+      shell: bash
+      env:
+        EXPECTED_BACKEND: ${{ inputs.backend }}
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" != Windows ]; then
+          echo 'Native benchmark CI currently requires a Windows desktop runner' >&2
+          exit 1
+        fi
+        executable="$CILOGG_BUILD_ROOT/output/cilogg.exe"
+        probe="$CILOGG_BUILD_ROOT/output/cilogg_itests.exe"
+        windeployqt "$probe"
+        inputs="$CILOGG_BUILD_ROOT/reports/workbench-benchmark-inputs"
+        mkdir -p "$inputs"
+        export WORKBENCH_BENCHMARK_METADATA="$inputs/build.json"
+        PYTHONPATH=tests/mcp python - <<'PY'
+        import json
+        import logging
+        import os
+        from pathlib import Path
+        from workbench_ci_gate import git_value, verify_build
+        logging.basicConfig(level=logging.INFO)
+        build = Path(os.environ["CILOGG_BUILD_ROOT"])
+        metadata = verify_build(build / "output/cilogg.exe", build / "CMakeCache.txt",
+                                os.environ["EXPECTED_BACKEND"])
+        metadata.update(sourceRevision=git_value("rev-parse", "HEAD"),
+                        productSourceTree=git_value("rev-parse", "HEAD:src"),
+                        testSourceTree=git_value("rev-parse", "HEAD:tests"))
+        logging.info("native_benchmark_provenance revision=%s backend=%s binary_sha256=%s cache_sha256=%s",
+                     metadata["sourceRevision"], metadata["configuredBackend"],
+                     metadata["binarySha256"], metadata["cacheSha256"])
+        Path(os.environ["WORKBENCH_BENCHMARK_METADATA"]).write_text(
+            json.dumps(metadata, indent=2, allow_nan=False), encoding="utf-8")
+        PY
+        corpus="$CILOGG_BUILD_ROOT/workbench-benchmark-corpus"
+        python scripts/benchmarks/workbench-benchmark.py \
+          --generate-corpus "$corpus" --rows 100000 --seed 42
+        python scripts/benchmarks/workbench-benchmark.py \
+          --scenario ui-service --platform native --sample-resident-memory \
+          --executable "$executable" --test-executable "$probe" \
+          --corpus "$corpus" --samples 100 --repetitions 3 \
+          --metadata "$WORKBENCH_BENCHMARK_METADATA" \
+          --output "$CILOGG_BUILD_ROOT/reports/workbench-benchmarks"
