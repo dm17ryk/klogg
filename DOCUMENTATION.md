@@ -1,12 +1,39 @@
-# CILogg documentation
+# CILogg user guide
+
+**From the first error to a repeatable investigation.** Browse large logs, capture
+live sources, inspect patterns, and automate the workflow.
+
+[Download](https://github.com/dm17ryk/klogg/releases) ·
+[Project overview](README.md) · [CLI & MCP](MCP.md) · [Build from source](BUILD.md)
+
+**[Explore the screenshot gallery →](docs/screenshots.md)** — ten views captured
+from the normal installed Windows application, build 26.04.2.1078.
+
+![CILogg dark workspace with the full log above filtered warnings and errors](docs/images/workspace.jpg)
+
+## Choose your workflow
+
+| I want to… | Start here |
+| --- | --- |
+| Find errors in an existing log | [Your first investigation](#your-first-investigation) |
+| Follow a growing log | [Browsing changing log files](#browsing-changing-log-files) |
+| Inspect regex groups before applying a filter | [Regex Lab](docs/regex-lab.md) |
+| Find the most frequent captured values | [Value Counts](docs/value-counts.md) |
+| Capture serial output and send commands | [Serial capture and device commands](#serial-capture-and-device-commands) |
+| Receive Android logcat or UDP syslog | [Live sources and plugins](#live-sources-and-plugins) |
+| Control CILogg from scripts or an AI assistant | [CLI and MCP automation](#cli-and-mcp-automation) |
 
 ## Table of Contents
 
-1. [Getting started](#Getting-started)
-1. [Exploring log files](#Exploring-log-files)
-1. [Settings](#Settings)
-1. [Keyboard commands](#Keyboard-commands)
-1. [Command line options](#Command-line-options)
+1. [Getting started](#getting-started)
+1. [Your first investigation](#your-first-investigation)
+1. [Feature guides](#feature-guides)
+1. [Exploring log files](#exploring-log-files)
+1. [Settings](#settings)
+1. [Crash reporting](#crash-reporting)
+1. [Keyboard commands](#keyboard-commands)
+1. [Mouse navigation](#mouse-navigation)
+1. [Command line options](#command-line-options)
 
 
 ## Getting started
@@ -25,6 +52,107 @@ Entering a new regular expression or a simple search term will update
 the bottom view, displaying the results of the search. The lines
 matching the search criteria are listed in order in the results, and are
 marked with a red circle in both windows.
+
+## Your first investigation
+
+Try the same data shown in the screenshots:
+
+1. Open the included [sample device log](docs/examples/device-session.txt) using
+   **File → Open** or drag it into CILogg. It contains 120 synthetic records.
+2. Enter `ERROR|WARN` in the search field, choose regular expression mode, and run
+   the search. The filtered view shows 30 warning/error lines with the original
+   log still available above it.
+3. Open **Tools → Regex Lab**. Use the current file as the source, keep the sample
+   scope, and try `(?<level>INFO|DEBUG|WARN|ERROR)\s+\[(?<service>[^\] ]+)`.
+   Run it to inspect the named `level` and `service` groups.
+4. Open **Tools → Value Counts**, use `(?<level>INFO|DEBUG|WARN|ERROR)` as the
+   pattern and `level` as the capture. Run against the current file's sample to
+   see `INFO` occur 70 times, `DEBUG` and `WARN` 20 times each, and `ERROR` 10 times.
+5. Select a count row to apply that value as a search, navigate to its first
+   occurrence, or export the result as CSV. See the
+   [Value Counts guide](docs/value-counts.md) for the exact controls and limits.
+
+### Inspect patterns with Regex Lab
+
+![Regex Lab beside the sample log, showing named captures and evaluation results](docs/images/regex-lab-showcase.jpg)
+
+Use a sample for a quick experiment, a selection for a focused investigation, or
+an explicit whole-file snapshot for a broader scan. Results expose captures and
+source locations; status reports completion and any partial-result reason.
+[Read the Regex Lab guide →](docs/regex-lab.md)
+
+### Discover recurring values
+
+![Value Counts beside the sample log, ranking severity values and percentages](docs/images/value-counts-showcase.jpg)
+
+Count a regex capture such as a severity, device ID, or error code. Inspect the
+distribution, filter on a selected value, navigate back to the log, or export CSV.
+Runs use snapshots; rerun after new data arrives.
+[Read the Value Counts guide →](docs/value-counts.md)
+
+## Feature guides
+
+### Serial capture and device commands
+
+Open a COM port from the **File** menu to capture serial output into a log tab.
+Use actions for reusable transmitted commands and automatic responses to react
+to incoming lines. Typed parameters let a command definition guide data entry.
+
+| Reusable commands | Automatic responses |
+| --- | --- |
+| [![Actions window with reusable device commands](docs/images/actions-showcase.jpg)](docs/images/actions-showcase.jpg) | [![Responses window with enabled match rules](docs/images/responses-showcase.jpg)](docs/images/responses-showcase.jpg) |
+
+The response editor links an incoming match to a sequence of actions and delays:
+
+[![Response editor showing the Panel Ready trigger and linked action steps](docs/images/response-editor-showcase.jpg)](docs/images/response-editor-showcase.jpg)
+
+- [Commander and serial workflows](README.md#commander-automation)
+- [Routing actions across multiple serial tabs](docs/multiple-action-tabs.md)
+- [Automatic response controls and counters](docs/automatic-responses.md)
+- [Exporting actions, responses, and highlighters](CONFIGURATION_EXPORTS.md)
+
+Pause communication to release a port temporarily, then resume the same capture
+tab. CLI equivalents are `pause_comm` and `play_comm`; a running GUI is required.
+
+### Live sources and plugins
+
+Open **Plugins → Manage Plugins…** to configure the bundled **ADB Logcat** and
+**Syslog Server** sources. Android capture requires an ADB executable and device;
+UDP Syslog defaults to the local machine. Both sources feed ordinary searchable
+log tabs. Plugins run in separate processes with the current user's permissions.
+
+![Installed plugin manager with bundled ADB Logcat and Syslog Server](docs/images/plugins-showcase.jpg)
+
+[View the Syslog encoding, output, severity, and sender settings →](docs/images/syslog-settings-showcase.jpg)
+
+- [Plugin installation, configuration, and SDK](docs/plugin-sdk.md)
+- [ADB devices, filters, and capture](plugins/examples/adb-logcat/README.md)
+- [Syslog listener, sender restrictions, and formats](plugins/examples/syslog-server/README.md)
+
+### CLI and MCP automation
+
+Commander controls a running CILogg session. The native MCP server exposes command
+discovery, session inspection, GUI controls, and CLI modes to local stdio clients.
+See [MCP setup and coverage](MCP.md) for automatic client installation and generated
+Codex/Claude Code skills, and [command-line usage](README.md#command-line-usage)
+for scripting examples.
+
+Python scripts and scenarios support repeatable workflows. Headless scenario runs
+and remote lab controller/agent/operator modes are listed in the
+[CLI command reference](README.md#main-commands-and-options); use each command's
+`--help` to discover its current options.
+
+![Script Runner with global and per-tab script controls](docs/images/script-runner-showcase.jpg)
+
+The Script Runner view above shows its configuration and status controls before a
+script is selected. Choose a script and optional JSON arguments to begin.
+
+### More investigation tools
+
+- [Discontiguous row selections](docs/discontiguous-selection.md)
+- [Highlight rules](#using-highlighters) and [quick color labels](#color-labels)
+- [Scratchpad transformations](#scratchpad)
+- [Analysis commands and result paging](docs/analysis-commands.md)
 
 ## Exploring log files
 
@@ -169,6 +297,8 @@ It is possible to save the current search pattern as a predefined filter from
 search input context menu.
 
 ### Using highlighters
+
+![Highlighter editor with reusable sets, match patterns, and foreground/background colors](docs/images/highlighters-showcase.jpg)
 
 *Highlighters* can colorize some lines of the log being displayed
 to draw attention to lines indicating an error, or to associate

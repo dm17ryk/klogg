@@ -1,10 +1,13 @@
-# Value Counts (P05)
+# Value Counts
 
 Open **Tools → Value Counts** or its frequency-bars toolbar button. The dock floats
 and saves its layout with the window. Drafts, pasted text and results stay in memory.
 GUI, CLI and native MCP use the shared bounded analysis service and Qt capture worker.
 
-![Value Counts dock beside the log viewer](images/value-counts.png)
+![Value Counts ranking severity values with frequencies and percentages beside the log viewer](images/value-counts-showcase.jpg)
+
+Try the [sample investigation](../DOCUMENTATION.md#your-first-investigation) to
+reproduce this workflow.
 
 Choose a pattern, capture number (`0` means whole match) or named group, subpattern,
 source and scope. The default sample is 1,000 physical lines / 4 MiB decoded text.
