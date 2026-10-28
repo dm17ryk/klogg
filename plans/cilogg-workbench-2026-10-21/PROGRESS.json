@@ -23,6 +23,19 @@
   },
   "activeTask": "G03",
   "nextTask": "G02",
+  "executionPolicy": {
+    "updatedDate": "2026-10-28",
+    "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves.",
+    "phaseOrder": ["W0", "decoder_core", "W1", "W2", "W3", "W4", "W5", "W6"],
+    "decoderCoreTasks": ["MD01", "MD02", "MD03", "MD04", "MD05", "MD06"],
+    "decoderCorePrerequisitesOutsideW0": ["F01", "F02", "F03", "F04", "D01", "E01"],
+    "decoderCoreDependencyOrder": ["MD01", "F01", "F02", "F03", "F04", "D01", "E01", "MD03", "MD02", "MD04", "MD05", "MD06"],
+    "deferredDecoderIntegration": ["MD07", "MD08"],
+    "deferredIntegrationPolicy": "Schedule MD07 after its decoder/U04/F07/V02 gates and MD08 after MD07/E09 in later waves; do not gate early V02 on these deferred integrations.",
+    "acceptancePolicy": "Preserve all hard dependencies, task acceptance, GUI/CLI/native-MCP parity and existing completed-work credit. W0 remains open until its gates pass; MD01 runtime claims require its actual scripts and complete reference captures.",
+    "nextAfterW0": "MD01",
+    "ruling": "Bring only the decoder-core prerequisite closure forward; defer the broader MD07-MD08 dependency closure as explicitly chosen by the user. Completing core alone does not complete the full decoder milestone."
+  },
   "tasks": {
     "G01": {
       "status": "completed",
@@ -482,7 +495,8 @@
         "build_root/g03-ctest-final.txt: standalone CTest registration check passed after SDK compatibility fix",
         "build_root/g03-sdk-final-1.30.0/checks/runtime-result.json and g03-sdk-final-2.3.0/checks/runtime-result.json: isolated MCP SDK runtime checks passed",
         "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks",
-        "../../docs/workbench/g03b-windows-observations.json"
+        "../../docs/workbench/g03b-windows-observations.json",
+        "../../docs/workbench/g03d-windows-observations.json"
       ],
       "limitations": [
         "G03a is the first independently reviewable harness slice; full G03 is not complete.",
@@ -554,7 +568,7 @@
         },
         {
           "id": "G03c",
-          "status": "implemented_pending_gates",
+          "status": "merged",
           "baseCommit": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
           "scope": "Opt-in native dock interaction, exposure/painting checks and screenshot evidence for Regex Lab and Value Counts",
           "rulings": [
@@ -600,7 +614,7 @@
             "Nonblocking Python review note: parent validates PNG headers,dimensions and hashes,not arbitrary PNG decoding; the trusted Qt producer requires image.save success and samples its original image.",
             "Optional static-analysis tooling did not establish passes: clang-tidy lacked compile database/Qt includes; cppcheck could not locate std.cfg. Compiler build and fresh C++ review passed."
           ],
-          "commit": "c4309a1ba489c4ea934ad231bbf6381321551351",
+          "commit": "673c852af9d1d358ce52c1a1b8368229be05821a",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/68",
           "review": {
             "cpp": "approved",
@@ -713,7 +727,48 @@
               "reviews": "C++/Python/general approved; final evidence audit required before push."
             },
             "windowsFailure": "Original CI omitted final job state/exit/output, so root remains unproven. Deploy application as well as test Qt dependencies; retain bounded valid JSON details on unexpected exits, without retrying or accepting crashes."
-          }
+          },
+          "mergeCommit": "fb21cb93eaea179c58a4a5d856445873927182c0"
+        },
+        {
+          "id": "G03d",
+          "status": "implemented_pending_gates",
+          "commit": "04fd1d61e1021dadff848da3ad60e05753d0d79d",
+          "branch": "codex/workbench-file-navigation-g03d",
+          "baseCommit": "fb21cb93eaea179c58a4a5d856445873927182c0",
+          "scope": "File-backed MainWindow source/navigation parity and exact supplementary-Unicode Commander JSON serialization.",
+          "rulings": [
+            "Start from merged PR68 master; PR69 resident-memory work remains independent and is not required by this slice.",
+            "Run existing real MainWindow semantic controls offscreen; do not claim physical/native usability or saved-layout restore.",
+            "Fix the observed generic JSON surrogate loss rather than weakening the exact file-text oracle; retain integer serialization and all existing command schemas.",
+            "Use exact LF fixture bytes on every platform; retain initial platform-newline/callback/setup failures separately.",
+            "Escape UTF16 surrogate code units, including isolated units; valid pairs are covered, malformed-Unicode interoperability remains outside this pass.",
+            "GitNexus reportsCRITICAL106affected/101direct from stale index; actual current jsonString has3call sites in2caller functions. User warned before edit; direct source review plus native regressions cover the narrow fix."
+          ],
+          "preflight": [
+            "G03runner registry adds one kind and selected task G03d; existing task selections/schemas and publicMCP catalog are preserved.",
+            "Only one pure JSON escape condition changes in production; no job/source/search/UI lifetime logic changes.",
+            "Shared application/test payload and private IPC cleanup remain owned by the existing supervisor."
+          ],
+          "evidence": [
+            "../../docs/workbench/g03d-file-navigation.md",
+            "../../docs/workbench/g03d-windows-observations.json",
+            "Seven missing-implementation tests failed before helper; nine initial and18final negative/cleanup/registry cases pass.",
+            "Actual file-backed case reproduced emoji loss before C++fix; rebuilt application passes exact text/provenance/navigation/closed-source checks.",
+            "77Workbench self-tests pass on Python3.14 and3.9 with1platformskip each; registered harness1/1 also passes after review fixes.",
+            "Complete local CTest passes6/6 in253.66seconds, with all4portable settings restored byte-identically.",
+            "Current-source Qt-only G03 CLI/nativeMCP/GUI cases and complete MCP SDK1.30.0/2.3.0 gates pass. SDK/full6suite evidence preceded only final Python assertion strengthening; all4native cases pass afterward in a fresh isolated rerun.",
+            "C++ review approved. Python/general review identified2Important oracle gaps; both corrected in one verified pass with18focused cases and full77-case suites.",
+            "First final native G03 run failed on an IPC reply before G03d; host logs show the request executed. No in-place mutation retry; fresh suite passes, original failure retained, underlying cause unproven."
+          ],
+          "limitations": [
+            "Offscreen MainWindow semantic integration; physical/native desktop usability, menus, layout restore and compositor latency unmeasured.",
+            "Full G02/G03 remain open. Hosted Qt6.12 and other platform outcomes remain pending.",
+            "Valid supplementary Unicode is runtime-verified; malformed isolated-surrogate interoperability is not established.",
+            "CodeGraph reports worktree unindexed; Code Review Graph unavailable; GitNexus refresh failed and stale impact is not a verification pass."
+          ],
+          "localVerification": "passed",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/70"
         }
       ]
     },

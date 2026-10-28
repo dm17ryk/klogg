@@ -18,8 +18,14 @@ Reconcile newer completed work instead of reimplementing it. Do not reset or
 overwrite unrelated work, stop the user's active captures, or assume the
 research SHA is the required execution base.
 
-Complete G02/G03 and then the next runnable task in the dependency
-graph. Implement one independently reviewable task/slice at a time with the
+Complete G02/G03, then prioritize decoder core MD01–MD06 and its required
+F01–F04/D01/E01 foundations, preserving the hard dependency graph. Start that
+phase with MD01; obtain its required Lua scripts/reference captures before
+runtime acceptance. MD07/MD08 integration is deferred until its dependencies
+land in later waves. After the core phase, resume remaining W1 and subsequent
+waves. Follow PROGRESS.json.executionPolicy and the execution guide's dated
+priority; do not mark any task complete merely to advance the schedule.
+Implement one independently reviewable task/slice at a time with the
 required tests, GUI discovery, shared CLI/Python/MCP operations, documentation,
 diagnostics, migration and rollback. Read each task's consuming contracts and
 current source before editing. Preserve C++17/Qt5/Qt6 and the bounded shared
@@ -57,7 +63,9 @@ does not establish implementation or hardware support.
 ```text
 Continue the CILogg Developer Workbench implementation from PROGRESS.json.
 Inspect the current repository first. Select the next task whose hard
-dependencies are complete, read its subsystem plan and required contracts,
+dependencies are complete, following PROGRESS.json.executionPolicy (W0,
+decoder core MD01–MD06 with prerequisites, then remaining W1 onward;
+MD07/MD08 integration deferred). Read its subsystem plan and required contracts,
 and continue from the last verified evidence. Preserve unfinished unrelated
 work and active captures. Update progress and the next runnable task when done.
 ```

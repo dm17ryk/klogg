@@ -10,6 +10,15 @@
 
 ## Global constraints and reconciliation
 
+**Execution priority updated 2026-10-28:** The user authorized decoder core
+MD01–MD06 immediately after W0, bringing forward its F01–F04/D01/E01 prerequisites,
+then resuming the remaining W1 and later waves. MD07 inspector/analytics and MD08
+distribution/release integration are explicitly deferred until their dependencies
+land in later waves. See [the execution guide](MASTER_GUIDE.md) and
+`PROGRESS.json.executionPolicy`. The addendum's embedded handoff remains reference
+material; this later user instruction supplies the execution priority. No task
+or runtime capability is completed by this policy update.
+
 - Preserve C++17, Qt5/Qt6 core support, existing deployment/settings identities, plugin protocol v1 and all original hard dependency edges. G02/G03 remain prerequisites; early V01/V02 charts gain no decoder dependency.
 - Reuse AnalysisJobService for finite source scopes, snapshots, leases, jobs, status, retention, bounded pages, cancellation and release. Live processing uses bounded incremental derived state without rewriting captures.
 - Existing analysis admission/read/page/deadline caps remain binding. Plugin-v1 envelopes remain 1 MiB with 8 MiB pending stream traffic; retained segments/pages carry larger byte streams. A reviewed schema/measurement change is required to alter any cap.

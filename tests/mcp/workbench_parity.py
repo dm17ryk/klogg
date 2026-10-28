@@ -77,6 +77,16 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
         name = case["id"]
         LOG.info("case_started case=%s action=%s", name, case["action"])
         require_operations(catalog, case["operations"])
+        if case.get("kind") == "file-navigation":
+            from workbench_navigation import exercise_navigation
+
+            results.append(
+                exercise_navigation(cli, command, finish, rows, normalized, artifacts)
+            )
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         jobs = []
         try:
             request = case["request"]
