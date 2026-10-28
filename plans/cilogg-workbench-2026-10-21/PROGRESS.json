@@ -23,6 +23,19 @@
   },
   "activeTask": "G03",
   "nextTask": "G02",
+  "executionPolicy": {
+    "updatedDate": "2026-10-28",
+    "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves.",
+    "phaseOrder": ["W0", "decoder_core", "W1", "W2", "W3", "W4", "W5", "W6"],
+    "decoderCoreTasks": ["MD01", "MD02", "MD03", "MD04", "MD05", "MD06"],
+    "decoderCorePrerequisitesOutsideW0": ["F01", "F02", "F03", "F04", "D01", "E01"],
+    "decoderCoreDependencyOrder": ["MD01", "F01", "F02", "F03", "F04", "D01", "E01", "MD03", "MD02", "MD04", "MD05", "MD06"],
+    "deferredDecoderIntegration": ["MD07", "MD08"],
+    "deferredIntegrationPolicy": "Schedule MD07 after its decoder/U04/F07/V02 gates and MD08 after MD07/E09 in later waves; do not gate early V02 on these deferred integrations.",
+    "acceptancePolicy": "Preserve all hard dependencies, task acceptance, GUI/CLI/native-MCP parity and existing completed-work credit. W0 remains open until its gates pass; MD01 runtime claims require its actual scripts and complete reference captures.",
+    "nextAfterW0": "MD01",
+    "ruling": "Bring only the decoder-core prerequisite closure forward; defer the broader MD07-MD08 dependency closure as explicitly chosen by the user. Completing core alone does not complete the full decoder milestone."
+  },
   "tasks": {
     "G01": {
       "status": "completed",

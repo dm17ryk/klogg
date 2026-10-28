@@ -8,6 +8,13 @@ Complete implementation package for a general developer logger, visualizer and a
 
 ## Start here
 
+**Execution priority (2026-10-28):** Finish W0, then implement decoder core
+MD01–MD06 with its F01–F04/D01/E01 prerequisites, then resume remaining W1 and
+later waves. MD07–MD08 integration is deferred until its later-wave dependencies
+are available. See the dated policy in [the execution guide](MASTER_GUIDE.md)
+and `PROGRESS.json.executionPolicy`. Existing task acceptance and DAG edges remain
+unchanged; full G02/G03 are still in progress.
+
 1. [Current reconciliation and prior-roadmap coverage](MERGE_MAP.md)
 2. [Codex App starter and resume prompts](START_IN_CODEX.md)
 3. [Master execution guide, release waves and prior-roadmap mapping](MASTER_GUIDE.md)

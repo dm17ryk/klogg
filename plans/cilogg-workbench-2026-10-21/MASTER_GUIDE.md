@@ -59,6 +59,33 @@ The machine-readable task index lists exact hard dependencies. A later task that
 
 Waves communicate release goals; they do not override the task DAG. If a card depends on a task mentioned in a later wave, move that prerequisite earlier or split its explicitly independent capability subset in the ledger. Never implement against a missing contract to preserve an arbitrary calendar order.
 
+### Execution priority agreed on 2026-10-28
+
+Finish **W0 (G01–G03)**, then deliver **decoder core MD01–MD06**, then resume
+**W1 → W2 → W3 → W4 → W5 → W6**. The user's follow-up explicitly defers MD07
+and MD08 integration to later waves. This changes execution priority, not task
+acceptance, hard dependencies, or completed-work credit.
+
+MD01 is the first decoder task after W0. Before its runtime acceptance, obtain
+the pinned Lua scripts and complete reference captures required by its card;
+missing inputs must remain explicit. The core track also needs **F01–F04, D01
+and E01**. Bring those prerequisites forward within the decoder phase, retaining
+their contracts, public-surface parity and review gates. A valid dependency order
+is MD01 → F01 → F02 → F03 → F04 → D01 → E01 → MD03 → MD02 → MD04 → MD05 → MD06;
+the MD numbers are identifiers, not an execution sequence.
+
+After MD01–MD06 and those prerequisites pass their acceptance gates, resume the
+remaining W1 work without reimplementing completed foundations. **MD07** stays
+gated on its inspector/dataset/chart dependencies (U04, F07 and V02 plus the
+decoder tasks), and **MD08** stays gated on MD07 and E09. Integrate them when
+those contracts land in later waves. Do not delay early V02 charts for deferred
+decoder integration and do not claim the complete MD01–MD08 milestone is done
+when only the core is delivered.
+
+`PROGRESS.json.executionPolicy` records this priority. Current G02/G03 status and
+the runnable-task list remain authoritative; this scheduling decision completes
+no W0 gate and advertises no decoder capability.
+
 Useful independent tracks after their contracts land: data, native/rich renderer, communication adapters, workspace, insights, automation and connector packs. MainWindow/Commander/CMake/resource registration, shared schemas and source lifetime are shared files: serialize their integration and assign one owner. Parallel work uses isolated branches/worktrees and frozen interfaces; do not run competing source edits in the same checkout.
 
 ## Standard implementation cycle
