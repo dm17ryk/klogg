@@ -55,7 +55,10 @@
         "Three actual 100000-row Windows frozen-analysis runs; source 96bf481, package 26.04.2.1043, Qt runtime 6.12.0.0. Not a fresh master build.",
         "Read-only general/Python reviews completed; all five distinct findings reproduced with failing regressions and corrected before final measurements.",
         "../../docs/workbench/g02b-windows-observations.json",
-        "G02b: fresh Qt6.10.1 build, 5/5 CTest suites and three native Windows GUI/service budget runs passed; see G02b slice for exact boundaries."
+        "G02b: fresh Qt6.10.1 build, 5/5 CTest suites and three native Windows GUI/service budget runs passed; see G02b slice for exact boundaries.",
+        "../../docs/workbench/g02c-memory-gates.md",
+        "../../docs/workbench/g02d-resident-memory.md",
+        "../../docs/workbench/g02d-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -150,7 +153,7 @@
         },
         {
           "id": "G02c",
-          "status": "in_progress",
+          "status": "merged",
           "base": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
           "scope": "Windows owned native host/worker peak committed memory and per-repetition regression gates",
           "preflight": [
@@ -176,13 +179,293 @@
             "Plan validation: 105 tasks, 187 requirements, 409 local links; Ruff E9/F and whitespace checks pass."
           ],
           "limitations": [
-            "Hosted CI and merge pending. Full G02/G03 remain in_progress.",
+            "Merged PR67. Full G02/G03 and broader hosted/native performance acceptance remain open.",
             "GitNexus stale primary index cannot resolve ProcessOwner, run_gui or load_budgets. No graph pass is claimed; CodeGraph unindexed and Code Review Graph unavailable.",
             "GitNexus refresh attempted with two parser workers and a 120-second deadline; timed out and only its owned process tree was reaped. detect-changes uses stale primary index and reports no changes; this is not a valid graph scope pass."
           ],
           "commit": "933d5520bb6fc038e0cbcf7e962a568530d3f852",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/67",
-          "localVerification": "passed"
+          "localVerification": "passed",
+          "mergeCommit": "f9adedc487db19fc9490ca1ff015e66be4cfc16b"
+        },
+        {
+          "id": "G02d",
+          "status": "implemented_pending_gates",
+          "baseCommit": "f9adedc487db19fc9490ca1ff015e66be4cfc16b",
+          "branch": "codex/workbench-resident-memory-g02d",
+          "trackingIssue": "https://github.com/dm17ryk/klogg/issues/49",
+          "scope": "Opt-in bounded Windows host/worker sampled RSS observations and observed-tree regression gate",
+          "preflight": [
+            "G02c -> G02d: reuse its fresh owned job and start handshake; ProcessOwner remains unchanged.",
+            "G02d -> native timing: opt-in only, no RSS queries or budget in the default path.",
+            "PR68 G03c remains independent; no production C++ or native probe sources change."
+          ],
+          "rulings": [
+            "Execute only this independently reviewable G02 slice; use the canonical ledger and scratch evidence, without implementer delegation.",
+            "Sample current working sets for bounded verified job members; count departure races and fail query, ownership, counter and resource errors. Preserve original Win32 diagnostics.",
+            "Label sequential/shared-page/sampled boundaries; retain exact worker peak RSS and full G02/G03 as open.",
+            "Use an initial512MiB observed-tree ceiling only on Windows opt-in; no claim of calibrated capacity or unsampled peak bounds.",
+            "Benchmark-harness option only; no logger GUI/CLI/MCP command or persistence contract changes.",
+            "Aggregate self-test cap300->900 after earlier37-test480.28s and new focused94.663s evidence; leaf and product deadlines unchanged.",
+            "Use approved local Qt6.10.1 Qt-only full target rebuild, preserve binary/reported identity and runtime hashes; hosted evidence remains separate."
+          ],
+          "evidence": [
+            "../../docs/workbench/g02d-resident-memory.md",
+            "../../docs/workbench/g02d-windows-observations.json"
+          ],
+          "localVerification": {
+            "build": {
+              "path": "build_root/g02d-build.log",
+              "sha256": "96fb1f3d6826263e6a8d381a216a6b328ae7444464cf5700ebd137847e3002db",
+              "exitCode": 0,
+              "meaning": "Full target build after CMake regeneration on master base; incremental object reuse, approved local Qt6.10.1 Qt-only."
+            },
+            "ctest": {
+              "path": "build_root/g02d-ctest-ctest.log",
+              "sha256": "800d3077c2fda6ad5889937b4b8f15d43b2dae605f68d1706d5fa72602a9eea7",
+              "exitCode": 0,
+              "summary": "100% tests passed, 0 tests failed out of 6",
+              "totalTime": "Total Test time (real) = 249.07 sec",
+              "portableConfigurationRestored": true
+            },
+            "python39": {
+              "path": "build_root/g02d-python39.log",
+              "sha256": "c0a80ee09ccb34fea1d40844615e0662c84d8e36b44c93a458825007d7b59fd2",
+              "exitCode": 0,
+              "elapsedSeconds": 109.60304049984552,
+              "summary": "Ran 58 tests in 108.835s\r",
+              "platformSkips": 4,
+              "interpreterIdentity": {
+                "implementation": "CPython",
+                "version": "3.9.25",
+                "architecture": "AMD64",
+                "system": "Windows",
+                "binarySha256": "ffed286d02cbd97203fad2ac6e147c954851548e06c699b25a8b68c1a18c99b6"
+              }
+            },
+            "registration": {
+              "path": "build_root/g02d-ctest-registration.json",
+              "sha256": "6003c64da389343783b1d10faa9dba3741c10754a36a5ac0f0a22ef606aa55c9"
+            },
+            "history": [
+              {
+                "path": "build_root/g02d-baseline.log",
+                "sha256": "f46afa19f0cea328349ed45e9c4cb10cde76dda28b878869e566e46c76140824"
+              },
+              {
+                "path": "build_root/g02d-resident-red.log",
+                "sha256": "dbd2f9e107e68bdb25bd204f16344d41ec23f541822dff2bcfd396e4a050af2a"
+              },
+              {
+                "path": "build_root/g02d-resident-green.log",
+                "sha256": "85c299139d6bbde147c45b7f484156cee0355766faaa6d93e784705619beb8fb"
+              },
+              {
+                "path": "build_root/g02d-resident-final.log",
+                "sha256": "12accbe39d1cdefe846c177610e06a3db682b4a083f3752701b8a5ffc82c65b8"
+              },
+              {
+                "path": "build_root/g02d-error-diagnostics-red.log",
+                "sha256": "63fe3bad7bf1f4f615cd7dd8d190b563bcccd67d2c34783cd5b6fbb5f903edef"
+              },
+              {
+                "path": "build_root/g02d-resident-extended.log",
+                "sha256": "26a31bb0d5270331f5fa651fc6b92f66f1ab3ce7a7ff641d5188fe5ea0e6cdba"
+              },
+              {
+                "path": "build_root/g02d-backend-red.log",
+                "sha256": "05bad6e2511b166d13e8b4912bcb0605d092b09ae3b2652b926bae7fa289a6bb"
+              },
+              {
+                "path": "build_root/g02d-resident-complete.log",
+                "sha256": "0102f07a60b0cd313a8b0035f967fe8f03f5d97465cd59de0d4e0c669c13dad7"
+              },
+              {
+                "path": "build_root/g02d-cli-red.log",
+                "sha256": "63c6d1dbe1065796389dabce0224e913d54ca34319f61f06ffb9468d58675d8f"
+              },
+              {
+                "path": "build_root/g02d-cli-default-red.log",
+                "sha256": "989c25202c1f6ca0560f80d9e46f98921e91a12064dc29ef6a85d8f324d6b8c8"
+              },
+              {
+                "path": "build_root/g02d-cli-green.log",
+                "sha256": "e8ae22d5a16f7a717ea4c738b8e8add8698433b91943a15517a735f565706168"
+              }
+            ],
+            "historyNotes": [
+              "Missing backend/report/flag contracts failed before implementation; the CLI missing-key error was replaced by an explicit failing assertion before integration.",
+              "Three held-worker fixture errors were Windows CRLF readiness markers; fixed by normalizing the fixed marker, with no production change.",
+              "Win32 error5 became87 during an exit check; capture before checking exit, verified RED/GREEN.",
+              "Backend initialization errors now produce resident_backend_unavailable and remain failures, never unsupported/zero passes."
+            ]
+          },
+          "limitations": [
+            "Sequential current-working-set polls are sampled and non-atomic. Shared pages count per process; exited workers and inter-poll peaks may be missed. Exact worker peak RSS stays unmeasured.",
+            "Observed-tree ceiling is a regression guard for the frozen workload, not product capacity or a bound on unsampled spikes. OS cache and external machine load remain uncontrolled.",
+            "Compact evidence retains counters, per-run timings/gates/provenance and hashes. Complete raw reports/timing samples remain at the listed local artifact paths.",
+            "Local Qt6.10.1 Qt-only Windows measurements; hosted Qt6.12, native Linux/macOS RSS, sustained-memory slope, compositor and optional renderer evidence remain pending.",
+            "CodeGraph unindexed; Code Review Graph unavailable. Both bounded GitNexus refresh attempts timed out120s; affected targets remain UNKNOWN in a stale primary index. No graph verification pass claimed."
+          ],
+          "commit": null,
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/69",
+          "reviewFixes": {
+            "status": "locally_verified_hosted_pending",
+            "baseCommit": "ad516da6930fa4f1f9959e33c71c53ad0c086305",
+            "review": "Fresh C++ABI/general approved; Python boundary-label clarification addressed.",
+            "evidence": "../../docs/workbench/g02d-windows-observations.json#reviewFollowUp",
+            "verification": {
+              "red": {
+                "path": "build_root/g02d-boundary-red.log",
+                "sha256": "c2128eecaa54a6c87922d463e84090537ff9ac28da6bb130f635a4d83f69461c"
+              },
+              "green": {
+                "path": "build_root/g02d-boundary-green.log",
+                "sha256": "39b13836facd9321f0452a5591720a1abffc09be78a408608176242efeb9481f"
+              },
+              "ctest": {
+                "path": "build_root/g02d-review-ctest.log",
+                "sha256": "cc98b35f429301b8bbfc32c44c58c32563284088221b1ef9ae7d422ffc144a5c",
+                "summary": "100% tests passed, 0 tests failed out of 1",
+                "time": "Total Test time (real) =  86.23 sec"
+              },
+              "python39": {
+                "path": "build_root/g02d-review-python39.log",
+                "sha256": "40658d7cf875bac68366ef79a3c3752045a449475afb65b937eeeb1db62d857b",
+                "summary": "Ran 59 tests in 114.514s\r",
+                "platformSkips": 4
+              },
+              "steps": [
+                {
+                  "name": "ctest",
+                  "exitCode": 0,
+                  "elapsedSeconds": 106.68857600004412
+                },
+                {
+                  "name": "python39",
+                  "exitCode": 0,
+                  "elapsedSeconds": 115.17666639992967
+                },
+                {
+                  "name": "native",
+                  "exitCode": 0,
+                  "elapsedSeconds": 15.910656400024891
+                }
+              ]
+            },
+            "ruling": "Reviewer minor; executor treated accurate phase provenance as a correction before publication. Descriptor only: last_poll_while_host_completion_pending. In-flight sequential polls may straddle host exit. No sampling, limit or gate algorithm changed."
+          },
+          "sourceryReview": {
+            "status": "locally_verified_hosted_pending",
+            "reviewedCommit": "ddc389a859a275bb5af26633b33358ef86ddaa95",
+            "evidence": "../../docs/workbench/g02d-windows-observations.json#sourceryFollowUp",
+            "findings": [
+              {
+                "comment": 4381950865,
+                "status": "fixed",
+                "reason": "Recheck completion after polling before timeout classification; still-running deadline remains absolute."
+              },
+              {
+                "comment": 4381950872,
+                "status": "fixed",
+                "reason": "Constructor failures retain explicit failed initialization diagnostics, no invented measurements."
+              },
+              {
+                "comment": 4381950883,
+                "status": "fixed",
+                "reason": "Retain completed OS observations before independent native/report/commit queries can fail."
+              },
+              {
+                "comment": 4381950901,
+                "status": "coverage_added",
+                "reason": "Actual in-process default run asserts both sampler factory and RSS backend are never constructed."
+              },
+              {
+                "comment": 4381950917,
+                "status": "coverage_added",
+                "reason": "Controlled clock charges0.4s polls against original1s deadline; exact poll/wait counts prevent deadline resets."
+              },
+              {
+                "comment": 4381950891,
+                "status": "portable_summary",
+                "reason": "Publish actual interpreter implementation/version/platform/hash instead of its absolute local path."
+              },
+              {
+                "comment": 4381950925,
+                "status": "false_positive",
+                "reason": "Existing Python unittest benchmark suite is explicitly registered by CMake and the dedicated workflow; Catch2/Qt test directories are a different harness."
+              },
+              {
+                "comment": 4381950941,
+                "status": "false_positive",
+                "reason": "TimeoutExpired constructs an exception and never executes process.args; actual spawning remains literal argv without a shell."
+              },
+              {
+                "comment": 4381950948,
+                "status": "false_positive",
+                "reason": "Second TimeoutExpired exception site; no command execution occurs."
+              }
+            ],
+            "verification": {
+              "red": {
+                "path": "build_root/g02d-sourcery-red.log",
+                "sha256": "2134533fe3baadd83aff109d0974e6fd5c69b62e75cfc22220de49b7c688d0b3"
+              },
+              "green": {
+                "path": "build_root/g02d-sourcery-green.log",
+                "sha256": "c531030e8ed9a7c211ab2324790d3af7e41aa9b19d8fa571f7ec4f5e6aca49e3"
+              },
+              "redGreen": "Six targeted cases:4failures before, all6pass after; two additional coverage contracts pass against existing correct behavior.",
+              "ctest": {
+                "path": "build_root/g02d-sourcery-ctest.log",
+                "sha256": "a2ed292dee695f047be12c2a239f66487a51d152f7f4155045c10b0c8d917bc0",
+                "summary": "100% tests passed, 0 tests failed out of 1",
+                "time": "Total Test time (real) =  86.42 sec"
+              },
+              "python39": {
+                "path": "build_root/g02d-sourcery-python39.log",
+                "sha256": "1980ffde8dd3d06daeac3ee02be0ac7ab756d3c4c5a15b578953d1e1c3ca4c1b",
+                "summary": "Ran 64 tests in 104.387s\r",
+                "platformSkips": 4,
+                "interpreterIdentity": {
+                  "implementation": "CPython",
+                  "version": "3.9.25",
+                  "architecture": "AMD64",
+                  "system": "Windows",
+                  "binarySha256": "ffed286d02cbd97203fad2ac6e147c954851548e06c699b25a8b68c1a18c99b6"
+                }
+              },
+              "steps": [
+                {
+                  "name": "ctest",
+                  "exitCode": 0,
+                  "elapsedSeconds": 98.10004319995642
+                },
+                {
+                  "name": "python39",
+                  "exitCode": 0,
+                  "elapsedSeconds": 104.9057455000002
+                },
+                {
+                  "name": "native",
+                  "exitCode": 0,
+                  "elapsedSeconds": 15.083550800103694
+                }
+              ]
+            }
+          },
+          "mergeFollowUp": {
+            "masterCommit": "fb21cb93eaea179c58a4a5d856445873927182c0",
+            "conflicts": [
+              "tests/CMakeLists.txt",
+              "PACKAGE_SHA256.json"
+            ],
+            "resolution": "Preserve merged G03c and all master task records; retain measured G02d900-second aggregate benchmark cap; regenerate130staged-blob hashes.",
+            "build": "Full local Qt6.10.1 Qt-only target build passed, deployment passed for app/unit/integration executables.",
+            "ctest": "6/6 passed in237.35seconds after correcting an ignored wrapper filename before test execution; all4portable settings restored byte-identically.",
+            "review": "Fresh read-only conflict review approved; exactly11feature paths differ from master; all master product/UI/parity code preserved.",
+            "graph": "CodeGraph unindexed; GitNexus refresh crashed3221226505; stale detect-changes maps291unrelated/inherited flows and cannot establish a pass."
+          }
         }
       ]
     },

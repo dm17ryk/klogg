@@ -10,6 +10,7 @@ import uuid
 
 from workbench_corpus import json_bytes
 from workbench_process import ProcessOwner
+from workbench_resident import ResidentError, ResidentMemorySampler
 from workbench_runtime import RunError, executable_arguments, file_hash
 
 LOG = logging.getLogger("workbench.gui")
@@ -203,16 +204,91 @@ def run_gui(options, manifest, report):
                     stdout=stdout,
                     stderr=stderr,
                 )
-                # The child cannot create analysis workers until it is owned.
-                process.stdin.write(b"start\n")
-                process.stdin.flush()
-                process.stdin.close()
-                process.stdin = None
+                sampler = None
+                resident = {
+                    "status": "disabled",
+                    "backend": "disabled",
+                    "measurements": {},
+                }
                 try:
-                    code = process.wait(timeout=report["budgets"]["nativeSuiteSeconds"])
+                    if options.sample_resident_memory:
+                        sampler = ResidentMemorySampler(owner, process.pid)
+                        sampler.sample()
+                    else:
+                        LOG.debug(
+                            "resident_sampling_disabled repetition=%d", repetition
+                        )
+                    # The child cannot create analysis workers until it is owned.
+                    process.stdin.write(b"start\n")
+                    process.stdin.flush()
+                    process.stdin.close()
+                    process.stdin = None
+                    timeout = report["budgets"]["nativeSuiteSeconds"]
+                    code = (
+                        sampler.wait(process, timeout)
+                        if sampler
+                        else process.wait(timeout=timeout)
+                    )
+                    if sampler:
+                        resident = sampler.result()
+                        # Retain trusted OS observations before independent native
+                        # report validation or committed-memory queries can fail.
+                        report.setdefault("residentMemoryObservations", []).append(
+                            {
+                                "repetition": repetition,
+                                "hostPid": process.pid,
+                                **resident,
+                            }
+                        )
+                        LOG.debug(
+                            "resident_observation_retained repetition=%d pid=%d status=%s",
+                            repetition,
+                            process.pid,
+                            resident["status"],
+                        )
                 except subprocess.TimeoutExpired as error:
+                    if sampler:
+                        report["residentMemoryFailure"] = sampler.result("incomplete")
+                        report["residentMemoryFailure"].update(
+                            repetition=repetition,
+                            reason="native_timeout",
+                            stage="sampling",
+                        )
                     raise RunError("native_timeout") from error
+                except ResidentError as error:
+                    failure = (
+                        sampler.result("failed")
+                        if sampler
+                        else {
+                            "status": "failed",
+                            "kind": "sampled_working_set_bytes",
+                            "backend": "windows_job_members_working_set"
+                            if os.name == "nt"
+                            else "unavailable",
+                            "scope": "native_test_host_and_owned_descendants",
+                            "hostPid": process.pid,
+                            "samples": 0,
+                            "measurements": {},
+                            "includesHarness": False,
+                        }
+                    )
+                    failure.update(
+                        repetition=repetition,
+                        reason=str(error),
+                        stage="sampling" if sampler else "initialization",
+                    )
+                    report["residentMemoryFailure"] = failure
+                    LOG.error(
+                        "resident_failure_retained repetition=%d pid=%d stage=%s reason=%s",
+                        repetition,
+                        process.pid,
+                        failure["stage"],
+                        str(error),
+                    )
+                    raise
             if code:
+                if sampler:
+                    report["residentMemoryFailure"] = sampler.result("incomplete")
                 raise RunError("native_process_failed")
             if (
                 artifact.is_symlink()
@@ -241,7 +317,8 @@ def run_gui(options, manifest, report):
             if peak is not None:
                 measurements["processTreePeakCommitBytes"] = peak
                 report["unmeasured"] = [
-                    item for item in report["unmeasured"]
+                    item
+                    for item in report["unmeasured"]
                     if item != "processTreePeakCommitBytes"
                 ]
             gates = {
@@ -256,6 +333,15 @@ def run_gui(options, manifest, report):
                 gates["processTreePeakCommitBytes"] = (
                     peak < report["budgets"]["processTreePeakCommitBytes"]
                 )
+            measurements.update(resident["measurements"])
+            if resident["status"] == "sampled":
+                metric = "processTreeSampledRssPeakBytes"
+                gates[metric] = measurements[metric] < report["budgets"][metric]
+                report["unmeasured"] = [
+                    item
+                    for item in report["unmeasured"]
+                    if item not in resident["measurements"]
+                ]
             report["runs"].append(
                 {
                     "repetition": repetition,
@@ -264,6 +350,7 @@ def run_gui(options, manifest, report):
                     "nativeReportSha256": file_hash(artifact),
                     "native": data,
                     "memory": memory,
+                    "residentMemory": resident,
                 }
             )
             report["unmeasured"] = [
