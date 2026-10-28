@@ -31,7 +31,7 @@ def file_hash(path):
     return digest.hexdigest()
 
 
-def validate_report(path, artifacts, worker_hash, synthetic):
+def validate_report(path, artifacts, worker_hash, synthetic, probe_kind="docks"):
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
         raise ParityError("native_report_missing_or_oversized")
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -41,6 +41,8 @@ def validate_report(path, artifacts, worker_hash, synthetic):
         raise ParityError("invalid_native_schema")
     if data["schemaVersion"] != 1 or data.get("platform") not in NATIVE_PLATFORMS:
         raise ParityError("native_platform_required")
+    if data.get("probeKind", "docks") != probe_kind:
+        raise ParityError("probe_kind_mismatch")
     if data.get("workerBinarySha256") != worker_hash:
         raise ParityError("worker_binary_mismatch")
     if data.get("sourceFixtureSha256") != hashlib.sha256(SOURCE.encode()).hexdigest():
@@ -74,8 +76,73 @@ def validate_report(path, artifacts, worker_hash, synthetic):
             if case.get(key) is not True:
                 raise ParityError(f"interaction_incomplete: {name}/{key}")
         compare_json(ORACLES[name], case.get("rows"), "$.rows")
+        if probe_kind == "mainwindow":
+            for key in (
+                "menuClicked",
+                "toolbarClicked",
+                "navigationVerified",
+                "layoutRestored",
+                "draftsRuntimeOnly",
+            ):
+                if case.get(key) is not True:
+                    raise ParityError(f"mainwindow_incomplete: {name}/{key}")
+            source = case.get("source")
+            if (
+                not isinstance(source, dict)
+                or source.get("type") != "file"
+                or not isinstance(source.get("sourceId"), str)
+                or not 1 <= len(source["sourceId"]) <= 256
+                or source.get("indexedBytes") != str(len(SOURCE.encode("utf-8")))
+                or any(
+                    not isinstance(source.get(key), str) or not source[key].isdigit()
+                    for key in ("generation", "revision")
+                )
+            ):
+                raise ParityError("mainwindow_source_mismatch")
+            keys = {"type", "sourceId", "generation", "revision", "indexedBytes"}
+            expected_source = case.get("expectedSource")
+            if not isinstance(expected_source, dict) or set(expected_source) != keys:
+                raise ParityError("mainwindow_snapshot_missing")
+            compare_json(
+                expected_source, {key: source[key] for key in keys}, "$.sourceSnapshot"
+            )
+            revision = case.get("requestRevision")
+            if (
+                not isinstance(revision, str)
+                or not 1 <= len(revision) <= 20
+                or not revision.isascii()
+                or not revision.isdigit()
+            ):
+                raise ParityError("mainwindow_revision_missing")
+            if name == "regex-lab":
+                compare_json(
+                    {
+                        "startUtf16": 7,
+                        "lengthUtf16": 1,
+                        "groups": [
+                            {
+                                "number": number,
+                                "name": "value" if number else "",
+                                "matched": True,
+                                "value": "1",
+                                "startUtf16": 7,
+                                "lengthUtf16": 1,
+                            }
+                            for number in (0, 1)
+                        ],
+                    },
+                    case.get("unicodeMatch"),
+                    "$.unicodeMatch",
+                )
+            if type(case.get("navigationLine")) is not int or case[
+                "navigationLine"
+            ] != (2 if name == "value-counts" else 3):
+                raise ParityError("mainwindow_navigation_mismatch")
         views = case.get("views")
-        if not isinstance(views, dict) or set(views) != {"docked", "floating"}:
+        expected_views = {"docked", "floating"}
+        if probe_kind == "mainwindow":
+            expected_views.add("restored")
+        if not isinstance(views, dict) or set(views) != expected_views:
             raise ParityError("native_view_missing")
         for state, view in views.items():
             if not isinstance(view, dict):
@@ -132,6 +199,7 @@ def main(argv=None):
     parser.add_argument("--test-executable", required=True, type=Path)
     parser.add_argument("--artifacts", required=True, type=Path)
     parser.add_argument("--timeout", type=float, default=120)
+    parser.add_argument("--probe", choices=("docks", "mainwindow"), default="docks")
     options = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s %(message)s")
     if options.artifacts.exists() or options.artifacts.is_symlink():
@@ -144,6 +212,8 @@ def main(argv=None):
         passed=False,
         state="invalid_setup",
         releaseGateStatus="pending",
+        probeKind=options.probe,
+        qtScaleFactorRequested=os.environ.get("QT_SCALE_FACTOR", "default"),
     )
     try:
         if not 1 <= options.timeout <= 600:
@@ -155,12 +225,20 @@ def main(argv=None):
         report.update(
             evidenceKind="test_double"
             if ".py" in (app.suffix, probe.suffix)
-            else "native_dock_probe",
+            else (
+                "native_mainwindow_probe"
+                if options.probe == "mainwindow"
+                else "native_dock_probe"
+            ),
             binarySha256=file_hash(app),
             testBinarySha256=file_hash(probe),
             limitations=[
                 "Qt event injection is not physical input or a complete product usability pass.",
-                "The probe hosts real docks with Commander callbacks, not a packaged MainWindow.",
+                (
+                    "Real MainWindow in the integration executable; packaged launcher/installer conformance unmeasured."
+                    if options.probe == "mainwindow"
+                    else "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+                ),
             ],
         )
     except (OSError, ValueError) as error:
@@ -191,7 +269,11 @@ def main(argv=None):
             [sys.executable, str(private_probe)]
             if probe.suffix == ".py"
             else [str(private_probe)]
-        ) + ["[workbench-usability]"]
+        ) + [
+            "[workbench-mainwindow]"
+            if options.probe == "mainwindow"
+            else "[workbench-usability]"
+        ]
         with ExitStack() as stack:
             environment = stack.enter_context(private_ipc_environment(environment))
             owner = ProcessOwner()
@@ -227,8 +309,11 @@ def main(argv=None):
             report["native"] = validate_report(
                 artifacts / "native.json",
                 artifacts,
-                report["binarySha256"],
+                report["testBinarySha256"]
+                if options.probe == "mainwindow"
+                else report["binarySha256"],
                 report["evidenceKind"] == "test_double",
+                options.probe,
             )
         report.update(passed=True, state="passed")
         code = 0

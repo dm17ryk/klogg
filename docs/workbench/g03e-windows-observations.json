@@ -1,0 +1,681 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-28",
+  "base": "ddf30d66984d6d816133d501cd40f0c9a230b3dc",
+  "scope": "G03e native MainWindow integration evidence, not complete W0/product release acceptance.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "localQt": "6.10.1",
+  "backendConfigured": "qt",
+  "sourceSHA256": {
+    "tests/ui/workbenchusability_test.cpp": "13b26dd7f9a47f6493585d2ff6657f114b50b9724630ea566c36b6ca54c2224a",
+    "tests/mcp/workbench_usability.py": "c28ca603270be0520b0da42fb74fd9f91a7e0e1f9134b7ee9d0fc0bf7627ba27",
+    "tests/mcp/fixtures/fake_usability.py": "52b72c5c9bf935c13e4583ec75e5c5f3c42a23f98315d6d3f46d8c4634978b08",
+    "tests/mcp/test_workbench_mainwindow.py": "bb464442a6d8bd6a2d2e82221c4fa26263c1a6ebecf2a1ddf6856660cd3e4c8d",
+    ".github/actions/workbench-parity/action.yml": "8329b0423b569c0e3be7a35e96675cd80bb5d4469365d2d1c29844e0803b7e2b"
+  },
+  "binarySHA256": {
+    "cilogg.exe": "588995e073717f8ead402fca0afa140aeaf2080b4ca0e7674e603ec8dddd4175",
+    "cilogg_tests.exe": "a5cb12f30890f783195c71f681a24a02addf79f674f98f1922560b6f5e860ec3",
+    "cilogg_itests.exe": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb"
+  },
+  "validation": {
+    "steps": [
+      {
+        "name": "build",
+        "exitCode": 0,
+        "elapsedSeconds": 409.97159820003435
+      },
+      {
+        "name": "deploy-cilogg",
+        "exitCode": 0,
+        "elapsedSeconds": 28.690472800051793
+      },
+      {
+        "name": "deploy-cilogg_tests",
+        "exitCode": 0,
+        "elapsedSeconds": 10.682354199932888
+      },
+      {
+        "name": "deploy-cilogg_itests",
+        "exitCode": 0,
+        "elapsedSeconds": 6.64371780003421
+      },
+      {
+        "name": "ctest",
+        "exitCode": 0,
+        "elapsedSeconds": 260.24293279997073
+      }
+    ]
+  },
+  "ctest": {
+    "passed": 6,
+    "failed": 0,
+    "seconds": 250.62,
+    "boundary": "Final C++ source. Python subsequently adds requested-scale telemetry; focused checks and complete native/public journeys pass after it."
+  },
+  "python": {
+    "3.14": {
+      "tests": 67,
+      "skipped": 1,
+      "seconds": 104.771
+    },
+    "3.9": {
+      "tests": 67,
+      "skipped": 1,
+      "seconds": 110.623
+    },
+    "afterScaleTelemetry": {
+      "tests": 8,
+      "passed": 8,
+      "seconds": 33.055
+    }
+  },
+  "journeys": [
+    {
+      "name": "mainwindow-default",
+      "exitCode": 0,
+      "elapsedSeconds": 16.57079470017925,
+      "qtScaleFactorRequested": "default"
+    },
+    {
+      "name": "mainwindow-compact",
+      "exitCode": 0,
+      "elapsedSeconds": 11.066444399999455,
+      "qtScaleFactorRequested": "0.75"
+    },
+    {
+      "name": "component",
+      "exitCode": 0,
+      "elapsedSeconds": 10.304587099933997,
+      "qtScaleFactorRequested": "default"
+    },
+    {
+      "name": "parity",
+      "exitCode": 0,
+      "elapsedSeconds": 45.35740340012126,
+      "qtScaleFactorRequested": "default"
+    }
+  ],
+  "native": {
+    "default": {
+      "artifacts": "build_root/g03e-native-default-final",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "state": "passed",
+        "releaseGateStatus": "pending",
+        "probeKind": "mainwindow",
+        "qtScaleFactorRequested": "default",
+        "evidenceKind": "native_mainwindow_probe",
+        "binarySha256": "588995e073717f8ead402fca0afa140aeaf2080b4ca0e7674e603ec8dddd4175",
+        "testBinarySha256": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "Real MainWindow in the integration executable; packaged launcher/installer conformance unmeasured."
+        ],
+        "native": {
+          "cases": [
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "draftsRuntimeOnly": true,
+              "expectedSource": {
+                "generation": "2",
+                "indexedBytes": "29",
+                "revision": "7",
+                "sourceId": "7ef59fa7-db92-4471-a8c8-a7ec7a353dbf",
+                "type": "file"
+              },
+              "id": "regex-lab",
+              "layoutRestored": true,
+              "menuClicked": true,
+              "navigationLine": 3,
+              "navigationVerified": true,
+              "patternKeys": true,
+              "requestRevision": "15",
+              "resultClicked": true,
+              "rows": [
+                "1",
+                "2",
+                "3"
+              ],
+              "runClicked": true,
+              "source": {
+                "completePhysicalLineCount": 2,
+                "encoding": "UTF-8",
+                "generation": "2",
+                "indexedBytes": "29",
+                "physicalLineCount": 3,
+                "provisionalFinalLine": true,
+                "revision": "7",
+                "sourceId": "7ef59fa7-db92-4471-a8c8-a7ec7a353dbf",
+                "type": "file"
+              },
+              "textInputMethod": true,
+              "toolbarClicked": true,
+              "unicodeMatch": {
+                "groups": [
+                  {
+                    "lengthUtf16": 1,
+                    "matched": true,
+                    "name": "",
+                    "number": 0,
+                    "startUtf16": 7,
+                    "value": "1"
+                  },
+                  {
+                    "lengthUtf16": 1,
+                    "matched": true,
+                    "name": "value",
+                    "number": 1,
+                    "startUtf16": 7,
+                    "value": "1"
+                  }
+                ],
+                "lengthUtf16": 1,
+                "startUtf16": 7
+              },
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 98,
+                  "sampledColors": 78,
+                  "screenshot": "regex-lab-docked.png",
+                  "sha256": "eb7b253ef8d8cbd13c5d437acf348bd09ba8d7cc7959e884a2634f4636aca3af",
+                  "visible": true,
+                  "width": 1009
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 38,
+                  "sampledColors": 53,
+                  "screenshot": "regex-lab-floating.png",
+                  "sha256": "d3cb5de652644bc3bdaf6748178660a2660a2f26286cb29aa7866e48e3a6146c",
+                  "visible": true,
+                  "width": 1000
+                },
+                "restored": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 36,
+                  "sampledColors": 42,
+                  "screenshot": "regex-lab-restored.png",
+                  "sha256": "c9d64c4a5d7909823024e468c530598383b04f45d2e2cd72939c454d9fee1287",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            },
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "draftsRuntimeOnly": true,
+              "expectedSource": {
+                "generation": "2",
+                "indexedBytes": "29",
+                "revision": "7",
+                "sourceId": "c5056192-e28f-44b1-9ab9-c1054d945a3d",
+                "type": "file"
+              },
+              "id": "value-counts",
+              "layoutRestored": true,
+              "menuClicked": true,
+              "navigationLine": 2,
+              "navigationVerified": true,
+              "patternKeys": true,
+              "requestRevision": "17",
+              "resultClicked": true,
+              "rows": [
+                [
+                  "1",
+                  "2"
+                ],
+                [
+                  "2",
+                  "1"
+                ]
+              ],
+              "runClicked": true,
+              "source": {
+                "completePhysicalLineCount": 2,
+                "encoding": "UTF-8",
+                "generation": "2",
+                "indexedBytes": "29",
+                "physicalLineCount": 3,
+                "provisionalFinalLine": true,
+                "revision": "7",
+                "sourceId": "c5056192-e28f-44b1-9ab9-c1054d945a3d",
+                "type": "file"
+              },
+              "textInputMethod": true,
+              "toolbarClicked": true,
+              "unicodeMatch": {},
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 104,
+                  "sampledColors": 70,
+                  "screenshot": "value-counts-docked.png",
+                  "sha256": "25c77eef71d9ec3d670ddcf967b0747e8d66146c60bf35c845a4ca73ceb79ac5",
+                  "visible": true,
+                  "width": 1089
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 41,
+                  "sampledColors": 54,
+                  "screenshot": "value-counts-floating.png",
+                  "sha256": "f3a664b33caf788eac278a8c5a580007fab7fd7723e7d84eb56355c4fe9cddc9",
+                  "visible": true,
+                  "width": 1000
+                },
+                "restored": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 40,
+                  "sampledColors": 44,
+                  "screenshot": "value-counts-restored.png",
+                  "sha256": "c1fc4a5531148810ed4cee7d6d6a45f5f7f00dd13c28ba4455dc794f9cf7d30a",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            }
+          ],
+          "ownedJobsReleased": true,
+          "platform": "windows",
+          "probeKind": "mainwindow",
+          "qt": {
+            "compile": "6.10.1",
+            "runtime": "6.10.1"
+          },
+          "schemaVersion": 1,
+          "sourceFixtureSha256": "15b6e4c5355f65e11afc42acb83aff9c8229ed52600e90439b183228a07a61fc",
+          "workerBinarySha256": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb"
+        }
+      }
+    },
+    "compact": {
+      "artifacts": "build_root/g03e-native-compact-final",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "state": "passed",
+        "releaseGateStatus": "pending",
+        "probeKind": "mainwindow",
+        "qtScaleFactorRequested": "0.75",
+        "evidenceKind": "native_mainwindow_probe",
+        "binarySha256": "588995e073717f8ead402fca0afa140aeaf2080b4ca0e7674e603ec8dddd4175",
+        "testBinarySha256": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "Real MainWindow in the integration executable; packaged launcher/installer conformance unmeasured."
+        ],
+        "native": {
+          "cases": [
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "draftsRuntimeOnly": true,
+              "expectedSource": {
+                "generation": "2",
+                "indexedBytes": "29",
+                "revision": "7",
+                "sourceId": "4040e42d-8c8a-49d3-ba09-d29da9f2c265",
+                "type": "file"
+              },
+              "id": "regex-lab",
+              "layoutRestored": true,
+              "menuClicked": true,
+              "navigationLine": 3,
+              "navigationVerified": true,
+              "patternKeys": true,
+              "requestRevision": "15",
+              "resultClicked": true,
+              "rows": [
+                "1",
+                "2",
+                "3"
+              ],
+              "runClicked": true,
+              "source": {
+                "completePhysicalLineCount": 2,
+                "encoding": "UTF-8",
+                "generation": "2",
+                "indexedBytes": "29",
+                "physicalLineCount": 3,
+                "provisionalFinalLine": true,
+                "revision": "7",
+                "sourceId": "4040e42d-8c8a-49d3-ba09-d29da9f2c265",
+                "type": "file"
+              },
+              "textInputMethod": true,
+              "toolbarClicked": true,
+              "unicodeMatch": {
+                "groups": [
+                  {
+                    "lengthUtf16": 1,
+                    "matched": true,
+                    "name": "",
+                    "number": 0,
+                    "startUtf16": 7,
+                    "value": "1"
+                  },
+                  {
+                    "lengthUtf16": 1,
+                    "matched": true,
+                    "name": "value",
+                    "number": 1,
+                    "startUtf16": 7,
+                    "value": "1"
+                  }
+                ],
+                "lengthUtf16": 1,
+                "startUtf16": 7
+              },
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 98,
+                  "sampledColors": 97,
+                  "screenshot": "regex-lab-docked.png",
+                  "sha256": "8893c2793f3c70ce2fe42507481ef7cd0ce58d3bd976eb87aeccdf1efec055fe",
+                  "visible": true,
+                  "width": 757
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 35,
+                  "sampledColors": 68,
+                  "screenshot": "regex-lab-floating.png",
+                  "sha256": "f16a6d5abf2eeea37a01c0a80ecfff69798ad5aef9db11f7cb171f36e0155ab1",
+                  "visible": true,
+                  "width": 750
+                },
+                "restored": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 36,
+                  "sampledColors": 52,
+                  "screenshot": "regex-lab-restored.png",
+                  "sha256": "1831ebd683740619c468302362c55690fa7818a10537de3120fc425cc26ca08b",
+                  "visible": true,
+                  "width": 750
+                }
+              }
+            },
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "draftsRuntimeOnly": true,
+              "expectedSource": {
+                "generation": "2",
+                "indexedBytes": "29",
+                "revision": "7",
+                "sourceId": "845e659a-79c1-40bf-b312-c0e10a9cd05e",
+                "type": "file"
+              },
+              "id": "value-counts",
+              "layoutRestored": true,
+              "menuClicked": true,
+              "navigationLine": 2,
+              "navigationVerified": true,
+              "patternKeys": true,
+              "requestRevision": "17",
+              "resultClicked": true,
+              "rows": [
+                [
+                  "1",
+                  "2"
+                ],
+                [
+                  "2",
+                  "1"
+                ]
+              ],
+              "runClicked": true,
+              "source": {
+                "completePhysicalLineCount": 2,
+                "encoding": "UTF-8",
+                "generation": "2",
+                "indexedBytes": "29",
+                "physicalLineCount": 3,
+                "provisionalFinalLine": true,
+                "revision": "7",
+                "sourceId": "845e659a-79c1-40bf-b312-c0e10a9cd05e",
+                "type": "file"
+              },
+              "textInputMethod": true,
+              "toolbarClicked": true,
+              "unicodeMatch": {},
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 105,
+                  "sampledColors": 75,
+                  "screenshot": "value-counts-docked.png",
+                  "sha256": "93b4e8590933d372530f202aa5472abe81092f551b866a4c76b4c5eea3f93a17",
+                  "visible": true,
+                  "width": 817
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 38,
+                  "sampledColors": 69,
+                  "screenshot": "value-counts-floating.png",
+                  "sha256": "8416656be009ec0925a1c6410c66bbc17b02d3e850f61f865a35d9f9b0b43b12",
+                  "visible": true,
+                  "width": 750
+                },
+                "restored": {
+                  "exposed": true,
+                  "height": 638,
+                  "paints": 40,
+                  "sampledColors": 58,
+                  "screenshot": "value-counts-restored.png",
+                  "sha256": "351ebbc40b18f056a4c2f1caeebd17b989fe3a01c823329d04530282d5c7e5a5",
+                  "visible": true,
+                  "width": 750
+                }
+              }
+            }
+          ],
+          "ownedJobsReleased": true,
+          "platform": "windows",
+          "probeKind": "mainwindow",
+          "qt": {
+            "compile": "6.10.1",
+            "runtime": "6.10.1"
+          },
+          "schemaVersion": 1,
+          "sourceFixtureSha256": "15b6e4c5355f65e11afc42acb83aff9c8229ed52600e90439b183228a07a61fc",
+          "workerBinarySha256": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb"
+        }
+      }
+    },
+    "component": {
+      "artifacts": "build_root/g03e-component-final",
+      "report": {
+        "schemaVersion": 1,
+        "passed": true,
+        "state": "passed",
+        "releaseGateStatus": "pending",
+        "probeKind": "docks",
+        "qtScaleFactorRequested": "default",
+        "evidenceKind": "native_dock_probe",
+        "binarySha256": "588995e073717f8ead402fca0afa140aeaf2080b4ca0e7674e603ec8dddd4175",
+        "testBinarySha256": "2d5ee31e0c366bda7a9d60c587124f204772e6a92f25e1284709024faaacc9fb",
+        "limitations": [
+          "Qt event injection is not physical input or a complete product usability pass.",
+          "The probe hosts real docks with Commander callbacks, not a packaged MainWindow."
+        ],
+        "native": {
+          "cases": [
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "regex-lab",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                "1",
+                "2",
+                "3"
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 41,
+                  "sampledColors": 55,
+                  "screenshot": "regex-lab-docked.png",
+                  "sha256": "ab77288e15701a766bab2b87d1e211ad49ac71a9bf80bc96c7e3df5d6b251e6c",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 40,
+                  "sampledColors": 74,
+                  "screenshot": "regex-lab-floating.png",
+                  "sha256": "de0038ea1bd1afa430897ff85035057456d6e67ffbc3a50dde51926e1f41fe0a",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            },
+            {
+              "applyClicked": true,
+              "complete": true,
+              "draftInvalidatesApply": true,
+              "id": "value-counts",
+              "patternKeys": true,
+              "resultClicked": true,
+              "rows": [
+                [
+                  "1",
+                  "2"
+                ],
+                [
+                  "2",
+                  "1"
+                ]
+              ],
+              "runClicked": true,
+              "textInputMethod": true,
+              "views": {
+                "docked": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 49,
+                  "sampledColors": 64,
+                  "screenshot": "value-counts-docked.png",
+                  "sha256": "f07c0c27bf046fb69c98e3792b27bc37effbbb4e1053d72941dc4e17c83856af",
+                  "visible": true,
+                  "width": 1000
+                },
+                "floating": {
+                  "exposed": true,
+                  "height": 850,
+                  "paints": 43,
+                  "sampledColors": 58,
+                  "screenshot": "value-counts-floating.png",
+                  "sha256": "49fcaa374b7bf701304ed0811166f1bac9521c3871ca740bde1d3c758152c985",
+                  "visible": true,
+                  "width": 1000
+                }
+              }
+            }
+          ],
+          "ownedJobsReleased": true,
+          "platform": "windows",
+          "qt": {
+            "compile": "6.10.1",
+            "runtime": "6.10.1"
+          },
+          "schemaVersion": 1,
+          "sourceFixtureSha256": "15b6e4c5355f65e11afc42acb83aff9c8229ed52600e90439b183228a07a61fc",
+          "workerBinarySha256": "588995e073717f8ead402fca0afa140aeaf2080b4ca0e7674e603ec8dddd4175"
+        }
+      }
+    }
+  },
+  "publicParity": {
+    "passed": true,
+    "cases": [
+      "analysis",
+      "regex-lab",
+      "value-counts"
+    ],
+    "artifacts": "build_root/g03e-public-parity",
+    "backendVerified": false
+  },
+  "failureHistory": {
+    "g03e-red.log": "9c0d33785261a908143da6c8364b186a147c1fe86d2cb53144900414807d2c27",
+    "g03e-native-red/result.json": "b50c580b129e171dd11f5586f653a9eb1be170ed3ff02567839e80b260f750b5",
+    "g03e-native-first/result.json": "0645825f12b4118028ad92b0ccb8975dc0d66ef698132a8d8730b7f9d60cc7e1",
+    "g03e-native-first/stdout.log": "48daf1ccaa99de463d0b43fe1958dfa41fc8547fadaceaa524c9fbd57ee71e37",
+    "g03e-review-red.log": "34f868e994031f58385e21cd351af8f81a6e10bd6b52a6b9d63a7d3453889f4e",
+    "g03e-review-green.log": "1c0af1ad1d9496a2392aafdaa0a3a4bfe154bc3fd6667332270eee74d02e41aa"
+  },
+  "settings": {
+    "exitCode": 0,
+    "originalSettingsRestored": true,
+    "originalSettingsSha256": {
+      "cilogg.conf": "4a647aea30c0e478cba82a208fafafa7afe10d4869607a09c22849fe7e28014d",
+      "cilogg_session.conf": "40beb5a4619088652d9bd505d9c6594b15ccd2328f5022cdd64616f5425233b4",
+      "actions.json": "6871fc605f31bbcdea65d226b852ff230a73eb94565ceb8df67d5811a60f4a4b",
+      "previews.json": "314a199a34c910ef1cfc03f9ec10b3cd4c8a937b15dfbcd4b53cfa7a7fd0ecb6"
+    },
+    "scope": "Full local CTest with a fresh portable profile; original files retained and restored byte-for-byte."
+  },
+  "review": {
+    "cpp": "Two Important oracle gaps reproduced and fixed: independent snapshot/revision binding and exact Unicode captures/spans.",
+    "python": "Approved without actionable findings.",
+    "general": "Same two gaps; no ownership, settings or default CI-selection regression.",
+    "fixPass": "Three false-green cases RED then GREEN; full suites and actual native profiles pass. No deferred minors."
+  },
+  "actionlint": {
+    "baselineExit": 1,
+    "currentExit": 1,
+    "introduced": [],
+    "passed": true,
+    "baselineRawCount": 11,
+    "currentRawCount": 11,
+    "baselineDiagnosticKinds": 11,
+    "currentDiagnosticKinds": 11,
+    "scope": "No new diagnostics against master; existing action/runner-label findings remain. Metadata first-reference locations may vary."
+  },
+  "graph": {
+    "initialRefreshExit": 124,
+    "postEditRefreshExit": 3221226505,
+    "status": "No graph pass: stale primary index and unresolved changed helpers. CodeGraph unindexed; Code Review Graph unavailable."
+  },
+  "limitations": [
+    "Qt event injection is not hardware input or compositor latency.",
+    "MainWindow runs in the integration executable, not the packaged launcher/installer.",
+    "Layout close/recreate is measured; process-restart persistence is not.",
+    "Windows local Qt-only evidence; hosted Qt6.12/accelerated and Linux/macOS native MainWindow conformance remain pending.",
+    "Full G02/G03 acceptance remains open."
+  ],
+  "rulings": [
+    "Use real MainWindow in the existing integration binary; label launcher/installer boundary. Cost if wrong: overstated release evidence.",
+    "CI requests per-process Qt scale0.75 because its current captures show1024x768 desktop; both native profiles were tested locally. Host display mode and ordinary component profile are unchanged. Cost if wrong: hosted native gate fails rather than passing headless."
+  ]
+}

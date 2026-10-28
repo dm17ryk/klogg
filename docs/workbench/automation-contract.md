@@ -110,6 +110,12 @@ operations, legacy smoke tests and feature implementations remain unchanged.
 
 ## G03b current-build gates
 
+The opt-in native path also includes [G03e MainWindow journeys](g03e-mainwindow.md).
+Select `workbench_usability.py --probe mainwindow` to validate actual menu/toolbar
+access, file-backed Run/Apply/navigation and close/recreate layout restoration.
+The original default remains the G03c dock component probe. Both profiles retain
+their own evidence boundaries and leave the complete release gate pending.
+
 `workbench_ci_gate.py` verifies the executable belongs to the supplied build tree,
 the CMake source directory is this checkout, and the configured Hyperscan/VectorScan
 flags agree with the requested backend. It records binary/cache SHA-256, source
