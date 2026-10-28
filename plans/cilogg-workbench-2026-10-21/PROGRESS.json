@@ -21,16 +21,55 @@
     "p05MergeCommit": "ed2d70baa067b1d9198618ba1430094487bf26f6",
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
-  "activeTask": "G03",
-  "nextTask": "G02",
+  "activeTask": "G02",
+  "nextTask": "G03",
   "executionPolicy": {
     "updatedDate": "2026-10-28",
     "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves.",
-    "phaseOrder": ["W0", "decoder_core", "W1", "W2", "W3", "W4", "W5", "W6"],
-    "decoderCoreTasks": ["MD01", "MD02", "MD03", "MD04", "MD05", "MD06"],
-    "decoderCorePrerequisitesOutsideW0": ["F01", "F02", "F03", "F04", "D01", "E01"],
-    "decoderCoreDependencyOrder": ["MD01", "F01", "F02", "F03", "F04", "D01", "E01", "MD03", "MD02", "MD04", "MD05", "MD06"],
-    "deferredDecoderIntegration": ["MD07", "MD08"],
+    "phaseOrder": [
+      "W0",
+      "decoder_core",
+      "W1",
+      "W2",
+      "W3",
+      "W4",
+      "W5",
+      "W6"
+    ],
+    "decoderCoreTasks": [
+      "MD01",
+      "MD02",
+      "MD03",
+      "MD04",
+      "MD05",
+      "MD06"
+    ],
+    "decoderCorePrerequisitesOutsideW0": [
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "D01",
+      "E01"
+    ],
+    "decoderCoreDependencyOrder": [
+      "MD01",
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "D01",
+      "E01",
+      "MD03",
+      "MD02",
+      "MD04",
+      "MD05",
+      "MD06"
+    ],
+    "deferredDecoderIntegration": [
+      "MD07",
+      "MD08"
+    ],
     "deferredIntegrationPolicy": "Schedule MD07 after its decoder/U04/F07/V02 gates and MD08 after MD07/E09 in later waves; do not gate early V02 on these deferred integrations.",
     "acceptancePolicy": "Preserve all hard dependencies, task acceptance, GUI/CLI/native-MCP parity and existing completed-work credit. W0 remains open until its gates pass; MD01 runtime claims require its actual scripts and complete reference captures.",
     "nextAfterW0": "MD01",
@@ -71,7 +110,9 @@
         "G02b: fresh Qt6.10.1 build, 5/5 CTest suites and three native Windows GUI/service budget runs passed; see G02b slice for exact boundaries.",
         "../../docs/workbench/g02c-memory-gates.md",
         "../../docs/workbench/g02d-resident-memory.md",
-        "../../docs/workbench/g02d-windows-observations.json"
+        "../../docs/workbench/g02d-windows-observations.json",
+        "../../docs/workbench/g02e-native-ci.md",
+        "../../docs/workbench/g02e-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -479,6 +520,31 @@
             "review": "Fresh read-only conflict review approved; exactly11feature paths differ from master; all master product/UI/parity code preserved.",
             "graph": "CodeGraph unindexed; GitNexus refresh crashed3221226505; stale detect-changes maps291unrelated/inherited flows and cannot establish a pass."
           }
+        },
+        {
+          "id": "G02e",
+          "status": "implemented_pending_gates",
+          "base": "f4743f56da8e11e5334aa09dcdc6972cd2782600",
+          "commit": "1a77391aaa91a76b0d7ef8eaeefa759f4eed8ef3",
+          "pullRequest": null,
+          "scope": "Opt-in hosted Windows x64 native GUI/service/committed-memory/sampled-RSS benchmark gate using existing budgets and current-build provenance.",
+          "evidence": [
+            "../../docs/workbench/g02e-native-ci.md",
+            "../../docs/workbench/g02e-windows-observations.json"
+          ],
+          "localVerification": "Exact Bash step passes three native Qt6.10.1 Qt-only merged-PR71 repetitions; one-byte RSS gate makes the step exit1 and retains measurements.",
+          "limitations": [
+            "Hosted current-branch WindowsQt6.12 accelerated confirmation pending.",
+            "Reused integrated-PR71 product/test deployment; no fresh G02e binary build claimed. Product source equals master, test tree includes G03e.",
+            "All existing unmeasured G02 metrics and full G02/G03/W0 remain open.",
+            "CodeGraph unindexed; CodeReviewGraph unavailable; stale GitNexus verifier impact and bounded refresh do not establish a graph pass."
+          ],
+          "rulings": [
+            "Reuse the existing benchmark CLI, ownership, counters and budgets; no parallel public catalog or application operation.",
+            "Enable only existing Windows x64 native-parity configuration, preserve all other platform/architecture selections.",
+            "Keep reports on failure while excluding the private native executable/runtime payload from diagnostic uploads."
+          ],
+          "branch": "codex/workbench-native-budget-ci-g02e"
         }
       ]
     },
