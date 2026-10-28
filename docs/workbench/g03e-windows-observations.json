@@ -632,7 +632,8 @@
     "g03e-native-first/result.json": "0645825f12b4118028ad92b0ccb8975dc0d66ef698132a8d8730b7f9d60cc7e1",
     "g03e-native-first/stdout.log": "48daf1ccaa99de463d0b43fe1958dfa41fc8547fadaceaa524c9fbd57ee71e37",
     "g03e-review-red.log": "34f868e994031f58385e21cd351af8f81a6e10bd6b52a6b9d63a7d3453889f4e",
-    "g03e-review-green.log": "1c0af1ad1d9496a2392aafdaa0a3a4bfe154bc3fd6667332270eee74d02e41aa"
+    "g03e-review-green.log": "1c0af1ad1d9496a2392aafdaa0a3a4bfe154bc3fd6667332270eee74d02e41aa",
+    "g03e-audit-red.log": "516fad58ccc5b58b449f51642214cb4d686e4f2b8b8c7e3b81e11a3be2da5d2e"
   },
   "settings": {
     "exitCode": 0,
@@ -677,5 +678,14 @@
   "rulings": [
     "Use real MainWindow in the existing integration binary; label launcher/installer boundary. Cost if wrong: overstated release evidence.",
     "CI requests per-process Qt scale0.75 because its current captures show1024x768 desktop; both native profiles were tested locally. Host display mode and ordinary component profile are unchanged. Cost if wrong: hosted native gate fails rather than passing headless."
-  ]
+  ],
+  "sourceHashConvention": "sourceSHA256 hashes compiled working-file bytes; sourceGitBlobSHA256 hashes canonical Git blobs. LF-normalized file contents must equal Git blobs.",
+  "sourceGitBlobSHA256": {
+    "tests/ui/workbenchusability_test.cpp": "159d688d6306fd3004b25a4d3203811a9fb75f106ab3b852cc91230f92e1038e",
+    "tests/mcp/workbench_usability.py": "a95c75652dbffec1e7926d62b02483c7a208df2170c9517492df584cc6b29d4d",
+    "tests/mcp/fixtures/fake_usability.py": "1fd1f9acea73db0cd955c95ccdad0c4e2ff2bd02e2349e3002cd0ee2b05611ae",
+    "tests/mcp/test_workbench_mainwindow.py": "bb464442a6d8bd6a2d2e82221c4fa26263c1a6ebecf2a1ddf6856660cd3e4c8d",
+    ".github/actions/workbench-parity/action.yml": "11c505276e94b48dd1c644e074684defc5f1ba849a26ba0f742d7bd16346360a"
+  },
+  "auditCorrection": "Original local check wrongly compared raw compiled-file SHA against LF-normalized Git SHA. Reproduced before correction; current check verifies both hashes and normalized content equality. No implementation bytes changed."
 }

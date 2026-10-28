@@ -719,7 +719,7 @@
         {
           "id": "G03e",
           "status": "implemented_pending_gates",
-          "commit": null,
+          "commit": "9176c53b20d1df1cfc143e08d5e7498c16028235",
           "pullRequest": null,
           "base": "ddf30d66984d6d816133d501cd40f0c9a230b3dc",
           "scope": "Opt-in native MainWindow discovery, file-backed Run/Apply/navigation and close/recreate layout restoration; independent of PR70.",
@@ -735,7 +735,8 @@
             "67 Workbench self-tests pass on Python3.9/3.14 with one platform skip each; eight focused cases pass after requested-scale telemetry.",
             "Actual Windows MainWindow default/0.75 profiles each pass501assertions and six native captures. Original component and all three current-master GUI/CLI/MCP cases pass.",
             "Native views visually inspected; compact largest817x638 fits hosted observed984x688 area. Hosted new gate pending.",
-            "Ruff E9/F py39 passes; no new actionlint diagnostics against master (existing findings retained)."
+            "Ruff E9/F py39 passes; no new actionlint diagnostics against master (existing findings retained).",
+            "Final source audit distinguishes compiled Windows file bytes and canonical Git blobs; verifies both hashes plus normalized content equality. Original failed check retained."
           ],
           "review": {
             "cpp": "Two Important oracle gaps reproduced and fixed: independent snapshot/revision binding and exact Unicode captures/spans.",
