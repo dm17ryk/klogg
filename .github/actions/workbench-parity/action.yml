@@ -9,7 +9,7 @@ inputs:
     description: Run both pinned Python MCP SDK profiles
   native-ui:
     default: 'false'
-    description: Run the native Windows dock interaction probe
+    description: Run native Windows dock and MainWindow interaction probes
 runs:
   using: composite
   steps:
@@ -38,6 +38,12 @@ runs:
           --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" \
           --test-executable "$probe" \
           --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-ui"
+        # Hosted Windows has a 1024x768 desktop. Scale only this probe process;
+        # no display-mode or user configuration is changed.
+        QT_SCALE_FACTOR=0.75 python tests/mcp/workbench_usability.py \
+          --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" \
+          --test-executable "$probe" --probe mainwindow \
+          --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-mainwindow"
     - name: Native GUI CLI MCP parity
       shell: bash
       env:
