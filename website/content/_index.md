@@ -5,6 +5,8 @@ type: docs
 
 ## Follow the logs. Find the signal. Automate the next step.
 
+![CILogg Developer Workbench — Capture, Decode, Analyze, Automate](branding/splash-screen.png)
+
 **CILogg brings log investigation and device automation into one workspace.**
 Built on [klogg](https://github.com/variar/klogg), it combines fast large-file
 exploration with live capture, interactive analysis, and repeatable automation.

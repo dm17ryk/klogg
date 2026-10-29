@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Resources/logo.png" alt="CILogg logo" width="104">
+<img src="Resources/splash_screen.png" alt="CILogg Developer Workbench — Capture, Decode, Analyze, Automate" width="100%">
 
 # CILogg
 
