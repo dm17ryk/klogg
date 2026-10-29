@@ -526,7 +526,7 @@
           "status": "implemented_pending_gates",
           "base": "f4743f56da8e11e5334aa09dcdc6972cd2782600",
           "commit": "1a77391aaa91a76b0d7ef8eaeefa759f4eed8ef3",
-          "pullRequest": null,
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/72",
           "scope": "Opt-in hosted Windows x64 native GUI/service/committed-memory/sampled-RSS benchmark gate using existing budgets and current-build provenance.",
           "evidence": [
             "../../docs/workbench/g02e-native-ci.md",
@@ -562,7 +562,8 @@
         "build_root/g03-sdk-final-1.30.0/checks/runtime-result.json and g03-sdk-final-2.3.0/checks/runtime-result.json: isolated MCP SDK runtime checks passed",
         "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks",
         "../../docs/workbench/g03b-windows-observations.json",
-        "../../docs/workbench/g03d-windows-observations.json"
+        "../../docs/workbench/g03d-windows-observations.json",
+        "../../docs/workbench/g03e-windows-observations.json"
       ],
       "limitations": [
         "G03a is the first independently reviewable harness slice; full G03 is not complete.",
@@ -835,6 +836,47 @@
           ],
           "localVerification": "passed",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/70"
+        },
+        {
+          "id": "G03e",
+          "status": "implemented_pending_gates",
+          "commit": "9176c53b20d1df1cfc143e08d5e7498c16028235",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/71",
+          "base": "ddf30d66984d6d816133d501cd40f0c9a230b3dc",
+          "scope": "Opt-in native MainWindow discovery, file-backed Run/Apply/navigation and close/recreate layout restoration; independent of PR70.",
+          "evidence": [
+            "../../docs/workbench/g03e-mainwindow.md",
+            "build_root/g03e-red.log: 11 expected failures before --probe mainwindow existed.",
+            "build_root/g03e-native-red/result.json: old binary correctly fails a missing selected MainWindow case.",
+            "build_root/g03e-native-first: Regex Lab reached complete native/layout checks; Value Counts rejected appended default pattern. Failure retained.",
+            "build_root/g03e-review-red.log: three false-green Unicode/snapshot/revision cases reproduced.",
+            "build_root/g03e-review-green.log: all eight focused tests pass after one review fix pass.",
+            "../../docs/workbench/g03e-windows-observations.json",
+            "Full current-source Qt6.10.1 Qt-only target build/deploy and CTest6/6 in250.62seconds; all four portable files restored byte-for-byte.",
+            "67 Workbench self-tests pass on Python3.9/3.14 with one platform skip each; eight focused cases pass after requested-scale telemetry.",
+            "Actual Windows MainWindow default/0.75 profiles each pass501assertions and six native captures. Original component and all three current-master GUI/CLI/MCP cases pass.",
+            "Native views visually inspected; compact largest817x638 fits hosted observed984x688 area. Hosted new gate pending.",
+            "Ruff E9/F py39 passes; no new actionlint diagnostics against master (existing findings retained).",
+            "Final source audit distinguishes compiled Windows file bytes and canonical Git blobs; verifies both hashes plus normalized content equality. Original failed check retained."
+          ],
+          "review": {
+            "cpp": "Two Important oracle gaps reproduced and fixed: independent snapshot/revision binding and exact Unicode captures/spans.",
+            "python": "Approved without actionable findings.",
+            "general": "Same two gaps; no ownership, settings or default CI-selection regression.",
+            "fixPass": "Three false-green cases RED then GREEN; full suites and actual native profiles pass. No deferred minors."
+          },
+          "limitations": [
+            "Qt event injection is not hardware input or compositor latency.",
+            "MainWindow runs in the integration executable, not the packaged launcher/installer.",
+            "Layout close/recreate is measured; process-restart persistence is not.",
+            "Windows local Qt-only evidence; hosted Qt6.12/accelerated and Linux/macOS native MainWindow conformance remain pending.",
+            "Full G02/G03 acceptance remains open.",
+            "No graph pass: stale primary index and unresolved changed helpers. CodeGraph unindexed; Code Review Graph unavailable."
+          ],
+          "rulings": [
+            "Use real MainWindow in the existing integration binary; label launcher/installer boundary. Cost if wrong: overstated release evidence.",
+            "CI requests per-process Qt scale0.75 because its current captures show1024x768 desktop; both native profiles were tested locally. Host display mode and ordinary component profile are unchanged. Cost if wrong: hosted native gate fails rather than passing headless."
+          ]
         }
       ]
     },
