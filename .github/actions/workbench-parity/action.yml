@@ -47,6 +47,9 @@ runs:
           --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" \
           --test-executable "$probe" --probe mainwindow \
           --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-mainwindow"
+        QT_SCALE_FACTOR=0.75 python tests/mcp/workbench_restart.py \
+          --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" --platform native \
+          --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-restart"
     - name: Native GUI CLI MCP parity
       shell: bash
       env:
