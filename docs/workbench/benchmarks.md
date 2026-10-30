@@ -237,6 +237,11 @@ is inferred from these measurements. `releaseGateStatus` remains `pending`.
 
 ## Initial Windows observations (2026-10-22)
 
+For the separately measured long-lived analysis/release workload, see
+[G02f sustained memory](g02f-sustained-memory.md). It uses the existing Commander
+operations and records actual post-release host RSS trends and sampled-tree
+observations; it does not replace the native UI/service scenario or complete W0.
+
 [Raw measured report](g02a-windows-observations.json): deployed package 26.04.2.1043,
 reported source 96bf481, Qt runtime DLL 6.12.0.0, capture backend Qt QRegularExpression.
 This measures that deployed binary, not a fresh build of master. SDK and

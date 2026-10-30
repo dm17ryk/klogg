@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-30",
+  "base": "493124be92f962aeba97bf92c0ac55c59743d925",
+  "codeCommit": "b144d5525069a11cfc96cc65a0eff429318cad36",
+  "scope": "G02f Windows offscreen sustained analysis/release memory; full G02/G03/W0 pending.",
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.7"
+  },
+  "sourceHashes": {
+    "scripts/benchmarks/workbench_sustained.py": {
+      "workingFileSha256": "b127ff118b7ca6858e7045ed443a0a1710c0a8d0ae125dbdbea8599852801cf1",
+      "canonicalGitSha256": "3a6d5418389907d26533d5395988691a63c389630ea9208e753accb3cce2feb4"
+    },
+    "tests/benchmarks/test_workbench_sustained.py": {
+      "workingFileSha256": "129818876e2800f6c83fd91ea9a644c647111219e7ed5adc2cce15a89ce4567e",
+      "canonicalGitSha256": "129818876e2800f6c83fd91ea9a644c647111219e7ed5adc2cce15a89ce4567e"
+    }
+  },
+  "deployment": {
+    "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+    "embeddedStamp": "8c06a9e5",
+    "validatedSourceEpoch": "1bdcfb858e37ae29cbf074df9150e5ccf9f158a5",
+    "productSourceTree": "d9152ee78e11582da91287c366c7dbb4226a75d5",
+    "localQt": "6.10.1",
+    "configuredSearchBackend": "qt",
+    "captureBackend": "unreported by this benchmark report; existing capture worker retained",
+    "sdk": "raw native-MCP protocol, no client SDK",
+    "qtCoreDll": {
+      "path": "build_root/output/RelWithDebInfo/Qt6Core.dll",
+      "sha256": "d9dbbcc049cd43250450cd26419e983323263539bd98dd21047d2276c8604251"
+    },
+    "boundary": "Reused approved Qt6.10.1 Qt-only Windows deployment, no fresh G02f build. Current master adds branding PNGs; all C++ sources unchanged."
+  },
+  "corpus": {
+    "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+    "rows": 100000,
+    "seed": 42,
+    "cachePolicy": "os_cache_uncontrolled"
+  },
+  "reviewedMeasurement": {
+    "report": {
+      "path": "build_root/g02f-reviewed/result.json",
+      "sha256": "41ed895adbaaadb2079c57b783136daad4fc8ccc4b8302c1e0cf1c6c99f5bf36"
+    },
+    "log": {
+      "path": "build_root/g02f-reviewed.log",
+      "sha256": "b4061d882ce5d89593cb19c2ec1d6d3c29c4ce163f47c7f7e8f2ef749a8e1747"
+    },
+    "runs": [
+      {
+        "repetition": 1,
+        "hostPid": 30284,
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "cycles": 19,
+        "warmupCycles": 3,
+        "source": {
+          "sourceId": "104335f0-0ef0-4ff5-b6bf-eacf079dad71",
+          "generation": "1"
+        },
+        "finalSourceSha256": "e7d3c56534a8d325bf03f4ed00bbbdba0c10d7ee23db924b5cc34a7267e4da8e",
+        "finalSourceBytes": 3402836,
+        "finalRows": 100352,
+        "appendedTokenCount": 352,
+        "summary": {
+          "durationSeconds": 120.99217199999839,
+          "releasedSamples": 21,
+          "hostSlopeBytesPerMinute": 1557026.4570874418,
+          "hostGrowthBytes": 6275072,
+          "baselineHostRssBytes": 73650176,
+          "finalHostRssBytes": 79925248,
+          "maximumReleasedSampleGapSeconds": 6.9267391999892425
+        },
+        "resident": {
+          "status": "sampled",
+          "kind": "sampled_working_set_bytes",
+          "backend": "windows_job_members_working_set",
+          "scope": "application_host_and_owned_descendants",
+          "workerRole": "all_owned_non_host_members_including_mcp",
+          "start": "first_poll_during_first_warmup_matching_after_source_readiness",
+          "end": "after_final_released_sample_before_host_cleanup",
+          "hostPid": 30284,
+          "samples": 155,
+          "hostSamples": 155,
+          "emptyPolls": 0,
+          "exitRaces": 0,
+          "observedWorkerPids": 45,
+          "workerObserved": true,
+          "maximumSampleGapMs": 3116.960100000142,
+          "maximumSampleDurationMs": 0.6024000031175092,
+          "maximumTrackedPids": 256,
+          "includesExitedDescendants": false,
+          "snapshotIsAtomic": false,
+          "countsSharedPagesPerProcess": true,
+          "includesHarness": false,
+          "measurements": {
+            "processTreeSampledRssPeakBytes": 126226432,
+            "hostSampledRssPeakBytes": 80125952,
+            "workersSampledRssPeakBytes": 46145536
+          },
+          "opportunisticProbeMinimumSpacingMs": 100,
+          "releasedSamplesForced": true
+        },
+        "gates": [
+          {
+            "name": "treeRssBytes",
+            "observed": 126226432,
+            "maximum": 536870912,
+            "passed": true
+          },
+          {
+            "name": "hostGrowthBytes",
+            "observed": 6275072,
+            "maximum": 33554432,
+            "passed": true
+          }
+        ],
+        "ownedProcessesReaped": true
+      },
+      {
+        "repetition": 2,
+        "hostPid": 44048,
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "cycles": 19,
+        "warmupCycles": 3,
+        "source": {
+          "sourceId": "280a2e4f-09de-447b-9298-6c14b87007ce",
+          "generation": "1"
+        },
+        "finalSourceSha256": "e7d3c56534a8d325bf03f4ed00bbbdba0c10d7ee23db924b5cc34a7267e4da8e",
+        "finalSourceBytes": 3402836,
+        "finalRows": 100352,
+        "appendedTokenCount": 352,
+        "summary": {
+          "durationSeconds": 124.97492009999405,
+          "releasedSamples": 21,
+          "hostSlopeBytesPerMinute": -692704.5072910814,
+          "hostGrowthBytes": -425984,
+          "baselineHostRssBytes": 73678848,
+          "finalHostRssBytes": 73252864,
+          "maximumReleasedSampleGapSeconds": 7.523457999996026
+        },
+        "resident": {
+          "status": "sampled",
+          "kind": "sampled_working_set_bytes",
+          "backend": "windows_job_members_working_set",
+          "scope": "application_host_and_owned_descendants",
+          "workerRole": "all_owned_non_host_members_including_mcp",
+          "start": "first_poll_during_first_warmup_matching_after_source_readiness",
+          "end": "after_final_released_sample_before_host_cleanup",
+          "hostPid": 44048,
+          "samples": 161,
+          "hostSamples": 161,
+          "emptyPolls": 0,
+          "exitRaces": 0,
+          "observedWorkerPids": 45,
+          "workerObserved": true,
+          "maximumSampleGapMs": 2820.7802999968408,
+          "maximumSampleDurationMs": 0.5922999989707023,
+          "maximumTrackedPids": 256,
+          "includesExitedDescendants": false,
+          "snapshotIsAtomic": false,
+          "countsSharedPagesPerProcess": true,
+          "includesHarness": false,
+          "measurements": {
+            "processTreeSampledRssPeakBytes": 126189568,
+            "hostSampledRssPeakBytes": 80310272,
+            "workersSampledRssPeakBytes": 46149632
+          },
+          "opportunisticProbeMinimumSpacingMs": 100,
+          "releasedSamplesForced": true
+        },
+        "gates": [
+          {
+            "name": "treeRssBytes",
+            "observed": 126189568,
+            "maximum": 536870912,
+            "passed": true
+          },
+          {
+            "name": "hostGrowthBytes",
+            "observed": -425984,
+            "maximum": 33554432,
+            "passed": true
+          }
+        ],
+        "ownedProcessesReaped": true
+      },
+      {
+        "repetition": 3,
+        "hostPid": 7464,
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "cycles": 19,
+        "warmupCycles": 3,
+        "source": {
+          "sourceId": "f85975a4-1b01-4e5f-a1e8-2508fa6d675b",
+          "generation": "1"
+        },
+        "finalSourceSha256": "e7d3c56534a8d325bf03f4ed00bbbdba0c10d7ee23db924b5cc34a7267e4da8e",
+        "finalSourceBytes": 3402836,
+        "finalRows": 100352,
+        "appendedTokenCount": 352,
+        "summary": {
+          "durationSeconds": 121.65858370000205,
+          "releasedSamples": 21,
+          "hostSlopeBytesPerMinute": -43613.3228155803,
+          "hostGrowthBytes": 692224,
+          "baselineHostRssBytes": 73633792,
+          "finalHostRssBytes": 74326016,
+          "maximumReleasedSampleGapSeconds": 7.406250800006092
+        },
+        "resident": {
+          "status": "sampled",
+          "kind": "sampled_working_set_bytes",
+          "backend": "windows_job_members_working_set",
+          "scope": "application_host_and_owned_descendants",
+          "workerRole": "all_owned_non_host_members_including_mcp",
+          "start": "first_poll_during_first_warmup_matching_after_source_readiness",
+          "end": "after_final_released_sample_before_host_cleanup",
+          "hostPid": 7464,
+          "samples": 153,
+          "hostSamples": 153,
+          "emptyPolls": 0,
+          "exitRaces": 0,
+          "observedWorkerPids": 43,
+          "workerObserved": true,
+          "maximumSampleGapMs": 3131.0684999916703,
+          "maximumSampleDurationMs": 0.9085999918170273,
+          "maximumTrackedPids": 256,
+          "includesExitedDescendants": false,
+          "snapshotIsAtomic": false,
+          "countsSharedPagesPerProcess": true,
+          "includesHarness": false,
+          "measurements": {
+            "processTreeSampledRssPeakBytes": 125820928,
+            "hostSampledRssPeakBytes": 80220160,
+            "workersSampledRssPeakBytes": 46157824
+          },
+          "opportunisticProbeMinimumSpacingMs": 100,
+          "releasedSamplesForced": true
+        },
+        "gates": [
+          {
+            "name": "treeRssBytes",
+            "observed": 125820928,
+            "maximum": 536870912,
+            "passed": true
+          },
+          {
+            "name": "hostGrowthBytes",
+            "observed": 692224,
+            "maximum": 33554432,
+            "passed": true
+          }
+        ],
+        "ownedProcessesReaped": true
+      }
+    ]
+  },
+  "deliberateFailure": {
+    "report": {
+      "path": "build_root/g02f-negative/result.json",
+      "sha256": "a12ef2124293dfe4ddc6ad969be6a297003463bb541bcf7f09eefed560050c9f"
+    },
+    "log": {
+      "path": "build_root/g02f-negative.log",
+      "sha256": "af522d47ca07092a77040badd674e8ab99380b607385651625c32bc64c8d4258"
+    },
+    "driver": {
+      "path": "build_root/g02f-negative-driver.json",
+      "sha256": "1a30ae1ed95a530f9ab4efa28925add6498716159ad25d9e32195f59438801ca"
+    },
+    "expectedExitCode": 1,
+    "onlyFailedGate": "treeRssBytes",
+    "runs": [
+      {
+        "repetition": 1,
+        "hostPid": 50116,
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "cycles": 19,
+        "warmupCycles": 3,
+        "source": {
+          "sourceId": "cbb9a35d-fab3-4d6c-9bb5-e72e9576f2d7",
+          "generation": "1"
+        },
+        "finalSourceSha256": "e7d3c56534a8d325bf03f4ed00bbbdba0c10d7ee23db924b5cc34a7267e4da8e",
+        "finalSourceBytes": 3402836,
+        "finalRows": 100352,
+        "appendedTokenCount": 352,
+        "summary": {
+          "durationSeconds": 123.81267410000146,
+          "releasedSamples": 21,
+          "hostSlopeBytesPerMinute": 75660.25612597233,
+          "hostGrowthBytes": 929792,
+          "baselineHostRssBytes": 73732096,
+          "finalHostRssBytes": 74661888,
+          "maximumReleasedSampleGapSeconds": 8.057278899999801
+        },
+        "resident": {
+          "status": "sampled",
+          "kind": "sampled_working_set_bytes",
+          "backend": "windows_job_members_working_set",
+          "scope": "application_host_and_owned_descendants",
+          "workerRole": "all_owned_non_host_members_including_mcp",
+          "start": "first_poll_during_first_warmup_matching_after_source_readiness",
+          "end": "after_final_released_sample_before_host_cleanup",
+          "hostPid": 50116,
+          "samples": 155,
+          "hostSamples": 155,
+          "emptyPolls": 0,
+          "exitRaces": 0,
+          "observedWorkerPids": 45,
+          "workerObserved": true,
+          "maximumSampleGapMs": 3072.706399994786,
+          "maximumSampleDurationMs": 0.8110000053420663,
+          "maximumTrackedPids": 256,
+          "includesExitedDescendants": false,
+          "snapshotIsAtomic": false,
+          "countsSharedPagesPerProcess": true,
+          "includesHarness": false,
+          "measurements": {
+            "processTreeSampledRssPeakBytes": 126472192,
+            "hostSampledRssPeakBytes": 80609280,
+            "workersSampledRssPeakBytes": 46202880
+          },
+          "opportunisticProbeMinimumSpacingMs": 100,
+          "releasedSamplesForced": true
+        },
+        "gates": [
+          {
+            "name": "treeRssBytes",
+            "observed": 126472192,
+            "maximum": 1,
+            "passed": false
+          },
+          {
+            "name": "hostGrowthBytes",
+            "observed": 929792,
+            "maximum": 33554432,
+            "passed": true
+          }
+        ],
+        "ownedProcessesReaped": true
+      }
+    ]
+  },
+  "ctest": {
+    "path": "build_root/g02f-final-ctest.log",
+    "sha256": "f098e78f9de0869b103af52ee7ba3c1b35a4013f37420597afa992ce750a5ad2",
+    "passed": 6,
+    "failed": 0,
+    "seconds": 154.02,
+    "portableSettings": {
+      "exitCode": 0,
+      "originalSettingsRestored": true,
+      "originalSettingsSha256": {
+        "cilogg.conf": "4a647aea30c0e478cba82a208fafafa7afe10d4869607a09c22849fe7e28014d",
+        "cilogg_session.conf": "40beb5a4619088652d9bd505d9c6594b15ccd2328f5022cdd64616f5425233b4",
+        "actions.json": "6871fc605f31bbcdea65d226b852ff230a73eb94565ceb8df67d5811a60f4a4b",
+        "previews.json": "314a199a34c910ef1cfc03f9ec10b3cd4c8a937b15dfbcd4b53cfa7a7fd0ecb6"
+      },
+      "scope": "Full local CTest with a fresh portable profile; original files retained and restored byte-for-byte."
+    }
+  },
+  "python39": {
+    "path": "build_root/g02f-python39.log",
+    "sha256": "295ea49a9fd369c76f7f7a30e4d168cc1e8503916088e713a8a44f1437215672",
+    "tests": 83,
+    "seconds": 56.836,
+    "skipped": 4
+  },
+  "python314": {
+    "path": "build_root/g02f-python314.log",
+    "sha256": "d7b3ae1f855cc5bc45f54da36eb9e8c18e0337694696ff24d53be62021767c07",
+    "tests": 83,
+    "seconds": 49.914,
+    "skipped": 4
+  },
+  "focused": {
+    "path": "build_root/g02f-review-final.log",
+    "sha256": "116dd9ba833366b21c12ac069d71195fb42bc8a06343d261fcbf4dac46930962",
+    "tests": 19,
+    "seconds": 0.472,
+    "skipped": 0
+  },
+  "initialEpochs": {
+    "firstFailed": {
+      "path": "build_root/g02f-smoke/result.json",
+      "sha256": "678d949d09b677284d8492366303e22e4c979abed1537783a01b1ff8528ca262"
+    },
+    "acceptedSmoke": {
+      "path": "build_root/g02f-smoke-ready/result.json",
+      "sha256": "f08c91117de8c671ce158db8300a56e94953bce48defb2202df0c24ee9453920"
+    },
+    "acceptedSmokeSource": {
+      "path": "build_root/g02f-initial-source/workbench_sustained.py",
+      "sha256": "92b483164ccdd1c9378447becddcadb08a6bb767a04467bb886a8a3340a57732"
+    },
+    "firstLongMeasurement": {
+      "path": "build_root/g02f-final/result.json",
+      "sha256": "bb00719ff0696b18f67c8dfa5cc7f53de357825bdada32c5319ee957475a3995"
+    },
+    "firstLongSource": {
+      "path": "build_root/g02f-measured-source/workbench_sustained.py",
+      "sha256": "c5371e8e29ebce4c63ff7ca08f791a8af4f74c61f1fb3b74afe00b1f20a22fc4"
+    },
+    "boundary": "Earlier epochs retained separately. Initial smoke missed append before watcher registration; first accepted smoke precedes cleanup-report change. First long measurement precedes review fixes and used an inaccurate sampling-start label; current reviewed report corrects it."
+  },
+  "regressions": [
+    {
+      "path": "build_root/g02f-red.log",
+      "sha256": "eba55344c879d280c88fe8233d2379885f9403cd97eef27474bdab28cf9e82a1"
+    },
+    {
+      "path": "build_root/g02f-page-red.log",
+      "sha256": "685c2cdd279ea25853fc255637303d9e4a5e75bab2e8c98db7dd2e9616f29998"
+    },
+    {
+      "path": "build_root/g02f-page-green.log",
+      "sha256": "99d7a5d84345da851546796e61ad37bc4bac50c2feda509e47bfe074d50c5161"
+    },
+    {
+      "path": "build_root/g02f-readiness-red.log",
+      "sha256": "6f127274e0937282bb08526ad4a4c07439c3a089256fe621a38f6d34254d0d88"
+    },
+    {
+      "path": "build_root/g02f-readiness-green.log",
+      "sha256": "f63cb1e511e1bc143d4ce7780d9ba962d63127ada2271bb09f749003551c68ad"
+    },
+    {
+      "path": "build_root/g02f-cleanup-red.log",
+      "sha256": "a23961a3beb81634242a6c8d6318201949931e82a1242684f6bac002fc4ba31f"
+    },
+    {
+      "path": "build_root/g02f-cleanup-green.log",
+      "sha256": "9981cdb570f3544fde1347af49cdd9c5b7f2d7881a4faf305886e7abed0d1176"
+    },
+    {
+      "path": "build_root/g02f-review-red.log",
+      "sha256": "8778939ae8f8938f988f3054ccaba8602bf53b37d35b66b13d6ead421c3447c5"
+    },
+    {
+      "path": "build_root/g02f-review-green.log",
+      "sha256": "4e4899d8c7949fb683241dfc8f4cec4f03e782dab514be3a3cbcfe960e0f0593"
+    }
+  ],
+  "review": {
+    "general": "Two medium findings (nested metadata/types and per-action readiness) and a low sampling-start label finding.",
+    "python": "Same readiness and malformed-data issues, with independently reproduced Boolean identity false green.",
+    "fixPass": "Six failing regressions (3 failures,3 errors) before fixes; final19 pass. Typed nested metadata/revision/job IDs; per-action deadline and capped submission/status/stale-release calls; accurate failure and sampling labels. Sampling-label finding regraded as important because machine-readable evidence must describe actual coverage. No findings deferred."
+  },
+  "staticChecks": "Ruff full configured rules with target-version py39 and format pass; no workflow changes.",
+  "codeIntelligence": {
+    "codeReviewGraph": {
+      "artifact": {
+        "path": "build_root/g02f-graph.json",
+        "sha256": "f3ae28278360e07443c9eda3fbd1fa4cbdd102f5d43ca1caff7b1a43fdb80f26"
+      },
+      "summary": "Blast radius for 2 changed file(s):\n  - 52 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected\n  - Also truncated: 117 edges, 2 changed nodes, 0 impacted files omitted",
+      "risk": "low",
+      "unresolvedCallSites": 324
+    },
+    "codeGraph": "Worktree expressly unindexed; not initialized.",
+    "gitNexus": {
+      "refresh": {
+        "path": "build_root/g02f-gitnexus-refresh.log",
+        "sha256": "b5b3e81e95a3d517f0469200b4cafc39f1b8d87fc9be4f7853657f8d0914499a"
+      },
+      "refreshResult": {
+        "exitCode": 124,
+        "seconds": 120.60463819999131,
+        "ownedProcessTreeReaped": true
+      },
+      "detect": {
+        "path": "build_root/g02f-detect.log",
+        "sha256": "e2be9dcb72b74664902053401fa28ff63244d5cc99a62ff818b054164077f720"
+      },
+      "limitation": "Stale primary cannot resolve BenchmarkHost;120-second branch-index refresh timed out and only owned process tree was reaped. Stale no-changes detection excluded as a graph pass."
+    }
+  },
+  "limitations": [
+    "Sequential opportunistic samples miss inter-poll peaks/short-lived workers; shared pages count per process.",
+    "Final released-host delta includes growing-source/index and allocator/OS working-set effects; negative slope is not proof of no leak.",
+    "512MiB RSS/32MiB final-growth ceilings are workload-specific initial regression guards; slope is observed, not a calibrated release budget.",
+    "Windows offscreen Qt6.10.1 Qt-only deployment; fresh branding build, hostedQt6.12/accelerated, nativeLinux/macOS, compositor and hours-long behavior pending.",
+    "Full W0 open; keep W0->MD01-MD06 with prerequisites->remainingW1. MD07-MD08 stays deferred."
+  ]
+}
