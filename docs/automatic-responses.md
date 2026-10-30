@@ -1,5 +1,10 @@
 # Per-tab automatic responses
 
+![Normal CILogg Responses window with configured match rules](images/responses-showcase.jpg)
+
+[Inspect the response editor →](images/response-editor-showcase.jpg) or browse the
+[complete screenshot gallery](screenshots.md#device-workflows).
+
 Each communication tab has an **Automatic responses enabled** check box beside
 **Actions enabled** in its tab context menu and in File → COM ports → connection.
 Disabling automatic responses leaves the tab available for manual Actions and
