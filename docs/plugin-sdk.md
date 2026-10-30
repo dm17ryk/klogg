@@ -7,6 +7,8 @@ must be ported to this protocol.
 
 ## Using plugins
 
+![Normal installed CILogg showing the bundled and example plugins](images/plugins-showcase.jpg)
+
 Open **Plugins → Manage Plugins…** to install a folder or ZIP, enable it, configure
 it, inspect jobs/errors, restart it, or remove the user-installed copy. ADB Logcat
 and Syslog Server are preinstalled and enabled by default; the demonstration
@@ -27,6 +29,8 @@ Python runtime, `CILOGG_SCRIPT_PYTHON`, then Python on PATH. Each shipped packag
 includes its standard-library-only SDK module.
 
 ## ADB and syslog log sources
+
+![Syslog plugin settings for encoding, output format, severity, and allowed senders](images/syslog-settings-showcase.jpg)
 
 Preinstalled **ADB Logcat** provides device discovery and live Android logcat capture.
 Configure its ADB executable path, then use **List ADB Devices** or **Start ADB

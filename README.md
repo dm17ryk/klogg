@@ -1,48 +1,109 @@
-![CILogg](https://github.com/dm17ryk/klogg/blob/master/Resources/logo.png)
+<div align="center">
 
-[![CI Build](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml/badge.svg?branch=master)](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml)
-[![Downloads](https://img.shields.io/github/downloads/dm17ryk/klogg/total?style=flat)](https://github.com/dm17ryk/klogg/releases)
-[![License](https://img.shields.io/github/license/dm17ryk/klogg.svg?style=flat)](COPYING)
+<img src="Resources/splash_screen.png" alt="CILogg Developer Workbench — Capture, Decode, Analyze, Automate" width="100%">
 
-[Download CILogg](https://github.com/dm17ryk/klogg/releases) · [Documentation](DOCUMENTATION.md) · [Roadmap](plans/cilogg-workbench-2026-10-21/README.md) · [Milestones](https://github.com/dm17ryk/klogg/milestones) · [Questions and ideas](https://github.com/dm17ryk/klogg/discussions) · [Report a bug](https://github.com/dm17ryk/klogg/issues)
+# CILogg
+
+### Follow the logs. Find the signal. Automate the next step.
+
+A fast log explorer with live capture, interactive analysis, and automation built in.
+
+[![Download CILogg](https://img.shields.io/badge/Download-CILogg-2563eb?style=for-the-badge)](https://github.com/dm17ryk/klogg/releases)
+[![Build](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml/badge.svg)](https://github.com/dm17ryk/klogg/actions/workflows/ci-build.yml)
+[![License](https://img.shields.io/github/license/dm17ryk/klogg?color=16a085)](COPYING)
+
+**[Get started](DOCUMENTATION.md#getting-started)** · **[Screenshots](#see-it-in-action)** · **[Compare with klogg](#comparing-with-klogg)** · **[CLI & MCP](MCP.md)** · **[Plugins](docs/plugin-sdk.md)** · **[Roadmap](plans/cilogg-workbench-2026-10-21/README.md)**
+
+Windows · Linux · macOS
+
+</div>
 
 ## Overview
 
-CILogg is a multi-platform GUI application that helps browse and search
-through long and complex log files. It is designed with programmers and
-system administrators in mind and can be seen as a graphical, interactive
-combination of grep, less, and tail.
+**CILogg brings log investigation and device automation into one workspace.** Built on
+[klogg](https://github.com/variar/klogg), it keeps the fast large-file viewer and adds
+serial capture, reusable device commands, automatic responses, Python scenarios,
+remote labs, analysis tools, and a native MCP server.
 
-![CILogg main window](website/static/screenshots/mainwindow.png)
+Go from an error in a log to a repeatable investigation: filter the evidence, inspect
+the regex captures, count recurring values, and automate the workflow from the GUI,
+CLI, or an MCP client.
 
-Please refer to the
-[documentation](DOCUMENTATION.md)
-page for how to use CILogg.
+| | What CILogg adds | What you can do |
+| --- | --- | --- |
+| 🔌 | **Live device logs** | Capture COM ports; use the bundled ADB Logcat and UDP Syslog plugins for Android and network sources. |
+| ⚡ | **Actions & automatic responses** | Send reusable commands with typed parameters, react to incoming lines, and monitor response counters. |
+| 🔬 | **Regex Lab** | Try patterns against a sample, selection, search matches, pasted text, or a file snapshot; inspect named groups and exact captures. |
+| 📊 | **Value Counts** | Rank recurring captured values, see counts and percentages, jump to an occurrence, and export CSV. |
+| 🐍 | **Scripts, scenarios & remote labs** | Run Python workflows in the app, execute scenarios headlessly, and coordinate controller/agent lab jobs. |
+| 🤖 | **CLI & native MCP** | Inspect and control a running session from scripts, Codex, Claude Code, or another local stdio MCP client. |
+| 🧩 | **Process plugins** | Add live sources, converters, and tools through plugins running in separate processes. |
 
-For command line control, the MCP server, automatic client installation, and
-generated Codex/Claude Code skills, see [MCP automation](MCP.md).
+The familiar essentials are still here: accelerated regex and Boolean search, live
+file following, multiple tabs, highlighters, encoding detection, archives, and a scratchpad.
 
-Development is tracked in the [workbench roadmap](plans/cilogg-workbench-2026-10-21/README.md) and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones). The current priority is [M00: project readiness and distribution](https://github.com/dm17ryk/klogg/milestone/1), including documentation and packaging work.
+Development is tracked in the [workbench roadmap](plans/cilogg-workbench-2026-10-21/README.md)
+and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones).
 
-### Latest testing builds
+## See it in action
 
-Download testing builds from [GitHub Releases](https://github.com/dm17ryk/klogg/releases). Choose the newest appropriate release and an asset for your operating system and CPU architecture. Read its release notes; a testing build can contain unfinished behavior.
+### Find the signal in a busy log
 
-Changes are recorded in [release notes](https://github.com/dm17ryk/klogg/releases) and [CHANGELOG.md](CHANGELOG.md).
+![CILogg dark workspace with highlighted warning and error lines and separate filtered results](docs/images/workspace.jpg)
+
+*Captured from the normal installed Windows version of CILogg, build 26.04.2.1078.
+Log views use the included [sample device log](docs/examples/device-session.txt).*
+
+<table>
+<tr>
+<td width="50%"><strong>🔬 Inspect every capture</strong><br>Test a pattern and explore its groups in Regex Lab.</td>
+<td width="50%"><strong>📊 Turn repetition into answers</strong><br>Count captured values and see which ones dominate.</td>
+</tr>
+<tr>
+<td><a href="docs/images/regex-lab-showcase.jpg"><img src="docs/images/regex-lab-showcase.jpg" alt="CILogg Regex Lab with named severity and service captures" width="100%"></a></td>
+<td><a href="docs/images/value-counts-showcase.jpg"><img src="docs/images/value-counts-showcase.jpg" alt="CILogg Value Counts ranking log severity values with counts and percentages" width="100%"></a></td>
+</tr>
+<tr>
+<td><a href="docs/regex-lab.md">Explore Regex Lab →</a></td>
+<td><a href="docs/value-counts.md">Explore Value Counts →</a></td>
+</tr>
+</table>
+
+### Work with devices, responses, and plugins
+
+<table>
+<tr>
+<td width="50%"><strong>⚡ Reuse your device commands</strong><br>Browse actions, parameters, and transmit sequences.</td>
+<td width="50%"><strong>🔁 React to incoming logs</strong><br>Configure match rules and automatic responses.</td>
+</tr>
+<tr>
+<td><a href="docs/images/actions-showcase.jpg"><img src="docs/images/actions-showcase.jpg" alt="Normal CILogg Actions window with COM routing and reusable command sequences" width="100%"></a></td>
+<td><a href="docs/images/responses-showcase.jpg"><img src="docs/images/responses-showcase.jpg" alt="Normal CILogg Responses window with enabled match rules" width="100%"></a></td>
+</tr>
+<tr>
+<td><strong>🧩 Connect more log sources</strong><br>Manage bundled ADB Logcat and Syslog plugins.</td>
+<td><strong>🎨 Make important events stand out</strong><br>Organize reusable highlighter sets and colors.</td>
+</tr>
+<tr>
+<td><a href="docs/images/plugins-showcase.jpg"><img src="docs/images/plugins-showcase.jpg" alt="Installed CILogg plugin manager showing ADB Logcat, Syslog Server, and examples" width="100%"></a></td>
+<td><a href="docs/images/highlighters-showcase.jpg"><img src="docs/images/highlighters-showcase.jpg" alt="CILogg highlighter editor with colored rules and reusable sets" width="100%"></a></td>
+</tr>
+</table>
+
+**[View all 10 screenshots →](docs/screenshots.md)** — including the response
+editor, Syslog settings, and Script Runner. Click any image to see it at full size.
+
+Start with the
+[guided walkthrough](DOCUMENTATION.md#your-first-investigation), or browse the
+[feature guides](DOCUMENTATION.md#feature-guides).
 
 ## Table of Contents
 
 - [Overview](#overview)
-  - [Latest testing builds](#latest-testing-builds)
-- [Table of Contents](#table-of-contents)
+- [See it in action](#see-it-in-action)
 - [About the Project](#about-the-project)
-  - [Comparing with glogg](#comparing-with-glogg)
-  - [Current Functionality](#current-functionality)
+  - [Comparing with klogg](#comparing-with-klogg)
 - [Installation](#installation)
-  - [Release downloads](#release-downloads)
-    - [Windows](#windows)
-    - [Mac OS](#mac-os)
-    - [Linux](#linux)
 - [Building](#building)
 - [Command Line Usage](#command-line-usage)
   - [Running the CLI](#running-the-cli)
@@ -56,103 +117,69 @@ Changes are recorded in [release notes](https://github.com/dm17ryk/klogg/release
 
 ## About the Project
 
-CILogg is a fork of [klogg](https://github.com/variar/klogg), which builds on [glogg](https://github.com/nickbnf/glogg).
+CILogg is a fork of [klogg](https://github.com/variar/klogg), which grew out of
+[glogg](https://github.com/nickbnf/glogg). The upstream projects provide the fast log
+exploration foundation; CILogg extends it for device debugging, automation, and
+interactive analysis.
 
-Since then it has evolved from fixing small annoying bugs to rewriting core components to
-make it faster and smarter than its predecessor.
+### Comparing with klogg
 
-Development of CILogg is driven by features my colleagues and I need
-to stay productive as well as feature requests from users on GitHub and in GitHub Discussions.
+**klogg is an excellent fast log viewer. CILogg builds on that foundation with
+capture, analysis, and automation workflows.**
 
-Latest development updates can be found in [GitHub Discussions](https://github.com/dm17ryk/klogg/discussions) and [GitHub Releases](https://github.com/dm17ryk/klogg/releases).
+| Capability | Upstream klogg | CILogg |
+| --- | --- | --- |
+| Large-file viewing, accelerated regex & Boolean search | Included | Inherited |
+| Live file following, highlighters, dark mode & scratchpad | Included | Inherited |
+| Serial / COM capture with transmit logging and pause/resume | — | **Added** |
+| Reusable actions, typed parameters & automatic responses | — | **Added** |
+| Regex Lab with capture inspection | — | **Added** |
+| Value Counts with percentages & CSV export | — | **Added** |
+| Embedded Python scripting & headless scenario execution | — | **Added** |
+| Remote lab controller, agent & operator commands | — | **Added** |
+| Commander control of a running GUI & native stdio MCP | — | **Added** |
+| Process plugin system with bundled ADB Logcat & UDP Syslog sources | — | **Added** |
 
-### Comparing with glogg
+Comparison scope: the features described in the
+[upstream klogg README](https://github.com/variar/klogg/blob/master/README.md) and this
+repository's linked guides, reviewed October 2026. **—** means the CILogg workflow
+is not documented as a built-in upstream feature. Shared viewer features are
+credited to klogg; no speed advantage over klogg is claimed here.
 
-CILogg has all best features of glogg:
-
-* Runs on Unix-like systems, Windows and Mac thanks to Qt5
-* Is fast and reads the file directly from disk, without loading it into memory
-* Can operate on huge text files (10+ Gb is not a problem)
-* Search results are displayed separately from original file
-* Supports Perl-compatible regular expressions
-* Colorizes the log and search results
-* Displays a context view of where in the log the lines of interest are
-* Watches for file changes on disk and reloads it (kind of like tail)
-* Is open source, released under the GPL
-
-And on top of that CILogg:
-
-* Is heavily optimized using multi-threading and SIMD
-* Supports files with more than 2147483647 lines
-* Includes much faster regular expressions search (2-4 times)
-* Allows combining regular expressions with boolean operators (AND, OR, NOT)
-* Supports many common text encodings
-* Detects file encoding automatically using [uchardet](https://www.freedesktop.org/wiki/Software/uchardet/) library (supports utf8, utf16, cp1251 and more) 
-* Can limit search operations to some part of huge file
-* Allows to configure several highlighters sets and switch between them
-* Has a list of configurable predefined regular expression patterns
-* Includes a dark mode
-* Has configurable shortcuts
-* Has a scratchpad window for taking notes and doing basic data transformations
-* Provides lots of small features that make life easier (closing tabs, copying file paths, favorite files menu, etc.)
-
-### Current Functionality
-
-Current CILogg builds include the following major capabilities:
-
-* Open logs from files, clipboard contents, URLs, and COM port streams
-* Follow actively changing files, reload files manually, wrap lines, and show line numbers independently in main and filtered views
-* Search with accelerated regular expressions, combine expressions with boolean operators, and restrict filtering/search to selected file regions
-* Maintain predefined filters, reusable highlighter sets, quick highlights, and color labels for visual triage
-* Detect encodings automatically, switch encodings manually, and work with common UTF and legacy code pages
-* Keep multiple documents open at once with recent files, favorites, and fast switching between tabs and windows
-* Use the scratchpad, previewer, and actions/responses tools for local analysis workflows
-* Run Python scripts, scenario runs, and remote lab workflows through the built-in scripting and lab tooling
-* Generate diagnostic crash dumps and open prefilled GitHub issues for crash reporting
-* Drive the app from automation-oriented CLI commands, including commander actions and UI/state dump output
-
-CILogg is no longer just a desktop log viewer. In the current codebase it also provides:
-
-* Headless scenario execution via `cilogg scenario`
-* Remote lab controller, agent, and operator flows via `cilogg lab-controller`, `cilogg lab-agent`, and `cilogg lab`
-* Automation inspection helpers such as `cilogg --dump-ui-tree` and `cilogg --dump-state-json`
-* Commander actions for opening files, URLs, COM ports, managing scripts, filters, actions, responses, and tab state
-
-Here is a small demo showing how much faster CILogg is (searching in ~1Gb file stored on tmpfs):
-
-https://user-images.githubusercontent.com/1620716/117588567-bea39100-b12c-11eb-990a-90a667bcaeaa.mp4
-
-Follow [CILogg milestones](https://github.com/dm17ryk/klogg/milestones) for planned work and [GitHub Releases](https://github.com/dm17ryk/klogg/releases) for published changes.
+See the [user guide](DOCUMENTATION.md), [automation reference](MCP.md), and
+[changelog](CHANGELOG.md) for details.
 
 **[Back to top](#table-of-contents)**
 
 ## Installation
 
-This project uses [Calendar Versioning](https://calver.org/). For a list of available versions, see the [repository tag list](https://github.com/dm17ryk/klogg/tags).
+Download the assets for your operating system from **[CILogg Releases](https://github.com/dm17ryk/klogg/releases)**.
+Choose a Windows installer or portable archive, a Linux package/AppImage, or a
+macOS package from the assets available for that release.
 
-### Release downloads
+| Platform | Start here |
+| --- | --- |
+| **Windows** | Use the installer, or extract a portable archive and run `cilogg.exe`. |
+| **Linux** | Choose the matching distribution package or AppImage. Make an AppImage executable before running it: `chmod +x <downloaded-file>.AppImage`. |
+| **macOS** | Open the macOS package and follow the installation instructions included with the release. |
 
-[GitHub Releases](https://github.com/dm17ryk/klogg/releases) is the verified download source for this CILogg fork. Check each release’s notes and channel before installing. Current testing artifacts use versioned `continuous-*` release tags. Use the release’s `*-sha256.txt` file to verify downloaded artifacts before installing.
+Check each release's notes for supported architectures and runtime requirements.
+Use the release's `*-sha256.txt` file to verify downloaded artifacts before installing.
+CILogg uses [Calendar Versioning](https://calver.org/); see the
+[tags](https://github.com/dm17ryk/klogg/tags) and [changelog](CHANGELOG.md) for version history.
 
-#### Windows
+### Testing builds
 
-Choose the Windows installer or portable ZIP for x64 or ARM64, matching your machine and the assets present in that release.
-
-#### Mac OS
-
-Choose the Intel (`*-mac-x64.dmg`) or Apple Silicon (`*-mac-arm64.dmg`) asset published with the selected release.
-
-#### Linux
-
-Choose a published AppImage, DEB or RPM matching your distribution and architecture. To run an AppImage, make it executable with `chmod +x <path_to_CILogg_AppImage>` and launch it. For runtime prerequisites, refer to the [official AppImage troubleshooting guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html).
-
-Package-manager installation instructions will be listed here when maintained CILogg catalog entries are published and verified.
+Download testing builds from [GitHub Releases](https://github.com/dm17ryk/klogg/releases).
+Current testing artifacts use versioned `continuous-*` tags. Choose the release
+and assets for your operating system and CPU architecture, and read its release
+notes before upgrading.
 
 **[Back to top](#table-of-contents)**
 
 ## Building
 
-The current recommended development environment is Windows x64 with Visual Studio 2022 and Qt 6.10.1.
+The current recommended development environment is Windows x64 with Visual Studio 2022 and Qt 6.
 Please review [BUILD.md](BUILD.md) for the exact current setup, environment variables, `build_root`
 workflow, and the repo helper scripts under `scripts/codex`.
 
@@ -192,7 +219,7 @@ Before running build-tree executables on Windows, deploy the Qt runtime DLLs
 next to the executable:
 
 ```powershell
-$env:QTDIR = 'C:\Essence_SC\qt6.10.1'
+$env:QTDIR = 'C:\Essence_SC\QtSDK\6.12.0\msvc2022_64'
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_tests.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_itests.exe"

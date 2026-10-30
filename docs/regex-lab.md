@@ -1,11 +1,14 @@
-# Regex Lab (P04)
+# Regex Lab
 
 Regex Lab is one dock per main window, opened from Tools, the toolbar or the
 viewer menu's **Analyze selected rows in Regex Lab** action. It can float or
 dock. The window session saves its layout; patterns and pasted log text remain
 runtime-only.
 
-![Regex Lab dock with completed snapshot results](images/regex-lab.png)
+![Regex Lab inspecting a named severity capture beside a highlighted sample log](images/regex-lab-showcase.jpg)
+
+Try the [sample investigation](../DOCUMENTATION.md#your-first-investigation) to
+reproduce this workflow.
 
 The initial scope is a bounded sample: at most 1,000 physical lines and 4 MiB
 of decoded text. Choose whole-file scope explicitly to scan the starting file
