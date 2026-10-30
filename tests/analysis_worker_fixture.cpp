@@ -11,6 +11,10 @@
 #ifdef Q_OS_WIN
 #include <fcntl.h>
 #include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include <psapi.h>
 #endif
 int main( int argc, char* argv[] )
 {
@@ -20,7 +24,7 @@ int main( int argc, char* argv[] )
     _setmode( _fileno( stdin ), _O_BINARY );
 #endif
     const auto mode = app.arguments().value( 1 );
-    if ( app.arguments().size() > 2 ) {
+    if ( app.arguments().size() > 2 && mode != "memory_cancel" ) {
         QFile marker( app.arguments().at( 2 ) );
         if ( !marker.open( QIODevice::WriteOnly ) ) {
             return 21;
@@ -68,7 +72,8 @@ int main( int argc, char* argv[] )
         startupOutput.flush();
     }
     if ( mode == "bad_compile" || mode == "bad_match" || mode == "large_reason"
-         || mode == "slow_start" || mode == "slow_compile" || mode == "preloaded_match" ) {
+         || mode == "slow_start" || mode == "slow_compile" || mode == "preloaded_match"
+         || mode == "memory_pulse" || mode == "memory_cancel" ) {
         QFile input;
         QFile output;
         if ( !input.open( stdin, QIODevice::ReadOnly | QIODevice::Unbuffered )
@@ -109,6 +114,60 @@ int main( int argc, char* argv[] )
         if ( !receive() ) {
             return 22;
         }
+#ifdef Q_OS_WIN
+        if ( mode == "memory_pulse" || mode == "memory_cancel" ) {
+            const auto allocate = [] {
+                constexpr SIZE_T size = 32ULL * 1024 * 1024;
+                auto* memory = static_cast<volatile char*>(
+                    VirtualAlloc( nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE ) );
+                if ( memory ) {
+                    for ( SIZE_T offset = 0; offset < size; offset += 4096 )
+                        memory[ offset ] = 'x';
+                }
+                return memory;
+            };
+            QJsonObject details;
+            if ( mode == "memory_pulse" ) {
+                auto* memory = allocate();
+                if ( !memory )
+                    return 27;
+                VirtualFree( const_cast<char*>( memory ), 0, MEM_RELEASE );
+                PROCESS_MEMORY_COUNTERS counters{};
+                counters.cb = static_cast<DWORD>( sizeof( counters ) );
+                if ( !GetProcessMemoryInfo( GetCurrentProcess(), &counters, counters.cb ) )
+                    return 28;
+                details
+                    = { { "fixturePeakRssBytes", QString::number( counters.PeakWorkingSetSize ) },
+                        { "fixtureCurrentRssBytes", QString::number( counters.WorkingSetSize ) } };
+            }
+            send( { { "version", 1 },
+                    { "backend", "Qt QRegularExpression" },
+                    { "metrics", QJsonObject{ { "compileUs", 1 } } },
+                    { "errorDetails", details } } );
+            if ( !receive() )
+                return 29;
+            if ( mode == "memory_cancel" ) {
+                auto* memory = allocate();
+                if ( !memory )
+                    return 30;
+                QFile marker( app.arguments().value( 2 ) );
+                if ( !marker.open( QIODevice::WriteOnly ) )
+                    return 31;
+                marker.write( QByteArray::number( QCoreApplication::applicationPid() ) );
+                marker.close();
+                QThread::sleep( 60 );
+                VirtualFree( const_cast<char*>( memory ), 0, MEM_RELEASE );
+                return 32;
+            }
+            send( { { "version", 1 },
+                    { "backend", "Qt QRegularExpression" },
+                    { "metrics", QJsonObject{ { "matchUs", 1 } } },
+                    { "rows", QJsonArray{} } } );
+            // Remain alive until the supervisor destroys the processor.
+            input.read( 1 );
+            return 0;
+        }
+#endif
         if ( mode == "slow_start" || mode == "slow_compile" ) {
             if ( mode == "slow_compile" ) {
                 QThread::msleep( 250 );

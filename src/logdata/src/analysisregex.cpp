@@ -11,9 +11,12 @@
 #include <QProcess>
 #include <QtEndian>
 #include <set>
+#include <utility>
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include <psapi.h>
 #endif
 
 namespace {
@@ -49,6 +52,9 @@ public:
     {
         stop();
 #ifdef Q_OS_WIN
+        if ( memoryProcess_ ) {
+            CloseHandle( memoryProcess_ );
+        }
         if ( job_ ) {
             CloseHandle( job_ );
         }
@@ -75,12 +81,12 @@ public:
             if ( cancelled || deadline.hasExpired() ) {
                 output.error = cancelled ? "cancelled" : "timeout";
                 stop();
-                return output;
+                return finalizeOutput( std::move( output ) );
             }
             if ( process_.state() != QProcess::Running || !limitMemory() ) {
                 output.error = "worker_failure";
                 stop();
-                return output;
+                return finalizeOutput( std::move( output ) );
             }
             started_ = true;
             LOG_DEBUG << "Analysis regex worker started pid=" << process_.processId();
@@ -106,7 +112,7 @@ public:
         if ( bytes.size() > FrameLimit ) {
             output.error = "worker_resource_limit";
             stop();
-            return output;
+            return finalizeOutput( std::move( output ) );
         }
         char header[ 4 ];
         qToBigEndian<quint32>( static_cast<quint32>( bytes.size() ), header );
@@ -123,7 +129,7 @@ public:
         };
         if ( !awaitingReady && !sendRequest() ) {
             stop();
-            return output;
+            return finalizeOutput( std::move( output ) );
         }
         QByteArray response;
         qint64 expected = -1;
@@ -225,7 +231,7 @@ public:
                     output.metrics[ it.key() ] = it.value();
                 }
                 compiled_ = output.error.isEmpty();
-                return output;
+                return finalizeOutput( std::move( output ) );
             }
             if ( process_.state() == QProcess::NotRunning && process_.bytesAvailable() == 0 ) {
                 output.error = "worker_failure";
@@ -244,13 +250,59 @@ public:
         LOG_DEBUG << "Analysis regex worker stopped reason=" << output.error
                   << " received=" << response.size();
         stop();
-        return output;
+        return finalizeOutput( std::move( output ) );
     }
 
 private:
+    AnalysisWorkerMemory observeMemory( bool terminating ) const
+    {
+        AnalysisWorkerMemory memory;
+        memory.terminationObservation = terminating;
+#ifdef Q_OS_WIN
+        memory.availability = AnalysisWorkerMemory::Availability::Unavailable;
+        memory.nativeError = memoryOpenError_;
+        if ( memoryProcess_ ) {
+            const auto state = WaitForSingleObject( memoryProcess_, 0 );
+            if ( state == WAIT_TIMEOUT ) {
+                PROCESS_MEMORY_COUNTERS counters{};
+                counters.cb = static_cast<DWORD>( sizeof( counters ) );
+                if ( GetProcessMemoryInfo( memoryProcess_, &counters, counters.cb ) ) {
+                    if ( counters.PeakWorkingSetSize > 0 ) {
+                        memory.availability = AnalysisWorkerMemory::Availability::Measured;
+                        memory.peakRssBytes = counters.PeakWorkingSetSize;
+                        memory.nativeError = 0;
+                    }
+                    else {
+                        memory.nativeError = ERROR_INVALID_DATA;
+                    }
+                }
+                else {
+                    memory.nativeError = GetLastError();
+                }
+            }
+            else {
+                memory.nativeError = state == WAIT_FAILED ? GetLastError() : ERROR_PROCESS_ABORTED;
+            }
+        }
+#else
+        memory.availability = AnalysisWorkerMemory::Availability::Unsupported;
+#endif
+        LOG_DEBUG << "Analysis worker memory pid=" << process_.processId()
+                  << " availability=" << static_cast<int>( memory.availability )
+                  << " peakBytes=" << memory.peakRssBytes << " nativeError=" << memory.nativeError
+                  << " terminating=" << terminating;
+        return memory;
+    }
+    AnalysisOutput finalizeOutput( AnalysisOutput output ) const
+    {
+        output.workerMemory = stopObserved_ ? stoppingMemory_ : observeMemory( false );
+        return output;
+    }
     void stop()
     {
         if ( process_.state() != QProcess::NotRunning ) {
+            stoppingMemory_ = observeMemory( true );
+            stopObserved_ = true;
             LOG_DEBUG << "Reaping analysis regex worker pid=" << process_.processId();
             process_.kill();
             process_.waitForFinished( -1 );
@@ -276,6 +328,25 @@ private:
         if ( child ) {
             CloseHandle( child );
         }
+        if ( accepted ) {
+            memoryProcess_ = OpenProcess( PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE,
+                                          static_cast<DWORD>( process_.processId() ) );
+            if ( !memoryProcess_ ) {
+                memoryOpenError_ = GetLastError();
+            }
+            else {
+                BOOL member = FALSE;
+                const auto queried = IsProcessInJob( memoryProcess_, job_, &member );
+                if ( !queried || !member ) {
+                    memoryOpenError_ = queried ? ERROR_INVALID_HANDLE : GetLastError();
+                    CloseHandle( memoryProcess_ );
+                    memoryProcess_ = nullptr;
+                }
+            }
+            LOG_DEBUG << "Analysis worker memory handle pid=" << process_.processId()
+                      << " accepted=" << ( memoryProcess_ != nullptr )
+                      << " nativeError=" << memoryOpenError_;
+        }
         return accepted;
 #else
         return true; // The internal worker applies RLIMIT_AS before reading requests.
@@ -290,8 +361,12 @@ private:
     bool protocolFailure_ = false;
     qint64 stderrBytes_ = 0;
     quint32 requestId_ = 0;
+    bool stopObserved_ = false;
+    AnalysisWorkerMemory stoppingMemory_{};
 #ifdef Q_OS_WIN
     HANDLE job_ = nullptr;
+    HANDLE memoryProcess_ = nullptr;
+    quint32 memoryOpenError_ = ERROR_INVALID_HANDLE;
 #endif
 };
 } // namespace

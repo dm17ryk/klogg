@@ -53,12 +53,21 @@ struct AnalysisBatch {
     std::vector<AnalysisLine> lines;
     int jobRemainingMs = 60000;
 };
+// Supervisor observations, never accepted from worker protocol messages.
+struct AnalysisWorkerMemory {
+    enum class Availability { NotReported, Unsupported, Unavailable, Measured };
+    Availability availability = Availability::NotReported;
+    quint64 peakRssBytes = 0;
+    quint32 nativeError = 0;
+    bool terminationObservation = false;
+};
 struct AnalysisOutput {
     QVariantList rows;
     QString error;
     QVariantMap metrics;
     QVariantMap errorDetails;
     QString backend;
+    AnalysisWorkerMemory workerMemory{};
 };
 using AnalysisProcessor
     = std::function<AnalysisOutput( const AnalysisBatch&, const std::atomic_bool&, int )>;
