@@ -563,7 +563,9 @@
         "Ruff py39 syntax/import checks and actionlint passed; general/Python branch reviews found no actionable issues; SDK field compatibility then verified RED/GREEN and native runtime checks",
         "../../docs/workbench/g03b-windows-observations.json",
         "../../docs/workbench/g03d-windows-observations.json",
-        "../../docs/workbench/g03e-windows-observations.json"
+        "../../docs/workbench/g03e-windows-observations.json",
+        "../../docs/workbench/g03f-process-restart.md",
+        "../../docs/workbench/g03f-windows-observations.json"
       ],
       "limitations": [
         "G03a is the first independently reviewable harness slice; full G03 is not complete.",
@@ -876,6 +878,45 @@
           "rulings": [
             "Use real MainWindow in the existing integration binary; label launcher/installer boundary. Cost if wrong: overstated release evidence.",
             "CI requests per-process Qt scale0.75 because its current captures show1024x768 desktop; both native profiles were tested locally. Host display mode and ordinary component profile are unchanged. Cost if wrong: hosted native gate fails rather than passing headless."
+          ]
+        },
+        {
+          "id": "G03f",
+          "status": "implemented_pending_gates",
+          "baseCommit": "f10f90ef2147e5bb1e520c7deed88e9663b2a7aa",
+          "commit": "f1c19fbd8249a216c322a86329af094cc025579b",
+          "branch": "codex/workbench-process-restart-g03f",
+          "trackingIssue": "https://github.com/dm17ryk/klogg/issues/49",
+          "scope": "Real application two-process restart with one private profile; analysis dock flags persist while drafts/text/jobs reset.",
+          "preflight": [
+            "G03e->G03f uses existing Commander/CLI/native-MCP controls and settings path; no product or existing benchmark helper changes.",
+            "Master base includes PR71; open PR72 native-budget CI remains independent."
+          ],
+          "evidence": [
+            "../../docs/workbench/g03f-process-restart.md",
+            "../../docs/workbench/g03f-windows-observations.json"
+          ],
+          "localVerification": {
+            "native": "Two hosts and both cases pass",
+            "offscreen": "Two hosts and both cases pass",
+            "ctest": "6/6 before provenance-only refinement; original portable files restored byte-for-byte.",
+            "python": "Final 106 parity tests on 3.9/3.14, one platform skip each; 21 focused pass.",
+            "staticChecks": "Default Ruff, Bash syntax pass; no new actionlint diagnostics.",
+            "review": "General/Python approved after oracle fixes; final provenance patch approved."
+          },
+          "rulings": [
+            "Use two normally closed application/MCP hosts and a shared isolated profile; compare exact typed Unicode result oracles.",
+            "Readiness retries only one transient read-only command failure within fixed phase/global deadlines; never retry mutations.",
+            "Archive bounded settings and distinguish original executable from verified post-signing payload identity.",
+            "Reused approved local Qt6.10.1 Qt-only deployment; hosted Qt6.12/accelerated checks pending."
+          ],
+          "limitations": [
+            "Windows runtime evidence only; hosted Qt6.12/accelerated and native Linux/macOS acceptance pending.",
+            "Native request is functional application behavior, not hardware input, compositor/latency or installer proof.",
+            "Checks floating/visible flags and pattern/scope/pasted text/jobs, not every option or pixel geometry.",
+            "Input and executed payload hashes are separate; simulated post-signing self-tests do not establish macOS runtime acceptance.",
+            "Full G02/G03/W0 remains open; decoder core follows W0 and MD07-MD08 stays deferred.",
+            "CodeGraph unindexed; GitNexus stale results excluded. Exact-worktree Code Review Graph refreshed with unresolved-call limitations."
           ]
         }
       ]

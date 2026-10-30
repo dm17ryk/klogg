@@ -110,6 +110,12 @@ operations, legacy smoke tests and feature implementations remain unchanged.
 
 ## G03b current-build gates
 
+The native opt-in also runs [G03f process-restart coverage](g03f-process-restart.md)
+with `workbench_restart.py`. It starts the real application twice using one
+private profile, checks restored dock flags and cleared runtime drafts/jobs, and
+waits for both application/MCP processes to close normally. This remains a
+functional persistence gate; full W0 and release acceptance stay pending.
+
 The opt-in native path also includes [G03e MainWindow journeys](g03e-mainwindow.md).
 Select `workbench_usability.py --probe mainwindow` to validate actual menu/toolbar
 access, file-backed Run/Apply/navigation and close/recreate layout restoration.
