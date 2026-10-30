@@ -112,7 +112,9 @@
         "../../docs/workbench/g02d-resident-memory.md",
         "../../docs/workbench/g02d-windows-observations.json",
         "../../docs/workbench/g02e-native-ci.md",
-        "../../docs/workbench/g02e-windows-observations.json"
+        "../../docs/workbench/g02e-windows-observations.json",
+        "../../docs/workbench/g02f-sustained-memory.md",
+        "../../docs/workbench/g02f-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -545,6 +547,42 @@
             "Keep reports on failure while excluding the private native executable/runtime payload from diagnostic uploads."
           ],
           "branch": "codex/workbench-native-budget-ci-g02e"
+        },
+        {
+          "id": "G02f",
+          "status": "implemented_pending_gates",
+          "baseCommit": "493124be92f962aeba97bf92c0ac55c59743d925",
+          "commit": "b144d5525069a11cfc96cc65a0eff429318cad36",
+          "branch": "codex/workbench-sustained-memory-g02f",
+          "scope": "Bounded sustained Windows offscreen analysis/release memory:3warmups then3x120seconds,exact source/count/page/release oracles,actual released host trend and sampled-tree regression guards.",
+          "preflight": [
+            "Reuse unchanged BenchmarkHost/ResidentMemorySampler/process ownership; new standalone harness and discovered tests only.",
+            "Master includes merged72/73; open74 remains independent."
+          ],
+          "rulings": [
+            "Observe samples between commands/polls with actual gaps; do not infer continuous or compositor coverage.",
+            "Keep signed least-squares slope observational;512MiB sampled RSS/32MiB final-host growth are initial workload-specific guards, not capacity guarantees.",
+            "Reuse approved Qt610 pre-branding deployment with hashes/source epoch; no fresh master build or hosted pass claimed.",
+            "Treat inaccurate sampling-start label as important evidence correctness; fix it with the typed-source/readiness findings in one pass."
+          ],
+          "evidence": [
+            "../../docs/workbench/g02f-sustained-memory.md",
+            "../../docs/workbench/g02f-windows-observations.json"
+          ],
+          "localVerification": {
+            "measuredRuns": "Three reviewed-source runs at least120seconds,all oracles/gates and owned cleanup pass.",
+            "negativeGate": "One-byte RSS limit returns1;only sampled-tree gate fails;growth guard and cleanup pass.",
+            "ctest": "6/6;portable settings restored byte-for-byte.",
+            "python": "Complete benchmark suites on3.9/3.14;19focused regressions pass.",
+            "review": "General/Python findings addressed in one RED/GREEN fix pass;no deferred findings."
+          },
+          "limitations": [
+            "Sequential opportunistic samples miss inter-poll peaks/short-lived workers; shared pages count per process.",
+            "Final released-host delta includes growing-source/index and allocator/OS working-set effects; negative slope is not proof of no leak.",
+            "512MiB RSS/32MiB final-growth ceilings are workload-specific initial regression guards; slope is observed, not a calibrated release budget.",
+            "Windows offscreen Qt6.10.1 Qt-only deployment; fresh branding build, hostedQt6.12/accelerated, nativeLinux/macOS, compositor and hours-long behavior pending.",
+            "Full W0 open; keep W0->MD01-MD06 with prerequisites->remainingW1. MD07-MD08 stays deferred."
+          ]
         }
       ]
     },
