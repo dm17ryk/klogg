@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-30",
+  "base": "f10f90ef2147e5bb1e520c7deed88e9663b2a7aa",
+  "codeCommit": "f1c19fbd8249a216c322a86329af094cc025579b",
+  "scope": "G03f real application process-restart persistence; full W0/release gate pending.",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "localQt": "6.10.1",
+  "backendConfigured": "qt",
+  "sourceHashes": {
+    "tests/mcp/workbench_restart.py": {
+      "workingFileSha256": "37ade08a06fc21e9a7e827932ad959330e09604b63e2ed31798d8b97b65fb550",
+      "canonicalGitSha256": "37ade08a06fc21e9a7e827932ad959330e09604b63e2ed31798d8b97b65fb550"
+    },
+    "tests/mcp/test_workbench_restart.py": {
+      "workingFileSha256": "e57380bd61129b0ae58d95ddcc676d6b7acd9dd2351748a697280e022b20a0b1",
+      "canonicalGitSha256": "a2065d54e7320f14362cfb2fdf1dafe1d2575be1c2cb70c522f0f9c8a5258fad"
+    },
+    ".github/actions/workbench-parity/action.yml": {
+      "workingFileSha256": "3566d4fb7b3fdb7731bf2cc95e07d5b6512fc9d9b06d9e38eaedc73720050135",
+      "canonicalGitSha256": "af7a19a6b9ed6f40894d946afb5d749bec4429b011a33a4473277c8fca1a582f"
+    }
+  },
+  "deployment": {
+    "executable": "build_root/output/RelWithDebInfo/cilogg.exe",
+    "sha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+    "embeddedStamp": "8c06a9e5",
+    "validatedBuildSourceEpoch": "1bdcfb85",
+    "productSourceTree": "d9152ee78e11582da91287c366c7dbb4226a75d5",
+    "baselineTestsTree": "59b6a03a339cdb772e2293a138b2fc337c366f7c",
+    "boundary": "Reused approved Qt6.10.1 Qt-only deployment, not a fresh G03f C++ build. Product/UI/unit/benchmark sources unchanged."
+  },
+  "journeys": [
+    {
+      "name": "g03f-native-provenance",
+      "exitCode": 0,
+      "seconds": 25.771711000001233,
+      "platformRequested": "native",
+      "qtScaleFactorRequested": "0.75",
+      "report": {
+        "path": "build_root/g03f-native-provenance/result.json",
+        "sha256": "fdf7da407d3e6a678db3f5c79ef11b9fe55303e82d6147a83f455007f60619e7"
+      },
+      "log": {
+        "path": "build_root/g03f-native-provenance.log",
+        "sha256": "a586c030ebfe72c40d510acc99246289469fa12e3c35951f36ca7e2e3c58de36"
+      },
+      "observations": {
+        "schemaVersion": 1,
+        "probeKind": "process-restart",
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "executedBinary": "payload-06c1026fb7c742b7916864f86a28144e/cilogg-analysis-06c1026fb7c742b7916864f86a28144e.exe",
+        "executedBinarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "sourcePath": "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log",
+        "cases": [
+          {
+            "id": "regex-lab",
+            "before": {
+              "visible": true,
+              "floating": true,
+              "pattern": "(?<v>G03F_REGEX_RUNTIME_ONLY)",
+              "scope": "text",
+              "textUnits": 55,
+              "textSha256": "2fd90672aeecc11dd6b8e7c06fd71f3a8aeb2e508af1d0016ad65663414f1de3",
+              "jobId": "fd0ea458-8cd3-47e8-8160-48860bd6c288",
+              "jobComplete": true,
+              "jobState": "completed",
+              "revision": "1",
+              "jobRevision": "1",
+              "applyEnabled": true
+            },
+            "resultRows": 2,
+            "after": {
+              "visible": true,
+              "floating": true,
+              "pattern": "",
+              "scope": "sample",
+              "textUnits": 0,
+              "textSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "jobId": "",
+              "jobComplete": false,
+              "jobState": "",
+              "revision": "0",
+              "jobRevision": "",
+              "applyEnabled": false
+            },
+            "oldJobReason": "job_expired"
+          },
+          {
+            "id": "value-counts",
+            "before": {
+              "visible": true,
+              "floating": false,
+              "pattern": "(?<v>G03F_COUNTS_RUNTIME_ONLY)",
+              "scope": "text",
+              "textUnits": 57,
+              "textSha256": "edc5c7a531089d9805752586b946823d8236098adf33276211d1133f2251e276",
+              "jobId": "4d61a468-3e8d-4581-96a0-7aa2f9678ae5",
+              "jobComplete": true,
+              "jobState": "completed",
+              "revision": "1",
+              "jobRevision": "1",
+              "applyEnabled": false
+            },
+            "resultRows": 1,
+            "after": {
+              "visible": true,
+              "floating": false,
+              "pattern": "\\S+",
+              "scope": "sample",
+              "textUnits": 0,
+              "textSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "jobId": "",
+              "jobComplete": false,
+              "jobState": "",
+              "revision": "0",
+              "jobRevision": "",
+              "applyEnabled": false
+            },
+            "oldJobReason": "job_expired"
+          }
+        ],
+        "epochs": [
+          {
+            "pid": 46612,
+            "started": 54187.8749851,
+            "exited": 54204.3689424,
+            "exitCode": 0,
+            "serverExitCode": 0,
+            "windowId": "2b65e90e54be42aa969bafdd5e5d73ff",
+            "sourceFiles": [
+              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
+            ]
+          },
+          {
+            "pid": 45064,
+            "started": 54204.4153451,
+            "exited": 54212.769784,
+            "exitCode": 0,
+            "serverExitCode": 0,
+            "windowId": "2b65e90e54be42aa969bafdd5e5d73ff",
+            "sourceFiles": [
+              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
+            ]
+          }
+        ],
+        "savedSettings": [
+          {
+            "file": "saved-first/cilogg.conf",
+            "sha256": "366277085b79ed48356d619b2b62617ec05c2d0772d13b03577e13978c19e257"
+          },
+          {
+            "file": "saved-first/cilogg_session.conf",
+            "sha256": "bb95ed0e204023744e4743f47ec79f27cca7b36accaa0cc0c27e4cf58b524bc6"
+          }
+        ]
+      }
+    },
+    {
+      "name": "g03f-offscreen-provenance",
+      "exitCode": 0,
+      "seconds": 21.692660700005945,
+      "platformRequested": "offscreen",
+      "qtScaleFactorRequested": "0.75",
+      "report": {
+        "path": "build_root/g03f-offscreen-provenance/result.json",
+        "sha256": "6d53c5d41da6cdc1d6c0fac922838d9cf67b1e2dd1c6bccd3276d2b98b43f508"
+      },
+      "log": {
+        "path": "build_root/g03f-offscreen-provenance.log",
+        "sha256": "08eae388058651995d25d7c7bb274c4834b46f6c741fadab0842cd29efbe3bba"
+      },
+      "observations": {
+        "schemaVersion": 1,
+        "probeKind": "process-restart",
+        "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "executedBinary": "payload-39ac19e86d2b4e36849904b8844bd9a9/cilogg-analysis-39ac19e86d2b4e36849904b8844bd9a9.exe",
+        "executedBinarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
+        "sourcePath": "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log",
+        "cases": [
+          {
+            "id": "regex-lab",
+            "before": {
+              "visible": true,
+              "floating": true,
+              "pattern": "(?<v>G03F_REGEX_RUNTIME_ONLY)",
+              "scope": "text",
+              "textUnits": 55,
+              "textSha256": "2fd90672aeecc11dd6b8e7c06fd71f3a8aeb2e508af1d0016ad65663414f1de3",
+              "jobId": "1bf6680e-b35f-4d33-8760-2490a09d4d7e",
+              "jobComplete": true,
+              "jobState": "completed",
+              "revision": "1",
+              "jobRevision": "1",
+              "applyEnabled": true
+            },
+            "resultRows": 2,
+            "after": {
+              "visible": true,
+              "floating": true,
+              "pattern": "",
+              "scope": "sample",
+              "textUnits": 0,
+              "textSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "jobId": "",
+              "jobComplete": false,
+              "jobState": "",
+              "revision": "0",
+              "jobRevision": "",
+              "applyEnabled": false
+            },
+            "oldJobReason": "job_expired"
+          },
+          {
+            "id": "value-counts",
+            "before": {
+              "visible": true,
+              "floating": false,
+              "pattern": "(?<v>G03F_COUNTS_RUNTIME_ONLY)",
+              "scope": "text",
+              "textUnits": 57,
+              "textSha256": "edc5c7a531089d9805752586b946823d8236098adf33276211d1133f2251e276",
+              "jobId": "b2b3257b-bae2-43f9-b9f3-5ab9bd90e81f",
+              "jobComplete": true,
+              "jobState": "completed",
+              "revision": "1",
+              "jobRevision": "1",
+              "applyEnabled": false
+            },
+            "resultRows": 1,
+            "after": {
+              "visible": true,
+              "floating": false,
+              "pattern": "\\S+",
+              "scope": "sample",
+              "textUnits": 0,
+              "textSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "jobId": "",
+              "jobComplete": false,
+              "jobState": "",
+              "revision": "0",
+              "jobRevision": "",
+              "applyEnabled": false
+            },
+            "oldJobReason": "job_expired"
+          }
+        ],
+        "epochs": [
+          {
+            "pid": 50256,
+            "started": 54214.0923783,
+            "exited": 54226.35415,
+            "exitCode": 0,
+            "serverExitCode": 0,
+            "windowId": "2f2485ba05d749abb75238fc10620fdc",
+            "sourceFiles": [
+              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
+            ]
+          },
+          {
+            "pid": 49684,
+            "started": 54226.3867577,
+            "exited": 54234.3946989,
+            "exitCode": 0,
+            "serverExitCode": 0,
+            "windowId": "2f2485ba05d749abb75238fc10620fdc",
+            "sourceFiles": [
+              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
+            ]
+          }
+        ],
+        "savedSettings": [
+          {
+            "file": "saved-first/cilogg.conf",
+            "sha256": "366277085b79ed48356d619b2b62617ec05c2d0772d13b03577e13978c19e257"
+          },
+          {
+            "file": "saved-first/cilogg_session.conf",
+            "sha256": "0ba21e8bf033655e548421c7f17cfcbcedf1dfcfe1575f2d268d3bc8642bebe3"
+          }
+        ]
+      }
+    }
+  ],
+  "ctest": {
+    "path": "build_root/g03f-final-ctest.log",
+    "sha256": "fd68bb5d716a09650fe8f717f28b982b98e24bba03a9b6d9d2057aa388b6a762",
+    "passed": 6,
+    "failed": 0,
+    "seconds": 198.7,
+    "portableSettings": {
+      "exitCode": 0,
+      "originalSettingsRestored": true,
+      "originalSettingsSha256": {
+        "cilogg.conf": "4a647aea30c0e478cba82a208fafafa7afe10d4869607a09c22849fe7e28014d",
+        "cilogg_session.conf": "40beb5a4619088652d9bd505d9c6594b15ccd2328f5022cdd64616f5425233b4",
+        "actions.json": "6871fc605f31bbcdea65d226b852ff230a73eb94565ceb8df67d5811a60f4a4b",
+        "previews.json": "314a199a34c910ef1cfc03f9ec10b3cd4c8a937b15dfbcd4b53cfa7a7fd0ecb6"
+      },
+      "scope": "Full local CTest with a fresh portable profile; original files retained and restored byte-for-byte."
+    },
+    "registration": {
+      "path": "build_root/g03f-final-registration.json",
+      "sha256": "98b92f8e40f8658221ff122be603b26ce41a76d7ef30d902aab6d39cb2bfec3a"
+    },
+    "boundary": "Full suite before final provenance-only harness refinement; complete Python parity suites rerun after it."
+  },
+  "python": {
+    "3.14": {
+      "path": "build_root/g03f-python314-final.log",
+      "sha256": "54a8406f070bb358c1c4d6c7d6ebbedb3dba72c8fe8ef6d4b4b6cd50cc4c619f",
+      "tests": 106,
+      "skipped": 1,
+      "seconds": 22.235
+    },
+    "3.9": {
+      "path": "build_root/g03f-python39-final.log",
+      "sha256": "20c809278b51887295f22f69043090ed8ab8a043c4409bb463437afe93d3e35c",
+      "tests": 106,
+      "skipped": 1,
+      "seconds": 31.498
+    }
+  },
+  "focusedTests": {
+    "path": "build_root/g03f-provenance-green.log",
+    "sha256": "602dc64ad03548708a800bb9efe07cc252ebabfc58286755f8199d013163ecac",
+    "tests": 21,
+    "passed": 21
+  },
+  "staticChecks": {
+    "ruff": "Default check and format pass",
+    "nativeStepBashSyntax": "passed",
+    "actionlint": {
+      "path": "build_root/g03f-actionlint.json",
+      "sha256": "82581734aeaafad299f50492cf9b665beac32448054304ce370dc8063cdde8f8",
+      "newDiagnostics": 0,
+      "existingDiagnostics": 11
+    }
+  },
+  "initialAcceptedEpoch": {
+    "report": {
+      "path": "build_root/g03f-native-fifth/result.json",
+      "sha256": "83ac6177a9be2b7c3ddb4ef2c46989c178b54720cc8438a3192b998e0b46c0f7"
+    },
+    "canonicalSourceHashes": {
+      "workbench_restart.py": "6b99b2f73e08f8947758302f727460283ee3a072f53a1bd50cadcc237a6664f4",
+      "test_workbench_restart.py": "73c91c9661776ce7ebcfec61cf2e979f06c69aad04d1924548ed7c765f9517b7"
+    },
+    "boundary": "Initial accepted run before review oracle/readiness/provenance refinements. Canonical bytes archived; original working-file hashes not measured."
+  },
+  "earlierFinalRuns": [
+    {
+      "path": "build_root/g03f-native-final/result.json",
+      "sha256": "1bc96208b3d84d72967d198e94871218febe9423001162cc524be2d762eefaef"
+    },
+    {
+      "path": "build_root/g03f-offscreen-final/result.json",
+      "sha256": "9d79657111a0798d060b82703c577c19461f56db6490884873770f6a60c5eeb8"
+    }
+  ],
+  "retainedHistory": [
+    {
+      "path": "build_root/g03f-red.log",
+      "sha256": "8c39dc97e16238c0134c2830bf9430e35d3bfadffa26c4ef52ff03829340f818"
+    },
+    {
+      "path": "build_root/g03f-cli-red.log",
+      "sha256": "fb903b6bac2ec8707133dd423b2c8536d7d6fc369009c78da86a6acc4135d349"
+    },
+    {
+      "path": "build_root/g03f-replies-red.log",
+      "sha256": "abd2e881cb26c5958c042eb5777120ac3e4fcc921f863bbdb62225222c9cb409"
+    },
+    {
+      "path": "build_root/g03f-readiness-red.log",
+      "sha256": "447f650ba2a05417e7e85e9d946c6387228b981d5b28a355dd3116bc051ffde1"
+    },
+    {
+      "path": "build_root/g03f-rows-red.log",
+      "sha256": "af55c469b5beaed819f98608f3ca9edb89a3a9a28c00d22b8ddbb704e674a6cb"
+    },
+    {
+      "path": "build_root/g03f-schema-red.log",
+      "sha256": "6901930bc147cf881a0f262b93113e00a770d4846ff77b48b3b2d66b9709ac45"
+    },
+    {
+      "path": "build_root/g03f-review-red.log",
+      "sha256": "0af4ba06de913702af90780d0f9dcc1c505012bbedca663a100c178cb3e831d4"
+    },
+    {
+      "path": "build_root/g03f-review-green.log",
+      "sha256": "625715bb6c1994275e92aa3e3bed39f6dee55bd2d1dc0c33eaa6a1ad3cef3cf4"
+    },
+    {
+      "path": "build_root/g03f-source-retry-red.log",
+      "sha256": "4014e8c92f2d6caa6eaf93b1fd07235d71aa3872e12893b5540f55e758bb35a6"
+    },
+    {
+      "path": "build_root/g03f-source-retry-green.log",
+      "sha256": "efa87c0fdddbaf57dc70d2112a426a0398f602753bd2a773f5864266236315cd"
+    },
+    {
+      "path": "build_root/g03f-provenance-red.log",
+      "sha256": "80cacd6f9886fc90f8433a5c683e9d31082fcb119fc9f324349d576be6d4ee51"
+    },
+    {
+      "path": "build_root/g03f-provenance-green.log",
+      "sha256": "602dc64ad03548708a800bb9efe07cc252ebabfc58286755f8199d013163ecac"
+    }
+  ],
+  "failedRuntimeAttempts": [
+    {
+      "path": "build_root/g03f-native-first/result.json",
+      "sha256": "179a979f31ed889018f9d5159a1577bb6759f06447181c1f16c98dae46dc85b5"
+    },
+    {
+      "path": "build_root/g03f-native-second/result.json",
+      "sha256": "691ae41f4e9b45a4a659283a74153a3ec976c01567619cb1785a73af60f2439d"
+    },
+    {
+      "path": "build_root/g03f-native-third/result.json",
+      "sha256": "2dd4d8a3be7abc26a98e7e140cf38511a9b8ffaaf6618fc8e586fea2d62a8ca4"
+    },
+    {
+      "path": "build_root/g03f-native-fourth/result.json",
+      "sha256": "3f8cb9cc864deaa940baa57b061978215f833b6f3d29d747944e0c31c0612fe8"
+    },
+    {
+      "path": "build_root/g03f-native-reviewed/result.json",
+      "sha256": "04afc9862e492fdd0ecb6e618df51acf62bac8003e709ec86ef25fa482ada48b"
+    }
+  ],
+  "review": {
+    "general": "Two medium oracle gaps reproduced then fixed. Final code/docs/evidence approved, all artifact/source hashes and ledger scope independently verified.",
+    "python": "Approved final provenance patch; independently reran 21 focused tests and default Ruff. No findings remain."
+  },
+  "limitations": [
+    "Windows runtime evidence only; hosted Qt6.12/accelerated and native Linux/macOS acceptance pending.",
+    "Native request is functional application behavior, not hardware input, compositor/latency or installer proof.",
+    "Checks floating/visible flags and pattern/scope/pasted text/jobs, not every option or pixel geometry.",
+    "Input and executed payload hashes are separate; simulated post-signing self-tests do not establish macOS runtime acceptance.",
+    "Full G02/G03/W0 remains open; decoder core follows W0 and MD07-MD08 stays deferred."
+  ],
+  "codeIntelligence": {
+    "codeReviewGraph": "Refreshed exact worktree;49 directly changed nodes,0 additional impacted files,low risk.340 unresolved call sites and dynamic-dispatch limitations retained.",
+    "codeGraph": "Worktree explicitly unindexed; not initialized.",
+    "gitNexus": "Refresh timed out at 120 seconds; only owned npx process tree reaped. Stale primary detect-changes is excluded as a verification pass."
+  }
+}
