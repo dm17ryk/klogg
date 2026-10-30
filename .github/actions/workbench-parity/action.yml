@@ -91,6 +91,8 @@ runs:
         executable="$CILOGG_BUILD_ROOT/output/cilogg.exe"
         probe="$CILOGG_BUILD_ROOT/output/cilogg_itests.exe"
         windeployqt "$probe"
+        python tests/mcp/worker_memory.py --executable "$executable" \
+          --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-worker-memory"
         inputs="$CILOGG_BUILD_ROOT/reports/workbench-benchmark-inputs"
         mkdir -p "$inputs"
         export WORKBENCH_BENCHMARK_METADATA="$inputs/build.json"

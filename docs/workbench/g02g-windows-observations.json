@@ -1,0 +1,677 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-30",
+  "base": "493124be92f962aeba97bf92c0ac55c59743d925",
+  "branch": "codex/workbench-worker-memory-g02g",
+  "releaseGateStatus": "pending",
+  "scope": "Windows supervisor OS high-water observations, max aggregation and existing GUI/CLI/native-MCP visibility; independent of PR74/75; W0 remains open.",
+  "sourceSHA256": {
+    ".github/actions/workbench-parity/action.yml": "8489763fbce27f475136fa6dae3e4a79c5aed09eb66d1b96bc1b1f20962cf0d0",
+    "docs/workbench/g02g-worker-memory.md": "1254fdd9ce532a886ab9333f23211d3911fe00d345db8b3fb8fd038ae6ee5ac0",
+    "src/logdata/include/analysisjob.h": "d8d712d52d466c787ccc00056040df6c1e05d93527e4a70b84deafdd88b6ad24",
+    "src/logdata/src/analysisjob.cpp": "af597c7c5b0a2d251b17d6b404911f19e29f5abc995856eb9d17533c2a9136c6",
+    "src/logdata/src/analysisregex.cpp": "ce4a959a83291150c99492a7a4e20cbcaf077f9dd01c1ef0d1a7c1c0c42facf3",
+    "src/ui/CMakeLists.txt": "784c360103b25008cb2caab5c4df8468aac38cfedfeafbc6a24f74f4c1690709",
+    "src/ui/include/analysisstatus.h": "4c2815b1c2eaf9019dd73608f2fda2099eb57a1e869e4b7bf101b429dfc379f8",
+    "src/ui/src/regexlabdock.cpp": "0cfcfb4cab933e6f1b531f61789598ab94d2c8e15c52609c425183e9041d878d",
+    "src/ui/src/valuecountdock.cpp": "22bf8c2d93ff6c4285bf8944139e60c7cd0383c320e53108c15abd147c8d7d96",
+    "tests/analysis_worker_fixture.cpp": "c776dc148dd271a3c85bab354b231fb39f1a398b0ce5ca5e0275d63d9494b3d0",
+    "tests/mcp/test_workbench_worker_memory.py": "92b5a836f09aa3ad0a15396b8fd32015e9077cd8a2789812476841d67da13006",
+    "tests/mcp/worker_memory.py": "2adf43d9aa36f227e637040ad280f484d5c7755eff1644763ee3a32a2471ed40",
+    "tests/ui/CMakeLists.txt": "a87ce38c4fb871045da2420629320c490ef1572984a94623dcd4091c2966d6a0",
+    "tests/ui/workermemory_test.cpp": "2491366ca5ec51ecfc41a82fcaf4a66e9a69b29f1538fc2f8e4b6d01d4dea20e"
+  },
+  "sourceGitBlobSHA256": {
+    ".github/actions/workbench-parity/action.yml": "2d29563694fee9b98a7b65c3580ca08aef50a3a089481e154b37ae0da441c2ef",
+    "docs/workbench/g02g-worker-memory.md": "1254fdd9ce532a886ab9333f23211d3911fe00d345db8b3fb8fd038ae6ee5ac0",
+    "src/logdata/include/analysisjob.h": "bcb8c69befc9cce6ff022a9c1b576f1c2c3406d8ce3691e6f1558b4350bd8f64",
+    "src/logdata/src/analysisjob.cpp": "e825b417b51bba9664156e6bbfb10aa94205bf1ea798577aeac55a5f662f5ec4",
+    "src/logdata/src/analysisregex.cpp": "5c0b3e5a116c2dfa9960b41a11d913a8c445294d6eed93a905f7fc0b20012cdc",
+    "src/ui/CMakeLists.txt": "673f87bf01df4d930f2244fda12ed09a4e50aad372464d9122a146e1f27b4e1b",
+    "src/ui/include/analysisstatus.h": "4c2815b1c2eaf9019dd73608f2fda2099eb57a1e869e4b7bf101b429dfc379f8",
+    "src/ui/src/regexlabdock.cpp": "f6a53d1ad12ae10ee5f5272f9f9c2d4278b8f89bda86c075e5d9dc5031748692",
+    "src/ui/src/valuecountdock.cpp": "ad4f1350c40733302bcaca8178a2d9b0eac23afbfcddab864f7f9145ef29db62",
+    "tests/analysis_worker_fixture.cpp": "78685dbbd06d96ff898dc156b9757e423668f575f99b669dc656146a9f31ed7c",
+    "tests/mcp/test_workbench_worker_memory.py": "92b5a836f09aa3ad0a15396b8fd32015e9077cd8a2789812476841d67da13006",
+    "tests/mcp/worker_memory.py": "2adf43d9aa36f227e637040ad280f484d5c7755eff1644763ee3a32a2471ed40",
+    "tests/ui/CMakeLists.txt": "998fecdebb229d83f11cf8ecf41fc316e9be0e240ef2dfcf01ca30513c81e76b",
+    "tests/ui/workermemory_test.cpp": "2491366ca5ec51ecfc41a82fcaf4a66e9a69b29f1538fc2f8e4b6d01d4dea20e"
+  },
+  "build": {
+    "freshFullBuild": true,
+    "fullBuildLog": "build_root/g02g-green-build-2.log",
+    "finalTestRebuildLog": "build_root/g02g-json-test-build.log",
+    "qt": "6.10.1",
+    "configuration": "RelWithDebInfo",
+    "compiler": "VS2022 MSVC",
+    "searchBackend": "qt",
+    "binarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+    "testBinarySha256": "4bdf4526c8c065ecd1061226c530d501e776023b8e185800b23c952518175c4b",
+    "metadata": {
+      "configuredBackend": "qt",
+      "searchEngine": "qt",
+      "binarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+      "cacheSha256": "f10da53df78c688b4fa0b47384740adc127818a06751d79a10faba267e0b6f79",
+      "compiler": "unreported",
+      "configuration": "RelWithDebInfo",
+      "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+      "sourceRevision": "493124be92f962aeba97bf92c0ac55c59743d925",
+      "sourceState": "G02g uncommitted working tree; exact changed-source hashes in observations",
+      "localSdk": "Qt6.10.1"
+    },
+    "provenance": "Built from uncommitted G02g working tree; reported version retains base commit. Exact staged and working source hashes above identify implementation.",
+    "priorEpoch": {
+      "binarySha256": "3a919b230f9936ff9c550141367b3e5836c7e86724e094d63b0e39b7a9107fcd",
+      "reason": "Full implementation build before JSON-null test assertion correction. Product sources unchanged; later relinking changes binary identities.",
+      "usedFor": [
+        "initial public/negative probes",
+        "initial MainWindow probe",
+        "pinned analysis benchmark"
+      ]
+    }
+  },
+  "verification": {
+    "ctestSuites": 6,
+    "ctestPassed": 6,
+    "ctestSeconds": 172.77,
+    "workbenchPythonTests": 89,
+    "focusedCppCases": 11,
+    "focusedCppAssertions": 210,
+    "portableSettingsRestoredByteExact": true,
+    "python39Grammar": true,
+    "ruffE9F": true,
+    "publicCases": [
+      {
+        "action": "regex_evaluate",
+        "origin": "cli",
+        "jobId": "e70a88c3-f0a8-47fd-bfff-c2caf5893960",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24506368",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": false,
+        "seconds": 1.867886100008036,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24506368
+      },
+      {
+        "action": "regex_evaluate",
+        "origin": "mcp",
+        "jobId": "58a82a93-d7b2-4ed6-90c1-8d0c8d9997b0",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24690688",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": false,
+        "seconds": 1.8022165000002133,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24690688
+      },
+      {
+        "action": "regex_evaluate",
+        "origin": "gui",
+        "jobId": "c8956ac8-a5ef-423b-9cdc-22054b65aaa2",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24674304",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": true,
+        "seconds": 2.3925118999904953,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24674304
+      },
+      {
+        "action": "value_counts",
+        "origin": "cli",
+        "jobId": "43b18c03-ad8e-44ef-9cc2-2db7f218b2c9",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24788992",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": false,
+        "seconds": 1.0556324999924982,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24788992
+      },
+      {
+        "action": "value_counts",
+        "origin": "mcp",
+        "jobId": "4777bd1c-d50d-4c83-871e-b8281a9de197",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24805376",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": false,
+        "seconds": 1.0757910000102129,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24805376
+      },
+      {
+        "action": "value_counts",
+        "origin": "gui",
+        "jobId": "f8d5dd74-a890-44c7-b2ef-61af55209ba6",
+        "workerMemory": {
+          "backend": "windows_peak_working_set",
+          "lastNativeError": null,
+          "lastObservation": "response",
+          "measuredObservations": "3",
+          "missingObservations": "0",
+          "peakRssBytes": "24813568",
+          "scope": "largest_single_worker_high_water_through_observation",
+          "status": "measured",
+          "unit": "bytes"
+        },
+        "sameJobCliMcp": true,
+        "guiJob": true,
+        "seconds": 2.140543199988315,
+        "responsivenessProbeCount": 1,
+        "peakRssBytes": 24813568
+      }
+    ],
+    "negativeBudget": {
+      "expectedExitCode": 1,
+      "reason": "worker_peak_budget_exceeded",
+      "retainedCases": 6,
+      "maxWorkerBytes": 1
+    },
+    "nativeMainWindow": {
+      "passed": true,
+      "qtScaleFactor": "0.75",
+      "cases": [
+        {
+          "id": "regex-lab",
+          "navigationVerified": true,
+          "layoutRestored": true,
+          "views": {
+            "docked": {
+              "exposed": true,
+              "height": 638,
+              "paints": 100,
+              "sampledColors": 98,
+              "screenshot": "regex-lab-docked.png",
+              "sha256": "2ed6a125c412de4d98bdd2d29af6808238f96c1062fe95562ec0cd1444114484",
+              "visible": true,
+              "width": 757
+            },
+            "floating": {
+              "exposed": true,
+              "height": 638,
+              "paints": 35,
+              "sampledColors": 72,
+              "screenshot": "regex-lab-floating.png",
+              "sha256": "cb58955a0842a6c2206ecd040aa2d3d19484273e2fbbf12557f015be101753da",
+              "visible": true,
+              "width": 750
+            },
+            "restored": {
+              "exposed": true,
+              "height": 638,
+              "paints": 36,
+              "sampledColors": 52,
+              "screenshot": "regex-lab-restored.png",
+              "sha256": "1831ebd683740619c468302362c55690fa7818a10537de3120fc425cc26ca08b",
+              "visible": true,
+              "width": 750
+            }
+          }
+        },
+        {
+          "id": "value-counts",
+          "navigationVerified": true,
+          "layoutRestored": true,
+          "views": {
+            "docked": {
+              "exposed": true,
+              "height": 638,
+              "paints": 105,
+              "sampledColors": 75,
+              "screenshot": "value-counts-docked.png",
+              "sha256": "c2107e7dd04ea1ee87a1c1679b02e3913591cd2dd60cf959c940ebdf7594487c",
+              "visible": true,
+              "width": 817
+            },
+            "floating": {
+              "exposed": true,
+              "height": 638,
+              "paints": 38,
+              "sampledColors": 64,
+              "screenshot": "value-counts-floating.png",
+              "sha256": "1ceda91dbf86d0be27e736edec4b2961263e17db00ad29f1cf2db979b19b7282",
+              "visible": true,
+              "width": 750
+            },
+            "restored": {
+              "exposed": true,
+              "height": 638,
+              "paints": 40,
+              "sampledColors": 58,
+              "screenshot": "value-counts-restored.png",
+              "sha256": "351ebbc40b18f056a4c2f1caeebd17b989fe3a01c823329d04530282d5c7e5a5",
+              "visible": true,
+              "width": 750
+            }
+          }
+        }
+      ]
+    },
+    "nativeBenchmark": {
+      "passed": true,
+      "repetitions": 3,
+      "samplesPerContext": 100,
+      "releaseGateStatus": "pending",
+      "runs": [
+        {
+          "repetition": 0,
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "measurements": {
+            "cancellationAckMs": 0.0007999999999999999,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.0921,
+                "samples": 100,
+                "scrollPaintP95Ms": 6.039899999999999
+              },
+              "idle": {
+                "guiEventP95Ms": 0.0696,
+                "samples": 100,
+                "scrollPaintP95Ms": 5.8663
+              }
+            },
+            "guiEventP95Ms": 0.0921,
+            "hostSampledRssPeakBytes": 84131840,
+            "processTreePeakCommitBytes": 80490496,
+            "processTreeSampledRssPeakBytes": 96313344,
+            "scrollPaintP95Ms": 6.039899999999999,
+            "serviceCancellationMs": 22.1506,
+            "workersSampledRssPeakBytes": 28823552
+          }
+        },
+        {
+          "repetition": 1,
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "measurements": {
+            "cancellationAckMs": 0.0019,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.0959,
+                "samples": 100,
+                "scrollPaintP95Ms": 9.3277
+              },
+              "idle": {
+                "guiEventP95Ms": 0.0807,
+                "samples": 100,
+                "scrollPaintP95Ms": 9.0952
+              }
+            },
+            "guiEventP95Ms": 0.0959,
+            "hostSampledRssPeakBytes": 84500480,
+            "processTreePeakCommitBytes": 80826368,
+            "processTreeSampledRssPeakBytes": 96694272,
+            "scrollPaintP95Ms": 9.3277,
+            "serviceCancellationMs": 31.807299999999998,
+            "workersSampledRssPeakBytes": 28831744
+          }
+        },
+        {
+          "repetition": 2,
+          "gates": {
+            "guiEventP95Ms": true,
+            "processTreePeakCommitBytes": true,
+            "processTreeSampledRssPeakBytes": true,
+            "scrollPaintP95Ms": true,
+            "serviceCancellationMs": true
+          },
+          "measurements": {
+            "cancellationAckMs": 0.0014,
+            "contexts": {
+              "analysis_active": {
+                "guiEventP95Ms": 0.0804,
+                "samples": 100,
+                "scrollPaintP95Ms": 11.754
+              },
+              "idle": {
+                "guiEventP95Ms": 0.1197,
+                "samples": 100,
+                "scrollPaintP95Ms": 11.3361
+              }
+            },
+            "guiEventP95Ms": 0.1197,
+            "hostSampledRssPeakBytes": 83927040,
+            "processTreePeakCommitBytes": 80027648,
+            "processTreeSampledRssPeakBytes": 96141312,
+            "scrollPaintP95Ms": 11.754,
+            "serviceCancellationMs": 32.242599999999996,
+            "workersSampledRssPeakBytes": 28852224
+          }
+        }
+      ]
+    },
+    "analysisBenchmark": {
+      "passed": true,
+      "rows": 100000,
+      "repetitions": 3,
+      "cachePolicy": "os_cache_uncontrolled",
+      "binarySha256": "3a919b230f9936ff9c550141367b3e5836c7e86724e094d63b0e39b7a9107fcd",
+      "runs": [
+        {
+          "repetition": 0,
+          "scanSecondsIncludingProtocol": 5.83289259999583,
+          "scanMiBPerSecondIncludingProtocol": 0.5557285023886382,
+          "cancelSecondsIncludingProtocol": 1.0700316000002204,
+          "appendWhileActive": true,
+          "appendPublicationSecondsIncludingProtocol": 1.596770000003744,
+          "workerMetrics": {
+            "compileUs": 461,
+            "matchUs": 850965,
+            "startupUs": 461627,
+            "workerMemory": {
+              "backend": "windows_peak_working_set",
+              "lastNativeError": null,
+              "lastObservation": "response",
+              "measuredObservations": "392",
+              "missingObservations": "0",
+              "peakRssBytes": "22765568",
+              "scope": "largest_single_worker_high_water_through_observation",
+              "status": "measured",
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "repetition": 1,
+          "scanSecondsIncludingProtocol": 4.598701800001436,
+          "scanMiBPerSecondIncludingProtocol": 0.7048738557452108,
+          "cancelSecondsIncludingProtocol": 0.8392789999925299,
+          "appendWhileActive": true,
+          "appendPublicationSecondsIncludingProtocol": 0.8065973000047961,
+          "workerMetrics": {
+            "compileUs": 549,
+            "matchUs": 1004135,
+            "startupUs": 287117,
+            "workerMemory": {
+              "backend": "windows_peak_working_set",
+              "lastNativeError": null,
+              "lastObservation": "response",
+              "measuredObservations": "392",
+              "missingObservations": "0",
+              "peakRssBytes": "22810624",
+              "scope": "largest_single_worker_high_water_through_observation",
+              "status": "measured",
+              "unit": "bytes"
+            }
+          }
+        },
+        {
+          "repetition": 2,
+          "scanSecondsIncludingProtocol": 2.5465691999997944,
+          "scanMiBPerSecondIncludingProtocol": 1.2728908639866197,
+          "cancelSecondsIncludingProtocol": 0.8880454000027385,
+          "appendWhileActive": true,
+          "appendPublicationSecondsIncludingProtocol": 0.569454800002859,
+          "workerMetrics": {
+            "compileUs": 445,
+            "matchUs": 587880,
+            "startupUs": 185506,
+            "workerMemory": {
+              "backend": "windows_peak_working_set",
+              "lastNativeError": null,
+              "lastObservation": "response",
+              "measuredObservations": "392",
+              "missingObservations": "0",
+              "peakRssBytes": "22872064",
+              "scope": "largest_single_worker_high_water_through_observation",
+              "status": "measured",
+              "unit": "bytes"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "reviews": {
+    "cpp": "Approved; no actionable findings. clang-tidy lacks compile database; installed cppcheck lacks std.cfg.",
+    "python": "Approved; four focused self-tests independently passed.",
+    "general": "Approved; minor test-discovery finding fixed by renaming to test_workbench_worker_memory.py."
+  },
+  "graph": {
+    "codeReviewGraph": "Incrementally refreshed current branch including new files; 122 changed nodes, 996 unresolved call sites; zero extra files is not proof of no impact.",
+    "codeGraph": "No usable worktree index; not initialized.",
+    "gitNexusRefresh": {
+      "state": "failed",
+      "exitCode": 3221226505,
+      "seconds": 34.64667709999776,
+      "timeoutSeconds": 120,
+      "ownedProcessesReaped": true
+    },
+    "gitNexusDetect": "Final staged detect uses stale primary index, 21 commits behind: 17 files/15 symbols/283 flows/critical. Not a graph verification pass; exact Git diff and fresh C++/general reviews used. Earlier pre-evidence detect14files retained separately."
+  },
+  "resolvedAttempts": [
+    "System CMake4.4 physical alias disagreed with cached CPM_DIRECTORY. Documented VS2022 CMake3.31 and cache-only reset recovered; no tracked build fix.",
+    "Initial tests failed because workerMemory was absent; four Python tests initially failed module import before implementation.",
+    "First feature build failed after formatter ordered psapi.h before windows.h; include dependency order corrected.",
+    "Initial focused run failed two map-equality assertions due to QVariant null representation; compare JSON values instead. Final 11 cases/210 assertions pass.",
+    "Initial benchmark metadata read raced the target rebuild linker and got access denied; retained failed attempt. Pinned private deployment then passed analysis benchmark; final stable deployment passed native benchmark/public probes."
+  ],
+  "limitations": [
+    "Windows-only native worker measurement; Linux/macOS explicitly unsupported and Qt6.12/accelerated hosted validation pending.",
+    "Through published observations, not post-exit lifetime peak, simultaneous tree peak or committed bytes. Immediate protocol-flood kill can lose final observation.",
+    "G02/G03/W0 and release gates remain open. Decoder core remains after W0; MD07/MD08 integration remains deferred.",
+    "Analysis benchmark includes protocol latency and uncontrolled OS cache; first public cancellation round trip was 1.0700316 seconds while the separate native service gate passed. No before/after overhead calibration claimed.",
+    "Native Qt event injection is not physical input, compositor presentation proof, installer/package conformance or cross-platform usability.",
+    "Full-lifetime worker RSS and previous unmeasured P00 budgets remain open. GitNexus refresh failed; CodeGraph unavailable."
+  ],
+  "artifacts": {
+    "build_root/g02g-red.log": {
+      "sha256": "85f0cd8c4391fa03c7c7f1209cf86b09f9203f4017f4234825b4400bb2f74e45",
+      "bytes": 1181
+    },
+    "build_root/g02g-probe-red.log": {
+      "sha256": "1adfa983a3e5f1541feaf9df0c3e42b6ec4d7f625117e51a3360ae3dfdcb57f7",
+      "bytes": 1024
+    },
+    "build_root/g02g-probe-green.log": {
+      "sha256": "4a203f958ef9d765ff1f89816631e1bdf553b4acf1d56449f1d10ad92bb46ff3",
+      "bytes": 107
+    },
+    "build_root/g02g-renamed-selftests.log": {
+      "sha256": "1b6f69157102cc03f5264c937d138171570f1a3f06ab9ba2d8345507e1df7261",
+      "bytes": 107
+    },
+    "build_root/g02g-focused.log": {
+      "sha256": "61cbf53207297c8e2d2181f7fc055c9ff5cb8205f8b5f816c166b43a239632ae",
+      "bytes": 2042
+    },
+    "build_root/g02g-focused-final.log": {
+      "sha256": "5445154c51198874fa4053d5e852b682e09c6a2e102b669eef612c6375892ce8",
+      "bytes": 1609
+    },
+    "build_root/g02g-final-ctest.log": {
+      "sha256": "5f16d7d0903e243e67f7e1e9341cadd123e50b8100b0028e6f8b6928082355c0",
+      "bytes": 1841569
+    },
+    "build_root/g02g-final-settings.json": {
+      "sha256": "df0c4fd5c36da8f9d7ffe8485a05fdb3a87207223ac04434f323a7b58418fa57",
+      "bytes": 574
+    },
+    "build_root/g02g-baseline-build.log": {
+      "sha256": "f0e9aa978222c0f9660e3b9d77e17275270b890f4b0ec6b804fb46088deef0b8",
+      "bytes": 4091
+    },
+    "build_root/g02g-baseline-recovery-build.log": {
+      "sha256": "8cf1650f279822d875109655c46a297e1954574066e2fa84fa8d1246d51a25b8",
+      "bytes": 38121
+    },
+    "build_root/g02g-green-build.log": {
+      "sha256": "b90afa780794b28bd44c6a2fc860be3534bb7b8331e6724db57b77a6c4f3b9f2",
+      "bytes": 104482
+    },
+    "build_root/g02g-green-build-2.log": {
+      "sha256": "d2f2880ae431df840df35b22af25d7831293ae5a7e0e11eb4754f065020f0a76",
+      "bytes": 38867
+    },
+    "build_root/g02g-json-test-build.log": {
+      "sha256": "bdc725757215ac4f778d048d7b202aaad50d88669b9f8ee8d898d3d588be6dea",
+      "bytes": 8364
+    },
+    "build_root/g02g-analysis-benchmark.log": {
+      "sha256": "57851a7e2c79bb3b3a49eae1ee171f636568406f9a0b79c56f786a9aef2c4027",
+      "bytes": 192
+    },
+    "build_root/g02g-public-memory/result.json": {
+      "sha256": "6b205d8a3346790acf7fc446265672f02982715804366f3cc1a13565a95b15cd",
+      "bytes": 5118
+    },
+    "build_root/g02g-public-memory-one-byte/result.json": {
+      "sha256": "9d0cdb68d9ed79a33044b7ba4329871e0f076368c62fd8c1321d8dbe4159e7e9",
+      "bytes": 5160
+    },
+    "build_root/g02g-public-memory-final/result.json": {
+      "sha256": "ec02d0525189c155b94044676d2f30dc022ba7d075b93121ea13e22f43f58fd5",
+      "bytes": 5122
+    },
+    "build_root/g02g-public-memory-final-one-byte/result.json": {
+      "sha256": "581b4bd2ae47f3bc52dc4eab69483782f7bec4fdaeb12c1b1cf21f054072e9d0",
+      "bytes": 5157
+    },
+    "build_root/g02g-native-mainwindow/result.json": {
+      "sha256": "bd2f4dad71cbe97212377db2394c066109a6d6228c7cb8af9411f2e7d99480d0",
+      "bytes": 6257
+    },
+    "build_root/g02g-native-mainwindow/native.json": {
+      "sha256": "28a7ec08d1aef6a5fb0c20a0dd5f0b324efaea58f3bf27b1de56995abd2d72f8",
+      "bytes": 6536
+    },
+    "build_root/g02g-native-mainwindow-final/result.json": {
+      "sha256": "3b960781a2c0a8219c4ab7ab5fa2307d6d6a08e91f0568785a11ac91b225504c",
+      "bytes": 6248
+    },
+    "build_root/g02g-native-mainwindow-final/native.json": {
+      "sha256": "01e021c43f93a6242fbca2261433f67dce5dc11f6f6097cca2c6ad0708c9f4ca",
+      "bytes": 6530
+    },
+    "build_root/g02g-native-benchmark/result.json": {
+      "sha256": "bb0b4f31265d0041f5df21491fee81e9b3a7caf0dfee31c19f1a00cc0db9d78f",
+      "bytes": 69146
+    },
+    "build_root/g02g-analysis-benchmark-pinned/result.json": {
+      "sha256": "d6fe703d55fef9953239f9e9abd17082130ed30e59788cc194e6f1490d1b3342",
+      "bytes": 8396
+    },
+    "build_root/g02g-build-metadata.json": {
+      "sha256": "67f94a118251234fcb9912e887ad9f6a32087f6c8691b414422d0f751906737a",
+      "bytes": 544
+    },
+    "build_root/g02g-final-build-metadata.json": {
+      "sha256": "24babbabbcb7f489f0970da987676575e2f758de940aaaa1ce4290700300240d",
+      "bytes": 544
+    },
+    "build_root/g02g-ruff.log": {
+      "sha256": "a4443afdcfb6d7363adb285762515ccf7cf50473b1a05c20c1a50f6bed4d26b0",
+      "bytes": 20
+    },
+    "build_root/g02g-gitnexus-refresh.json": {
+      "sha256": "70ef01cd4e2193c94be37a9ec5378bbc987b079a452dd0075de8c9f8cd556743",
+      "bytes": 146
+    },
+    "build_root/g02g-gitnexus-refresh.log": {
+      "sha256": "b74deedc9a92c11daaf11c05ef1426aacddbf04e55b5c8d01c10ce911c06a8b6",
+      "bytes": 372
+    },
+    "build_root/g02g-gitnexus-detect.log": {
+      "sha256": "a26dc46c5fdfb9ec43dc237183bbca80dbe0a008f790094b86890254155fe6ce",
+      "bytes": 2406
+    },
+    "build_root/g02g-native-mainwindow-final/regex-lab-docked.png": {
+      "sha256": "2ed6a125c412de4d98bdd2d29af6808238f96c1062fe95562ec0cd1444114484",
+      "bytes": 45266
+    },
+    "build_root/g02g-native-mainwindow-final/regex-lab-floating.png": {
+      "sha256": "cb58955a0842a6c2206ecd040aa2d3d19484273e2fbbf12557f015be101753da",
+      "bytes": 29453
+    },
+    "build_root/g02g-native-mainwindow-final/regex-lab-restored.png": {
+      "sha256": "1831ebd683740619c468302362c55690fa7818a10537de3120fc425cc26ca08b",
+      "bytes": 21731
+    },
+    "build_root/g02g-native-mainwindow-final/value-counts-docked.png": {
+      "sha256": "c2107e7dd04ea1ee87a1c1679b02e3913591cd2dd60cf959c940ebdf7594487c",
+      "bytes": 45570
+    },
+    "build_root/g02g-native-mainwindow-final/value-counts-floating.png": {
+      "sha256": "1ceda91dbf86d0be27e736edec4b2961263e17db00ad29f1cf2db979b19b7282",
+      "bytes": 27979
+    },
+    "build_root/g02g-native-mainwindow-final/value-counts-restored.png": {
+      "sha256": "351ebbc40b18f056a4c2f1caeebd17b989fe3a01c823329d04530282d5c7e5a5",
+      "bytes": 23379
+    },
+    "build_root/g02g-native-benchmark/native-0.json": {
+      "sha256": "80dcdd976b5a019e1cf8c18446191be27448f57b12f705deace92a57c72fd268",
+      "bytes": 4921
+    },
+    "build_root/g02g-native-benchmark/native-1.json": {
+      "sha256": "febb1206ba3b59504870c5e93b1e1c7b81165f6fea9e9ac90dd43c5d9300ca68",
+      "bytes": 5041
+    },
+    "build_root/g02g-native-benchmark/native-2.json": {
+      "sha256": "e51e2f5845ee62010cc59168b8849ba502a79982a9db8f0e2581f080c3b1e942",
+      "bytes": 5389
+    },
+    "build_root/g02g-gitnexus-detect-final.log": {
+      "sha256": "e412cfac047acd8e218c493a0262510e2391bc4e1d539d71d9796316f22df68a",
+      "bytes": 2406
+    }
+  }
+}

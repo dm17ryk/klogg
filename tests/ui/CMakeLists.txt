@@ -4,6 +4,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/logdatasource_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisjob_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysisregex_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workermemory_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/analysiscommands_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/valuecounts_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/valuecountdock_test.cpp

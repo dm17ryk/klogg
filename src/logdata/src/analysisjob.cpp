@@ -24,6 +24,75 @@
 namespace {
 constexpr qint64 GlobalResultBytes = 64 * 1024 * 1024;
 constexpr qint64 RowBytes = 4 * 1024 * 1024;
+class WorkerMemorySummary {
+public:
+    bool record( const AnalysisWorkerMemory& value )
+    {
+        using Availability = AnalysisWorkerMemory::Availability;
+        switch ( value.availability ) {
+        case Availability::NotReported:
+        case Availability::Unsupported:
+            if ( value.peakRssBytes != 0 || value.nativeError != 0 )
+                return false;
+            break;
+        case Availability::Unavailable:
+            if ( value.peakRssBytes != 0 )
+                return false;
+            break;
+        case Availability::Measured:
+            if ( value.peakRssBytes == 0 || value.nativeError != 0 )
+                return false;
+            break;
+        default:
+            return false;
+        }
+        auto& counter = value.availability == Availability::Measured ? measured_ : missing_;
+        if ( counter == std::numeric_limits<quint64>::max() )
+            return false;
+        ++counter;
+        reported_ = reported_ || value.availability != Availability::NotReported;
+        unavailable_ = unavailable_ || value.availability == Availability::Unavailable;
+        unsupported_ = unsupported_ || value.availability == Availability::Unsupported;
+        peak_ = std::max( peak_, value.peakRssBytes );
+        if ( value.availability != Availability::NotReported ) {
+            lastObservation_ = value.terminationObservation ? "termination_request" : "response";
+            lastError_ = value.nativeError;
+        }
+        return true;
+    }
+    bool hasReport() const
+    {
+        return reported_;
+    }
+    QVariantMap status() const
+    {
+        const auto state = measured_ > 0  ? ( missing_ > 0 ? "partial" : "measured" )
+                           : unavailable_ ? "unavailable"
+                           : unsupported_ ? "unsupported"
+                                          : "not_reported";
+        return { { "status", state },
+                 { "backend", measured_ > 0 || unavailable_ ? "windows_peak_working_set" : "none" },
+                 { "unit", "bytes" },
+                 { "scope", "largest_single_worker_high_water_through_observation" },
+                 { "peakRssBytes",
+                   measured_ > 0 ? QVariant( QString::number( peak_ ) ) : QVariant{} },
+                 { "measuredObservations", QString::number( measured_ ) },
+                 { "missingObservations", QString::number( missing_ ) },
+                 { "lastObservation", lastObservation_ },
+                 { "lastNativeError",
+                   lastError_ ? QVariant( QString::number( lastError_ ) ) : QVariant{} } };
+    }
+
+private:
+    quint64 peak_ = 0;
+    quint64 measured_ = 0;
+    quint64 missing_ = 0;
+    quint32 lastError_ = 0;
+    bool reported_ = false;
+    bool unavailable_ = false;
+    bool unsupported_ = false;
+    QString lastObservation_ = "none";
+};
 qint64 rowBytes( const QVariantMap& row )
 {
     return QJsonDocument( QJsonObject::fromVariantMap( row ) )
@@ -71,6 +140,7 @@ struct AnalysisJobService::Private {
         qint64 storedBytes = 0;
         qint64 finishedAt = -1;
         QVariantMap metrics;
+        WorkerMemorySummary workerMemory;
         QVariantMap aggregation;
         QVariantMap provenance;
         qint64 createdAt = 0;
@@ -335,6 +405,19 @@ struct AnalysisJobService::Private {
                     pending.bytes += bytes;
                 }
                 std::unique_lock<std::mutex> lock( job->mutex );
+                if ( !job->workerMemory.record( output.workerMemory ) ) {
+                    reason = "invalid_worker_output";
+                    done = true;
+                    LOG_DEBUG << "Invalid worker memory observation id=" << job->id;
+                }
+                else if ( output.workerMemory.availability
+                          != AnalysisWorkerMemory::Availability::NotReported ) {
+                    LOG_DEBUG << "Analysis worker memory id=" << job->id << " availability="
+                              << static_cast<int>( output.workerMemory.availability )
+                              << " peakBytes=" << output.workerMemory.peakRssBytes
+                              << " nativeError=" << output.workerMemory.nativeError
+                              << " terminating=" << output.workerMemory.terminationObservation;
+                }
                 if ( !output.backend.isEmpty() ) {
                     if ( output.backend != "Qt QRegularExpression" ) {
                         reason = "invalid_worker_output";
@@ -739,6 +822,10 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
     const auto historical
         = !snapshot.sourceId.isNull()
           && ( job->sourceClosed || !source || current.generation != snapshot.generation );
+    auto metrics = job->metrics;
+    if ( job->workerMemory.hasReport() ) {
+        metrics[ "workerMemory" ] = job->workerMemory.status();
+    }
     return { { "jobId", id },
              { "kind", job->request.valueCounts ? "value_counts" : "regex" },
              { "aggregation", job->aggregation },
@@ -763,7 +850,7 @@ QVariantMap AnalysisJobService::status( const QString& id ) const
              { "elapsedMs",
                ( job->finishedAt >= 0 ? job->finishedAt : d_->elapsed() ) - job->createdAt },
              { "indexedBytes", QString::number( snapshot.indexedBytes ) },
-             { "metrics", job->metrics },
+             { "metrics", metrics },
              { "timing", QVariantMap{ { "sourceReadUs", job->readingUs },
                                       { "resultDeliveryUs", job->deliveryUs },
                                       { "backpressureUs", job->creditUs } } },

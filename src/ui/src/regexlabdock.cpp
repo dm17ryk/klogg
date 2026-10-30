@@ -1,8 +1,9 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "regexlabdock.h"
-#include "analysistextedit.h"
 #include "analysiscommands.h"
+#include "analysisstatus.h"
+#include "analysistextedit.h"
 #include "log.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -370,6 +371,7 @@ void RegexLabDock::refresh( bool requestPage )
         << tr( "Source: %1" ).arg( source.value( "filePath", tr( "Pasted text" ) ).toString() );
     description << tr( "Backend: %1" ).arg( jobStatus_.value( "captureBackend" ).toString() );
     const auto metrics = jobStatus_.value( "metrics" ).toMap();
+    description << analysisWorkerMemoryText( metrics );
     const auto timing = jobStatus_.value( "timing" ).toMap();
     description
         << tr( "ms — compile %1; match %2; startup %3; read %4; delivery %5; backpressure %6" )

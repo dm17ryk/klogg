@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "valuecountdock.h"
 #include "analysiscommands.h"
+#include "analysisstatus.h"
 #include "analysistextedit.h"
 #include "log.h"
 #include <QCheckBox>
@@ -373,6 +374,7 @@ void ValueCountDock::refresh()
             + tr( "Backend: %1; scanned lines: %2" )
                   .arg( job_.value( "captureBackend" ).toString(),
                         job_.value( "scannedLines" ).toString() );
+    text += '\n' + analysisWorkerMemoryText( job_.value( "metrics" ).toMap() );
     status_->setText( text );
     if ( terminal( state ) && !fetched_ )
         showFailure( page( {} ) );

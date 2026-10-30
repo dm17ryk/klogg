@@ -112,7 +112,9 @@
         "../../docs/workbench/g02d-resident-memory.md",
         "../../docs/workbench/g02d-windows-observations.json",
         "../../docs/workbench/g02e-native-ci.md",
-        "../../docs/workbench/g02e-windows-observations.json"
+        "../../docs/workbench/g02e-windows-observations.json",
+        "../../docs/workbench/g02g-worker-memory.md",
+        "../../docs/workbench/g02g-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -545,6 +547,32 @@
             "Keep reports on failure while excluding the private native executable/runtime payload from diagnostic uploads."
           ],
           "branch": "codex/workbench-native-budget-ci-g02e"
+        },
+        {
+          "id": "G02g",
+          "status": "implemented_pending_gates",
+          "base": "493124be92f962aeba97bf92c0ac55c59743d925",
+          "branch": "codex/workbench-worker-memory-g02g",
+          "scope": "Windows supervisor OS high-water observations, max aggregation and existing GUI/CLI/native-MCP visibility; independent of PR74/75; W0 remains open.",
+          "evidence": [
+            "../../docs/workbench/g02g-worker-memory.md",
+            "../../docs/workbench/g02g-windows-observations.json"
+          ],
+          "localVerification": "Fresh local Qt6.10.1 Qt-only build; focused11cases/210assertions; full6/6CTest in172.77s including89workbench Python tests; six final GUI/CLI/MCP origins; one-byte negative retained6cases; native MainWindow+three native benchmark repetitions passed.",
+          "rulings": [
+            "Keep observation metadata inside existing dynamic metrics map; no worker frame/plugin/settings/public command changes.",
+            "Retain owned process query handle and max observed OS high-water, never sum across responses; exact decimal strings and explicit unavailable/unsupported/null.",
+            "Raw/custom processors reporting no observations preserve prior metrics shape; dock text reports not reported.",
+            "Independent base master, preserve open74/75 and all historical records/execution policy; full W0 remains open."
+          ],
+          "limitations": [
+            "Windows-only native worker measurement; Linux/macOS explicitly unsupported and Qt6.12/accelerated hosted validation pending.",
+            "Through published observations, not post-exit lifetime peak, simultaneous tree peak or committed bytes. Immediate protocol-flood kill can lose final observation.",
+            "G02/G03/W0 and release gates remain open. Decoder core remains after W0; MD07/MD08 integration remains deferred.",
+            "Analysis benchmark includes protocol latency and uncontrolled OS cache; first public cancellation round trip was 1.0700316 seconds while the separate native service gate passed. No before/after overhead calibration claimed.",
+            "Native Qt event injection is not physical input, compositor presentation proof, installer/package conformance or cross-platform usability.",
+            "Full-lifetime worker RSS and previous unmeasured P00 budgets remain open. GitNexus refresh failed; CodeGraph unavailable."
+          ]
         }
       ]
     },
