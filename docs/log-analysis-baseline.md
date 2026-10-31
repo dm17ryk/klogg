@@ -111,3 +111,16 @@ GitNexus method lookups were incomplete on the old index. Class-level analysis r
 ## G02a Workbench benchmark slice (2026-10-22)
 
 The [Workbench benchmark guide](workbench/benchmarks.md) records the new portable fixtures and bounded analysis runner. [Raw Windows observations](workbench/g02a-windows-observations.json) retain three actual 100,000-row runs against package 26.04.2.1043 (source 96bf481, Qt runtime 6.12.0.0), including hashes, separate service/public timings and explicit pending gates. These are operational observations; GUI/scroll latency, direct service cancellation, worker RSS and native Linux/macOS measurements remain pending. G02 and P00 are not complete.
+
+## G02h viewer baseline (2026-10-31)
+
+The [viewer baseline](workbench/g02h-viewer-baseline.md) adds reproducible public
+open/index and literal/regex search timings for the 100,000-row ASCII fixture
+(seed 42), including a paired comparison with both analysis docks hidden or
+visible but idle. All observations include Commander/CLI/IPC completion latency;
+they do not establish pure engine throughput or compositor latency. Exact bytes,
+counts, source/binary identities and raw differences are retained in the
+[G02h observations](workbench/g02h-windows-observations.json). The default
+open/index and search ceilings are each 30 seconds for this operational profile.
+OS cache, calibrated idle-dock overhead, rich-renderer and other-platform release
+evidence remain pending; the historical entries above retain their original scope.
