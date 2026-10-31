@@ -62,9 +62,17 @@ for line in sys.stdin:
             values = arguments.get("arguments", {})
             payload = {}
             if action == "open_file":
-                time.sleep(
-                    float(os.environ.get("CILOGG_BENCHMARK_FAKE_OPEN_DELAY", "0"))
-                )
+                delay = float(os.environ.get("CILOGG_BENCHMARK_FAKE_OPEN_DELAY", "0"))
+                if delay < 0:
+                    raise ValueError("negative fixture open delay")
+                deadline = time.perf_counter() + delay
+                # Windows/Python 3.9 sleep can return before the requested interval.
+                # Publish only after the same high-resolution timing boundary is met.
+                while True:
+                    remaining = deadline - time.perf_counter()
+                    if remaining <= 0:
+                        break
+                    time.sleep(remaining)
                 source = Path(values["file"])
             elif action in ("regex_evaluate", "value_counts"):
                 analysis = values["analysis_json"]
