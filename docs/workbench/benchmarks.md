@@ -270,3 +270,11 @@ cleanup. Workflow lint and exact fixture verification pass. Hosted CI and fresh
 current-source C++ CTest are separate, pending evidence. Code Review Graph was
 refreshed; GitNexus refresh failed after exhausting parser worker retries, and
 CodeGraph reports the integration worktree unindexed.
+
+## G02h viewer baseline
+
+The opt-in `--scenario viewer` measures public file open/index and literal/regex
+search completion with analysis docks hidden versus visible but idle. Each paired
+profile uses a fresh private host and identical verified bytes; raw deltas and
+ratios remain observations, with no calibrated overhead gate. See the
+[viewer baseline guide](g02h-viewer-baseline.md) for boundaries and invocation.

@@ -1,0 +1,899 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "base": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+  "branch": "codex/workbench-viewer-baseline-g02h",
+  "releaseGateStatus": "pending",
+  "scope": "Public viewer open/index/search timings with paired analysis-dock hidden/idle profiles; no product/protocol/settings changes; W0 remains open.",
+  "sourceSHA256": {
+    ".github/actions/workbench-parity/action.yml": "ebe1afc49dbaf0f930854b6469f60b3b2a44196d4c9b3eda3514e317ead7cb56",
+    "docs/log-analysis-baseline.md": "be792836926278eb747e590fa84af936da0163a2952950a3e61251573f480334",
+    "docs/workbench/benchmarks.md": "0a5695eb213e74b5299594ed1318b2d9c541c9209600c49e571a1bee0671af02",
+    "docs/workbench/g02h-viewer-baseline.md": "d3967f53b719c3eee72d2ccf4271430faa5ebf46cbf44ee34e4cb6aa3a4e5f15",
+    "scripts/benchmarks/workbench_benchmark.py": "ea9da05c55d99d7a57d7d750a158b0c4fe68547cb39dd4cc8997efaec3b46039",
+    "scripts/benchmarks/workbench_viewer.py": "0f7fc0a5fed7223289d96769ac6f024731acdb6bae9b476e5704f15311171b67",
+    "tests/benchmarks/fake_cilogg.py": "c52461686e2b689699fd1204c479d3f251f36453abca2ca403f6f954dc21cc4e",
+    "tests/benchmarks/test_workbench_viewer.py": "0aa192bf642c7725c6b88884cb4b1ffe3bb392d1ebe7b7cf26c5685821889f60"
+  },
+  "sourceGitBlobSHA256": {
+    ".github/actions/workbench-parity/action.yml": "d0c5b81612e29215cc5fc7d149a82805aac19e670df4ed0f0ca1462675b6e87e",
+    "docs/log-analysis-baseline.md": "b0930ffc96aa8a17abc4c650681af1e5e05e3bea7cdba6a955a3221b6f91dea3",
+    "docs/workbench/benchmarks.md": "15c55d3e85b40ef3102c9a9dcfdba869d2a5bc002c3174c542655c8317dd8925",
+    "docs/workbench/g02h-viewer-baseline.md": "d3967f53b719c3eee72d2ccf4271430faa5ebf46cbf44ee34e4cb6aa3a4e5f15",
+    "scripts/benchmarks/workbench_benchmark.py": "11298a1330b7e9b2b07343ba20f058d2ecf1c14d56cb618b8f3edf3eb344df79",
+    "scripts/benchmarks/workbench_viewer.py": "0f7fc0a5fed7223289d96769ac6f024731acdb6bae9b476e5704f15311171b67",
+    "tests/benchmarks/fake_cilogg.py": "6010a26201127a6a8c3080118e0fb19efde26450cd01e7af02a74942033ead9a",
+    "tests/benchmarks/test_workbench_viewer.py": "0aa192bf642c7725c6b88884cb4b1ffe3bb392d1ebe7b7cf26c5685821889f60"
+  },
+  "sharedHelperSHA256": {
+    "tests/mcp/workbench_restart.py": "df824c8a83de11b9b044cdb15198f16a7a433b6c89fb3d2e8d93a91cdd6cbc4a",
+    "tests/mcp/parity_payload.py": "66b2ba498946385f7dd1b18acb1c00530831a59350c2cd6fc7c7794e8ea65010",
+    "tests/mcp/workbench_contracts.py": "69660157fd17d7f976d9aa85b223612c96dbd4a239fa0f9246723d212adc97a8"
+  },
+  "sharedHelperBaseGitBlobSHA256": {
+    "tests/mcp/workbench_restart.py": "37ade08a06fc21e9a7e827932ad959330e09604b63e2ed31798d8b97b65fb550",
+    "tests/mcp/parity_payload.py": "f7d4d8f6c345bb2bbd1520a79deca36819fce34e8042eb861d80ae9b58eb367b",
+    "tests/mcp/workbench_contracts.py": "04da72441cd6c7231cbae9166d8558f98b878001abc5018ef38098eec428ee77"
+  },
+  "build": {
+    "freshCppBuild": false,
+    "qt": "6.10.1",
+    "configuration": "RelWithDebInfo",
+    "searchBackend": "qt",
+    "binarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+    "testBinarySha256": "4bdf4526c8c065ecd1061226c530d501e776023b8e185800b23c952518175c4b",
+    "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+    "provenance": "Reused approved G02g final deployment4bb796b5; product tree f869857 equals696857c and current merged567a477. Reported base stamp493124be remains distinct; no fresh G02h C++ build claimed.",
+    "metadata": {
+      "backend": "unreported",
+      "binarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+      "reportedVersion": "cilogg 26.4.2.0\nBuilt 2026-10-30 from 493124be(v22.06-457-g493124be)\nCopyright (C) 2020 Nicolas Bonnefon, Anton Filimonov, Dmitry Kokotov and other contributors\nThis is free software.  You may redistribute copies of it under the terms of\nthe GNU General Public License <http://www.gnu.org/licenses/gpl.html>.\nThere is NO WARRANTY, to the extent permitted by law.\n",
+      "sdk": "unreported",
+      "suppliedMetadata": {
+        "benchmarkSourceState": "Uncommitted G02h Python harness; exact source hashes recorded in observations",
+        "binarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "binarySourceEpoch": "G02g final precommit build, product tree equals696857c and merged567a477; no fresh G02h C++ build claimed",
+        "cacheSha256": "f10da53df78c688b4fa0b47384740adc127818a06751d79a10faba267e0b6f79",
+        "compiler": "unreported",
+        "configuration": "RelWithDebInfo",
+        "configuredBackend": "qt",
+        "localSdk": "Qt6.10.1",
+        "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+        "searchEngine": "qt",
+        "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+        "sourceState": "G02g uncommitted working tree; exact changed-source hashes in observations"
+      }
+    }
+  },
+  "mergedInputs": [
+    {
+      "pr": 74,
+      "mergeCommit": "bdd66eb0a1935c22455d8e57f7e7140b418b68cd",
+      "mergedAt": "2026-10-30T16:56:17Z"
+    },
+    {
+      "pr": 75,
+      "mergeCommit": "d695de6db1d49c1fe51bdce31a7602fc19542fa9",
+      "mergedAt": "2026-10-30T23:26:38Z"
+    },
+    {
+      "pr": 76,
+      "mergeCommit": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+      "mergedAt": "2026-10-30T23:50:41Z"
+    }
+  ],
+  "verification": {
+    "ctestPassed": 6,
+    "ctestSuites": 6,
+    "ctestSeconds": 151.07,
+    "benchmarkTests": 92,
+    "benchmarkPlatformSkips": 4,
+    "parityTests": 110,
+    "parityPlatformSkips": 1,
+    "focusedViewerTests": 9,
+    "python39": {
+      "g02h-py39-benchmarks-final.log": {
+        "tests": 92,
+        "seconds": 81.248,
+        "skipped": 4
+      },
+      "g02h-py39-parity-final.log": {
+        "tests": 110,
+        "seconds": 14.874,
+        "skipped": 1
+      }
+    },
+    "portableSettingsRestoredByteExact": true,
+    "ruffE9F": true,
+    "python39Grammar": true,
+    "nativeProfiles": 6,
+    "nativeCycles": 12,
+    "nativeSearches": 24,
+    "corpus": {
+      "manifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+      "rows": 100000,
+      "seed": 42
+    },
+    "machine": {
+      "architecture": "AMD64",
+      "logicalProcessors": 12,
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+      "python": "3.14.7"
+    },
+    "rawProfileRuns": [
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.4768634999927599,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.4037959999986924
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.41428880000603385
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.6225211000128184,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.48448280000593513
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.4779604999930598
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-0-analysis_docks_hidden/payload-5691df83de59430ba23199d7aa1da696/cilogg-analysis-5691df83de59430ba23199d7aa1da696.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_hidden",
+        "repetition": 0
+      },
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.4921661000116728,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.42534600000362843
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.4052518999960739
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.48499319999245927,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.4401103999989573
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.4314689000020735
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-0-analysis_docks_idle/payload-3270081457704388a0295e0bd049a20a/cilogg-analysis-3270081457704388a0295e0bd049a20a.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_idle",
+        "repetition": 0
+      },
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.5998024000145961,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.45463110000127926
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.45588300001691096
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.6940212000044994,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.46270169998751953
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.46789840000565164
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-1-analysis_docks_idle/payload-294a1cabd9014619869be30677df3611/cilogg-analysis-294a1cabd9014619869be30677df3611.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_idle",
+        "repetition": 1
+      },
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.4534769000019878,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.5000307000009343
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.44161569999414496
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.6166992000071332,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.4616131999937352
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.45952410000609234
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-1-analysis_docks_hidden/payload-701b1b72ebed457193f2b85befd943a6/cilogg-analysis-701b1b72ebed457193f2b85befd943a6.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_hidden",
+        "repetition": 1
+      },
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.5587158999987878,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.45503659997484647
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.518748600006802
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 0.46894459999748506,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 0.44019870000192896
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 0.44064390001585707
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-2-analysis_docks_hidden/payload-59153784041345c18e256738e2492eb6/cilogg-analysis-59153784041345c18e256738e2492eb6.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_hidden",
+        "repetition": 2
+      },
+      {
+        "complete": true,
+        "cycles": [
+          {
+            "complete": true,
+            "cycle": 0,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 1.1751004999969155,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "cold_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 1.7131578999978956
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 1.4327025999955367
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          },
+          {
+            "complete": true,
+            "cycle": 1,
+            "openIndexPolls": 1,
+            "openIndexSecondsIncludingProtocol": 1.576277799991658,
+            "phase": "completed",
+            "physicalLines": 100000,
+            "processState": "warm_process",
+            "rawBytes": 3398964,
+            "searches": [
+              {
+                "complete": true,
+                "expectedMatches": 10000,
+                "matches": 10000,
+                "polls": 1,
+                "regex": false,
+                "secondsIncludingProtocol": 1.4982068999961484
+              },
+              {
+                "complete": true,
+                "expectedMatches": 90000,
+                "matches": 90000,
+                "polls": 1,
+                "regex": true,
+                "secondsIncludingProtocol": 1.4350392000051215
+              }
+            ],
+            "sourceSha256": "87f009cce503cde50fa0aaa2fe93cc4f33998a123e42e48cac327477b2d253f2"
+          }
+        ],
+        "executedBinary": "viewer-2-analysis_docks_idle/payload-e36fe242a3894f6e81a2c36831bbba65/cilogg-analysis-e36fe242a3894f6e81a2c36831bbba65.exe",
+        "executedBinarySha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "platform": "native",
+        "profile": "analysis_docks_idle",
+        "repetition": 2
+      }
+    ],
+    "pairedOverhead": [
+      {
+        "cycles": [
+          {
+            "openIndex": {
+              "deltaSeconds": 0.015302600018912926,
+              "ratio": 1.0320901054896112
+            },
+            "searches": [
+              {
+                "deltaSeconds": 0.02155000000493601,
+                "ratio": 1.053368532637782
+              },
+              {
+                "deltaSeconds": -0.009036900009959936,
+                "ratio": 0.9781869555492972
+              }
+            ]
+          },
+          {
+            "openIndex": {
+              "deltaSeconds": -0.13752790002035908,
+              "ratio": 0.7790791347995638
+            },
+            "searches": [
+              {
+                "deltaSeconds": -0.04437240000697784,
+                "ratio": 0.9084128476667608
+              },
+              {
+                "deltaSeconds": -0.04649159999098629,
+                "ratio": 0.9027292004430044
+              }
+            ]
+          }
+        ],
+        "repetition": 0
+      },
+      {
+        "cycles": [
+          {
+            "openIndex": {
+              "deltaSeconds": 0.14632550001260825,
+              "ratio": 1.322674650047151
+            },
+            "searches": [
+              {
+                "deltaSeconds": -0.04539959999965504,
+                "ratio": 0.9092063747294512
+              },
+              {
+                "deltaSeconds": 0.014267300022765994,
+                "ratio": 1.0323070489182227
+              }
+            ]
+          },
+          {
+            "openIndex": {
+              "deltaSeconds": 0.07732199999736622,
+              "ratio": 1.125380412357389
+            },
+            "searches": [
+              {
+                "deltaSeconds": 0.0010884999937843531,
+                "ratio": 1.0023580348087948
+              },
+              {
+                "deltaSeconds": 0.008374299999559298,
+                "ratio": 1.0182238537640318
+              }
+            ]
+          }
+        ],
+        "repetition": 1
+      },
+      {
+        "cycles": [
+          {
+            "openIndex": {
+              "deltaSeconds": 0.6163845999981277,
+              "ratio": 2.10321650054968
+            },
+            "searches": [
+              {
+                "deltaSeconds": 1.2581213000230491,
+                "ratio": 3.76487935276546
+              },
+              {
+                "deltaSeconds": 0.9139539999887347,
+                "ratio": 2.7618437909552926
+              }
+            ]
+          },
+          {
+            "openIndex": {
+              "deltaSeconds": 1.107333199994173,
+              "ratio": 3.361330528169237
+            },
+            "searches": [
+              {
+                "deltaSeconds": 1.0580081999942195,
+                "ratio": 3.403478701753511
+              },
+              {
+                "deltaSeconds": 0.9943952999892645,
+                "ratio": 3.256686862006895
+              }
+            ]
+          }
+        ],
+        "repetition": 2
+      }
+    ],
+    "budgets": {
+      "openIndexSeconds": 30.0,
+      "searchSeconds": 30.0
+    },
+    "negativeBudget": {
+      "expectedExitCode": 1,
+      "reason": "transport_timeout",
+      "failedOperation": "open_file",
+      "phase": "open_index",
+      "partialRecordRetained": true
+    }
+  },
+  "reviews": {
+    "general": "Approved; no actionable source findings; final evidence audit separate.",
+    "python": "Approved;9focusedtests passed. Fixture deadline fix separately approved. Parent harnessModules excludes inherited tests/mcp helpers; actual helper working/base hashes are bound above, CI metadata also supplies testSourceTree."
+  },
+  "graph": {
+    "gitNexusRefresh": {
+      "state": "timeout",
+      "exitCode": null,
+      "seconds": 120.22002139998949,
+      "timeoutSeconds": 120,
+      "ownedProcessesReaped": true
+    },
+    "gitNexusImpact": "BenchmarkHost/EpochHost/main/load_budgets/baseline_cycle targets UNKNOWN in stale primary index24commits behind.",
+    "gitNexusDetect": "Stale primary detect reported No changes detected despite staged Python changes; not a graph pass. Exact Git diffs/hashes and source review used.",
+    "codeGraph": "Worktree is not indexed; no initialization performed.",
+    "codeReviewGraph": "MCP server unavailable in current tool set."
+  },
+  "resolvedAttempts": [
+    "Observed RED import before new module existed; selector regression initially failed, fixed to provide window+tab selectors.",
+    "Initial native startup timed out with no log banner and owned reap timeout; former owned PID later confirmed absent. Cause not established, no deadline extended; failed artifact retained.",
+    "Early native calls failed before window state readiness. Added observable startupReady wait and bounded read-only dump_state retry within the existing startup deadline; timed calls are never retried.",
+    "Actual offscreen smoke then native smoke passed; final3paired native repetitions passed all counts.",
+    "First complete CTest passed6/6 in162.06seconds. Python3.9 then exposed an existing fake_cilogg open-delay timing flake:248.377ms for250ms requested. Kept assertion0.25 unchanged; wait uses perf_counter deadline. Targeted GREEN and final complete CTest/Python3.9 suites follow this test-fixture-only fix."
+  ],
+  "limitations": [
+    "Public timing includes Commander/CLI/IPC/observation latency; pure index/search CPU and compositor timing unmeasured.",
+    "Raw paired deltas are not a calibrated overhead gate. Negative deltas and observed variance, including larger last-pair ratios, are retained without selection.",
+    "Cold/warm labels describe process state only; OS cache uncontrolled. Each warm cycle indexes a new path with identical bytes; both profiles leave2tabs open.",
+    "Actual Linux/macOS and accelerated-backend performance/Qt6.12 hosted evidence remain pending; inherited payload portability does not establish platform acceptance.",
+    "Shared helper hashes are in this evidence document; parent benchmark harnessModules binds scripts/benchmarks modules, with helper source additionally pinned by supplied sourceRevision/base and CI testSourceTree.",
+    "W0/G02/G03 and release gates remain open. Next is current-capability W0 acceptance audit; decoder core retains approved position after W0, MD07/MD08 deferred.",
+    "GitNexus refresh timed out; CodeGraph unindexed; Code Review Graph unavailable. No full graph verification pass claimed."
+  ],
+  "artifacts": {
+    "build_root/g02h-after-fix-ctest.log": {
+      "sha256": "426cccbf6d5c34085046664e5a140bc74bf6ee26d56aae07b60785c694f09405",
+      "bytes": 1859694
+    },
+    "build_root/g02h-after-fix-settings.json": {
+      "sha256": "df0c4fd5c36da8f9d7ffe8485a05fdb3a87207223ac04434f323a7b58418fa57",
+      "bytes": 574
+    },
+    "build_root/g02h-build-metadata.json": {
+      "sha256": "c39b1b888bc47295adc2fbdd9f7cbb69d503fe11b36446aaaa5a353fbd36b735",
+      "bytes": 853
+    },
+    "build_root/g02h-detect-source.log": {
+      "sha256": "33949687d5fcd29bb3fe8e51d34c8743f855d766bd41937de4d11db8696e7656",
+      "bytes": 579
+    },
+    "build_root/g02h-final-ctest.log": {
+      "sha256": "12dfe144c2b8fd51c944fb22b09a023a289b744594584b7f709968253d8b0546",
+      "bytes": 1860096
+    },
+    "build_root/g02h-final-settings.json": {
+      "sha256": "df0c4fd5c36da8f9d7ffe8485a05fdb3a87207223ac04434f323a7b58418fa57",
+      "bytes": 574
+    },
+    "build_root/g02h-gitnexus-refresh.json": {
+      "sha256": "42a951b9d191adc462d15b5dd76bcb4f33d2baf5ea06c2ec75d27aabdf2da5e3",
+      "bytes": 142
+    },
+    "build_root/g02h-gitnexus-refresh.log": {
+      "sha256": "2f2bf2dc16fe72d7b3bdcc19a7a58919c5e7355abb86a6edfa69ef637c1eba75",
+      "bytes": 846
+    },
+    "build_root/g02h-native-diagnostics.log": {
+      "sha256": "973d755f9a419cb88bfede6403e1864177f43dde14dc0bbe35531db292d583ad",
+      "bytes": 2907
+    },
+    "build_root/g02h-native-diagnostics/result.json": {
+      "sha256": "f8ae239675bd1f070e81d871b5df635845c66aa34601283a3196676b15b358a3",
+      "bytes": 8287
+    },
+    "build_root/g02h-native-final.log": {
+      "sha256": "d931de9e83366378f901b9b36ddb9ff02dd3e5c7084e7821cca7708032dcc2b6",
+      "bytes": 8557
+    },
+    "build_root/g02h-native-final/result.json": {
+      "sha256": "439580dd8f9caf119edb27f25916ca12f1a9aebf469a063a4f165f6ce7196f68",
+      "bytes": 20142
+    },
+    "build_root/g02h-native-final/viewer-0-analysis_docks_hidden/host/host.log": {
+      "sha256": "e511e401d9eb7e86a81d7d6c75072ff1cf8519293ffdebb5fb340c79d5029b05",
+      "bytes": 573694
+    },
+    "build_root/g02h-native-final/viewer-0-analysis_docks_hidden/host/mcp.log": {
+      "sha256": "2fe333427e217cfabac7aa0a6b7bbbc90c5e695d14f99b165916acf476608eda",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-final/viewer-0-analysis_docks_idle/host/host.log": {
+      "sha256": "55c7041a4014d971b128ce2d886547a42f306872ff6457c532dd3c3e1c5f8f60",
+      "bytes": 621881
+    },
+    "build_root/g02h-native-final/viewer-0-analysis_docks_idle/host/mcp.log": {
+      "sha256": "e95f9ea70938a48261de4415809b6b9bc0fe4456ef3bbeb92c6df5947f2f0bd4",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-final/viewer-1-analysis_docks_hidden/host/host.log": {
+      "sha256": "bc090a37d963314d1255cf0bb73ac4f4b2717aa5d0217a5f4c4a6ecda94e579c",
+      "bytes": 573724
+    },
+    "build_root/g02h-native-final/viewer-1-analysis_docks_hidden/host/mcp.log": {
+      "sha256": "08fdce55c95f196ae3d94b115bb334f52b8a57ed514952f55af03bdbc74ddf87",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-final/viewer-1-analysis_docks_idle/host/host.log": {
+      "sha256": "e0ae6b87927570c8e949943dc651ebac4949b0056bcebdd92abbb14b19e4e4ca",
+      "bytes": 621766
+    },
+    "build_root/g02h-native-final/viewer-1-analysis_docks_idle/host/mcp.log": {
+      "sha256": "c8bce6efed0368b5cf414cb70430fac5c7d7eb234788dc9999b8d18c2f43742c",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-final/viewer-2-analysis_docks_hidden/host/host.log": {
+      "sha256": "f79810eb5059114a99eb83b95bcac802a8277c8adc5308286cb3366bc066f470",
+      "bytes": 572472
+    },
+    "build_root/g02h-native-final/viewer-2-analysis_docks_hidden/host/mcp.log": {
+      "sha256": "c6cea79960f247b1b7d931b11caafbd5ef0de1abf2a247449b80178d6aba2e82",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-final/viewer-2-analysis_docks_idle/host/host.log": {
+      "sha256": "6df8bf83fc4b65e6279db8d9d85025925f81aec1cdb663f456e2c489e4621c24",
+      "bytes": 627016
+    },
+    "build_root/g02h-native-final/viewer-2-analysis_docks_idle/host/mcp.log": {
+      "sha256": "0c7ba7cb075a3611bf22d7845a96e2171b1820997c3d4af5adaf06fb61c2350a",
+      "bytes": 5603
+    },
+    "build_root/g02h-native-smoke-2.log": {
+      "sha256": "cb9715588816fd4c082669156f40179b5e363a71559aabbcdddb506e39d0fed3",
+      "bytes": 558
+    },
+    "build_root/g02h-native-smoke-2/result.json": {
+      "sha256": "db523a2889c6620fea2f3e27fece2b1eb7094a7347ebcc0c38805e56c871da4b",
+      "bytes": 3253
+    },
+    "build_root/g02h-native-smoke-3.log": {
+      "sha256": "6ca238936d1d77ef8ad2db6cb1efc917018cb0ae3b559faf5109dfec2b1ed608",
+      "bytes": 1034
+    },
+    "build_root/g02h-native-smoke-3/result.json": {
+      "sha256": "b7da1f87930be409a33d1f2681f3eacaa58f29f72df1dbb02a2725fd9e685e1f",
+      "bytes": 2854
+    },
+    "build_root/g02h-native-smoke.log": {
+      "sha256": "c24bc80b7caa1a32aa82ecb6fa4d75226ca3ffff6ec53179b92f39afaed4efac",
+      "bytes": 604
+    },
+    "build_root/g02h-native-smoke/result.json": {
+      "sha256": "adc195fd31a9efba2b26aef1bf7786e972e7792aa1962402579b900927fb2e66",
+      "bytes": 2841
+    },
+    "build_root/g02h-negative-budget.log": {
+      "sha256": "40aeea8e65b1478b236694faacf3e8d5cd01b76a7fe3745da48be8b9a3ab74e5",
+      "bytes": 789
+    },
+    "build_root/g02h-negative-budget/result.json": {
+      "sha256": "cc321be60d573caa5eaf8c1ef6e2c712a010bb45d4268e8dc55c91ddde95d842",
+      "bytes": 4535
+    },
+    "build_root/g02h-negative-budget/viewer-0-analysis_docks_hidden/host/host.log": {
+      "sha256": "706dace5e8bc64000c4be85283a860d346c8a15041a20e40e2f1d8c259d49f3c",
+      "bytes": 27808
+    },
+    "build_root/g02h-negative-budget/viewer-0-analysis_docks_hidden/host/mcp.log": {
+      "sha256": "8c5ea71d8365a9ca18139b7cae3ab54663ef8718d8208657acc19a5de1517d18",
+      "bytes": 1652
+    },
+    "build_root/g02h-offscreen-smoke-2.log": {
+      "sha256": "86495dacc6fdf9faa4bb0c70a06499841154bbe41295ff0f96fd9b4026f609bd",
+      "bytes": 2773
+    },
+    "build_root/g02h-offscreen-smoke-2/result.json": {
+      "sha256": "171c4b3982c6b7064a5522793d635b8e7153941296ec5d0e8489a45bd9e23573",
+      "bytes": 8296
+    },
+    "build_root/g02h-offscreen-smoke.log": {
+      "sha256": "c7e2df57753eb999b270cf8952bb32b5f58cdc331c54035c74c94827c21c2581",
+      "bytes": 2383
+    },
+    "build_root/g02h-offscreen-smoke/result.json": {
+      "sha256": "e4e9447abe241e5a6c1b0032bc4d921b165ee6b7477a4076ab3fdf8e97aa532c",
+      "bytes": 3830
+    },
+    "build_root/g02h-private-version.json": {
+      "sha256": "b3baec825f6678482326bda592654d8956cccb80e63dd6620c8533d1feb729ce",
+      "bytes": 1088
+    },
+    "build_root/g02h-py39-benchmarks-final.log": {
+      "sha256": "11e1f5117b37cfec165e67976f31c38f51ec285a490ac2cfe7d26f3a95903dea",
+      "bytes": 17863
+    },
+    "build_root/g02h-py39-benchmarks.log": {
+      "sha256": "387ba13b5296b2611fb9d5e7de38c9a3f5aae2343b56fb6dbd61b31865afee0e",
+      "bytes": 18548
+    },
+    "build_root/g02h-py39-delay-green.log": {
+      "sha256": "1ab83f06ad3ecc4779111a1c85100df53702e628b95872862486931fc8165d30",
+      "bytes": 103
+    },
+    "build_root/g02h-py39-parity-final.log": {
+      "sha256": "78810ebc5753ee84508b90de2aca7af8931d7c3669a1535dddb91571740c07c1",
+      "bytes": 30534
+    },
+    "build_root/g02h-ready-green.log": {
+      "sha256": "b97f57d1897062c7d42ba907f4b9473198397ed759aede982044a989282ff1df",
+      "bytes": 1046
+    },
+    "build_root/g02h-ready-red.log": {
+      "sha256": "a62b7ac56bfdd51721d0980b27fe2de2597a84386e82eb8b3e6e7d5ef837db98",
+      "bytes": 1768
+    },
+    "build_root/g02h-red.log": {
+      "sha256": "8b8d6d02b39a7cad5f4dd5eb2234f8f4bf0638e0fd4a6dd24c987846d4570fdf",
+      "bytes": 1039
+    },
+    "build_root/g02h-selector-green.log": {
+      "sha256": "99f4ca052c7b37b26226aa1cc5608232ef055ec031472ff5d346860bb715bda5",
+      "bytes": 1045
+    },
+    "build_root/g02h-selector-red.log": {
+      "sha256": "a5520a15d653bd07e2183ded1e5dd9b0338e0a9016a09123c52cd9be24a513c1",
+      "bytes": 3095
+    },
+    "build_root/g02h-startup-retry-green.log": {
+      "sha256": "5fef765845495e1d1bd13d0f8a951f09b0038b9a676b077fb43aa7a6943b4abc",
+      "bytes": 1046
+    },
+    "build_root/g02h-startup-retry-red.log": {
+      "sha256": "b945f437a25922d1ac1f9caff5695f6bd0fbe79b9b2a48e5b4df2bde2a25bdac",
+      "bytes": 2700
+    },
+    "build_root/g02h-tiny-budgets.json": {
+      "sha256": "a946431c7428bd19ec6e11348745ccc46e965074c7753a4f70ca72f7e417a271",
+      "bytes": 47
+    }
+  }
+}

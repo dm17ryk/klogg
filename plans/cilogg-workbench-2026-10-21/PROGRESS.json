@@ -116,7 +116,9 @@
         "../../docs/workbench/g02f-sustained-memory.md",
         "../../docs/workbench/g02f-windows-observations.json",
         "../../docs/workbench/g02g-worker-memory.md",
-        "../../docs/workbench/g02g-windows-observations.json"
+        "../../docs/workbench/g02g-windows-observations.json",
+        "../../docs/workbench/g02h-viewer-baseline.md",
+        "../../docs/workbench/g02h-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -610,6 +612,51 @@
             "Analysis benchmark includes protocol latency and uncontrolled OS cache; first public cancellation round trip was 1.0700316 seconds while the separate native service gate passed. No before/after overhead calibration claimed.",
             "Native Qt event injection is not physical input, compositor presentation proof, installer/package conformance or cross-platform usability.",
             "Full-lifetime worker RSS and previous unmeasured P00 budgets remain open. GitNexus refresh failed; CodeGraph unavailable."
+          ]
+        },
+        {
+          "id": "G02h",
+          "status": "implemented_pending_gates",
+          "base": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+          "branch": "codex/workbench-viewer-baseline-g02h",
+          "scope": "Public viewer open/index/search timings with paired analysis-dock hidden/idle profiles; no product/protocol/settings changes; W0 remains open.",
+          "evidence": [
+            "../../docs/workbench/g02h-viewer-baseline.md",
+            "../../docs/workbench/g02h-windows-observations.json"
+          ],
+          "mergedInputs": [
+            {
+              "pr": 74,
+              "mergeCommit": "bdd66eb0a1935c22455d8e57f7e7140b418b68cd",
+              "mergedAt": "2026-10-30T16:56:17Z"
+            },
+            {
+              "pr": 75,
+              "mergeCommit": "d695de6db1d49c1fe51bdce31a7602fc19542fa9",
+              "mergedAt": "2026-10-30T23:26:38Z"
+            },
+            {
+              "pr": 76,
+              "mergeCommit": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+              "mergedAt": "2026-10-30T23:50:41Z"
+            }
+          ],
+          "localVerification": "Qt6.10.1 Qt-only approved deployment source-equivalent to merged master; final6/6CTest in151.07s;92benchmark/110parity Python tests and Python3.9 complete suites;3nativepaired repetitions,12cycles/24searches exactcounts; tinyphasebudget fails with partial record.",
+          "rulings": [
+            "Use existing benchmark entrypoint and Commander/EpochHost transport; no second MCP catalog or product operation.",
+            "Paired hidden/visible-idle docks in fresh private hosts; alternate order and force a new copy path for warm indexing. Preserve negative deltas; no calibrated overhead gate.",
+            "Read-only startup readiness may retry within its original deadline; timed operations never retry. Command delivery and waiting count against phase limits.",
+            "Reconcile merged74/75/76 as inputs, preserve all earlier records/policy and W0/decoder boundaries."
+          ],
+          "next": "Audit G02/G03 current-capability acceptance evidence and remaining conditional gates before starting MD01.",
+          "limitations": [
+            "Public timing includes Commander/CLI/IPC/observation latency; pure index/search CPU and compositor timing unmeasured.",
+            "Raw paired deltas are not a calibrated overhead gate. Negative deltas and observed variance, including larger last-pair ratios, are retained without selection.",
+            "Cold/warm labels describe process state only; OS cache uncontrolled. Each warm cycle indexes a new path with identical bytes; both profiles leave2tabs open.",
+            "Actual Linux/macOS and accelerated-backend performance/Qt6.12 hosted evidence remain pending; inherited payload portability does not establish platform acceptance.",
+            "Shared helper hashes are in this evidence document; parent benchmark harnessModules binds scripts/benchmarks modules, with helper source additionally pinned by supplied sourceRevision/base and CI testSourceTree.",
+            "W0/G02/G03 and release gates remain open. Next is current-capability W0 acceptance audit; decoder core retains approved position after W0, MD07/MD08 deferred.",
+            "GitNexus refresh timed out; CodeGraph unindexed; Code Review Graph unavailable. No full graph verification pass claimed."
           ]
         }
       ]
