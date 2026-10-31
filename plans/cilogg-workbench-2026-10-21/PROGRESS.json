@@ -22,7 +22,7 @@
     "sourcePackageManifestSha256": "2b1cc370f42b0bd8b067591be9ff2b997993dcfdc55aa72b4ec85df73f9da2aa"
   },
   "activeTask": "G02",
-  "nextTask": "G03",
+  "nextTask": "MD01",
   "executionPolicy": {
     "updatedDate": "2026-10-28",
     "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves.",
@@ -116,7 +116,9 @@
         "../../docs/workbench/g02f-sustained-memory.md",
         "../../docs/workbench/g02f-windows-observations.json",
         "../../docs/workbench/g02g-worker-memory.md",
-        "../../docs/workbench/g02g-windows-observations.json"
+        "../../docs/workbench/g02g-windows-observations.json",
+        "../../docs/workbench/w0-acceptance-audit.md",
+        "../../docs/workbench/w0-acceptance-audit.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -612,10 +614,22 @@
             "Full-lifetime worker RSS and previous unmeasured P00 budgets remain open. GitNexus refresh failed; CodeGraph unavailable."
           ]
         }
-      ]
+      ],
+      "acceptanceAudit": {
+        "date": "2026-10-31",
+        "baseline": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+        "state": "open",
+        "evidence": "../../docs/workbench/w0-acceptance-audit.json",
+        "historicalSliceRecordsPreserved": true,
+        "remaining": [
+          "Integrate PR77 with required checks",
+          "Measure distinct first-useful-result timing",
+          "Qualify sustained current-source profile: repetition2 has9 released points, minimum10"
+        ]
+      }
     },
     "G03": {
-      "status": "in_progress",
+      "status": "completed",
       "commit": "f96920138d40c86f024b3e59b7837fc01785cef5",
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/62",
       "evidence": [
@@ -631,14 +645,14 @@
         "../../docs/workbench/g03d-windows-observations.json",
         "../../docs/workbench/g03e-windows-observations.json",
         "../../docs/workbench/g03f-process-restart.md",
-        "../../docs/workbench/g03f-windows-observations.json"
+        "../../docs/workbench/g03f-windows-observations.json",
+        "../../docs/workbench/w0-acceptance-audit.md",
+        "../../docs/workbench/w0-acceptance-audit.json"
       ],
       "limitations": [
-        "G03a is the first independently reviewable harness slice; full G03 is not complete.",
-        "Installed source 96bf481 is not a fresh build of this branch.",
-        "G03b adds local current-source Qt-only and complete SDK smoke evidence plus representative hosted gates; hosted accelerated/Qt-only native runs and visible packaged UI conformance remain pending.",
-        "Backend flag records an unverified caller declaration; it does not infer build provenance.",
-        "Primary GitNexus index is stale and this worktree is not registered; Code Review Graph refresh and direct diff review cover the changed test harness."
+        "Reusable harness acceptance satisfied; full product release/UI usability remains separately gated.",
+        "Backend provenance comes from outer configured-build metadata, not the runner caller label.",
+        "GitNexus stale and CodeGraph unindexed; no product/harness symbol edited in this audit."
       ],
       "slices": [
         {
@@ -985,7 +999,21 @@
             "CodeGraph unindexed; GitNexus stale results excluded. Exact-worktree Code Review Graph refreshed with unresolved-call limitations."
           ]
         }
-      ]
+      ],
+      "acceptanceAudit": {
+        "date": "2026-10-31",
+        "baseline": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+        "state": "satisfied",
+        "evidence": "../../docs/workbench/w0-acceptance-audit.json",
+        "historicalSliceRecordsPreserved": true,
+        "previousLimitations": [
+          "G03a is the first independently reviewable harness slice; full G03 is not complete.",
+          "Installed source 96bf481 is not a fresh build of this branch.",
+          "G03b adds local current-source Qt-only and complete SDK smoke evidence plus representative hosted gates; hosted accelerated/Qt-only native runs and visible packaged UI conformance remain pending.",
+          "Backend flag records an unverified caller declaration; it does not infer build provenance.",
+          "Primary GitNexus index is stale and this worktree is not registered; Code Review Graph refresh and direct diff review cover the changed test harness."
+        ]
+      }
     },
     "U01": {
       "status": "planned",
@@ -1743,8 +1771,12 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
+      "evidence": [
+        "../../docs/workbench/md01-input-preview-preflight.md"
+      ],
+      "limitations": [
+        "Local Lua/capture/log inputs located and hashed; licensing/sanitization and full TShark proof pending. Task remains planned behind G02/W0."
+      ],
       "slices": []
     },
     "MD02": {
@@ -1815,14 +1847,13 @@
     "D08: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
-    "G01 reconciliation is merged; G02a fixtures/harness observations are complete while full G02 and G03 remain open.",
+    "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
     "P00 unmeasured GUI latency, full-process memory and calibrated throughput release gates remain open.",
     "Platform PR47 and integration PR58 are merged into the G02a base ca4c6074; their CI does not establish new benchmark results.",
     "Third-party hardware/project compatibility requires D-task conformance; source inspection is not a hardware pass."
   ],
   "runnableTasks": [
-    "G02",
-    "G03"
+    "G02"
   ],
   "addenda": {
     "messageDecoders": {
@@ -1844,7 +1875,7 @@
       ],
       "publicTracking": "PUBLIC_TRACKING.md",
       "baseline": "ca4c6074fea48643810ff6d92182146c427f1b65",
-      "runtimeEvidence": "Not run; external Lua sources and complete reference captures are not supplied by this Markdown attachment.",
+      "runtimeEvidence": "User supplied local scripts and captures; identities inventoried in W0 audit. Full decoder runtime proof not run; MD01 remains gated by W0.",
       "scope": "Integrate requirements and issue tracking only; the document's embedded implementation handoff is reference material, not an instruction to start decoding work.",
       "inputGates": [
         "Obtain licensed/version-pinned EHCP/EHCI Lua sources and complete reference captures before MD01 runtime claims.",
