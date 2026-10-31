@@ -278,3 +278,12 @@ search completion with analysis docks hidden versus visible but idle. Each paire
 profile uses a fresh private host and identical verified bytes; raw deltas and
 ratios remain observations, with no calibrated overhead gate. See the
 [viewer baseline guide](g02h-viewer-baseline.md) for boundaries and invocation.
+
+## G02i first useful analysis results
+
+The opt-in `--scenario first-results` times a validated public result page
+independently from submission and completed-job observation. It uses the
+existing Commander/native-MCP route, private hosts and exact source/span/type
+oracles. [The guide and qualification follow-up](g02i-first-results.md) retain
+native observations, the1ms negative and the unchanged longer sustained profile.
+These operational guards do not complete broad P00/release acceptance.

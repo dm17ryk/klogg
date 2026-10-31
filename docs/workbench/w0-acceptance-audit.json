@@ -521,5 +521,29 @@
       "3.12"
     ],
     "scope": "Harness self-tests; separate from native product reports"
+  },
+  "followUpG02i": {
+    "clientDate": "2026-11-01",
+    "baseline": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
+    "evidence": "g02i-windows-observations.json",
+    "mergedInputs": {
+      "PR77": {
+        "mergeCommit": {
+          "oid": "79c6191b218dbfc7b45b5d850628c6de812f058a"
+        },
+        "mergedAt": "2026-10-31T21:01:45Z",
+        "state": "MERGED"
+      },
+      "PR78": {
+        "mergeCommit": {
+          "oid": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8"
+        },
+        "mergedAt": "2026-10-31T21:20:17Z",
+        "state": "MERGED"
+      }
+    },
+    "localFirstResultGate": "measured and passed",
+    "localSustainedGate": "separate240s profile qualified;120s failure retained",
+    "W0": "pending G02i integration and relevant hosted checks; broader release gates remain separate"
   }
 }

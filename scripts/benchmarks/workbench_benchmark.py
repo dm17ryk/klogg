@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench_corpus import generate_corpus, json_bytes, validate_corpus
+from workbench_first_results import FIRST_RESULT_BUDGETS, run_first_results
 from workbench_gui import GUI_BUDGETS, run_gui
 from workbench_resident import RESIDENT_BUDGET
 from workbench_runtime import BenchmarkHost, RunError, file_hash, measure_analysis
-from workbench_viewer import VIEWER_BUDGETS, fixture as viewer_fixture, run_viewer
+from workbench_viewer import VIEWER_BUDGETS, run_viewer
+from workbench_viewer import fixture as viewer_fixture
 
 LOG = logging.getLogger("workbench.benchmark")
 DEFAULT_BUDGETS = {
@@ -28,7 +30,8 @@ DEFAULT_BUDGETS = {
 
 def load_budgets(path, scenario="analysis", sample_resident_memory=False):
     result = dict(GUI_BUDGETS if scenario == "ui-service"
-                  else VIEWER_BUDGETS if scenario == "viewer" else DEFAULT_BUDGETS)
+                  else VIEWER_BUDGETS if scenario == "viewer"
+                  else FIRST_RESULT_BUDGETS if scenario == "first-results" else DEFAULT_BUDGETS)
     if scenario == "ui-service" and sample_resident_memory and os.name == "nt":
         result.update(RESIDENT_BUDGET)
     if path is not None:
@@ -67,7 +70,7 @@ def main(argv=None):
     parser.add_argument("--executable", type=Path)
     parser.add_argument("--corpus", type=Path)
     parser.add_argument(
-        "--scenario", choices=("analysis", "ui-service", "viewer"), default="analysis"
+        "--scenario", choices=("analysis", "ui-service", "viewer", "first-results"), default="analysis"
     )
     parser.add_argument("--test-executable", type=Path)
     parser.add_argument("--samples", type=int, default=100)
@@ -186,7 +189,7 @@ def main(argv=None):
         report["budgets"] = load_budgets(
             options.budgets, options.scenario, options.sample_resident_memory
         )
-        if options.scenario == "viewer":
+        if options.scenario in ("viewer", "first-results"):
             if options.repetitions > 3:
                 raise ValueError("invalid_viewer_repetitions")
             viewer_fixture(manifest)
@@ -237,6 +240,8 @@ def main(argv=None):
             run_gui(options, manifest, report)
         elif options.scenario == "viewer":
             run_viewer(options, manifest, report)
+        elif options.scenario == "first-results":
+            run_first_results(options, manifest, report)
         else:
             with BenchmarkHost(options.executable, options.output) as host:
                 report["build"]["binarySha256"] = host.binary_hash
