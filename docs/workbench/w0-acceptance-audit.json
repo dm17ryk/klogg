@@ -1,0 +1,525 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-10-31T02:20:53.292168+00:00",
+  "baseCommit": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+  "scope": "Documentation/evidence reconciliation and read-only input discovery; no product/harness edit",
+  "acceptance": {
+    "G03": "satisfied",
+    "G02": "open",
+    "W0": "open",
+    "release": "pending"
+  },
+  "blockers": [
+    "Integrate PR77 with required checks",
+    "Measure distinct first-useful-result timing",
+    "Qualify sustained current-source profile: repetition2 has9 released points, minimum10"
+  ],
+  "hosted": [
+    {
+      "sourceEpoch": "exact_master",
+      "runId": 41146843423,
+      "url": "https://github.com/dm17ryk/klogg/actions/runs/41146843423",
+      "representativeReports": [
+        {
+          "pathInDownload": "windows/workbench-sdk-1.30.0/result.json",
+          "sha256": "f8c5effa884a177132d02e80e18ca6466845bc15658a3861608160785f0ae580",
+          "passed": true,
+          "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "windows/workbench-sdk-2.3.0/result.json",
+          "sha256": "06bc2008cf9edcc23c2e5a596b290b46953fac3e4510ce9afa95a28cf3f4412f",
+          "passed": true,
+          "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "linux/workbench-native/result.json",
+          "sha256": "774750097e0e2654870d65e54db6b719ea159f48bb6718a313529cc73c0ca6fa",
+          "passed": true,
+          "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "qt",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "macos/workbench-native/result.json",
+          "sha256": "9ecd725270123201fff3304d8092a8cab0c0b97f3381cfe477dbd559f180325a",
+          "passed": true,
+          "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13022508371,
+          "name": "workbench-native-windows-x64-qt6",
+          "size_in_bytes": 32906527,
+          "expired": false
+        },
+        {
+          "id": 13022385902,
+          "name": "workbench-native-rhel10-compatible",
+          "size_in_bytes": 418359,
+          "expired": false
+        },
+        {
+          "id": 13021714005,
+          "name": "workbench-native-macos-arm-qt612",
+          "size_in_bytes": 38403,
+          "expired": false
+        }
+      ],
+      "status": "in_progress",
+      "conclusion": "",
+      "jobConclusions": {
+        "success": 20,
+        "in_progress": 5
+      },
+      "windowsAdditionalReports": [
+        {
+          "name": "workbench-restart",
+          "passed": true,
+          "sha256": "20a45965225aabe2a814fdf0412e5bc5f2a6300ba686c0432aedaca15ab45203",
+          "releaseGateStatus": "pending"
+        },
+        {
+          "name": "workbench-mainwindow",
+          "passed": true,
+          "sha256": "cd27e800afe92b07d515179e691cb40c8d77c2d466278404d5d35a8be748a72d",
+          "releaseGateStatus": "pending"
+        },
+        {
+          "name": "workbench-ui",
+          "passed": true,
+          "sha256": "d2c00e88a61f0a916382bb62238f377ed16eef69bc5b5cdf54168e7068063765",
+          "releaseGateStatus": "pending"
+        },
+        {
+          "name": "workbench-benchmarks",
+          "passed": true,
+          "sha256": "308e8c3be5245c2c0073a001b6bb76486ffbd1488cb1f34adfbf5b5140a0ee57",
+          "releaseGateStatus": "pending"
+        },
+        {
+          "name": "workbench-worker-memory",
+          "passed": true,
+          "sha256": "9f40aff57fff746c91d97e7e66a0768dfdc699bcec8059801ae34f17693ae622",
+          "releaseGateStatus": "pending"
+        }
+      ]
+    },
+    {
+      "sourceEpoch": "source_equivalent_synthetic_merge",
+      "runId": 41049268421,
+      "url": "https://github.com/dm17ryk/klogg/actions/runs/41049268421",
+      "representativeReports": [
+        {
+          "pathInDownload": "windows/workbench-sdk-1.30.0/result.json",
+          "sha256": "09325369ab6a9e7e3b1f9d877b26530fb3626b6ed12c17404f14efb848efb29f",
+          "passed": true,
+          "sourceRevision": "1fda60b1451a4238846c5bf942b9b0a9ddef5b96",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "windows/workbench-sdk-2.3.0/result.json",
+          "sha256": "300e9fd4c1f1ed2d3f71f8eb99b93e16294fae645b042cbab7a55c9b9e50e627",
+          "passed": true,
+          "sourceRevision": "1fda60b1451a4238846c5bf942b9b0a9ddef5b96",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "linux/workbench-native/result.json",
+          "sha256": "be498d95ecaee8ba5280ba82d09f69bf6c6c7c724509ef364741008e9c56c7c0",
+          "passed": true,
+          "sourceRevision": "1fda60b1451a4238846c5bf942b9b0a9ddef5b96",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "qt",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "pathInDownload": "macos/workbench-native/result.json",
+          "sha256": "b436ea9c34f312de8bbc66764ce36d904832d92d983e9950eed982e6b495414c",
+          "passed": true,
+          "sourceRevision": "1fda60b1451a4238846c5bf942b9b0a9ddef5b96",
+          "sourceDirty": false,
+          "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
+          "configuredBackend": "accelerated",
+          "cases": [
+            {
+              "id": "analysis",
+              "passed": true
+            },
+            {
+              "id": "regex-lab",
+              "passed": true
+            },
+            {
+              "id": "value-counts",
+              "passed": true
+            },
+            {
+              "id": "file-navigation",
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12976550026,
+          "name": "workbench-native-windows-x64-qt6",
+          "size_in_bytes": 32884386,
+          "expired": false
+        },
+        {
+          "id": 12976467818,
+          "name": "workbench-native-rhel10-compatible",
+          "size_in_bytes": 2498294,
+          "expired": false
+        },
+        {
+          "id": 12974936801,
+          "name": "workbench-native-macos-arm-qt612",
+          "size_in_bytes": 38902,
+          "expired": false
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "successfulJobs": 25,
+      "testedSyntheticMerge": "1fda60b1451a4238846c5bf942b9b0a9ddef5b96",
+      "parents": [
+        "493124be92f962aeba97bf92c0ac55c59743d925",
+        "696857c712e3fdf953ca3a0ea3c5a477bf33cf85"
+      ]
+    }
+  ],
+  "local": {
+    "parity": {
+      "passed": true,
+      "sha256": "62b1a495cab634d41cd876b3f6f35c16d7552b12c79f0af53ac3c5d9c140d92d",
+      "task": "G03",
+      "executableSha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+      "cases": [
+        {
+          "id": "analysis",
+          "passed": true
+        },
+        {
+          "id": "regex-lab",
+          "passed": true
+        },
+        {
+          "id": "value-counts",
+          "passed": true
+        },
+        {
+          "id": "file-navigation",
+          "passed": true
+        }
+      ],
+      "toolchain": "Reused approved Qt6.10.1 Qt-only deployment; no fresh C++ build",
+      "command": "python tests/mcp/workbench_parity.py --executable build_root/output/RelWithDebInfo/cilogg.exe --task G03 --backend qt --artifacts build_root/w0-audit-local-parity"
+    },
+    "sustained": {
+      "passed": false,
+      "reason": "sustained_points_missing_or_excessive",
+      "sha256": "6adfde41b6c4a46e9e77bde202752916ad7c32a351b5d5c767beb2f233789981",
+      "executableSha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+      "corpusManifestSha256": "c8c33cc354894115ae7325196f134a79d707ed06472f899d00e248b019a0846d",
+      "durationRequestedSeconds": 120,
+      "minimumReleasedSamples": 10,
+      "command": "python scripts/benchmarks/workbench_sustained.py --executable build_root/output/RelWithDebInfo/cilogg.exe --corpus build_root/g02-final-corpus --duration-seconds 120 --repetitions 3 --output build_root/w0-audit-sustained-current",
+      "repetitions": [
+        {
+          "repetition": 1,
+          "releasedSamples": 11,
+          "summary": {
+            "durationSeconds": 120.63906710001174,
+            "releasedSamples": 11,
+            "hostSlopeBytesPerMinute": 22676.030405638587,
+            "hostGrowthBytes": 73728,
+            "baselineHostRssBytes": 66928640,
+            "finalHostRssBytes": 67002368,
+            "maximumReleasedSampleGapSeconds": 14.681334099994274
+          },
+          "ownedProcessesReaped": true
+        },
+        {
+          "repetition": 2,
+          "releasedSamples": 9,
+          "summary": null,
+          "ownedProcessesReaped": true
+        }
+      ],
+      "disposition": "Insufficient released-sample qualification; no full pass or memory-budget-breach inference"
+    }
+  },
+  "inputPreflight": {
+    "state": "located_not_runtime_qualified",
+    "sources": [
+      {
+        "name": "essence_ehcp.lua",
+        "bytes": 224197,
+        "lines": 7831,
+        "sha256": "8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35"
+      },
+      {
+        "name": "essence_ehci.lua",
+        "bytes": 32137,
+        "lines": 867,
+        "sha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea"
+      },
+      {
+        "id": "local-reference-1",
+        "bytes": 239072,
+        "sha256": "1da7510f2feaca24d50eddbe8d4ee78083386fa4be6c1a06072d11b1735d8d54"
+      },
+      {
+        "id": "local-reference-2",
+        "bytes": 18130464,
+        "sha256": "9618b6f3e433085015687ba6cbe484470f8a1fe0908b7ec5e2c266f3e716bc9f"
+      },
+      {
+        "id": "local-reference-3",
+        "bytes": 7388864,
+        "sha256": "b69ef533e3841e4f38baa2a0c4a774a1b611cc886baedb002c60c3d9b613cf3c"
+      },
+      {
+        "id": "local-reference-4",
+        "bytes": 4208876,
+        "sha256": "4d06cf6278140ef219603305a5eec2cd2d66f4ae4f65346e9b881343e36fc7c8"
+      }
+    ],
+    "tools": {
+      "tshark": "4.6.9",
+      "text2pcap": "4.6.9",
+      "lua": "5.4.6",
+      "staleRegistryDisplayVersion": "4.6.8"
+    },
+    "runtimeDecoderProof": false,
+    "privateBodiesCommitted": false,
+    "logs": {
+      "searchMode": "no-ignore/hidden/text; NUL files included",
+      "maxRowsPerMarkerPerFile": 3,
+      "maxFileBytes": 1073741824,
+      "candidateFileCounts": {
+        "EHCP": 60,
+        "EHCI": 16,
+        "STRING": 1517,
+        "SRING": 47,
+        "STRING_PREFIX": 451
+      },
+      "scope": "Supplied log roots and broader firmware project; substring candidates include non-message text",
+      "observedSringExample": {
+        "declaredBytes": 48,
+        "decodedBytes": 48,
+        "decodedSignature": "EHCP"
+      },
+      "literalStringAliasEstablished": false
+    },
+    "profile": {
+      "previewDefinitions": 10,
+      "blocks": 198,
+      "dedicatedEhciDefinition": false,
+      "settingsModified": false,
+      "renderingAcceptanceClaimed": false,
+      "qtRegexDiagnostic": {
+        "surface": "regex_evaluate through isolated Commander/native MCP; not legacy Preview rendering",
+        "executableSha256": "4bb796b57a3cd65e8cdd9ac96fdab00111d7ab08fdb69fb03fd2955277970d88",
+        "settingsSha256": "739da067c3b81beb93beba4e7ba7cfd8e030dae84eaf9cd48fe650630cfb147f",
+        "settingsModified": false,
+        "cases": [
+          {
+            "name": "saved",
+            "state": "completed",
+            "complete": true,
+            "matched": [
+              true
+            ]
+          },
+          {
+            "name": "single_escape_diagnostic",
+            "state": "completed",
+            "complete": true,
+            "matched": [
+              true
+            ]
+          }
+        ],
+        "disposition": "Both patterns matched; legacy renderer compatibility unproven"
+      }
+    },
+    "sourceMap": "md01-input-preview-preflight.md"
+  },
+  "codeIntelligence": {
+    "codeReviewGraph": "Refreshed on base567a477; best-effort graph, direct source inspection used",
+    "CodeGraph": "Worktree unindexed; no index initialized",
+    "GitNexus": "Primary index stale; staged detect-changes result not accepted as source verification. Owned refresh attempt timed out after90 seconds and its child processes were reaped. FTS extension unavailable separately."
+  },
+  "pr77": {
+    "url": "https://github.com/dm17ryk/klogg/pull/77",
+    "state": "OPEN",
+    "mergeable": "MERGEABLE",
+    "head": "fe8e0f4b7ec53f1e3b37eb2512a63b897a1291d7",
+    "checks": {
+      "SUCCESS": 18,
+      "QUEUED": 5,
+      "IN_PROGRESS": 6,
+      "SKIPPED": 1
+    }
+  },
+  "harnessSelfTests": {
+    "runId": 41146843454,
+    "conclusion": "success",
+    "jobs": 6,
+    "platforms": [
+      "Windows",
+      "Linux",
+      "macOS"
+    ],
+    "python": [
+      "3.9",
+      "3.12"
+    ],
+    "scope": "Harness self-tests; separate from native product reports"
+  }
+}
