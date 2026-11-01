@@ -1,0 +1,25 @@
+{
+  "fixtureKind": "synthetic",
+  "cases": [
+    {
+      "id": "sring-nested",
+      "dissector": "cilogg_md01_sring",
+      "hex": "sring-nested.hex",
+      "sha256": "55ea460c240540bf5aaaf4fb24c03ed25455e0ac07460a2272f4d6d5bf35310c",
+      "expect": {
+        "cilogg_md01_sring.length": [
+          "48"
+        ],
+        "ehcp.message_counter": [
+          "9"
+        ],
+        "ehcp.checksum.received": [
+          "CFDC"
+        ],
+        "ehcp.checksum.valid": [
+          "True"
+        ]
+      }
+    }
+  ]
+}

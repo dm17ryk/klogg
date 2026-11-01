@@ -1,10 +1,10 @@
 name: Plugin examples and SDK
 on:
   pull_request:
-    paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', '.github/workflows/plugin-examples.yml']
+    paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', 'test_data/message_decoders/**', '.github/workflows/plugin-examples.yml']
   push:
     branches: [master]
-    paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', '.github/workflows/plugin-examples.yml']
+    paths: ['plugins/**', 'scripts/plugins/**', 'tests/plugins/**', 'test_data/message_decoders/**', '.github/workflows/plugin-examples.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,10 +12,10 @@ jobs:
   examples:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-24.04, macos-latest]
         python: ['3.12']
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             python: '3.9'
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,3 +30,32 @@ jobs:
         with:
           name: cilogg-plugin-examples-${{ matrix.os }}
           path: plugin-packages/*.zip
+
+  decoder-pdu:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install real Wireshark command-line tools
+        run: choco install wireshark --yes --no-progress
+      - name: Prove named Lua PDU dispatch and output limits
+        env:
+          CILOGG_TSHARK: C:\Program Files\Wireshark\tshark.exe
+          CILOGG_TEXT2PCAP: C:\Program Files\Wireshark\text2pcap.exe
+        run: python -m unittest discover -s tests/plugins -p test_message_decoder_pdu.py -v
+      - name: Save actual synthetic-engine proof
+        run: |
+          python scripts/plugins/message_decoder_pdu.py `
+            --tshark "C:\Program Files\Wireshark\tshark.exe" `
+            --text2pcap "C:\Program Files\Wireshark\text2pcap.exe" `
+            --lua test_data/message_decoders/pdu_probe.lua `
+            --manifest test_data/message_decoders/probe.json `
+            --output decoder-pdu-proof
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decoder-pdu-proof-windows
+          path: decoder-pdu-proof/result.json
+          if-no-files-found: warn

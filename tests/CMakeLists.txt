@@ -18,6 +18,11 @@ if(Python3_Interpreter_FOUND)
     # This aggregate cap does not change any individual probe or product deadline.
     set_tests_properties(workbench_benchmark_tests PROPERTIES TIMEOUT 900 LABELS "benchmarks;python")
 
+    add_test(NAME message_decoder_pdu_tests
+        COMMAND "${Python3_EXECUTABLE}" -m unittest discover
+                -s "${CMAKE_CURRENT_SOURCE_DIR}/plugins" -p test_message_decoder_pdu.py -v)
+    set_tests_properties(message_decoder_pdu_tests PROPERTIES TIMEOUT 300 LABELS "decoder;python")
+
 else()
     message(STATUS "Workbench benchmark self-tests skipped: Python 3.9+ is unavailable")
 endif()

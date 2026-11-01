@@ -668,7 +668,7 @@
         },
         {
           "id": "G02i",
-          "status": "implemented_pending_gates",
+          "status": "merged",
           "base": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
           "branch": "codex/workbench-first-results-g02i",
           "scope": "First useful public-result observation distinct from completion, native CLI/MCP source/span oracles, unchanged240s sustained-profile qualification",
@@ -691,7 +691,10 @@
             "Qt6.10.1 Qt-only local deployment; source-equivalent reused executable. HostedQt6.12/accelerated/new-platform acceptance remains pending.",
             "Sampled/non-atomic/shared-page RSS only; slope is observed, not a calibrated budget. Startup failure underlying delay remains undiagnosed."
           ],
-          "next": "Integrate/verify G02i hosted gates and close current W0 acceptance audit, then MD01 per executionPolicy."
+          "next": "Integrate/verify G02i hosted gates and close current W0 acceptance audit, then MD01 per executionPolicy.",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/79",
+          "mergeCommit": "12e87bad67a94cb06e15fbcba7e64c22faf2c343",
+          "mergedAt": "2026-11-01T07:21:29Z"
         }
       ],
       "acceptanceAudit": {
@@ -709,7 +712,15 @@
           "G02h integrated byPR77; G03 audit integrated byPR78",
           "G02i current-source first useful pages and completed statuses independently observed",
           "Unchanged240s sustained profile qualifies31/24/29samples; failed120s history retained"
-        ]
+        ],
+        "integrationFollowUpMD01a": {
+          "date": "2026-11-01",
+          "PR79": "merged",
+          "hostedRun": 41251772060,
+          "firstResults": "passed;10harness hashes and product/test trees match;6complete/released jobs",
+          "evidence": "../../docs/workbench/md01a-windows-observations.json",
+          "scope": "Fulfilled integration/hosted follow-up; broader G02 baseline acceptance and existing release gates unchanged"
+        }
       }
     },
     "G03": {
@@ -1856,12 +1867,40 @@
       "commit": null,
       "pullRequest": null,
       "evidence": [
-        "../../docs/workbench/md01-input-preview-preflight.md"
+        "../../docs/workbench/md01-input-preview-preflight.md",
+        "../../docs/workbench/md01a-engine-proof.md",
+        "../../docs/workbench/md01a-windows-observations.json"
       ],
       "limitations": [
-        "Local Lua/capture/log inputs located and hashed; licensing/sanitization and full TShark proof pending. Task remains planned behind G02/W0."
+        "MD01a independently qualifies real-engine synthetic complete/nested probes; bare partial and direct NUL EHCI remain failed capabilities. Genuine-capture comparison, licensing and full MD01 acceptance remain pending behind W0."
       ],
-      "slices": []
+      "slices": [
+        {
+          "id": "MD01a",
+          "status": "implemented_pending_gates",
+          "base": "12e87bad67a94cb06e15fbcba7e64c22faf2c343",
+          "branch": "codex/md01-engine-proof",
+          "scope": "MD01a independent proof preparation; no production decoder or inspector UI",
+          "evidence": [
+            "../../docs/workbench/md01a-engine-proof.md",
+            "../../docs/workbench/md01a-windows-observations.json"
+          ],
+          "mergedInput": "12e87bad67a94cb06e15fbcba7e64c22faf2c343",
+          "localVerification": "30 focused proof cases;84/84 full plugin cases on Python3.14 and3.9;7/7CTest188.69s after review fixes and merged PR79; raw source-bound profiles; no fresh C++ build.",
+          "limitations": [
+            "G02 broader baseline acceptance; parent MD01 remains planned behind its hard dependencies; PR79 merged and hosted evidence verified",
+            "Genuine reference capture and Exported-PDU normalized-output comparison",
+            "Pinned-pack partial/NUL capability repair and qualification; current reports remain failed",
+            "Private 48-byte/counter-9/D50D runtime oracle and complete reference coverage",
+            "Licenses and distribution qualification for external packs",
+            "Generated-field flags and transformed data-source to original-log sidecars",
+            "Unix native engine isolation and native Unicode qualification; product supervisor, result contracts, GUI/CLI/MCP/Python integration"
+          ],
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/80",
+          "commit": "e7c7a6b1eac69538d6b05a8b9ee176f657e749e9",
+          "ciFollowUp": "Plugin SDK Linux jobs pinned to Ubuntu24.04 after Python3.9 setup failed on ubuntu-latest/26.04; hosted rerun pending"
+        }
+      ]
     },
     "MD02": {
       "status": "planned",
@@ -1959,7 +1998,7 @@
       ],
       "publicTracking": "PUBLIC_TRACKING.md",
       "baseline": "ca4c6074fea48643810ff6d92182146c427f1b65",
-      "runtimeEvidence": "User supplied local scripts and captures; identities inventoried in W0 audit. Full decoder runtime proof not run; MD01 remains gated by W0.",
+      "runtimeEvidence": "Local actual-engine synthetic proof in MD01a; complete/nested oracles pass while partial/NUL capabilities remain failed. Genuine-capture comparison and full MD01 acceptance are pending; W0 hard dependencies unchanged.",
       "scope": "Integrate requirements and issue tracking only; the document's embedded implementation handoff is reference material, not an instruction to start decoding work.",
       "inputGates": [
         "Obtain licensed/version-pinned EHCP/EHCI Lua sources and complete reference captures before MD01 runtime claims.",

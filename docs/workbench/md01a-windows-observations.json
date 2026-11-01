@@ -1,0 +1,649 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-01T07:51:52.984778+00:00",
+  "baseCommit": "12e87bad67a94cb06e15fbcba7e64c22faf2c343",
+  "preparationBaseCommit": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
+  "branch": "codex/md01-engine-proof",
+  "scope": "MD01a independent proof preparation; no production decoder or inspector UI",
+  "acceptance": {
+    "MD01": "pending",
+    "W0": "G02 broader baseline acceptance remains in progress; PR79 integration/hosted follow-up verified",
+    "productDecoderAccepted": false
+  },
+  "mergedPrerequisite": {
+    "pr": 79,
+    "mergeCommit": "12e87bad67a94cb06e15fbcba7e64c22faf2c343",
+    "mergedAt": "2026-11-01T07:21:29Z",
+    "hostedRun": {
+      "conclusion": "success",
+      "headSha": "e70ec282a801ee7990b9dca4a5142ee983414c7d",
+      "status": "completed",
+      "url": "https://github.com/dm17ryk/klogg/actions/runs/41251772060"
+    },
+    "testedSyntheticMerge": {
+      "parents": [
+        "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
+        "e70ec282a801ee7990b9dca4a5142ee983414c7d"
+      ],
+      "sha": "bbce70c123947c61942ba104288b9092c935163f",
+      "tree": "563b3296f6491a62300acb10584f73ec3a9c832c"
+    },
+    "artifactId": 13062576258,
+    "firstResultsIdentity": {
+      "sha256": "d7db732f6949bcdf5b0548b16b8c87dc6bfaf45a301da3506a499e629825fb1b",
+      "bytes": 13503
+    },
+    "harnessModuleHashesMatch": true,
+    "productAndTestTreesMatchMergedHead": true,
+    "firstUsefulPageRangeMs": [
+      193.44329999989895,
+      199.29109999998218
+    ],
+    "completeReleasedJobs": 6,
+    "passingReports": [
+      {
+        "path": "workbench-benchmarks/result.json",
+        "identity": {
+          "sha256": "332d28adfc53fb91fcc61a6e8165dcadd82874cd2a28325e3bbd9b36aa0a2642",
+          "bytes": 69475
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-first-results/result.json",
+        "identity": {
+          "sha256": "d7db732f6949bcdf5b0548b16b8c87dc6bfaf45a301da3506a499e629825fb1b",
+          "bytes": 13503
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-mainwindow/result.json",
+        "identity": {
+          "sha256": "34bd549964840fed250a2bf943e4a0395b6a3949ad90a706f2725c11feb0ebc6",
+          "bytes": 6246
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-restart/result.json",
+        "identity": {
+          "sha256": "19c257253744ba386596a954313a7c5d6cb82f0f849c807d63bee1fcbadf5791",
+          "bytes": 3926
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-1.30.0/result.json",
+        "identity": {
+          "sha256": "ad09a70c4f56e982ae760174dbe69fc81df66834d8ce51864a21c726f682ad37",
+          "bytes": 16649
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-2.3.0/result.json",
+        "identity": {
+          "sha256": "4a4d771d2bec64d4b3ca6055be3377253a58ad4d5af8826b4fa02eb9421f37b8",
+          "bytes": 16647
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-ui/result.json",
+        "identity": {
+          "sha256": "e8704fc50b5e271a9ea49c73f058b4d0074ff12a6bb78bf642cffc6054c7a8e5",
+          "bytes": 3245
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-viewer-baseline/result.json",
+        "identity": {
+          "sha256": "8366461ca799056c90c1900fecc77c694ff51cde1c11f3d1fa03da1edab32f39",
+          "bytes": 20088
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-worker-memory/result.json",
+        "identity": {
+          "sha256": "096b8c6a0e44dfb25316c659218922ff6174d7d5f7e517bbd5248edbde2ef268",
+          "bytes": 5115
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-2.3.0/parity/result.json",
+        "identity": {
+          "sha256": "44b26281d16492a73466adaf2f873f46f15e6ab382a3d5a9b6b38b7ddfc2cbcd",
+          "bytes": 14854
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-2.3.0/parity/native/result.json",
+        "identity": {
+          "sha256": "52e42963af04764916f03ca24f6f9b6f675d0de5ad21faac2da7f2d370eed7ff",
+          "bytes": 3611
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-2.3.0/parity/native/sdk/result.json",
+        "identity": {
+          "sha256": "e77bf5d957ebe5a8907b0640940b383000987ead086a5549d85e4d3a43ec028f",
+          "bytes": 433
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-1.30.0/parity/result.json",
+        "identity": {
+          "sha256": "cd7e37c1eeb8a13f46e13942ad469aa3fde5576506485e934f67ff2625a57add",
+          "bytes": 14856
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-1.30.0/parity/native/result.json",
+        "identity": {
+          "sha256": "13939e47e01d6481857656c7ac63277889bbdbbf854a6775015aba97c399018f",
+          "bytes": 3610
+        },
+        "passed": true
+      },
+      {
+        "path": "workbench-sdk-1.30.0/parity/native/sdk/result.json",
+        "identity": {
+          "sha256": "e77bf5d957ebe5a8907b0640940b383000987ead086a5549d85e4d3a43ec028f",
+          "bytes": 433
+        },
+        "passed": true
+      }
+    ]
+  },
+  "engine": {
+    "tsharkVersion": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+    "text2pcapVersion": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+    "luaVersion": "5.4.6",
+    "luaAvailable": true,
+    "luaFoldersIsolated": true,
+    "binaries": [
+      {
+        "name": "tshark.exe",
+        "bytes": 623272,
+        "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+      },
+      {
+        "name": "text2pcap.exe",
+        "bytes": 375464,
+        "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+      }
+    ],
+    "externalScripts": [
+      {
+        "name": "essence_ehcp.lua",
+        "sha256": "8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35",
+        "license": "not_verified"
+      },
+      {
+        "name": "essence_ehci.lua",
+        "sha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea",
+        "license": "not_verified"
+      }
+    ]
+  },
+  "sourceFiles": {
+    "scripts/plugins/message_decoder_pdu.py": {
+      "sha256": "52d7ee00b11d842fff6c8c422c8a2fc73dfd887bc8fdf519587b8e5a35c310f9",
+      "bytes": 22390
+    },
+    "scripts/benchmarks/workbench_process.py": {
+      "sha256": "d4e053f41998186807babeae9e7b0040a24157eea6f858151ac4b431cbc1ea48",
+      "bytes": 7421
+    },
+    "tests/plugins/test_message_decoder_pdu.py": {
+      "sha256": "5e7d7842edbbaa8023e66088c6af4b409e1fc9f08b89fcfff86cf68002f225b7",
+      "bytes": 17355
+    },
+    "test_data/message_decoders/ehci-bad-checksum.hex": {
+      "sha256": "d718cfe9dc8da8ce4a0e3e5d1410d7b57b1bfe907de03bcf12d9f4fa74ff5bf7",
+      "bytes": 152
+    },
+    "test_data/message_decoders/ehci-complete.hex": {
+      "sha256": "8dc206bdeb3d7eaade608b3ee6075ca3fdf6bb8cfe7b10c981ee1819a21daae9",
+      "bytes": 152
+    },
+    "test_data/message_decoders/ehci-nul.hex": {
+      "sha256": "c36b216ff57dddf3d360e90e5a7a377b662188378c2ac71b8212fa8f47215aec",
+      "bytes": 154
+    },
+    "test_data/message_decoders/ehci-partial.hex": {
+      "sha256": "95a3426781e21537e290143494f11cda0d0edf4165d15f1542aa375a4753e870",
+      "bytes": 138
+    },
+    "test_data/message_decoders/ehcp-complete.hex": {
+      "sha256": "1fe2f87f34581e085db944006c7959e423630f7d2c9232ed1734426ea5783120",
+      "bytes": 98
+    },
+    "test_data/message_decoders/probe.hex": {
+      "sha256": "71d63dc88728b80aa62466542c6771f4265f1def0790ef342b7581d7f9dca5ef",
+      "bytes": 6
+    },
+    "test_data/message_decoders/sring-nested.hex": {
+      "sha256": "ee7905a68aa530b57be94e2da9ff897da13aa23b4c4918dee10fe232a5a39fc8",
+      "bytes": 218
+    },
+    "test_data/message_decoders/probe.json": {
+      "sha256": "e13d921faa46e5df5fef0548091c2c4a26344530726ae2a6d3fcc0c4fc776ab6",
+      "bytes": 411
+    },
+    "test_data/message_decoders/packs.json": {
+      "sha256": "ddbebb1009f06ed90be9ae647d6e9365c33e43d69482251abba3d2337b22e81c",
+      "bytes": 1840
+    },
+    "test_data/message_decoders/binary-input.json": {
+      "sha256": "d999e3a50f3cf451782294fc9284031f5545ad1d26c41f2e86fc87c1efab8834",
+      "bytes": 430
+    },
+    "test_data/message_decoders/nested.json": {
+      "sha256": "e7c076df958b6f9f7207519ef4d741d20cb1faea98eddb46f0232844a15c81c1",
+      "bytes": 546
+    },
+    "test_data/message_decoders/pdu_probe.lua": {
+      "sha256": "3682f77a10015eaef08322eede31a09aab0e23c55a8b9f30e7a263f290c51de9",
+      "bytes": 1667
+    }
+  },
+  "profiles": [
+    {
+      "profile": "probe",
+      "privateArtifact": "build_root/md01-final-probe/result.json",
+      "artifactIdentity": {
+        "sha256": "edde547bcc9bfc023f60e7a18cb7a83dc57533f6d0621d26321698ff380cfd2b",
+        "bytes": 23953
+      },
+      "passed": true,
+      "state": "qualified",
+      "manifestSha256": "e13d921faa46e5df5fef0548091c2c4a26344530726ae2a6d3fcc0c4fc776ab6",
+      "harnessSha256": "52d7ee00b11d842fff6c8c422c8a2fc73dfd887bc8fdf519587b8e5a35c310f9",
+      "cases": [
+        {
+          "id": "named-probe",
+          "inputBytes": 2,
+          "inputSha256": "a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222",
+          "passed": true,
+          "reason": null,
+          "observed": {
+            "cilogg_md01_probe.item": [
+              "1",
+              "2"
+            ],
+            "cilogg_md01_probe.generated": [
+              "9007199254740993"
+            ]
+          },
+          "expected": {
+            "cilogg_md01_probe.item": [
+              "1",
+              "2"
+            ],
+            "cilogg_md01_probe.generated": [
+              "9007199254740993"
+            ]
+          },
+          "knownGap": null
+        }
+      ]
+    },
+    {
+      "profile": "packs",
+      "privateArtifact": "build_root/md01-final-packs/result.json",
+      "artifactIdentity": {
+        "sha256": "77f27bfba3db76bcde9678b9768f38457a4c4e32e4ec6f105bc8416e621ad129",
+        "bytes": 168933
+      },
+      "passed": false,
+      "state": "failed",
+      "manifestSha256": "ddbebb1009f06ed90be9ae647d6e9365c33e43d69482251abba3d2337b22e81c",
+      "harnessSha256": "52d7ee00b11d842fff6c8c422c8a2fc73dfd887bc8fdf519587b8e5a35c310f9",
+      "cases": [
+        {
+          "id": "ehcp-complete",
+          "inputBytes": 48,
+          "inputSha256": "104d8fa1988cd384195e58991b625966a528180536357b00391544601c90e240",
+          "passed": true,
+          "reason": null,
+          "observed": {
+            "ehcp.magic": [
+              "EHCP"
+            ],
+            "ehcp.message_counter": [
+              "9"
+            ],
+            "ehcp.account": [
+              "TEST0001"
+            ],
+            "ehcp.checksum.valid": [
+              "True"
+            ]
+          },
+          "expected": {
+            "ehcp.magic": [
+              "EHCP"
+            ],
+            "ehcp.message_counter": [
+              "9"
+            ],
+            "ehcp.account": [
+              "TEST0001"
+            ],
+            "ehcp.checksum.valid": [
+              "True"
+            ]
+          },
+          "knownGap": null
+        },
+        {
+          "id": "ehci-complete",
+          "inputBytes": 75,
+          "inputSha256": "bf189fe38d191b2e2d6b8019be0f8d72afd5954f5540e78512158e60ed5883aa",
+          "passed": true,
+          "reason": null,
+          "observed": {
+            "ehci.magic": [
+              "EHCI"
+            ],
+            "ehci.tag.name": [
+              "CNT",
+              "INF"
+            ],
+            "ehci.map.key": [
+              "A",
+              "A",
+              "E",
+              "N",
+              "B"
+            ],
+            "ehci.map.value": [
+              "one",
+              "two",
+              "",
+              "xy",
+              "after"
+            ],
+            "ehci.checksum.valid": [
+              "True"
+            ]
+          },
+          "expected": {
+            "ehci.magic": [
+              "EHCI"
+            ],
+            "ehci.tag.name": [
+              "CNT",
+              "INF"
+            ],
+            "ehci.map.key": [
+              "A",
+              "A",
+              "E",
+              "N",
+              "B"
+            ],
+            "ehci.map.value": [
+              "one",
+              "two",
+              "",
+              "xy",
+              "after"
+            ],
+            "ehci.checksum.valid": [
+              "True"
+            ]
+          },
+          "knownGap": null
+        },
+        {
+          "id": "ehci-bad-checksum",
+          "inputBytes": 75,
+          "inputSha256": "5dbd4e3d204334fcf640403de2a417d10983d677234d11ebc23ed66326674d68",
+          "passed": true,
+          "reason": null,
+          "observed": {
+            "ehci.checksum.valid": [
+              "False"
+            ]
+          },
+          "expected": {
+            "ehci.checksum.valid": [
+              "False"
+            ]
+          },
+          "knownGap": null
+        },
+        {
+          "id": "ehci-partial",
+          "inputBytes": 68,
+          "inputSha256": "3de97e13a54a478dded7da44c9b8d1d3c43e564adb9990a3143200ab83d6b03e",
+          "passed": false,
+          "reason": "dissector_not_dispatched",
+          "observed": {
+            "ehci.magic": []
+          },
+          "expected": {
+            "ehci.magic": [
+              "EHCI"
+            ]
+          },
+          "knownGap": "Pinned pack returns no bare partial EHCI field tree without a terminal CRC"
+        }
+      ]
+    },
+    {
+      "profile": "binary-input",
+      "privateArtifact": "build_root/md01-final-binary-input/result.json",
+      "artifactIdentity": {
+        "sha256": "c1a91c2c8d8107b2dc316e0313e21e246bee1416866f9346da13623643b72580",
+        "bytes": 21897
+      },
+      "passed": false,
+      "state": "failed",
+      "manifestSha256": "d999e3a50f3cf451782294fc9284031f5545ad1d26c41f2e86fc87c1efab8834",
+      "harnessSha256": "52d7ee00b11d842fff6c8c422c8a2fc73dfd887bc8fdf519587b8e5a35c310f9",
+      "cases": [
+        {
+          "id": "ehci-nul",
+          "inputBytes": 76,
+          "inputSha256": "4fc24337ceb2cc1d01cc3fb29b4eeed15ac768e14eb81ee4b12137813a3f7f9e",
+          "passed": false,
+          "reason": "dissector_not_dispatched",
+          "observed": {
+            "ehci.magic": []
+          },
+          "expected": {
+            "ehci.magic": [
+              "EHCI"
+            ]
+          },
+          "knownGap": "Pinned direct EHCI entry point scans the buffer as a Lua string before INF byte parsing"
+        }
+      ]
+    },
+    {
+      "profile": "nested",
+      "privateArtifact": "build_root/md01-final-nested/result.json",
+      "artifactIdentity": {
+        "sha256": "a35c672382b3c0234ada9eb41aaa42d75b42ef4252fd8d3d93e65ef06d144940",
+        "bytes": 42978
+      },
+      "passed": true,
+      "state": "qualified",
+      "manifestSha256": "e7c076df958b6f9f7207519ef4d741d20cb1faea98eddb46f0232844a15c81c1",
+      "harnessSha256": "52d7ee00b11d842fff6c8c422c8a2fc73dfd887bc8fdf519587b8e5a35c310f9",
+      "cases": [
+        {
+          "id": "sring-nested",
+          "inputBytes": 108,
+          "inputSha256": "55ea460c240540bf5aaaf4fb24c03ed25455e0ac07460a2272f4d6d5bf35310c",
+          "passed": true,
+          "reason": null,
+          "observed": {
+            "cilogg_md01_sring.length": [
+              "48"
+            ],
+            "ehcp.message_counter": [
+              "9"
+            ],
+            "ehcp.checksum.received": [
+              "CFDC"
+            ],
+            "ehcp.checksum.valid": [
+              "True"
+            ]
+          },
+          "expected": {
+            "cilogg_md01_sring.length": [
+              "48"
+            ],
+            "ehcp.message_counter": [
+              "9"
+            ],
+            "ehcp.checksum.received": [
+              "CFDC"
+            ],
+            "ehcp.checksum.valid": [
+              "True"
+            ]
+          },
+          "knownGap": null
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "focusedCases": 30,
+    "pluginsPython314": {
+      "cases": 84,
+      "skipped": 0,
+      "seconds": 38.055
+    },
+    "pluginsPython39": {
+      "cases": 84,
+      "skipped": 0,
+      "seconds": 39.488
+    },
+    "ctest": {
+      "passed": 7,
+      "total": 7,
+      "seconds": 188.69,
+      "freshCppBuild": false,
+      "qt": "6.10.1 Qt-only approved reused deployment",
+      "timingBoundary": "Final CTest after review fixes and integration onto merged PR79; production src tree unchanged."
+    },
+    "portableSettingsRestored": true,
+    "ruff": "passed",
+    "workflowYaml": "parsed",
+    "workflowPowerShellBlocks": 3,
+    "workflowPowerShellSyntax": "passed",
+    "generalReview": "approved narrow slice; bridge limit finding regraded Important and fixed RED/GREEN",
+    "pythonReview": "Important cleanup/old-result failure fixed RED/GREEN; final full suites cover one fix pass, no re-review claimed",
+    "cppBuildReview": "approved build integration; no C++ source changes",
+    "deferredMinors": [
+      "Missing-Python configure message names benchmark tests but omits the decoder suite",
+      "Explicit Unicode normalization/native Unicode fixture coverage remains pending"
+    ],
+    "hostedChecks": "pending new PR"
+  },
+  "remaining": [
+    "G02 broader baseline acceptance; parent MD01 remains planned behind its hard dependencies; PR79 merged and hosted evidence verified",
+    "Genuine reference capture and Exported-PDU normalized-output comparison",
+    "Pinned-pack partial/NUL capability repair and qualification; current reports remain failed",
+    "Private 48-byte/counter-9/D50D runtime oracle and complete reference coverage",
+    "Licenses and distribution qualification for external packs",
+    "Generated-field flags and transformed data-source to original-log sidecars",
+    "Unix native engine isolation and native Unicode qualification; product supervisor, result contracts, GUI/CLI/MCP/Python integration"
+  ],
+  "indexEvidence": {
+    "codeReviewGraph": "refreshed on final staged source after integrating merged PR79",
+    "gitNexus": "impact UNKNOWN for new symbols; primary index stale26commits, FTS unavailable; owned refresh timeout90s",
+    "codeGraph": "worktree unindexed; not initialized"
+  },
+  "rawArtifactHashes": {
+    "md01-plugins-final-py314.log": {
+      "sha256": "0868e4c52c07ac630ab5a6bbc33bc197687d86dc8fb21c3208afee185e10a450",
+      "bytes": 12550
+    },
+    "md01-plugins-final-py39.log": {
+      "sha256": "483daa45d593da5c8639024e6f3e2c25019f6d85830a46658e41c6b6e9ce5877",
+      "bytes": 8597
+    },
+    "md01-ctest-ctest.log": {
+      "sha256": "d314b597d2c70372ecc3185a8d7435c2ea66cbfc43568532de20dcd8b749d7df",
+      "bytes": 1888107
+    },
+    "md01-final-proofs.log": {
+      "sha256": "b4609891d0b619ad9b2e4c0ead600173774b0495f8885b397d4c4c821fb87cfc",
+      "bytes": 12949
+    },
+    "md01-red.log": {
+      "sha256": "4e7edea9ae0d74e8a73035db14645665acb0ff97e8eafa05fad8f1aa9e5c886c",
+      "bytes": 14595
+    },
+    "md01-report-red.log": {
+      "sha256": "11242aa303e96f011eddccb518ffdcffa73fa74d6a4c8154117014b8e486fb86",
+      "bytes": 4478
+    },
+    "md01-lua-red.log": {
+      "sha256": "f202065bc065ebf3c754544823d4796c9b0a914118774173e4a4d03c9ca95e0c",
+      "bytes": 5069
+    },
+    "md01-input-red.log": {
+      "sha256": "bf5eb004f174e59c991258496ec45036396d68674067f2692c03b35c4d7f86bc",
+      "bytes": 7503
+    },
+    "md01-storage-red.log": {
+      "sha256": "6ba4249e06de7d1632a799298f8ba4bb7eb23beed441f7c9aa434d9b754119b1",
+      "bytes": 7912
+    },
+    "md01-review-red.log": {
+      "sha256": "ed6566c9df59cedab1eb478124dbc060bdef4268a271c11cef524669dc6dd8ed",
+      "bytes": 12301
+    },
+    "md01-review-green.log": {
+      "sha256": "3fb5e3201b5219afeb2ab0fa03bbcab39cbedbaf8d1a6e03e52eb3c3398f61ff",
+      "bytes": 5179
+    }
+  },
+  "privateBodiesCommitted": false,
+  "ciFollowUp": {
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/80",
+    "failingRun": 41286809110,
+    "failingJob": 124789660817,
+    "reason": "setup-python could not find Python3.9 x64 for Ubuntu26.04 selected by ubuntu-latest; tests did not start",
+    "cancelledPeers": "matrix fail-fast after setup failure",
+    "fix": "Pin both Linux plugin matrix entries to Ubuntu24.04, retaining Python3.9 minimum and all four combinations",
+    "matrix": [
+      {
+        "os": "windows-latest",
+        "python": "3.12"
+      },
+      {
+        "os": "ubuntu-24.04",
+        "python": "3.12"
+      },
+      {
+        "os": "macos-latest",
+        "python": "3.12"
+      },
+      {
+        "os": "ubuntu-24.04",
+        "python": "3.9"
+      }
+    ],
+    "failedLogSha256": "97ca0cf494a9e9a3be720235150f7f613c6f2924e674cce742846334aa3def9b",
+    "verification": "YAML/matrix and PowerShell syntax passed; hosted rerun pending",
+    "nativeDecoderJob": "passed on original PR80 head e7c7a6b; rerun pending new CI-only commit"
+  }
+}
