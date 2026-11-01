@@ -24,6 +24,18 @@ from parity_payload import prepare_payload, private_ipc_environment
 LOG = logging.getLogger("analysis.parity")
 
 
+def diagnostic_log_paths(artifacts: Path):
+    """Keep writes out of the source directory watched by the native host.
+
+    Native source watches are nonrecursive. A log alongside an opened fixture
+    feeds watcher debug messages back into the same watch, starving Commander.
+    """
+    directory = artifacts / "diagnostics"
+    directory.mkdir(exist_ok=True)
+    LOG.info("diagnostics_directory path=%s source_directory=%s", directory, artifacts)
+    return directory / "host.log", directory / "mcp.log"
+
+
 def wait_for_commander(isolated: Path, environment: dict, host, deadline: float) -> None:
     """A slow readiness probe must not replace the existing absolute startup bound."""
     while True:
@@ -168,6 +180,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
         regex_lab: bool = False, measure: bool = False, value_counts: bool = False,
         required_operations=(), verify=None, sdk_smoke=False, setup_payload=None) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
+    host_log_path, mcp_log_path = diagnostic_log_paths(artifacts)
     payload, isolated = prepare_payload(executable, artifacts)
     if setup_payload is not None:
         setup_payload(payload)
@@ -245,7 +258,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
 
     try:
         environment = resources.enter_context(private_ipc_environment(environment))
-        with (artifacts / "host.log").open("w", encoding="utf-8") as host_log, (artifacts / "mcp.log").open("w", encoding="utf-8") as mcp_log:
+        with host_log_path.open("w", encoding="utf-8") as host_log, mcp_log_path.open("w", encoding="utf-8") as mcp_log:
             host_arguments = [str(isolated), "--multi", "-d", "4", "-platform", "offscreen"]
             if not auto_responses:
                 host_arguments.append("--new-session")
@@ -255,13 +268,13 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             deadline = time.monotonic() + 40
             # A probe started first can claim the single-instance lock itself.
             # Wait until the host has constructed its IPC server before launching a probe.
-            while "Klogg instance" not in (artifacts / "host.log").read_text(encoding="utf-8", errors="replace"):
+            while "Klogg instance" not in host_log_path.read_text(encoding="utf-8", errors="replace"):
                 assert host.poll() is None, "Isolated host exited during construction"
                 assert time.monotonic() < deadline, "Host did not publish its startup marker"
                 time.sleep(0.02)
             if auto_responses:
                 # Restoration pumps events before Commander is ready; wait for its completion.
-                while "startBackgroundTasks" not in (artifacts / "host.log").read_text(encoding="utf-8", errors="replace"):
+                while "startBackgroundTasks" not in host_log_path.read_text(encoding="utf-8", errors="replace"):
                     assert host.poll() is None, "Routing host exited during restoration"
                     assert time.monotonic() < deadline, "Routing host did not finish restoration"
                     time.sleep(0.02)
@@ -459,7 +472,7 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             for job in (cli_job, mcp_job, large_job, cancelled):
                 command("release_analysis_job", {"job_id": job})
                 assert command("get_analysis_job", {"job_id": job}, success=False)["reason"] == "job_expired"
-            for log in (artifacts / "host.log", artifacts / "mcp.log"):
+            for log in (host_log_path, mcp_log_path):
                 assert "ANALYSIS_PRIVATE_BODY_SENTINEL" not in log.read_text(encoding="utf-8", errors="replace"), f"Source body leaked to {log}"
             (artifacts / "result.json").write_text(json.dumps({"passed": True, "rows": normalized(cli_rows), "cancelSeconds": cancel_seconds}, ensure_ascii=False, indent=2), encoding="utf-8")
             print("PASS: CLI/native-MCP identity, captures, paging, errors, large JSON, cancellation and release")

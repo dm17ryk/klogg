@@ -2,6 +2,7 @@
 
 import subprocess
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -9,6 +10,21 @@ import analysis_parity
 
 
 class StartupTests(unittest.TestCase):
+    def test_native_diagnostics_are_outside_watched_source_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifacts = Path(directory) / "native"
+            artifacts.mkdir()
+            source = artifacts / "source.log"
+            source.write_text("fixture\n", encoding="utf-8")
+            host, server = analysis_parity.diagnostic_log_paths(artifacts)
+            self.assertNotEqual(host.parent, source.parent)
+            self.assertEqual(host.parent, server.parent)
+            self.assertEqual(host.parent.parent, artifacts)
+            self.assertTrue(host.parent.is_dir())
+            for log in (host, server):
+                log.write_text("diagnostic\n", encoding="utf-8")
+            self.assertEqual(source.read_text(encoding="utf-8"), "fixture\n")
+
     def check(self, outcomes, budget=40, exited=False):
         self.assertTrue(callable(getattr(analysis_parity, "wait_for_commander", None)))
         now = [0.0]
