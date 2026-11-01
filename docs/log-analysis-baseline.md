@@ -124,3 +124,12 @@ counts, source/binary identities and raw differences are retained in the
 open/index and search ceilings are each 30 seconds for this operational profile.
 OS cache, calibrated idle-dock overhead, rich-renderer and other-platform release
 evidence remain pending; the historical entries above retain their original scope.
+
+## G02i first useful results
+
+[G02i](workbench/g02i-first-results.md) records useful public-page receipt
+separately from completed-status observation, plus exact fixture/provenance and
+failure guards. Its [observations](workbench/g02i-windows-observations.json)
+also qualify the unchanged240-second sustained profile without replacing the
+earlier failed120-second evidence. Integration/hosted checks and broader release
+gates remain distinct from local measurement acceptance.

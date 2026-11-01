@@ -120,7 +120,9 @@
         "../../docs/workbench/w0-acceptance-audit.md",
         "../../docs/workbench/w0-acceptance-audit.json",
         "../../docs/workbench/g02h-viewer-baseline.md",
-        "../../docs/workbench/g02h-windows-observations.json"
+        "../../docs/workbench/g02h-windows-observations.json",
+        "../../docs/workbench/g02i-first-results.md",
+        "../../docs/workbench/g02i-windows-observations.json"
       ],
       "limitations": [
         "Full G02 remains in progress: compositor presentation, worker RSS, sustained-memory slope, controlled OS-cache, renderer/native Linux/macOS and accelerated-search performance evidence remain pending.",
@@ -618,7 +620,7 @@
         },
         {
           "id": "G02h",
-          "status": "implemented_pending_gates",
+          "status": "merged",
           "base": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
           "branch": "codex/workbench-viewer-baseline-g02h",
           "scope": "Public viewer open/index/search timings with paired analysis-dock hidden/idle profiles; no product/protocol/settings changes; W0 remains open.",
@@ -659,7 +661,37 @@
             "Shared helper hashes are in this evidence document; parent benchmark harnessModules binds scripts/benchmarks modules, with helper source additionally pinned by supplied sourceRevision/base and CI testSourceTree.",
             "W0/G02/G03 and release gates remain open. Next is current-capability W0 acceptance audit; decoder core retains approved position after W0, MD07/MD08 deferred.",
             "GitNexus refresh timed out; CodeGraph unindexed; Code Review Graph unavailable. No full graph verification pass claimed."
-          ]
+          ],
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/77",
+          "mergeCommit": "79c6191b218dbfc7b45b5d850628c6de812f058a",
+          "mergedAt": "2026-10-31T21:01:45Z"
+        },
+        {
+          "id": "G02i",
+          "status": "implemented_pending_gates",
+          "base": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
+          "branch": "codex/workbench-first-results-g02i",
+          "scope": "First useful public-result observation distinct from completion, native CLI/MCP source/span oracles, unchanged240s sustained-profile qualification",
+          "evidence": [
+            "../../docs/workbench/g02i-first-results.md",
+            "../../docs/workbench/g02i-windows-observations.json"
+          ],
+          "localVerification": "19focused tests;111benchmark tests onPython3.14/3.9(4platform skips each); full6/6CTest;3nativehosts/6exact jobs with release;1ms negative;3x240s sustained guard passes with31/24/29released samples.",
+          "rulings": [
+            "Receipt after decoded public response is oracle-qualified; not exact server-ready time or compositor latency. Completion observation is separate and may occur earlier.",
+            "After useful delivery, status polling uses completion budget; reject stale provenance, numericBoolean substitutions, partial completion and late responses.",
+            "Scenario-only startup info read and inherited transport use remaining existing30s allowance; no transport/mutation retries and no absolute startup deadline extension. Retain initial startup failure.",
+            "Use existing private payload/settings/IPC and owned cleanup; reaping is established, normal exit is not verified.",
+            "Preserve failed120s sustained report. Qualify separate240s profile with identical sampler/harness, binary and limits; no weakened sample/resource gates.",
+            "Both77and78merged. Preserve all historical slices/G03 acceptance, W0-first decoder policy and MD07/08 deferral. No fresh C++ build claimed."
+          ],
+          "limitations": [
+            "G02i integration and relevant hostedQt6.12/native benchmark checks before W0 acceptance",
+            "Broader P00/release, compositor, hardware, controlled OS-cache, native other-platform and conditional rich-renderer gates remain separately owned",
+            "Qt6.10.1 Qt-only local deployment; source-equivalent reused executable. HostedQt6.12/accelerated/new-platform acceptance remains pending.",
+            "Sampled/non-atomic/shared-page RSS only; slope is observed, not a calibrated budget. Startup failure underlying delay remains undiagnosed."
+          ],
+          "next": "Integrate/verify G02i hosted gates and close current W0 acceptance audit, then MD01 per executionPolicy."
         }
       ],
       "acceptanceAudit": {
@@ -669,9 +701,14 @@
         "evidence": "../../docs/workbench/w0-acceptance-audit.json",
         "historicalSliceRecordsPreserved": true,
         "remaining": [
-          "Integrate PR77 with required checks",
-          "Measure distinct first-useful-result timing",
-          "Qualify sustained current-source profile: repetition2 has9 released points, minimum10"
+          "G02i integration and relevant hostedQt6.12/native benchmark checks before W0 acceptance"
+        ],
+        "followUpDate": "2026-11-01",
+        "followUpBaseline": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",
+        "localMeasuredGates": [
+          "G02h integrated byPR77; G03 audit integrated byPR78",
+          "G02i current-source first useful pages and completed statuses independently observed",
+          "Unchanged240s sustained profile qualifies31/24/29samples; failed120s history retained"
         ]
       }
     },

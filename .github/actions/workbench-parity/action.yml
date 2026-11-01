@@ -132,3 +132,8 @@ runs:
           --corpus "$corpus" --repetitions 3 \
           --metadata "$WORKBENCH_BENCHMARK_METADATA" \
           --output "$CILOGG_BUILD_ROOT/reports/workbench-viewer-baseline"
+        python scripts/benchmarks/workbench-benchmark.py \
+          --scenario first-results --platform native --executable "$executable" \
+          --corpus "$corpus" --repetitions 3 \
+          --metadata "$WORKBENCH_BENCHMARK_METADATA" \
+          --output "$CILOGG_BUILD_ROOT/reports/workbench-first-results"

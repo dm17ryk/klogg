@@ -8,7 +8,7 @@ artifact hashes, current checks and the dispositions below.
 **G03's reusable parity-harness acceptance is satisfied. G02 and W0 remain open.**
 This does not declare the whole product or any platform release accepted.
 
-## Current W0 blockers
+## W0 blockers at the original audit snapshot
 
 1. Integrate [G02h / PR #77](https://github.com/dm17ryk/klogg/pull/77) and record its
    required checks. Its viewer baseline exists on `fe8e0f4b`, not this master.
@@ -99,3 +99,16 @@ The approved order remains W0, then MD01 and the decoder-core prerequisite
 sequence in `PROGRESS.json.executionPolicy`, then remaining W1 and later waves.
 MD07/MD08 integration remains deferred. Revert this audit's ledger entries and
 documents to roll back its bookkeeping; runtime behavior does not depend on it.
+
+## G02i follow-up — 2026-11-01
+
+PR #77 and this audit's PR #78 have merged. [G02i](g02i-first-results.md) now supplies
+distinct native useful-page/completed-status observations and a separately
+qualified 240-second sustained profile (31/24/29 samples) with the unchanged
+harness, binary and memory/sample guards. Original report identities and the
+failed 120-second outcome (11/9 samples) above remain historical evidence.
+
+Local measurements therefore cover those current-capability gaps. G02/W0 remain
+open for G02i integration and relevant hosted Qt 6.12/native checks. Broader
+release, platform/hardware/compositor/OS-cache and future renderer gates retain
+their separate ownership; decoder order and MD07/08 deferral are unchanged.
