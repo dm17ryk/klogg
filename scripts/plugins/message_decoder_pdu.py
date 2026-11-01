@@ -316,9 +316,9 @@ class PduEngine:
             for part in ("-X", "lua_script:" + str(script))
         ]
 
-    def command(self, arguments):
+    def command(self, arguments, timeout=30.0):
         result = run_bounded(
-            [str(arg) for arg in arguments], cwd=self.root, env=self.env
+            [str(arg) for arg in arguments], cwd=self.root, env=self.env, timeout=timeout
         )
         if result["returnCode"]:
             LOG.warning(
