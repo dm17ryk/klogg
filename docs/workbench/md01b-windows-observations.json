@@ -1,0 +1,837 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-01T10:14:09.153062+00:00",
+  "baseCommit": "7e63e25f21e2e12e2294730fecfd250c09d1c62b",
+  "branch": "codex/md01-reference-capture-proof",
+  "dependencyPullRequest": 80,
+  "scope": "MD01b selected genuine-capture versus Exported-PDU equivalence; proof preparation only",
+  "acceptance": {
+    "MD01": "pending",
+    "W0": "G02 broader baseline acceptance remains in progress",
+    "productDecoderAccepted": false
+  },
+  "sourceIdentities": {
+    "scripts/plugins/message_decoder_reference.py": {
+      "bytes": 15587,
+      "sha256": "175e3ad1ab72ec90cba9d8fa473aa13cfbc1c03c2eeead7c1c95f0989b9e402b"
+    },
+    "scripts/plugins/message_decoder_pdu.py": {
+      "bytes": 22421,
+      "sha256": "295743d7ac76dc9266f267b3aca1b169aa359caf8d179c2d35f7e69585110fb5"
+    },
+    "tests/plugins/test_message_decoder_reference.py": {
+      "bytes": 15351,
+      "sha256": "d001fbf36a0deea0f462f64f88b30879c411f6d2235775b22ca7f1834a661f8c"
+    },
+    "test_data/message_decoders/reference_probe.lua": {
+      "bytes": 1511,
+      "sha256": "e9e113e448620d2df62b75e8ccb0617761b161fcc08392291fcd3b89d97da102"
+    }
+  },
+  "engine": {
+    "tsharkVersion": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+    "text2pcapVersion": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+    "lua": "5.4.6",
+    "luaFoldersIsolated": true,
+    "binaries": [
+      {
+        "name": "tshark.exe",
+        "bytes": 623272,
+        "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+      },
+      {
+        "name": "text2pcap.exe",
+        "bytes": 375464,
+        "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+      }
+    ],
+    "scripts": [
+      {
+        "name": "essence_ehcp.lua",
+        "sha256": "8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35",
+        "license": "not_verified"
+      },
+      {
+        "name": "essence_ehci.lua",
+        "sha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea",
+        "license": "not_verified"
+      }
+    ]
+  },
+  "comparisonPolicy": {
+    "excluded": [
+      "engine pos attribute",
+      "generated tree-path id"
+    ],
+    "retained": [
+      "ordered children",
+      "exact attribute strings",
+      "empty versus absent",
+      "sizes",
+      "raw engine metadata",
+      "data-source index"
+    ],
+    "originalCaptureByteOffsets": "null; original mapping unresolved"
+  },
+  "referenceRuns": [
+    {
+      "protocol": "ehcp",
+      "localRawArtifact": "build_root/md01b-real-ehcp/result.json",
+      "rawArtifactIdentity": {
+        "bytes": 59913,
+        "sha256": "20e6ddeba02f838fe2b940769041ab580b6f22183385c2423748439804bca32d"
+      },
+      "harnessSha256": "175e3ad1ab72ec90cba9d8fa473aa13cfbc1c03c2eeead7c1c95f0989b9e402b",
+      "captureIdentity": {
+        "bytes": 4208876,
+        "sha256": "4d06cf6278140ef219603305a5eec2cd2d66f4ae4f65346e9b881343e36fc7c8"
+      },
+      "selectedPackets": 23,
+      "comparedProtocols": 23,
+      "allSelectedTreesEqual": true,
+      "records": [
+        {
+          "frameNumber": 188,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 99,
+          "inputSha256": "a2d009d0af8230156aa915f2e1bde981e5d2b480053c511bc5297beb904d907a",
+          "engineRawMetadata": [
+            54,
+            99,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "20060d15f2b54064bd64aa28ad31e8da510dbd0ff1132b04d8fe33becc27e938",
+          "bridgeTreeSha256": "20060d15f2b54064bd64aa28ad31e8da510dbd0ff1132b04d8fe33becc27e938",
+          "reason": null
+        },
+        {
+          "frameNumber": 192,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "b8e3090ce7efc4a47b41663c65a2b5f64b7f1ebc826b26e6e58e45ea19914a2e",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "a1a4f998a1d4a37d4db970ba58e798e34fbdad84b961586a7f3c1d18d48f474a",
+          "bridgeTreeSha256": "a1a4f998a1d4a37d4db970ba58e798e34fbdad84b961586a7f3c1d18d48f474a",
+          "reason": null
+        },
+        {
+          "frameNumber": 242,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 79,
+          "inputSha256": "60ca92824693e2cfb9e3fb96e156ba747a6645898577dbf7aa8f98ffea933bc3",
+          "engineRawMetadata": [
+            54,
+            79,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "67bace8ac75a21a478029e163ccbdc28a99282f81c9aae4ed2af490720af1df4",
+          "bridgeTreeSha256": "67bace8ac75a21a478029e163ccbdc28a99282f81c9aae4ed2af490720af1df4",
+          "reason": null
+        },
+        {
+          "frameNumber": 244,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "d644d9e9bb355e73ef6aa6adb4bbd10133e7ffbfd44ff3ebef6fa61065466ebf",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "c91d9abd326e77d1119f21324419ba52dd8170144811134b381f769eefa59fce",
+          "bridgeTreeSha256": "c91d9abd326e77d1119f21324419ba52dd8170144811134b381f769eefa59fce",
+          "reason": null
+        },
+        {
+          "frameNumber": 288,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 152,
+          "inputSha256": "b40da00a68bcb3b9282505bce680447f4ec80c0b9a4c70dc0a06fb2e9df35c04",
+          "engineRawMetadata": [
+            54,
+            152,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "47ef01d434d1082542c31ac29fa247cb6ad1401ed0c07286cd75bea4f9a6fcad",
+          "bridgeTreeSha256": "47ef01d434d1082542c31ac29fa247cb6ad1401ed0c07286cd75bea4f9a6fcad",
+          "reason": null
+        },
+        {
+          "frameNumber": 290,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "6eddff75835b5c979855dbafc1f5efec393dbdc0a639102422e63953a749b76a",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "38c2e125f3904205664ea9ccd4bcfbeb843adb756f06fed362eed9b445558c6d",
+          "bridgeTreeSha256": "38c2e125f3904205664ea9ccd4bcfbeb843adb756f06fed362eed9b445558c6d",
+          "reason": null
+        },
+        {
+          "frameNumber": 349,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 99,
+          "inputSha256": "37e01b2ba07d98e4a09f323b30b4758b890058e2423531cd246749e2b341dddd",
+          "engineRawMetadata": [
+            54,
+            99,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "e1174768e84fa99985b37b8c002a4b2a5bd5381ba582e888131fde833b752da7",
+          "bridgeTreeSha256": "e1174768e84fa99985b37b8c002a4b2a5bd5381ba582e888131fde833b752da7",
+          "reason": null
+        },
+        {
+          "frameNumber": 351,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "df6d5304ce91d7de1e98b3132b18d25c3a06d2f34455334b3c4817b8c60313c7",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "63ac8ad5fde893d9e074860dfba4e902a49de07b0801a8188441055a3e98b51a",
+          "bridgeTreeSha256": "63ac8ad5fde893d9e074860dfba4e902a49de07b0801a8188441055a3e98b51a",
+          "reason": null
+        },
+        {
+          "frameNumber": 371,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 73,
+          "inputSha256": "b7738966e18cf399a4b06f96ae5dd53f9ee804d4265979899d2f00f9b3051ddb",
+          "engineRawMetadata": [
+            54,
+            73,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "8a6c710e669ce90c3d0f8deef30b9e31d9610d98d95142e7452fe672af189aa8",
+          "bridgeTreeSha256": "8a6c710e669ce90c3d0f8deef30b9e31d9610d98d95142e7452fe672af189aa8",
+          "reason": null
+        },
+        {
+          "frameNumber": 373,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "5533519d2fefaf4c53e7b7c82e28d0e6d458df1c363044f9ba84ab3476ca2482",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "4e809b07f316620a3e5743318a345727f16da6bcf58625afde0bd79af72e0379",
+          "bridgeTreeSha256": "4e809b07f316620a3e5743318a345727f16da6bcf58625afde0bd79af72e0379",
+          "reason": null
+        },
+        {
+          "frameNumber": 902,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 156,
+          "inputSha256": "10dbd4b787494c28f5e34f828a6057df4455ffe4c980882e05db78c3068a3f6f",
+          "engineRawMetadata": [
+            54,
+            156,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "14a7c50af2608bd64bca9c8f58c20e86129b9bba00a8cf282e1c0b7c01292171",
+          "bridgeTreeSha256": "14a7c50af2608bd64bca9c8f58c20e86129b9bba00a8cf282e1c0b7c01292171",
+          "reason": null
+        },
+        {
+          "frameNumber": 905,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "c84c9192f16c648655cdc70a29307159e1070c016427886b04f3a6dafcec68b2",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "932a5696282b5a9e485d49c66a1afe591f4337c74159176143e20dd3e806957a",
+          "bridgeTreeSha256": "932a5696282b5a9e485d49c66a1afe591f4337c74159176143e20dd3e806957a",
+          "reason": null
+        },
+        {
+          "frameNumber": 4903,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 79,
+          "inputSha256": "d8e3e66cfd12c9df5b4288ccb6bcd5400346af7be08ccc0113d404bcb99d2f1f",
+          "engineRawMetadata": [
+            54,
+            79,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "1cfab9ef20462b932c0676268613bc3167315619c454664fc778e800f221d7a1",
+          "bridgeTreeSha256": "1cfab9ef20462b932c0676268613bc3167315619c454664fc778e800f221d7a1",
+          "reason": null
+        },
+        {
+          "frameNumber": 4907,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "3202cad21d787cad1ff5af193a2fee064aed327efbb9469bbc8df9cb18a67fb7",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "e3e54818263dd84d9e28be84744ed9cfff17260991b9d38fdbbf84fdf2cf5e4a",
+          "bridgeTreeSha256": "e3e54818263dd84d9e28be84744ed9cfff17260991b9d38fdbbf84fdf2cf5e4a",
+          "reason": null
+        },
+        {
+          "frameNumber": 4923,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 78,
+          "inputSha256": "3abbdce6d10f52c56db76a10fa37d5280bcba7ee86ac571d7d053690ed8ae6d7",
+          "engineRawMetadata": [
+            42,
+            78,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "156ef480dce04a00eeb30b44255af4ae0511d8ec0587eb39bae514f66b422293",
+          "bridgeTreeSha256": "156ef480dce04a00eeb30b44255af4ae0511d8ec0587eb39bae514f66b422293",
+          "reason": null
+        },
+        {
+          "frameNumber": 7129,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 83,
+          "inputSha256": "c859ed391de70015ad765dacc7561e20f01b6fb2780faa3ffb7ef05c3115915f",
+          "engineRawMetadata": [
+            54,
+            83,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "6f239d5c533bf00f1643c7b76f87f1f800a8b863c44bde9e10db9f603973fc44",
+          "bridgeTreeSha256": "6f239d5c533bf00f1643c7b76f87f1f800a8b863c44bde9e10db9f603973fc44",
+          "reason": null
+        },
+        {
+          "frameNumber": 7131,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "57c9a0d6436582314c01adc136259d5a8e111a53dc4ccc1ed5545e99a5ea3e7a",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "29b74ea57490c81d31279c58128e388efcc005fabddcda0a8307b0b037cb6dfa",
+          "bridgeTreeSha256": "29b74ea57490c81d31279c58128e388efcc005fabddcda0a8307b0b037cb6dfa",
+          "reason": null
+        },
+        {
+          "frameNumber": 7363,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 156,
+          "inputSha256": "c36c56e52b356dfcf08c2395c07d86df5a9f757e5e39f8bfe769a41b3a36949d",
+          "engineRawMetadata": [
+            54,
+            156,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "b0e9864f53d95735604127e1758b4aae25d07d4876ceb3d21152067a6d99d467",
+          "bridgeTreeSha256": "b0e9864f53d95735604127e1758b4aae25d07d4876ceb3d21152067a6d99d467",
+          "reason": null
+        },
+        {
+          "frameNumber": 7366,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "b94d3d5f291736aa8946a389902dcaefa60e91cfa8988fd5322ae26cb4e57c3b",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "129a6b02c758c22350eb4569e85d7da165240246257299b018c13e22433afaa9",
+          "bridgeTreeSha256": "129a6b02c758c22350eb4569e85d7da165240246257299b018c13e22433afaa9",
+          "reason": null
+        },
+        {
+          "frameNumber": 7413,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 99,
+          "inputSha256": "4fe43603f218d6efd8674f663135a38a79c8c41f2a9307208837615142aa4786",
+          "engineRawMetadata": [
+            54,
+            99,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "d7cb16dc5d98aad5dff764dc8df012d357a32761c723b84d3c33d0801b9a121e",
+          "bridgeTreeSha256": "d7cb16dc5d98aad5dff764dc8df012d357a32761c723b84d3c33d0801b9a121e",
+          "reason": null
+        },
+        {
+          "frameNumber": 7417,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "8026bef9e877cd6cc3bb3383c944c9edee07ba37ab60076c90e2c52767c73a92",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "370e6707156a67ee97966f3a38e009eda008c10e1f79788156baf3768b8a15b7",
+          "bridgeTreeSha256": "370e6707156a67ee97966f3a38e009eda008c10e1f79788156baf3768b8a15b7",
+          "reason": null
+        },
+        {
+          "frameNumber": 7464,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 151,
+          "inputSha256": "0ee1d3910f7f4166d3b7c5b31907f9d1035afa1fe98e07647727221fced2454a",
+          "engineRawMetadata": [
+            54,
+            151,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "45e996c90b1c54b069398348afa4a7a61fa8e003f493a955a7e0aef4900767f2",
+          "bridgeTreeSha256": "45e996c90b1c54b069398348afa4a7a61fa8e003f493a955a7e0aef4900767f2",
+          "reason": null
+        },
+        {
+          "frameNumber": 7466,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 48,
+          "inputSha256": "6aa312016d5d6a5d636282d16f1b8a78f648e94fff8b497c3b8cd221d527946e",
+          "engineRawMetadata": [
+            54,
+            48,
+            0,
+            1,
+            0
+          ],
+          "engineDataSourceIndex": 0,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "3e37d94580e103ae9cd504d78b7f0497e4ee666ed51ab3cc1c5a0c5e1d109a85",
+          "bridgeTreeSha256": "3e37d94580e103ae9cd504d78b7f0497e4ee666ed51ab3cc1c5a0c5e1d109a85",
+          "reason": null
+        }
+      ],
+      "elapsedSeconds": 10.88718799999333,
+      "stderrDiagnostics": [
+        {
+          "commandIndex": 3,
+          "bytes": 263,
+          "sha256": "9726079607a1684905d4b4861d731e768584c0f857c28b3acb12de2fa991852b"
+        },
+        {
+          "commandIndex": 4,
+          "bytes": 262,
+          "sha256": "1336e402513fe3f854a73692e2cdc275d978cfacbd00341e4bec55d061de5c6c"
+        },
+        {
+          "commandIndex": 5,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 7,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 9,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 11,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 13,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 15,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 17,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 19,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 21,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 23,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 25,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 27,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 29,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 31,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 33,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 35,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 37,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 39,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 41,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 43,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 45,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 47,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        },
+        {
+          "commandIndex": 49,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        }
+      ],
+      "allCompletedOwnedProcessesReaped": true
+    },
+    {
+      "protocol": "ehci",
+      "localRawArtifact": "build_root/md01b-real-ehci/result.json",
+      "rawArtifactIdentity": {
+        "bytes": 9436,
+        "sha256": "f0c5bc471de2bc076bdb8dba4e658cf14f511df1c5e983510476098167fd5fb2"
+      },
+      "harnessSha256": "175e3ad1ab72ec90cba9d8fa473aa13cfbc1c03c2eeead7c1c95f0989b9e402b",
+      "captureIdentity": {
+        "bytes": 18130464,
+        "sha256": "9618b6f3e433085015687ba6cbe484470f8a1fe0908b7ec5e2c266f3e716bc9f"
+      },
+      "selectedPackets": 1,
+      "comparedProtocols": 1,
+      "allSelectedTreesEqual": true,
+      "records": [
+        {
+          "frameNumber": 19883,
+          "protocolOccurrenceZeroBased": 0,
+          "inputBytes": 3281,
+          "inputSha256": "f1afd14f2978b10467929057b8b94e82ce5bc2d78ff13d6af5f82d8fedf902dd",
+          "engineRawMetadata": [
+            0,
+            3281,
+            0,
+            1,
+            1
+          ],
+          "engineDataSourceIndex": 1,
+          "originalCaptureByteOffset": null,
+          "fieldTreeEqual": true,
+          "referenceTreeSha256": "757df2646ec1b513efde35c3eb556e1753a4823ac5ecb1a693ed65006af34ae4",
+          "bridgeTreeSha256": "757df2646ec1b513efde35c3eb556e1753a4823ac5ecb1a693ed65006af34ae4",
+          "reason": null
+        }
+      ],
+      "elapsedSeconds": 10.289137800020399,
+      "stderrDiagnostics": [
+        {
+          "commandIndex": 3,
+          "bytes": 6247,
+          "sha256": "7c3e3bcb15f1dabc99a2cfd709c4ed7c911ba50f3dd4f50434d41ff0f3a1f9e9"
+        },
+        {
+          "commandIndex": 4,
+          "bytes": 6247,
+          "sha256": "247ade72198d3a406caed5e97fbea1ff32ff865451fc8453c65790f96a22611d"
+        },
+        {
+          "commandIndex": 5,
+          "bytes": 29,
+          "sha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+        }
+      ],
+      "allCompletedOwnedProcessesReaped": true
+    }
+  ],
+  "verification": {
+    "python314": {
+      "passed": 104,
+      "log": {
+        "bytes": 16417,
+        "sha256": "f6d177cc618d48e743630b9f6427ed7e930876bc26e25f18589ca77a840354bc"
+      }
+    },
+    "python39": {
+      "passed": 104,
+      "log": {
+        "bytes": 11337,
+        "sha256": "2b9f71bd7dd2ef08c2f47c949327086a015b7aca9c024f1c81ae2fb6176d54ff"
+      }
+    },
+    "focusedNativeAndPortable": {
+      "passed": 20,
+      "log": {
+        "bytes": 3970,
+        "sha256": "2c81bfb371fae2e6a2a71a50687c9d03433acee8523f771a7392ecf1d54af5a0"
+      }
+    },
+    "ctest": {
+      "passed": 7,
+      "total": 7,
+      "elapsedSeconds": 225.7406447000103,
+      "scope": "All seven original registered tests/arguments/properties preserved, only deployed runtime prefix relocated; copied bytes verified; no fresh C++ build; original portable files untouched",
+      "sourceRegistrationSha256": "57e4b9cf691e6c2f2d8a1ef7339d848794ea3d089e1889172e7105c25e96a3af",
+      "log": {
+        "bytes": 1842154,
+        "sha256": "68b1a2a62f3eb3dc7ca171e9ccc0fb8e66bd3bbccb00ee92b670637035a04d53"
+      },
+      "localRegistrationReport": {
+        "bytes": 2598,
+        "sha256": "2260c1cc85418c98cd5097b54e4f6e001c665b848cad09f2b868f1c36a6c418f"
+      },
+      "testNames": [
+        "cilogg_smoke",
+        "workbench_benchmark_tests",
+        "message_decoder_pdu_tests",
+        "cilogg_tests",
+        "cilogg_itests",
+        "cilogg_ui_itests",
+        "workbench_parity_self_tests"
+      ]
+    },
+    "freshCppBuild": false,
+    "standardRuntimeCtestAttempts": [
+      {
+        "passed": 6,
+        "total": 7,
+        "failedTest": "cilogg_tests",
+        "failures": [
+          "streamsession_actions_test.cpp:631 import/save"
+        ],
+        "log": {
+          "bytes": 1892938,
+          "sha256": "37573cba09d5a9ed2b692284c35161627cd56b8c8cc766b1320128729151a7ff"
+        },
+        "settingsRestored": true
+      },
+      {
+        "passed": 6,
+        "total": 7,
+        "failedTest": "cilogg_tests",
+        "failures": [
+          "previewmatchstage_test.cpp:566 import/save",
+          "streamsession_actions_test.cpp:349 import/save"
+        ],
+        "log": {
+          "bytes": 1894533,
+          "sha256": "13643d8b936a8978a5d05b7fe79d3e148609725e85f2d3dd4cf6eaaa3fd0d476"
+        },
+        "settingsRestored": true
+      }
+    ],
+    "isolatedUnit": {
+      "passedCases": 207,
+      "assertions": 11917,
+      "binarySha256": "57f1eae132d18dc7b6205db888ad73181b2342a02115f8e678924e197037e81b",
+      "log": {
+        "bytes": 91560,
+        "sha256": "63fcda09d9f877362f9313a6b7167db217a5a9ba8eb4f9d8faa89f24c6ff03cb"
+      },
+      "freshPortableProfile": true
+    },
+    "negativeNativeCases": [
+      "carrier-dependent source port produces two explicit tree mismatches",
+      "expired overall budget replaces previous successful result"
+    ],
+    "review": {
+      "general": "completed",
+      "python": "completed",
+      "cppBuildIntegration": "completed; no C++ source changes",
+      "importantFindingsAddressed": [
+        "unsafe report/input alias rejected without modifying explicit input",
+        "PDML frame number bounded before integer conversion"
+      ],
+      "regressionRedLog": {
+        "bytes": 8749,
+        "sha256": "50463af542d1022900e58e0598cbf9e682e07c09cac1873d49a9ad72b80753ab"
+      },
+      "regressionGreenLog": {
+        "bytes": 3970,
+        "sha256": "2c81bfb371fae2e6a2a71a50687c9d03433acee8523f771a7392ecf1d54af5a0"
+      },
+      "deferredMinors": []
+    },
+    "hostedCi": "pending for this branch"
+  },
+  "limitations": [
+    "Same-engine equality is not independent Lua semantic validation or full-capture coverage",
+    "Full EHCI capture reads emit stderr diagnostics; selected equality is not warning-free full-capture acceptance",
+    "Bare partial and direct embedded-NUL EHCI capabilities remain failed from MD01a",
+    "Private counter-9/D50D runtime oracle remains unqualified",
+    "External Lua licensing/distribution remains unverified",
+    "Original-log source sidecars, generated-field flags, Unix native isolation and product GUI/CLI/MCP integration remain pending"
+  ],
+  "privacy": "No private capture/Lua/field bodies or command paths are published in this observation; local summary/raw logs remain ignored"
+}

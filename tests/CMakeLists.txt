@@ -20,7 +20,7 @@ if(Python3_Interpreter_FOUND)
 
     add_test(NAME message_decoder_pdu_tests
         COMMAND "${Python3_EXECUTABLE}" -m unittest discover
-                -s "${CMAKE_CURRENT_SOURCE_DIR}/plugins" -p test_message_decoder_pdu.py -v)
+        -s "${CMAKE_CURRENT_SOURCE_DIR}/plugins" -p "test_message_decoder_*.py" -v)
     set_tests_properties(message_decoder_pdu_tests PROPERTIES TIMEOUT 300 LABELS "decoder;python")
 
 else()
