@@ -415,7 +415,7 @@ jobs:
             cmake_opts: -DKLOGG_USE_HYPERSCAN=ON -DKLOGG_USE_VECTORSCAN=OFF -DKLOGG_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
           - os: macos
-            os_version: 14    # Target macOS 14 (Sonoma)
+            os_version: 15    # Runner image; deployment target remains in cmake_opts.
             arch: arm64       # Apple Silicon (ARM64) architecture
             backend: vectorscan
             qt_version: 6.10.1

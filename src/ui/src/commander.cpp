@@ -179,6 +179,7 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "set_auto_responses_enabled" );
     case CommanderAction::SelectActionsTab:
         return QStringLiteral( "select_actions_tab" );
+    case CommanderAction::PreviewMessage: return QStringLiteral( "preview_message" );
     case CommanderAction::RegexEvaluate: return QStringLiteral( "regex_evaluate" );
     case CommanderAction::ValueCounts: return QStringLiteral( "value_counts" );
     case CommanderAction::GetValueCount: return QStringLiteral( "get_value_count" );
@@ -205,6 +206,7 @@ QString commanderActionToString( CommanderAction action )
 std::optional<CommanderAction> commanderActionFromString( const QString& action )
 {
     const auto lab = action.trimmed().toLower();
+    if ( lab == "preview_message" ) return CommanderAction::PreviewMessage;
     if ( lab == "value_counts" ) return CommanderAction::ValueCounts;
     if ( lab == "get_value_count" ) return CommanderAction::GetValueCount;
     if ( lab == "export_value_counts" ) return CommanderAction::ExportValueCounts;
@@ -465,7 +467,7 @@ bool isCommanderOpenAction( CommanderAction action )
 
 bool isCommanderAnalysisAction( CommanderAction action )
 {
-    return action == CommanderAction::ValueCounts || action == CommanderAction::GetValueCount
+    return action == CommanderAction::PreviewMessage || action == CommanderAction::ValueCounts || action == CommanderAction::GetValueCount
         || action == CommanderAction::ExportValueCounts || action == CommanderAction::ApplyValueCount
         || action == CommanderAction::OpenValueCount || action == CommanderAction::ShowValueCounts
         || action == CommanderAction::GetValueCounts || action == CommanderAction::SetValueCounts

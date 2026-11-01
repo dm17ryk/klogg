@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-01",
+  "platform": "Windows x64",
+  "qtVersion": "6.10.1",
+  "backend": "json_preview",
+  "sourceBase": "a8d4e4f596003603fb300ce98c7284601524e8af",
+  "stagedSourceAndTestsDiffSha256": "449477ea7db8ca063e5dabee23d1f69bf8c75ea0d26fd55864d49b94493b5d59",
+  "build": {
+    "target": "ci_build",
+    "configuration": "RelWithDebInfo",
+    "parallelism": 1,
+    "exitCode": 0,
+    "earlierFailuresRetained": [
+      "Catch2 assertion syntax corrected",
+      "Parallel post-build SDK copy failed; serial rebuild passed"
+    ]
+  },
+  "binaries": {
+    "cilogg.exe": "72a92497d6e91dc2d9182229135caf5d4af1b8667a041320908add55a3e56862",
+    "cilogg_tests.exe": "fd0244d835e52d5b2a5355aa920bc0deb0bcfa69d123b7104c41f981114ca356",
+    "cilogg_itests.exe": "e853c37bd2ce70408fc1e1716c3d4649689f9692631b2d24a18349aee89354ea"
+  },
+  "focused": {
+    "unitCases": 15,
+    "unitAssertions": 87,
+    "uiCases": 3,
+    "uiAssertions": 54,
+    "privateCaptureCases": 1,
+    "privateCaptureAssertions": 7,
+    "allPassed": true
+  },
+  "fullCtest": {
+    "registeredTests": 7,
+    "passed": 7,
+    "failed": 0,
+    "elapsedSeconds": 193.77963280002587,
+    "runtime": "Fresh private deployed copy; all copied executable/library bytes verified; original registrations/arguments/properties retained with runtime prefix relocated"
+  },
+  "cliAndNativeMcp": {
+    "passed": true,
+    "checks": [
+      "discovery",
+      "Unicode fields",
+      "escaped tooltip HTML",
+      "inline and open-tab reassembly",
+      "incomplete status",
+      "strict JSON parity",
+      "invalid timeout",
+      "existing capture/paging/cancellation/release regressions"
+    ]
+  },
+  "realLogQualification": {
+    "sourcePrefixSha256": "a52e03e6d440e2a56acfca5e9ff3b4a04697ab84ea1a3c7714fa36b9d429ceb7",
+    "assembledSha256": "4bd45a3fa73f6af6214bfeb1cc7b710ac1c096820f975b0d5724a825d24c84a5",
+    "bodyBytes": 3242,
+    "payloadPhysicalRows": 29,
+    "firstPhysicalLineOneBased": "513",
+    "lastPhysicalLineOneBased": "747",
+    "excludedPrefixRows": 2,
+    "independentTsharkLuaChecksumValid": true,
+    "productionChecksumVerified": false,
+    "sourceBodiesPublished": false
+  },
+  "review": {
+    "general": "No remaining blockers",
+    "cpp": "No remaining blockers",
+    "python": "No remaining blockers",
+    "targetedClangTidy": "No enabled-check findings",
+    "cppcheck": "Unavailable: installation lacks std.cfg"
+  },
+  "indexes": {
+    "codeReviewGraph": "Refreshed",
+    "gitNexus": "Staged scan ran; graph stale; refresh timed out after 90 seconds; FTS unavailable",
+    "codeGraph": "Worktree unindexed; not initialized"
+  },
+  "openGates": [
+    "Hosted Windows/macOS/Linux CI including Qt 6.12 and Qt-only builds",
+    "Broader performance/packaging/release acceptance",
+    "MD01 and new decoder product integration remain separate roadmap work"
+  ]
+}

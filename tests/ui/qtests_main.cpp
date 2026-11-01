@@ -31,6 +31,7 @@
 
 #include <logger.h>
 #include "captureevaluator.h"
+#include "previewservice.h"
 
 const bool PersistentInfo::ForcePortable = true;
 
@@ -72,6 +73,8 @@ int main( int argc, char* argv[] )
 {
     if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-analysis-worker" )
         return runAnalysisWorker( argc, argv );
+    if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-preview-worker" )
+        return PreviewService::workerMain( argc, argv );
     QApplication a( argc, argv );
 
     logging::enableLogging();

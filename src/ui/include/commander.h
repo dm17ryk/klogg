@@ -73,6 +73,7 @@ enum class CommanderAction {
     CancelPluginJob,
     SetActionsEnabled,
     SelectActionsTab,
+    PreviewMessage,
     RegexEvaluate,
     GetAnalysisJob,
     GetAnalysisResults,

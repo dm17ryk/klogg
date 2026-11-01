@@ -753,6 +753,8 @@ void MainWindow::loadInitialFile( QString fileName, bool followFile )
 CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& request )
 {
     switch ( request.action ) {
+    case CommanderAction::PreviewMessage:
+        return commanderPreview( request );
     case CommanderAction::RegexEvaluate:
     case CommanderAction::ValueCounts:
     case CommanderAction::GetValueCount:

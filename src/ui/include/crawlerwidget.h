@@ -400,6 +400,8 @@ private:
     void updateColorLabels( const ColorLabelsManager::QuickHighlightersCollection& labels );
 
     void connectAllFilteredViewSlots( FilteredView* view );
+    void handleLinePreviewRequested( quint64 physicalLine, const QPoint& globalPosition, quint64 serial );
+    QString previewSelectionText( AbstractLogView* view ) const;
 
     void saveSplitterSizes() const;
 

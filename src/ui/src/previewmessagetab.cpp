@@ -1,4 +1,6 @@
 #include "previewmessagetab.h"
+#include "previewtree.h"
+#include <memory>
 
 #include <QComboBox>
 #include <QFontMetrics>
@@ -558,6 +560,7 @@ struct ParseContext {
     int baseOffset = 0;
     int matchStart = 0;
     bool allowUnqualified = false;
+    PreviewTreeBudget* budget = nullptr;
 };
 
 void parseFieldIntoItem( QTreeWidgetItem* item,
@@ -834,6 +837,7 @@ bool applyMatchStage( QTreeWidgetItem* item,
         bufferBaseOffset,
         matchOffset >= 0 ? matchOffset : 0,
         true };
+    childContext.budget = context.budget;
 
     for ( const auto& child : field.fields ) {
         addFieldItems( item, child, childContext, fullName );
@@ -859,6 +863,8 @@ void addBitfieldItems( QTreeWidgetItem* parent,
         const quint64 mask = width >= 64 ? ~0ULL : ( ( 1ULL << width ) - 1ULL );
         const quint64 bitValue = ( remaining >= 0 ) ? ( ( value >> remaining ) & mask ) : 0;
 
+        if ( context.budget && !context.budget->take() )
+            return;
         auto* item = new QTreeWidgetItem( parent );
         const auto fullName = prefix.isEmpty() ? bitField.name : prefix + "." + bitField.name;
         item->setText( ColumnField, bitField.name );
@@ -975,6 +981,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 captureOffset >= 0 ? captureOffset : context.baseOffset,
                 context.matchStart,
                 context.allowUnqualified };
+            childContext.budget = context.budget;
             for ( const auto& child : field.fields ) {
                 addFieldItems( item, child, childContext, fullName );
             }
@@ -1023,6 +1030,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                     captureOffset >= 0 ? captureOffset : context.baseOffset,
                     context.matchStart,
                     context.allowUnqualified };
+                childContext.budget = context.budget;
                 for ( const auto& child : field.fields ) {
                     addFieldItems( item, child, childContext, fullName );
                 }
@@ -1225,6 +1233,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
             context.baseOffset + sliceOffset,
             context.matchStart,
             context.allowUnqualified };
+        childContext.budget = context.budget;
         for ( const auto& child : field.fields ) {
             addFieldItems( item, child, childContext, fullName );
         }
@@ -1273,6 +1282,7 @@ void parseFieldIntoItem( QTreeWidgetItem* item,
                 context.baseOffset + sliceOffset,
                 context.matchStart,
                 context.allowUnqualified };
+            childContext.budget = context.budget;
             for ( const auto& child : field.fields ) {
                 addFieldItems( item, child, childContext, fullName );
             }
@@ -1342,10 +1352,127 @@ void addFieldItems( QTreeWidgetItem* parent,
                     ParseContext& context,
                     const QString& prefix )
 {
+    if ( context.budget && !context.budget->take() )
+        return;
     auto* item = new QTreeWidgetItem( parent );
     parseFieldIntoItem( item, field, context, prefix, field.name );
 }
 } // namespace
+
+QTreeWidgetItem* createLegacyPreviewTree( const QString& rawLine, const PreviewDefinition& preview,
+                                          const QMap<QString, PreviewFieldSpec>& blocks,
+                                          QString* error, PreviewTreeBudget* budget )
+{
+    const auto* definition = &preview;
+    const auto previewName = preview.name;
+    const auto match = definition->compiled.match( rawLine );
+    if ( !match.hasMatch() ) {
+        *error = PreviewMessageTab::tr( "No match for selected preview." );
+        return nullptr;
+    }
+
+    QString bufferText;
+    if ( definition->bufferCapture.isSet ) {
+        bufferText = captureValue( definition->bufferCapture, match );
+    }
+    else {
+        bufferText = rawLine;
+    }
+
+    const auto bufferSource = definition->bufferCapture.isSet
+                                  ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
+                                  : PreviewMessageTab::tr( "raw line" );
+    int bufferBaseOffset = 0;
+    const int matchStart = clampToInt( match.capturedStart( 0 ) );
+    if ( definition->bufferCapture.isSet ) {
+        const auto captureStartOffset = captureStart( definition->bufferCapture, match );
+        if ( captureStartOffset >= 0 && matchStart >= 0 ) {
+            bufferBaseOffset = captureStartOffset - matchStart;
+            if ( bufferBaseOffset < 0 ) {
+                bufferBaseOffset = 0;
+            }
+        }
+    }
+    const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
+    if ( !decodedBuffer.ok ) {
+        DecodeErrorInfo errorInfo{
+            previewName, QObject::tr( "buffer" ),        bufferSource,       0,
+            -1,          truncateText( bufferText, 64 ), decodedBuffer.error
+        };
+        logDecodeError( errorInfo );
+        *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( decodedBuffer.error );
+        return nullptr;
+    }
+
+    QMap<QString, qint64> values;
+    QMap<QString, QString> rawValues;
+    QStringList blockStack;
+    ParseContext context{ decodedBuffer.bytes,
+                          0,
+                          &values,
+                          &rawValues,
+                          &match,
+                          &blocks,
+                          &blockStack,
+                          previewName,
+                          bufferSource,
+                          bufferBaseOffset,
+                          matchStart >= 0 ? matchStart : 0,
+                          false };
+
+    context.budget = budget;
+
+    if ( definition->offset.isSet ) {
+        const auto offsetExpr = resolveExprValue( definition->offset, values );
+        if ( !offsetExpr.ok ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       0,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       offsetExpr.error.isEmpty()
+                                           ? PreviewMessageTab::tr( "Invalid preview offset." )
+                                           : offsetExpr.error };
+            logDecodeError( errorInfo );
+            *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( errorInfo.reason );
+            return nullptr;
+        }
+        if ( offsetExpr.value < 0 ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       offsetExpr.value,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       PreviewMessageTab::tr( "Preview offset is negative." ) };
+            logDecodeError( errorInfo );
+            *error = PreviewMessageTab::tr( "Decode error: preview offset is negative." );
+            return nullptr;
+        }
+        context.cursor += offsetExpr.value;
+        if ( context.cursor > decodedBuffer.bytes.size() ) {
+            DecodeErrorInfo errorInfo{ previewName,
+                                       QObject::tr( "buffer" ),
+                                       bufferSource,
+                                       offsetExpr.value,
+                                       -1,
+                                       truncateText( bufferText, 64 ),
+                                       PreviewMessageTab::tr(
+                                           "Preview offset exceeds buffer size." ) };
+            logDecodeError( errorInfo );
+            *error = PreviewMessageTab::tr( "Decode error: preview offset exceeds buffer size." );
+            return nullptr;
+        }
+    }
+
+    auto root = std::make_unique<QTreeWidgetItem>();
+    for ( const auto& field : definition->fields ) {
+        addFieldItems( root.get(), field, context, QString() );
+    }
+
+    return root.release();
+}
 
 PreviewMessageTab::PreviewMessageTab( const QString& rawLine,
                                       const QString& initialPreviewNameOrAuto,
@@ -1536,116 +1663,16 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
         return;
     }
 
-    const auto match = definition->compiled.match( rawLine_ );
-    if ( !match.hasMatch() ) {
-        showMessage( tr( "No match for selected preview." ) );
+    QString error;
+    std::unique_ptr<QTreeWidgetItem> decoded(
+        createLegacyPreviewTree( rawLine_, *definition, manager.blocks(), &error ) );
+    if ( !decoded ) {
+        showMessage( error );
         updateTitle( previewName );
         return;
     }
-
-    QString bufferText;
-    if ( definition->bufferCapture.isSet ) {
-        bufferText = captureValue( definition->bufferCapture, match );
-    }
-    else {
-        bufferText = rawLine_;
-    }
-
-    const auto bufferSource = definition->bufferCapture.isSet
-                                  ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
-                                  : tr( "raw line" );
-    int bufferBaseOffset = 0;
-    const int matchStart = clampToInt( match.capturedStart( 0 ) );
-    if ( definition->bufferCapture.isSet ) {
-        const auto captureStartOffset = captureStart( definition->bufferCapture, match );
-        if ( captureStartOffset >= 0 && matchStart >= 0 ) {
-            bufferBaseOffset = captureStartOffset - matchStart;
-            if ( bufferBaseOffset < 0 ) {
-                bufferBaseOffset = 0;
-            }
-        }
-    }
-    const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
-    if ( !decodedBuffer.ok ) {
-        DecodeErrorInfo errorInfo{ previewName,
-                                   QObject::tr( "buffer" ),
-                                   bufferSource,
-                                   0,
-                                   -1,
-                                   truncateText( bufferText, 64 ),
-                                   decodedBuffer.error };
-        logDecodeError( errorInfo );
-        showMessage( tr( "Decode error: %1" ).arg( decodedBuffer.error ) );
-        updateTitle( previewName );
-        return;
-    }
-
-    QMap<QString, qint64> values;
-    QMap<QString, QString> rawValues;
-    QStringList blockStack;
-    ParseContext context{ decodedBuffer.bytes,
-                          0,
-                          &values,
-                          &rawValues,
-                          &match,
-                          &manager.blocks(),
-                          &blockStack,
-                          previewName,
-                          bufferSource,
-                          bufferBaseOffset,
-                          matchStart >= 0 ? matchStart : 0,
-                          false };
-
-    if ( definition->offset.isSet ) {
-        const auto offsetExpr = resolveExprValue( definition->offset, values );
-        if ( !offsetExpr.ok ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       0,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       offsetExpr.error.isEmpty()
-                                           ? tr( "Invalid preview offset." )
-                                           : offsetExpr.error };
-            logDecodeError( errorInfo );
-            showMessage( tr( "Decode error: %1" ).arg( errorInfo.reason ) );
-            updateTitle( previewName );
-            return;
-        }
-        if ( offsetExpr.value < 0 ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       tr( "Preview offset is negative." ) };
-            logDecodeError( errorInfo );
-            showMessage( tr( "Decode error: preview offset is negative." ) );
-            updateTitle( previewName );
-            return;
-        }
-        context.cursor += offsetExpr.value;
-        if ( context.cursor > decodedBuffer.bytes.size() ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       tr( "Preview offset exceeds buffer size." ) };
-            logDecodeError( errorInfo );
-            showMessage( tr( "Decode error: preview offset exceeds buffer size." ) );
-            updateTitle( previewName );
-            return;
-        }
-    }
-
-    auto* root = previewTree_->invisibleRootItem();
-    for ( const auto& field : definition->fields ) {
-        addFieldItems( root, field, context, QString() );
-    }
+    while ( decoded->childCount() > 0 )
+        previewTree_->addTopLevelItem( decoded->takeChild( 0 ) );
 
     previewTree_->expandAll();
     for ( int column = 0; column < previewTree_->columnCount(); ++column ) {

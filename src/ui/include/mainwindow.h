@@ -338,6 +338,7 @@ class MainWindow : public QMainWindow {
     CrawlerWidget* crawlerWidgetByIndex( int tabIndex ) const;
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
     CommanderResult commanderAnalysis( const CommanderRequest& request );
+    CommanderResult commanderPreview( const CommanderRequest& request );
     CommanderResult startNewStreamFileForCrawler( CrawlerWidget* crawler );
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
     StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
