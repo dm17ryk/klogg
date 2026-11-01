@@ -44,7 +44,7 @@ jobs:
         env:
           CILOGG_TSHARK: C:\Program Files\Wireshark\tshark.exe
           CILOGG_TEXT2PCAP: C:\Program Files\Wireshark\text2pcap.exe
-        run: python -m unittest discover -s tests/plugins -p test_message_decoder_pdu.py -v
+        run: python -m unittest discover -s tests/plugins -p 'test_message_decoder_*.py' -v
       - name: Save actual synthetic-engine proof
         run: |
           python scripts/plugins/message_decoder_pdu.py `

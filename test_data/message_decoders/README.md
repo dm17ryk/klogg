@@ -25,6 +25,13 @@ The original supplied 48-byte/counter-9/D50D message is private and different.
 These replacements have their own independently recalculated checksums, tested
 against the actual engine; do not substitute their checksums for its oracle.
 
+`reference_probe.lua` is another newly authored GPL-3.0-or-later fixture. Tests
+generate two invented UDP packets: its two-byte PDUs expose repeated protocol
+roots, exact Unicode and transformed values. A second UDP-port dissector
+deliberately depends on carrier context so the comparison must reject unequal
+trees. No generated PCAP or private packet body is committed. See the
+[reference comparison guide](../../docs/workbench/md01b-reference-captures.md).
+
 The current pinned EHCI script emits no protocol tree for bare partial and
 direct embedded-NUL inputs. Their manifests demand the missing capability and
 therefore remain failed; the unit suite separately observes that known failure.
