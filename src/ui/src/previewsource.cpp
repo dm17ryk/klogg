@@ -47,8 +47,8 @@ QStringList readRows( const std::shared_ptr<LogData>& source, const SourceSnapsh
         }
         totalBytes += static_cast<int>( block.bytes.size() );
         pending += decoder->toUnicode( block.bytes );
-        int newline = -1;
-        while ( ( newline = pending.indexOf( '\n' ) ) >= 0 ) {
+        for ( auto newline = pending.indexOf( '\n' ); newline >= 0;
+              newline = pending.indexOf( '\n' ) ) {
             rows << pending.left( newline );
             pending.remove( 0, newline + 1 );
         }

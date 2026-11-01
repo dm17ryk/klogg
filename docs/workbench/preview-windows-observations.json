@@ -78,5 +78,80 @@
     "Hosted Windows/macOS/Linux CI including Qt 6.12 and Qt-only builds",
     "Broader performance/packaging/release acceptance",
     "MD01 and new decoder product integration remain separate roadmap work"
-  ]
+  ],
+  "initialFeatureCommit": "0febea04808adb4c549960521302f1e63293fe26",
+  "ciRepair": {
+    "baselineCommit": "0febea04808adb4c549960521302f1e63293fe26",
+    "sourceAndTestsDiffSha256": "c41728f278ec1b3bf290627fc53903553adf14b1dfe633f44e3912827c3de0f3",
+    "changes": [
+      "Preserve Qt index/size types and use bounded frame index cast",
+      "Brace the conditional LOG_DEBUG macro",
+      "Keep fixture byte counts wide on Qt6",
+      "Write native host/MCP diagnostics outside nonrecursive source watch directory"
+    ],
+    "nativeBuild": {
+      "target": "ci_build",
+      "configuration": "RelWithDebInfo",
+      "qtVersion": "6.10.1",
+      "exitCode": 0
+    },
+    "strictClang": {
+      "files": 13,
+      "passed": true,
+      "warningsAsErrors": [
+        "conversion",
+        "sign-conversion",
+        "shorten-64-to-32",
+        "dangling-else"
+      ]
+    },
+    "fullCtest": {
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "elapsedSeconds": 213.6220843999763,
+      "runtime": "Fresh private byte-verified copy; registered arguments/properties retained except runtime prefix"
+    },
+    "paritySelfTests": {
+      "tests": 111,
+      "passed": true,
+      "expectedSkips": 1,
+      "bothBranches": true
+    },
+    "nativeG03": {
+      "passed": true,
+      "backend": "qt",
+      "binarySha256": "28659cdb1552904582bfd5883d0cd53e37253e7ee7cf6bfaa1b59120e593bf9d"
+    },
+    "nativePreviewParity": {
+      "passed": true
+    },
+    "rhel10Failure": {
+      "run": 41321245900,
+      "job": 124891746586,
+      "hostLogBytes": 5310577353,
+      "hostLogLines": 34416371,
+      "selfLogEvents": 11081322,
+      "timeoutsIncreased": false,
+      "sourceBodiesPublished": false,
+      "evidence": "Lossless gzip retained locally; original artifact remains on GitHub"
+    },
+    "runnerFailure": {
+      "job": 124891746229,
+      "reason": "Hosted runner not acquired; zero executed steps",
+      "retryRequested": true
+    },
+    "review": {
+      "cpp": "No blockers",
+      "python": "No blockers",
+      "general": "No blockers",
+      "clangTidy": "Three changed files passed"
+    },
+    "indexes": {
+      "codeReviewGraph": "Refreshed by reviewer, 7630 nodes/74645 edges",
+      "gitNexus": "Refresh90s timeout; stale/unresolved; not authoritative scope verification",
+      "codeGraph": "Server reports worktree unindexed"
+    },
+    "hostedCI": "Fresh checks pending after push; local results are not hosted acceptance"
+  }
 }

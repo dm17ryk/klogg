@@ -188,7 +188,7 @@ PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetInde
                     }
                     frames.push_back( frame );
                     if ( expected <= MaxBodyBytes )
-                        active[ operation.flow ] = frames.size() - 1;
+                        active[ operation.flow ] = static_cast<int>( frames.size() ) - 1;
                     header = ( payload.mid( 0, body - 1 ).join( "\r\n" ) + "\r\n\r\n" ).toUtf8();
                     payload = payload.mid( body );
                     payloadRows = payloadRows.mid( body );
@@ -245,9 +245,10 @@ PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetInde
                 }
                 else {
                     frame.result.excludedPrefixRows += first;
-                    if ( first > 0 )
+                    if ( first > 0 ) {
                         LOG_DEBUG << "Preview assembly excluded prefix flow=" << operation.flow
                                   << " rows=" << first << " declared_bytes=" << declared;
+                    }
                     frame.body += candidates.constBegin().key();
                     frame.result.receivedBytes = frame.body.size();
                     frame.result.text = QString::fromUtf8( frame.body );

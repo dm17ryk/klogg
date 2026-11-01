@@ -11,7 +11,7 @@ QString wrapped( const QString& text )
 {
     return QStringLiteral( "01/11/2026 09:51:00.175 [RX] - " ) + text;
 }
-void chunk( QStringList& rows, const QStringList& payload, int bytes, int port = 5975 )
+void chunk( QStringList& rows, const QStringList& payload, qint64 bytes, int port = 5975 )
 {
     for ( const auto& line : payload )
         rows << wrapped( line );
@@ -25,14 +25,14 @@ void chunk( QStringList& rows, const QStringList& payload, int bytes, int port =
         QString( "#12 102 INFO:NET TCP message was sent successfully Len(%1)" ).arg( bytes ) );
     rows << wrapped( "#12 103 DETAILS:NET return value:0" );
 }
-QStringList headers( int length )
+QStringList headers( qint64 length )
 {
     return { "PUT sample.dat HTTP/1.1", "Host: CARE-PANELINFO",
              QString( "Content-Length: %1" ).arg( length ),
              "Content-Type: application/octet-stream", "" };
 }
 const QString Message = QStringLiteral( "EHCI001INF00000004TESTCRC0000" );
-QStringList firstChunk( int advertised = Message.size(), int bytesDelta = 0 )
+QStringList firstChunk( qint64 advertised = Message.size(), int bytesDelta = 0 )
 {
     auto payload = headers( advertised );
     const auto headerBytes = payload.join( "\r\n" ).toUtf8().size() + 2;
@@ -98,7 +98,8 @@ TEST_CASE( "NET partial and inconsistent dumps never become complete", "[preview
     }
 }
 
-TEST_CASE( "An HTTP request starts a new payload after unrelated raw log text", "[previewassembly]" )
+TEST_CASE( "An HTTP request starts a new payload after unrelated raw log text",
+           "[previewassembly]" )
 {
     auto rows = firstChunk();
     rows.prepend( wrapped( "ordinary earlier row" ) );
@@ -108,7 +109,8 @@ TEST_CASE( "An HTTP request starts a new payload after unrelated raw log text", 
     CHECK( result.text == Message );
 }
 
-TEST_CASE( "Byte counts identify a unique continuation after an unrelated raw reply", "[previewassembly]" )
+TEST_CASE( "Byte counts identify a unique continuation after an unrelated raw reply",
+           "[previewassembly]" )
 {
     auto rows = firstChunk();
     chunk( rows, { "OK", Message.mid( 15 ) }, Message.size() - 15 );
@@ -120,7 +122,8 @@ TEST_CASE( "Byte counts identify a unique continuation after an unrelated raw re
     CHECK( result.physicalLines.back() == static_cast<quint64>( rows.size() - 6 ) );
 }
 
-TEST_CASE( "Equal-byte continuation candidates with different physical rows remain ambiguous", "[previewassembly]" )
+TEST_CASE( "Equal-byte continuation candidates with different physical rows remain ambiguous",
+           "[previewassembly]" )
 {
     auto rows = firstChunk();
     chunk( rows, { "OK", "", Message.mid( 15 ) }, Message.size() - 15 );
@@ -152,7 +155,8 @@ TEST_CASE( "Explicit private log snapshot reassembly qualification", "[.private-
         }
     REQUIRE( target >= 0 );
     const auto first = qMax( 0, target - 128 );
-    const auto result = assemblePreviewMessage( all.mid( first, 640 ), target - first, first );
+    const auto result = assemblePreviewMessage( all.mid( first, 640 ), target - first,
+                                                static_cast<quint64>( first ) );
     QFile output( qEnvironmentVariable( "CILOGG_PREVIEW_FIXTURE_RESULT" ) );
     REQUIRE( output.open( QIODevice::WriteOnly ) );
     auto metadata = result.metadata();
