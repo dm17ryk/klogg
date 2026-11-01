@@ -1,0 +1,80 @@
+{
+  "fixtureKind": "synthetic",
+  "cases": [
+    {
+      "id": "ehcp-complete",
+      "dissector": "ehcp",
+      "hex": "ehcp-complete.hex",
+      "sha256": "104d8fa1988cd384195e58991b625966a528180536357b00391544601c90e240",
+      "expect": {
+        "ehcp.magic": [
+          "EHCP"
+        ],
+        "ehcp.message_counter": [
+          "9"
+        ],
+        "ehcp.account": [
+          "TEST0001"
+        ],
+        "ehcp.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-complete",
+      "dissector": "ehci",
+      "hex": "ehci-complete.hex",
+      "sha256": "bf189fe38d191b2e2d6b8019be0f8d72afd5954f5540e78512158e60ed5883aa",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "CNT",
+          "INF"
+        ],
+        "ehci.map.key": [
+          "A",
+          "A",
+          "E",
+          "N",
+          "B"
+        ],
+        "ehci.map.value": [
+          "one",
+          "two",
+          "",
+          "xy",
+          "after"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-bad-checksum",
+      "dissector": "ehci",
+      "hex": "ehci-bad-checksum.hex",
+      "sha256": "5dbd4e3d204334fcf640403de2a417d10983d677234d11ebc23ed66326674d68",
+      "expect": {
+        "ehci.checksum.valid": [
+          "False"
+        ]
+      }
+    },
+    {
+      "id": "ehci-partial",
+      "dissector": "ehci",
+      "hex": "ehci-partial.hex",
+      "sha256": "3de97e13a54a478dded7da44c9b8d1d3c43e564adb9990a3143200ab83d6b03e",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ]
+      },
+      "knownGap": "Pinned pack returns no bare partial EHCI field tree without a terminal CRC"
+    }
+  ]
+}

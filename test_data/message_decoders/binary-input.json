@@ -1,0 +1,17 @@
+{
+  "fixtureKind": "synthetic",
+  "cases": [
+    {
+      "id": "ehci-nul",
+      "dissector": "ehci",
+      "hex": "ehci-nul.hex",
+      "sha256": "4fc24337ceb2cc1d01cc3fb29b4eeed15ac768e14eb81ee4b12137813a3f7f9e",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ]
+      },
+      "knownGap": "Pinned direct EHCI entry point scans the buffer as a Lua string before INF byte parsing"
+    }
+  ]
+}

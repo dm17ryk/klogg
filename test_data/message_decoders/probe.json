@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "id": "named-probe",
+      "dissector": "cilogg_md01_probe",
+      "hex": "probe.hex",
+      "sha256": "a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222",
+      "expect": {
+        "cilogg_md01_probe.item": [
+          "1",
+          "2"
+        ],
+        "cilogg_md01_probe.generated": [
+          "9007199254740993"
+        ]
+      }
+    }
+  ]
+}
