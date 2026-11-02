@@ -122,6 +122,11 @@ The existing CTest and plugin discovery patterns automatically include the new
 suite. Windows native CI also publishes the synthetic origin report; hosted
 results belong to their exact PR head and remain separate from local evidence.
 
+The [PR84 review follow-up](md01c-sourcery-observations.json) records the six
+Sourcery fixes, regular-file snapshots, exclusive output ownership, parser-guard
+mutation checks and final cross-version/full-CTest outcomes. Its source hashes
+are separate from the original MD01c observation above.
+
 Rollback removes this helper, its tests, workflow artifact and ledger evidence.
 The existing engine proof, JSON Preview, Commander catalog and user settings
 need no migration.

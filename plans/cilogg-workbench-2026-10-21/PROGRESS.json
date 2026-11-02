@@ -1873,7 +1873,8 @@
         "../../docs/workbench/md01b-reference-captures.md",
         "../../docs/workbench/md01b-windows-observations.json",
         "../../docs/workbench/md01c-field-origins.md",
-        "../../docs/workbench/md01c-windows-observations.json"
+        "../../docs/workbench/md01c-windows-observations.json",
+        "../../docs/workbench/md01c-sourcery-observations.json"
       ],
       "limitations": [
         "MD01a independently qualifies real-engine synthetic complete/nested probes; bare partial and direct NUL EHCI remain failed capabilities. Genuine-capture comparison, licensing and full MD01 acceptance remain pending behind W0.",
@@ -1937,7 +1938,8 @@
           "scope": "Independent field-origin proof preparation: exact payload-relative ranges, explicit transformed/unknown origins; no product decoder acceptance",
           "evidence": [
             "../../docs/workbench/md01c-field-origins.md",
-            "../../docs/workbench/md01c-windows-observations.json"
+            "../../docs/workbench/md01c-windows-observations.json",
+            "../../docs/workbench/md01c-sourcery-observations.json"
           ],
           "localVerification": "FreshQt6.10.1 RelWithDebInfo ci_build passed;123/123 plugin cases each onPython3.14 and3.9 with native tools/Lua;7/7 isolated fullCTest;real23EHCP/1EHCI payload-origin qualification1902 mapped fields,698 unmapped;fresh general/Python review Important findings fixed RED/GREEN;ruff clean. Hosted and broader gates pending.",
           "limitations": [
@@ -1945,7 +1947,13 @@
             "Partial/NUL, private nested oracle, licenses/distribution, W0 prerequisites and product integration remain pending"
           ],
           "commit": "cd2e5911ba3bfa710939ccf0e62eba6b10a81e0f",
-          "pullRequest": "https://github.com/dm17ryk/klogg/pull/84"
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/84",
+          "reviewFollowUp": {
+            "pullRequest": "https://github.com/dm17ryk/klogg/pull/84",
+            "codeCommit": "41b1208337a639750313cd264c36b9eb4334c3a8",
+            "findingsAddressed": 6,
+            "verification": "133 cases each onPython3.14/3.9:132pass/1UnixFIFOskip;7/7 isolated fullCTest244.31s;nativeCLI+Windows cross-process lease/recovery;all4 parser guard mutants detected;fresh general/Python review fixed RecursionError RED/GREEN;hosted pending."
+          }
         }
       ]
     },

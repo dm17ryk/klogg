@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-02T10:45:40.670392+00:00",
+  "pullRequest": "https://github.com/dm17ryk/klogg/pull/84",
+  "reviewedHead": "3bf9f078d3fa30c6c60846ef44a0d078ab856e3c",
+  "codeCommit": "41b1208337a639750313cd264c36b9eb4334c3a8",
+  "scope": "Sourcery six-finding follow-up to MD01c",
+  "productDecoderAccepted": false,
+  "md01Acceptance": "pending",
+  "sourceIdentities": {
+    "scripts/plugins/message_decoder_files.py": {
+      "bytes": 6294,
+      "sha256": "2dcf3ade604cf59efb549e322032e7f073e64c622d6376337b9cc1ca2076264c"
+    },
+    "scripts/plugins/message_decoder_origins.py": {
+      "bytes": 14792,
+      "sha256": "5a696e3a529bde9c73f6f92f4d1a7e8ba6efb303900529485e092bd0baaebdf2"
+    },
+    "scripts/plugins/message_decoder_pdu.py": {
+      "bytes": 22832,
+      "sha256": "225948ff7a575f666c4a45b0b9c6a79105af97ab2b912611d3f9aa991239cf18"
+    },
+    "tests/plugins/test_message_decoder_files.py": {
+      "bytes": 9317,
+      "sha256": "689705c1d35a2df25d9906ee3d96c4ce2f08d699996bf032c78fc2e050c1a1d9"
+    },
+    "tests/plugins/test_message_decoder_origins.py": {
+      "bytes": 20000,
+      "sha256": "0f25e2cc8ba9e0dd55b2c7424a4cbbee6e249660a78eb2c776b1733d4a95ba5d"
+    }
+  },
+  "addressedFindings": [
+    "Symlinked manifest and relative fixture paths use one resolved manifest epoch",
+    "Frozen regular manifest/fixture bytes admitted before any report writes; observed changes reject publication",
+    "Exclusive nonblocking OS output lease, atomic publication and per-invocation identity",
+    "Nonblocking regular-file admission prevents special-file FIFO reads",
+    "bridge_input_limit returns input-error exit2",
+    "Structurally valid parser-negative fixtures detect disabled duplicate/nonfinite/float/integer guards"
+  ],
+  "additionalReviewFix": "Deeply nested manifest RecursionError normalized to invalid_fixture; RED/GREEN destination preservation",
+  "validation": {
+    "pluginSuites": [
+      {
+        "python": "3.14",
+        "cases": 133,
+        "passed": 132,
+        "skipped": 1,
+        "skipReason": "Unix FIFO admission test; scheduled in Linux/macOS CI",
+        "logIdentity": {
+          "bytes": 22630,
+          "sha256": "fae7d3f0cd9a597da472aa5a76b39e3a0772ac17a119a804aca808d05e174f40"
+        }
+      },
+      {
+        "python": "3.9",
+        "cases": 133,
+        "passed": 132,
+        "skipped": 1,
+        "skipReason": "Unix FIFO admission test; scheduled in Linux/macOS CI",
+        "logIdentity": {
+          "bytes": 15701,
+          "sha256": "31166cbad42fc3920b2f4e893d65bffac9a650253ba04f26c5a3e85fea255357"
+        }
+      }
+    ],
+    "ctest": {
+      "registered": 7,
+      "passed": 7,
+      "failed": 0,
+      "seconds": 244.38369420001982,
+      "runtime": "byte-verified isolated deployed Qt6.10.1 runtime; original registered commands/arguments/properties preserved except runtime prefix",
+      "buildBoundary": "Existing freshly built MD01c native binaries reused; no C++ product change or new native rebuild claimed",
+      "binarySha256": {
+        "cilogg.exe": "1d23be54d69d1f7206293cdfb5dd761783a3a0809a09f1bfbd3f95847a079e41",
+        "cilogg_tests.exe": "feb2b3c6f2a334c9403162acd51ddc3009ab627f710513f918186fe284a39b5d",
+        "cilogg_itests.exe": "59d6e58def3cc61990a0c9ac3674c3f4cacf0ee1890d13bfd10ebf5c9d4619e0"
+      },
+      "logIdentity": {
+        "bytes": 1153,
+        "sha256": "b55731cdce9af45d3e5b3b409dd64eea01a95a84d15b2d5de93401a934d480dd"
+      }
+    },
+    "syntheticCli": {
+      "passed": true,
+      "invocationIdPresent": true,
+      "mappedFields": 2,
+      "artifactIdentity": {
+        "bytes": 7483,
+        "sha256": "6abc3697ec0ef207132b197664b9d43b5b8e213684b27bbd124899a71b52ff98"
+      },
+      "engine": {
+        "tsharkVersion": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n  +brotli                     +MaxMind\r\n  +Gcrypt 1.12.4-unknown      +nghttp2 1.69.0\r\n  +GnuTLS 3.8.13 and PKCS#11  +nghttp3 1.8.0\r\n  +Kerberos (MIT)             +PCRE2 10.47 2025-10-21\r\n  +libpcap                    +Snappy 1.1.9\r\n  +libsmi 0.5.0               +xxhash 0.8.3\r\n  +libxml2 2.15.3             +zlib 1.3.1\r\n  +Lua 5.4.6 (UfW patched)    +zlib-ng 2.2.3\r\n  +LZ4 1.10.0                 +Zstandard 1.5.7\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=English_Israel.utf8\r\n Plugins: supported, 0 loaded\r\n With:\r\n  +brotli 1.2.0\r\n  +c-ares 1.34.8\r\n  +Gcrypt 1.12.4-unknown\r\n  +GnuTLS 3.8.13\r\n  +LZ4 1.10.0\r\n  +nghttp2 1.69.0\r\n  +nghttp3 1.8.0\r\n  +Npcap 1.89, libpcap 1.10.7 (64-bit time_t)\r\n  +PCRE2 10.47 2025-10-21\r\n  +xxhash 803\r\n  +Zstandard 1.5.7\r\n",
+        "text2pcapVersion": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=C\r\n Plugins: supported, 0 loaded\r\n With:\r\n",
+        "luaAvailable": true,
+        "luaFoldersIsolated": true,
+        "scripts": [
+          {
+            "name": "pdu_probe.lua",
+            "sha256": "3682f77a10015eaef08322eede31a09aab0e23c55a8b9f30e7a263f290c51de9",
+            "license": "not_verified"
+          }
+        ],
+        "binaries": [
+          {
+            "name": "tshark.exe",
+            "bytes": 623272,
+            "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+          },
+          {
+            "name": "text2pcap.exe",
+            "bytes": 375464,
+            "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+          }
+        ]
+      }
+    },
+    "parserMutationCheck": "All4 individually disabled guards were detected by the strengthened real parser test",
+    "realFilesystemChecks": "Windows3.9/3.14: symlink target binding/retargeting, hardlink aliases, actual child-held lease, crash recovery, atomic-write failure, NUL device rejection",
+    "reviews": "Fresh general/Python reviewers; shared RecursionError finding fixed RED/GREEN and final complete suites rerun; no other blockers",
+    "static": "Ruff lint and focused formatting checks pass; git diff --check passes",
+    "hosted": "Pending at publication; Unix FIFO/OS locking cases require hosted outcomes",
+    "indexes": "GitNexus90s refresh timed out/reaped; stale sibling index detect-changes not authoritative. CodeGraph explicitly unindexed; code-review-graph tool unavailable."
+  },
+  "admissionPolicy": "Rejected input admission preserves existing destinations; admitted runs publish running marker and final own result under lease. Exit status/invocation identity remain authoritative."
+}
