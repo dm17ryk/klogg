@@ -43,6 +43,8 @@ add_library(
 
 set_target_properties(klogg_logdata PROPERTIES AUTOMOC ON)
 
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/fieldvalue.cpp")
+
 target_include_directories(klogg_logdata PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_definitions(klogg_logdata PUBLIC "-DQT_NO_KEYWORDS")
 

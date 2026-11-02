@@ -29,6 +29,8 @@ add_executable(cilogg_tests
     tests_main.cpp
 )
 
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/fieldvalue_test.cpp")
+
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")

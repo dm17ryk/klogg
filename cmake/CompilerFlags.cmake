@@ -52,3 +52,17 @@ function(set_project_compile_flags project_name)
   target_compile_features(${project_name} INTERFACE ${PROJECT_COMPILER_FEATURES})
 
 endfunction()
+
+# Exact value admission/serialization must observe NaN, infinity and signed zero.
+# Source options follow project_options, overriding its fast-math setting locally.
+function(set_exact_floating_point source_file)
+  if(MSVC)
+    set(exact_option /fp:precise)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    set(exact_option -fno-fast-math)
+  else()
+    message(FATAL_ERROR "Exact floating-point semantics need options for ${CMAKE_CXX_COMPILER_ID}")
+  endif()
+  set_property(SOURCE "${source_file}" APPEND PROPERTY COMPILE_OPTIONS "${exact_option}")
+  message(STATUS "Exact floating-point source=${source_file} option=${exact_option}")
+endfunction()

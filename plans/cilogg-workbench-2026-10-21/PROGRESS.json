@@ -1144,6 +1144,7 @@
             "Integers/decimal coefficients use canonical decimal strings; finite Float64 uses exact IEEE754 hex bits; original raw lexemes remain separate."
           ],
           "localVerification": "Fresh MSVC Qt6.10.1 ci_build and strict Clang conversion syntax passed. Final focused run: 332 assertions in six cases, including empty Bytes through real JSON, in an isolated deployed runtime. Same product code passed 7/7 CTest groups in 661.54s before the last test-only addition. General and C++ final reviews found no confirmed blocker.",
+          "ciFollowUp": "PR86 run41506822893 failed Linux scalar assertions and Intel AppleClang infinity compilation under inherited fast-math flags. Source-scoped precise FP now covers only codec/tests. Optimized clang-cl reproduction: five failed assertions before fix, 332/332 passed afterward; fresh MSVC/LTO ci_build and isolated focused332 passed; full isolated rerun7/7 passed157.45s. General/C++ repair reviews approved with no findings. Hosted rerun pending. Repair index refresh timedout90s; stale-index impact/detect results remain nonauthoritative.",
           "limitations": [
             "Qt5 runtime and hosted platform CI remain pending; local Qt6 evidence does not complete cross-runtime acceptance.",
             "CodeGraph reports this linked worktree unindexed; GitNexus refresh exited 3221226505, impact target absent, and stale-index detect-changes returned no changes; these do not establish structural verification.",

@@ -72,6 +72,13 @@ log values or raw lexemes. `[data][F01]` exercises real JSON round trips,
 boundary numbers, Unicode/NUL, malformed envelopes and resource bounds. Local
 Qt 6.10.1 validation does not establish the planned Qt5/Qt6 cross-runtime gate.
 
+The codec and its tests opt out of the project's fast floating-point assumptions
+at source-file scope: `/fp:precise` on MSVC/clang-cl and `-fno-fast-math` on
+GCC/Clang/Apple Clang. NaN/infinity admission checks and signed-zero inspection
+require those semantics. Future consumers that inspect or compute floating-point
+values must also choose the appropriate precise compilation policy. Existing
+search and unrelated source files keep their current optimization settings.
+
 Remaining F01 work includes event identity and discriminated origins, physical
 byte/UTF-16 spans, dataset schemas/revisions/cursors, source invalidation and
 GUI/CLI/native-MCP consumer parity. Rollback of F01a removes this unused codec

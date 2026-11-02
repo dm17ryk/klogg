@@ -49,3 +49,36 @@ and encoded/decoded values are covered by the current tests.
 Qt5 runtime parity, hosted platform checks and all broader F01/W0/MD01 gates
 remain open. This slice makes no throughput, memory, UI, decoder, dataset API
 or hardware acceptance claim.
+
+## PR86 CI repair: precise floating-point compilation
+
+The initial hosted run `41506822893` exposed an optimization-policy mismatch:
+Linux tests admitted nonfinite values and mishandled signed-zero inspection
+under inherited `-ffast-math`; Apple Clang additionally rejected the infinity
+fixture with `-Wnan-infinity-disabled` promoted to an error. Windows passing
+and the earlier syntax-only Clang check did not establish optimized Clang
+correctness. The downloaded failing Linux and Intel macOS logs showed this
+shared cause; ARM macOS cancellations are separate infrastructure outcomes.
+
+`set_exact_floating_point` adds source options after the inherited target flags,
+only for `fieldvalue.cpp` and `fieldvalue_test.cpp`. The rest of the project's
+optimization policy remains unchanged. `/fp:precise` covers MSVC and clang-cl;
+`-fno-fast-math` covers GCC, Clang and Apple Clang. The helper logs its selected
+source/option and refuses an unqualified compiler rather than silently guessing.
+
+A local optimized clang-cl/CMake probe compiled the actual codec and all six
+existing tests against Qt 6.10.1 with the real `project_options`. It reproduced
+five failed assertions out of 332 before the override and passed afterward.
+Only the logger enable predicate was replaced in this isolated probe; no scalar
+implementation, conversion, wire or JSON behavior was mocked. The native
+MSVC/LTO `ci_build` and isolated 332-assertion focused rerun also passed. Both
+final reviewers approved the three-file build-policy repair with no findings.
+The full isolated regression rerun passed all 7 CTest groups in 157.45 seconds.
+The private runtime copy was SHA-256 verified as in the original qualification.
+Hosted GCC/Apple Clang reruns and Qt5 qualification remain pending. Detailed logs:
+`build_root/pr86-fp-red.log`, `pr86-fp-green.log`, `pr86-native-build.log`,
+`pr86-focused.log`, `pr86-full-ctest.log` and `pr86-runtime.json`.
+The repair's GitNexus refresh timed out after 90 seconds and stale-index impact
+lookups could not resolve the new symbols; detect-changes was attempted but
+returned no changes. Generated MSVC source properties, the optimized Clang probe
+and direct reviews establish the limited build scope, not the unavailable graph.
