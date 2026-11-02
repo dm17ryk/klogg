@@ -1,0 +1,18 @@
+{
+  "fixtureKind": "synthetic",
+  "cases": [
+    {
+      "id": "strict-sring-data",
+      "dissector": "cilogg_md01_nested_data",
+      "hex": "nested-strict.hex",
+      "sha256": "d52ec7c400ec33d47aaf5d14083ef07fe2724b53a1d505fcc392c14ffddef798",
+      "expect": {
+        "cilogg_md01_nested_data.status": ["valid"],
+        "cilogg_md01_nested_data.child_status": ["invoked"],
+        "cilogg_md01_nested_data.declared_bytes": ["4"],
+        "cilogg_md01_nested_data.actual_bytes": ["4"],
+        "cilogg_md01_nested_data.hex_offset": ["11"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-02T13:39:42.861865+00:00",
+  "baseCommit": "fae1374d06e26dd19c56097b5f4119d152a3d965",
+  "scope": "MD01d independent strict nested-wrapper and private reference-document oracle proof",
+  "dependsOnPR84": false,
+  "productDecoderAccepted": false,
+  "MD01Acceptance": "pending",
+  "W0Acceptance": "pending",
+  "sourceIdentities": {
+    "test_data/message_decoders/sring_probe.lua": {
+      "bytes": 3809,
+      "sha256": "692be747257862be85be4382763956a7ca80a3c2d19df6154bc84a16f8621c96"
+    },
+    "test_data/message_decoders/nested-strict.json": {
+      "bytes": 565,
+      "sha256": "85d22fb9d22107c4258667735b7d580b7487cef5168155ee5be19e4b47d3c629"
+    },
+    "test_data/message_decoders/nested-strict.hex": {
+      "bytes": 39,
+      "sha256": "c819334d473f2e5228d50137d7fc508a5a2d466e4f087c03222a1e3253016b82"
+    },
+    "tests/plugins/test_message_decoder_nested.py": {
+      "bytes": 7213,
+      "sha256": "ded72c63e0f971e0a6c236197ba8740939acbf252dc609e81156233c74e54d7d"
+    },
+    "scripts/plugins/message_decoder_pdu.py": {
+      "bytes": 22421,
+      "sha256": "295743d7ac76dc9266f267b3aca1b169aa359caf8d179c2d35f7e69585110fb5"
+    },
+    "scripts/plugins/message_decoder_reference.py": {
+      "bytes": 15995,
+      "sha256": "89a0e2aa892dc04653599f5da29b0dbc32ddf090cd0e8d750a25ebbbc9b6b800"
+    }
+  },
+  "privateReferenceQualification": {
+    "passed": true,
+    "productDecoderAccepted": false,
+    "md01Acceptance": "pending",
+    "inputKind": "exact SRING example from user-supplied reference document; not a sampled log row",
+    "referenceDocumentSha256": "feabb255e56a59b363af5f68580c24e321f07e808f432dd8da9a7d9bc4379650",
+    "referenceDocumentBytes": 34561,
+    "wrapperBytes": 108,
+    "wrapperSha256": "43a155b632feaaf46064d8c00f2288c002d251393f7f6131fd4dd3355fdacd6b",
+    "childBytes": 48,
+    "childSha256": "ddd6d5c9abc6a252b4ab0c7c48f1f7a67fad5191c964cdb057770ee903f91725",
+    "wrapperStatus": "valid",
+    "childInvocationStatus": "invoked",
+    "expectedEngineDisplayValues": {
+      "ehcp.message_counter": [
+        "9"
+      ],
+      "ehcp.checksum.received": [
+        "D50D"
+      ],
+      "ehcp.checksum.valid": [
+        "True"
+      ]
+    },
+    "observedEngineDisplayValues": {
+      "ehcp.message_counter": [
+        "9"
+      ],
+      "ehcp.checksum.received": [
+        "D50D"
+      ],
+      "ehcp.checksum.valid": [
+        "True"
+      ]
+    },
+    "directNestedChildTreeEqual": true,
+    "comparisonExcludes": [
+      "engine pos attributes",
+      "generated tree-path IDs"
+    ],
+    "childTreeSha256": "fb99d282700099c832a3ddf271e17873612342602c6a147fb6cb6b11227b3ae9",
+    "hexOffsetZeroBasedBytes": 12,
+    "originalLogSpan": null,
+    "rawPrivateArtifactIdentity": {
+      "bytes": 34819,
+      "sha256": "a6af602eeb9ad4a2dc2e9a8fb31044225450d59000647106670a4b720f90cb44"
+    },
+    "capabilities": {
+      "tsharkVersion": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n  +brotli                     +MaxMind\r\n  +Gcrypt 1.12.4-unknown      +nghttp2 1.69.0\r\n  +GnuTLS 3.8.13 and PKCS#11  +nghttp3 1.8.0\r\n  +Kerberos (MIT)             +PCRE2 10.47 2025-10-21\r\n  +libpcap                    +Snappy 1.1.9\r\n  +libsmi 0.5.0               +xxhash 0.8.3\r\n  +libxml2 2.15.3             +zlib 1.3.1\r\n  +Lua 5.4.6 (UfW patched)    +zlib-ng 2.2.3\r\n  +LZ4 1.10.0                 +Zstandard 1.5.7\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=English_Israel.utf8\r\n Plugins: supported, 0 loaded\r\n With:\r\n  +brotli 1.2.0\r\n  +c-ares 1.34.8\r\n  +Gcrypt 1.12.4-unknown\r\n  +GnuTLS 3.8.13\r\n  +LZ4 1.10.0\r\n  +nghttp2 1.69.0\r\n  +nghttp3 1.8.0\r\n  +Npcap 1.89, libpcap 1.10.7 (64-bit time_t)\r\n  +PCRE2 10.47 2025-10-21\r\n  +xxhash 803\r\n  +Zstandard 1.5.7\r\n",
+      "text2pcapVersion": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=C\r\n Plugins: supported, 0 loaded\r\n With:\r\n",
+      "luaAvailable": true,
+      "luaFoldersIsolated": true,
+      "scripts": [
+        {
+          "name": "essence_ehcp.lua",
+          "sha256": "8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35",
+          "license": "not_verified"
+        },
+        {
+          "name": "sring_probe.lua",
+          "sha256": "692be747257862be85be4382763956a7ca80a3c2d19df6154bc84a16f8621c96",
+          "license": "not_verified"
+        }
+      ],
+      "binaries": [
+        {
+          "name": "tshark.exe",
+          "bytes": 623272,
+          "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+        },
+        {
+          "name": "text2pcap.exe",
+          "bytes": 375464,
+          "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "returnCode": 0,
+        "ownedProcessesReaped": true,
+        "stderrBytes": 29,
+        "stderrSha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+      },
+      {
+        "returnCode": 0,
+        "ownedProcessesReaped": true,
+        "stderrBytes": 0,
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "returnCode": 0,
+        "ownedProcessesReaped": true,
+        "stderrBytes": 29,
+        "stderrSha256": "f1e53e9d295b2571b534a789dca923d59ebc66e38b1cb11e714a40d5ccac861c"
+      },
+      {
+        "returnCode": 0,
+        "ownedProcessesReaped": true,
+        "stderrBytes": 88,
+        "stderrSha256": "00b0d544b59b56edd2fa8d29d8f2ebe0895336717b36143ccedd2a7b76e5263b"
+      }
+    ]
+  },
+  "verification": {
+    "pluginSuites": [
+      {
+        "python": "3.14",
+        "cases": 111,
+        "passed": 111,
+        "skipped": 0,
+        "logIdentity": {
+          "bytes": 17653,
+          "sha256": "b95c653ba3aa35b9bbfb446e5128a0eef163d852b89dacc5446e1e2a41371d00"
+        }
+      },
+      {
+        "python": "3.9",
+        "cases": 111,
+        "passed": 111,
+        "skipped": 0,
+        "logIdentity": {
+          "bytes": 12149,
+          "sha256": "e7bd6ba999a806e3a0065b1d10e10716d57d5f49786d295fa4c59591b8ae8f85"
+        }
+      }
+    ],
+    "focusedNative": {
+      "cases": 7,
+      "passed": 7,
+      "logIdentity": {
+        "bytes": 1340,
+        "sha256": "5eba0b8243c8bda5c01ff8b4d143d1ff4e3b321e47f60c5b7e2229b3a08b6c1c"
+      }
+    },
+    "ctest": {
+      "registered": 7,
+      "passed": 7,
+      "failed": 0,
+      "seconds": 423.5829546999885,
+      "runtime": "byte-verified isolated Qt6.10.1 deployed copy; original test commands/arguments/properties preserved except runtime prefix",
+      "nativeBuildBoundary": "Existing native binaries reused; no C++ product source change or new native rebuild claimed",
+      "binarySha256": {
+        "cilogg.exe": "1d23be54d69d1f7206293cdfb5dd761783a3a0809a09f1bfbd3f95847a079e41",
+        "cilogg_tests.exe": "feb2b3c6f2a334c9403162acd51ddc3009ab627f710513f918186fe284a39b5d",
+        "cilogg_itests.exe": "59d6e58def3cc61990a0c9ac3674c3f4cacf0ee1890d13bfd10ebf5c9d4619e0"
+      },
+      "logIdentity": {
+        "bytes": 1154,
+        "sha256": "e5cdb2393b19c23af13754f636d8021ed620c63b1c930e45e8622f749acbb972"
+      }
+    },
+    "syntheticCli": {
+      "passed": true,
+      "artifactIdentity": {
+        "bytes": 27047,
+        "sha256": "b9ef12550686f0083a37196cf4a4e0af04472dffa4c3eb3274844d4a07199939"
+      },
+      "command": "python scripts/plugins/message_decoder_pdu.py --tshark <explicit> --text2pcap <explicit> --lua test_data/message_decoders/sring_probe.lua --manifest test_data/message_decoders/nested-strict.json --output build_root/md01d-synthetic-cli"
+    },
+    "redGreen": {
+      "initialMissingFixture": {
+        "bytes": 5814,
+        "sha256": "95ff13d34b53988f68d2d153607cdc94d9aba0479f53cdb9db8accfbc06ab81c"
+      },
+      "manifestMissing": {
+        "bytes": 2445,
+        "sha256": "bfe88a48ce9b86d4a63b51601d325bced4e0fe1fdd9b22183d1611673aae91f9"
+      },
+      "manifestGreen": {
+        "bytes": 1340,
+        "sha256": "5b525898fbfc5570697ee75d5505d23290c5942f30a655a6494f327a3a50c8d6"
+      },
+      "nulTruncationRed": {
+        "bytes": 2532,
+        "sha256": "3a9793252ac8ce1c0dd41ce180a819744e0852253624ad8c2a5f3a8c5d0d6d86"
+      },
+      "nulTruncationGreen": {
+        "bytes": 1340,
+        "sha256": "5eba0b8243c8bda5c01ff8b4d143d1ff4e3b321e47f60c5b7e2229b3a08b6c1c"
+      }
+    },
+    "reviews": "Fresh whole-branch general and Python/test review: no actionable findings or blockers",
+    "static": "Ruff lint/format checks and git diff --check passed",
+    "hosted": "Pending after PR publication; no hosted pass claimed",
+    "indexes": "GitNexus new symbol absent in stale sibling index, bounded90s refresh timed out/reaped; detect-changes not authoritative. CodeGraph explicitly unindexed; code-review-graph tool unavailable."
+  },
+  "remaining": [
+    "Partial/direct-NUL EHCI pack capability",
+    "Private pack licensing/distribution",
+    "Original-log/UTF-16 sidecars and generated-field flags",
+    "Unix native isolation and product GUI/CLI/MCP integration",
+    "MD02/MD06 streaming, multi-notification and AT dialect/conversation work"
+  ]
+}

@@ -25,6 +25,15 @@ The original supplied 48-byte/counter-9/D50D message is private and different.
 These replacements have their own independently recalculated checksums, tested
 against the actual engine; do not substitute their checksums for its oracle.
 
+`sring_probe.lua` is a separate strict single-envelope proof fixture with named
+data/EHCP/missing-child variants. It validates an explicit ASCII SRING dialect,
+reports independent envelope/child invocation statuses, and invokes the real
+registered child. `nested-strict.json` / `.hex` reproduce its synthetic data
+case without private packs. Header spaces/tabs are explicit; payload whitespace,
+odd hex, mismatched lengths, empty data and out-of-budget values are rejected.
+The private D50D reference is qualified separately by MD01d, with hashes and
+metadata only. This fixture is not an AT conversation parser or product decoder.
+
 `reference_probe.lua` is another newly authored GPL-3.0-or-later fixture. Tests
 generate two invented UDP packets: its two-byte PDUs expose repeated protocol
 roots, exact Unicode and transformed values. A second UDP-port dissector

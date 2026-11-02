@@ -1871,11 +1871,14 @@
         "../../docs/workbench/md01a-engine-proof.md",
         "../../docs/workbench/md01a-windows-observations.json",
         "../../docs/workbench/md01b-reference-captures.md",
-        "../../docs/workbench/md01b-windows-observations.json"
+        "../../docs/workbench/md01b-windows-observations.json",
+        "../../docs/workbench/md01d-nested-oracle.md",
+        "../../docs/workbench/md01d-windows-observations.json"
       ],
       "limitations": [
         "MD01a independently qualifies real-engine synthetic complete/nested probes; bare partial and direct NUL EHCI remain failed capabilities. Genuine-capture comparison, licensing and full MD01 acceptance remain pending behind W0.",
-        "MD01b selected genuine-capture tree comparison passes for 23 EHCP and one reassembled EHCI PDU; this does not qualify full MD01, positions, bare partial/NUL behavior or independent protocol semantics."
+        "MD01b selected genuine-capture tree comparison passes for 23 EHCP and one reassembled EHCI PDU; this does not qualify full MD01, positions, bare partial/NUL behavior or independent protocol semantics.",
+        "MD01d qualifies private reference-document48/counter9/D50D through strictSRING and direct/nested tree equality; no actual-log mapping or fullMD01 acceptance."
       ],
       "slices": [
         {
@@ -1922,6 +1925,25 @@
             "Private counter-9/D50D runtime oracle remains unqualified",
             "External Lua licensing/distribution remains unverified",
             "Original-log source sidecars, generated-field flags, Unix native isolation and product GUI/CLI/MCP integration remain pending"
+          ],
+          "commit": null,
+          "pullRequest": null
+        },
+        {
+          "id": "MD01d",
+          "status": "implemented_pending_gates",
+          "base": "fae1374d06e26dd19c56097b5f4119d152a3d965",
+          "branch": "codex/md01-nested-oracle",
+          "scope": "Independent strict single-SRING proof fixture; parent/child outcomes and private48/counter9/D50D reference-document runtime oracle; no PR84 code dependency or product decoder",
+          "evidence": [
+            "../../docs/workbench/md01d-nested-oracle.md",
+            "../../docs/workbench/md01d-windows-observations.json"
+          ],
+          "localVerification": "7/7 focused native;111/111 full plugin cases each onPython3.14/3.9;7/7 isolated fullCTest423.43s using byte-verified existingQt6.10.1 native binaries;syntheticCLI passed;private exact108-byte reference-document SRING→48-byte EHCP/counter9/D50Dvalid and direct/nested tree equality;strict rawNUL prefix regressionRED/GREEN;fresh general/Python reviews no blockers;ruff clean;no newC++build or hosted acceptance claimed.",
+          "limitations": [
+            "Reference-document example, not sampled log-row acceptance; no original-log span",
+            "FullMD01/W0, partial/direct-NUL EHCI, licensing, generated flags and product integration remain pending",
+            "Streaming AT dialects and cross-notification assembly remainMD02/MD06"
           ],
           "commit": null,
           "pullRequest": null
