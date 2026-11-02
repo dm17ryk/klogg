@@ -53,9 +53,19 @@ jobs:
             --lua test_data/message_decoders/pdu_probe.lua `
             --manifest test_data/message_decoders/probe.json `
             --output decoder-pdu-proof
+      - name: Save field-origin qualification
+        run: |
+          python scripts/plugins/message_decoder_origins.py `
+            --tshark "C:\Program Files\Wireshark\tshark.exe" `
+            --text2pcap "C:\Program Files\Wireshark\text2pcap.exe" `
+            --lua test_data/message_decoders/pdu_probe.lua `
+            --manifest test_data/message_decoders/probe.json `
+            --output decoder-origin-proof
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: decoder-pdu-proof-windows
-          path: decoder-pdu-proof/result.json
+          path: |
+            decoder-pdu-proof/result.json
+            decoder-origin-proof/result.json
           if-no-files-found: warn
