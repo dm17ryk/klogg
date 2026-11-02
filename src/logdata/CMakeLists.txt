@@ -15,6 +15,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filedigest.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/readablesize.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/sourcelocation.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/dataresult.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/fieldvalue.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/fieldvalue.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisjob.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisregex.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysiscommands.h
