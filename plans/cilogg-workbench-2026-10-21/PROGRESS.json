@@ -1944,8 +1944,8 @@
             "Original log/capture sidecars and generated flags remain unresolved; JSON grouped identities are not PDML sibling identities",
             "Partial/NUL, private nested oracle, licenses/distribution, W0 prerequisites and product integration remain pending"
           ],
-          "commit": null,
-          "pullRequest": null
+          "commit": "cd2e5911ba3bfa710939ccf0e62eba6b10a81e0f",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/84"
         }
       ]
     },
