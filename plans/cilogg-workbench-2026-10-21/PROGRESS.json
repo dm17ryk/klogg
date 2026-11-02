@@ -1871,11 +1871,14 @@
         "../../docs/workbench/md01a-engine-proof.md",
         "../../docs/workbench/md01a-windows-observations.json",
         "../../docs/workbench/md01b-reference-captures.md",
-        "../../docs/workbench/md01b-windows-observations.json"
+        "../../docs/workbench/md01b-windows-observations.json",
+        "../../docs/workbench/md01c-field-origins.md",
+        "../../docs/workbench/md01c-windows-observations.json"
       ],
       "limitations": [
         "MD01a independently qualifies real-engine synthetic complete/nested probes; bare partial and direct NUL EHCI remain failed capabilities. Genuine-capture comparison, licensing and full MD01 acceptance remain pending behind W0.",
-        "MD01b selected genuine-capture tree comparison passes for 23 EHCP and one reassembled EHCI PDU; this does not qualify full MD01, positions, bare partial/NUL behavior or independent protocol semantics."
+        "MD01b selected genuine-capture tree comparison passes for 23 EHCP and one reassembled EHCI PDU; this does not qualify full MD01, positions, bare partial/NUL behavior or independent protocol semantics.",
+        "MD01c qualifies1902 payload-relative field ranges in23 EHCP/1 EHCI selected PDUs;698 zero-byte/unavailable-source fields remain unmapped. Original source spans and generated flags stay null."
       ],
       "slices": [
         {
@@ -1922,6 +1925,24 @@
             "Private counter-9/D50D runtime oracle remains unqualified",
             "External Lua licensing/distribution remains unverified",
             "Original-log source sidecars, generated-field flags, Unix native isolation and product GUI/CLI/MCP integration remain pending"
+          ],
+          "commit": "14c2770f7e80af90c75ebf4e8a7e963b34d8c6f7",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/82"
+        },
+        {
+          "id": "MD01c",
+          "status": "implemented_pending_gates",
+          "base": "fae1374d06e26dd19c56097b5f4119d152a3d965",
+          "branch": "codex/md01-payload-provenance",
+          "scope": "Independent field-origin proof preparation: exact payload-relative ranges, explicit transformed/unknown origins; no product decoder acceptance",
+          "evidence": [
+            "../../docs/workbench/md01c-field-origins.md",
+            "../../docs/workbench/md01c-windows-observations.json"
+          ],
+          "localVerification": "FreshQt6.10.1 RelWithDebInfo ci_build passed;123/123 plugin cases each onPython3.14 and3.9 with native tools/Lua;7/7 isolated fullCTest;real23EHCP/1EHCI payload-origin qualification1902 mapped fields,698 unmapped;fresh general/Python review Important findings fixed RED/GREEN;ruff clean. Hosted and broader gates pending.",
+          "limitations": [
+            "Original log/capture sidecars and generated flags remain unresolved; JSON grouped identities are not PDML sibling identities",
+            "Partial/NUL, private nested oracle, licenses/distribution, W0 prerequisites and product integration remain pending"
           ],
           "commit": null,
           "pullRequest": null
@@ -2024,7 +2045,7 @@
       ],
       "publicTracking": "PUBLIC_TRACKING.md",
       "baseline": "ca4c6074fea48643810ff6d92182146c427f1b65",
-      "runtimeEvidence": "Local actual-engine synthetic proof in MD01a and selected genuine-capture comparison in MD01b (23EHCP/1EHCI trees equal). Bare partial/NUL capabilities, licensing and full MD01 acceptance remain pending; W0 hard dependencies unchanged.",
+      "runtimeEvidence": "Local actual-engine synthetic proof in MD01a and selected genuine-capture comparison in MD01b (23EHCP/1EHCI trees equal). Bare partial/NUL capabilities, licensing and full MD01 acceptance remain pending; W0 hard dependencies unchanged. MD01c independently qualifies payload-relative field origins without original-log mappings or generated-flag inference.",
       "scope": "Integrate requirements and issue tracking only; the document's embedded implementation handoff is reference material, not an instruction to start decoding work.",
       "inputGates": [
         "Obtain licensed/version-pinned EHCP/EHCI Lua sources and complete reference captures before MD01 runtime claims.",
