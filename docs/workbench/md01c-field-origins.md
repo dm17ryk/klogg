@@ -70,12 +70,30 @@ record paths, source indexes, sizes, counters and decision reasons; field displa
 values and raw bodies are excluded from the returned metadata. Paths and field
 names can still identify a private environment; review artifacts before sharing.
 
+Manifest and fixture admission uses bounded regular-file reads before report
+publication. Nonblocking opens and descriptor checks reject FIFOs/devices,
+including a path replaced between the initial stat and open. The manifest is
+resolved once for relative fixture paths; its frozen bytes and frozen fixture
+bytes are passed to the shared validator without rereading them. Device/inode,
+size and modification-time checks reject observed source changes before each
+publication (Unix also checks metadata-change time; Windows stat/fstat ctime
+interpretations differ).
+
+An OS-backed nonblocking lease serializes invocations sharing an output
+directory: `msvcrt.locking` on Windows and `flock` on Unix. A competing invocation
+returns exit 1 / `output_busy` without changing the active report. The persistent
+`.decoder-origins.lock` inode is not deleted on release; process exit releases
+ownership. An admitted run atomically publishes a `running`, non-success marker
+and then its complete report with the same `invocationId`. Temporary report
+files are owned and removed on failure. These are cooperative local-filesystem
+guards, not an OS sandbox or a network-filesystem locking qualification.
+
 Exit 0 qualifies this bounded proof only. Exit 1 records an execution,
 origin-binding, semantic-oracle, I/O or resource failure. Exit 2 identifies
-invalid/missing inputs. Admitted failed runs replace old success reports. A report
+invalid/missing inputs, including `bridge_input_limit`. Admitted failed runs replace old success reports. A report
 path aliasing an explicit input or declared fixture payload is rejected without
-writing over that input. Oversized, malformed or unreadable manifests also reject
-before writing, because fixture-path discovery is incomplete. The preserved
+writing over that input. Rejected input admission (including oversized, malformed,
+missing or unreadable inputs) leaves the destination untouched. The preserved
 destination could be an input or an old report: callers must check this invocation's
 exit status before accepting any report. Output write failures return exit 1 and
 a diagnostic. No private Lua, capture or log body is committed.

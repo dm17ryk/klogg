@@ -7,15 +7,15 @@ import logging
 import re
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
+from message_decoder_files import OriginInputs, OutputLease, publish_report
 from message_decoder_pdu import (
     BRIDGE_FRAME_LIMIT,
-    INPUT_LIMIT,
     OUTPUT_LIMIT,
     ProofError,
     fields_named,
-    load_manifest,
     validate_dissector,
 )
 from message_decoder_reference import ReferenceEngine
@@ -256,67 +256,44 @@ def main(argv=None):
         logging.basicConfig(
             level=logging.DEBUG, format="%(levelname)s %(name)s %(message)s"
         )
-    destination = args.output / "result.json"
-    inputs = [args.manifest, args.tshark, args.text2pcap, *args.lua]
-    # Discover declared payload paths before deleting/writing any old report.
-    # Even invalid hex is still an input which this command must preserve.
     try:
-        with args.manifest.open("rb") as source:
-            encoded = source.read(INPUT_LIMIT + 1)
-        if len(encoded) > INPUT_LIMIT:
-            raise ValueError("manifest size")
-        manifest = json.loads(encoded.decode("utf-8"))
-        if not isinstance(manifest, dict) or not isinstance(
-            manifest.get("cases"), list
-        ):
-            raise TypeError("manifest structure")
-        for case in manifest["cases"]:
-            if (
-                not isinstance(case, dict)
-                or not isinstance(case.get("hex"), str)
-                or "\x00" in case["hex"]
-            ):
-                raise ValueError("fixture path")
-            inputs.append(args.manifest.parent / case["hex"])
-    except FileNotFoundError:
-        # There are no declared existing payloads. Emit input_missing below.
-        pass
-    except (OSError, TypeError, ValueError, UnicodeError, RecursionError):
-        # Input discovery is incomplete: the destination could itself be a payload.
-        # Preserve it, even if it looks like an old report. Exit status is authoritative.
-        LOG.error(
-            "origin_proof_failed reason=unsafe_manifest_discovery report_written=false"
-        )
-        return 2
-    if any(
-        destination.resolve() == path.resolve()
-        or (destination.exists() and path.exists() and destination.samefile(path))
-        for path in inputs
-    ):
-        LOG.error("origin_proof_failed reason=invalid_origin_destination")
-        return 2
+        inputs = OriginInputs(args.manifest)
+        extra_inputs = [args.tshark, args.text2pcap, *args.lua]
+        inputs.ensure_safe(args.output / "result.json", extra_inputs)
+        with OutputLease(args.output, inputs, extra_inputs) as lease:
+            return run_origin_report(args, inputs, extra_inputs, lease.directory)
+    except (ProofError, OSError, ValueError) as error:
+        reason = str(error) if isinstance(error, ProofError) else "origin_io_error"
+        LOG.error("origin_proof_rejected reason=%s report_written=false", reason)
+        return 1 if reason in {"output_busy", "origin_io_error"} else 2
+
+
+def run_origin_report(args, inputs, extra_inputs, directory):
+    destination = directory / "result.json"
+    cases = inputs.cases
     report = {
         "schemaVersion": 1,
+        "invocationId": uuid.uuid4().hex,
         "passed": False,
-        "state": "failed",
+        "state": "running",
         "productDecoderAccepted": False,
         "md01Acceptance": "pending",
         "cases": [],
     }
     engine = None
+    LOG.info("origin_proof_admitted invocation_id=%s", report["invocationId"])
     try:
-        args.output.mkdir(parents=True, exist_ok=True)
-        destination.unlink(missing_ok=True)
-        cases = load_manifest(args.manifest)
+        # An admitted run publishes its own non-success marker under the lease.
+        publish_report(
+            destination, json.dumps(report).encode("ascii"), inputs, extra_inputs
+        )
         report["manifestSha256"] = cases[0]["manifestSha256"]
         report["harnessSha256"] = hashlib.sha256(
             Path(__file__).read_bytes()
         ).hexdigest()
-        with tempfile.TemporaryDirectory(
-            prefix="origins-", dir=args.output
-        ) as directory:
+        with tempfile.TemporaryDirectory(prefix="origins-", dir=directory) as workspace:
             engine = OriginEngine(
-                args.tshark, args.text2pcap, directory, args.lua, args.timeout_seconds
+                args.tshark, args.text2pcap, workspace, args.lua, args.timeout_seconds
             )
             report["capabilities"] = engine.capabilities()
             for case in cases:
@@ -337,6 +314,7 @@ def main(argv=None):
     except (ProofError, OSError) as error:
         reason = str(error) if isinstance(error, ProofError) else "origin_io_error"
         report["reason"] = reason
+        report["state"] = "failed"
         if isinstance(error, ProofError) and error.cleanup_reason:
             report["secondaryReasons"] = [error.cleanup_reason]
         LOG.warning(
@@ -351,6 +329,7 @@ def main(argv=None):
         # Retention is all-or-explicit-failure, including command/capability metadata.
         report = {
             "schemaVersion": 1,
+            "invocationId": report["invocationId"],
             "passed": False,
             "state": "failed",
             "productDecoderAccepted": False,
@@ -360,12 +339,13 @@ def main(argv=None):
         }
         serialized = json.dumps(report) + "\n"
     try:
-        destination.write_bytes(serialized.encode("ascii"))
-    except OSError:
-        LOG.error(
-            "origin_proof_failed reason=origin_report_io_error report_written=false"
+        publish_report(destination, serialized.encode("ascii"), inputs, extra_inputs)
+    except (OSError, ProofError) as error:
+        reason = (
+            str(error) if isinstance(error, ProofError) else "origin_report_io_error"
         )
-        return 1
+        LOG.error("origin_proof_failed reason=%s report_written=false", reason)
+        return 2 if isinstance(error, ProofError) else 1
     if report["passed"]:
         return 0
     return (
@@ -378,6 +358,7 @@ def main(argv=None):
             "fixture_hash_mismatch",
             "invalid_dissector",
             "invalid_limits",
+            "bridge_input_limit",
         }
         else 1
     )

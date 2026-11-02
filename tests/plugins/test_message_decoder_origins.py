@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 UTILITY = ROOT / "scripts/plugins/message_decoder_origins.py"
@@ -49,6 +50,111 @@ class OriginCase(unittest.TestCase):
 
 
 class OriginTests(OriginCase):
+    def test_deep_manifest_is_rejected_without_traceback_or_report_mutation(self):
+        manifest = self.root / "deep.json"
+        manifest.write_bytes(b"[" * 100000 + b"0" + b"]" * 100000)
+        report = self.root / "result.json"
+        report.write_bytes(b"keep")
+        code = self.proof.main(
+            [
+                "--tshark",
+                sys.executable,
+                "--text2pcap",
+                sys.executable,
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(self.root),
+            ]
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(report.read_bytes(), b"keep")
+
+    def test_symlink_manifest_resolves_fixtures_beside_its_target(self):
+        target = self.root / "target"
+        target.mkdir()
+        payload = target / "result.json"
+        payload.write_bytes(b"0102")
+        manifest = target / "manifest.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "cases": [
+                        {
+                            "id": "alias",
+                            "hex": "result.json",
+                            "dissector": "proof",
+                            "sha256": "a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222",
+                            "expect": {},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        link = self.root / "link.json"
+        try:
+            link.symlink_to(manifest)
+        except OSError as error:
+            self.skipTest(str(error))
+        code = self.proof.main(
+            [
+                "--tshark",
+                sys.executable,
+                "--text2pcap",
+                sys.executable,
+                "--manifest",
+                str(link),
+                "--output",
+                str(target),
+            ]
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(payload.read_bytes(), b"0102")
+
+    def test_bridge_input_limit_is_an_input_error_and_replaces_old_success(self):
+        import hashlib
+
+        payload = b"a" * (262144 + 1)
+        (self.root / "large.hex").write_text(payload.hex(), encoding="ascii")
+        manifest = self.root / "large.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "cases": [
+                        {
+                            "id": "oversized",
+                            "hex": "large.hex",
+                            "dissector": "proof",
+                            "sha256": hashlib.sha256(payload).hexdigest(),
+                            "expect": {},
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = self.root / "output"
+        output.mkdir()
+        (output / "result.json").write_bytes(b'{"passed":true}')
+        with patch.object(self.proof.OriginEngine, "capabilities", return_value={}):
+            code = self.proof.main(
+                [
+                    "--tshark",
+                    sys.executable,
+                    "--text2pcap",
+                    sys.executable,
+                    "--manifest",
+                    str(manifest),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(code, 2)
+        report = json.loads((output / "result.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["reason"], "bridge_input_limit")
+        self.assertFalse(report["passed"])
+
     def test_incomplete_manifest_discovery_cannot_overwrite_an_existing_destination(
         self,
     ):
@@ -90,7 +196,7 @@ class OriginTests(OriginCase):
                 "--text2pcap",
                 sys.executable,
                 "--manifest",
-                str(self.root / "missing.json"),
+                str(FIXTURES / "probe.json"),
                 "--output",
                 str(output),
             ]
@@ -175,13 +281,20 @@ class OriginTests(OriginCase):
             self.parse(raw_document() * 2)
 
     def test_duplicate_keys_nonfinite_integer_and_invalid_metadata_fail_closed(self):
-        for data in [
-            b'[{"_source":{},"_source":{}}]',
-            b"[NaN]",
-            b"[1e999]",
-            b"[" + b"1" * 5000 + b"]",
+        valid = json.dumps(raw_document())
+        # Everything else is valid; later structural validation cannot mask a missing guard.
+        for extra, reason in [
+            ('"unused":0,"unused":1,', "duplicate_json_keys"),
+            ('"unused":NaN,', "invalid_origin_metadata"),
+            ('"unused":Infinity,', "invalid_origin_metadata"),
+            ('"unused":1e999,', "invalid_origin_metadata"),
+            ('"unused":123456789012345678901,', "invalid_origin_metadata"),
         ]:
-            with self.subTest(data=data[:30]), self.assertRaises(self.proof.ProofError):
+            data = valid.replace("[{", "[{" + extra, 1).encode()
+            with (
+                self.subTest(extra=extra),
+                self.assertRaisesRegex(self.proof.ProofError, reason),
+            ):
                 self.proof.resolve_origins(data, b"\x01\x02", "proof")
         for metadata in [
             ["01", True, 1, 0, 4, 0],
@@ -237,7 +350,7 @@ class OriginTests(OriginCase):
         self.assertNotIn("PRIVATE BODY", json.dumps(result))
         self.assertNotIn("PRIVATE BODY", "\n".join(logs.output))
 
-    def test_cli_preserves_input_alias_and_replaces_old_success_on_failure(self):
+    def test_cli_rejected_input_admission_preserves_existing_destination(self):
         report = self.root / "result.json"
         report.write_bytes(b"private manifest")
         arguments = [
@@ -254,9 +367,7 @@ class OriginTests(OriginCase):
         self.assertEqual(report.read_bytes(), b"private manifest")
         arguments[arguments.index("--manifest") + 1] = str(self.root / "absent.json")
         self.assertEqual(self.proof.main(arguments), 2)
-        result = json.loads(report.read_text(encoding="utf-8"))
-        self.assertFalse(result["passed"])
-        self.assertFalse(result["productDecoderAccepted"])
+        self.assertEqual(report.read_bytes(), b"private manifest")
 
     def test_cli_cannot_overwrite_a_fixture_payload_even_when_invalid_hex(self):
         payload = self.root / "result.json"
