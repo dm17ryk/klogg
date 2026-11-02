@@ -178,10 +178,12 @@ def measure_file_analysis(cli, host, artifacts: Path) -> None:
 
 def run(executable: Path, artifacts: Path, auto_responses: bool = False,
         regex_lab: bool = False, measure: bool = False, value_counts: bool = False,
-        required_operations=(), verify=None, sdk_smoke=False) -> None:
+        required_operations=(), verify=None, sdk_smoke=False, setup_payload=None) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
     host_log_path, mcp_log_path = diagnostic_log_paths(artifacts)
     payload, isolated = prepare_payload(executable, artifacts)
+    if setup_payload is not None:
+        setup_payload(payload)
     if auto_responses:
         seed_routing_session(payload, artifacts)
     # Normal analysis fixtures skip restoration; routing fixtures explicitly test it.

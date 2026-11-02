@@ -14,6 +14,7 @@
 #include <QTest>
 
 #include "logdata.h"
+#include "previewsource.h"
 #include "test_utils.h"
 
 namespace {
@@ -100,6 +101,67 @@ void notifySourceChanged( LogData& data, const QString& path )
                                         Q_ARG( QString, path ) ) );
 }
 } // namespace
+
+TEST_CASE( "Preview reads decoded physical records with bounded snapshot provenance", "[logdata][previewsource]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "preview.log" );
+    const auto text = QString::fromUtf8( "first\r\nשלום 😀\r\ntail" );
+    writeSourceData( path, QByteArray::fromHex( "efbbbf" ) + text.toUtf8() );
+    auto source = std::make_shared<LogData>();
+    SafeQSignalSpy finished( source.get(), SIGNAL( loadingFinished( LoadingStatus ) ) );
+    source->attachFile( path );
+    REQUIRE( finished.safeWait() );
+    source->setDisplayEncoding( "UTF-8" );
+    REQUIRE( waitUiState( [&] { return source->sourceSnapshot().available; } ) );
+    const auto prepared = preparePreviewSource( source, 1, false );
+    REQUIRE( prepared.error.isEmpty() );
+    CHECK( prepared.text == QString::fromUtf8( "שלום 😀" ) );
+    CHECK( prepared.source.value( "lineOneBased" ) == "2" );
+    CHECK( previewSourceStillCurrent( source, prepared.snapshot, 1 ) );
+    const auto tail = preparePreviewSource( source, 2, false );
+    REQUIRE( tail.error.isEmpty() );
+    CHECK( tail.text == "tail" );
+    writeSourceData( path, " end\nnext\n", QIODevice::WriteOnly | QIODevice::Append );
+    notifySourceChanged( *source, path );
+    REQUIRE( waitUiState( [&] { return source->sourceSnapshot().revision > prepared.snapshot.revision; } ) );
+    CHECK( previewSourceStillCurrent( source, prepared.snapshot, 1 ) );
+    CHECK_FALSE( previewSourceStillCurrent( source, tail.snapshot, 2 ) );
+    finished.clear();
+    source->setDisplayEncoding( "ISO-8859-2" );
+    REQUIRE( waitUiState( [&] { return source->sourceSnapshot().available; } ) );
+    CHECK_FALSE( previewSourceStillCurrent( source, prepared.snapshot, 1 ) );
+    CHECK( preparePreviewSource( source, 999 ).error == "invalid_line" );
+    source.reset();
+    CHECK_FALSE( previewSourceStillCurrent( source, prepared.snapshot, 1 ) );
+}
+
+TEST_CASE( "Preview rejects oversized records and handles explicit UTF16 decoding", "[logdata][previewsource]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( "preview-encoding.log" );
+    const auto utf16 = QTextCodec::codecForName( "UTF-16LE" )->fromUnicode( QString::fromUtf8( "first\nשלום 😀\n" ) );
+    writeSourceData( path, utf16 );
+    auto source = std::make_shared<LogData>();
+    SafeQSignalSpy finished( source.get(), SIGNAL( loadingFinished( LoadingStatus ) ) );
+    source->attachFile( path );
+    REQUIRE( finished.safeWait() );
+    finished.clear();
+    source->setDisplayEncoding( "UTF-16LE" );
+    REQUIRE( waitUiState( [&] { return source->sourceSnapshot().available; } ) );
+    const auto prepared = preparePreviewSource( source, 1, false );
+    REQUIRE( prepared.error.isEmpty() );
+    CHECK( prepared.text == QString::fromUtf8( "שלום 😀" ) );
+    writeSourceData( path, QByteArray( 65537, 'x' ) + "\n" );
+    finished.clear();
+    source->reload( QTextCodec::codecForName( "UTF-8" ) );
+    REQUIRE( finished.safeWait() );
+    const auto oversized = preparePreviewSource( source, 0, false );
+    CHECK_FALSE( oversized.error.isEmpty() );
+    CHECK( oversized.text.isEmpty() );
+}
 
 TEST_CASE( "Source snapshots distinguish completed and provisional appended lines",
            "[logdata][source]" )

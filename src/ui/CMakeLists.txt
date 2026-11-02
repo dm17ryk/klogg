@@ -56,6 +56,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodeutils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmanager.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmessagetab.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewassembly.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewservice.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewsource.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewtree.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewstablemodel.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewwindow.h
@@ -102,6 +106,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/predefinedfiltersdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/include/optionsdialog.ui
   ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/abstractlogviewpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfig.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionexpression.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/actionsconfigparser.cpp
@@ -119,6 +124,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/configurationexportdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowproject.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidgetpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlighteredit.cpp
@@ -133,6 +139,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowregexlab.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/uiautomation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowtext.cpp
@@ -148,6 +155,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodeutils.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmanager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmessagetab.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewassembly.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewservice.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewsource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewwindow.cpp

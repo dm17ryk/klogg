@@ -16,6 +16,10 @@ add_executable(cilogg_tests
     patternmatcher_test.cpp
     previewdecodeutils_test.cpp
     previewmatchstage_test.cpp
+    previewassembly_test.cpp
+    previewservice_test.cpp
+    previewsource_test.cpp
+    previewcommands_test.cpp
     serialcapturesettings_test.cpp
     streamsession_actions_test.cpp
     sessioninfo_test.cpp
@@ -27,7 +31,10 @@ add_executable(cilogg_tests
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
-add_dependencies(cilogg_tests plugin_fixture)
+target_compile_definitions(cilogg_tests PRIVATE
+    PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"
+    PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
+add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture klogg)
 set_target_properties(
     cilogg_tests
     PROPERTIES AUTOMOC ON

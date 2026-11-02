@@ -38,6 +38,7 @@
 
 #include "log.h"
 #include "captureevaluator.h"
+#include "previewservice.h"
 #include <QtGlobal>
 #include <qapplication.h>
 #include <qthreadpool.h>
@@ -528,6 +529,9 @@ bool writeLabArtifacts( const QVariantMap& payload, const QString& outputDirPath
 
 int main( int argc, char* argv[] )
 {
+    if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-preview-worker" ) {
+        return PreviewService::workerMain( argc, argv );
+    }
     if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-analysis-worker" ) {
         return runAnalysisWorker( argc, argv );
     }

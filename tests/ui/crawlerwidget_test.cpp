@@ -20,6 +20,8 @@
 #include <catch2/catch.hpp>
 
 #include <QApplication>
+#include <QHelpEvent>
+#include <QToolTip>
 #include <QComboBox>
 #include <QJsonDocument>
 #include <QLineEdit>
@@ -44,6 +46,7 @@
 
 #include "crawlerwidget.h"
 #include "analysiscommands.h"
+#include "previewmanager.h"
 
 static const qint64 SL_NB_LINES = 100LL;
 
@@ -350,6 +353,70 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 };
 
 using CrawlerWidgetVisitor = CrawlerWidget::access_by<CrawlerWidgetPrivate>;
+
+TEST_CASE( "Hover preview maps main and filtered rows without changing selection", "[ui][previewhover]" )
+{
+    auto& manager = PreviewManager::instance();
+    const auto original = PreviewRepository::serialize( manager.all(), manager.blocks() );
+    const std::shared_ptr<void> restore( nullptr, [original]( void* ) {
+        auto& previews = PreviewManager::instance();
+        previews.clearAll();
+        QTemporaryFile backup;
+        if ( backup.open() && backup.write( original ) == original.size() && backup.flush() )
+            previews.importFromFile( backup.fileName() );
+    } );
+    QTemporaryFile definition;
+    REQUIRE( definition.open() );
+    definition.write( R"({"version":1,"previews":[{"name":"Hover fixture","regex":"^(?<value>.*)$","format":"fields","fields":[{"name":"Message","source":"capture","capture":"value","type":"string","format":"string"}]}]})" );
+    definition.flush();
+    manager.clearAll();
+    REQUIRE( manager.importFromFile( definition.fileName() ).ok );
+    QTemporaryFile file;
+    REQUIRE( file.open() );
+    file.write( "first\nmatch one\nthird\nmatch two\n" );
+    file.flush();
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>( session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [&] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableTextWrap();
+    visitor.resizeAndShow( 800, 600 );
+    visitor.setSearchPattern( "match" );
+    visitor.runSearch();
+    auto* main = visitor.crawler->findChild<LogMainView*>( "logMainView" );
+    auto* filtered = visitor.crawler->findChild<FilteredView*>();
+    REQUIRE( main );
+    REQUIRE( filtered );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    visitor.render();
+    for ( auto* view : { static_cast<AbstractLogView*>( main ), static_cast<AbstractLogView*>( filtered ) } ) {
+        const int height = view->fontMetrics().height();
+        const QPoint point( 80, height / 2 );
+        QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, point );
+        const auto selection = view->getSelectedText();
+        QSignalSpy requested( view, &AbstractLogView::linePreviewRequested );
+        QCursor::setPos( view->viewport()->mapToGlobal( point ) );
+        QHelpEvent event( QEvent::ToolTip, point, view->viewport()->mapToGlobal( point ) );
+        QApplication::sendEvent( view->viewport(), &event );
+        REQUIRE( requested.size() == 1 );
+        CHECK( requested.front().at( 0 ).toULongLong() == ( view == main ? 0 : 1 ) );
+        CHECK( view->getSelectedText() == selection );
+        REQUIRE( QTest::qWaitFor( [&] {
+            return QToolTip::isVisible() && QToolTip::text().contains( "Hover fixture" )
+                && QToolTip::text().contains( view == main ? "first" : "match one" );
+        }, 10000 ) );
+        const auto screenshot = qEnvironmentVariable( "CILOGG_PREVIEW_TOOLTIP_SCREENSHOT" );
+        if ( view == main && !screenshot.isEmpty() ) {
+            for ( auto* widget : QApplication::topLevelWidgets() )
+                if ( widget->windowType() == Qt::ToolTip && widget->isVisible() )
+                    REQUIRE( widget->grab().save( screenshot ) );
+        }
+        const auto serial = requested.front().at( 2 ).toULongLong();
+        view->clearLinePreview();
+        view->presentLinePreview( serial, { { "available", true }, { "previewName", "obsolete" } } );
+        REQUIRE( QTest::qWaitFor( [] { return !QToolTip::isVisible(); }, 1500 ) );
+    }
+}
 
 TEST_CASE( "Analysis freezes discontiguous physical selection after focus leaves the viewer", "[ui][analysiscommands]" )
 {

@@ -56,6 +56,8 @@
 #include <QColor>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QPointer>
+#include <QVariantMap>
 #include <QTimer>
 
 #ifdef GLOGG_PERF_MEASURE_FPS
@@ -75,6 +77,7 @@
 class QMenu;
 class QAction;
 class QShortcut;
+class QProcess;
 class HighlightersMenu;
 
 // Utility class representing a buffer for number entered on the keyboard
@@ -168,6 +171,11 @@ public:
 
     void registerShortcuts();
 
+    LineNumber previewPhysicalLine( LineNumber viewRow ) const;
+    void clearLinePreview();
+    void trackLinePreview( quint64 serial, QProcess* process, std::function<bool()> valid );
+    void presentLinePreview( quint64 serial, const QVariantMap& result );
+
 protected:
     bool isWrappedLayoutPending() const;
 
@@ -183,6 +191,7 @@ protected:
     void keyPressEvent( QKeyEvent* keyEvent ) override;
     void wheelEvent( QWheelEvent* wheelEvent ) override;
     bool event( QEvent* e ) override;
+    bool viewportEvent( QEvent* event ) override;
 
     // Must be implemented to return what LineType the line number is
     // (used for coloured bullets)
@@ -210,6 +219,7 @@ protected:
     void registerShortcut( const std::string& action, std::function<void()> func );
 
 Q_SIGNALS:
+    void linePreviewRequested( quint64 physicalLine, const QPoint& globalPosition, quint64 serial );
     // Sent up to the MainWindow to enable/disable the follow mode
     void followModeChanged( bool enabled );
     // Sent when the view wants the QuickFind widget pattern to change.
@@ -322,6 +332,15 @@ private Q_SLOTS:
     void setColorLabel( QAction* action );
 
 private:
+    bool linePreviewCurrent() const;
+    quint64 linePreviewSerial_ = 0;
+    quint64 linePreviewPhysical_ = 0;
+    bool linePreviewActive_ = false;
+    bool linePreviewConnectionsReady_ = false;
+    QPoint linePreviewPosition_;
+    QPointer<QProcess> linePreviewProcess_;
+    QTimer* linePreviewTimer_ = nullptr;
+    std::function<bool()> linePreviewValid_;
     // Graphic parameters
     static constexpr int OverviewWidth = 27;
     static constexpr int HookThreshold = 300;

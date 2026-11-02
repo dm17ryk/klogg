@@ -183,7 +183,7 @@ public:
         }
         const auto options = catalog.value( "options" ).toObject();
         QStringList argv{ "command", "--action", action, "--require-running" };
-    const bool analysisTransport = action == "regex_evaluate" || action == "value_counts"
+    const bool analysisTransport = action == "preview_message" || action == "regex_evaluate" || action == "value_counts"
                                    || action.endsWith( "_value_counts" )
                                    || action.endsWith( "_value_count" )
                                    || action.endsWith( "_analysis_job" )

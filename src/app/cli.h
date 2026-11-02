@@ -329,6 +329,7 @@ private:
             "  cancel_plugin_job --plugin-job-id <id>\n"
             "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
             "selector]\n"
+            "  preview_message [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
             "  get_analysis_job --job-id <id> [tab selector]\n"
             "  value_counts [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
             "  get_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
@@ -1815,6 +1816,7 @@ private:
         };
 
         switch ( *action ) {
+        case CommanderAction::PreviewMessage:
         case CommanderAction::RegexEvaluate:
         case CommanderAction::ValueCounts:
         case CommanderAction::GetValueCount:
