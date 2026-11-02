@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-02T09:57:32.973683+00:00",
+  "baseCommit": "fae1374d06e26dd19c56097b5f4119d152a3d965",
+  "scope": "MD01c independent payload-relative field-origin proof preparation",
+  "productDecoderAccepted": false,
+  "md01Acceptance": "pending",
+  "W0Acceptance": "pending",
+  "sourceIdentities": {
+    "scripts/plugins/message_decoder_origins.py": {
+      "bytes": 14938,
+      "sha256": "14a8c322187640f32c13de597da6cacf120d0abf861a7b59d8634ae5bbb89c14"
+    },
+    "tests/plugins/test_message_decoder_origins.py": {
+      "bytes": 16011,
+      "sha256": "9bd447944e4d9a50e576cc3c979db23d16ee9f3abd00568a5c7916cd04e42ff8"
+    },
+    "scripts/plugins/message_decoder_pdu.py": {
+      "bytes": 22421,
+      "sha256": "295743d7ac76dc9266f267b3aca1b169aa359caf8d179c2d35f7e69585110fb5"
+    },
+    "scripts/plugins/message_decoder_reference.py": {
+      "bytes": 15995,
+      "sha256": "89a0e2aa892dc04653599f5da29b0dbc32ddf090cd0e8d750a25ebbbc9b6b800"
+    },
+    "scripts/benchmarks/workbench_process.py": {
+      "bytes": 7421,
+      "sha256": "d4e053f41998186807babeae9e7b0040a24157eea6f858151ac4b431cbc1ea48"
+    },
+    "test_data/message_decoders/probe.json": {
+      "bytes": 411,
+      "sha256": "e13d921faa46e5df5fef0548091c2c4a26344530726ae2a6d3fcc0c4fc776ab6"
+    },
+    "test_data/message_decoders/pdu_probe.lua": {
+      "bytes": 1667,
+      "sha256": "3682f77a10015eaef08322eede31a09aab0e23c55a8b9f30e7a263f290c51de9"
+    },
+    ".github/workflows/plugin-examples.yml": {
+      "bytes": 2866,
+      "sha256": "d5fe9cbdb21e3bf92a750b738d847a3054d6a76a653f8bfb7eea06908a0a174e"
+    }
+  },
+  "realCaptureQualifications": [
+    {
+      "protocol": "ehcp",
+      "captureIdentity": {
+        "bytes": 4208876,
+        "sha256": "4d06cf6278140ef219603305a5eec2cd2d66f4ae4f65346e9b881343e36fc7c8"
+      },
+      "records": 23,
+      "fields": 980,
+      "mappedFields": 760,
+      "reasonCounts": {
+        "verified_payload_bytes": 760,
+        "no_occupied_bytes": 220
+      },
+      "artifactSha256": "c88fa1efae93887ba30911cfb072760a778256b369a8ce5bd1f89376ac7e5e92"
+    },
+    {
+      "protocol": "ehci",
+      "captureIdentity": {
+        "bytes": 18130464,
+        "sha256": "9618b6f3e433085015687ba6cbe484470f8a1fe0908b7ec5e2c266f3e716bc9f"
+      },
+      "records": 1,
+      "fields": 1620,
+      "mappedFields": 1142,
+      "reasonCounts": {
+        "verified_payload_bytes": 1142,
+        "no_occupied_bytes": 473,
+        "data_source_unavailable": 5
+      },
+      "artifactSha256": "4274964f7f473b7c163ca5c10111f563a09ee5c30c381345979b1857f884c4c2"
+    }
+  ],
+  "engine": {
+    "tsharkVersion": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n  +brotli                     +MaxMind\r\n  +Gcrypt 1.12.4-unknown      +nghttp2 1.69.0\r\n  +GnuTLS 3.8.13 and PKCS#11  +nghttp3 1.8.0\r\n  +Kerberos (MIT)             +PCRE2 10.47 2025-10-21\r\n  +libpcap                    +Snappy 1.1.9\r\n  +libsmi 0.5.0               +xxhash 0.8.3\r\n  +libxml2 2.15.3             +zlib 1.3.1\r\n  +Lua 5.4.6 (UfW patched)    +zlib-ng 2.2.3\r\n  +LZ4 1.10.0                 +Zstandard 1.5.7\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=English_Israel.utf8\r\n Plugins: supported, 0 loaded\r\n With:\r\n  +brotli 1.2.0\r\n  +c-ares 1.34.8\r\n  +Gcrypt 1.12.4-unknown\r\n  +GnuTLS 3.8.13\r\n  +LZ4 1.10.0\r\n  +nghttp2 1.69.0\r\n  +nghttp3 1.8.0\r\n  +Npcap 1.89, libpcap 1.10.7 (64-bit time_t)\r\n  +PCRE2 10.47 2025-10-21\r\n  +xxhash 803\r\n  +Zstandard 1.5.7\r\n",
+    "text2pcapVersion": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).\r\n\r\nCopyright 1998-2026 Gerald Combs <gerald@wireshark.org> and contributors.\r\nLicensed under the terms of the GNU General Public License (version 2 or later).\r\nThis is free software; see the file named COPYING in the distribution. There is\r\nNO WARRANTY; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n\r\nCompile-time info:\r\n Bit width: 64-bit\r\n  Compiler: Microsoft Visual Studio 2026 (VC++ 14.51, build 36244)\r\n      GLib: 2.88.0\r\n With:\r\n\r\nRuntime info:\r\n      OS: 64-bit Windows 11 (25H2), build 26200\r\n     CPU: Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz (with SSE4.2)\r\n  Memory: 32519 MB of physical memory\r\n    GLib: 2.88.0\r\n  Locale: LC_TYPE=C\r\n Plugins: supported, 0 loaded\r\n With:\r\n",
+    "luaAvailable": true,
+    "luaFoldersIsolated": true,
+    "scripts": [
+      {
+        "name": "essence_ehcp.lua",
+        "sha256": "8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35",
+        "license": "not_verified"
+      },
+      {
+        "name": "essence_ehci.lua",
+        "sha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea",
+        "license": "not_verified"
+      }
+    ],
+    "binaries": [
+      {
+        "name": "tshark.exe",
+        "bytes": 623272,
+        "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+      },
+      {
+        "name": "text2pcap.exe",
+        "bytes": 375464,
+        "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+      }
+    ]
+  },
+  "syntheticProof": {
+    "artifactIdentity": {
+      "bytes": 7406,
+      "sha256": "5f0fb59a7af9e68fc280b9fc8a302484da0f953265af45254a61ea7271e92fb2"
+    },
+    "fields": 4,
+    "mappedFields": 2,
+    "transformedFieldsUnmapped": 1,
+    "zeroByteFieldsUnmapped": 1,
+    "generatedFlags": "unknown, not exposed by raw JSON"
+  },
+  "nativeDnsPrivacy": "Passed real native DNS input with payload-derived subtree labels; no label text in ordinal paths or decision logs",
+  "verification": {
+    "build": {
+      "target": "ci_build",
+      "config": "RelWithDebInfo",
+      "qt": "6.10.1",
+      "parallel": 1,
+      "exitCode": 0,
+      "logIdentity": {
+        "bytes": 36747,
+        "sha256": "f3c0bed2bf8d03dc6b90051fa3034aff5bc759c92237bb2ea261fd033745f5fd"
+      }
+    },
+    "pluginSuites": [
+      {
+        "python": "3.14",
+        "cases": 123,
+        "passed": 123,
+        "skipped": 0,
+        "command": "python -X utf8 -m unittest discover -s tests/plugins -v",
+        "logIdentity": {
+          "bytes": 20529,
+          "sha256": "c7efc4dacbd6d0f46137533d984481b100153dd879da93f45b38d45e5e0a141f"
+        }
+      },
+      {
+        "python": "3.9",
+        "cases": 123,
+        "passed": 123,
+        "skipped": 0,
+        "command": "python -X utf8 -m unittest discover -s tests/plugins -v",
+        "logIdentity": {
+          "bytes": 14228,
+          "sha256": "6579dd0091ceedd831c6c2395d873b043403d0d359d7bed4a67a0e9b9b5b4292"
+        }
+      }
+    ],
+    "ctest": {
+      "registeredTests": 7,
+      "passed": 7,
+      "failed": 0,
+      "seconds": 203.8008247000398,
+      "runtime": "byte-verified isolated deployed copy; original registration commands/arguments/properties preserved except runtime prefix",
+      "binarySha256": {
+        "cilogg.exe": "1d23be54d69d1f7206293cdfb5dd761783a3a0809a09f1bfbd3f95847a079e41",
+        "cilogg_tests.exe": "feb2b3c6f2a334c9403162acd51ddc3009ab627f710513f918186fe284a39b5d",
+        "cilogg_itests.exe": "59d6e58def3cc61990a0c9ac3674c3f4cacf0ee1890d13bfd10ebf5c9d4619e0"
+      },
+      "logIdentity": {
+        "bytes": 1154,
+        "sha256": "120dea867b96c0751c20699603ac3a64cf4bd41deebf50437d192c99dd42d6bb"
+      }
+    },
+    "ruff": "format check and lint passed",
+    "reviews": "Fresh general/Python review; both HIGH findings fixed in one RED/GREEN pass: incomplete manifest input preservation and payload-derived tree-key privacy; adjacent report-write failure covered",
+    "redGreenLogs": {
+      "md01c-edge-red": {
+        "bytes": 4307,
+        "sha256": "07daea38920dd91dc410b200b100e840c43f1794b9325013e73f3e6b8ec0b8d1"
+      },
+      "md01c-edge-green": {
+        "bytes": 2901,
+        "sha256": "12d6989d5f3d9911a1e240e012460b4606552605f926d2e708ad2c2f76699127"
+      },
+      "md01c-null-red": {
+        "bytes": 5164,
+        "sha256": "607bf639223aaa9f6f797f4f863a8aa09cc1a2240f96dd5e3a88bef3035fe4bd"
+      },
+      "md01c-null-green": {
+        "bytes": 2945,
+        "sha256": "f024ee9ac7267ff8989b42f948b412b50c4575b7f654a69ec674691b6c42f374"
+      },
+      "md01c-retention-red": {
+        "bytes": 3984,
+        "sha256": "e8f97307794eb5cabcd0347e608a66c2d4d9f72d19d12e2440a0410da0ea197e"
+      },
+      "md01c-retention-green": {
+        "bytes": 3096,
+        "sha256": "02380d21e7e8019e2450e38953aa8640fb444e777300d74b10ab0e1bc038b2e8"
+      },
+      "md01c-review-red": {
+        "bytes": 8530,
+        "sha256": "ecb96cafd0b8a13d352e80ad9755a77fb2628772e4eb07f22c387c0dc0af1ebf"
+      },
+      "md01c-review-privacy-red": {
+        "bytes": 18302,
+        "sha256": "9a3499a163e8df66304a0f882fe7a5950d5ebf0861c10a5008f4f0751a13bbea"
+      },
+      "md01c-review-green": {
+        "bytes": 4216,
+        "sha256": "5413108f18467847e182a5cb98e61467fa8fef3d19aac0a6a1e065ff3fff6599"
+      }
+    },
+    "hosted": "pending; not claimed from local tests",
+    "codeIndexes": {
+      "GitNexus": "stale sibling checkout; bounded90s refresh timed out/reaped; staged detect reports no changes and is not authoritative",
+      "CodeGraph": "tool explicitly reports unindexed; not initialized",
+      "codeReviewGraph": "tool unavailable in current root tool inventory"
+    }
+  },
+  "remaining": [
+    "Original-log/capture byte sidecars and UTF-16 mapping",
+    "Portable generated-field flags and PDML/raw tree alignment",
+    "Bare partial/direct-NUL EHCI capabilities and private nested oracle",
+    "Licensing/distribution and product integration; W0 hard gates preserved",
+    "Cross-platform runtime/release and measured peak-memory acceptance"
+  ]
+}

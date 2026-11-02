@@ -202,15 +202,17 @@ def fields_named(nodes, name):
     return result
 
 
-def load_manifest(path):
+def load_manifest(path, *, manifest_bytes=None, read_source=None):
+    """Validate fixtures; optional frozen bytes/reader avoid reopening mutable inputs."""
     path = Path(path).resolve()
     if not path.is_file():
         raise ProofError("input_missing")
     try:
-        if path.stat().st_size > INPUT_LIMIT:
-            raise ProofError("input_limit")
-        with path.open("rb") as source:
-            manifest_bytes = source.read(INPUT_LIMIT + 1)
+        if manifest_bytes is None:
+            if path.stat().st_size > INPUT_LIMIT:
+                raise ProofError("input_limit")
+            with path.open("rb") as source:
+                manifest_bytes = source.read(INPUT_LIMIT + 1)
         if len(manifest_bytes) > INPUT_LIMIT:
             raise ProofError("input_limit")
         manifest = json.loads(manifest_bytes.decode("utf-8"))
@@ -237,15 +239,19 @@ def load_manifest(path):
                     or not all(isinstance(value, str) for value in values)
                 ):
                     raise ProofError("invalid_fixture")
-            source = (path.parent / case["hex"]).resolve()
+            declared_source = path.parent / case["hex"]
+            source = declared_source.resolve()
             if path.parent not in source.parents:
                 raise ProofError("invalid_fixture")
-            if not source.is_file():
-                raise ProofError("input_missing")
-            if source.stat().st_size > INPUT_LIMIT * 3:
-                raise ProofError("input_limit")
-            with source.open("rb") as data_file:
-                encoded = data_file.read(INPUT_LIMIT * 3 + 1)
+            if read_source is not None:
+                encoded = read_source(declared_source, source, INPUT_LIMIT * 3)
+            else:
+                if not source.is_file():
+                    raise ProofError("input_missing")
+                if source.stat().st_size > INPUT_LIMIT * 3:
+                    raise ProofError("input_limit")
+                with source.open("rb") as data_file:
+                    encoded = data_file.read(INPUT_LIMIT * 3 + 1)
             if len(encoded) > INPUT_LIMIT * 3:
                 raise ProofError("input_limit")
             payload = bytes.fromhex(encoded.decode("ascii"))
@@ -262,7 +268,7 @@ def load_manifest(path):
                 case["sha256"],
             )
         return cases
-    except (KeyError, TypeError, ValueError, UnicodeError) as error:
+    except (KeyError, TypeError, ValueError, UnicodeError, RecursionError) as error:
         raise ProofError("invalid_fixture") from error
 
 
