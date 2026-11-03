@@ -52,3 +52,11 @@ arguments or imported JSON preview definitions.
 
 Local integration used Windows, TShark 4.6.9 and Lua 5.4.6. Other versions,
 hosted CI, other platforms and release packages need their own qualification.
+
+The following captures show the actual native pane and hover for a public
+synthetic EHCI message. Its `CRC0000` is intentionally invalid, as reported by
+the external Lua dissector.
+
+![EHCI preview pane](images/md03a-ehci-pane.png)
+
+![EHCI hover tooltip](images/md03a-ehci-hover.png)
