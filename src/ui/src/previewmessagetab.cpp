@@ -153,10 +153,9 @@ QString decodeTooltip( const DecodeErrorInfo& info )
 void logDecodeError( const DecodeErrorInfo& info )
 {
     LOG_WARNING << "[Previewer] Decode error for '" << info.previewName.toStdString() << "'"
-                << " field '" << info.fieldPath.toStdString() << "': "
-                << info.reason.toStdString() << " (source=" << info.source.toStdString()
-                << ", offset=" << info.offset << ", width=" << info.width
-                << ", raw=" << info.rawSlice.toStdString() << ")";
+                << " field '" << info.fieldPath.toStdString() << "': " << info.reason.toStdString()
+                << " (source=" << info.source.toStdString() << ", offset=" << info.offset
+                << ", width=" << info.width << ")";
 }
 
 void setItemStatus( QTreeWidgetItem* item, const QString& text, const QString& tooltip )
@@ -1359,112 +1358,133 @@ void addFieldItems( QTreeWidgetItem* parent,
 }
 } // namespace
 
+PreviewPreparedBuffer preparePreviewInput( const QString& text, const QString& encoding )
+{
+    PreviewPreparedBuffer result;
+    PreviewBufferType type = PreviewBufferType::String;
+    if ( encoding == "hex" )
+        type = PreviewBufferType::HexString;
+    else if ( encoding == "base64" ) {
+        type = PreviewBufferType::Base64;
+        const auto ascii = text.toLatin1();
+        if ( QString::fromLatin1( ascii ) != text
+             || QByteArray::fromBase64( ascii ).toBase64() != ascii ) {
+            result.reason = "invalid_base64";
+            result.error = QObject::tr( "Failed to decode base64 data." );
+            return result;
+        }
+    }
+    else if ( encoding != "utf8" ) {
+        result.reason = "invalid_encoding";
+        return result;
+    }
+    const auto decoded = decodeBytesFromText( text, type );
+    result.ok = decoded.ok;
+    result.bytes = decoded.bytes;
+    result.error = decoded.error;
+    if ( !result.ok )
+        result.reason = encoding == "hex" ? "invalid_hex" : "decode_error";
+    return result;
+}
+
+PreviewPreparedBuffer preparePreviewBuffer( const QString& rawLine,
+                                            const PreviewDefinition& definition,
+                                            const QString& encodingOverride )
+{
+    PreviewPreparedBuffer result;
+    result.match = definition.compiled.match( rawLine );
+    if ( !result.match.hasMatch() ) {
+        result.error = PreviewMessageTab::tr( "No match for selected preview." );
+        result.reason = "no_match";
+        return result;
+    }
+    const auto bufferText = definition.bufferCapture.isSet
+                                ? captureValue( definition.bufferCapture, result.match )
+                                : rawLine;
+    result.source = definition.bufferCapture.isSet
+                        ? describeCaptureRef( definition.bufferCapture, "bufferCapture" )
+                        : PreviewMessageTab::tr( "raw line" );
+    result.matchStart = qMax( 0, clampToInt( result.match.capturedStart( 0 ) ) );
+    if ( definition.bufferCapture.isSet ) {
+        const auto start = captureStart( definition.bufferCapture, result.match );
+        if ( start >= 0 )
+            result.bufferBaseOffset = qMax( 0, start - result.matchStart );
+    }
+    if ( encodingOverride.isEmpty() ) {
+        const auto decoded = decodeBytesFromText( bufferText, definition.type );
+        result.ok = decoded.ok;
+        result.bytes = decoded.bytes;
+        result.error = decoded.error;
+        result.reason = "decode_error";
+    }
+    else {
+        const auto explicitInput = preparePreviewInput( bufferText, encodingOverride );
+        result.ok = explicitInput.ok;
+        result.bytes = explicitInput.bytes;
+        result.error = explicitInput.error;
+        result.reason = explicitInput.reason;
+    }
+    if ( !result.ok ) {
+        LOG_DEBUG << "Preview carrier rejected reason=" << result.reason
+                  << " source_characters=" << bufferText.size();
+        result.error = PreviewMessageTab::tr( "Decode error: %1" ).arg( result.error );
+        return result;
+    }
+    if ( definition.offset.isSet ) {
+        const auto offset = resolveExprValue( definition.offset, {} );
+        if ( !offset.ok ) {
+            result.error = PreviewMessageTab::tr( "Decode error: %1" )
+                               .arg( offset.error.isEmpty()
+                                         ? PreviewMessageTab::tr( "Invalid preview offset." )
+                                         : offset.error );
+        }
+        else if ( offset.value < 0 )
+            result.error = PreviewMessageTab::tr( "Decode error: preview offset is negative." );
+        else if ( offset.value > result.bytes.size() )
+            result.error
+                = PreviewMessageTab::tr( "Decode error: preview offset exceeds buffer size." );
+        else
+            result.initialOffset = offset.value;
+        if ( !result.error.isEmpty() ) {
+            result.ok = false;
+            result.reason = "decode_error";
+            LOG_DEBUG << "Preview carrier rejected reason=initial_offset buffer_bytes="
+                      << result.bytes.size();
+            return result;
+        }
+    }
+    result.reason.clear();
+    LOG_DEBUG << "Preview carrier prepared buffer_bytes=" << result.bytes.size()
+              << " initial_offset=" << result.initialOffset;
+    return result;
+}
+
 QTreeWidgetItem* createLegacyPreviewTree( const QString& rawLine, const PreviewDefinition& preview,
                                           const QMap<QString, PreviewFieldSpec>& blocks,
                                           QString* error, PreviewTreeBudget* budget )
 {
+    const auto prepared = preparePreviewBuffer( rawLine, preview );
+    if ( !prepared.ok ) {
+        *error = prepared.error;
+        return nullptr;
+    }
     const auto* definition = &preview;
-    const auto previewName = preview.name;
-    const auto match = definition->compiled.match( rawLine );
-    if ( !match.hasMatch() ) {
-        *error = PreviewMessageTab::tr( "No match for selected preview." );
-        return nullptr;
-    }
-
-    QString bufferText;
-    if ( definition->bufferCapture.isSet ) {
-        bufferText = captureValue( definition->bufferCapture, match );
-    }
-    else {
-        bufferText = rawLine;
-    }
-
-    const auto bufferSource = definition->bufferCapture.isSet
-                                  ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
-                                  : PreviewMessageTab::tr( "raw line" );
-    int bufferBaseOffset = 0;
-    const int matchStart = clampToInt( match.capturedStart( 0 ) );
-    if ( definition->bufferCapture.isSet ) {
-        const auto captureStartOffset = captureStart( definition->bufferCapture, match );
-        if ( captureStartOffset >= 0 && matchStart >= 0 ) {
-            bufferBaseOffset = captureStartOffset - matchStart;
-            if ( bufferBaseOffset < 0 ) {
-                bufferBaseOffset = 0;
-            }
-        }
-    }
-    const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
-    if ( !decodedBuffer.ok ) {
-        DecodeErrorInfo errorInfo{
-            previewName, QObject::tr( "buffer" ),        bufferSource,       0,
-            -1,          truncateText( bufferText, 64 ), decodedBuffer.error
-        };
-        logDecodeError( errorInfo );
-        *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( decodedBuffer.error );
-        return nullptr;
-    }
-
     QMap<QString, qint64> values;
     QMap<QString, QString> rawValues;
     QStringList blockStack;
-    ParseContext context{ decodedBuffer.bytes,
-                          0,
+    ParseContext context{ prepared.bytes,
+                          prepared.initialOffset,
                           &values,
                           &rawValues,
-                          &match,
+                          &prepared.match,
                           &blocks,
                           &blockStack,
-                          previewName,
-                          bufferSource,
-                          bufferBaseOffset,
-                          matchStart >= 0 ? matchStart : 0,
+                          preview.name,
+                          prepared.source,
+                          prepared.bufferBaseOffset,
+                          prepared.matchStart,
                           false };
-
     context.budget = budget;
-
-    if ( definition->offset.isSet ) {
-        const auto offsetExpr = resolveExprValue( definition->offset, values );
-        if ( !offsetExpr.ok ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       0,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       offsetExpr.error.isEmpty()
-                                           ? PreviewMessageTab::tr( "Invalid preview offset." )
-                                           : offsetExpr.error };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( errorInfo.reason );
-            return nullptr;
-        }
-        if ( offsetExpr.value < 0 ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       PreviewMessageTab::tr( "Preview offset is negative." ) };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: preview offset is negative." );
-            return nullptr;
-        }
-        context.cursor += offsetExpr.value;
-        if ( context.cursor > decodedBuffer.bytes.size() ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       PreviewMessageTab::tr(
-                                           "Preview offset exceeds buffer size." ) };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: preview offset exceeds buffer size." );
-            return nullptr;
-        }
-    }
 
     auto root = std::make_unique<QTreeWidgetItem>();
     for ( const auto& field : definition->fields ) {

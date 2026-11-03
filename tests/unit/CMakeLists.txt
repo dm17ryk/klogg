@@ -1,4 +1,7 @@
 # Add test cpp file
+add_executable(preview_decoder_fixture previewdecoder_fixture.cpp)
+target_link_libraries(preview_decoder_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+
 add_executable(cilogg_tests
     actionsconfig_test.cpp
     actionparametersdialog_test.cpp
@@ -19,6 +22,7 @@ add_executable(cilogg_tests
     previewmatchstage_test.cpp
     previewassembly_test.cpp
     previewservice_test.cpp
+    previewdecoder_test.cpp
     previewsource_test.cpp
     previewcommands_test.cpp
     serialcapturesettings_test.cpp
@@ -36,8 +40,10 @@ target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
 target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"
+    PREVIEW_PUBLIC_LUA_PATH="${CMAKE_SOURCE_DIR}/test_data/message_decoders/pdu_probe.lua"
+    PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
-add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture klogg)
+add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture klogg)
 set_target_properties(
     cilogg_tests
     PROPERTIES AUTOMOC ON
