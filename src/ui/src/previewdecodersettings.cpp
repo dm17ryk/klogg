@@ -46,7 +46,7 @@ bool isString( const QVariant& value )
 }
 bool named( const QString& value, bool empty = false )
 {
-    static const QRegularExpression pattern( "^[A-Za-z][A-Za-z0-9_.-]{0,127}$" );
+    static const QRegularExpression pattern( "\\A[A-Za-z][A-Za-z0-9_.-]{0,127}\\z" );
     return ( empty && value.isEmpty() ) || pattern.match( value ).hasMatch();
 }
 bool encoding( const QString& value )

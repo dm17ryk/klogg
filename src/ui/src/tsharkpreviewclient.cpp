@@ -126,7 +126,7 @@ bool validResponse( const QJsonObject& value, const QString& id )
         if ( !value.value( "scriptSha256" ).isArray()
              || value.value( "scriptSha256" ).toArray().size() > 8 )
             return false;
-        static const QRegularExpression hash( "^[0-9a-f]{64}$" );
+        static const QRegularExpression hash( "\\A[0-9a-f]{64}\\z" );
         for ( const auto& digest : value.value( "scriptSha256" ).toArray() )
             if ( !digest.isString() || !hash.match( digest.toString() ).hasMatch() )
                 return false;

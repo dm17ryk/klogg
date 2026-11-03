@@ -65,6 +65,10 @@ TEST_CASE( "Decoder settings replace atomically with strict trusted types", "[pr
           { QVariantMap{ { "enabled", "true" } }, QVariantMap{ { "unknown", true } },
             QVariantMap{ { "enabled", true } }, QVariantMap{ { "inputEncoding", "unknown" } },
             QVariantMap{ { "defaultDissector", "data;system()" } },
+            QVariantMap{ { "defaultDissector", "data\n" } },
+            QVariantMap{
+                { "previewRoutes",
+                  QVariantMap{ { "Carrier", QVariantMap{ { "dissector", "data\n" } } } } } },
             QVariantMap{ { "lua", QVariantList{ "relative.lua" } } } } ) {
         CHECK_FALSE( settings.setConfiguration( invalid, &error ) );
         CHECK_FALSE( error.isEmpty() );
@@ -486,19 +490,15 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
                                { "lua", QVariantList{} },
                                { "dissector", "data" },
                                { "protocol", "" } };
-    const QMap<QString, QString> cases{ { "metadata", "worker_protocol_error" },
-                                        { "flags", "worker_protocol_error" },
-                                        { "hash", "worker_protocol_error" },
-                                        { "crash", "worker_failure" },
-                                        { "id", "worker_protocol_error" },
-                                        { "version", "worker_protocol_error" },
-                                        { "attributes", "worker_protocol_error" },
-                                        { "depth", "worker_protocol_error" },
-                                        { "count", "worker_protocol_error" },
-                                        { "surplus", "worker_protocol_error" },
-                                        { "large", "result_limit" },
-                                        { "stderr", "diagnostic_limit" },
-                                        { "stall", "timeout" } };
+    const QMap<QString, QString> cases{
+        { "metadata", "worker_protocol_error" }, { "flags", "worker_protocol_error" },
+        { "hash", "worker_protocol_error" },     { "hash_newline", "worker_protocol_error" },
+        { "crash", "worker_failure" },           { "id", "worker_protocol_error" },
+        { "version", "worker_protocol_error" },  { "attributes", "worker_protocol_error" },
+        { "depth", "worker_protocol_error" },    { "count", "worker_protocol_error" },
+        { "surplus", "worker_protocol_error" },  { "large", "result_limit" },
+        { "stderr", "diagnostic_limit" },        { "stall", "timeout" }
+    };
     int counter = 0;
     const auto run = [ & ]( QObject* channel, int timeoutMs = 1000 ) {
         QEventLoop loop;
@@ -564,6 +564,67 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
     cleanup.exec();
     CHECK( client.findChildren<QProcess*>().isEmpty() );
     client.reset();
+}
+
+TEST_CASE( "Direct decoder display names never select colliding carrier routes",
+           "[previewdecoder]" )
+{
+    if ( qEnvironmentVariable( "CILOGG_TSHARK" ).isEmpty()
+         || qEnvironmentVariable( "CILOGG_TEXT2PCAP" ).isEmpty() ) {
+        WARN( "Actual direct route identity test skipped: explicit engine paths absent" );
+        return;
+    }
+    RestoreDecoder restore;
+    QVariantMap config{ { "enabled", true },
+                        { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+                        { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+                        { "defaultDissector", "data" } };
+    QObject channel;
+    for ( const auto& protocol : { QString{}, QString( "ip" ) } ) {
+        config[ "previewRoutes" ]
+            = QVariantMap{ { "EHCI",
+                             QVariantMap{ { "dissector", "ip" }, { "protocol", protocol } } } };
+        REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
+        for ( const auto& decoder : { QString( "tshark" ), QString( "auto" ) } ) {
+            for ( const auto& override : { QString{}, QString( "data" ) } ) {
+                INFO( "decoder=" << decoder.toStdString() << " protocol=" << protocol.toStdString()
+                                 << " override=" << override.toStdString() );
+                auto request = directRequest( "01020304", "hex" );
+                request.decoder = decoder;
+                request.dissector = override;
+                request.assemblyProtocol = "EHCI";
+                request.sessionOwner = &channel;
+                request.definitions = R"({"version":1,"previews":[]})";
+                const auto result = PreviewService::evaluateAndWait( request );
+                INFO( result.value( "reason" ).toString().toStdString() );
+                REQUIRE( result.value( "available" ).toBool() );
+                CHECK( result.value( "backend" ) == "tshark_lua" );
+                CHECK( result.value( "previewName" ) == "EHCI" );
+                bool exactData = false;
+                for ( const auto& field : result.value( "fields" ).toList() ) {
+                    const auto attributes = field.toMap().value( "attributes" ).toMap();
+                    CHECK( attributes.value( "name" ) != "ip" );
+                    if ( attributes.value( "name" ) == "data.data" )
+                        exactData = attributes.value( "value" ) == "01020304";
+                }
+                CHECK( exactData );
+            }
+        }
+    }
+}
+
+TEST_CASE( "Dissector overrides reject terminal newlines before worker startup",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    auto request = directRequest( "0102", "hex" );
+    request.dissector = "data\n";
+    request.executable = "must-not-launch-newline-dissector";
+    CHECK( PreviewService::evaluateAndWait( request ).value( "reason" ) == "invalid_dissector" );
 }
 
 TEST_CASE( "Destroyed callback owners suppress delivery and release the compatibility token",

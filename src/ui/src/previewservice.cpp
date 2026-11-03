@@ -413,13 +413,14 @@ public:
             return;
         }
         external_ = true;
-        const auto route = routeFor( snapshot_.configuration, optionsFor( request_ ),
-                                     result.value( "previewName" ).toString() );
+        const auto carrierName = result.value( "carrierName" );
+        const auto route
+            = routeFor( snapshot_.configuration, optionsFor( request_ ), carrierName.toString() );
         const auto encoded = result.value( "payloadBase64" );
         const auto payload = QByteArray::fromBase64( encoded.toString().toLatin1() );
-        if ( route.isEmpty() || route != result.value( "route" ).toMap()
-             || encoded.userType() != QMetaType::QString || payload.isEmpty()
-             || payload.size() > 65536
+        if ( carrierName.userType() != QMetaType::QString || route.isEmpty()
+             || route != result.value( "route" ).toMap() || encoded.userType() != QMetaType::QString
+             || payload.isEmpty() || payload.size() > 65536
              || QString::fromLatin1( payload.toBase64() ) != encoded.toString() ) {
             finish( failure( "worker_protocol_error" ) );
             return;
@@ -437,6 +438,7 @@ public:
         const auto name = result.value( "previewName" ).toString();
         QPointer<EvaluationState> guard( this );
         LOG_DEBUG << "Preview selector completed id=" << id_ << " carrier_bytes=" << payload.size()
+                  << " direct=" << carrierName.toString().isEmpty()
                   << " remaining_ms=" << remaining;
         TsharkPreviewClient::instance().evaluate(
             sessionOwner_, profile, payload, remaining, id_,
@@ -510,7 +512,7 @@ QProcess* PreviewService::evaluate( QObject* owner, PreviewEvaluationRequest req
               && request.decoder != "tshark" )
         invalid = "invalid_decoder";
     else if ( !request.dissector.isEmpty()
-              && !QRegularExpression( "^[A-Za-z][A-Za-z0-9_.-]{0,127}$" )
+              && !QRegularExpression( "\\A[A-Za-z][A-Za-z0-9_.-]{0,127}\\z" )
                       .match( request.dissector )
                       .hasMatch() )
         invalid = "invalid_dissector";
@@ -738,15 +740,19 @@ int PreviewService::workerMain( int argc, char* argv[] )
                               << result.value( "reason" ).toString();
                 }
                 else {
-                    result = { { "version", 1 },
-                               { "backend", "tshark_carrier" },
-                               { "state", "processing" },
-                               { "available", false },
-                               { "complete", false },
-                               { "previewName",
-                                 direct ? options.value( "assemblyProtocol" ).toString() : name },
-                               { "route", route },
-                               { "payloadBase64", QString::fromLatin1( payload.toBase64() ) } };
+                    result = {
+                        { "version", 1 },
+                        { "backend", "tshark_carrier" },
+                        { "state", "processing" },
+                        { "available", false },
+                        { "complete", false },
+                        // Identity stays empty for direct input; previewName is presentation only.
+                        { "carrierName", direct ? QString{} : name },
+                        { "previewName",
+                          direct ? options.value( "assemblyProtocol" ).toString() : name },
+                        { "route", route },
+                        { "payloadBase64", QString::fromLatin1( payload.toBase64() ) }
+                    };
                     LOG_DEBUG << "Preview carrier selected direct=" << direct
                               << " bytes=" << payload.size();
                 }

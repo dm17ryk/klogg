@@ -114,6 +114,8 @@ int main( int argc, char** argv )
             response[ "complete" ] = false;
         if ( mode == "hash" )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
+        if ( mode == "hash_newline" )
+            response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
         auto bytes = frame( response );
         if ( mode == "surplus" )
             bytes += bytes;
