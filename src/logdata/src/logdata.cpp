@@ -157,6 +157,13 @@ AnalysisRawBlock LogData::readAnalysisBlock( const SourceSnapshot& snapshot, qui
               : ( firstLine == snapshot.completeLineCount.get() && snapshot.provisionalLineStart
                       ? *snapshot.provisionalLineStart
                       : index.getEndOfLineOffset( asLine( firstLine - 1 ) ).get() );
+    if ( start < 0 || start > snapshot.indexedBytes ) {
+        block.error = "invalid_source_range";
+        LOG_DEBUG << "Analysis invalid byte start line=" << firstLine << " start=" << start
+                  << " watermark=" << snapshot.indexedBytes;
+        return block;
+    }
+    std::vector<AnalysisRawRecord> records;
     auto end = start;
     const auto stop = std::min<quint64>(
         snapshot.lineCount.get(),
@@ -180,6 +187,8 @@ AnalysisRawBlock LogData::readAnalysisBlock( const SourceSnapshot& snapshot, qui
         if ( lineEnd - start > limits.batchBytes ) {
             break;
         }
+        records.push_back( { { static_cast<quint64>( end ), static_cast<quint64>( lineEnd ) },
+                             {}, line >= snapshot.completeLineCount.get() } );
         end = lineEnd;
         block.nextLine = line + 1;
     }
@@ -204,8 +213,45 @@ AnalysisRawBlock LogData::readAnalysisBlock( const SourceSnapshot& snapshot, qui
         return block;
     }
     block.codec = codec_.codec()->name();
+    const auto parameters = codec_.encodingParameters();
+    const auto width = parameters.lineFeedWidth;
+    if ( width < 1 || width > 4 || parameters.lineFeedIndex < 0
+         || parameters.lineFeedIndex >= width ) {
+        block.bytes.clear();
+        block.error = "unsupported_encoding";
+        LOG_DEBUG << "Analysis unsupported physical delimiter width=" << width
+                  << " index=" << parameters.lineFeedIndex;
+        return block;
+    }
+    QByteArray lf( width, '\0' );
+    lf[ parameters.lineFeedIndex ] = '\n';
+    QByteArray cr( width, '\0' );
+    cr[ parameters.lineFeedIndex ] = '\r';
+    for ( auto& record : records ) {
+        if ( record.provisional )
+            continue;
+        const auto length = record.bytes.endExclusive - record.bytes.begin;
+        const auto offset = static_cast<int>( record.bytes.endExclusive
+                                             - static_cast<quint64>( start ) );
+        if ( length < static_cast<quint64>( width )
+             || block.bytes.mid( offset - width, width ) != lf ) {
+            block.bytes.clear();
+            block.error = "decode_error";
+            LOG_DEBUG << "Analysis rejected physical delimiter begin=" << record.bytes.begin
+                      << " end=" << record.bytes.endExclusive << " width=" << width;
+            return block;
+        }
+        const bool crlf = length >= static_cast<quint64>( width * 2 )
+                          && block.bytes.mid( offset - width * 2, width ) == cr;
+        record.terminatorBytes = block.bytes.mid( offset - ( crlf ? width * 2 : width ),
+                                                 crlf ? width * 2 : width );
+    }
+    block.records = std::move( records );
     LOG_DEBUG << "Analysis read firstLine=" << firstLine << " nextLine=" << block.nextLine
-              << " bytes=" << block.bytes.size() << " watermark=" << snapshot.indexedBytes;
+              << " bytes=" << block.bytes.size() << " watermark=" << snapshot.indexedBytes
+              << " source=" << snapshot.sourceId.toString() << " generation=" << snapshot.generation
+              << " revision=" << snapshot.revision << " records=" << block.records.size()
+              << " delimiterWidth=" << width;
     return block;
 }
 

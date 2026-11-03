@@ -1125,16 +1125,20 @@
       "evidence": [
         "../../docs/analysis-datasets.md",
         "../../docs/workbench/f01a-exact-values.md",
-        "../../tests/unit/fieldvalue_test.cpp"
+        "../../docs/workbench/f01b-line-provenance.md",
+        "../../tests/unit/fieldvalue_test.cpp",
+        "../../tests/ui/analysisjob_test.cpp"
       ],
       "limitations": [
-        "Only the unused internal F01a scalar contract is prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
-        "Event identity/origins, source spans, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
+        "Only internal F01a scalar and F01b physical-line provenance foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
+        "Event identity/discriminated origins, event-level spans, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
       ],
       "slices": [
         {
           "id": "F01a",
           "status": "implemented_pending_gates",
+          "integrationState": "merged",
+          "mergeCommit": "7a8889066665746f63430585a057dcee716529f1",
           "base": "fae1374d06e26dd19c56097b5f4119d152a3d965",
           "branch": "codex/f01-exact-values",
           "scope": "Unused internal bounded exact scalar values, schema-directed parsing and version-1 codec; independent of PR84/85",
@@ -1152,6 +1156,26 @@
           ],
           "commit": "4bc7d5d06382152caa6a71fa933702760349727b",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/86"
+        },
+        {
+          "id": "F01b",
+          "status": "implemented_pending_gates",
+          "base": "7a8889066665746f63430585a057dcee716529f1",
+          "branch": "codex/f01-line-provenance",
+          "scope": "Internal indexed byte ranges, exact terminators and frozen decoding/source provenance through bounded physical analysis batches; bounded UTF16 origin anchors",
+          "rulings": [
+            "RawByteRange covers the complete original physical record including BOM/terminator; actual terminator bytes are represented separately. Existing CR-containing analysis text stays unchanged.",
+            "Inline text has no physical-file provenance. SourceLocation creation produces a historical anchor; navigation must validate it with the current snapshot.accepts.",
+            "This is an independent prerequisite slice, not full F01/EventRef/dataset/production-decoder acceptance. Existing public result shapes and commands remain unchanged."
+          ],
+          "localVerification": "Fresh MSVC/LTO Qt6.10.1 ci_build; strictClang4TUs;315focused assertions/5cases with6Unicode encoding profiles and empty/sparse/NUL/Latin1/append/rewrite/closure/resource fixtures; full isolated CTest7/7 passed264.56s. Fresh general/C++ reviews approved with no actionable findings. Clang-tidy4TUs completed with two pre-existing naming warnings outside changed lines; cppcheck configuration lookup broken.",
+          "limitations": [
+            "Full EventRef/deferred/managed origins, exact per-character byte mappings and decoder integration remain later work.",
+            "Qt5 and hosted native platform/backend qualification remain pending; existing P00/W0 release and performance gates remain open.",
+            "GitNexus refresh timedout90s; stale-index structs reported LOW/zero callers while reader/run targets were absent. Direct review identified scanner/preview reader paths; graph results are not structural verification. CodeGraph worktree unindexed, code-review-graph unavailable."
+          ],
+          "commit": null,
+          "pullRequest": null
         }
       ]
     },

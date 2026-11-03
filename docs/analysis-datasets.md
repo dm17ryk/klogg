@@ -83,3 +83,40 @@ Remaining F01 work includes event identity and discriminated origins, physical
 byte/UTF-16 spans, dataset schemas/revisions/cursors, source invalidation and
 GUI/CLI/native-MCP consumer parity. Rollback of F01a removes this unused codec
 and its tests; no existing public result shape needs migration.
+
+## F01b: physical analysis-line provenance
+
+Analysis blocks retain one bounded descriptor per indexed physical record.
+`RawByteRange` is half-open and measured in original file bytes. It covers the
+complete record, including a BOM on the first record and its terminator where
+present. `terminatorBytes` separately records the exact LF or CRLF suffix from
+the read bytes (up to eight bytes for UTF-32 CRLF). These ranges come from the
+index and actual read, never from UTF-8 re-encoding of a decoded string.
+
+An `AnalysisLine` from an open file carries optional `AnalysisLineProvenance`:
+the starting `SourceSnapshot`, original byte range, raw terminator, codec name
+and frozen provisional flag. Its existing text is preserved, including CR in
+CRLF input. BOM handling and stateful decoding remain continuous across input
+blocks and skipped rows. Inline text has no physical-file provenance or invented
+file-byte position. Deferred/managed origins remain later F01 work.
+
+`AnalysisLine::sourceLocation` can create an origin anchor with an optional
+UTF-16 span bounded by that line's decoded text. It rejects overflowing or
+out-of-line spans and invalid byte metadata. The returned anchor can be
+historical: navigation must still call the current snapshot's `accepts` method.
+Completed locations may survive appends; provisional locations need their exact
+revision. Closure prevents anchor creation. Values and recorded ranges remain
+inspectable without retaining a file lease.
+
+Descriptors obey the existing 256-record / 1 MiB raw batch limits; oversized
+records, stale generations and failed reads publish no record descriptors.
+Provisional ranges end at the original indexed watermark, including after an
+append, and never include the index's synthetic EOF+1 marker. Diagnostics log
+source/job identities, generations/revisions, ranges, counters and reasons,
+without decoded bodies.
+
+This metadata is internal. Existing raw/regex/value-count result formats and
+their Commander/CLI/native-MCP operations are unchanged. Exact per-character
+byte mappings, event identity/assembly, dataset schemas and the new TShark
+preview integration remain later steps; a record range alone does not establish
+a decoded field's raw-byte span.

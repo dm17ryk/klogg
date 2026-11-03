@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CILOGG_ANALYSISJOB_H
 #define CILOGG_ANALYSISJOB_H
+#include "analysisprovenance.h"
 #include "sourcelocation.h"
 #include "valuecountjob.h"
 #include <QByteArray>
@@ -31,6 +32,7 @@ struct AnalysisRawBlock {
     quint64 nextLine = 0;
     QString error;
     bool retry = false;
+    std::vector<AnalysisRawRecord> records;
 };
 struct AnalysisRequest {
     std::shared_ptr<LogData> source;
@@ -48,6 +50,10 @@ struct AnalysisRequest {
 struct AnalysisLine {
     quint64 line = 0;
     QString text;
+    std::optional<AnalysisLineProvenance> provenance{};
+
+    // Creates an origin anchor; navigation still validates it against the current snapshot.
+    std::optional<SourceLocation> sourceLocation( std::optional<SourceSpan> span = {} ) const;
 };
 struct AnalysisBatch {
     std::vector<AnalysisLine> lines;
