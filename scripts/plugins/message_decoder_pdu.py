@@ -11,24 +11,18 @@ import sys
 import tempfile
 import threading
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
 from workbench_process import ProcessOwner
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from message_decoder_wire import ProofError, fields_named, hexdump, normalize_pdml, validate_dissector
+
 LOG = logging.getLogger("cilogg.decoder.proof")
 INPUT_LIMIT = 1024 * 1024
 OUTPUT_LIMIT = 16 * 1024 * 1024
 BRIDGE_FRAME_LIMIT = 262144
-
-
-class ProofError(RuntimeError):
-    """Stable reason separate from private engine diagnostics."""
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.cleanup_reason = None
 
 
 def run_bounded(arguments, *, cwd, env, timeout=30.0, output_limit=OUTPUT_LIMIT):
@@ -130,76 +124,6 @@ def run_bounded(arguments, *, cwd, env, timeout=30.0, output_limit=OUTPUT_LIMIT)
         "elapsedSeconds": time.monotonic() - started,
         "ownedProcessesReaped": True,
     }
-
-
-def validate_dissector(name):
-    if not isinstance(name, str) or not re.fullmatch(
-        r"[A-Za-z][A-Za-z0-9_.-]{0,127}", name
-    ):
-        raise ProofError("invalid_dissector")
-
-
-def hexdump(payload):
-    if not 0 < len(payload) <= INPUT_LIMIT:
-        raise ProofError("input_limit")
-    return "".join(
-        f"{offset:06x} {payload[offset : offset + 16].hex(' ')}\n"
-        for offset in range(0, len(payload), 16)
-    )
-
-
-def normalize_pdml(data):
-    """Preserve order, tree and exact attributes; engine positions are NOT log offsets."""
-    if len(data) > OUTPUT_LIMIT:
-        raise ProofError("output_limit")
-    try:
-        text = data.decode("utf-8")
-    except UnicodeError as error:
-        raise ProofError("invalid_pdml") from error
-    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper() or "\x00" in text:
-        raise ProofError("invalid_pdml")
-    try:
-        document = ET.fromstring(text)
-    except ET.ParseError as error:
-        raise ProofError("invalid_pdml") from error
-    if document.tag != "pdml" or not document.findall("packet"):
-        raise ProofError("invalid_pdml")
-    count = 0
-
-    def node(element, identity, depth):
-        nonlocal count
-        count += 1
-        if count > 50000 or depth > 128:
-            raise ProofError("field_limit")
-        return {
-            "id": identity,
-            "kind": element.tag,
-            "attributes": dict(element.attrib),
-            "positionOrigin": "engine_data_source_unresolved",
-            "children": [
-                node(child, f"{identity}/{i}", depth + 1)
-                for i, child in enumerate(element)
-            ],
-        }
-
-    packets = [
-        node(packet, str(i), 0) for i, packet in enumerate(document.findall("packet"))
-    ]
-    LOG.info(
-        "proof_pdml_normalized packets=%d nodes=%d origin=unresolved",
-        len(packets),
-        count,
-    )
-    return packets
-
-
-def fields_named(nodes, name):
-    result = []
-    for node in nodes:
-        if node["attributes"].get("name") == name:
-            result.append(node)
-        result.extend(fields_named(node["children"], name))
-    return result
 
 
 def load_manifest(path, *, manifest_bytes=None, read_source=None):
