@@ -4,6 +4,7 @@ add_executable(cilogg_tests
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
+    fieldvalue_test.cpp
     valuecounts_commands_test.cpp
     plugins_test.cpp
     mcp_test.cpp
@@ -27,6 +28,8 @@ add_executable(cilogg_tests
     wrappedstring_test.cpp
     tests_main.cpp
 )
+
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/fieldvalue_test.cpp")
 
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
