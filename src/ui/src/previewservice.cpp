@@ -38,7 +38,7 @@ QVariantMap failure( const QString& reason )
 {
     return { { "version", 1 },     { "backend", "json_preview" }, { "state", "failed" },
              { "reason", reason }, { "available", false },        { "complete", false },
-             { "limited", false } };
+             { "limited", false }, { "fields", QVariantList{} } };
 }
 QByteArray frame( const QVariantMap& value )
 {
@@ -185,6 +185,7 @@ public:
         , process_( new QProcess( QCoreApplication::instance() ) )
     {
         ++activeRequests;
+        selectedPreviewName_ = request_.previewName;
         id_ = QUuid::createUuid().toString( QUuid::WithoutBraces );
         digest_ = QString::fromLatin1(
             QCryptographicHash::hash( request_.definitions, QCryptographicHash::Sha256 ).toHex() );
@@ -320,14 +321,26 @@ public:
         if ( snapshot_.revision != PreviewDecoderSettings::instance().revision()
              && stopReason_.isEmpty() )
             stopReason_ = "configuration_changed";
-        if ( !stopReason_.isEmpty() )
-            result = failure( stopReason_ );
+        if ( !stopReason_.isEmpty() ) {
+            // Apply authoritative failure flags without discarding already-known metadata.
+            const auto stopped = failure( stopReason_ );
+            for ( auto item = stopped.cbegin(); item != stopped.cend(); ++item )
+                result[ item.key() ] = item.value();
+        }
         if ( external_ || request_.decoder == "tshark"
              || result.value( "backend" ) == "tshark_lua" ) {
             result[ "backend" ] = "tshark_lua";
             result[ "offsetSpace" ] = "engine_data_source_unresolved";
             result[ "messageCompleteness" ] = "not_reported";
             result[ "messageIntegrity" ] = "not_reported";
+            if ( result.value( "state" ) == "failed" ) {
+                result[ "fields" ] = QVariantList{};
+                result[ "previewName" ] = selectedPreviewName_.isEmpty()
+                                              ? result.value( "previewName" ).toString()
+                                              : selectedPreviewName_;
+                // The worker's transport echo is redundant with the public requestId.
+                result.remove( "id" );
+            }
         }
         completed_ = true;
         timer_.stop();
@@ -425,6 +438,7 @@ public:
             finish( failure( "worker_protocol_error" ) );
             return;
         }
+        selectedPreviewName_ = result.value( "previewName" ).toString();
         const int remaining = request_.timeoutMs - static_cast<int>( elapsed_.elapsed() );
         if ( remaining <= 0 ) {
             finish( failure( "timeout" ) );
@@ -485,7 +499,7 @@ private:
     QTimer timer_;
     QMetaObject::Connection started_;
     QElapsedTimer elapsed_;
-    QString id_, digest_, stopReason_;
+    QString id_, digest_, stopReason_, selectedPreviewName_;
     QByteArray output_;
     qint64 diagnostics_ = 0;
     bool completed_ = false, external_ = false, fallback_ = false;

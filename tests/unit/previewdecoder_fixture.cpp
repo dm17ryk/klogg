@@ -116,6 +116,13 @@ int main( int argc, char** argv )
             response[ "scriptSha256" ] = QJsonArray{ "not-a-hash" };
         if ( mode == "hash_newline" )
             response[ "scriptSha256" ] = QJsonArray{ QString( 64, 'a' ) + "\n" };
+        if ( mode == "reported_timeout" ) {
+            response[ "state" ] = "failed";
+            response[ "reason" ] = "timeout";
+            response[ "available" ] = false;
+            response[ "complete" ] = false;
+            response[ "fields" ] = QJsonArray{};
+        }
         auto bytes = frame( response );
         if ( mode == "surplus" )
             bytes += bytes;

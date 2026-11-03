@@ -702,3 +702,155 @@ TEST_CASE( "Only unavailable automatic dispatch falls back to supervised JSON", 
     CHECK( result.value( "reason" ) == "protocol_not_found" );
     CHECK_FALSE( result.contains( "fallbackReason" ) );
 }
+
+TEST_CASE( "Native stop and worker timeout failures retain the same required envelope",
+           "[previewdecoder]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() },
+          { "previewRoutes",
+            QVariantMap{ { "Mapped carrier", QVariantMap{ { "dissector", "data" } } } } } } ) );
+    QObject channel;
+    auto request = directRequest( "AB", "" );
+    request.previewName = "Mapped carrier";
+    request.sessionOwner = &channel;
+    request.dissector.clear();
+    request.definitions
+        = R"({"version":1,"previews":[{"name":"Mapped carrier","regex":"^(?<payload>.*)$","bufferCapture":"payload","type":"string","fields":[]}]})";
+    for ( const auto& producer :
+          { QString( "cancel" ), QString( "reported_timeout" ), QString( "stall" ) } ) {
+        INFO( producer.toStdString() );
+        TsharkPreviewClient::instance().reset();
+        qputenv( "CILOGG_PREVIEW_FIXTURE_MODE",
+                 producer == "cancel" ? QByteArray( "stall" ) : producer.toLatin1() );
+        request.timeoutMs = 1500;
+        QVariantMap result;
+        if ( producer == "cancel" ) {
+            QEventLoop loop;
+            QPointer<QProcess> token
+                = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+                      result = std::move( value );
+                      loop.quit();
+                  } );
+            REQUIRE( token );
+            QObject::connect(
+                token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ), &loop,
+                [ token ]( int, QProcess::ExitStatus ) { PreviewService::cancel( token ); } );
+            QTimer::singleShot( 5000, &loop, &QEventLoop::quit );
+            loop.exec();
+        }
+        else
+            result = PreviewService::evaluateAndWait( request );
+        CHECK( result.value( "state" ) == "failed" );
+        CHECK( result.value( "reason" ) == ( producer == "cancel" ? "cancelled" : "timeout" ) );
+        CHECK( result.value( "backend" ) == "tshark_lua" );
+        CHECK_FALSE( result.value( "available" ).toBool() );
+        CHECK_FALSE( result.value( "complete" ).toBool() );
+        CHECK_FALSE( result.value( "limited" ).toBool() );
+        CHECK( result.contains( "fields" ) );
+        CHECK( result.value( "fields" ).userType() == QMetaType::QVariantList );
+        CHECK( result.value( "fields" ).toList().isEmpty() );
+        CHECK( result.value( "previewName" ) == "Mapped carrier" );
+        CHECK_FALSE( result.contains( "id" ) ); // requestId is the public authoritative identifier.
+        CHECK_FALSE( result.value( "requestId" ).toString().isEmpty() );
+        if ( producer == "reported_timeout" ) {
+            CHECK( result.value( "enginePid" ).toLongLong() == QCoreApplication::applicationPid() );
+            CHECK( result.contains( "scriptSha256" ) );
+        }
+    }
+    TsharkPreviewClient::instance().reset();
+}
+
+TEST_CASE( "A warmed real Lua stall retains its carrier and recovers after restoring public Lua",
+           "[previewdecoder]" )
+{
+    if ( qEnvironmentVariable( "CILOGG_TSHARK" ).isEmpty()
+         || qEnvironmentVariable( "CILOGG_TEXT2PCAP" ).isEmpty() ) {
+        WARN( "Actual warmed stall recovery test skipped: explicit engine paths absent" );
+        return;
+    }
+    QTemporaryDir scripts;
+    RestoreDecoder restore;
+    REQUIRE( scripts.isValid() );
+    const auto stalledLua = scripts.filePath( "conditional_stall.lua" );
+    const auto publicLua = scripts.filePath( "public_probe.lua" );
+    REQUIRE( QFile::copy( QString::fromUtf8( PREVIEW_PUBLIC_LUA_PATH ), publicLua ) );
+    QFile file( stalledLua );
+    REQUIRE( file.open( QIODevice::WriteOnly ) );
+    const QByteArray body = "local p=Proto(\"cilogg_native_timeout\",\"Native timeout\")\n"
+                            "function p.dissector(tvb,pinfo,tree) "
+                            "if tvb(0,1):uint()==65 then while true do end end; "
+                            "tree:add(p,tvb()); return tvb:len() end\n";
+    REQUIRE( file.write( body ) == body.size() );
+    file.close();
+    QVariantMap config{
+        { "enabled", true },
+        { "allowExternalLua", true },
+        { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+        { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+        { "lua", QVariantList{ stalledLua } },
+        { "previewRoutes",
+          QVariantMap{
+              { "Mapped carrier", QVariantMap{ { "dissector", "cilogg_native_timeout" },
+                                               { "protocol", "cilogg_native_timeout" } } } } }
+    };
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
+    QObject channel;
+    auto request = directRequest( "Z", "" );
+    request.decoder = "auto";
+    request.dissector.clear();
+    request.previewName = "Mapped carrier";
+    request.sessionOwner = &channel;
+    request.definitions
+        = R"({"version":1,"previews":[{"name":"Mapped carrier","regex":"^(?<payload>.*)$","bufferCapture":"payload","type":"string","fields":[]}]})";
+    const auto warmed = PreviewService::evaluateAndWait( request );
+    INFO( warmed.value( "reason" ).toString().left( 128 ).toStdString() );
+    REQUIRE( warmed.value( "available" ).toBool() );
+    REQUIRE( warmed.value( "enginePid" ).toLongLong() > 0 );
+    request.text = "AB";
+    request.timeoutMs = 4000;
+    const auto timed = PreviewService::evaluateAndWait( request );
+    INFO( timed.value( "reason" ).toString().left( 128 ).toStdString() );
+    CHECK( timed.value( "state" ) == "failed" );
+    CHECK( ( timed.value( "reason" ) == "timeout"
+             || timed.value( "reason" ) == "execution_timeout" ) );
+    CHECK( timed.value( "previewName" ) == "Mapped carrier" );
+    CHECK( timed.contains( "fields" ) );
+    CHECK( timed.value( "fields" ).toList().isEmpty() );
+    CHECK_FALSE( timed.value( "available" ).toBool() );
+    CHECK_FALSE( timed.value( "complete" ).toBool() );
+    config[ "lua" ] = QVariantList{ publicLua };
+    config[ "previewRoutes" ]
+        = QVariantMap{ { "Mapped carrier", QVariantMap{ { "dissector", "cilogg_md01_probe" },
+                                                        { "protocol", "cilogg_md01_probe" } } } };
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration( config ) );
+    request.text = "0102";
+    request.inputEncoding = "hex";
+    request.timeoutMs = 10000;
+    const auto recovered = PreviewService::evaluateAndWait( request );
+    INFO( recovered.value( "reason" ).toString().left( 128 ).toStdString() );
+    REQUIRE( recovered.value( "available" ).toBool() );
+    request.text = "0304";
+    const auto reused = PreviewService::evaluateAndWait( request );
+    REQUIRE( reused.value( "available" ).toBool() );
+    CHECK( reused.value( "enginePid" ) == recovered.value( "enginePid" ) );
+    const auto items = []( const QVariantMap& result ) {
+        QStringList values;
+        for ( const auto& field : result.value( "fields" ).toList() ) {
+            const auto entry = field.toMap();
+            if ( entry.value( "attributes" ).toMap().value( "name" ) == "cilogg_md01_probe.item" )
+                values << entry.value( "columns" ).toList().at( 1 ).toString();
+        }
+        return values;
+    };
+    CHECK( items( recovered ) == QStringList{ "1", "2" } );
+    CHECK( items( reused ) == QStringList{ "3", "4" } );
+}
