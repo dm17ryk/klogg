@@ -59,7 +59,9 @@ Other versions, hosted CI, platforms and release packages need separate checks.
 
 The following captures show the actual native pane and hover for a public
 synthetic EHCI message. Its `CRC0000` is intentionally invalid, as reported by
-the external Lua dissector.
+the external Lua dissector. The Automatic pane capture explicitly selects the
+supported 10000-ms budget; hover retains its default 3000-ms budget. These
+captures passed the final 29-assertion external EHCI GUI check.
 
 ![EHCI preview pane](images/md03a-ehci-pane.png)
 

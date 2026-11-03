@@ -11,8 +11,8 @@ EHCP/EHCI messages. Private Lua source and private log bodies are not shipped.
 The following results apply to source
 `5c640f15da9ee607347df752bfee87bc1dbddafe`, before the final review corrections
 for the pane budget and overdue delivery. They must not be read as results for
-a later binary. Final review corrections have focused regression evidence;
-final combined build and acceptance results are recorded separately.
+a later binary. The following section records the final review correction and
+combined validation against its frozen source.
 
 | Check | Recorded result |
 | --- | --- |
@@ -60,6 +60,60 @@ that baseline. Earlier repo clang-tidy checks passed four native units without
 project-source diagnostics; suppressed vendor-header warnings were retained.
 Cppcheck could not start because its installation lacked `std.cfg`.
 
+## Final review correction and combined validation
+
+The budget and delivery fixes are committed in
+`42b81b659f5186d519a379803662d9711b7e9c9d`. Final binaries were built from the
+byte-identical frozen source before that commit; their embedded version metadata
+predates it. Source hashes, private runtime hashes and logs were retained locally.
+This is source-matched local validation, not release-package acceptance.
+
+The new regressions failed against unchanged production code: the pane displayed
+10000 ms but forwarded 2749 ms after selection, and a ready success was accepted
+after its original deadline with its worker still reusable. After correction,
+Automatic preserves its assembly-only route while forwarding the displayed
+budget. Delayed successful delivery becomes timeout, retires its owned channel,
+and recovers without disturbing an unrelated warm channel. The original
+integrated timer-race case still does not identify its winning timer; independent
+client-only and selector-only stall tests cover those producers separately.
+
+| Final check | Recorded result |
+| --- | --- |
+| Affected production, unit and GUI builds | Exit 0 |
+| Complete `ci_build` target, final source | Exit 0 |
+| Focused native regression cohort | 275 assertions in 25 cases passed; actual-engine opt-ins absent, not actual-engine passes |
+| Portable GUI regression cohort | 100 assertions in 8 cases passed |
+| Four changed Python warning tests | 4 passed without skips on each of Python 3.9.25 and 3.14.10, with real engine negatives enabled |
+| Registered normal-Info CTest | 7 of 7 groups passed in 293.52 seconds |
+| Strict real CLI/native-MCP comparison | 42 result pairs passed again, including three external fixtures and common harness checks |
+| External EHCI pane/hover | 29 assertions in 1 case passed; host exit 0 in 4.445 seconds |
+| Strict Clang checks | 12 translation units returned 0 across two runs |
+| Scoped C++ and Python fix reviews | Approved; no remaining Critical/Important finding in the fix |
+
+The final strict-check evidence combines eight native/test units and the new GUI
+test unit from the first wrapper, then three GUI/viewer units in a corrected
+fresh shell. Repeated VS initialization made the first wrapper's third setup
+fail with a Windows command-length/PATH error (overall exit 1). The second
+wrapper exited 0. Twelve per-unit passes do not turn the first wrapper into an
+overall pass; both logs and the setup failure are retained.
+
+The 42 final transport comparisons retain the same semantic checks and the same
+external-before-stall ordering. Post-stall recovery again consists of two exact
+public-probe successes with per-channel engine reuse; external-pack post-stall
+recovery remains unqualified. The fresh external EHCI captures use the trusted
+host Python 3.14.10, user-approved external Lua and public synthetic bytes.
+Hover uses its default 3000-ms budget; the Automatic pane explicitly selects
+10000 ms and Run. These are distinct conditions from the earlier 3000-ms pane
+failure. `CRC0000` remains intentionally invalid and visibly reported by Lua.
+
+Final combined-runtime SHA-256 identifiers:
+
+| Binary | SHA-256 |
+| --- | --- |
+| `cilogg.exe` | `52171b7716255e9f79382d213ae1026cbebc805f1e156a8aa378a268062fc76d` |
+| `cilogg_tests.exe` | `ff81bbdb1540c037935f994d7853d2ac2170063bf6d8e56cefe0ce11edbff1f9` |
+| `cilogg_itests.exe` | `cd21760506b1e1f443e64b7f19341faac9198aea7fe88afef9d99ebdfc6de458` |
+
 ## Preserved failed observations
 
 - The first post-fix focused run failed two existing actual-engine cases. A
@@ -96,6 +150,13 @@ flows are not evidence that tests are missing. GitNexus's prior index was
 90-second refresh terminated with native exit 3221226505. CodeGraph was
 unindexed and was not initialized. Current source diffs and scoped general,
 Python and security reviews supplement these tool limits.
+
+After the fix, a minimal working-source CodeReviewGraph refresh updated eight
+files, 216 nodes and 4770 edges, with signatures and FTS and no errors. It did
+not rebuild flows/communities. Required staged GitNexus detection still warned
+of a 43-commit-stale sibling-clone index and unavailable FTS, then incorrectly
+reported no changes for an eleven-file staged change; it was not used as
+verification. Exact staged paths, diffs and source hashes verified scope.
 
 Decoded offsets remain engine-buffer positions with unresolved original-log
 mapping. Successful processing does not assert protocol integrity or message

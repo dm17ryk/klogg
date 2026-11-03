@@ -130,3 +130,29 @@ is established. The fixture uses public synthetic bytes and intentionally invali
 CRC. Full CTest, static/review results, hosted CI, platform and release gates
 are recorded separately by the integration owner. MD01 partial/NUL, generic MD03
 dataset contract, wider W0 and F01 remain open.
+
+
+## Final local integration validation - 2026-11-04
+
+The final budget/delivery correction is committed as
+`42b81b659f5186d519a379803662d9711b7e9c9d`, with its frozen source hashes matching
+the precommit local binaries. Final complete ci_build exited 0; registered CTest
+passed all 7 groups in 293.52 seconds. Focused native/portable GUI checks passed
+275 assertions/25 cases and 100 assertions/8 cases respectively; actual-engine
+opt-ins were absent in that native cohort, not counted as actual-engine passes.
+Four changed warning tests passed without skips on both Python 3.9.25 and
+3.14.10 with real engine negatives enabled. All 42 strict real CLI/native-MCP
+comparisons passed again, including three external fixtures, failures and two
+post-stall public probes. The final external EHCI pane/hover check passed
+29 assertions/1 case with an explicit supported 10000-ms Automatic pane budget
+and unchanged default hover budget. The screenshots are refreshed accordingly.
+
+Twelve strict native/GUI translation-unit checks returned 0 across two runs;
+the first wrapper's third VS setup failed with a command-length/PATH error and
+the remaining three units passed in a fresh shell. Scoped C++/Python fix reviews
+approved the correction; the original integrated timer-producer Minor remains
+nonblocking. See the [validation record](../../../docs/workbench/tshark-preview-validation.md)
+for binary hashes, original failed combined actual-engine cohort and cold-start
+observations, unproved failure causes, preserved failed post-stall external-pack
+request and explicit skip/platform/performance/release boundaries. This local
+slice does not complete MD01 partial/NUL, generic MD03, W0 or F01.
