@@ -27,6 +27,8 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QSignalSpy>
+#include <QSpinBox>
+#include <QPushButton>
 #include <QStandardItemModel>
 #include <QTabWidget>
 #include <QTemporaryFile>
@@ -460,6 +462,11 @@ TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
     PreviewMessageTab pane( selected, "Auto", 1 );
     pane.resize( 1100, 700 );
     pane.show();
+    auto* budget = pane.findChild<QSpinBox*>( "previewTimeoutMs" );
+    REQUIRE( budget );
+    REQUIRE( budget->isEnabled() );
+    budget->setValue( 10000 );
+    pane.findChild<QPushButton*>( "previewRun" )->click();
     REQUIRE( QTest::qWaitFor( [ & ] { return !pane.result().isEmpty(); }, 15000 ) );
     REQUIRE( pane.result().value( "available" ).toBool() );
     CHECK( pane.result().value( "backend" ) == "tshark_lua" );

@@ -562,8 +562,13 @@ void TsharkPreviewClient::cancel( const QString& id, const QString& reason )
 {
     const auto sessions = sessions_;
     for ( auto* session : sessions )
-        if ( !session->retired && session->completion && session->id == id )
+        if ( !session->retired && session->id == id ) {
+            // Delivery may reject an overdue success after read() moved the callback.
+            // The last identity still owns this channel until a new submit replaces it.
+            LOG_DEBUG << "Preview worker cancellation id=" << id << " reason=" << reason
+                      << " pending=" << static_cast<bool>( session->completion );
             session->retire( reason );
+        }
 }
 void TsharkPreviewClient::reset()
 {

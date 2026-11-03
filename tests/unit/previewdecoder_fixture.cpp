@@ -71,11 +71,13 @@ int main( int argc, char** argv )
                                 { "value", "01" },
                                 { "pos", "9007199254740993" },
                                 { "size", "1" } };
+        if ( mode == "budget" )
+            attributes[ "show" ] = QString::number( request.value( "timeoutMs" ).toInt() );
         QJsonObject field{ { "id", "0/0" },
                            { "depth", 0 },
                            { "positionOrigin", "engine_data_source_unresolved" },
-                           { "columns",
-                             QJsonArray{ "test.item", "", "01", "9007199254740993", "1" } },
+                           { "columns", QJsonArray{ "test.item", attributes.value( "show" ), "01",
+                                                    "9007199254740993", "1" } },
                            { "attributes", attributes } };
         if ( mode == "attributes" ) {
             attributes[ "show" ] = 1;

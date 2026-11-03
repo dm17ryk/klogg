@@ -321,6 +321,17 @@ public:
         if ( snapshot_.revision != PreviewDecoderSettings::instance().revision()
              && stopReason_.isEmpty() )
             stopReason_ = "configuration_changed";
+        if ( stopReason_.isEmpty() && result.value( "state" ) == "completed"
+             && elapsed_.elapsed() >= request_.timeoutMs ) {
+            stopReason_ = "timeout";
+            LOG_DEBUG << "Preview delivery deadline expired id=" << id_
+                      << " elapsed_ms=" << elapsed_.elapsed()
+                      << " timeout_ms=" << request_.timeoutMs << " external=" << external_;
+            // A native success callback has already consumed its pending completion.
+            // Retire by the channel's last request identity, including that idle interval.
+            if ( external_ )
+                TsharkPreviewClient::instance().cancel( id_, stopReason_ );
+        }
         if ( !stopReason_.isEmpty() ) {
             // Apply authoritative failure flags without discarding already-known metadata.
             const auto stopped = failure( stopReason_ );

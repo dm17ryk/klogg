@@ -13,6 +13,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QThread>
 #include <catch2/catch.hpp>
 #include <memory>
 
@@ -853,4 +854,102 @@ TEST_CASE( "A warmed real Lua stall retains its carrier and recovers after resto
     };
     CHECK( items( recovered ) == QStringList{ "1", "2" } );
     CHECK( items( reused ) == QStringList{ "3", "4" } );
+}
+
+TEST_CASE( "Overdue successful delivery times out and retires only its owned channel",
+           "[previewdecoder][previewdeadline]" )
+{
+    RestoreDecoder restore;
+    RestoreEnvironment python( "CILOGG_SCRIPT_PYTHON" ), mode( "CILOGG_PREVIEW_FIXTURE_MODE" ),
+        pid( "CILOGG_PREVIEW_FIXTURE_PID" );
+    qputenv( "CILOGG_SCRIPT_PYTHON", QByteArray( PREVIEW_DECODER_FIXTURE_PATH ) );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() } } ) );
+    auto& client = TsharkPreviewClient::instance();
+    client.reset();
+    QObject channel;
+    auto request = directRequest( "0102", "hex" );
+    request.sessionOwner = &channel;
+    REQUIRE( PreviewService::evaluateAndWait( request ).value( "available" ).toBool() );
+    const auto processes = client.findChildren<QProcess*>();
+    REQUIRE( processes.size() == 1 );
+    QPointer<QProcess> worker = processes.front();
+    const auto originalPid = worker->processId();
+    REQUIRE( originalPid > 0 );
+    QObject unrelatedChannel;
+    auto unrelatedRequest = request;
+    unrelatedRequest.sessionOwner = &unrelatedChannel;
+    REQUIRE( PreviewService::evaluateAndWait( unrelatedRequest ).value( "available" ).toBool() );
+    QPointer<QProcess> unrelatedWorker;
+    for ( auto* process : client.findChildren<QProcess*>() )
+        if ( process != worker )
+            unrelatedWorker = process;
+    REQUIRE( unrelatedWorker );
+    const auto unrelatedPid = unrelatedWorker->processId();
+    request.timeoutMs = 1000;
+    QVariantMap result;
+    int callbacks = 0;
+    QEventLoop loop;
+    auto* token = PreviewService::evaluate( &loop, request, [ & ]( QVariantMap value ) {
+        ++callbacks;
+        result = std::move( value );
+        loop.quit();
+    } );
+    REQUIRE( token );
+    bool forcedDelivery = false;
+    // Selection's handler submits to the warm native process before this connection runs.
+    // Block the application loop beyond the original budget, then synchronously dispatch
+    // readable output. This orders success ahead of both overdue QTimer events, without
+    // changing timers or injecting a production completion hook.
+    QObject::connect( token, QOverload<int, QProcess::ExitStatus>::of( &QProcess::finished ), &loop,
+                      [ & ]( int, QProcess::ExitStatus ) {
+                          if ( !result.isEmpty() || !worker )
+                              return;
+                          QThread::msleep( static_cast<unsigned long>( request.timeoutMs + 50 ) );
+                          forcedDelivery = worker->waitForReadyRead( 1000 );
+                      } );
+    QTimer::singleShot( 5000, &loop, &QEventLoop::quit );
+    if ( result.isEmpty() )
+        loop.exec();
+    REQUIRE( forcedDelivery );
+    REQUIRE_FALSE( result.isEmpty() );
+    CHECK( callbacks == 1 );
+    CHECK( result.value( "reason" ) == "timeout" );
+    CHECK( result.value( "state" ) == "failed" );
+    CHECK( result.value( "backend" ) == "tshark_lua" );
+    CHECK_FALSE( result.value( "available" ).toBool() );
+    CHECK_FALSE( result.value( "complete" ).toBool() );
+    CHECK_FALSE( result.value( "limited" ).toBool() );
+    CHECK( result.value( "fields" ).toList().isEmpty() );
+    CHECK_FALSE( result.contains( "fallbackReason" ) );
+    CHECK_FALSE( result.contains( "id" ) );
+    CHECK( result.value( "enginePid" ).toLongLong() == QCoreApplication::applicationPid() );
+    CHECK( result.contains( "scriptSha256" ) );
+    CHECK( result.value( "elapsedMs" ).toLongLong() >= request.timeoutMs );
+    CHECK_FALSE( result.value( "requestId" ).toString().isEmpty() );
+    CHECK( result.value( "offsetSpace" ) == "engine_data_source_unresolved" );
+    CHECK( result.value( "messageCompleteness" ) == "not_reported" );
+    CHECK( result.value( "messageIntegrity" ) == "not_reported" );
+    request.timeoutMs = 10000;
+    const auto recovered = PreviewService::evaluateAndWait( request );
+    REQUIRE( recovered.value( "available" ).toBool() );
+    CHECK( callbacks == 1 );
+    CHECK( ( !worker || worker->state() == QProcess::NotRunning ) );
+    bool replacement = false;
+    for ( auto* process : client.findChildren<QProcess*>() )
+        replacement
+            = replacement
+              || ( process->state() == QProcess::Running && process->processId() != originalPid );
+    CHECK( replacement );
+    REQUIRE( unrelatedWorker );
+    CHECK( unrelatedWorker->state() == QProcess::Running );
+    CHECK( unrelatedWorker->processId() == unrelatedPid );
+    REQUIRE( PreviewService::evaluateAndWait( unrelatedRequest ).value( "available" ).toBool() );
+    CHECK( unrelatedWorker->processId() == unrelatedPid );
+    client.reset();
 }

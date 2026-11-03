@@ -131,8 +131,10 @@ class WireTests(unittest.TestCase):
 
         import time
 
-        with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
-            worker.write_before(Stalled(), b"x", time.monotonic() + 0.02)
+        with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+            with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
+                worker.write_before(Stalled(), b"x", time.monotonic() + 0.02)
+        self.assertEqual([record.getMessage() for record in warnings.records], ["preview_pipe_timeout"])
 
     def test_bad_capture_headers_are_rejected(self):
         header = struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 262144, 252)
@@ -174,10 +176,12 @@ class ProcessTests(unittest.TestCase):
         child = self.child("import time; time.sleep(60)")
         with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
             child.packet(time.monotonic() + 0.1)
-        with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
-            worker.write_before(
-                child.process.stdin, b"x" * worker.PDML_LIMIT, time.monotonic() + 0.1
-            )
+        with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+            with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
+                worker.write_before(
+                    child.process.stdin, b"x" * worker.PDML_LIMIT, time.monotonic() + 0.1
+                )
+        self.assertEqual([record.getMessage() for record in warnings.records], ["preview_pipe_timeout"])
 
     def test_stdout_and_stderr_flood_are_bounded(self):
         for stream in ("stdout", "stderr"):
@@ -359,13 +363,23 @@ class NativePreviewTests(unittest.TestCase):
         for protocol in ("cilogg_absent_protocol", "frame"):
             with self.subTest(protocol=protocol):
                 self.profile["protocol"] = protocol
-                with self.assertRaisesRegex(wire.ProofError, "protocol_not_found"):
-                    self.evaluate()
+                with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+                    with self.assertRaisesRegex(wire.ProofError, "protocol_not_found"):
+                        self.evaluate()
+                self.assertEqual(
+                    [record.getMessage() for record in warnings.records],
+                    ["preview_protocol_not_found id=one"],
+                )
 
     def test_missing_and_invalid_named_dissectors_are_errors(self):
         self.profile.update(dissector="cilogg_missing_dissector", protocol="")
-        with self.assertRaisesRegex(wire.ProofError, "dissector_not_dispatched"):
-            self.evaluate()
+        with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+            with self.assertRaisesRegex(wire.ProofError, "dissector_not_dispatched"):
+                self.evaluate()
+        self.assertEqual(
+            [record.getMessage() for record in warnings.records],
+            ["preview_no_decoded_fields id=one"],
+        )
         self.profile["dissector"] = "--invalid"
         with self.assertRaisesRegex(wire.ProofError, "invalid_dissector"):
             self.evaluate()

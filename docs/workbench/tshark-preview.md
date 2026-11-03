@@ -23,8 +23,11 @@ The preview pane offers **Automatic (TShark first)**, **TShark/Lua**, and
 carriers even when an earlier JSON-only definition matches. It next tries the
 configured default on a carrier or directly on input. Disabled Auto retains the
 legacy JSON behavior. Explicit TShark permits a named dissector and UTF-8, hex,
-or base64 input; the request budget defaults to 3000 ms and is bounded to
-100–10000 ms. JSON explicitly selects the legacy renderer.
+or base64 input. JSON explicitly selects the legacy renderer. The request budget
+is available in every mode, defaults to 3000 ms and is bounded to 100-10000 ms.
+Its displayed value covers selection, startup and delivery, including Automatic
+routes and fallback. A cold engine may need a larger budget; increase it and run
+again while keeping Automatic selected. Hover keeps its fixed 3000 ms budget.
 
 Auto falls back to JSON when no TShark route/default applies or the selected
 dissector produces no decoded output. Results expose the actual backend,
@@ -50,8 +53,9 @@ For native MCP call `cilogg_execute` with `action: "set_preview_decoder"` and
 Executable and Lua paths belong only in trusted settings, never preview request
 arguments or imported JSON preview definitions.
 
-Local integration used Windows, TShark 4.6.9 and Lua 5.4.6. Other versions,
-hosted CI, other platforms and release packages need their own qualification.
+The [local validation record](tshark-preview-validation.md) documents the tested
+Windows/tool versions, result counts, preserved failures and qualification limits.
+Other versions, hosted CI, platforms and release packages need separate checks.
 
 The following captures show the actual native pane and hover for a public
 synthetic EHCI message. Its `CRC0000` is intentionally invalid, as reported by

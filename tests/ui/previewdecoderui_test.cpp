@@ -5,6 +5,8 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QCoreApplication>
+#include <QSpinBox>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
@@ -300,4 +302,76 @@ TEST_CASE( "Decoder settings use structured controls", "[ui][previewdecoderui]" 
     CHECK( dialog.findChild<QWidget*>( "decoderAllowExternalLua" ) );
     CHECK( dialog.findChild<QWidget*>( "decoderPreviewRoutes" ) );
     CHECK( dialog.findChild<QWidget*>( "decoderProtocolRoutes" ) );
+}
+
+TEST_CASE( "Automatic assembly route forwards the visible budget across decoder modes",
+           "[ui][previewdecoderui][previewbudget]" )
+{
+    RestoreDecoder restore;
+    RestorePreviews definitions;
+    const auto savedPython = qgetenv( "CILOGG_SCRIPT_PYTHON" );
+    const auto savedMode = qgetenv( "CILOGG_PREVIEW_FIXTURE_MODE" );
+    const auto savedPid = qgetenv( "CILOGG_PREVIEW_FIXTURE_PID" );
+    struct RestoreEnv {
+        QByteArray python, mode, pid;
+        ~RestoreEnv()
+        {
+            for ( const auto& item : { qMakePair( "CILOGG_SCRIPT_PYTHON", python ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_MODE", mode ),
+                                       qMakePair( "CILOGG_PREVIEW_FIXTURE_PID", pid ) } ) {
+                if ( item.second.isNull() )
+                    qunsetenv( item.first );
+                else
+                    qputenv( item.first, item.second );
+            }
+        }
+    } environment{ savedPython, savedMode, savedPid };
+    const auto fixture = QString::fromUtf8( PREVIEW_DECODER_FIXTURE_PATH );
+    REQUIRE( QFile::exists( fixture ) );
+    qputenv( "CILOGG_SCRIPT_PYTHON", fixture.toUtf8() );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "budget" );
+    qputenv( "CILOGG_PREVIEW_FIXTURE_PID",
+             QByteArray::number( QCoreApplication::applicationPid() ) );
+    PreviewManager::instance().clearAll();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "tshark", QCoreApplication::applicationFilePath() },
+          { "text2pcap", QCoreApplication::applicationFilePath() },
+          { "protocolRoutes",
+            QVariantMap{ { "EHCI", QVariantMap{ { "dissector", "data" },
+                                                { "inputEncoding", "hex" } } } } } } ) );
+    PreparedPreview prepared;
+    prepared.text = "01020304";
+    prepared.assembly = { { "protocol", "EHCI" }, { "state", "complete" } };
+    PreviewMessageTab tab( prepared, "Auto", 1 );
+    auto* mode = tab.findChild<QComboBox*>( "previewDecoderMode" );
+    auto* timeout = tab.findChild<QSpinBox*>( "previewTimeoutMs" );
+    REQUIRE( mode );
+    REQUIRE( timeout );
+    CHECK( timeout->value() == 3000 );
+    CHECK( timeout->maximum() == 10000 );
+    CHECK( timeout->isEnabled() );
+    mode->setCurrentIndex( mode->findData( "tshark" ) );
+    timeout->setValue( 10000 );
+    mode->setCurrentIndex( mode->findData( "json" ) );
+    CHECK( timeout->isEnabled() );
+    CHECK( timeout->value() == 10000 );
+    mode->setCurrentIndex( mode->findData( "auto" ) );
+    CHECK( timeout->isEnabled() );
+    CHECK_FALSE( tab.findChild<QLineEdit*>( "previewDissector" )->isEnabled() );
+    CHECK_FALSE( tab.findChild<QComboBox*>( "previewInputEncoding" )->isEnabled() );
+    tab.findChild<QPushButton*>( "previewRun" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 ) );
+    INFO( tab.result().value( "reason" ).toString().toStdString() );
+    REQUIRE( tab.result().value( "available" ).toBool() );
+    CHECK( tab.result().value( "backend" ) == "tshark_lua" );
+    CHECK( tab.result().value( "assembly" ).toMap().value( "protocol" ) == "EHCI" );
+    CHECK_FALSE( tab.result().contains( "fallbackReason" ) );
+    const auto fields = tab.result().value( "fields" ).toList();
+    REQUIRE( fields.size() == 1 );
+    const auto forwarded = fields.front().toMap().value( "columns" ).toList().at( 1 ).toInt();
+    // The worker receives the displayed total minus selection time, never the old 3000.
+    CHECK( forwarded > 3000 );
+    CHECK( forwarded <= timeout->value() );
+    CHECK( forwarded + tab.result().value( "elapsedMs" ).toLongLong() >= timeout->value() );
 }

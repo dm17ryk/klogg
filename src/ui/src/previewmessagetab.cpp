@@ -1637,7 +1637,7 @@ void PreviewMessageTab::buildUi()
     connect( cancel_, &QPushButton::clicked, this, &PreviewMessageTab::cancelEvaluation );
     dissector_->setEnabled( false );
     inputEncoding_->setEnabled( false );
-    timeout_->setEnabled( false );
+    timeout_->setEnabled( true );
 
     auto* layout = new QVBoxLayout();
     layout->addLayout( headerLayout );
@@ -1747,7 +1747,7 @@ void PreviewMessageTab::invalidateEvaluation()
     const bool manual = decoderMode_->currentData() == "tshark";
     dissector_->setEnabled( manual );
     inputEncoding_->setEnabled( manual );
-    timeout_->setEnabled( manual );
+    timeout_->setEnabled( true );
     status_->setText( tr( "Options changed - run to preview." ) );
     LOG_DEBUG << "Preview pane draft changed revision=" << revision_
               << " decoder=" << decoderMode_->currentData().toString();
@@ -1789,13 +1789,14 @@ void PreviewMessageTab::renderPreview( const QString& previewName )
     request.decoder = mode;
     request.assemblyProtocol = prepared_.assembly.value( "protocol" ).toString();
     request.sessionOwner = this;
+    request.timeoutMs = timeout_->value();
     if ( mode == "tshark" ) {
         request.dissector = dissector_->text();
         request.inputEncoding = inputEncoding_->currentData().toString();
-        request.timeoutMs = timeout_->value();
     }
     LOG_DEBUG << "Preview pane started revision=" << revision << " decoder=" << mode
-              << " assembly=" << request.assemblyProtocol << " named=" << !previewName.isEmpty();
+              << " assembly=" << request.assemblyProtocol << " named=" << !previewName.isEmpty()
+              << " timeout_ms=" << request.timeoutMs;
     const auto digest = PreviewService::definitions();
     request.definitions = digest;
     auto* token = PreviewService::evaluate(
