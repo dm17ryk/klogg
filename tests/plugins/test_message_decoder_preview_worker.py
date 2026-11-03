@@ -229,7 +229,7 @@ class NativePreviewTests(unittest.TestCase):
             "text2pcap": os.environ["CILOGG_TEXT2PCAP"],
             "lua": [str(ROOT / "test_data/message_decoders/pdu_probe.lua")],
             "dissector": "cilogg_md01_probe",
-            "protocol": "probe",
+            "protocol": "cilogg_md01_probe",
         }
 
     def evaluate(self, **changes):
@@ -334,6 +334,40 @@ class NativePreviewTests(unittest.TestCase):
         self.profile["lua"] = [str(script)]
         self.profile["dissector"] = "broken_probe"
         with self.assertRaisesRegex(wire.ProofError, "lua_failure"):
+            self.evaluate()
+
+    def test_real_named_alias_uses_expected_protocol_or_imports_all_without_selector(self):
+        self.profile.update(dissector="eth_withoutfcs", protocol="eth")
+        payload = base64.b64encode(
+            bytes.fromhex("00112233445566778899aabb08004500001400000000400100007f0000017f000001")
+        ).decode("ascii")
+        selected = self.evaluate(payloadBase64=payload)
+        self.assertTrue(selected["available"])
+        selected_names = [field["attributes"].get("name") for field in selected["fields"]]
+        self.assertIn("eth", selected_names)
+        self.assertNotIn("ip", selected_names)
+        self.profile["protocol"] = ""
+        unselected = self.evaluate(id="all", payloadBase64=payload)
+        self.assertEqual(selected["enginePid"], unselected["enginePid"])
+        names = [field["attributes"].get("name") for field in unselected["fields"]]
+        self.assertIn("eth", names)
+        self.assertIn("ip", names)
+        self.assertNotIn("eth_withoutfcs", names)
+        self.assertNotIn("frame", names)
+
+    def test_explicit_protocol_selector_absent_from_real_tree_fails(self):
+        for protocol in ("cilogg_absent_protocol", "frame"):
+            with self.subTest(protocol=protocol):
+                self.profile["protocol"] = protocol
+                with self.assertRaisesRegex(wire.ProofError, "protocol_not_found"):
+                    self.evaluate()
+
+    def test_missing_and_invalid_named_dissectors_are_errors(self):
+        self.profile.update(dissector="cilogg_missing_dissector", protocol="")
+        with self.assertRaisesRegex(wire.ProofError, "dissector_not_dispatched"):
+            self.evaluate()
+        self.profile["dissector"] = "--invalid"
+        with self.assertRaisesRegex(wire.ProofError, "invalid_dissector"):
             self.evaluate()
 
 

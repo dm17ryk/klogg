@@ -520,9 +520,39 @@ class PreviewWorker:
             for node in fields_named(packets, "_ws.expert.message")
         ):
             raise ProofError("lua_failure")
-        if not fields_named(packets, profile["dissector"]):
-            raise ProofError("dissector_not_dispatched")
         fields, limited = render_fields(packets)
+        if not fields:
+            # Missing entrypoints can leave only the real engine's transport
+            # envelope. This is absence of decoded output, not a protocol-name
+            # comparison: an alias may legitimately emit differently named nodes.
+            LOG.warning("preview_no_decoded_fields id=%s", request["id"])
+            raise ProofError("dissector_not_dispatched")
+        if profile["protocol"]:
+
+            def selected_protocols(nodes):
+                selected = []
+                for node in nodes:
+                    if node["attributes"].get("name") in {"frame", "geninfo", "exported_pdu"}:
+                        continue
+                    if (
+                        node["kind"] == "proto"
+                        and node["attributes"].get("name") == profile["protocol"]
+                    ):
+                        # Keep each selected subtree once, including any nested
+                        # occurrence of the same protocol already in that tree.
+                        selected.append(node)
+                    else:
+                        selected.extend(selected_protocols(node["children"]))
+                return selected
+
+            selected = selected_protocols(packets)
+            if not selected:
+                LOG.warning("preview_protocol_not_found id=%s", request["id"])
+                raise ProofError("protocol_not_found")
+            fields, limited = render_fields(selected)
+            LOG.debug("preview_protocol_selected id=%s subtrees=%d", request["id"], len(selected))
+        else:
+            LOG.debug("preview_all_decoded_fields_selected id=%s", request["id"])
         response = response_base(request["id"], profile)
         response.update(
             state="completed",
