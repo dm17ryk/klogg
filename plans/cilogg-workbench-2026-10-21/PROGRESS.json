@@ -2020,9 +2020,17 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
-      "slices": []
+      "evidence": ["../../docs/workbench/tshark-preview.md"],
+      "limitations": ["MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."],
+      "slices": [
+        {
+          "id": "MD03a",
+          "status": "completed",
+          "scope": "Opt-in TShark/Lua message preview across GUI, CLI and native MCP",
+          "evidence": ["slices/MD03a-preview-integration.md", "../../tests/mcp/tshark_preview_parity.py"],
+          "limitations": ["Local Windows evidence is distinct from hosted CI, other platforms and release qualification.", "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."]
+        }
+      ]
     },
     "MD04": {
       "status": "planned",
