@@ -1874,12 +1874,15 @@
         "../../docs/workbench/md01b-windows-observations.json",
         "../../docs/workbench/md01c-field-origins.md",
         "../../docs/workbench/md01c-windows-observations.json",
-        "../../docs/workbench/md01c-sourcery-observations.json"
+        "../../docs/workbench/md01c-sourcery-observations.json",
+        "../../docs/workbench/md01d-nested-oracle.md",
+        "../../docs/workbench/md01d-windows-observations.json"
       ],
       "limitations": [
         "MD01a independently qualifies real-engine synthetic complete/nested probes; bare partial and direct NUL EHCI remain failed capabilities. Genuine-capture comparison, licensing and full MD01 acceptance remain pending behind W0.",
         "MD01b selected genuine-capture tree comparison passes for 23 EHCP and one reassembled EHCI PDU; this does not qualify full MD01, positions, bare partial/NUL behavior or independent protocol semantics.",
-        "MD01c qualifies1902 payload-relative field ranges in23 EHCP/1 EHCI selected PDUs;698 zero-byte/unavailable-source fields remain unmapped. Original source spans and generated flags stay null."
+        "MD01c qualifies1902 payload-relative field ranges in23 EHCP/1 EHCI selected PDUs;698 zero-byte/unavailable-source fields remain unmapped. Original source spans and generated flags stay null.",
+        "MD01d qualifies private reference-document48/counter9/D50D through strictSRING and direct/nested tree equality; no actual-log mapping or fullMD01 acceptance."
       ],
       "slices": [
         {
@@ -1954,6 +1957,25 @@
             "findingsAddressed": 6,
             "verification": "133 cases each onPython3.14/3.9:132pass/1UnixFIFOskip;7/7 isolated fullCTest244.31s;nativeCLI+Windows cross-process lease/recovery;all4 parser guard mutants detected;fresh general/Python review fixed RecursionError RED/GREEN;hosted pending."
           }
+        },
+        {
+          "id": "MD01d",
+          "status": "implemented_pending_gates",
+          "base": "fae1374d06e26dd19c56097b5f4119d152a3d965",
+          "branch": "codex/md01-nested-oracle",
+          "scope": "Independent strict single-SRING proof fixture; parent/child outcomes and private48/counter9/D50D reference-document runtime oracle; no PR84 code dependency or product decoder",
+          "evidence": [
+            "../../docs/workbench/md01d-nested-oracle.md",
+            "../../docs/workbench/md01d-windows-observations.json"
+          ],
+          "localVerification": "7/7 focused native;111/111 full plugin cases each onPython3.14/3.9;7/7 isolated fullCTest423.43s using byte-verified existingQt6.10.1 native binaries;syntheticCLI passed;private exact108-byte reference-document SRING→48-byte EHCP/counter9/D50Dvalid and direct/nested tree equality;strict rawNUL prefix regressionRED/GREEN;fresh general/Python reviews no blockers;ruff clean;no newC++build or hosted acceptance claimed.",
+          "limitations": [
+            "Reference-document example, not sampled log-row acceptance; no original-log span",
+            "FullMD01/W0, partial/direct-NUL EHCI, licensing, generated flags and product integration remain pending",
+            "Streaming AT dialects and cross-notification assembly remainMD02/MD06"
+          ],
+          "commit": "9deaaa4314d028e6d85b71a90c0ff24289ba2037",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/85"
         }
       ]
     },
