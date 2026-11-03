@@ -17,6 +17,31 @@
 #include "comportutils.h"
 #include "configuration.h"
 #include "predefinedfilters.h"
+#include "mcp/mcp.h"
+
+TEST_CASE( "Preview decoder commands preserve configuration and discovery", "[commander][previewdecodercommands]" )
+{
+    const CliParameters help( { "cilogg", "command", "--help" } );
+    const auto catalog = cilogg::mcp::parseCommandHelp( help.exit_message ).value( "commands" ).toObject();
+    CHECK( catalog.value( "preview_message" ).toString().contains( "decoder (auto/json/tshark)" ) );
+    CHECK_FALSE( catalog.value( "show_preview_decoder_settings" ).toString().contains( "inputEncoding" ) );
+    for ( const auto& action : { "get_preview_decoder", "set_preview_decoder", "show_preview_decoder_settings" } ) {
+        QStringList argv{ "cilogg", "command", "--action", action };
+        if ( QString( action ) == "set_preview_decoder" )
+            argv << "--analysis-json" << R"({"enabled":false,"lua":[]})";
+        CliParameters cli( argv );
+        REQUIRE_FALSE( cli.parse_error );
+        REQUIRE( cli.commander_request );
+        const auto restored = commanderRequestFromVariantMap( commanderRequestToVariantMap( *cli.commander_request ) );
+        REQUIRE( restored );
+        CHECK( commanderActionToString( restored->action ) == action );
+        CHECK( catalog.contains( action ) );
+        CHECK( restored->analysisArguments == cli.commander_request->analysisArguments );
+    }
+    CHECK( CliParameters( { "cilogg", "command", "--action", "set_preview_decoder", "--analysis-json", "[]" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "get_preview_decoder", "--analysis-json", "{}" } ).parse_error );
+    CHECK( CliParameters( { "cilogg", "command", "--action", "show_preview_decoder_settings", "--analysis-json", "{}" } ).parse_error );
+}
 
 TEST_CASE( "Analysis commands preserve JSON options through CLI and IPC", "[commander][analysiscommands]" )
 {

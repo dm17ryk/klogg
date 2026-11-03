@@ -590,6 +590,13 @@ QString PreviewService::tooltipHtml( const QVariantMap& result )
     QString html;
     if ( result.value( "backend" ) == "tshark_lua" )
         html = "<b>TShark / Lua</b><br>";
+    else if ( result.value( "backend" ) == "json_preview"
+              && ( result.value( "available" ).toBool()
+                   || ( !result.value( "reason" ).toString().isEmpty()
+                        && result.value( "reason" ) != "no_match" ) ) )
+        html = "<b>JSON preview</b><br>";
+    if ( !html.isEmpty() && !result.value( "fallbackReason" ).toString().isEmpty() )
+        html += "Fallback: " + result.value( "fallbackReason" ).toString().toHtmlEscaped() + "<br>";
     if ( !assembly.isEmpty() && assembly.value( "state" ) != "unavailable" ) {
         const auto protocol = assembly.value( "protocol" ).toString().isEmpty()
                                   ? QString( "Message" )

@@ -134,6 +134,8 @@
 #include "predefinedfilters.h"
 #include "predefinedfiltersdialog.h"
 #include "previewmanager.h"
+#include "previewdecodersettings.h"
+#include "previewdecodersettingsdialog.h"
 #include "progress.h"
 #include "readablesize.h"
 #include "recentfiles.h"
@@ -520,6 +522,8 @@ MainWindow::MainWindow( WindowSession session )
 
     signalMux_.connect( SIGNAL( sendToPreview( QString, QString ) ), this,
                         SLOT( sendToPreview( QString, QString ) ) );
+    signalMux_.connect( SIGNAL( sendPreparedToPreview( PreparedPreview, QString ) ), this,
+                        SLOT( sendPreparedToPreview( PreparedPreview, QString ) ) );
     signalMux_.connect( SIGNAL( openRegexLabRequested() ), this,
                        SLOT( showRegexLabForSelection() ) );
 
@@ -755,6 +759,10 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
     switch ( request.action ) {
     case CommanderAction::PreviewMessage:
         return commanderPreview( request );
+    case CommanderAction::GetPreviewDecoder:
+    case CommanderAction::SetPreviewDecoder:
+    case CommanderAction::ShowPreviewDecoderSettings:
+        return commanderPreviewDecoder( request );
     case CommanderAction::RegexEvaluate:
     case CommanderAction::ValueCounts:
     case CommanderAction::GetValueCount:
@@ -1075,6 +1083,9 @@ QVariantMap MainWindow::automationState() const
     state.insert( QStringLiteral( "parserMode" ), QString{} );
     state.insert( QStringLiteral( "scratchPad" ), scratchPad );
     state.insert( QStringLiteral( "previewerVisible" ), previewWindow_.isVisible() );
+    state.insert( "previewDecoder", QVariantMap{ { "enabled", PreviewDecoderSettings::instance().configuration().value( "enabled" ) },
+        { "revision", PreviewDecoderSettings::instance().revision() },
+        { "settingsVisible", previewDecoderSettingsDialog_ && previewDecoderSettingsDialog_->isVisible() } } );
     state.insert( QStringLiteral( "actionsResponsesVisible" ),
                   actionsResponsesWindow_.isVisible() );
     state.insert( QStringLiteral( "responsesVisible" ), responsesWindow_.isVisible() );
@@ -1797,6 +1808,11 @@ void MainWindow::createActions()
              [ this ]( auto ) { this->showScratchPad(); } );
 
     showPreviewerAction = new QAction( tr( action::showPreviewerText ), this );
+    previewDecoderSettingsAction = new QAction( QIcon( ":/images/tool-preview-decoder.svg" ), tr( "TShark / Lua decoder settings…" ), this );
+    previewDecoderSettingsAction->setObjectName( "previewDecoderSettingsAction" );
+    previewDecoderSettingsAction->setToolTip( tr( "Configure TShark / Lua previews" ) );
+    previewDecoderSettingsAction->setStatusTip( previewDecoderSettingsAction->toolTip() );
+    connect( previewDecoderSettingsAction, &QAction::triggered, this, &MainWindow::showPreviewDecoderSettings );
     showPreviewerAction->setObjectName( QStringLiteral( "showPreviewerAction" ) );
     showPreviewerAction->setStatusTip( tr( action::showPreviewerStatusTip ) );
     connect( showPreviewerAction, &QAction::triggered, this,
@@ -2058,6 +2074,7 @@ void MainWindow::createMenus()
     createConfigurationActions();
     toolsMenu->addSeparator();
     toolsMenu->addAction( showPreviewerAction );
+    toolsMenu->addAction( previewDecoderSettingsAction );
     toolsMenu->addAction( showActionsResponsesAction );
     toolsMenu->addAction( showResponsesAction );
     toolsMenu->addAction( showScriptRunnerAction );
@@ -2337,6 +2354,7 @@ void MainWindow::createToolBars()
     toolBar->addWidget( lineNbField );
     infoToolbarSeparators.push_back( toolBar->addSeparator() );
     toolBar->addAction( showPreviewerAction );
+    toolBar->addAction( previewDecoderSettingsAction );
     toolBar->addAction( showActionsResponsesAction );
     toolBar->addAction( showResponsesAction );
     toolBar->addAction( showScriptRunnerAction );
@@ -3045,6 +3063,26 @@ void MainWindow::sendToPreview( QString rawLine, QString previewNameOrAuto )
     }
     previewWindow_.openMessageTab( rawLine, previewNameOrAuto );
     showPreviewer();
+}
+
+void MainWindow::sendPreparedToPreview( PreparedPreview prepared, QString previewNameOrAuto )
+{
+    LOG_DEBUG << "Manual preview selected source=" << prepared.snapshot.sourceId
+              << " assembly=" << prepared.assembly.value( "state" ).toString();
+    previewWindow_.openPreparedMessageTab( prepared, previewNameOrAuto );
+    showPreviewer();
+}
+
+void MainWindow::showPreviewDecoderSettings()
+{
+    if ( !previewDecoderSettingsDialog_ )
+        previewDecoderSettingsDialog_ = new PreviewDecoderSettingsDialog( this );
+    else if ( !previewDecoderSettingsDialog_->isVisible() )
+        previewDecoderSettingsDialog_->reload();
+    previewDecoderSettingsDialog_->show();
+    previewDecoderSettingsDialog_->raise();
+    previewDecoderSettingsDialog_->activateWindow();
+    LOG_DEBUG << "Preview decoder settings shown";
 }
 
 void MainWindow::sendActionById( int actionId )

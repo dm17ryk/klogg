@@ -59,6 +59,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewassembly.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewservice.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettings.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettingsdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tsharkpreviewclient.h
   ${CMAKE_CURRENT_SOURCE_DIR}/preview_decoder.qrc
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewsource.h
@@ -161,6 +162,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewassembly.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewservice.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettings.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettingsdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tsharkpreviewclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewsource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp

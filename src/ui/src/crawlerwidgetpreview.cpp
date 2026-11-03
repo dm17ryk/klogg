@@ -10,14 +10,18 @@
 
 QString CrawlerWidget::previewSelectionText( AbstractLogView* view ) const
 {
+    return preparedPreviewSelection( view ).text;
+}
+
+PreparedPreview CrawlerWidget::preparedPreviewSelection( AbstractLogView* view ) const
+{
     const auto ranges = view->selectedLineRanges();
     if ( !view->isPartialSelection() && ranges.size() == 1 && ranges.front().second.get() == 1 ) {
         const auto line = view->previewPhysicalLine( ranges.front().first ).get();
         const auto prepared = preparePreviewSource( logData_, line );
-        if ( prepared.error.isEmpty() && prepared.assembly.value( "state" ) == "complete" )
-            return prepared.text;
+        if ( prepared.error.isEmpty() ) return prepared;
     }
-    return view->getSelectedText();
+    return preparePreviewText( view->getSelectedText() );
 }
 
 void CrawlerWidget::handleLinePreviewRequested( quint64 physicalLine, const QPoint& globalPosition,
@@ -77,6 +81,8 @@ void CrawlerWidget::handleLinePreviewRequested( quint64 physicalLine, const QPoi
     PreviewEvaluationRequest request;
     request.text = prepared.text;
     request.definitions = definitions;
+    request.assemblyProtocol = prepared.assembly.value( "protocol" ).toString();
+    request.sessionOwner = this;
     auto* process = PreviewService::evaluate( view, std::move( request ), completed );
     view->trackLinePreview( serial, process, valid );
 }

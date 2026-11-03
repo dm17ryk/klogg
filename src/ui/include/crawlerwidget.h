@@ -42,6 +42,7 @@
 
 #include <cstddef>
 #include <optional>
+#include "previewsource.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -214,6 +215,7 @@ Q_SIGNALS:
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
+    void sendPreparedToPreview( PreparedPreview prepared, QString previewNameOrAuto );
 
     // "auto-refresh" check has been changed
     void searchRefreshChanged( bool isRefreshing );
@@ -402,6 +404,7 @@ private:
     void connectAllFilteredViewSlots( FilteredView* view );
     void handleLinePreviewRequested( quint64 physicalLine, const QPoint& globalPosition, quint64 serial );
     QString previewSelectionText( AbstractLogView* view ) const;
+    PreparedPreview preparedPreviewSelection( AbstractLogView* view ) const;
 
     void saveSplitterSizes() const;
 

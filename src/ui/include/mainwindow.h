@@ -68,6 +68,7 @@
 #include "tabbedcrawlerwidget.h"
 #include "tabbedscratchpad.h"
 class RegexLabDock;
+class PreviewDecoderSettingsDialog;
 class ValueCountDock;
 
 class QAction;
@@ -172,6 +173,8 @@ class MainWindow : public QMainWindow {
     void sendToScratchpad( QString );
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
+    void sendPreparedToPreview( PreparedPreview prepared, QString previewNameOrAuto );
+    void showPreviewDecoderSettings();
     void sendActionById( int actionId );
     void sendActionByIdWithParameters( int actionId, const QVariantMap& parameters );
     void encodingChanged( QAction* action );
@@ -339,6 +342,7 @@ class MainWindow : public QMainWindow {
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
     CommanderResult commanderAnalysis( const CommanderRequest& request );
     CommanderResult commanderPreview( const CommanderRequest& request );
+    CommanderResult commanderPreviewDecoder( const CommanderRequest& request );
     CommanderResult startNewStreamFileForCrawler( CrawlerWidget* crawler );
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;
     StreamSession* commanderTargetStreamSession( const CommanderRequest& request,
@@ -422,6 +426,8 @@ class MainWindow : public QMainWindow {
     QAction* optionsAction;
     QAction* showScratchPadAction;
     QAction* showPreviewerAction;
+    QAction* previewDecoderSettingsAction = nullptr;
+    PreviewDecoderSettingsDialog* previewDecoderSettingsDialog_ = nullptr;
     QAction* showActionsResponsesAction;
     QAction* showResponsesAction;
     QAction* showScriptRunnerAction;

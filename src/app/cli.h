@@ -330,6 +330,10 @@ private:
             "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
             "selector]\n"
             "  preview_message [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
+            "    Preview options: decoder (auto/json/tshark), dissector, inputEncoding (utf8/hex/base64), timeoutMs (100..10000).\n"
+            "  get_preview_decoder [window selector]\n"
+            "  set_preview_decoder [--analysis-json <config> | --json-file <config.json>] [window selector]\n"
+            "  show_preview_decoder_settings [window selector]\n"
             "  get_analysis_job --job-id <id> [tab selector]\n"
             "  value_counts [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
             "  get_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
@@ -1817,6 +1821,7 @@ private:
 
         switch ( *action ) {
         case CommanderAction::PreviewMessage:
+        case CommanderAction::SetPreviewDecoder:
         case CommanderAction::RegexEvaluate:
         case CommanderAction::ValueCounts:
         case CommanderAction::GetValueCount:
@@ -1884,6 +1889,14 @@ private:
             if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;
             break;
         }
+        case CommanderAction::GetPreviewDecoder:
+        case CommanderAction::ShowPreviewDecoderSettings:
+            if ( parser.isSet( "analysis-json" ) || parser.isSet( jsonFileOption ) ) {
+                result.output_message = formatParserError( parser, "This decoder command does not accept JSON arguments." );
+                return result;
+            }
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) return result;
+            break;
         case CommanderAction::ShowRegexLab:
         case CommanderAction::ShowValueCounts:
         case CommanderAction::GetValueCounts:

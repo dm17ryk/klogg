@@ -3,6 +3,7 @@
 #include "log.h"
 #include "logdata.h"
 #include "mainwindow.h"
+#include "previewdecodersettings.h"
 #include "previewservice.h"
 #include "previewsource.h"
 #include <QPointer>
@@ -18,10 +19,32 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
                                 { { "reason", reason } } };
     };
     const auto& args = request.analysisArguments;
-    const QSet<QString> allowed{ "text", "line", "previewName", "reassemble", "timeoutMs" };
+    const QSet<QString> allowed{ "text",       "line",          "previewName",
+                                 "reassemble", "timeoutMs",     "decoder",
+                                 "dissector",  "inputEncoding", "requestRevision" };
     for ( auto it = args.cbegin(); it != args.cend(); ++it )
         if ( !allowed.contains( it.key() ) )
             return invalid( "unknown_preview_option" );
+    for ( const auto* key : { "decoder", "dissector", "inputEncoding", "requestRevision" } ) {
+        if ( args.contains( key )
+             && ( args.value( key ).userType() != QMetaType::QString
+                  || args.value( key ).toString().size() > 128
+                  || args.value( key ).toString().contains( QChar::Null ) ) )
+            return invalid( QString( "invalid_%1" ).arg( key ) );
+    }
+    const auto decoder = args.value( "decoder", "auto" ).toString();
+    if ( decoder != "auto" && decoder != "json" && decoder != "tshark" )
+        return invalid( "invalid_decoder" );
+    const auto inputEncoding = args.value( "inputEncoding" ).toString();
+    if ( args.contains( "inputEncoding" ) && inputEncoding != "utf8" && inputEncoding != "hex"
+         && inputEncoding != "base64" )
+        return invalid( "invalid_encoding" );
+    const auto dissector = args.value( "dissector" ).toString();
+    static const QRegularExpression namedDissector( "\\A[A-Za-z][A-Za-z0-9_.-]{0,127}\\z" );
+    if ( args.contains( "dissector" ) && !namedDissector.match( dissector ).hasMatch() )
+        return invalid( "invalid_dissector" );
+    if ( decoder == "json" && ( args.contains( "dissector" ) || args.contains( "inputEncoding" ) ) )
+        return invalid( "unsupported_decoder_options" );
     std::optional<quint64> line;
     if ( args.contains( "line" ) ) {
         const auto text = args.value( "line" ).toString();
@@ -41,7 +64,9 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
     if ( args.contains( "timeoutMs" ) ) {
         bool ok = false;
         timeoutMs = args.value( "timeoutMs" ).toString().toInt( &ok );
-        if ( !ok || timeoutMs < 100 || timeoutMs > 10000 )
+        if ( !ok || timeoutMs < 100 || timeoutMs > 10000
+             || args.value( "timeoutMs" ).userType() == QMetaType::Bool
+             || args.value( "timeoutMs" ).toDouble() != timeoutMs )
             return invalid( "invalid_timeout" );
     }
     PreparedPreview prepared;
@@ -84,11 +109,25 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
         evaluation.text = prepared.text;
         evaluation.previewName = args.value( "previewName" ).toString();
         evaluation.timeoutMs = timeoutMs;
+        evaluation.decoder = decoder;
+        evaluation.dissector = dissector;
+        evaluation.inputEncoding = inputEncoding;
+        evaluation.assemblyProtocol = prepared.assembly.value( "protocol" ).toString();
+        evaluation.sessionOwner = crawler ? static_cast<QObject*>( crawler.data() ) : this;
         result = PreviewService::evaluateAndWait( std::move( evaluation ), crawler );
     }
     result[ "assembly" ] = prepared.assembly;
     result[ "source" ] = prepared.source;
-    result[ "inputText" ] = prepared.text;
+    if ( prepared.text.size() <= 65536 && prepared.text.toUtf8().size() <= 65536 )
+        result[ "inputText" ] = prepared.text;
+    else {
+        result[ "inputTextOmitted" ] = true;
+        result[ "inputTextBytes" ] = prepared.text.toUtf8().size();
+        LOG_DEBUG << "Preview command input echo omitted bytes="
+                  << result.value( "inputTextBytes" ).toLongLong();
+    }
+    if ( args.contains( "requestRevision" ) )
+        result[ "requestRevision" ] = args.value( "requestRevision" );
     if ( prepared.snapshot.available ) {
         const auto current = source.lock();
         if ( !crawler
@@ -110,4 +149,28 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
     const bool failed = result.value( "state" ) == "failed";
     return { failed ? CommanderResultCode::ExecutionFailed : CommanderResultCode::Success,
              failed ? result.value( "reason" ).toString() : QString(), result };
+}
+
+CommanderResult MainWindow::commanderPreviewDecoder( const CommanderRequest& request )
+{
+    auto& settings = PreviewDecoderSettings::instance();
+    if ( request.action == CommanderAction::SetPreviewDecoder ) {
+        QString error;
+        if ( !settings.setConfiguration( request.analysisArguments, &error ) )
+            return { CommanderResultCode::InvalidRequest, error, { { "reason", error } } };
+        LOG_DEBUG << "Preview decoder command applied revision=" << settings.revision();
+    }
+    else {
+        if ( !request.analysisArguments.isEmpty() )
+            return { CommanderResultCode::InvalidRequest,
+                     "unknown_preview_decoder_option",
+                     { { "reason", "unknown_preview_decoder_option" } } };
+        if ( request.action == CommanderAction::ShowPreviewDecoderSettings )
+            showPreviewDecoderSettings();
+    }
+    return commanderSuccess(
+        {}, { { "configuration", settings.configuration() },
+              { "revision", settings.revision() },
+              { "status",
+                settings.configuration().value( "enabled" ).toBool() ? "enabled" : "disabled" } } );
 }

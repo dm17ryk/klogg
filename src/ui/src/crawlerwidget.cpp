@@ -2016,7 +2016,7 @@ void CrawlerWidget::setup()
 
     connect( logMainView_, &AbstractLogView::sendSelectionToPreview, this,
              [ this ]( const QString& previewName ) {
-                 Q_EMIT sendToPreview( previewSelectionText( logMainView_ ), previewName );
+                  Q_EMIT sendPreparedToPreview( preparedPreviewSelection( logMainView_ ), previewName );
              } );
     connect( logMainView_, &AbstractLogView::linePreviewRequested, this,
              &CrawlerWidget::handleLinePreviewRequested, Qt::UniqueConnection );
@@ -2219,7 +2219,7 @@ void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 
     connect( view, &AbstractLogView::sendSelectionToPreview, this,
              [ view, this ]( const QString& previewName ) {
-                 Q_EMIT sendToPreview( previewSelectionText( view ), previewName );
+                  Q_EMIT sendPreparedToPreview( preparedPreviewSelection( view ), previewName );
              } );
     connect( view, &AbstractLogView::linePreviewRequested, this,
              &CrawlerWidget::handleLinePreviewRequested, Qt::UniqueConnection );

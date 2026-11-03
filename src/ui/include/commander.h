@@ -92,6 +92,9 @@ enum class CommanderAction {
     ShowValueCounts,
     GetValueCounts,
     SetValueCounts,
+    GetPreviewDecoder,
+    SetPreviewDecoder,
+    ShowPreviewDecoderSettings,
 };
 
 enum class CommanderResultCode {

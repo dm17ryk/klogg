@@ -1,4 +1,5 @@
 set(UI_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/previewdecoderui_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/qtests_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logdata_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logdatasource_test.cpp
