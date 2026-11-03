@@ -2,11 +2,21 @@
 
 import unittest
 
-from tshark_preview_parity import comparable
+from tshark_preview_parity import comparable, require_visible_failure
 from workbench_contracts import ParityError, compare_json
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_visible_failure_rejects_masked_or_wrong_results(self):
+        failure = {"backend": "tshark_lua", "reason": "lua_failure", "state": "failed",
+                   "available": False, "complete": False}
+        require_visible_failure(failure, "lua_failure")
+        for changed in (dict(failure, backend="json_preview"),
+                        dict(failure, reason="execution_timeout"),
+                        dict(failure, fallbackReason="dissector_not_dispatched"),
+                        dict(failure, available=True)):
+            with self.subTest(changed=changed), self.assertRaises(AssertionError):
+                require_visible_failure(changed, "lua_failure")
     def test_only_top_level_volatile_metadata_is_excluded(self):
         sample = {"id": "one", "requestId": "request", "elapsedMs": 2,
                   "enginePid": 123, "backend": "tshark_lua", "fields": [

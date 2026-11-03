@@ -23,6 +23,14 @@ def comparable(value):
     return {k: v for k, v in value.items() if k not in VOLATILE and k != "id"}
 
 
+def require_visible_failure(result, reason):
+    """Failures in Auto must never be replaced by a successful JSON fallback."""
+    assert result.get("reason") == reason, result
+    assert result.get("backend") != "json_preview", result
+    assert not result.get("available") and not result.get("complete"), result
+    assert not result.get("fallbackReason") and "json_preview" not in result.get("decoderAttempts", []), result
+
+
 def setup_preview(payload):
     definitions = {"version": 1, "previews": [
         {"name": name, "regex": "^(?<value>.*)$", "format": "fields",
@@ -55,6 +63,8 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
             mcp[key] = value
         first = cli(action, *args, success=success)
         second = command(action, mcp, success=success)
+        (artifacts / ("tshark-result-%03d.json" % sequence)).write_text(
+            json.dumps({"cli": first, "mcp": second}, indent=2, ensure_ascii=False), encoding="utf-8")
         left, right = comparable(first), comparable(second)
         compare_json(left, right)
         observations.append({"action": action, "request": request,
@@ -86,7 +96,9 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     values = lambda name: [f["columns"][1] for f in fields if f["attributes"].get("name") == name]
     assert values("cilogg_md01_probe.item") == ["65", "66"], fields
     assert values("cilogg_md01_probe.generated") == ["9007199254740993"], fields
-    assert values("cilogg_md01_probe.transformed"), fields
+    transformed = [f for f in fields if f["attributes"].get("name") == "cilogg_md01_probe.transformed"]
+    assert len(transformed) == 1 and transformed[0]["columns"][1:3] == ["41:42", "4142"], transformed
+    assert transformed[0]["positionOrigin"] == "engine_data_source_unresolved", transformed
     explicit, _ = pair("preview_message", dict(request, decoder="json"))
     assert explicit["backend"] == "json_preview", explicit
     direct = copy.deepcopy(config)
@@ -118,6 +130,21 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     disabled["enabled"] = False
     pair("set_preview_decoder", disabled)
     assert pair("preview_message", request)[0]["backend"] == "json_preview"
+
+    malformed = copy.deepcopy(config)
+    malformed["inputEncoding"] = "hex"
+    pair("set_preview_decoder", malformed)
+    result, _ = pair("preview_message", dict(request, text="invalid hex", inputEncoding="hex"), success=False)
+    require_visible_failure(result, "invalid_hex")
+    malformed["inputEncoding"] = "base64"
+    pair("set_preview_decoder", malformed)
+    result, _ = pair("preview_message", dict(request, text="%%%", inputEncoding="base64"), success=False)
+    require_visible_failure(result, "invalid_base64")
+    missing_protocol = copy.deepcopy(config)
+    missing_protocol["previewRoutes"]["Mapped carrier"]["protocol"] = "cilogg_absent_protocol"
+    pair("set_preview_decoder", missing_protocol)
+    result, _ = pair("preview_message", request, success=False)
+    require_visible_failure(result, "protocol_not_found")
 
     external = os.environ.get("CILOGG_PREVIEW_ENGINE_CONFIG")
     if external:
@@ -168,6 +195,37 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
             time.sleep(0.02)
         source = pair("preview_message", source_request, window_index=0, tab_index=0)[0]
         assert source["inputText"] == body and source["source"]["lineOneBased"] == "7", source
+
+    # Private synthetic fault fixtures: real Lua executes, but implements no protocol.
+    for suffix, body, reason, timeout in (
+        ("error", 'error("synthetic failure")', "lua_failure", 10000),
+        ("stall", 'if tvb(0,1):uint() == 65 then while true do end end; '
+                  'tree:add(p,tvb()); return tvb:len()', "timeout", 4000),
+    ):
+        script = artifacts / ("preview-fault-" + suffix + ".lua")
+        script.write_text('local p=Proto("cilogg_fault", "Fault")\n'
+                          'function p.dissector(tvb,pinfo,tree) ' + body + ' end\n', encoding="utf-8")
+        fault = copy.deepcopy(config)
+        fault["lua"] = [str(script)]
+        fault["previewRoutes"]["Mapped carrier"] = {"dissector": "cilogg_fault", "protocol": "cilogg_fault"}
+        pair("set_preview_decoder", fault)
+        if suffix == "stall":
+            warm, _ = pair("preview_message", dict(request, text="Z"))
+            assert warm["backend"] == "tshark_lua" and warm["available"], warm
+        result, _ = pair("preview_message", dict(request, timeoutMs=timeout), success=False)
+        require_visible_failure(result, reason)
+
+    # Reset the failed session, then prove actual decoding and warm reuse per transport.
+    pair("set_preview_decoder", config)
+    recovered_cli, recovered_mcp = pair("preview_message", request)
+    again_cli, again_mcp = pair("preview_message", request)
+    for result in (recovered_cli, recovered_mcp, again_cli, again_mcp):
+        assert result["backend"] == "tshark_lua" and result["available"] and result["complete"], result
+        items = [f["columns"][1] for f in result["fields"]
+                 if f["attributes"].get("name") == "cilogg_md01_probe.item"]
+        assert items == ["65", "66"], result
+    assert recovered_cli["enginePid"] == again_cli["enginePid"]
+    assert recovered_mcp["enginePid"] == again_mcp["enginePid"]
     (artifacts / "tshark-preview-observations.json").write_text(
         json.dumps(observations, indent=2, ensure_ascii=False), encoding="utf-8")
     print("PASS: %d CLI/native-MCP real preview comparisons%s" %
