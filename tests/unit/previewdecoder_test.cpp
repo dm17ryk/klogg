@@ -62,7 +62,7 @@ TEST_CASE( "Decoder settings replace atomically with strict trusted types", "[pr
     const auto original = settings.configuration();
     const auto revision = settings.revision();
     QString error;
-    for ( const QVariantMap invalid :
+    for ( const QVariantMap& invalid :
           { QVariantMap{ { "enabled", "true" } }, QVariantMap{ { "unknown", true } },
             QVariantMap{ { "enabled", true } }, QVariantMap{ { "inputEncoding", "unknown" } },
             QVariantMap{ { "defaultDissector", "data;system()" } },
