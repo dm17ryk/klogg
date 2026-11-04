@@ -427,7 +427,8 @@ jobs:
             cmake_opts: -DKLOGG_USE_HYPERSCAN=OFF -DKLOGG_USE_VECTORSCAN=ON -DKLOGG_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_CXX_FLAGS=-Wno-error=deprecated-declarations
 
           - os: macos
-            os_version: 26-intel
+            # Use the established Intel host after macOS 26 runner allocation failures.
+            os_version: 15-intel
             arch: x64
             backend: hyperscan
             qt_version: 6.12.0
@@ -460,7 +461,7 @@ jobs:
         shell: sh
         run: |
           if [ "${{ matrix.config.qt_version }}" = "6.12.0" ]; then
-            # The macOS 26 image selects a supported Xcode 26 SDK by default.
+            # Both modern build hosts provide a supported Xcode 16+ SDK by default.
             xcode-select -p
             major=$(xcodebuild -version | awk '/^Xcode / { split($2, version, "."); print version[1] }')
             test "$major" -ge 16 || { echo "Qt 6.12 requires Xcode 16+" >&2; exit 1; }
