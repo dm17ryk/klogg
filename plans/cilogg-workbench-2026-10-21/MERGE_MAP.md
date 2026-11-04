@@ -43,7 +43,7 @@ available at [log-analysis-roadmap.md](../log-analysis-roadmap.md).
 | P24 Git Team Folder | Planned | E09 |
 
 Every P package/slice remains represented. The Workbench scope additionally keeps
-the 173 mapped requirements for dashboards, investigation analysis, automation,
+the original 173 mapped requirements, plus 14 DEC and 14 TERM requirements, for dashboards, investigation analysis, automation,
 communication testing, integrations and product/release quality. See
 [FEATURE_COVERAGE.md](FEATURE_COVERAGE.md); these future requirements are not marked
 delivered merely because their existing foundation is reused.
@@ -77,3 +77,13 @@ claiming public feature completion.
 ## Message decoder revision-2 integration
 
 Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).
+
+## Unified terminal priority update — 2026-11-04
+
+Execution order is W0 → decoder core MD01–MD06 and prerequisites →
+[unified terminal UT00–UT13](11-unified-terminal.md) → remaining W1 onward.
+MD07/MD08 stay deferred. The package now has 119 tasks and 201 requirements.
+UT00 depends on MD06, and UT02 explicitly retains implemented F01/D01 contracts.
+V01/V02 gain no terminal/decoder DAG dependency. R04 adds UT13 as its final
+terminal-completion gate; all previous hard edges and feature ownership remain.
+All terminal tasks are planned; importing the task does not implement it.

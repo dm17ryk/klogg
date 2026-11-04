@@ -2205,14 +2205,15 @@
         "D16",
         "D17",
         "D18",
-        "MD08"
+        "MD08",
+        "UT13"
       ],
       "status": "planned",
       "requirements": [
         "UX18",
         "QUAL10"
       ],
-      "task_body_chars": 2628,
+      "task_body_chars": 2870,
       "taskFile": "tasks/R04.md"
     },
     {
@@ -2393,6 +2394,257 @@
       ],
       "task_body_chars": 2985,
       "taskFile": "tasks/MD08.md"
+    },
+    {
+      "id": "UT00",
+      "title": "Baseline, ownership, and execution integration",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut00--baseline-ownership-and-execution-integration",
+      "dependencies": [
+        "MD06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM14"
+      ],
+      "task_body_chars": 2638,
+      "taskFile": "tasks/UT00.md"
+    },
+    {
+      "id": "UT01",
+      "title": "Emulator dependency and terminal model",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut01--emulator-dependency-and-terminal-model",
+      "dependencies": [
+        "UT00"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM02",
+        "TERM14"
+      ],
+      "task_body_chars": 2697,
+      "taskFile": "tasks/UT01.md"
+    },
+    {
+      "id": "UT02",
+      "title": "Session attachment, raw events, and derived transcript",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut02--session-attachment-raw-events-and-derived-transcript",
+      "dependencies": [
+        "UT01",
+        "F01",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM03",
+        "TERM04",
+        "TERM09"
+      ],
+      "task_body_chars": 2579,
+      "taskFile": "tasks/UT02.md"
+    },
+    {
+      "id": "UT03",
+      "title": "Direct typing in the existing log window",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut03--direct-typing-in-the-existing-log-window",
+      "dependencies": [
+        "UT02"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM01",
+        "TERM10",
+        "TERM11",
+        "TERM13"
+      ],
+      "task_body_chars": 2726,
+      "taskFile": "tasks/UT03.md"
+    },
+    {
+      "id": "UT04",
+      "title": "Existing serial transport integration and line-control safety",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut04--existing-serial-transport-integration-and-line-control-safety",
+      "dependencies": [
+        "UT03",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM01",
+        "TERM03",
+        "TERM05",
+        "TERM09"
+      ],
+      "task_body_chars": 2950,
+      "taskFile": "tasks/UT04.md"
+    },
+    {
+      "id": "UT05",
+      "title": "Windows ConPTY backend",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut05--windows-conpty-backend",
+      "dependencies": [
+        "UT02",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM06",
+        "TERM09"
+      ],
+      "task_body_chars": 2487,
+      "taskFile": "tasks/UT05.md"
+    },
+    {
+      "id": "UT06",
+      "title": "Linux/macOS PTY backend and helper",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut06--linuxmacos-pty-backend-and-helper",
+      "dependencies": [
+        "UT02",
+        "D01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM07",
+        "TERM09"
+      ],
+      "task_body_chars": 2389,
+      "taskFile": "tasks/UT06.md"
+    },
+    {
+      "id": "UT07",
+      "title": "Shell profiles, WSL, and separate-channel process capture",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut07--shell-profiles-wsl-and-separate-channel-process-capture",
+      "dependencies": [
+        "UT03",
+        "UT05",
+        "UT06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM06",
+        "TERM07",
+        "TERM12"
+      ],
+      "task_body_chars": 2490,
+      "taskFile": "tasks/UT07.md"
+    },
+    {
+      "id": "UT08",
+      "title": "System OpenSSH integration",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut08--system-openssh-integration",
+      "dependencies": [
+        "UT07",
+        "UT05",
+        "UT06"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM08"
+      ],
+      "task_body_chars": 2619,
+      "taskFile": "tasks/UT08.md"
+    },
+    {
+      "id": "UT09",
+      "title": "Write arbitration and privacy",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut09--write-arbitration-and-privacy",
+      "dependencies": [
+        "UT04",
+        "UT08"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM09",
+        "TERM11"
+      ],
+      "task_body_chars": 2485,
+      "taskFile": "tasks/UT09.md"
+    },
+    {
+      "id": "UT10",
+      "title": "Profiles, project persistence, and capability UI",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut10--profiles-project-persistence-and-capability-ui",
+      "dependencies": [
+        "UT07",
+        "UT08",
+        "UT09"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM10",
+        "TERM12",
+        "TERM13"
+      ],
+      "task_body_chars": 2439,
+      "taskFile": "tasks/UT10.md"
+    },
+    {
+      "id": "UT11",
+      "title": "Commander, CLI, MCP and Python parity",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut11--commander-cli-mcp-and-python-parity",
+      "dependencies": [
+        "UT10",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM13"
+      ],
+      "task_body_chars": 3064,
+      "taskFile": "tasks/UT11.md"
+    },
+    {
+      "id": "UT12",
+      "title": "Adversarial, performance and cross-platform validation",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut12--adversarial-performance-and-cross-platform-validation",
+      "dependencies": [
+        "UT00",
+        "UT01",
+        "UT02",
+        "UT03",
+        "UT04",
+        "UT05",
+        "UT06",
+        "UT07",
+        "UT08",
+        "UT09",
+        "UT10",
+        "UT11"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM02",
+        "TERM14"
+      ],
+      "task_body_chars": 2675,
+      "taskFile": "tasks/UT12.md"
+    },
+    {
+      "id": "UT13",
+      "title": "User guide and final acceptance",
+      "plan": "11-unified-terminal.md",
+      "anchor": "ut13--user-guide-and-final-acceptance",
+      "dependencies": [
+        "UT12"
+      ],
+      "status": "planned",
+      "requirements": [
+        "TERM14"
+      ],
+      "task_body_chars": 2339,
+      "taskFile": "tasks/UT13.md"
     }
   ],
   "suggestedTopologicalOrder": [
@@ -2500,12 +2752,27 @@
     "MD06",
     "MD07",
     "MD08",
+    "UT00",
+    "UT01",
+    "UT02",
+    "UT03",
+    "UT04",
+    "UT05",
+    "UT06",
+    "UT07",
+    "UT08",
+    "UT09",
+    "UT10",
+    "UT11",
+    "UT12",
+    "UT13",
     "R04"
   ],
   "notes": [
     "Exact hard dependencies include shared G01-G03 prerequisites. Optional capability descriptions are not backwards hard edges.",
     "P03/P04 and P05 state is refreshed and credited in G01; no new tasks repeat that implemented work.",
-    "R04 is the full-program completion gate."
+    "R04 is the full-program completion gate.",
+    "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13."
   ],
-  "reconciledDate": "2026-10-22"
+  "reconciledDate": "2026-11-04"
 }

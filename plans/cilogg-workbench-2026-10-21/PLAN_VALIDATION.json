@@ -1,10 +1,10 @@
 {
   "valid": true,
-  "taskCount": 105,
-  "requirementCount": 187,
-  "markdownFiles": 124,
-  "validatedLocalLinks": 409,
-  "topologicalTaskCount": 105,
+  "taskCount": 119,
+  "requirementCount": 201,
+  "markdownFiles": 139,
+  "validatedLocalLinks": 533,
+  "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
     "originalTasksAndHardEdgesPreserved": 97,
@@ -28,5 +28,29 @@
     "decoderPythonTestsMatchDiscovery": true,
     "mergedG02EvidencePreserved": true,
     "reconciledMaster": "c164e842acd5eadffb985c2528d83654ceefaa66"
+  },
+  "terminalIntegrationChecks": {
+    "date": "2026-11-04",
+    "baseline": "90f10548fd038995034514283e5c74b197fa06e0",
+    "originalTaskRecordsPreserved": 105,
+    "originalRequirementsAndOwnershipPreserved": 187,
+    "originalTaskProgressAndEvidencePreserved": true,
+    "existingHardEdgesPreserved": true,
+    "onlyExtendedExistingDependency": "R04 -> UT13",
+    "addedTasks": 14,
+    "addedRequirements": 14,
+    "allTerminalTasksPlanned": true,
+    "decoderCoreGatesTerminalEntry": true,
+    "earlyChartDependenciesUnchanged": true,
+    "deferredDecoderIntegrationPreserved": true,
+    "guiCliMcpPythonRequiredPerExposedIncrement": true,
+    "storedTopologicalOrderDependencyValid": true,
+    "sourceCopyByteExact": true,
+    "sourceSha256": "b2b1bd4261a88282f8384f634d2d7a641f4f4d3531acac018384047434d1ddca",
+    "productCodeChanged": false,
+    "productBuildRun": false,
+    "terminalRuntimeRun": false,
+    "platformHardwareRun": false,
+    "scope": "Planning import and sequencing only; embedded source handoff is not executed."
   }
 }

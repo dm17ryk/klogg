@@ -48,3 +48,15 @@ The [original comparison article](https://openobserve.ai/blog/top-10-log-monitor
 - The Docklight subsystem file includes a more detailed per-function official source index. Direct PDF/information-page retrieval was inconsistent during research; indexed official material and detailed manual chapters were used and the evidence limitation is recorded there.
 
 Hardware protocols, electrical wiring, adapter timestamp precision and complete third-party file compatibility require the D task's documented conformance evidence. They are not inferred from a screenshot or generic COM support.
+
+## Unified terminal supplied specification
+
+- [CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md](../../doc/CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md),
+  supplied 2026-11-04; SHA-256
+  `b2b1bd4261a88282f8384f634d2d7a641f4f4d3531acac018384047434d1ddca`.
+  Preserve its proposed technical choices and R1–R25 evidence register as source
+  material, not executed instructions or successful platform tests.
+- [Canonical integration and task mapping](11-unified-terminal.md); the one
+  execution ledger remains PROGRESS.json/TASK_INDEX.json. Native API/dependency
+  versions, licenses and supported platform behavior are revalidated during UT00
+  and the owning implementation cards.

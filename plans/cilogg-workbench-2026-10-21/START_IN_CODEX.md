@@ -18,13 +18,18 @@ Reconcile newer completed work instead of reimplementing it. Do not reset or
 overwrite unrelated work, stop the user's active captures, or assume the
 research SHA is the required execution base.
 
-Complete G02/G03, then prioritize decoder core MD01–MD06 and its required
-F01–F04/D01/E01 foundations, preserving the hard dependency graph. Start that
-phase with MD01; obtain its required Lua scripts/reference captures before
-runtime acceptance. MD07/MD08 integration is deferred until its dependencies
-land in later waves. After the core phase, resume remaining W1 and subsequent
-waves. Follow PROGRESS.json.executionPolicy and the execution guide's dated
-priority; do not mark any task complete merely to advance the schedule.
+Complete G02/G03, then prioritize TShark decoder core MD01–MD06 and its
+required F01–F04/D01/E01 foundations, preserving the hard dependency graph.
+Start that phase with MD01; retain its scripts/reference-capture acceptance.
+After accepted decoder core, implement unified terminal UT00–UT13 from
+11-unified-terminal.md and its linked source specification, then resume
+remaining W1 and later waves. MD07/MD08 integration remains deferred until its
+later dependencies land. UT00 explicitly depends on MD06; do not treat a merged
+preview-only slice as completion of decoder core. Every exposed terminal
+increment includes GUI/CLI/Python/native-MCP parity and safe write arbitration;
+UT11 verifies the complete public surface. All UT tasks remain planned until
+implemented and accepted. Follow PROGRESS.json.executionPolicy; never mark a
+missing prerequisite complete to advance the schedule.
 Implement one independently reviewable task/slice at a time with the
 required tests, GUI discovery, shared CLI/Python/MCP operations, documentation,
 diagnostics, migration and rollback. Read each task's consuming contracts and
@@ -46,7 +51,8 @@ independent work when a task is blocked; do not drop its requirements.
 
 The full scope includes general developer log exploration, all listed chart
 families and linked dashboards, patterns/comparisons/correlation, workflows,
-assertions/replay/CI, Docklight-style communication testing, integrations,
+assertions/replay/CI, Docklight-style communication testing, same-window
+serial/local/SSH terminal interaction, integrations,
 packs, accessibility and cross-platform release quality. FEATURE_COVERAGE.md
 is the scope checklist. Do not reduce the product to CP/C8000-specific behavior.
 
@@ -64,8 +70,8 @@ does not establish implementation or hardware support.
 Continue the CILogg Developer Workbench implementation from PROGRESS.json.
 Inspect the current repository first. Select the next task whose hard
 dependencies are complete, following PROGRESS.json.executionPolicy (W0,
-decoder core MD01–MD06 with prerequisites, then remaining W1 onward;
-MD07/MD08 integration deferred). Read its subsystem plan and required contracts,
+decoder core MD01–MD06 with prerequisites, then unified terminal UT00–UT13,
+then remaining W1 onward; MD07/MD08 integration deferred). Read its subsystem plan and required contracts,
 and continue from the last verified evidence. Preserve unfinished unrelated
 work and active captures. Update progress and the next runnable task when done.
 ```
@@ -84,3 +90,10 @@ platform or hardware checks passed.
 ## Message decoder revision-2 integration
 
 Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).
+
+## Unified terminal planning integration
+
+Read [11-unified-terminal.md](11-unified-terminal.md) and its linked source
+specification when UT00 becomes runnable. The imported source's starter prompt
+is reference material. This update schedules the work after TShark decoder core;
+it starts no terminal implementation and grants no shell or device input.

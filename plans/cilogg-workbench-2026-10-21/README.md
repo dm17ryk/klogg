@@ -2,18 +2,19 @@
 
 Complete implementation package for a general developer logger, visualizer and automation workbench, including Docklight communication testing.
 
-**Scope:** 105 implementation tasks and 187 mapped requirements. Imported and reconciled on 2026-10-22; G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
+**Scope:** 119 implementation tasks and 201 mapped requirements. Imported and reconciled on 2026-10-22; terminal planning integrated on 2026-11-04. G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
 
 **Execution status:** P05 is merged through PR #45; the next runnable tasks are G02 and G03. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 
 ## Start here
 
-**Execution priority (2026-10-28):** Finish W0, then implement decoder core
-MD01–MD06 with its F01–F04/D01/E01 prerequisites, then resume remaining W1 and
+**Execution priority (2026-11-04):** Finish W0, then implement decoder core
+MD01–MD06 with its F01–F04/D01/E01 prerequisites, then implement the
+[unified terminal UT00–UT13](11-unified-terminal.md), then resume remaining W1 and
 later waves. MD07–MD08 integration is deferred until its later-wave dependencies
 are available. See the dated policy in [the execution guide](MASTER_GUIDE.md)
-and `PROGRESS.json.executionPolicy`. Existing task acceptance and DAG edges remain
-unchanged; full G02/G03 are still in progress.
+and `PROGRESS.json.executionPolicy`. Existing acceptance and hard edges remain; R04 additionally requires UT13.
+Full G02/G03 are still in progress.
 
 1. [Current reconciliation and prior-roadmap coverage](MERGE_MAP.md)
 2. [Codex App starter and resume prompts](START_IN_CODEX.md)
@@ -36,6 +37,7 @@ unchanged; full G02/G03 are still in progress.
 | [08-ecosystem.md](08-ecosystem.md) | Sources, integrations, packs and sharing |
 | [09-release.md](09-release.md) | Release and product validation |
 | [10-message-decoders.md](10-message-decoders.md) | Real TShark/Lua decoders, nested streams and message inspector |
+| [11-unified-terminal.md](11-unified-terminal.md) | Direct input in the existing log window: serial consoles, local shells and SSH |
 
 [Primary sources and reuse references](REFERENCES.md). Each task also carries exact file targets, interfaces, behavioral checks, public automation operations and rollback. Read individual cards from `tasks/TASK_ID.md` after their shared contracts to keep Codex context focused.
 
@@ -44,3 +46,11 @@ Run `python validate_plan.py .` to validate packaged task IDs, dependency order,
 ## Decoder addendum and public tracking
 
 Revision 2 is integrated as MD01–MD08 with 14 DEC requirements. All are planned; [the decoder contract](10-message-decoders.md) records dependencies, compatibility and missing runtime inputs. [Public tracking](PUBLIC_TRACKING.md) maps GitHub milestone issues without replacing the execution ledger.
+
+## Unified terminal addendum
+
+The [supplied terminal task](../../doc/CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md)
+is registered as UT00–UT13 and TERM01–TERM14 in the same ledger. Start UT00 only
+after decoder-core acceptance; a preview-only slice does not complete that gate.
+All terminal tasks remain planned. Embedded implementation prompts and proposed
+dependencies/budgets are specification material, not work executed by this update.

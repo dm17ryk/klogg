@@ -1,6 +1,6 @@
 # Complete Feature Coverage
 
-187 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
+201 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
 
 ## Exploration, fields, time and data
 
@@ -233,3 +233,22 @@
 | DEC12 | Cross-notification child assembly, parent/child query scopes and nesting/cycle limits | MD02, MD06, MD07 |
 | DEC13 | Actual supplied Lua execution, engine/script provenance and reference comparison | MD01, MD05, MD08 |
 | DEC14 | Byte-exact Exported-PDU sidecars versus genuine PCAP transport/reassembly semantics | MD01, MD04, MD08 |
+
+## Unified interactive terminal
+
+| Requirement | Feature | Owning tasks |
+|---|---|---|
+| TERM01 | Direct typing in the existing session log/terminal viewport | UT03, UT04 |
+| TERM02 | Bounded real terminal emulation, Unicode, controls and alternate screen | UT01, UT12 |
+| TERM03 | One connection/session owner with raw event and retained-byte provenance | UT02, UT04 |
+| TERM04 | Append-only searchable transcript distinct from raw bytes and mutable screen | UT02 |
+| TERM05 | Serial console input, signals, echo and capture compatibility | UT04 |
+| TERM06 | Real Windows ConPTY shells and correctly scoped process lifecycle | UT05, UT07 |
+| TERM07 | Linux/macOS PTYs, controlling terminal, helper packaging and job control | UT06, UT07 |
+| TERM08 | Interactive system OpenSSH with host-key trust and no replayed input | UT08 |
+| TERM09 | Bounded asynchronous partial writes, cancellation and reconnect generations | UT02, UT04, UT05, UT06, UT09 |
+| TERM10 | Inspect/Character/Line input, focus, IME, shortcuts and deliberate paste | UT03, UT10 |
+| TERM11 | Manual input arbitration, Actions compatibility, privacy and safe replay/output | UT03, UT09 |
+| TERM12 | Versioned profiles, disconnected restore and capability-aware same-window UI | UT07, UT10 |
+| TERM13 | Shared GUI/CLI/native-MCP/Python terminal operations and authorization | UT03, UT10, UT11 |
+| TERM14 | Platform, resource, performance, package, user-guide and final acceptance evidence | UT00, UT01, UT12, UT13 |
