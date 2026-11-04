@@ -19,6 +19,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/fieldvalue.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/fieldvalue.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisjob.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisprovenance.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisprovenance.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisregex.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysiscommands.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountjob.h

@@ -205,6 +205,8 @@ struct AnalysisJobService::Private {
                 reading.start();
                 AnalysisBatch batch;
                 QStringList decoded;
+                std::vector<AnalysisRawRecord> records;
+                QByteArray encoding;
                 const auto firstLine = nextLine;
                 const bool initializing = initialize;
                 initialize = false;
@@ -226,7 +228,7 @@ struct AnalysisJobService::Private {
                         auto limits = job->request.limits;
                         limits.batchLines = static_cast<int>( std::min<quint64>(
                             static_cast<quint64>( limits.batchLines ), endLine - nextLine ) );
-                        const auto block = job->source->readAnalysisBlock( job->request.snapshot,
+                        auto block = job->source->readAnalysisBlock( job->request.snapshot,
                                                                            nextLine, limits );
                         if ( block.retry ) {
                             QThread::msleep( 5 );
@@ -256,6 +258,15 @@ struct AnalysisJobService::Private {
                             reason = "decode_error";
                             break;
                         }
+                        if ( block.records.size() != static_cast<size_t>( nextLine - firstLine ) ) {
+                            reason = "decode_error";
+                            LOG_DEBUG << "Analysis rejected record metadata job=" << job->id
+                                      << " records=" << block.records.size()
+                                      << " expected=" << nextLine - firstLine;
+                            break;
+                        }
+                        records = std::move( block.records );
+                        encoding = std::move( block.codec );
                     }
                     else {
                         const auto& input = job->request.text;
@@ -315,10 +326,21 @@ struct AnalysisJobService::Private {
                             done = true;
                             break;
                         }
-                        batch.lines.push_back( { line, text } );
+                        AnalysisLine prepared{ line, text, {} };
+                        if ( job->source ) {
+                            const auto& record = records.at( static_cast<size_t>( index ) );
+                            prepared.provenance = AnalysisLineProvenance{
+                                job->request.snapshot, record.bytes, record.terminatorBytes,
+                                encoding, record.provisional };
+                        }
+                        batch.lines.push_back( std::move( prepared ) );
                         ++selected;
                         selectedBytes += bytes;
                     }
+                    LOG_DEBUG << "Analysis prepared batch job=" << job->id
+                              << " physicalOrigin=" << ( job->source != nullptr )
+                              << " firstLine=" << firstLine << " nextLine=" << nextLine
+                              << " selected=" << batch.lines.size();
                 }
                 {
                     std::lock_guard<std::mutex> lock( job->mutex );
