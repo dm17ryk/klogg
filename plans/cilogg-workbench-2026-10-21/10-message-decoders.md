@@ -10,9 +10,10 @@
 
 ## Global constraints and reconciliation
 
-**Execution priority updated 2026-10-28:** The user authorized decoder core
+**Execution priority updated 2026-11-04:** The user authorized decoder core
 MD01–MD06 immediately after W0, bringing forward its F01–F04/D01/E01 prerequisites,
-then resuming the remaining W1 and later waves. MD07 inspector/analytics and MD08
+then implementing [unified terminal UT00–UT13](11-unified-terminal.md) before
+resuming remaining W1 and later waves. MD07 inspector/analytics and MD08
 distribution/release integration are explicitly deferred until their dependencies
 land in later waves. See [the execution guide](MASTER_GUIDE.md) and
 `PROGRESS.json.executionPolicy`. The addendum's embedded handoff remains reference

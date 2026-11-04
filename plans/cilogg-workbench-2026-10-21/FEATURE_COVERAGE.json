@@ -1598,5 +1598,134 @@
       "MD04",
       "MD08"
     ]
+  },
+  {
+    "id": "TERM01",
+    "group": "Unified interactive terminal",
+    "description": "Direct typing in the existing session log/terminal viewport",
+    "tasks": [
+      "UT03",
+      "UT04"
+    ]
+  },
+  {
+    "id": "TERM02",
+    "group": "Unified interactive terminal",
+    "description": "Bounded real terminal emulation, Unicode, controls and alternate screen",
+    "tasks": [
+      "UT01",
+      "UT12"
+    ]
+  },
+  {
+    "id": "TERM03",
+    "group": "Unified interactive terminal",
+    "description": "One connection/session owner with raw event and retained-byte provenance",
+    "tasks": [
+      "UT02",
+      "UT04"
+    ]
+  },
+  {
+    "id": "TERM04",
+    "group": "Unified interactive terminal",
+    "description": "Append-only searchable transcript distinct from raw bytes and mutable screen",
+    "tasks": [
+      "UT02"
+    ]
+  },
+  {
+    "id": "TERM05",
+    "group": "Unified interactive terminal",
+    "description": "Serial console input, signals, echo and capture compatibility",
+    "tasks": [
+      "UT04"
+    ]
+  },
+  {
+    "id": "TERM06",
+    "group": "Unified interactive terminal",
+    "description": "Real Windows ConPTY shells and correctly scoped process lifecycle",
+    "tasks": [
+      "UT05",
+      "UT07"
+    ]
+  },
+  {
+    "id": "TERM07",
+    "group": "Unified interactive terminal",
+    "description": "Linux/macOS PTYs, controlling terminal, helper packaging and job control",
+    "tasks": [
+      "UT06",
+      "UT07"
+    ]
+  },
+  {
+    "id": "TERM08",
+    "group": "Unified interactive terminal",
+    "description": "Interactive system OpenSSH with host-key trust and no replayed input",
+    "tasks": [
+      "UT08"
+    ]
+  },
+  {
+    "id": "TERM09",
+    "group": "Unified interactive terminal",
+    "description": "Bounded asynchronous partial writes, cancellation and reconnect generations",
+    "tasks": [
+      "UT02",
+      "UT04",
+      "UT05",
+      "UT06",
+      "UT09"
+    ]
+  },
+  {
+    "id": "TERM10",
+    "group": "Unified interactive terminal",
+    "description": "Inspect/Character/Line input, focus, IME, shortcuts and deliberate paste",
+    "tasks": [
+      "UT03",
+      "UT10"
+    ]
+  },
+  {
+    "id": "TERM11",
+    "group": "Unified interactive terminal",
+    "description": "Manual input arbitration, Actions compatibility, privacy and safe replay/output",
+    "tasks": [
+      "UT03",
+      "UT09"
+    ]
+  },
+  {
+    "id": "TERM12",
+    "group": "Unified interactive terminal",
+    "description": "Versioned profiles, disconnected restore and capability-aware same-window UI",
+    "tasks": [
+      "UT07",
+      "UT10"
+    ]
+  },
+  {
+    "id": "TERM13",
+    "group": "Unified interactive terminal",
+    "description": "Shared GUI/CLI/native-MCP/Python terminal operations and authorization",
+    "tasks": [
+      "UT03",
+      "UT10",
+      "UT11"
+    ]
+  },
+  {
+    "id": "TERM14",
+    "group": "Unified interactive terminal",
+    "description": "Platform, resource, performance, package, user-guide and final acceptance evidence",
+    "tasks": [
+      "UT00",
+      "UT01",
+      "UT12",
+      "UT13"
+    ]
   }
 ]

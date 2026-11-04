@@ -103,3 +103,17 @@ The comparison tools are functionality and interaction references. Reuse practic
 ## Message decoder revision-2 integration
 
 Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).
+
+## Unified interactive terminal addendum — planned
+
+The [terminal contract](11-unified-terminal.md) and
+[supplied task](../../doc/CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md) extend
+scope with TERM01–TERM14 and UT00–UT13. After TShark decoder-core acceptance,
+deliver direct input in the existing connected session viewport for serial device
+consoles, local system shells and SSH, with searchable append-only transcript
+history. A standalone dock, Actions-only sender or process-per-line launcher does
+not satisfy the requirement. Preserve one session/endpoint owner, raw provenance,
+bounded screen/queues, safe input arbitration and legacy capture compatibility.
+Every exposed increment includes GUI/CLI/native-MCP/Python behavior through the
+existing route. The ordinary log-file viewer remains read-only. All terminal
+implementation, dependency selection and platform evidence remain planned.

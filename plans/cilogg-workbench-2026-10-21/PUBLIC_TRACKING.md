@@ -2,8 +2,9 @@
 
 GitHub issues summarize milestones; TASK_INDEX.json and PROGRESS.json remain the
 execution authority. This proposal extends the 97-task/173-requirement merged
-package with eight decoder tasks and fourteen acceptance requirements: 105 tasks
-and 187 requirements. Decoder implementation is planned, not delivered.
+package with eight decoder tasks/fourteen DEC requirements and fourteen terminal
+tasks/fourteen TERM requirements: 119 tasks and 201 requirements. Task acceptance
+remains controlled by the ledger; terminal implementation is planned, not delivered.
 
 | Tracker | Execution scope |
 |---|---|
@@ -49,3 +50,11 @@ implementation ownership or add reverse hard dependency edges.
 This documentation integration does not run decoder commands, TShark, GUI tests,
 hardware operations or release publishing. Runtime and platform acceptance remain
 the future task owners' responsibility.
+
+## Unified terminal schedule
+
+[UT00–UT13](11-unified-terminal.md) follow accepted decoder core MD01–MD06 and
+precede remaining W1 work. MD07/MD08 remain deferred. Local task cards and the
+canonical ledger track terminal work; no new public issue or milestone completion
+is implied by this documentation registration. Read the linked supplied task for
+the serial/local/SSH same-window acceptance scope and its source provenance.

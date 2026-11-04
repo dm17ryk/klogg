@@ -24,11 +24,12 @@
   "activeTask": "G02",
   "nextTask": "MD01",
   "executionPolicy": {
-    "updatedDate": "2026-10-28",
-    "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves.",
+    "updatedDate": "2026-11-04",
+    "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves. User requested the unified terminal task after finishing TShark decoding on 2026-11-04.",
     "phaseOrder": [
       "W0",
       "decoder_core",
+      "unified_terminal",
       "W1",
       "W2",
       "W3",
@@ -73,7 +74,48 @@
     "deferredIntegrationPolicy": "Schedule MD07 after its decoder/U04/F07/V02 gates and MD08 after MD07/E09 in later waves; do not gate early V02 on these deferred integrations.",
     "acceptancePolicy": "Preserve all hard dependencies, task acceptance, GUI/CLI/native-MCP parity and existing completed-work credit. W0 remains open until its gates pass; MD01 runtime claims require its actual scripts and complete reference captures.",
     "nextAfterW0": "MD01",
-    "ruling": "Bring only the decoder-core prerequisite closure forward; defer the broader MD07-MD08 dependency closure as explicitly chosen by the user. Completing core alone does not complete the full decoder milestone."
+    "ruling": "Bring only the decoder-core prerequisite closure forward; defer the broader MD07-MD08 dependency closure as explicitly chosen by the user. Completing core alone does not complete the full decoder milestone. Insert UT00-UT13 after accepted decoder core and before the remaining W1 work; retain deferred MD07-MD08 integration and all existing acceptance gates.",
+    "unifiedTerminalTasks": [
+      "UT00",
+      "UT01",
+      "UT02",
+      "UT03",
+      "UT04",
+      "UT05",
+      "UT06",
+      "UT07",
+      "UT08",
+      "UT09",
+      "UT10",
+      "UT11",
+      "UT12",
+      "UT13"
+    ],
+    "unifiedTerminalEntryGate": "MD01-MD06 decoder core and its existing prerequisite closure accepted; UT00 depends on MD06. A proof harness, preview-only slice, merged PR or unfinished hosted gate does not complete decoder core.",
+    "unifiedTerminalDependencyOrder": [
+      "UT00",
+      "UT01",
+      "UT02",
+      "UT03",
+      "UT04",
+      "UT05",
+      "UT06",
+      "UT07",
+      "UT08",
+      "UT09",
+      "UT10",
+      "UT11",
+      "UT12",
+      "UT13"
+    ],
+    "unifiedTerminalPrerequisitesOutsideTrack": [
+      "MD06",
+      "F01",
+      "D01",
+      "G03"
+    ],
+    "nextAfterDecoderCore": "UT00",
+    "nextAfterUnifiedTerminal": "W1"
   },
   "tasks": {
     "G01": {
@@ -2063,6 +2105,146 @@
       "evidence": [],
       "limitations": [],
       "slices": []
+    },
+    "UT00": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT01": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT02": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT03": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT04": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT05": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT06": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT07": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT08": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT09": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT10": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT11": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT12": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
+    },
+    "UT13": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [
+        "Planning registration only; implementation and acceptance remain unrun."
+      ],
+      "slices": []
     }
   },
   "decisions": [
@@ -2073,7 +2255,8 @@
     "D05: see ../../docs/workbench/decisions.md",
     "D06: see ../../docs/workbench/decisions.md",
     "D07: see ../../docs/workbench/decisions.md",
-    "D08: see ../../docs/workbench/decisions.md"
+    "D08: see ../../docs/workbench/decisions.md",
+    "D09: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
@@ -2113,6 +2296,35 @@
       ],
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/60",
       "issue": "https://github.com/dm17ryk/klogg/issues/61"
+    },
+    "unifiedTerminal": {
+      "date": "2026-11-04",
+      "state": "planned",
+      "sourceName": "CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md",
+      "sourceSha256": "b2b1bd4261a88282f8384f634d2d7a641f4f4d3531acac018384047434d1ddca",
+      "sourcePath": "../../doc/CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md",
+      "plan": "11-unified-terminal.md",
+      "tasks": [
+        "UT00",
+        "UT01",
+        "UT02",
+        "UT03",
+        "UT04",
+        "UT05",
+        "UT06",
+        "UT07",
+        "UT08",
+        "UT09",
+        "UT10",
+        "UT11",
+        "UT12",
+        "UT13"
+      ],
+      "baseline": "90f10548fd038995034514283e5c74b197fa06e0",
+      "scope": "Planning integration only. The user authorizes placement after TShark decoder core; the imported starter prompt does not start implementation in this update.",
+      "decisions": "libvterm, backend details, proposed names and numerical budgets remain recommendations to validate in UT00/UT01 and applicable platform cards.",
+      "acceptance": "Direct input in the existing log window; serial, local shells and SSH all required; existing GUI/CLI/native-MCP/Python route and F01/D01 owners reused.",
+      "runtimeEvidence": "None from this planning update; no terminal, transport, hardware, package or platform tests run."
     }
   }
 }

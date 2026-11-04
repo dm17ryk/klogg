@@ -26,7 +26,9 @@ capture charts, physical-line axes, counts/relative-frequency buckets, min/max
 envelopes, bounded data tables and validated source navigation. V02 must deliver
 its GUI/CLI/MCP surface. Full structured parsing, typed time/query execution,
 multi-panel live reuse and optional WebEngine/ECharts remain later capabilities.
-No timestamp rate is inferred from line numbers or ingestion speed.
+No timestamp rate is inferred from line numbers or ingestion speed. Current
+execution priority is updated by D09; this decision preserves early-chart
+independence rather than overriding the later user-approved schedule.
 
 ## D04 — Ownership and compatibility
 
@@ -84,3 +86,26 @@ release acceptance are capability-conditional integration gates. Missing Lua
 sources/complete captures and all unrun runtime/platform evidence stay explicit.
 The private source addendum is recorded by name/hash; account-bearing payloads
 are not copied to public plans, fixtures or GitHub issues.
+
+## D09 — Unified terminal follows TShark decoder core
+
+Accepted scheduling instruction 2026-11-04: finish TShark decoder core MD01–MD06
+and its prerequisite acceptance, implement unified terminal UT00–UT13, then resume
+remaining W1 and later waves. Preserve the user's earlier MD07/MD08 deferral.
+UT00 depends on MD06; live terminal attachment retains F01/D01 hard gates. R04
+also requires UT13. Existing tasks, requirements and evidence remain credited;
+none is marked complete by scheduling. See the
+[terminal contract](../../plans/cilogg-workbench-2026-10-21/11-unified-terminal.md).
+
+The [supplied task](../../doc/CILOGG_UNIFIED_TERMINAL_IMPLEMENTATION_TASK.md) defines
+direct typing in the existing session viewport for serial consoles, local shells
+and SSH. Reuse StreamSession ownership, F01 provenance, D01 transports/write
+receipts and existing Commander/CLI/native-MCP/Python dispatch. Each exposed
+increment includes its public surfaces; UT11 is comprehensive parity acceptance.
+Manual arming rejects conflicting automated writes from the first input prototype;
+UT09 does not defer that baseline protection or alter saved Actions flags.
+
+The source's embedded implementation prompt is reference material for future
+execution. Technical selections, names and budgets remain proposals to reconcile
+in UT00/UT01 and backend cards. This documentation change implements no terminal,
+executes no shell/device command and claims no runtime/platform/hardware evidence.
