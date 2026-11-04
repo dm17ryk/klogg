@@ -418,14 +418,21 @@ TEST_CASE(
     "Analysis discards results invalidated during processing and releases leases on owner thread",
     "[logdata][analysis]" )
 {
-    const auto close = GENERATE( false, true );
+    enum class Invalidation { Reload, Close, Encoding };
+    const auto invalidation
+        = GENERATE( Invalidation::Reload, Invalidation::Close, Invalidation::Encoding );
+    CAPTURE( static_cast<int>( invalidation ) );
     QTemporaryDir directory;
     const auto path = directory.filePath( "lease.log" );
     writeAnalysisFixture( path, "first\nsecond\n" );
     auto data = openAnalysisFixture( path );
+    data->setDisplayEncoding( "UTF-8" );
+    const auto snapshot = data->sourceSnapshot();
     const std::weak_ptr<LogData> weak = data;
     auto entered = std::make_shared<std::atomic_bool>( false );
     auto proceed = std::make_shared<std::atomic_bool>( false );
+    auto batches = std::make_shared<std::atomic_int>( 0 );
+    auto consistentEncoding = std::make_shared<std::atomic_bool>( true );
     auto destroyedOnOwner = std::make_shared<std::atomic_bool>( false );
     auto* owner = QThread::currentThread();
     QObject::connect( data.get(), &QObject::destroyed, [ destroyedOnOwner, owner ] {
@@ -434,13 +441,20 @@ TEST_CASE(
     AnalysisJobService service;
     AnalysisRequest request;
     request.source = data;
-    request.snapshot = data->sourceSnapshot();
+    request.snapshot = snapshot;
     request.scope = "whole_file";
-    const auto id = service.start( std::move( request ), [ entered, proceed ] {
-        return [ entered, proceed ]( const AnalysisBatch& batch, const std::atomic_bool& cancelled,
-                                     int ) {
+    request.limits.batchLines = 1;
+    const auto id = service.start( std::move( request ), [ entered, proceed, batches,
+                                                         consistentEncoding ] {
+        return [ entered, proceed, batches, consistentEncoding ](
+                   const AnalysisBatch& batch, const std::atomic_bool& cancelled, int ) {
             if ( batch.lines.empty() ) {
                 return AnalysisOutput{};
+            }
+            ++*batches;
+            for ( const auto& line : batch.lines ) {
+                if ( !line.provenance || line.provenance->encoding != "UTF-8" )
+                    *consistentEncoding = false;
             }
             *entered = true;
             while ( !*proceed && !cancelled ) {
@@ -452,8 +466,20 @@ TEST_CASE(
         };
     } );
     REQUIRE( QTest::qWaitFor( [ & ] { return entered->load(); }, 5000 ) );
-    if ( close ) {
+    if ( invalidation == Invalidation::Close ) {
         service.cancelSource( data.get() );
+    }
+    else if ( invalidation == Invalidation::Encoding ) {
+        // Same delimiter layout: invalidate decoding without a full reindex.
+        data->setDisplayEncoding( "ISO-8859-2" );
+        const auto current = data->sourceSnapshot();
+        CHECK( current.available );
+        CHECK( current.generation > snapshot.generation );
+        const auto rejected = data->readAnalysisBlock( snapshot, 1, AnalysisLimits{} );
+        CHECK( rejected.error == "stale_source" );
+        CHECK( rejected.bytes.isEmpty() );
+        CHECK( rejected.codec.isEmpty() );
+        CHECK( rejected.records.empty() );
     }
     else {
         data->reload();
@@ -463,6 +489,10 @@ TEST_CASE(
     const auto state = finishAnalysis( service, id );
     CHECK_FALSE( state.value( "complete" ).toBool() );
     CHECK( service.results( id ).value( "rows" ).toList().isEmpty() );
+    CHECK( batches->load() == 1 );
+    CHECK( consistentEncoding->load() );
+    if ( invalidation == Invalidation::Encoding )
+        CHECK( state.value( "reason" ) == "stale_source" );
     REQUIRE( QTest::qWaitFor( [ & ] { return weak.expired(); }, 5000 ) );
     CHECK( destroyedOnOwner->load() );
 }
