@@ -16,7 +16,7 @@
 #include <QTest>
 #include <QTreeWidget>
 #include <catch2/catch.hpp>
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
 #include "mainwindow.h"
 #include "sessioninfo.h"
 #include <QAction>
@@ -214,7 +214,7 @@ TEST_CASE( "Real TShark Lua preview renders direct and mapped fields",
     CHECK( mapped.result().value( "backend" ) == "json_preview" );
 }
 
-#ifndef Q_OS_MAC
+#ifndef Q_OS_MACOS
 TEST_CASE( "Decoder commands share trusted settings and visible menu toolbar dialog",
            "[ui][previewdecoderui][previewdecoderwindow]" )
 {
