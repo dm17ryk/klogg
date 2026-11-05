@@ -58,6 +58,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewmessagetab.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewassembly.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewservice.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettings.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/previewdecodersettingsdialog.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/tsharkpreviewclient.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/preview_decoder.qrc
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewsource.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewtree.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/previewrepository.h
@@ -157,6 +161,9 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewmessagetab.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewassembly.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewservice.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettings.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/previewdecodersettingsdialog.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tsharkpreviewclient.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewsource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewrepository.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/previewstablemodel.cpp
@@ -198,6 +205,7 @@ add_library(
 
 set_target_properties(klogg_ui PROPERTIES AUTOUIC ON)
 set_target_properties(klogg_ui PROPERTIES AUTOMOC ON)
+set_target_properties(klogg_ui PROPERTIES AUTORCC ON)
 
 set_property(
   TARGET klogg_ui

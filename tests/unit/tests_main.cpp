@@ -25,15 +25,20 @@
 #include <logger.h>
 
 #include "configuration.h"
+#include "previewservice.h"
 #include <persistentinfo.h>
 
 const bool PersistentInfo::ForcePortable = true;
 
 int main( int argc, char* argv[] )
 {
+    if ( argc > 1 && QByteArray( argv[ 1 ] ) == "--internal-preview-worker" )
+        return PreviewService::workerMain( argc, argv );
+
     QApplication a( argc, argv );
 
-    logging::enableLogging();
+    logging::enableLogging( true, qEnvironmentVariableIsSet( "CILOGG_TEST_DEBUG" )
+                                     ? logging::LogLevel::Debug : logging::LogLevel::Info );
 
     Configuration::getSynced();
 

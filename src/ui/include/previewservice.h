@@ -14,6 +14,11 @@ struct PreviewEvaluationRequest {
     int timeoutMs = 3000;
     // Set by the native caller; never accepted from a Commander/MCP request.
     QString executable;
+    QString decoder = "auto";
+    QString dissector;
+    QString inputEncoding;
+    QString assemblyProtocol;
+    QObject* sessionOwner = nullptr;
 };
 
 class PreviewService {

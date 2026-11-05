@@ -1,5 +1,12 @@
 #include "previewmessagetab.h"
 #include "previewtree.h"
+#include "previewservice.h"
+#include "previewdecodersettings.h"
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QPushButton>
+#include <QProcess>
+#include <QJsonDocument>
 #include <memory>
 
 #include <QComboBox>
@@ -153,10 +160,9 @@ QString decodeTooltip( const DecodeErrorInfo& info )
 void logDecodeError( const DecodeErrorInfo& info )
 {
     LOG_WARNING << "[Previewer] Decode error for '" << info.previewName.toStdString() << "'"
-                << " field '" << info.fieldPath.toStdString() << "': "
-                << info.reason.toStdString() << " (source=" << info.source.toStdString()
-                << ", offset=" << info.offset << ", width=" << info.width
-                << ", raw=" << info.rawSlice.toStdString() << ")";
+                << " field '" << info.fieldPath.toStdString() << "': " << info.reason.toStdString()
+                << " (source=" << info.source.toStdString() << ", offset=" << info.offset
+                << ", width=" << info.width << ")";
 }
 
 void setItemStatus( QTreeWidgetItem* item, const QString& text, const QString& tooltip )
@@ -1359,112 +1365,133 @@ void addFieldItems( QTreeWidgetItem* parent,
 }
 } // namespace
 
+PreviewPreparedBuffer preparePreviewInput( const QString& text, const QString& encoding )
+{
+    PreviewPreparedBuffer result;
+    PreviewBufferType type = PreviewBufferType::String;
+    if ( encoding == "hex" )
+        type = PreviewBufferType::HexString;
+    else if ( encoding == "base64" ) {
+        type = PreviewBufferType::Base64;
+        const auto ascii = text.toLatin1();
+        if ( QString::fromLatin1( ascii ) != text
+             || QByteArray::fromBase64( ascii ).toBase64() != ascii ) {
+            result.reason = "invalid_base64";
+            result.error = QObject::tr( "Failed to decode base64 data." );
+            return result;
+        }
+    }
+    else if ( encoding != "utf8" ) {
+        result.reason = "invalid_encoding";
+        return result;
+    }
+    const auto decoded = decodeBytesFromText( text, type );
+    result.ok = decoded.ok;
+    result.bytes = decoded.bytes;
+    result.error = decoded.error;
+    if ( !result.ok )
+        result.reason = encoding == "hex" ? "invalid_hex" : "decode_error";
+    return result;
+}
+
+PreviewPreparedBuffer preparePreviewBuffer( const QString& rawLine,
+                                            const PreviewDefinition& definition,
+                                            const QString& encodingOverride )
+{
+    PreviewPreparedBuffer result;
+    result.match = definition.compiled.match( rawLine );
+    if ( !result.match.hasMatch() ) {
+        result.error = PreviewMessageTab::tr( "No match for selected preview." );
+        result.reason = "no_match";
+        return result;
+    }
+    const auto bufferText = definition.bufferCapture.isSet
+                                ? captureValue( definition.bufferCapture, result.match )
+                                : rawLine;
+    result.source = definition.bufferCapture.isSet
+                        ? describeCaptureRef( definition.bufferCapture, "bufferCapture" )
+                        : PreviewMessageTab::tr( "raw line" );
+    result.matchStart = qMax( 0, clampToInt( result.match.capturedStart( 0 ) ) );
+    if ( definition.bufferCapture.isSet ) {
+        const auto start = captureStart( definition.bufferCapture, result.match );
+        if ( start >= 0 )
+            result.bufferBaseOffset = qMax( 0, start - result.matchStart );
+    }
+    if ( encodingOverride.isEmpty() ) {
+        const auto decoded = decodeBytesFromText( bufferText, definition.type );
+        result.ok = decoded.ok;
+        result.bytes = decoded.bytes;
+        result.error = decoded.error;
+        result.reason = "decode_error";
+    }
+    else {
+        const auto explicitInput = preparePreviewInput( bufferText, encodingOverride );
+        result.ok = explicitInput.ok;
+        result.bytes = explicitInput.bytes;
+        result.error = explicitInput.error;
+        result.reason = explicitInput.reason;
+    }
+    if ( !result.ok ) {
+        LOG_DEBUG << "Preview carrier rejected reason=" << result.reason
+                  << " source_characters=" << bufferText.size();
+        result.error = PreviewMessageTab::tr( "Decode error: %1" ).arg( result.error );
+        return result;
+    }
+    if ( definition.offset.isSet ) {
+        const auto offset = resolveExprValue( definition.offset, {} );
+        if ( !offset.ok ) {
+            result.error = PreviewMessageTab::tr( "Decode error: %1" )
+                               .arg( offset.error.isEmpty()
+                                         ? PreviewMessageTab::tr( "Invalid preview offset." )
+                                         : offset.error );
+        }
+        else if ( offset.value < 0 )
+            result.error = PreviewMessageTab::tr( "Decode error: preview offset is negative." );
+        else if ( offset.value > result.bytes.size() )
+            result.error
+                = PreviewMessageTab::tr( "Decode error: preview offset exceeds buffer size." );
+        else
+            result.initialOffset = offset.value;
+        if ( !result.error.isEmpty() ) {
+            result.ok = false;
+            result.reason = "decode_error";
+            LOG_DEBUG << "Preview carrier rejected reason=initial_offset buffer_bytes="
+                      << result.bytes.size();
+            return result;
+        }
+    }
+    result.reason.clear();
+    LOG_DEBUG << "Preview carrier prepared buffer_bytes=" << result.bytes.size()
+              << " initial_offset=" << result.initialOffset;
+    return result;
+}
+
 QTreeWidgetItem* createLegacyPreviewTree( const QString& rawLine, const PreviewDefinition& preview,
                                           const QMap<QString, PreviewFieldSpec>& blocks,
                                           QString* error, PreviewTreeBudget* budget )
 {
+    const auto prepared = preparePreviewBuffer( rawLine, preview );
+    if ( !prepared.ok ) {
+        *error = prepared.error;
+        return nullptr;
+    }
     const auto* definition = &preview;
-    const auto previewName = preview.name;
-    const auto match = definition->compiled.match( rawLine );
-    if ( !match.hasMatch() ) {
-        *error = PreviewMessageTab::tr( "No match for selected preview." );
-        return nullptr;
-    }
-
-    QString bufferText;
-    if ( definition->bufferCapture.isSet ) {
-        bufferText = captureValue( definition->bufferCapture, match );
-    }
-    else {
-        bufferText = rawLine;
-    }
-
-    const auto bufferSource = definition->bufferCapture.isSet
-                                  ? describeCaptureRef( definition->bufferCapture, "bufferCapture" )
-                                  : PreviewMessageTab::tr( "raw line" );
-    int bufferBaseOffset = 0;
-    const int matchStart = clampToInt( match.capturedStart( 0 ) );
-    if ( definition->bufferCapture.isSet ) {
-        const auto captureStartOffset = captureStart( definition->bufferCapture, match );
-        if ( captureStartOffset >= 0 && matchStart >= 0 ) {
-            bufferBaseOffset = captureStartOffset - matchStart;
-            if ( bufferBaseOffset < 0 ) {
-                bufferBaseOffset = 0;
-            }
-        }
-    }
-    const auto decodedBuffer = decodeBytesFromText( bufferText, definition->type );
-    if ( !decodedBuffer.ok ) {
-        DecodeErrorInfo errorInfo{
-            previewName, QObject::tr( "buffer" ),        bufferSource,       0,
-            -1,          truncateText( bufferText, 64 ), decodedBuffer.error
-        };
-        logDecodeError( errorInfo );
-        *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( decodedBuffer.error );
-        return nullptr;
-    }
-
     QMap<QString, qint64> values;
     QMap<QString, QString> rawValues;
     QStringList blockStack;
-    ParseContext context{ decodedBuffer.bytes,
-                          0,
+    ParseContext context{ prepared.bytes,
+                          prepared.initialOffset,
                           &values,
                           &rawValues,
-                          &match,
+                          &prepared.match,
                           &blocks,
                           &blockStack,
-                          previewName,
-                          bufferSource,
-                          bufferBaseOffset,
-                          matchStart >= 0 ? matchStart : 0,
+                          preview.name,
+                          prepared.source,
+                          prepared.bufferBaseOffset,
+                          prepared.matchStart,
                           false };
-
     context.budget = budget;
-
-    if ( definition->offset.isSet ) {
-        const auto offsetExpr = resolveExprValue( definition->offset, values );
-        if ( !offsetExpr.ok ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       0,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       offsetExpr.error.isEmpty()
-                                           ? PreviewMessageTab::tr( "Invalid preview offset." )
-                                           : offsetExpr.error };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: %1" ).arg( errorInfo.reason );
-            return nullptr;
-        }
-        if ( offsetExpr.value < 0 ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       PreviewMessageTab::tr( "Preview offset is negative." ) };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: preview offset is negative." );
-            return nullptr;
-        }
-        context.cursor += offsetExpr.value;
-        if ( context.cursor > decodedBuffer.bytes.size() ) {
-            DecodeErrorInfo errorInfo{ previewName,
-                                       QObject::tr( "buffer" ),
-                                       bufferSource,
-                                       offsetExpr.value,
-                                       -1,
-                                       truncateText( bufferText, 64 ),
-                                       PreviewMessageTab::tr(
-                                           "Preview offset exceeds buffer size." ) };
-            logDecodeError( errorInfo );
-            *error = PreviewMessageTab::tr( "Decode error: preview offset exceeds buffer size." );
-            return nullptr;
-        }
-    }
 
     auto root = std::make_unique<QTreeWidgetItem>();
     for ( const auto& field : definition->fields ) {
@@ -1475,23 +1502,42 @@ QTreeWidgetItem* createLegacyPreviewTree( const QString& rawLine, const PreviewD
 }
 
 PreviewMessageTab::PreviewMessageTab( const QString& rawLine,
-                                      const QString& initialPreviewNameOrAuto,
-                                      int tabNumber,
+                                      const QString& initialPreviewNameOrAuto, int tabNumber,
+                                      QWidget* parent )
+    : PreviewMessageTab( preparePreviewText( rawLine ), initialPreviewNameOrAuto, tabNumber,
+                         parent )
+{
+}
+
+PreviewMessageTab::PreviewMessageTab( const PreparedPreview& prepared,
+                                      const QString& initialPreviewNameOrAuto, int tabNumber,
                                       QWidget* parent )
     : QWidget( parent )
-    , rawLine_( rawLine )
+    , rawLine_( prepared.text )
     , initialPreviewName_( initialPreviewNameOrAuto )
     , tabNumber_( tabNumber )
+    , prepared_( prepared )
 {
     buildUi();
     rawLineEdit_->setPlainText( rawLine_ );
     updateRawLineHeight();
     refreshPreviewList();
+    connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
+             &PreviewMessageTab::refreshPreviewList );
+}
+
+PreviewMessageTab::~PreviewMessageTab()
+{
+    ++revision_;
+    if ( process_ )
+        PreviewService::cancel( process_ );
 }
 
 void PreviewMessageTab::buildUi()
 {
     previewTypeCombo_ = new QComboBox( this );
+    previewTypeCombo_->setObjectName( "previewDefinition" );
+    previewTypeCombo_->setAccessibleName( tr( "Preview definition" ) );
     previewTypeCombo_->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
 
     auto* typeLabel = new QLabel( tr( "Preview type:" ), this );
@@ -1500,11 +1546,55 @@ void PreviewMessageTab::buildUi()
     headerLayout->addWidget( typeLabel );
     headerLayout->addWidget( previewTypeCombo_, 1 );
 
+    decoderMode_ = new QComboBox( this );
+    decoderMode_->setObjectName( "previewDecoderMode" );
+    decoderMode_->setAccessibleName( tr( "Decoder mode" ) );
+    decoderMode_->addItem( tr( "Automatic (TShark first)" ), "auto" );
+    decoderMode_->addItem( tr( "TShark / Lua" ), "tshark" );
+    decoderMode_->addItem( tr( "JSON" ), "json" );
+    headerLayout->addWidget( decoderMode_ );
+    auto* overrides = new QHBoxLayout;
+    dissector_ = new QLineEdit( this );
+    dissector_->setObjectName( "previewDissector" );
+    dissector_->setAccessibleName( tr( "Named dissector override" ) );
+    dissector_->setPlaceholderText( tr( "Dissector from route / settings" ) );
+    dissector_->setToolTip(
+        tr( "Named dissector, for example data, ip or your approved Lua entrypoint" ) );
+    inputEncoding_ = new QComboBox( this );
+    inputEncoding_->setObjectName( "previewInputEncoding" );
+    inputEncoding_->setAccessibleName( tr( "Input encoding override" ) );
+    inputEncoding_->addItem( tr( "From carrier / settings" ), "" );
+    for ( const auto* encoding : { "utf8", "hex", "base64" } )
+        inputEncoding_->addItem( encoding, encoding );
+    timeout_ = new QSpinBox( this );
+    timeout_->setObjectName( "previewTimeoutMs" );
+    timeout_->setAccessibleName( tr( "Preview timeout milliseconds" ) );
+    timeout_->setRange( 100, 10000 );
+    timeout_->setValue( 3000 );
+    timeout_->setSuffix( tr( " ms" ) );
+    run_ = new QPushButton( tr( "Run / retry" ), this );
+    run_->setObjectName( "previewRun" );
+    run_->setAccessibleName( tr( "Run preview" ) );
+    cancel_ = new QPushButton( tr( "Cancel" ), this );
+    cancel_->setObjectName( "previewCancel" );
+    cancel_->setAccessibleName( tr( "Cancel preview" ) );
+    overrides->addWidget( dissector_, 1 );
+    overrides->addWidget( inputEncoding_ );
+    overrides->addWidget( timeout_ );
+    overrides->addWidget( run_ );
+    overrides->addWidget( cancel_ );
+    status_ = new QLabel( this );
+    status_->setObjectName( "previewStatus" );
+    status_->setAccessibleName( tr( "Preview status" ) );
+    status_->setWordWrap( true );
+    status_->setTextFormat( Qt::PlainText );
+
     previewTree_ = new QTreeWidget( this );
+    previewTree_->setObjectName( "previewFields" );
+    previewTree_->setAccessibleName( tr( "Decoded fields" ) );
     previewTree_->setColumnCount( 5 );
-    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Value" )
-                                                 << tr( "Raw" ) << tr( "Offset" )
-                                                 << tr( "Width" ) );
+    previewTree_->setHeaderLabels( QStringList() << tr( "Field" ) << tr( "Value" ) << tr( "Raw" )
+                                                 << tr( "Offset" ) << tr( "Width" ) );
     previewTree_->setRootIsDecorated( true );
     previewTree_->setHorizontalScrollBarPolicy( Qt::ScrollBarAsNeeded );
     previewTree_->setVerticalScrollBarPolicy( Qt::ScrollBarAsNeeded );
@@ -1535,9 +1625,24 @@ void PreviewMessageTab::buildUi()
     connect( rawGroup_, &QGroupBox::toggled, this, [ this ]( bool ) { updateRawLineHeight(); } );
     connect( previewTypeCombo_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &PreviewMessageTab::handlePreviewSelectionChanged );
+    connect( decoderMode_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
+             [ this ] { invalidateEvaluation(); } );
+    connect( dissector_, &QLineEdit::textChanged, this, [ this ] { invalidateEvaluation(); } );
+    connect( inputEncoding_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
+             [ this ] { invalidateEvaluation(); } );
+    connect( timeout_, QOverload<int>::of( &QSpinBox::valueChanged ), this,
+             [ this ] { invalidateEvaluation(); } );
+    connect( run_, &QPushButton::clicked, this,
+             [ this ] { renderPreview( previewTypeCombo_->currentData().toString() ); } );
+    connect( cancel_, &QPushButton::clicked, this, &PreviewMessageTab::cancelEvaluation );
+    dissector_->setEnabled( false );
+    inputEncoding_->setEnabled( false );
+    timeout_->setEnabled( true );
 
     auto* layout = new QVBoxLayout();
     layout->addLayout( headerLayout );
+    layout->addLayout( overrides );
+    layout->addWidget( status_ );
     layout->addWidget( previewTree_, 1 );
     layout->addWidget( rawGroup_ );
     setLayout( layout );
@@ -1566,6 +1671,7 @@ void PreviewMessageTab::updateRawLineHeight()
 
 void PreviewMessageTab::refreshPreviewList()
 {
+    const bool initial = !initialApplied_;
     const auto currentSelection = previewTypeCombo_->currentData().toString();
     QSignalBlocker blocker( previewTypeCombo_ );
 
@@ -1601,7 +1707,10 @@ void PreviewMessageTab::refreshPreviewList()
     previewTypeCombo_->setCurrentIndex( desiredIndex >= 0 ? desiredIndex : 0 );
 
     blocker.unblock();
-    handlePreviewSelectionChanged( previewTypeCombo_->currentIndex() );
+    if ( initial )
+        handlePreviewSelectionChanged( previewTypeCombo_->currentIndex() );
+    else
+        invalidateEvaluation();
 }
 
 QString PreviewMessageTab::title() const
@@ -1611,74 +1720,159 @@ QString PreviewMessageTab::title() const
 
 void PreviewMessageTab::handlePreviewSelectionChanged( int )
 {
-    const auto selection = previewTypeCombo_->currentData().toString();
-    if ( selection.isEmpty() ) {
-        applyAutoDetection();
-        return;
-    }
-    renderPreview( selection );
+    renderPreview( previewTypeCombo_->currentData().toString() );
 }
 
 void PreviewMessageTab::applyAutoDetection()
 {
-    if ( PreviewManager::instance().all().isEmpty() ) {
-        showMessage( tr( "No preview definitions loaded." ) );
-        updateTitle( tr( "Auto" ) );
-        return;
-    }
+    renderPreview( {} );
+}
 
-    const auto matchName = PreviewManager::instance().findFirstMatchingEnabledPreview( rawLine_ );
-    if ( matchName.isEmpty() ) {
-        showMessage( tr( "No preview matched." ) );
-        updateTitle( tr( "Auto" ) );
-        return;
-    }
+void PreviewMessageTab::cancelEvaluation()
+{
+    ++revision_;
+    if ( process_ )
+        PreviewService::cancel( process_ );
+    process_.clear();
+    cancel_->setEnabled( false );
+    result_.clear();
+    showMessage( tr( "Preview cancelled." ) );
+    status_->setText( tr( "Cancelled - run to retry." ) );
+    LOG_DEBUG << "Preview pane cancelled revision=" << revision_;
+}
 
-    {
-        QSignalBlocker blocker( previewTypeCombo_ );
-        const auto index = previewTypeCombo_->findData( matchName );
-        if ( index >= 0 ) {
-            previewTypeCombo_->setCurrentIndex( index );
-        }
-    }
-
-    renderPreview( matchName );
+void PreviewMessageTab::invalidateEvaluation()
+{
+    cancelEvaluation();
+    const bool manual = decoderMode_->currentData() == "tshark";
+    dissector_->setEnabled( manual );
+    inputEncoding_->setEnabled( manual );
+    timeout_->setEnabled( true );
+    status_->setText( tr( "Options changed - run to preview." ) );
+    LOG_DEBUG << "Preview pane draft changed revision=" << revision_
+              << " decoder=" << decoderMode_->currentData().toString();
 }
 
 void PreviewMessageTab::renderPreview( const QString& previewName )
 {
+    ++revision_;
+    if ( process_ )
+        PreviewService::cancel( process_ );
+    process_.clear();
+    result_.clear();
     previewTree_->clear();
-
-    const auto& manager = PreviewManager::instance();
-    if ( manager.all().isEmpty() ) {
-        showMessage( tr( "No preview definitions loaded." ) );
-        updateTitle( tr( "Auto" ) );
+    const auto revision = revision_;
+    const auto mode = decoderMode_->currentData().toString();
+    updateTitle( previewName.isEmpty() ? tr( "Auto" ) : previewName );
+    if ( !prepared_.error.isEmpty()
+         || ( prepared_.assembly.value( "protocol" ) == "EHCI"
+              && prepared_.assembly.value( "state" ) != "complete" ) ) {
+        const auto reason
+            = prepared_.error.isEmpty()
+                  ? prepared_.assembly.value( "reason", "more_data_required" ).toString()
+                  : prepared_.error;
+        presentResult( { { "state", "incomplete" },
+                         { "available", false },
+                         { "complete", false },
+                         { "reason", reason },
+                         { "assembly", prepared_.assembly } } );
+        LOG_DEBUG << "Preview pane assembly unavailable revision=" << revision
+                  << " reason=" << reason;
         return;
     }
-
-    const auto* definition = manager.findByName( previewName );
-    if ( !definition ) {
-        showMessage( tr( "Selected preview is not available." ) );
-        updateTitle( previewName );
-        return;
+    status_->setText(
+        tr( "Running - %1" ).arg( mode == "auto" ? tr( "automatic decoder" ) : mode ) );
+    cancel_->setEnabled( true );
+    PreviewEvaluationRequest request;
+    request.text = prepared_.text;
+    request.previewName = previewName;
+    request.decoder = mode;
+    request.assemblyProtocol = prepared_.assembly.value( "protocol" ).toString();
+    request.sessionOwner = this;
+    request.timeoutMs = timeout_->value();
+    if ( mode == "tshark" ) {
+        request.dissector = dissector_->text();
+        request.inputEncoding = inputEncoding_->currentData().toString();
     }
+    LOG_DEBUG << "Preview pane started revision=" << revision << " decoder=" << mode
+              << " assembly=" << request.assemblyProtocol << " named=" << !previewName.isEmpty()
+              << " timeout_ms=" << request.timeoutMs;
+    const auto digest = PreviewService::definitions();
+    request.definitions = digest;
+    auto* token = PreviewService::evaluate(
+        this, std::move( request ), [ this, revision, digest ]( QVariantMap result ) {
+            if ( revision != revision_ || digest != PreviewService::definitions() ) {
+                LOG_DEBUG << "Preview pane stale delivery revision=" << revision;
+                return;
+            }
+            process_.clear();
+            result[ "assembly" ] = prepared_.assembly;
+            result[ "source" ] = prepared_.source;
+            result[ "requestRevision" ] = QString::number( revision );
+            presentResult( result );
+        } );
+    if ( revision == revision_ && result_.isEmpty() )
+        process_ = token;
+}
 
-    QString error;
-    std::unique_ptr<QTreeWidgetItem> decoded(
-        createLegacyPreviewTree( rawLine_, *definition, manager.blocks(), &error ) );
-    if ( !decoded ) {
-        showMessage( error );
-        updateTitle( previewName );
-        return;
+void PreviewMessageTab::presentResult( const QVariantMap& result )
+{
+    result_ = result;
+    cancel_->setEnabled( false );
+    previewTree_->clear();
+    const bool engine = result.value( "backend" ) == "tshark_lua";
+    previewTree_->headerItem()->setText( 3, engine ? tr( "Offset (decoded buffer)" )
+                                                   : tr( "Offset" ) );
+    previewTree_->setToolTip(
+        engine
+            ? tr( "TShark offsets refer to a decoded buffer. Source / log mapping is unavailable." )
+            : QString() );
+    QVector<QTreeWidgetItem*> parents;
+    for ( const auto& entry : result.value( "fields" ).toList() ) {
+        const auto field = entry.toMap();
+        const int depth = field.value( "depth" ).toInt();
+        const auto columns = field.value( "columns" ).toList();
+        auto* item = new QTreeWidgetItem;
+        for ( int column = 0; column < 5; ++column )
+            item->setText( column, columns.value( column ).toString() );
+        // The service validates depth/order/quotas. Retain duplicates and empty strings.
+        if ( depth > 0 && depth <= parents.size() )
+            parents[ depth - 1 ]->addChild( item );
+        else
+            previewTree_->addTopLevelItem( item );
+        if ( parents.size() > depth )
+            parents.resize( depth );
+        parents.push_back( item );
+        const auto attributes = field.value( "attributes" ).toMap();
+        if ( !attributes.isEmpty() ) {
+            const auto details = QString::fromUtf8(
+                QJsonDocument::fromVariant( attributes ).toJson( QJsonDocument::Indented ) );
+            const auto tooltip = "<pre>" + details.toHtmlEscaped() + "</pre>";
+            for ( int column = 0; column < 5; ++column )
+                item->setToolTip( column, tooltip );
+        }
     }
-    while ( decoded->childCount() > 0 )
-        previewTree_->addTopLevelItem( decoded->takeChild( 0 ) );
-
+    const auto backend = result.value( "backend", "unavailable" ).toString();
+    auto status = tr( "%1 - %2" ).arg( backend, result.value( "state" ).toString() );
+    if ( result.value( "limited" ).toBool() )
+        status += tr( " - limited" );
+    const auto reason = result.value( "reason" ).toString();
+    if ( !reason.isEmpty() )
+        status += " - " + reason.left( 256 );
+    const auto fallback = result.value( "fallbackReason" ).toString();
+    if ( !fallback.isEmpty() )
+        status += tr( " - fallback: %1" ).arg( fallback );
+    if ( engine )
+        status += tr( " - decoded-buffer offsets; source mapping unavailable" );
+    status_->setText( status );
+    if ( previewTree_->topLevelItemCount() == 0 )
+        showMessage( status );
     previewTree_->expandAll();
-    for ( int column = 0; column < previewTree_->columnCount(); ++column ) {
+    for ( int column = 0; column < 5; ++column )
         previewTree_->resizeColumnToContents( column );
-    }
-    updateTitle( previewName );
+    LOG_DEBUG << "Preview pane completed revision=" << revision_ << " backend=" << backend
+              << " state=" << result.value( "state" ).toString() << " reason=" << reason
+              << " fields=" << result.value( "fields" ).toList().size();
 }
 
 void PreviewMessageTab::showMessage( const QString& message )

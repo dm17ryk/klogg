@@ -1,4 +1,5 @@
 set(UI_TEST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/previewdecoderui_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/qtests_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logdata_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/logdatasource_test.cpp
@@ -31,9 +32,10 @@ add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}
 add_executable(analysis_worker_fixture ../analysis_worker_fixture.cpp)
 target_link_libraries(analysis_worker_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_compile_definitions(cilogg_itests PRIVATE
+    PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     ANALYSIS_WORKER_PATH="$<TARGET_FILE:klogg>"
     ANALYSIS_FIXTURE_PATH="$<TARGET_FILE:analysis_worker_fixture>")
-add_dependencies(cilogg_itests klogg analysis_worker_fixture)
+add_dependencies(cilogg_itests klogg analysis_worker_fixture preview_decoder_fixture)
 
 target_link_libraries(cilogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
 set_target_properties(

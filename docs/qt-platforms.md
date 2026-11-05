@@ -13,7 +13,7 @@ deferred.
 | RHEL-compatible 9.6 / 10.0 x64 RPM | 6.12.0 | AlmaLinux 9.6 / 10.0, GCC 11 / 14, Qt-only search backend |
 | openSUSE Leap 16.0 x64 RPM | 6.12.0 | GCC 15; manual package installation |
 | AppImage x64 / ARM64 | 6.12.0 | Existing Jammy / Noble build baselines |
-| Modern macOS Intel and Apple Silicon | 6.12.0 | macOS 14.4+, built on macOS 26 with Xcode 16+ |
+| Modern macOS Intel and Apple Silicon | 6.12.0 | macOS 14.4+, built on macOS 15 Intel / macOS 26 ARM with Xcode 16+ |
 | Compatibility macOS Intel / Apple Silicon | 6.10.1 | macOS 13 / 14.0 respectively |
 | Older-named Ubuntu packages and Fedora targets | Existing versions | Compatibility builds; no claim of Qt 6.12 vendor support |
 
@@ -61,6 +61,11 @@ change implicitly. The installer is pinned to aqtinstall 3.3.0.
 The additional DMGs end in `-mac-x64-qt612.dmg` or `-mac-arm64-qt612.dmg`.
 They require macOS 14.4+. The existing DMGs and update ZIPs retain their names
 and earlier deployment targets.
+
+The Qt 6.12 Intel job uses `macos-15-intel` after repeated hosted-runner failures
+on `macos-26-intel`. This changes the build host, not the deployment target or Qt
+version. The ARM job continues to build and test on macOS 26. Intel macOS 26
+runtime validation remains separate from the Intel build on macOS 15.
 
 Modern Qt 6.12 builds are **manual-install packages**. They do not produce an
 automatic-update ZIP, since older installed updater clients do not understand

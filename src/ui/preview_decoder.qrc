@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/preview_decoder">
+    <file alias="message_decoder_preview_worker.py">../../scripts/plugins/message_decoder_preview_worker.py</file>
+    <file alias="message_decoder_wire.py">../../scripts/plugins/message_decoder_wire.py</file>
+    <file alias="workbench_process.py">../../scripts/benchmarks/workbench_process.py</file>
+  </qresource>
+</RCC>

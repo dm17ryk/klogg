@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include "previewsource.h"
 
 class QTabWidget;
 class PreviewMessageTab;
@@ -12,6 +13,7 @@ class PreviewWindow : public QWidget {
     explicit PreviewWindow( QWidget* parent = nullptr );
 
     void openMessageTab( const QString& rawLine, const QString& initialPreviewNameOrAuto );
+    void openPreparedMessageTab( const PreparedPreview& prepared, const QString& initialPreviewNameOrAuto );
 
   private:
     void handleTabClosed( int index );

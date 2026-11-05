@@ -1,5 +1,6 @@
 <RCC>
 <qresource>
+    <file>images/tool-preview-decoder.svg</file>
     <file>i18n/Languages.xml</file>
     <file>images/arrowdown.png</file>
     <file>images/arrowup.png</file>

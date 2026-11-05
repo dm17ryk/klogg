@@ -21,11 +21,23 @@
 #include <cstring>
 #include <QTemporaryFile>
 #include <QTreeWidget>
+#include <QTest>
 
 #include "previewmanager.h"
 #include "previewmessagetab.h"
 
 namespace {
+void waitForPreview( PreviewMessageTab& tab )
+{
+    const bool delivered = QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 10000 );
+    const auto result = tab.result();
+    INFO( "state=" << result.value( "state" ).toString().left( 128 ).toStdString()
+          << " reason=" << result.value( "reason" ).toString().left( 128 ).toStdString()
+          << " backend=" << result.value( "backend" ).toString().left( 128 ).toStdString() );
+    REQUIRE( delivered );
+    REQUIRE( result.value( "available" ).toBool() );
+}
+
 constexpr auto kPreviewConfig = R"json(
 {
   "$schema": "../schemas/klogg-previews.schema.json",
@@ -598,6 +610,7 @@ TEST_CASE( "Preview match stage decodes SRING payload", "[previewmatch]" )
         "3130353734365A23302143343044" );
 
     PreviewMessageTab tab( line, "SRING->EHCP", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "header" ) == "EHCP" );
@@ -614,6 +627,7 @@ TEST_CASE( "Preview match stage parses direct EHCP payload", "[previewmatch]" )
         "37E#INN000000NNNSCE0Y8D6FDIPR1!D774\"" );
 
     PreviewMessageTab tab( line, "EHCP direct", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "header" ) == "EHCP" );
@@ -628,6 +642,7 @@ TEST_CASE( "Preview blocks resolve dynamic references", "[previewblocks]" )
     const QString line = QString::fromLatin1( "PCMHEL" );
 
     PreviewMessageTab tab( line, "Block dynamic", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "payload" ) == "HEL" );
@@ -640,6 +655,7 @@ TEST_CASE( "Preview blocks report missing blocks", "[previewblocks]" )
     const QString line = QString::fromLatin1( "PXX" );
 
     PreviewMessageTab tab( line, "Block missing", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
     REQUIRE( tree );
 
@@ -657,6 +673,7 @@ TEST_CASE( "Preview blocks detect cycles", "[previewblocks]" )
     const QString line = QString::fromLatin1( "data" );
 
     PreviewMessageTab tab( line, "Block cycle", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
     REQUIRE( tree );
 
@@ -674,6 +691,7 @@ TEST_CASE( "Preview enums use raw string keys", "[previewmatch]" )
     const QString line = QString::fromLatin1( "02E" );
 
     PreviewMessageTab tab( line, "Enum raw", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "device_type" ) == "C7000" );
@@ -688,6 +706,7 @@ TEST_CASE( "AT command execute operation resolves empty enum key", "[previewmatc
         = QString::fromLatin1( "13/05/2026 21:17:25.988 [RX] - #6 AT#MONI#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "operation" ) == "execute" );
@@ -703,6 +722,7 @@ TEST_CASE( "AT command dynamic block resolves CGPADDR details", "[previewmatch][
         = QString::fromLatin1( "13/05/2026 21:18:16.021 [RX] - #6 AT+CGPADDR=1#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "meaning" ) == "Show PDP Address" );
@@ -718,6 +738,7 @@ TEST_CASE( "AT command dynamic block falls back to raw arguments", "[previewmatc
         = QString::fromLatin1( "13/05/2026 21:18:16.021 [RX] - #6 AT+RAWME=2#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "raw_args" ) == "2" );
@@ -732,6 +753,7 @@ TEST_CASE( "AT response dynamic block resolves CGPADDR address", "[previewmatch]
         = QString::fromLatin1( "13/05/2026 21:18:16.111 [RX] - +CGPADDR: 1,\"10.171.116.216\"" );
 
     PreviewMessageTab tab( line, "AT response / URC (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "meaning" ) == "PDP address report" );
@@ -747,6 +769,7 @@ TEST_CASE( "AT response dynamic block falls back to generic args block", "[previ
     const QString line = QString::fromLatin1( "13/05/2026 21:18:16.222 [RX] - +UNKNOWN: 1,2,3" );
 
     PreviewMessageTab tab( line, "AT response / URC (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "raw_args" ) == "1,2,3" );
@@ -760,12 +783,14 @@ TEST_CASE( "AT CME errors describe Telit standard and socket errors", "[previewm
     const QString unknownError
         = QString::fromLatin1( "13/05/2026 19:32:54.665 [RX] - +CME ERROR: 100" );
     PreviewMessageTab unknownTab( unknownError, "AT CME error", 1 );
+    waitForPreview( unknownTab );
     CHECK( fieldValue( unknownTab.findChild<QTreeWidget*>(), "meaning" )
            == "Telit/3GPP general purpose error: unknown" );
 
     const QString socketError
         = QString::fromLatin1( "13/05/2026 19:32:54.665 [RX] - +CME ERROR: 553" );
     PreviewMessageTab socketTab( socketError, "AT CME error", 1 );
+    waitForPreview( socketTab );
     CHECK( fieldValue( socketTab.findChild<QTreeWidget*>(), "meaning" )
            == "context already activated" );
 }
@@ -778,6 +803,7 @@ TEST_CASE( "AT command read form skips absent optional detail fields", "[preview
         = QString::fromLatin1( "14/05/2026 15:56:15.399 [RX] - #6 AT#SGACT?#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "operation" ) == "read" );
@@ -793,6 +819,7 @@ TEST_CASE( "AT TEMPMON command skips absent optional arguments", "[previewmatch]
         = QString::fromLatin1( "14/05/2026 16:05:04.922 [RX] - #6 AT#TEMPMON=1#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "mode" ) == "trigger temperature measurement" );
@@ -810,6 +837,7 @@ TEST_CASE( "AT CMGR command describes the message index argument", "[previewmatc
         = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - #6 AT+CMGR=1#5" );
 
     PreviewMessageTab tab( line, "AT command (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "message_index" ) == "1" );
@@ -837,6 +865,7 @@ TEST_CASE( "AT generic fallback handles basic and S-register commands", "[previe
     for ( const auto& payload : payloads ) {
         const QString line = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - " ) + payload;
         PreviewMessageTab tab( line, "AT command (generic fallback)", 1 );
+        waitForPreview( tab );
         auto* tree = tab.findChild<QTreeWidget*>();
 
         INFO( payload.toStdString() );
@@ -852,6 +881,7 @@ TEST_CASE( "AT previews render unknown enum values without decode errors", "[pre
     const QString socketLine
         = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - #SS: 1,99" );
     PreviewMessageTab socketTab( socketLine, "AT response / URC (known)", 1 );
+    waitForPreview( socketTab );
     auto* socketTree = socketTab.findChild<QTreeWidget*>();
     CHECK( fieldValue( socketTree, "state" ) == "unknown/reserved (99, numeric 99)" );
     CHECK_FALSE( fieldHasChild( socketTree, "state", "Error" ) );
@@ -859,6 +889,7 @@ TEST_CASE( "AT previews render unknown enum values without decode errors", "[pre
     const QString cmeLine
         = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - +CME ERROR: 9999" );
     PreviewMessageTab cmeTab( cmeLine, "AT CME error", 1 );
+    waitForPreview( cmeTab );
     auto* cmeTree = cmeTab.findChild<QTreeWidget*>();
     CHECK( fieldValue( cmeTree, "meaning" ) == "unknown/reserved (9999, numeric 9999)" );
     CHECK_FALSE( fieldHasChild( cmeTree, "meaning", "Error" ) );
@@ -871,6 +902,7 @@ TEST_CASE( "AT previews render unknown non-numeric enum values without decode er
 
     const QString line = QString::fromLatin1( "14/05/2026 16:05:05.265 [RX] - #STRINGENUM: MAYBE" );
     PreviewMessageTab tab( line, "AT response / URC (known)", 1 );
+    waitForPreview( tab );
     auto* tree = tab.findChild<QTreeWidget*>();
 
     CHECK( fieldValue( tree, "state" ) == "unknown/reserved (MAYBE)" );

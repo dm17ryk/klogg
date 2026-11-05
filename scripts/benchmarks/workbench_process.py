@@ -11,7 +11,10 @@ LOG = logging.getLogger("workbench.process")
 
 
 class ProcessOwner:
-    def __init__(self):
+    def __init__(self, *, inherit_group=False):
+        # Preview workers are already inside a native-owned process group/job.
+        # Their Unix descendants must remain in that group for host cancellation.
+        self.inherit_group = inherit_group
         self.processes = []
         self.job = None
         if os.name == "nt":
@@ -78,7 +81,7 @@ class ProcessOwner:
 
     def spawn(self, arguments, **kwargs):
         process = subprocess.Popen(
-            arguments, start_new_session=(os.name != "nt"), **kwargs
+            arguments, start_new_session=(os.name != "nt" and not self.inherit_group), **kwargs
         )
         self.processes.append(process)
         if self.job and not self.kernel.AssignProcessToJobObject(
@@ -89,7 +92,7 @@ class ProcessOwner:
             process.kill()
             process.wait(timeout=5)
             raise error
-        LOG.debug("owned_process_started pid=%d", process.pid)
+        LOG.debug("owned_process_started pid=%d inherit_group=%s", process.pid, self.inherit_group)
         return process
 
     def peak_tree_commit_bytes(self):
@@ -119,7 +122,7 @@ class ProcessOwner:
         else:
             for process in self.processes:
                 try:
-                    if os.name == "nt":
+                    if os.name == "nt" or self.inherit_group:
                         if process.poll() is None:
                             process.kill()
                     else:

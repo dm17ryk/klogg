@@ -24,13 +24,16 @@ PreviewWindow::PreviewWindow( QWidget* parent )
     setLayout( layout );
 
     connect( tabWidget_, &QTabWidget::tabCloseRequested, this, &PreviewWindow::handleTabClosed );
-    connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
-             &PreviewWindow::refreshTabs );
 }
 
 void PreviewWindow::openMessageTab( const QString& rawLine, const QString& initialPreviewNameOrAuto )
 {
-    auto* tab = new PreviewMessageTab( rawLine, initialPreviewNameOrAuto, ++tabCounter_, this );
+    openPreparedMessageTab( preparePreviewText( rawLine ), initialPreviewNameOrAuto );
+}
+
+void PreviewWindow::openPreparedMessageTab( const PreparedPreview& prepared, const QString& initialPreviewNameOrAuto )
+{
+    auto* tab = new PreviewMessageTab( prepared, initialPreviewNameOrAuto, ++tabCounter_, this );
     const auto index = tabWidget_->addTab( tab, tab->title() );
     tabWidget_->setCurrentIndex( index );
 

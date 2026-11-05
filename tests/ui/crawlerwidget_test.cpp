@@ -24,8 +24,11 @@
 #include <QToolTip>
 #include <QComboBox>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLineEdit>
 #include <QSignalSpy>
+#include <QSpinBox>
+#include <QPushButton>
 #include <QStandardItemModel>
 #include <QTabWidget>
 #include <QTemporaryFile>
@@ -47,6 +50,8 @@
 #include "crawlerwidget.h"
 #include "analysiscommands.h"
 #include "previewmanager.h"
+#include "previewdecodersettings.h"
+#include "previewmessagetab.h"
 
 static const qint64 SL_NB_LINES = 100LL;
 
@@ -354,11 +359,147 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
 
 using CrawlerWidgetVisitor = CrawlerWidget::access_by<CrawlerWidgetPrivate>;
 
-TEST_CASE( "Hover preview maps main and filtered rows without changing selection", "[ui][previewhover]" )
+TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
+           "[.][previewdecoderenginehover]" )
+{
+    auto& settings = PreviewDecoderSettings::instance();
+    const auto original = settings.configuration();
+    const std::shared_ptr<void> restore( nullptr, [ original ]( void* ) {
+        PreviewDecoderSettings::instance().setConfiguration( original );
+    } );
+    const auto configurationPath = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_CONFIG" );
+    QVariantMap configuration;
+    if ( !configurationPath.isEmpty() ) {
+        QFile input( configurationPath );
+        REQUIRE( input.open( QIODevice::ReadOnly ) );
+        REQUIRE( input.size() <= 65536 );
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson( input.readAll(), &error );
+        REQUIRE( error.error == QJsonParseError::NoError );
+        REQUIRE( document.isObject() );
+        configuration = document.object().toVariantMap();
+    }
+    else {
+        REQUIRE_FALSE( qEnvironmentVariable( "CILOGG_PREVIEW_PUBLIC_LUA" ).isEmpty() );
+        configuration
+            = { { "enabled", true },
+                { "allowExternalLua", true },
+                { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+                { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+                { "lua", QVariantList{ qEnvironmentVariable( "CILOGG_PREVIEW_PUBLIC_LUA" ) } },
+                { "protocolRoutes",
+                  QVariantMap{ { "EHCI", QVariantMap{ { "dissector", "cilogg_md01_probe" },
+                                                      { "inputEncoding", "utf8" } } } } } };
+    }
+    REQUIRE( settings.setConfiguration( configuration ) );
+    const QString message = "EHCI001INF00000004TESTCRC0000";
+    const QStringList headers{ "PUT sample.dat HTTP/1.1", "Host: CARE-PANELINFO",
+                               QString( "Content-Length: %1" ).arg( message.size() ),
+                               "Content-Type: application/octet-stream", "" };
+    const auto bytes = headers.join( "\r\n" ).toUtf8().size() + 2 + message.toUtf8().size();
+    QStringList payload = headers;
+    payload << message << "#12 100 INFO:NET Send message command: 5975" << ""
+            << QString(
+                   "#12 101 DETAILS:NET SendTCPData pRemoteIp(0x1) pBuff(0x2) Len(%1) Port(5975)" )
+                   .arg( bytes )
+            << QString( "#12 102 INFO:NET TCP message was sent successfully Len(%1)" ).arg( bytes )
+            << "#12 103 DETAILS:NET return value:0";
+    for ( auto& row : payload )
+        row.prepend( "01/11/2026 09:51:00.175 [RX] - " );
+    QTemporaryFile file;
+    REQUIRE( file.open() );
+    REQUIRE( file.write( ( payload.join( '\n' ) + '\n' ).toUtf8() ) > 0 );
+    REQUIRE( file.flush() );
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableTextWrap();
+    visitor.resizeAndShow( 1000, 700 );
+    visitor.setSearchPattern( "EHCI" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines().get() == 1; } ) );
+    auto* view = visitor.crawler->findChild<FilteredView*>();
+    REQUIRE( view );
+    setOffscreenActiveWindow( visitor.crawler.get() );
+    visitor.render();
+    const QPoint point( 80, view->fontMetrics().height() / 2 );
+    QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, point );
+    const auto selection = view->getSelectedText();
+    QSignalSpy requested( view, &AbstractLogView::linePreviewRequested );
+    QCursor::setPos( view->viewport()->mapToGlobal( point ) );
+    QHelpEvent event( QEvent::ToolTip, point, view->viewport()->mapToGlobal( point ) );
+    QApplication::sendEvent( view->viewport(), &event );
+    REQUIRE( requested.size() == 1 );
+    CHECK( requested.front().at( 0 ).toULongLong() == 5 );
+    REQUIRE( QTest::qWaitFor(
+        [] {
+            return QToolTip::isVisible() && QToolTip::text().contains( "TShark / Lua" )
+                   && QToolTip::text().contains( "EHCI complete" );
+        },
+        15000 ) );
+    CHECK( view->getSelectedText() == selection );
+    const auto capture = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_TOOLTIP_SCREENSHOT" );
+    if ( !capture.isEmpty() ) {
+        for ( auto* widget : QApplication::topLevelWidgets() )
+            if ( widget->windowType() == Qt::ToolTip && widget->isVisible() )
+                REQUIRE( widget->grab().save( capture ) );
+    }
+    PreparedPreview selected;
+    bool sent = false;
+    QObject::connect( visitor.crawler.get(), &CrawlerWidget::sendPreparedToPreview,
+                      [ & ]( PreparedPreview prepared, const QString& ) {
+                          selected = std::move( prepared );
+                          sent = true;
+                      } );
+    Q_EMIT view->sendSelectionToPreview( "Auto" );
+    REQUIRE( sent );
+    CHECK( selected.text == message );
+    CHECK( selected.assembly.value( "protocol" ) == "EHCI" );
+    CHECK( selected.assembly.value( "state" ) == "complete" );
+    view->clearLinePreview();
+    PreviewMessageTab pane( selected, "Auto", 1 );
+    pane.resize( 1100, 700 );
+    pane.show();
+    auto* budget = pane.findChild<QSpinBox*>( "previewTimeoutMs" );
+    REQUIRE( budget );
+    REQUIRE( budget->isEnabled() );
+    budget->setValue( 10000 );
+    pane.findChild<QPushButton*>( "previewRun" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return !pane.result().isEmpty(); }, 15000 ) );
+    REQUIRE( pane.result().value( "available" ).toBool() );
+    CHECK( pane.result().value( "backend" ) == "tshark_lua" );
+    CHECK( pane.result().value( "assembly" ).toMap().value( "protocol" ) == "EHCI" );
+    const auto fields = pane.result().value( "fields" ).toList();
+    REQUIRE_FALSE( fields.isEmpty() );
+    auto expectedField = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_EXPECT_FIELD" );
+    auto expectedValue = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_EXPECT_VALUE" );
+    if ( configurationPath.isEmpty() && expectedField.isEmpty() ) {
+        expectedField = "cilogg_md01_probe.item";
+        expectedValue = "69";
+    }
+    if ( !expectedField.isEmpty() ) {
+        bool found = false;
+        for ( const auto& field : fields ) {
+            const auto columns = field.toMap().value( "columns" ).toList();
+            if ( columns.value( 0 ).toString() == expectedField
+                 && columns.value( 1 ).toString() == expectedValue )
+                found = true;
+        }
+        CHECK( found );
+    }
+    const auto paneCapture = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_PANE_SCREENSHOT" );
+    if ( !paneCapture.isEmpty() )
+        REQUIRE( pane.grab().save( paneCapture ) );
+}
+
+TEST_CASE( "Hover preview maps main and filtered rows without changing selection",
+           "[ui][previewhover]" )
 {
     auto& manager = PreviewManager::instance();
     const auto original = PreviewRepository::serialize( manager.all(), manager.blocks() );
-    const std::shared_ptr<void> restore( nullptr, [original]( void* ) {
+    const std::shared_ptr<void> restore( nullptr, [ original ]( void* ) {
         auto& previews = PreviewManager::instance();
         previews.clearAll();
         QTemporaryFile backup;
@@ -367,7 +508,8 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
     } );
     QTemporaryFile definition;
     REQUIRE( definition.open() );
-    definition.write( R"({"version":1,"previews":[{"name":"Hover fixture","regex":"^(?<value>.*)$","format":"fields","fields":[{"name":"Message","source":"capture","capture":"value","type":"string","format":"string"}]}]})" );
+    definition.write(
+        R"({"version":1,"previews":[{"name":"Hover fixture","regex":"^(?<value>.*)$","format":"fields","fields":[{"name":"Message","source":"capture","capture":"value","type":"string","format":"string"}]}]})" );
     definition.flush();
     manager.clearAll();
     REQUIRE( manager.importFromFile( definition.fileName() ).ok );
@@ -377,8 +519,9 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
     file.flush();
     Session session;
     CrawlerWidgetVisitor visitor;
-    visitor.crawler.reset( static_cast<CrawlerWidget*>( session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
-    REQUIRE( waitUiState( [&] { return visitor.isLoadingFinished(); } ) );
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
     visitor.disableTextWrap();
     visitor.resizeAndShow( 800, 600 );
     visitor.setSearchPattern( "match" );
@@ -389,7 +532,8 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
     REQUIRE( filtered );
     setOffscreenActiveWindow( visitor.crawler.get() );
     visitor.render();
-    for ( auto* view : { static_cast<AbstractLogView*>( main ), static_cast<AbstractLogView*>( filtered ) } ) {
+    for ( auto* view :
+          { static_cast<AbstractLogView*>( main ), static_cast<AbstractLogView*>( filtered ) } ) {
         const int height = view->fontMetrics().height();
         const QPoint point( 80, height / 2 );
         QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, point );
