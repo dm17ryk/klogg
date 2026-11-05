@@ -29,7 +29,10 @@ is retained in [the observations](f01e-observations.json). A controlled 1200 ms
 fixture startup delay reproduced the original protocol/recovery failures under
 the 1000 ms budget. Test-only semantic fixtures now allow 5000 ms and use safe
 callback state with a request-ID completion guard. Dedicated stall/cancellation
-and production deadlines are unchanged. Fresh C++/general reviews are pending.
+and production deadlines are unchanged. Fresh C++ and general whole-branch reviews approved implementation `1ff3af07`
+with no actionable findings. Both were source reviews; the C++ reviewer also
+checked all eight frozen input hashes. Their analyzer attempts were incomplete
+(cppcheck configuration unavailable; clang-tidy lacked Qt include context).
 
 ## Decisions and gates
 
@@ -53,3 +56,6 @@ open. Code-review-graph refreshed structure and FTS; its heuristic test gaps are
 coverage evidence. CodeGraph reports this worktree unindexed. GitNexus refresh
 timed out after parser worker failures; stale output is not structural verification. No user source text, private Lua, capture bodies or
 configuration is included in these observations.
+
+Implementation: `1ff3af07`; [PR #93](https://github.com/dm17ryk/klogg/pull/93).
+Hosted checks are pending.

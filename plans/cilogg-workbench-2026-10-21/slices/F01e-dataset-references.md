@@ -29,3 +29,10 @@ The tagged reference prepares lineage/cursor binding; actual LineageHandle/Datas
 ## Regression fixture scope
 
 Repeated full runs exposed existing preview protocol fixtures whose 1000 ms deadline included cold process startup. A test-only opt-in 1200 ms startup delay reproduced two failures (timeout instead of protocol rejection and failed recovery). Semantic protocol/crash/metadata fixtures now allow 5000 ms; explicit stall/cancellation deadlines remain unchanged. The local callback state is retained safely, guarded by a QPointer event loop, and the outer completion guard cancels the exact request ID. Controlled delayed startup passes 76 assertions; related preview/reference fixtures pass 408 assertions in 34 cases. No production deadline changes. Cost: semantic failures may take longer to report. Review these three test-only files alongside the new contract.
+
+## Publication
+
+Implementation: `1ff3af07d58b055802b286e4ef24a3f683cd67e6`.
+PR: [#93](https://github.com/dm17ryk/klogg/pull/93).
+Both independent C++ and general source reviews approved with no findings.
+Full isolated local CTest passed 7/7; hosted checks remain pending.
