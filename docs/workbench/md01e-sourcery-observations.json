@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-05T10:35:26.426Z",
+  "pullRequest": "https://github.com/dm17ryk/klogg/pull/90",
+  "sourceBase": "88e4f0e55cafc2f79046fd4297396f621c27b54a",
+  "findings": [
+    {
+      "comment": 4478302098,
+      "summary": "Origin reports ignored shared-manifest raw oracles",
+      "resolution": "OriginEngine.inspect compares exact PDML value occurrences before jsonraw qualification; run_origin_report forwards expectRaw; missing/empty and omitted legacy contracts preserved"
+    },
+    {
+      "comment": 4478302114,
+      "summary": "Prefix tests accepted missing child fields or oversized trees",
+      "resolution": "Independent fixed-fixture milestones for all71prefixes; whole-tree256node/128KiB budgets; four portable mutants call the same native prefix check; budget tests require exact assertion messages"
+    }
+  ],
+  "scope": {
+    "changedRuntime": "offline Python origin-proof CLI",
+    "productCppOrEmbeddedResourcesChanged": false,
+    "privateLuaChanged": false,
+    "productDecoderAccepted": false,
+    "fullMD01Acceptance": "pending",
+    "fullW0Acceptance": "pending"
+  },
+  "red": {
+    "prefix": {
+      "cases": 19,
+      "failures": 4,
+      "skipped": 11
+    },
+    "origin": {
+      "cases": 26,
+      "failures": 4,
+      "skipped": 4
+    },
+    "initialNative": {
+      "cases": 46,
+      "failedSubtests": 1,
+      "prefixBytes": 29,
+      "explanation": "Initial fixture oracle omitted the complete generic IN+F0000002 header in observed INF0000002. Corrected explicit snapshot expectation without inferring the absent final INF length digit; no Lua change."
+    }
+  },
+  "verification": {
+    "portablePython39": {
+      "cases": 131,
+      "passed": 83,
+      "skipped": 48
+    },
+    "registeredCtestDecoder": {
+      "passed": true,
+      "registeredGroups": 1,
+      "cases": 131,
+      "passedCases": 83,
+      "skipped": 48
+    },
+    "native": [
+      {
+        "name": "native-py314",
+        "exitCode": 0,
+        "seconds": 104.74084560002666,
+        "python": "3.14.10",
+        "cases": 24,
+        "passed": 24,
+        "skipped": 0,
+        "nativeEngineTests": 12,
+        "portableTests": 12,
+        "prefixes": 71
+      },
+      {
+        "name": "native-py39",
+        "exitCode": 0,
+        "seconds": 97.59001519996673,
+        "python": "3.9.25",
+        "cases": 24,
+        "passed": 24,
+        "skipped": 0,
+        "nativeEngineTests": 12,
+        "portableTests": 12,
+        "prefixes": 71
+      }
+    ],
+    "budgetMutants": [
+      {
+        "disabledGuard": "EHCI_PREFIX_NODE_LIMIT",
+        "detected": true
+      },
+      {
+        "disabledGuard": "EHCI_PREFIX_BYTE_LIMIT",
+        "detected": true
+      }
+    ],
+    "reviews": "Python/general reviewers approved after correcting a budget-mutant assertion weakness",
+    "nativeBuildBoundary": "Earlier7/7 fullCTest and native build remain their original88e4f0e evidence epoch. This Python-only follow-up reruns the affected registered decoder group; no new C++ build, GUI/CLI/MCP product parity or fullCTest run claimed.",
+    "indexes": {
+      "codeReviewGraph": {
+        "filesUpdated": 1,
+        "nodes": 40,
+        "edges": 443,
+        "changedFilesAnalyzed": 6,
+        "riskScore": 0.35,
+        "limitation": "Static report misses dynamic report/engine test calls; native and CLI tests supply actual evidence"
+      },
+      "gitNexus": "Bounded60-second refresh timed out; all3 impact targets unresolved in stale sibling index. Staged detect-changes returned0 with stale-index warning and no changes; not authoritative. Exact diffs, frozen source hashes and independent reviews verified scope.",
+      "codeGraph": "unindexed"
+    },
+    "portableRuns": [
+      {
+        "name": "portable-py39",
+        "exitCode": 0,
+        "seconds": 6.724461099947803
+      },
+      {
+        "name": "ctest-decoder",
+        "exitCode": 0,
+        "seconds": 9.75141440005973
+      }
+    ],
+    "privateWrapperNote": "Two attempted reruns did not execute tests because an ignored validation wrapper had a string-substitution SyntaxError; corrected before final passing runs.",
+    "stagedDetectChanges": {
+      "exitCode": 0,
+      "seconds": 47.089256300008856,
+      "authoritative": false,
+      "reason": "stale sibling index; exact diffs/hashes/reviews used"
+    }
+  },
+  "remainingGates": [
+    "Existing MD01/W0/genericMD03/release/performance gates retained",
+    "Hosted checks for follow-up commit pending"
+  ],
+  "sourceHashes": {
+    "scripts/plugins/message_decoder_origins.py": "c4b787e65d6628c759d0402e8d2025239a1ff943eda436ed55d082ebd15a8efa",
+    "tests/plugins/test_message_decoder_origins.py": "413243e96e52b2b0b322f15694f159ca849e6df3ed9f5b0a7a211e7730e5d8aa",
+    "tests/plugins/test_message_decoder_capabilities.py": "aaa7b488b5feff85990caae28b68267945476b22ea5a7b56e31aab69cb15a34d"
+  },
+  "logIdentities": {
+    "prefix-red.log": {
+      "bytes": 7415,
+      "sha256": "0445ab79b08485b5fc556c3f0f3b0ddc710a3a870ee7ec7df176ea8bc9fac864"
+    },
+    "origins-red-tail.log": {
+      "bytes": 3044,
+      "sha256": "08b7a21d36e5b048df191605c1ad7f3b4d46947510061f5e244b3839c3025e5d"
+    },
+    "initial-prefix29-native.log": {
+      "bytes": 11455,
+      "sha256": "a875ab69a661091145a7fe468554f9a3e4e410712d1bc9422196fa51e1a819fb"
+    },
+    "native-py314.log": {
+      "bytes": 5190,
+      "sha256": "2203382f32315c12561ad1708a8bce67f185c75cc4bf3ba7446dbe8070cc738b"
+    },
+    "native-py39.log": {
+      "bytes": 3829,
+      "sha256": "488c38d39a00bd67698460b870374d7a9d43faf247ea8ce3b7805c482bad117b"
+    },
+    "portable-py39.log": {
+      "bytes": 20246,
+      "sha256": "4f08c8d0e5b055e80d67151c85943ac81157cca891e4d2d59ec7260d5b120b1a"
+    },
+    "ctest-decoder.log": {
+      "bytes": 29182,
+      "sha256": "91fe776934341d036fe1d28d0564bf2bf2c49b56dac3baa43862e2e4de274128"
+    }
+  }
+}

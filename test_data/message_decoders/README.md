@@ -46,3 +46,12 @@ direct embedded-NUL inputs. Their manifests demand the missing capability and
 therefore remain failed; the unit suite separately observes that known failure.
 See [the proof guide](../../docs/workbench/md01a-engine-proof.md) for limits,
 commands, evidence and remaining acceptance gates.
+
+## Corrected external-pack capability profile (MD01e)
+
+`ehci-capabilities.json` contains nine synthetic cases for a separately qualified
+external EHCI pack. `byte_api_probe.lua` probes real byte/NUL and reassembly APIs
+without protocol semantics. Optional `expectRaw` entries compare exact engine raw
+attributes. The historical failures above refer to the original pinned pack;
+they are preserved. See [MD01e](../../docs/workbench/md01e-ehci-capabilities.md)
+for the corrected private-pack hash, opt-in tests and remaining acceptance gates.
