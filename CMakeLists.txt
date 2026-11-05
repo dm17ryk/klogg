@@ -31,6 +31,7 @@ set(IDENTIFIER "com.github.dm17ryk.cilogg")
 set(PROJECT_DESCRIPTION "${PRODUCT_DISPLAY_NAME} log viewer")
 
 option(KLOGG_BUILD_TESTS "Build tests" ON)
+option(KLOGG_ENABLE_TERMINAL "Build the isolated terminal model (no live consumer)" OFF)
 option(KLOGG_USE_LTO "Use link time optimization" ON)
 option(KLOGG_USE_SENTRY "Enable crash dump collection" OFF)
 option(KLOGG_GENERIC_CPU "Build for generic CPU" OFF)

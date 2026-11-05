@@ -1,0 +1,337 @@
+--- a/include/cilogg_vterm_limits.h
++++ b/include/cilogg_vterm_limits.h
+@@ -0,0 +1,27 @@
++/* Copyright (C) 2026 CILogg contributors
++ * SPDX-License-Identifier: MIT
++ * CILogg-only bounds extension for the pinned libvterm source. Not upstream API.
++ */
++#ifndef CILOGG_VTERM_LIMITS_H
++#define CILOGG_VTERM_LIMITS_H
++#include "vterm.h"
++#define CILOGG_VTERM_MAX_STRING_BYTES 65536u
++#define CILOGG_VTERM_MAX_PARAMETER 65535L
++#define CILOGG_VTERM_MAX_PARAMETER_DIGITS 16u
++#define CILOGG_VTERM_MAX_WIRE_BYTES (CILOGG_VTERM_MAX_STRING_BYTES + 512u)
++typedef enum {
++  CILOGG_VTERM_LIMIT_NONE = 0,
++  CILOGG_VTERM_LIMIT_STRING = 1,
++  CILOGG_VTERM_LIMIT_PARAMETER = 2,
++  CILOGG_VTERM_LIMIT_ARGUMENTS = 3,
++  CILOGG_VTERM_LIMIT_WORK = 4,
++  CILOGG_VTERM_LIMIT_INVALID = 5
++} CILoggVTermLimit;
++#ifdef __cplusplus
++extern "C" {
++#endif
++CILoggVTermLimit cilogg_vterm_resource_limit(const VTerm *vt);
++#ifdef __cplusplus
++}
++#endif
++#endif
+--- a/src/cilogg_limits.c
++++ b/src/cilogg_limits.c
+@@ -0,0 +1,8 @@
++/* Copyright (C) 2026 CILogg contributors
++ * SPDX-License-Identifier: MIT
++ */
++#include "vterm_internal.h"
++CILoggVTermLimit cilogg_vterm_resource_limit(const VTerm *vt)
++{
++  return vt ? vt->resource_limit : CILOGG_VTERM_LIMIT_INVALID;
++}
+--- a/src/parser.c
++++ b/src/parser.c
+@@ -63,6 +63,14 @@
+ 
+ static void string_fragment(VTerm *vt, const char *str, size_t len, bool final)
+ {
++  /* CILogg: fragments may span writes; bound the whole control payload. */
++  if(vt->resource_limit)
++    return;
++  if(len > CILOGG_VTERM_MAX_STRING_BYTES - vt->string_bytes) {
++    vt->resource_limit = CILOGG_VTERM_LIMIT_STRING;
++    return;
++  }
++  vt->string_bytes += len;
+   VTermStringFragment frag = {
+     .str     = str,
+     .len     = len,
+@@ -110,6 +118,9 @@
+ 
+ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
+ {
++  /* A permanent bounds failure requires the owning model to be recreated. */
++  if(vt->resource_limit)
++    return len;
+   size_t pos = 0;
+   const char *string_start;
+ 
+@@ -137,11 +148,19 @@
+ #define IS_STRING_STATE()      (vt->parser.state >= OSC_COMMAND)
+ 
+   for( ; pos < len; pos++) {
++    if(vt->resource_limit)
++      return len;
++    /* Include headers, ignored controls and terminators, across writes. */
++    if(vt->parser.state >= DCS_COMMAND &&
++        ++vt->string_wire_bytes > CILOGG_VTERM_MAX_WIRE_BYTES) {
++      vt->resource_limit = CILOGG_VTERM_LIMIT_STRING;
++      return len;
++    }
+     unsigned char c = bytes[pos];
+     bool c1_allowed = !vt->mode.utf8;
+ 
+     if(c == 0x00 || c == 0x7f) { // NUL, DEL
+-      if(IS_STRING_STATE()) {
++      if(IS_STRING_STATE() && string_start) {
+         string_fragment(vt, string_start, bytes + pos - string_start, false);
+         string_start = bytes + pos + 1;
+       }
+@@ -171,16 +190,16 @@
+       if(vt->parser.state == SOS)
+         continue; // All other C0s permitted in SOS
+ 
+-      if(IS_STRING_STATE())
++      if(IS_STRING_STATE() && string_start)
+         string_fragment(vt, string_start, bytes + pos - string_start, false);
+       do_control(vt, c);
+-      if(IS_STRING_STATE())
++      if(IS_STRING_STATE() && string_start)
+         string_start = bytes + pos + 1;
+       continue;
+     }
+     // else fallthrough
+ 
+-    size_t string_len = bytes + pos - string_start;
++    size_t string_len = string_start ? (size_t)(bytes + pos - string_start) : 0;
+ 
+     if(vt->parser.in_esc) {
+       // Hoist an ESC letter into a C1 if we're not in a string mode
+@@ -213,6 +232,7 @@
+       vt->parser.v.csi.leader[vt->parser.v.csi.leaderlen] = 0;
+ 
+       vt->parser.v.csi.argi = 0;
++      vt->parameter_digits = 0;
+       vt->parser.v.csi.args[0] = CSI_ARG_MISSING;
+       vt->parser.state = CSI_ARGS;
+ 
+@@ -222,6 +242,12 @@
+       if(c >= '0' && c <= '9') {
+         if(vt->parser.v.csi.args[vt->parser.v.csi.argi] == CSI_ARG_MISSING)
+           vt->parser.v.csi.args[vt->parser.v.csi.argi] = 0;
++        if(++vt->parameter_digits > CILOGG_VTERM_MAX_PARAMETER_DIGITS ||
++            vt->parser.v.csi.args[vt->parser.v.csi.argi] >
++              (CILOGG_VTERM_MAX_PARAMETER - (c - '0')) / 10) {
++          vt->resource_limit = CILOGG_VTERM_LIMIT_PARAMETER;
++          return len;
++        }
+         vt->parser.v.csi.args[vt->parser.v.csi.argi] *= 10;
+         vt->parser.v.csi.args[vt->parser.v.csi.argi] += c - '0';
+         break;
+@@ -231,7 +257,12 @@
+         c = ';';
+       }
+       if(c == ';') {
++        if(vt->parser.v.csi.argi + 1 >= CSI_ARGS_MAX) {
++          vt->resource_limit = CILOGG_VTERM_LIMIT_ARGUMENTS;
++          return len;
++        }
+         vt->parser.v.csi.argi++;
++        vt->parameter_digits = 0;
+         vt->parser.v.csi.args[vt->parser.v.csi.argi] = CSI_ARG_MISSING;
+         break;
+       }
+@@ -263,8 +294,13 @@
+       if(c >= '0' && c <= '9') {
+         if(vt->parser.v.osc.command == -1)
+           vt->parser.v.osc.command = 0;
+-        else
+-          vt->parser.v.osc.command *= 10;
++        if(++vt->parameter_digits > CILOGG_VTERM_MAX_PARAMETER_DIGITS ||
++            vt->parser.v.osc.command >
++              (CILOGG_VTERM_MAX_PARAMETER - (c - '0')) / 10) {
++          vt->resource_limit = CILOGG_VTERM_LIMIT_PARAMETER;
++          return len;
++        }
++        vt->parser.v.osc.command *= 10;
+         vt->parser.v.osc.command += c - '0';
+         break;
+       }
+@@ -321,11 +357,15 @@
+       if(c1_allowed && c >= 0x80 && c < 0xa0) {
+         switch(c) {
+         case 0x90: // DCS
++          vt->string_bytes = 0;
++          vt->string_wire_bytes = 2;
+           vt->parser.string_initial = true;
+           vt->parser.v.dcs.commandlen = 0;
+           ENTER_STATE(DCS_COMMAND);
+           break;
+         case 0x98: // SOS
++          vt->string_bytes = 0;
++          vt->string_wire_bytes = 2;
+           vt->parser.string_initial = true;
+           ENTER_STATE(SOS);
+           string_start = bytes + pos + 1;
+@@ -336,18 +376,25 @@
+           ENTER_STATE(CSI_LEADER);
+           break;
+         case 0x9d: // OSC
++          vt->string_bytes = 0;
++          vt->string_wire_bytes = 2;
++          vt->parameter_digits = 0;
+           vt->parser.v.osc.command = -1;
+           vt->parser.string_initial = true;
+           string_start = bytes + pos + 1;
+           ENTER_STATE(OSC_COMMAND);
+           break;
+         case 0x9e: // PM
++          vt->string_bytes = 0;
++          vt->string_wire_bytes = 2;
+           vt->parser.string_initial = true;
+           ENTER_STATE(PM);
+           string_start = bytes + pos + 1;
+           string_len = 0;
+           break;
+         case 0x9f: // APC
++          vt->string_bytes = 0;
++          vt->string_wire_bytes = 2;
+           vt->parser.string_initial = true;
+           ENTER_STATE(APC);
+           string_start = bytes + pos + 1;
+@@ -377,7 +424,7 @@
+ 
+   if(string_start) {
+     size_t string_len = bytes + pos - string_start;
+-    if(vt->parser.in_esc)
++    if(vt->parser.in_esc && string_len)
+       string_len -= 1;
+     string_fragment(vt, string_start, string_len, false);
+   }
+--- a/src/screen.c
++++ b/src/screen.c
+@@ -186,14 +186,18 @@
+   if(i < VTERM_MAX_CHARS_PER_CELL)
+     cell->chars[i] = 0;
+ 
+-  for(int col = 1; col < info->width; col++)
++  /* CILogg: clip wide continuations at the screen edge, including REP. */
++  int width = info->width;
++  if(width > screen->cols - pos.col)
++    width = screen->cols - pos.col;
++  for(int col = 1; col < width; col++)
+     getcell(screen, pos.row, pos.col + col)->chars[0] = (uint32_t)-1;
+ 
+   VTermRect rect = {
+     .start_row = pos.row,
+     .end_row   = pos.row+1,
+     .start_col = pos.col,
+-    .end_col   = pos.col+info->width,
++    .end_col   = pos.col+width,
+   };
+ 
+   cell->pen.protected_cell = info->protected_cell;
+--- a/src/state.c
++++ b/src/state.c
+@@ -186,18 +186,25 @@
+ 
+ static void set_col_tabstop(VTermState *state, int col)
+ {
++  /* CILogg: never index the tab bitmap with an invalid cursor. */
++  if(col < 0 || col >= state->cols)
++    return;
+   unsigned char mask = 1 << (col & 7);
+   state->tabstops[col >> 3] |= mask;
+ }
+ 
+ static void clear_col_tabstop(VTermState *state, int col)
+ {
++  if(col < 0 || col >= state->cols)
++    return;
+   unsigned char mask = 1 << (col & 7);
+   state->tabstops[col >> 3] &= ~mask;
+ }
+ 
+ static int is_col_tabstop(VTermState *state, int col)
+ {
++  if(col < 0 || col >= state->cols)
++    return 0;
+   unsigned char mask = 1 << (col & 7);
+   return state->tabstops[col >> 3] & mask;
+ }
+@@ -322,12 +329,11 @@
+ 
+       /* Add extra ones */
+       while(i < npoints && vterm_unicode_is_combining(codepoints[i])) {
+-        if(saved_i >= state->combine_chars_size)
+-          grow_combine_buffer(state);
+-        state->combine_chars[saved_i++] = codepoints[i++];
++        /* CILogg: match the bulk path's fixed screen-cell capacity. */
++        if(saved_i < VTERM_MAX_CHARS_PER_CELL)
++          state->combine_chars[saved_i++] = codepoints[i];
++        i++;
+       }
+-      if(saved_i >= state->combine_chars_size)
+-        grow_combine_buffer(state);
+       state->combine_chars[saved_i] = 0;
+ 
+ #ifdef DEBUG_GLYPH_COMBINE
+@@ -361,12 +367,11 @@
+     for( ; i < glyph_ends; i++) {
+       chars[i - glyph_starts] = codepoints[i];
+       int this_width = vterm_unicode_width(codepoints[i]);
+-#ifdef DEBUG
+       if(this_width < 0) {
+-        fprintf(stderr, "Text with negative-width codepoint U+%04x\n", codepoints[i]);
+-        abort();
++        /* CILogg: decoded C1/control scalars must not move the cursor left. */
++        chars[i - glyph_starts] = 0xfffd;
++        this_width = 1;
+       }
+-#endif
+       width += this_width;
+     }
+ 
+@@ -1230,6 +1235,9 @@
+     break;
+ 
+   case 0x62: { // REP - ECMA-48 8.3.103
++    /* CILogg: REP before any positive-width glyph is a bounded no-op. */
++    if(state->combine_width <= 0 || !state->combine_chars[0])
++      break;
+     const int row_width = THISROWWIDTH(state);
+     count = CSI_ARG_COUNT(args[0]);
+     col = state->pos.col + count;
+--- a/src/vterm_internal.h
++++ b/src/vterm_internal.h
+@@ -2,6 +2,7 @@
+ #define __VTERM_INTERNAL_H__
+ 
+ #include "vterm.h"
++#include "cilogg_vterm_limits.h"
+ 
+ #include <stdarg.h>
+ 
+@@ -86,7 +87,8 @@
+ 
+   /* lineinfo will == lineinfos[0] or lineinfos[1], depending on altscreen */
+   VTermLineInfo *lineinfo;
+-#define ROWWIDTH(state,row) ((state)->lineinfo[(row)].doublewidth ? ((state)->cols / 2) : (state)->cols)
++/* CILogg: even a double-width line retains one usable logical column. */
++#define ROWWIDTH(state,row) ((state)->lineinfo[(row)].doublewidth && (state)->cols > 1 ? ((state)->cols / 2) : (state)->cols)
+ #define THISROWWIDTH(state) ROWWIDTH(state, (state)->pos.row)
+ 
+   /* Mouse state */
+@@ -181,6 +183,12 @@
+   int rows;
+   int cols;
+ 
++  /* CILogg: sticky resource status and counters, never input bodies. */
++  CILoggVTermLimit resource_limit;
++  size_t string_bytes;
++  size_t string_wire_bytes;
++  unsigned int parameter_digits;
++
+   struct {
+     unsigned int utf8:1;
+     unsigned int ctrl8bit:1;

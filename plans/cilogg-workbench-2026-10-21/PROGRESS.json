@@ -118,16 +118,30 @@
     "nextAfterUnifiedTerminal": "W1",
     "currentPreparation": {
       "workstream": "unified_terminal",
-      "task": "UT00",
-      "slice": "UT00a",
-      "plan": "slices/UT00a-terminal-baseline.md",
+      "task": "UT01",
+      "slice": "UT01a",
+      "plan": "slices/UT01a-terminal-model.md",
       "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
-      "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+      "baseline": "7429f991c70b8937b15058802e8a342a6a4e9ddf",
       "formalEntryGatesUnchanged": true,
-      "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
-      "date": "2026-11-05",
-      "state": "open_pr",
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+      "previousPreparation": {
+        "workstream": "unified_terminal",
+        "task": "UT00",
+        "slice": "UT00a",
+        "plan": "slices/UT00a-terminal-baseline.md",
+        "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
+        "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+        "formalEntryGatesUnchanged": true,
+        "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
+        "date": "2026-11-05",
+        "state": "open_pr",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+      },
+      "nextPreparation": "UT02 shared session/transport foundations; live integration retains F01/D01 gates",
+      "date": "2026-11-06",
+      "state": "implemented_pending_hosted",
+      "evidence": "../../docs/workbench/ut01-terminal-model.md",
+      "branch": "codex/terminal-emulator-ut01"
     }
   },
   "tasks": {
@@ -986,7 +1000,7 @@
                     },
                     {
                       "name": "TIMEOUT",
-                      "value": 600.0
+                      "value": 600
                     },
                     {
                       "name": "WORKING_DIRECTORY",
@@ -2124,15 +2138,25 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": ["../../docs/workbench/tshark-preview.md"],
-      "limitations": ["MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."],
+      "evidence": [
+        "../../docs/workbench/tshark-preview.md"
+      ],
+      "limitations": [
+        "MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."
+      ],
       "slices": [
         {
           "id": "MD03a",
           "status": "completed",
           "scope": "Opt-in TShark/Lua message preview across GUI, CLI and native MCP",
-          "evidence": ["slices/MD03a-preview-integration.md", "../../tests/mcp/tshark_preview_parity.py"],
-          "limitations": ["Local Windows evidence is distinct from hosted CI, other platforms and release qualification.", "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."]
+          "evidence": [
+            "slices/MD03a-preview-integration.md",
+            "../../tests/mcp/tshark_preview_parity.py"
+          ],
+          "limitations": [
+            "Local Windows evidence is distinct from hosted CI, other platforms and release qualification.",
+            "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."
+          ]
         }
       ]
     },

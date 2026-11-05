@@ -1,2 +1,5 @@
 # Unified patches contain significant context whitespace and need stable line endings.
 *.patch text eol=lf -whitespace
+
+# Keep source-pin byte hashes identical in fresh Windows and Unix checkouts.
+3rdparty/libvterm/** text eol=lf
