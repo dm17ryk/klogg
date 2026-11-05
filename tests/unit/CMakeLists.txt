@@ -30,6 +30,7 @@ add_executable(cilogg_tests
     sessioninfo_test.cpp
     versionchecker_test.cpp
     wrappedstring_test.cpp
+    datasetreference_test.cpp
     tests_main.cpp
 )
 
@@ -57,3 +58,5 @@ add_test(
 )
 set_tests_properties(cilogg_tests PROPERTIES TIMEOUT 180)
 # set_tests_properties(cilogg_tests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:cilogg_tests>")
+
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetreference_test.cpp")

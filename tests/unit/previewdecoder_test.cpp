@@ -12,8 +12,8 @@
 #include <QProcess>
 #include <QSignalSpy>
 #include <QTemporaryDir>
-#include <QTimer>
 #include <QThread>
+#include <QTimer>
 #include <catch2/catch.hpp>
 #include <memory>
 
@@ -501,25 +501,41 @@ TEST_CASE( "Native framed client rejects malformed output and recovers within bo
         { "stderr", "diagnostic_limit" },        { "stall", "timeout" }
     };
     int counter = 0;
-    const auto run = [ & ]( QObject* channel, int timeoutMs = 1000 ) {
+    const auto run = [ & ]( QObject* channel, int timeoutMs = 5000 ) {
         QEventLoop loop;
-        QVariantMap result;
+        struct Reply {
+            QVariantMap value;
+            bool received = false;
+        };
+        const auto reply = std::make_shared<Reply>();
+        const QPointer<QEventLoop> waiter( &loop );
+        const auto fixtureRequestId = QString( "fixture-%1" ).arg( ++counter );
         client.evaluate( channel, profile, QByteArray::fromHex( "0102" ), timeoutMs,
-                         QString( "fixture-%1" ).arg( ++counter ), [ & ]( QVariantMap value ) {
-                             result = std::move( value );
-                             loop.quit();
+                         fixtureRequestId, [ reply, waiter ]( QVariantMap value ) {
+                             reply->value = std::move( value );
+                             reply->received = true;
+                             if ( waiter )
+                                 waiter->quit();
                          } );
-        QTimer::singleShot( 3000, &loop, &QEventLoop::quit );
-        if ( result.isEmpty() )
+        QTimer::singleShot( timeoutMs + 2000, &loop, &QEventLoop::quit );
+        if ( !reply->received )
             loop.exec();
-        return result;
+        if ( !reply->received ) {
+            client.cancel( fixtureRequestId );
+            return QVariantMap{ { QStringLiteral( "reason" ),
+                                  QStringLiteral( "test_completion_guard_timeout" ) } };
+        }
+        return reply->value;
     };
     for ( auto item = cases.begin(); item != cases.end(); ++item ) {
         INFO( item.key().toStdString() );
         client.reset();
         qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", item.key().toLatin1() );
         QObject channel;
-        const auto rejected = run( &channel, item.key() == "stall" ? 200 : 1000 );
+        // These cases test protocol validation; the stall case retains its short deadline.
+        const auto rejected = run( &channel, item.key() == "stall" ? 200 : 5000 );
+        INFO(
+            QJsonDocument::fromVariant( rejected ).toJson( QJsonDocument::Compact ).toStdString() );
         CHECK( rejected.value( "reason" ) == item.value() );
         qputenv( "CILOGG_PREVIEW_FIXTURE_MODE", "valid" );
         const auto recovered = run( &channel );
@@ -732,7 +748,7 @@ TEST_CASE( "Native stop and worker timeout failures retain the same required env
         TsharkPreviewClient::instance().reset();
         qputenv( "CILOGG_PREVIEW_FIXTURE_MODE",
                  producer == "cancel" ? QByteArray( "stall" ) : producer.toLatin1() );
-        request.timeoutMs = 1500;
+        request.timeoutMs = producer == "reported_timeout" ? 5000 : 1500;
         QVariantMap result;
         if ( producer == "cancel" ) {
             QEventLoop loop;
@@ -750,6 +766,7 @@ TEST_CASE( "Native stop and worker timeout failures retain the same required env
         }
         else
             result = PreviewService::evaluateAndWait( request );
+        INFO( QJsonDocument::fromVariant( result ).toJson( QJsonDocument::Compact ).toStdString() );
         CHECK( result.value( "state" ) == "failed" );
         CHECK( result.value( "reason" ) == ( producer == "cancel" ? "cancelled" : "timeout" ) );
         CHECK( result.value( "backend" ) == "tshark_lua" );

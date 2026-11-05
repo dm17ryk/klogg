@@ -1,0 +1,156 @@
+{
+  "slice": "F01e",
+  "base": "080b504c184796ad3942383149d0385503dd9643",
+  "scope": "Internal revision stamps and tagged cursor/lineage bindings; no public operation or token registry",
+  "localQt": "6.10.1",
+  "red": {
+    "cases": 9,
+    "failedAssertions": 9,
+    "compiled": true
+  },
+  "baseline": {
+    "assertions": 332,
+    "cases": 6
+  },
+  "focusedStandalone": {
+    "assertions": 133,
+    "cases": 9,
+    "passed": true
+  },
+  "strictClang": {
+    "translationUnits": 5,
+    "exitCode": 0,
+    "seconds": 77.37478660000488,
+    "includesHostedWarnings": true
+  },
+  "sourceInputs": {
+    "src/logdata/include/datasetreference.h": "27195fbd7171e09f17945d786b9d6288ecbf431f551a4e300e53445ed788c412",
+    "src/logdata/src/datasetreference.cpp": "4c9c96ef29af7e9fa10062096b01b18779e2d1bd7a2a33a37347112820306768",
+    "tests/unit/datasetreference_test.cpp": "eef3e29b20901555afc44a61c0675e45b5405b2a3f7c6785189272b4fb1a4c57",
+    "src/logdata/CMakeLists.txt": "6d0c2a8616e065adb2f026168fbb7e4bb1ece0ad504829e97f15432415e98734",
+    "tests/unit/CMakeLists.txt": "7638944d8b3e47f6b8f6c185cfa0caf7dbf5d76caed68fe4bce9e42b3b017357",
+    "tests/unit/previewdecoder_fixture.cpp": "6e63409ee2111b39dc52b82ca0df22d3f4382539df3ee476f97432d2d0b10369",
+    "tests/unit/previewdecoder_test.cpp": "af33d38d4a8a2e96692843ea33f7ef1cc5f28a20f4a0f3059694a0734a5fda01",
+    "tests/unit/previewservice_test.cpp": "b8cb444a63e09fd61e2c457cdd5bb252ecb12fdf79e86ece8b30cfabdb20a434"
+  },
+  "nativeBuild": {
+    "exitCode": 0,
+    "seconds": 583.8843479000498,
+    "configuration": "RelWithDebInfo",
+    "target": "ci_build",
+    "compiler": "MSVC VS2022",
+    "finalInputs": true
+  },
+  "fullCTest": {
+    "status": "passed",
+    "initialAttempts": [
+      {
+        "exitCode": 8,
+        "groupsPassed": 6,
+        "groupsTotal": 7,
+        "seconds": 552.26,
+        "failure": "two existing MainWindow harness subprocess30s timeouts"
+      },
+      {
+        "exitCode": 8,
+        "groupsPassed": 6,
+        "groupsTotal": 7,
+        "seconds": 849.38,
+        "failure": "existing preview/decoder fixture reason and retained engine metadata expectations; parity passed"
+      },
+      {
+        "exitCode": 8,
+        "groupsPassed": 6,
+        "groupsTotal": 7,
+        "failure": "first attributes case and recovery under1000ms cold-process budget"
+      }
+    ],
+    "exitCode": 0,
+    "groupsPassed": 7,
+    "groupsTotal": 7,
+    "seconds": 489.98,
+    "wrapperSeconds": 490.2162990999641,
+    "freshDeployedIsolatedRuntime": true
+  },
+  "review": {
+    "status": "pending"
+  },
+  "limits": [
+    "Qt5 and hosted platform/backend qualification pending",
+    "No production token issuance, lifecycle or GUI/CLI/MCP integration",
+    "Full F01/W0/MD01 acceptance remains open",
+    "Real TShark/Lua opt-in fixtures skip when explicit engine paths are absent; this run is not real-engine qualification"
+  ],
+  "indexes": {
+    "codeGraph": "worktree unindexed; not initialized",
+    "gitNexus": {
+      "refreshExitCode": 124,
+      "timeoutSeconds": 90,
+      "authoritative": false,
+      "reason": "parser worker startup crashes and idle timeouts",
+      "detectChanges": "Final staged attempt exited0 and returned no changes with a38-commit-stale sibling warning; not structural verification"
+    },
+    "codeReviewGraph": {
+      "refreshFiles": 4,
+      "nodes": 19,
+      "edges": 1420,
+      "ftsRemoved": 65,
+      "ftsIndexed": 66,
+      "changedSymbols": 52,
+      "affectedFlows": 0,
+      "heuristicTestGaps": 45,
+      "heuristicsAreCoverageEvidence": false,
+      "impactFiles": 3,
+      "additionalImpactedNodes": 0,
+      "crossProcessLinksNotInferred": true
+    }
+  },
+  "focusedNative": {
+    "exitCode": 0,
+    "seconds": 0.8142755000153556,
+    "assertions": 133,
+    "cases": 9,
+    "isolatedRuntime": true
+  },
+  "frozenInputsVerifiedAfterBuild": true,
+  "nativeArtifacts": {
+    "cilogg.exe": "4924766f983218041c5a4f1c53da969bb7eff091a8d2bff78f4851628bacdbf6",
+    "cilogg_tests.exe": "76b069ba278218145d8d57a80ba974fe9af1d97d901ec2c3e1ecb70fb86667af",
+    "cilogg_itests.exe": "9f508fa5b09c7e69c7f63113f84048337a255e992d3c68e0e871b1733f680726",
+    "preview_decoder_fixture.exe": "ea4de87aab2bbde29bfdd1ea05b1da571c61beccaefa2971446851ded70ecb73",
+    "preview_worker_fixture.exe": "8c3a22b04f3a012ccb862014030f5ea8ffeb2dcccead3f0bfaa9cd17b032eff7",
+    "analysis_worker_fixture.exe": "8a240016a00585ff8cd8a4d6fa3970f6193314f38853147db0e5874f36a6a1fc"
+  },
+  "warningRegression": {
+    "redExitCode": 1,
+    "errors": 2,
+    "reason": "QVariant range-loop copies",
+    "fix": "const references; assertions unchanged",
+    "green": "strict output recorded separately",
+    "greenExitCode": 0
+  },
+  "previewFixtureRegression": {
+    "coldStartDelayMs": 1200,
+    "red": {
+      "exitCode": 2,
+      "failedAssertions": 2,
+      "seconds": 2.539665599935688,
+      "observedReason": "timeout",
+      "expectedReason": "worker_protocol_error"
+    },
+    "green": {
+      "exitCode": 0,
+      "seconds": 48.77761639992241,
+      "assertions": 76,
+      "cases": 1
+    },
+    "productionBudgetsUnchanged": true
+  },
+  "relatedNative": {
+    "exitCode": 0,
+    "seconds": 23.432648400077596,
+    "assertions": 408,
+    "cases": 34,
+    "realEngineCasesSkippedWhenPathsAbsent": true
+  }
+}

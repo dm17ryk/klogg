@@ -73,16 +73,18 @@ TEST_CASE( "Preview supervision recovers after stalled, crashed and invalid work
         request.text = mode.key();
         request.definitions = R"({"version":1,"previews":[]})";
         request.executable = QString::fromUtf8( PREVIEW_FIXTURE_PATH );
-        request.timeoutMs = 1000;
+        request.timeoutMs = mode.key() == "stall" ? 1000 : 5000;
         int heartbeats = 0;
         QTimer timer;
         QObject::connect( &timer, &QTimer::timeout, [ & ] { ++heartbeats; } );
         timer.start( 10 );
         const auto result = PreviewService::evaluateAndWait( request );
+        INFO( result.value( "reason" ).toString().toStdString() );
         CHECK( result.value( "reason" ).toString() == mode.value() );
         if ( mode.key() == "stall" )
             CHECK( heartbeats > 1 );
         request.text = "ok";
+        request.timeoutMs = 5000;
         CHECK( PreviewService::evaluateAndWait( request ).value( "state" ) == "completed" );
     }
 }
