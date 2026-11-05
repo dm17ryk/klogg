@@ -1237,7 +1237,7 @@
             "Provide table-shape-v1 schema metadata only. Known reserved FieldType declarations do not enable payload support; later consumers must gate unsupported payloads and implement/version pages/cursors/query/additional shapes/full dataset JSON Schema.",
             "Keep schema tests in datasetschema_test.cpp separately from PR91 event-origin tests to allow independent builds/review; related contract tests are split across files."
           ],
-          "localVerification": "Scalar baseline332/6; empty API RED9 failed cases/14 assertions; QtCore-only runner506/12; native MSVC Qt6.10.1 ci_build; strict Clang2TUs; native focused506/12. Full isolated CTest7/7 passed337.97s (unit12743/integration3172/GUI22721 assertions). All5 tested source/build-registration hashes unchanged. Final whole-branch C++/general review pending.",
+          "localVerification": "Scalar baseline332/6; empty API RED9 failed cases/14 assertions; QtCore-only runner506/12; native MSVC Qt6.10.1 ci_build; strict Clang2TUs; native focused506/12. Full isolated CTest7/7 passed337.97s (unit12743/integration3172/GUI22721 assertions). All5 tested source/build-registration hashes unchanged. Fresh whole-branch C++ and general reviews approved with no actionable findings; runtime reproduction was not repeated by reviewers.",
           "limitations": [
             "Schema describes types; reserved payload parsing/encoding remains gated.",
             "Only table shape/version1 is supported. More shapes need checked versioned metadata.",

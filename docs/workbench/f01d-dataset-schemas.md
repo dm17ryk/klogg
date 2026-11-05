@@ -18,7 +18,9 @@ MSVC Qt6.10.1 ci_build passed; strict Clang conversion/sign/width checks passed
 both new TUs. Full isolated registered CTest passed7/7 in337.97s, including
 12,743 unit,3,172 integration and22,721 GUI regression assertions.
 See [structured observations](./f01d-observations.json) for frozen source hashes.
-Fresh whole-branch C++ and general reviews are pending.
+Fresh whole-branch C++ and general reviews approved with no actionable findings.
+Reviewers inspected the supplied validation evidence without independently rerunning
+builds/tests; Qt5/hosted/backend/release and complete analyzer gates remain open.
 
 Decisions: table-shape-v1 metadata only; known reserved types do not enable their
 payload codecs. Additional shapes, pages/cursors/query/full dataset schema and

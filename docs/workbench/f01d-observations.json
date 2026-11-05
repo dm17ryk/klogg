@@ -92,5 +92,11 @@
     "F01/W0/MD01 and unmeasured P00 release/performance gates remain open.",
     "Local Qt6 does not establish Qt5, accelerated-backend, hosted native platform or installer acceptance.",
     "No source bodies, user configuration, private Lua or captures are included."
-  ]
+  ],
+  "review": {
+    "range": "080b504c..26c2e2f8",
+    "cpp": "APPROVE; no actionable findings",
+    "general": "APPROVE; no actionable findings",
+    "runtimeReproduction": "Build/tests executed by implementer; reviewers inspected evidence read-only without independent runtime reproduction."
+  }
 }
