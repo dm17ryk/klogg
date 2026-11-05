@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 139,
-  "validatedLocalLinks": 533,
+  "markdownFiles": 141,
+  "validatedLocalLinks": 537,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -52,5 +52,11 @@
     "terminalRuntimeRun": false,
     "platformHardwareRun": false,
     "scope": "Planning import and sequencing only; embedded source handoff is not executed."
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
   }
 }

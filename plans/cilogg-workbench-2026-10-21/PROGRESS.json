@@ -1169,11 +1169,14 @@
         "../../docs/workbench/f01a-exact-values.md",
         "../../docs/workbench/f01b-line-provenance.md",
         "../../tests/unit/fieldvalue_test.cpp",
-        "../../tests/ui/analysisjob_test.cpp"
+        "../../tests/ui/analysisjob_test.cpp",
+        "../../docs/workbench/f01c-event-origins.md",
+        "../../docs/workbench/f01c-observations.json",
+        "../../tests/unit/datasetcontracts_test.cpp"
       ],
       "limitations": [
-        "Only internal F01a scalar and F01b physical-line provenance foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
-        "Event identity/discriminated origins, event-level spans, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
+        "Only internal F01a exact values, F01b physical-line provenance and F01c event-origin prerequisites are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
+        "Event/field-level byte mappings, full manifests/resolvers, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
       ],
       "slices": [
         {
@@ -1218,6 +1221,28 @@
           ],
           "commit": "31e5dd165240820c0864f17f2a90b0a6dfec986b",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/87"
+        },
+        {
+          "id": "F01c",
+          "status": "implemented_pending_gates",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-event-origins",
+          "scope": "Unused internal checked physical/inline/deferred-file/managed-byte event origins, weak physical lifetime validation, stable event keys and exact version-1 metadata codec; independent of PR90",
+          "rulings": [
+            "All factories return DataResult; physical origin stores one frozen snapshot and row endpoints. Malformed inline inputs fail and decoded physical metadata stays historical/unbound. Future consumers must check errors and obtain validated endpoint locations.",
+            "SourceManifestEntry/DeferredSourceVerification are bounded metadata DTOs. Full manifest registry, richer file-change identity and strong materialization belong to F07/F16 and require versioned integration."
+          ],
+          "localVerification": "Fresh MSVC Qt6.10.1 ci_build; strict Clang syntax on both new TUs; focused124 assertions/12cases. Full isolated CTest7/7 passed285.77s (unit12361/integration3172/GUI22721 assertions). Source/build-registration SHA256 unchanged through native build and tests. Final general/C++ review pending.",
+          "limitations": [
+            "No new public operations or consumer parity is claimed for this unused internal contract.",
+            "No source bodies, private Lua scripts, captures or user configuration are included.",
+            "F01/W0/MD01, full manifests/resolvers, per-character byte mapping, datasets/cursors and consumer integration remain open.",
+            "Qt5, accelerated backend and hosted native platform acceptance remain pending.",
+            "Existing unmeasured P00/W0 performance and release budgets remain open.",
+            "GitNexus refresh timed out; CodeGraph unindexed. Code-review-graph refreshed72nodes/689edges; unresolved global calls and static test-gap heuristics are not complete coverage proof."
+          ],
+          "commit": null,
+          "pullRequest": null
         }
       ]
     },
