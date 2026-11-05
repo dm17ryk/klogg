@@ -3,6 +3,7 @@
 #include "previewmanager.h"
 #include "previewservice.h"
 #include <QComboBox>
+#include <QDir>
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QCoreApplication>
@@ -15,6 +16,7 @@
 #include <QTemporaryFile>
 #include <QTest>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <catch2/catch.hpp>
 #ifndef Q_OS_MACOS
 #include "mainwindow.h"
@@ -212,6 +214,87 @@ TEST_CASE( "Real TShark Lua preview renders direct and mapped fields",
     mapped.findChild<QPushButton*>( "previewRun" )->click();
     REQUIRE( QTest::qWaitFor( [ & ] { return !mapped.result().isEmpty(); }, 10000 ) );
     CHECK( mapped.result().value( "backend" ) == "json_preview" );
+}
+
+TEST_CASE( "Real EHCI partial and binary capabilities render exact preview fields",
+           "[.][previewehcicapabilitiesui]" )
+{
+    const auto script = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITIES_LUA" );
+    const auto fixtures = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITY_FIXTURES" );
+    REQUIRE_FALSE( script.isEmpty() );
+    REQUIRE_FALSE( fixtures.isEmpty() );
+    REQUIRE_FALSE( qEnvironmentVariable( "CILOGG_TSHARK" ).isEmpty() );
+    REQUIRE_FALSE( qEnvironmentVariable( "CILOGG_TEXT2PCAP" ).isEmpty() );
+    RestoreDecoder restore;
+    RestorePreviews definitions;
+    PreviewManager::instance().clearAll();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true },
+          { "allowExternalLua", true },
+          { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+          { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+          { "lua", QVariantList{ script } },
+          { "defaultDissector", "ehci" },
+          { "inputEncoding", "hex" } } ) );
+    for ( const auto* name : { "ehci-partial.hex", "ehci-nul.hex",
+                              "ehci-crc-in-value-partial.hex" } ) {
+        INFO( name );
+        QFile input( QDir( fixtures ).filePath( QString::fromLatin1( name ) ) );
+        REQUIRE( input.open( QIODevice::ReadOnly ) );
+        PreviewMessageTab tab( QString::fromLatin1( input.readAll() ).trimmed(), "Auto", 1 );
+        tab.resize( 1150, 760 );
+        tab.show();
+        auto* timeout = tab.findChild<QSpinBox*>( "previewTimeoutMs" );
+        REQUIRE( timeout );
+        timeout->setValue( 10000 );
+        tab.findChild<QPushButton*>( "previewRun" )->click();
+        REQUIRE( QTest::qWaitFor( [ & ] { return !tab.result().isEmpty(); }, 15000 ) );
+        const auto result = tab.result();
+        INFO( tab.findChild<QLabel*>( "previewStatus" )->text().toStdString() );
+        REQUIRE( result.value( "available" ).toBool() );
+        CHECK( result.value( "backend" ) == "tshark_lua" );
+        CHECK( result.value( "offsetSpace" ) == "engine_data_source_unresolved" );
+        CHECK( result.value( "messageCompleteness" ) == "not_reported" );
+        const auto fields = result.value( "fields" ).toList();
+        auto* tree = tab.findChild<QTreeWidget*>( "previewFields" );
+        REQUIRE( tree );
+        QVector<QTreeWidgetItem*> ordered;
+        for ( QTreeWidgetItemIterator item( tree ); *item; ++item )
+            ordered.push_back( *item );
+        REQUIRE( ordered.size() == fields.size() );
+        int checksums = 0;
+        bool rawNul = false;
+        bool followingValue = false;
+        for ( int index = 0; index < ordered.size(); ++index ) {
+            const auto field = fields[ index ].toMap();
+            const auto columns = field.value( "columns" ).toList();
+            REQUIRE( columns.size() == 5 );
+            for ( int column = 0; column < 5; ++column )
+                CHECK( ordered[ index ]->text( column ) == columns[ column ].toString() );
+            CHECK_FALSE( ordered[ index ]->data( 0, Qt::UserRole ).isValid() );
+            const auto attributes = field.value( "attributes" ).toMap();
+            const auto fieldName = attributes.value( "name" ).toString();
+            if ( fieldName == "ehci.checksum.valid" )
+                ++checksums;
+            if ( fieldName == "ehci.map.value_raw" )
+                rawNul = rawNul || attributes.value( "value" ) == "780079";
+            if ( fieldName == "ehci.map.value" )
+                followingValue = followingValue || columns[ 1 ] == "after";
+        }
+        const bool nulFixture = QString::fromLatin1( name ) == "ehci-nul.hex";
+        CHECK( checksums == ( nulFixture ? 1 : 0 ) );
+        if ( nulFixture ) {
+            CHECK( rawNul );
+            CHECK( followingValue );
+        }
+        CHECK_FALSE( PreviewService::tooltipHtml( result ).isEmpty() );
+        const auto screenshots = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITY_SCREENSHOTS" );
+        if ( !screenshots.isEmpty() ) {
+            REQUIRE( QDir().mkpath( screenshots ) );
+            REQUIRE( tab.grab().save( QDir( screenshots ).filePath(
+                QString::fromLatin1( name ) + ".png" ) ) );
+        }
+    }
 }
 
 #ifndef Q_OS_MACOS
