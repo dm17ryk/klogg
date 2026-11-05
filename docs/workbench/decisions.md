@@ -109,3 +109,7 @@ The source's embedded implementation prompt is reference material for future
 execution. Technical selections, names and budgets remain proposals to reconcile
 in UT00/UT01 and backend cards. This documentation change implements no terminal,
 executes no shell/device command and claims no runtime/platform/hardware evidence.
+
+## D10 — Terminal preparation is the current workstream
+
+On 2026-11-05 the user clarified that Unified Terminal follows the merged TShark Preview work (PR #90), rather than unrelated F01 expansion. Prepare the [UT00a baseline](ut00-terminal-baseline.md) now. PROGRESS.json.executionPolicy.currentPreparation identifies this scoped work. Preserve the full MD01–MD06 acceptance boundary and the existing hard DAG: UT00 still depends on MD06 and live UT02 on F01/D01. A merged preview qualification is not full decoder acceptance. Subsequent terminal increments must include their necessary existing-owner foundations and the shared GUI/CLI/native-MCP/Python surface. No new connection, recorder or authorization path is approved by this source audit.

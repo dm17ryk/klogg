@@ -1,0 +1,119 @@
+{
+  "slice": "UT00a",
+  "base": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+  "scope": "Source and plan reconciliation only; no terminal runtime",
+  "userWorkstream": "Unified Terminal after merged TShark Preview PR90",
+  "preview": {
+    "mergedPullRequest": 90,
+    "mergeCommit": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+    "successfulChecks": 37,
+    "fullDecoderCoreComplete": false,
+    "privateQualifiedPackBundled": false
+  },
+  "sourceBlobSha256": {
+    "src/ui/include/streamsession.h": "edb34a93181b7a3879265e9441522c028dca853638583ce0439178848204d04b",
+    "src/ui/src/streamsession.cpp": "a79cf53d2c4707922ae7c945a7928e702dca54bf7f61684649b776c2f1a4800e",
+    "src/ui/src/serialcaptureworker.cpp": "7ec48d975a8844a2a78a6b1fcedf9f18e3d8e8bac65ce00b39247a6ab8ae0ba5",
+    "src/ui/src/mainwindow.cpp": "42a76acc98cbd2362f1c31efc44a8c6c8ac7d6eabc8dc1804e84cdb6043bd356",
+    "src/ui/src/crawlerwidget.cpp": "9fd30d04fd21141691cdc660fed1afa41fd5b329335ecf2be6b79b1aaa814fcd",
+    "src/ui/include/streamsourceregistry.h": "86c61029a1ad981795bfda2db0d6de9855ff1a1319f942ee7396d8a34ef49496",
+    "src/ui/src/actionruntime.cpp": "4e2632d256ead53be1d5b14e1bf338744cd9058d42ea32ffa85242ae071d17bc",
+    "src/ui/src/commander.cpp": "3aad56875b8a4ad728a319813c938999e288e02ac7503147f863d671c20e91a3",
+    "src/app/kloggapp.h": "bcaa3c74daff55d509a5ed3591cf0cc03feff4e9c05f4c6c0228dffc008bd173",
+    "src/app/mcp/runtime.cpp": "39d3886780bb0a8c52adce76427ea07318b83a87fdd03aee83cc5cb22708c0e8",
+    "src/ui/src/sessioninfo.cpp": "0bfcc2e4033ca423a3a670aa803c7675195313dc2122ffd919d62cb62222d570",
+    "src/plugins/src/pluginprocess.cpp": "c6fc4c7542a879e9f8c5bdb8e2536530901de86afde3fd9ca9327230c04f8834",
+    "docs/plugin-sdk.md": "f956e362d6682021c6320f52924714626e694e88487d3b236d6a35264e64e959",
+    ".github/workflows/ci-build.yml": "891f7b0015f33314addfee3774318c9c05a8e8eb4ffe0e42e7e0633baed708ed"
+  },
+  "entryWorktreeClean": true,
+  "localToolchain": {
+    "qt": "6.10.1",
+    "compiler": "VS2022 MSVC",
+    "freshBuild": false,
+    "buildCacheIsBaselineProof": false
+  },
+  "ciMonitor": {
+    "pullRequests": [
+      91,
+      92,
+      93
+    ],
+    "latestObserved": [
+      {
+        "pr": 91,
+        "head": "d83caddc1e2222f8d11c60fc15a5d3ba8a86b057",
+        "state": "OPEN",
+        "success": 23,
+        "pending": 2,
+        "bad": [
+          {
+            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
+            "conclusion": "CANCELLED",
+            "url": "https://github.com/dm17ryk/klogg/actions/runs/42073381837/job/127407011228"
+          }
+        ]
+      },
+      {
+        "pr": 92,
+        "head": "01f4393ec51607625ceb197bc79bef8a3aa22e57",
+        "state": "OPEN",
+        "success": 22,
+        "pending": 3,
+        "bad": [
+          {
+            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
+            "conclusion": "CANCELLED",
+            "url": "https://github.com/dm17ryk/klogg/actions/runs/42071860623/job/127401633835"
+          }
+        ]
+      },
+      {
+        "pr": 93,
+        "head": "3948fe5be99db1d8b42c5bb32d854d083f6b3e7f",
+        "state": "OPEN",
+        "success": 20,
+        "pending": 5,
+        "bad": [
+          {
+            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
+            "conclusion": "CANCELLED",
+            "url": "https://github.com/dm17ryk/klogg/actions/runs/42088866411/job/127461255735"
+          }
+        ]
+      }
+    ],
+    "isTerminalEvidence": false
+  },
+  "dependencyCandidate": {
+    "name": "libvterm",
+    "version": "0.3.3",
+    "url": "https://www.leonerd.org.uk/code/libvterm/libvterm-0.3.3.tar.gz",
+    "archiveBytes": 80024,
+    "sha256": "09156f43dd2128bd347cbeebe50d9a571d32c64e0cf18d211197946aff7226e0",
+    "adopted": false,
+    "vendored": false,
+    "platformBuildsRun": false
+  },
+  "validation": {
+    "status": "passed",
+    "taskCount": 119,
+    "requirementCount": 201,
+    "markdownFiles": 142,
+    "validatedLocalLinks": 546,
+    "sourceHashes": 14,
+    "formalHardEdgesUnchanged": true,
+    "productTestsRun": false,
+    "canonicalPackageHashes": 147,
+    "taskHistoryPreserved": true
+  },
+  "reviews": {
+    "status": "pending"
+  },
+  "limitations": [
+    "Documentation-only; no product build, CTest, GUI, hardware, PTY, SSH or package test run",
+    "Formal MD01-MD06, G02/W0 and UT02 F01/D01 gates unchanged",
+    "No new public terminal operation or runtime input capability",
+    "CodeGraph reports worktree unindexed; GitNexus refresh timed out and stale output is nonauthoritative"
+  ]
+}

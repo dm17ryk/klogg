@@ -1,5 +1,8 @@
 # Start This Implementation in Codex App
 
+**Current workstream clarification (2026-11-05):** The user selected Unified Terminal next after merging PR #90. Resume the scoped [UT00a terminal preparation](slices/UT00a-terminal-baseline.md) through PROGRESS.json.executionPolicy.currentPreparation before unrelated F01 expansion. This is independent preparation; formal MD01–MD06/W0 and terminal F01/D01 acceptance gates remain open and unchanged. The dated full-milestone order below remains the acceptance order.
+
+
 Open the current CILogg repository in Codex App. The merged package is installed at `plans/cilogg-workbench-2026-10-21/`; no extraction or second copy is required. Read [MERGE_MAP.md](MERGE_MAP.md), [the current baseline](../../docs/workbench/baseline.md) and `PROGRESS.json` before continuing. G01 reconciliation is recorded; G02 is next and G03 is also runnable. Recheck the current source and preserve any newer changes. Paste the following task into Codex App.
 
 ```text
