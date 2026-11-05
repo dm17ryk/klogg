@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "slice": "F01d",
+  "base": "080b504c184796ad3942383149d0385503dd9643",
+  "branch": "codex/f01-dataset-schemas",
+  "recordedAt": "2026-11-05T13:41:01.133Z",
+  "scope": "Internal checked table-schema-v1 metadata; no new public operation, reader or value payload capability",
+  "sourceSha256": {
+    "src/logdata/include/datasetschema.h": "13b54503ff28fdf665e88e07ac23420212bcecee22bb16a6e333e1a28bb1c0c0",
+    "src/logdata/src/datasetschema.cpp": "398f89ff310cf3ff9c2977c57e0b3a6603b10b30ae603c99a6b18f64248b9952",
+    "tests/unit/datasetschema_test.cpp": "67553f003ecab980c8d41ed7f9a74c2982e8985d191da42524aafe08102f3bec",
+    "src/logdata/CMakeLists.txt": "02f4a8e6fea5b56f699bf0acf68f7173fcb6edef76b9e2be17ea39b394c93e5e",
+    "tests/unit/CMakeLists.txt": "301e8f9bfd2e6c32783f44580c03421aa826ab06acf66be99fc085451fe98778"
+  },
+  "environment": {
+    "os": "Windows x64",
+    "qt": "6.10.1",
+    "compiler": "MSVC 19.42 / VS2022",
+    "configuration": "RelWithDebInfo",
+    "searchBackend": "qt"
+  },
+  "verification": {
+    "scalarBaseline": {
+      "passedAssertions": 332,
+      "cases": 6
+    },
+    "emptyApiRed": {
+      "failedCases": 9,
+      "failedAssertions": 14
+    },
+    "qtCoreOnlyRunner": {
+      "compiler": "clang-cl",
+      "configuration": "Release",
+      "productionSources": [
+        "datasetschema.cpp",
+        "fieldvalue.cpp",
+        "logger.cpp"
+      ],
+      "passedAssertions": 506,
+      "cases": 12,
+      "seconds": 83.3208338
+    },
+    "nativeBuild": {
+      "target": "ci_build",
+      "exitCode": 0,
+      "seconds": 650.7344726
+    },
+    "strictClang": {
+      "translationUnits": 2,
+      "exitCode": 0,
+      "seconds": 43.6024597,
+      "checks": [
+        "conversion",
+        "sign-conversion",
+        "shorten-64-to-32",
+        "dangling-else"
+      ]
+    },
+    "nativeFocused": {
+      "passedAssertions": 506,
+      "cases": 12
+    },
+    "ctest": {
+      "passed": 7,
+      "failed": 0,
+      "seconds": 337.97,
+      "isolatedPortableRuntime": true,
+      "nativeUnit": {
+        "assertions": 12743,
+        "cases": 259
+      },
+      "nativeIntegration": {
+        "assertions": 3172,
+        "cases": 81
+      },
+      "nativeGuiRegression": {
+        "assertions": 22721,
+        "cases": 85
+      }
+    }
+  },
+  "fingerprintFixture": "schema1:59c22156205b96fa10172686495f1a157b0138c0e14093dab98b1f843723adf2",
+  "indexing": {
+    "codeReviewGraph": "Refreshed33nodes/579edges; changed-file impact finds no additional files;477 globally unresolved calls and test-gap heuristics prevent complete coverage claims.",
+    "gitNexus": "FieldSchema/DatasetSchema absent in stale sibling index; analyze timedout90s and owned processes reaped. Stale impact/detect output is not structural verification.",
+    "codeGraph": "Previously reported this linked checkout unindexed; no index created."
+  },
+  "limits": [
+    "Schema describes types; reserved payload parsing/encoding remains gated.",
+    "Only table shape/version1 is supported. More shapes need checked versioned metadata.",
+    "Dataset pages/revision cursors, query AST, full dataset JSON Schema, source resolvers and GUI/CLI/native-MCP consumers remain later slices.",
+    "F01/W0/MD01 and unmeasured P00 release/performance gates remain open.",
+    "Local Qt6 does not establish Qt5, accelerated-backend, hosted native platform or installer acceptance.",
+    "No source bodies, user configuration, private Lua or captures are included."
+  ]
+}

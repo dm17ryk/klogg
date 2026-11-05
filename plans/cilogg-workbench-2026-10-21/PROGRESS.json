@@ -1169,11 +1169,15 @@
         "../../docs/workbench/f01a-exact-values.md",
         "../../docs/workbench/f01b-line-provenance.md",
         "../../tests/unit/fieldvalue_test.cpp",
-        "../../tests/ui/analysisjob_test.cpp"
+        "../../tests/ui/analysisjob_test.cpp",
+        "../../docs/analysis-dataset-schemas.md",
+        "../../docs/workbench/f01d-dataset-schemas.md",
+        "../../docs/workbench/f01d-observations.json",
+        "../../tests/unit/datasetschema_test.cpp"
       ],
       "limitations": [
-        "Only internal F01a scalar and F01b physical-line provenance foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
-        "Event identity/discriminated origins, event-level spans, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
+        "Only merged F01a exact values/F01b physical-line provenance and proposed F01d schema metadata are present in this independent branch; F01 hard dependencies and W0/MD01 gates remain open.",
+        "Event origins are proposed separately in PR91. Full dataset/page/revision-cursor/query/formal JSON Schema and GUI/CLI/native-MCP consumer parity remain pending."
       ],
       "slices": [
         {
@@ -1218,6 +1222,33 @@
           ],
           "commit": "31e5dd165240820c0864f17f2a90b0a6dfec986b",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/87"
+        },
+        {
+          "id": "F01d",
+          "status": "implemented_pending_gates",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-dataset-schemas",
+          "scope": "Internal checked table-schema-v1 metadata; no new public operation, reader or value payload capability",
+          "relatedPendingPullRequests": [
+            "https://github.com/dm17ryk/klogg/pull/90",
+            "https://github.com/dm17ryk/klogg/pull/91"
+          ],
+          "rulings": [
+            "Provide table-shape-v1 schema metadata only. Known reserved FieldType declarations do not enable payload support; later consumers must gate unsupported payloads and implement/version pages/cursors/query/additional shapes/full dataset JSON Schema.",
+            "Keep schema tests in datasetschema_test.cpp separately from PR91 event-origin tests to allow independent builds/review; related contract tests are split across files."
+          ],
+          "localVerification": "Scalar baseline332/6; empty API RED9 failed cases/14 assertions; QtCore-only runner506/12; native MSVC Qt6.10.1 ci_build; strict Clang2TUs; native focused506/12. Full isolated CTest7/7 passed337.97s (unit12743/integration3172/GUI22721 assertions). All5 tested source/build-registration hashes unchanged. Final whole-branch C++/general review pending.",
+          "limitations": [
+            "Schema describes types; reserved payload parsing/encoding remains gated.",
+            "Only table shape/version1 is supported. More shapes need checked versioned metadata.",
+            "Dataset pages/revision cursors, query AST, full dataset JSON Schema, source resolvers and GUI/CLI/native-MCP consumers remain later slices.",
+            "F01/W0/MD01 and unmeasured P00 release/performance gates remain open.",
+            "Local Qt6 does not establish Qt5, accelerated-backend, hosted native platform or installer acceptance.",
+            "No source bodies, user configuration, private Lua or captures are included.",
+            "GitNexus refresh timed out; CodeGraph unindexed. Code-review-graph refreshed33nodes/579edges; global unresolved calls/test-gap heuristics are not complete coverage proof."
+          ],
+          "commit": null,
+          "pullRequest": null
         }
       ]
     },
