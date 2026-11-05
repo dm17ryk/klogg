@@ -8,12 +8,80 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "test_data/message_decoders"
 TOOLS_AVAILABLE = all(
     os.environ.get(key) for key in ("CILOGG_TSHARK", "CILOGG_TEXT2PCAP")
 )
+
+
+EHCI_PREFIX_NODE_LIMIT = 256
+EHCI_PREFIX_BYTE_LIMIT = 128 * 1024
+
+
+def assert_ehci_prefix(case, result, length):
+    """Independent milestones for the fixed 75-byte public fixture, not an EHCI parser."""
+    packets = result["packets"]
+    pending = list(packets)
+    nodes = 0
+    while pending:
+        node = pending.pop()
+        nodes += 1
+        case.assertLessEqual(nodes, EHCI_PREFIX_NODE_LIMIT, "prefix tree node budget")
+        pending.extend(node.get("children", []))
+    case.assertLessEqual(
+        len(json.dumps(packets, ensure_ascii=True).encode("ascii")),
+        EHCI_PREFIX_BYTE_LIMIT,
+        "prefix tree serialized-byte budget",
+    )
+    case.assertEqual(result["inputBytes"], length)
+    case.assertEqual(len(case.proof.fields_named(packets, "ehci")), 1)
+    case.assertEqual(case.attributes(result, "ehci.message_length"), [str(length)])
+    header = length >= 7
+    case.assertEqual(case.attributes(result, "ehci.magic"), ["EHCI"] if header else [])
+    case.assertEqual(
+        case.attributes(result, "ehci.file_version.raw"), ["001"] if header else []
+    )
+    case.assertEqual(
+        case.attributes(result, "ehci.file_version"), ["1"] if header else []
+    )
+    # Hand-checked fixture byte boundaries: header7; CNT header18/payload19;
+    # INF header30; first complete map55; second complete map68; checksum75.
+    tags = (["CNT"] if length >= 18 else []) + (["INF"] if length >= 30 else [])
+    declared = (["1"] if length >= 18 else []) + (["38"] if length >= 30 else [])
+    occupied = [str(min(length - 18, 1))] if length >= 18 else []
+    if length >= 30:
+        occupied.append(str(min(length - 30, 38)))
+    if length == 29:
+        # Observed "INF0000002" also forms generic IN + eight hex digits.
+        # The absent final INF length digit must not be inferred from the fixture.
+        tags.append("IN")
+        declared.append(str(0xF0000002))
+        occupied.append("0")
+    case.assertEqual(case.attributes(result, "ehci.tag.name"), tags)
+    case.assertEqual(case.attributes(result, "ehci.tag.length"), declared)
+    case.assertEqual(case.attributes(result, "ehci.tag.actual_length"), occupied)
+    case.assertEqual(
+        case.attributes(result, "ehci.tag.numeric"), ["9"] if length >= 19 else []
+    )
+    if length >= 55:
+        case.assertEqual(
+            case.attributes(result, "ehci.map.key")[:4], ["A", "A", "E", "N"]
+        )
+        case.assertEqual(
+            case.attributes(result, "ehci.map.value")[:4], ["one", "two", "", "xy"]
+        )
+    if length >= 68:
+        case.assertEqual(
+            case.attributes(result, "ehci.map.key"), ["A", "A", "E", "N", "B"]
+        )
+        case.assertEqual(
+            case.attributes(result, "ehci.map.value"), ["one", "two", "", "xy", "after"]
+        )
+    for name in ("marker", "received", "calculated", "valid"):
+        case.assertEqual(case.attributes(result, "ehci.checksum." + name), [])
 
 
 def internet_checksum(data):
@@ -257,13 +325,14 @@ class NativeEhciCapabilityTests(EngineCase):
 
     def test_every_observed_prefix_has_a_bounded_tree_and_no_invented_checksum(self):
         complete = self.payload("ehci-complete.hex")
+        self.assertEqual(
+            len(complete), 75, "prefix milestones require the pinned fixture"
+        )
         engine = self.engine([Path(os.environ["CILOGG_EHCI_CAPABILITIES_LUA"])])
         for length in range(4, len(complete)):
             with self.subTest(prefix_bytes=length):
                 result = engine.decode(complete[:length], "ehci")
-                self.assertTrue(self.proof.fields_named(result["packets"], "ehci"))
-                self.assertEqual(self.attributes(result, "ehci.checksum.valid"), [])
-                self.assertEqual(result["inputBytes"], length)
+                assert_ehci_prefix(self, result, length)
 
     def test_real_tcp_segments_still_reassemble_before_decoding(self):
         """A genuine synthetic TCP capture is distinct from application-PDU wrapping."""
@@ -327,6 +396,110 @@ class NativeEhciCapabilityTests(EngineCase):
         self.assertEqual(self.attributes(result, "ehci.magic"), ["EHCI"])
         self.assertEqual(self.attributes(result, "ehci.checksum.valid"), ["True"])
         self.assertEqual(self.attributes(result, "ehci.tag.name"), ["CNT", "INF"])
+
+
+class PrefixGuardTests(EngineCase):
+    """Bad synthetic decoder trees must fail the same check used by the native suite."""
+
+    def run_prefix_mutant(self, kind):
+        case = NativeEhciCapabilityTests(
+            "test_every_observed_prefix_has_a_bounded_tree_and_no_invented_checksum"
+        )
+        case.proof = self.proof
+        case.payload = self.payload
+
+        class EngineDouble:
+            def decode(self, payload, _dissector):
+                children = []
+                if kind == "header-only":
+                    children.append(
+                        {
+                            "tag": "field",
+                            "attributes": {
+                                "name": "ehci.message_length",
+                                "show": str(len(payload)),
+                            },
+                            "children": [],
+                        }
+                    )
+                    if len(payload) >= 7:
+                        for name, show in (
+                            ("ehci.magic", "EHCI"),
+                            ("ehci.file_version.raw", "001"),
+                            ("ehci.file_version", "1"),
+                            ("ehci.tag_count", "0"),
+                        ):
+                            children.append(
+                                {
+                                    "tag": "field",
+                                    "attributes": {"name": name, "show": show},
+                                    "children": [],
+                                }
+                            )
+                if kind == "flood":
+                    children = [
+                        {"tag": "field", "attributes": {"name": "junk"}, "children": []}
+                        for _ in range(257)
+                    ]
+                if kind in ("flood", "oversized-attribute"):
+                    # At the first four-byte prefix, this is otherwise valid.
+                    children.insert(
+                        0,
+                        {
+                            "tag": "field",
+                            "attributes": {
+                                "name": "ehci.message_length",
+                                "show": str(len(payload)),
+                            },
+                            "children": [],
+                        },
+                    )
+                attributes = {"name": "ehci"}
+                if kind == "oversized-attribute":
+                    attributes["show"] = "x" * (128 * 1024)
+                return {
+                    "inputBytes": len(payload),
+                    "packets": [
+                        {
+                            "tag": "packet",
+                            "attributes": {},
+                            "children": [
+                                {
+                                    "tag": "proto",
+                                    "attributes": attributes,
+                                    "children": children,
+                                }
+                            ],
+                        }
+                    ],
+                }
+
+        case.engine = lambda _scripts: EngineDouble()
+        with patch.dict(
+            os.environ, CILOGG_EHCI_CAPABILITIES_LUA="synthetic-not-executed.lua"
+        ):
+            # Direct invocation bypasses the native-only class discovery skip.
+            NativeEhciCapabilityTests.test_every_observed_prefix_has_a_bounded_tree_and_no_invented_checksum(
+                case
+            )
+
+    def test_root_only_decoder_is_rejected(self):
+        with self.assertRaises(AssertionError):
+            self.run_prefix_mutant("root-only")
+
+    def test_header_only_decoder_is_rejected(self):
+        with self.assertRaises(AssertionError):
+            self.run_prefix_mutant("header-only")
+
+    def test_tree_flood_is_rejected(self):
+        with self.assertRaisesRegex(AssertionError, "prefix tree node budget"):
+            self.run_prefix_mutant("flood")
+
+    def test_oversized_tree_attribute_is_rejected(self):
+        with self.assertRaisesRegex(
+            AssertionError, "prefix tree serialized-byte budget"
+        ):
+            self.run_prefix_mutant("oversized-attribute")
 
 
 if __name__ == "__main__":

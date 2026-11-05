@@ -3,7 +3,7 @@
   "taskCount": 119,
   "requirementCount": 201,
   "markdownFiles": 141,
-  "validatedLocalLinks": 538,
+  "validatedLocalLinks": 539,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -60,5 +60,12 @@
     "sourceCaptureBodiesPublished": false,
     "terminalEntryGatePreserved": true,
     "scope": "Independent external-pack capability qualification; runtime evidence in md01e observations, broader gates retained"
+  },
+  "md01eReviewChecks": {
+    "findingsAddressed": 2,
+    "existingProgressPreserved": true,
+    "parentGatesPreserved": true,
+    "nativeRebuildClaimed": false,
+    "scope": "Python origin-proof and qualification-test correction; exact current-source evidence in md01e-sourcery observations"
   }
 }

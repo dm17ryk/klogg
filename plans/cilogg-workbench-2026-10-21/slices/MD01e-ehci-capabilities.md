@@ -22,3 +22,7 @@ See [qualification](../../../docs/workbench/md01e-ehci-capabilities.md) and
 Local validation: seven CTest groups passed; 1278 GUI assertions; 51 CLI/MCP
 comparisons; 15 capability-suite cases on both Python 3.14/3.9 (11 engine tests, 4 portable); portable 122 each
 with 47 explicit external-input skips. Hosted/release and parent gates remain open.
+
+PR90 review corrections and exact validation epochs are recorded in the
+[follow-up observations](../../../docs/workbench/md01e-sourcery-observations.json).
+Parent acceptance and terminal entry gates are preserved.

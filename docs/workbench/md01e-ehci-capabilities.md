@@ -115,3 +115,20 @@ acceptance and private-pack redistribution remain separate gates.
 For historical pinned-pack negative tests, point `CILOGG_EHCI_LUA` at the original
 7cf4bef2 pack. Point `CILOGG_EHCI_CAPABILITIES_LUA` at the qualified 2f7d0209 copy
 for this profile. Their separate opt-ins preserve the original evidence epoch.
+
+## PR90 review follow-up
+
+Origin qualification now enforces the same exact raw-byte oracle as the PDU
+proof. The prefix check asserts observed field milestones and bounds the whole
+normalized tree to 256 nodes / 128 KiB. Four portable decoder mutants verify that
+missing children and node/byte floods are rejected; the two budget regressions
+require their specific assertion messages. The 29-byte prefix is explicitly
+qualified as generic IN+F0000002 until the next byte completes the INF header.
+See the [follow-up record](md01e-sourcery-observations.json) for current-source
+validation and preserved initial failures. Earlier build/GUI/parity evidence
+above retains its original source epoch.
+
+Follow-up validation passed: 24 cases per Python 3.14/3.9 with no skips
+(12 real-engine tests and 12 portable tests), including all 71 prefixes; 131-case
+full decoder discovery passed on both interpreters with 83 passes / 48 explicit
+external-input skips. The affected registered decoder CTest group also passed.
