@@ -150,8 +150,12 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     if external:
         external_config = json.loads(Path(external).read_text(encoding="utf-8"))
         pair("set_preview_decoder", external_config)
-        manifest = json.loads((ROOT / "test_data/message_decoders/packs.json").read_text(encoding="utf-8"))
-        for case in manifest["cases"]:
+        manifests = [ROOT / "test_data/message_decoders/packs.json"]
+        if os.environ.get("CILOGG_PREVIEW_EHCI_CAPABILITIES") == "1":
+            manifests.append(ROOT / "test_data/message_decoders/ehci-capabilities.json")
+        cases = [case for path in manifests
+                 for case in json.loads(path.read_text(encoding="utf-8"))["cases"]]
+        for case in cases:
             if case.get("knownGap"):
                 continue
             raw = bytes.fromhex((ROOT / "test_data/message_decoders" / case["hex"]).read_text())
@@ -162,6 +166,10 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
             for name, expected in case["expect"].items():
                 actual = [f["columns"][1] for f in result["fields"] if f["attributes"].get("name") == name]
                 assert actual == expected, (case["id"], name, actual, expected)
+            for name, expected in case.get("expectRaw", {}).items():
+                actual = [f["attributes"].get("value") for f in result["fields"]
+                          if f["attributes"].get("name") == name]
+                assert actual == expected, (case["id"], name, "raw bytes", actual, expected)
         body = "EHCI001INF00000004TESTCRC0000"
         headers = ["PUT fixture.dat HTTP/1.1", "Host: CARE-PANELINFO",
                    "Content-Length: %d" % len(body), "Content-Type: application/octet-stream", ""]
@@ -239,7 +247,11 @@ if __name__ == "__main__":
     parser.add_argument("--tshark", required=True, type=Path)
     parser.add_argument("--text2pcap", required=True, type=Path)
     parser.add_argument("--external-config", type=Path)
+    parser.add_argument("--ehci-capabilities", action="store_true",
+                        help="Qualify strict partial/NUL fixtures using the supplied external pack")
     options = parser.parse_args()
+    if options.ehci_capabilities and not options.external_config:
+        parser.error("--ehci-capabilities requires --external-config")
     os.environ.update(CILOGG_TSHARK=str(options.tshark.resolve()),
                       CILOGG_TEXT2PCAP=str(options.text2pcap.resolve()),
                       CILOGG_SCRIPT_PYTHON=sys.executable)
@@ -247,6 +259,10 @@ if __name__ == "__main__":
         os.environ["CILOGG_PREVIEW_ENGINE_CONFIG"] = str(options.external_config.resolve())
     else:
         os.environ.pop("CILOGG_PREVIEW_ENGINE_CONFIG", None)
+    if options.ehci_capabilities:
+        os.environ["CILOGG_PREVIEW_EHCI_CAPABILITIES"] = "1"
+    else:
+        os.environ.pop("CILOGG_PREVIEW_EHCI_CAPABILITIES", None)
     run(options.executable.resolve(), options.artifacts.resolve(),
         required_operations=("get_preview_decoder", "set_preview_decoder",
                              "show_preview_decoder_settings", "preview_message"),

@@ -214,18 +214,29 @@ def resolve_origins(data, payload, dissector, *, report_limit=OUTPUT_LIMIT):
 
 
 class OriginEngine(ReferenceEngine):
-    def inspect(self, payload, dissector, expected=None):
-        # Reuse named dispatch, PDML Lua-error checks, input caps and owned cleanup.
+    def inspect(self, payload, dissector, expected=None, expected_raw=None):
+        # Both manifest oracles use PDML occurrence order; origin JSON is grouped.
         decoded = self.decode(payload, dissector)
-        if expected is not None and any(
-            [
-                field["attributes"].get("show")
-                for field in fields_named(decoded["packets"], name)
-            ]
-            != values
-            for name, values in expected.items()
-        ):
-            raise ProofError("field_oracle_mismatch")
+        for attribute, oracle in (("show", expected), ("value", expected_raw)):
+            if oracle is None:
+                LOG.debug("origin_oracle_omitted attribute=%s", attribute)
+                continue
+            matched = all(
+                [
+                    field["attributes"].get(attribute)
+                    for field in fields_named(decoded["packets"], name)
+                ]
+                == values
+                for name, values in oracle.items()
+            )
+            LOG.debug(
+                "origin_oracle_checked attribute=%s fields=%d matched=%s",
+                attribute,
+                len(oracle),
+                matched,
+            )
+            if not matched:
+                raise ProofError("field_oracle_mismatch")
         raw = self.command(
             [
                 self.tshark,
@@ -297,8 +308,18 @@ def run_origin_report(args, inputs, extra_inputs, directory):
             )
             report["capabilities"] = engine.capabilities()
             for case in cases:
+                LOG.debug(
+                    "origin_case_oracles id=%s display_fields=%d raw_fields=%d raw_declared=%s",
+                    case["id"],
+                    len(case["expect"]),
+                    len(case.get("expectRaw", {})),
+                    "expectRaw" in case,
+                )
                 result = engine.inspect(
-                    case["payload"], case["dissector"], case["expect"]
+                    case["payload"],
+                    case["dissector"],
+                    case["expect"],
+                    expected_raw=case.get("expectRaw"),
                 )
                 result["id"] = case["id"]
                 report["cases"].append(result)
