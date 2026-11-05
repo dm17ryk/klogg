@@ -1,0 +1,193 @@
+{
+  "fixtureKind": "synthetic",
+  "cases": [
+    {
+      "id": "ehci-partial-capability",
+      "dissector": "ehci",
+      "hex": "ehci-partial.hex",
+      "sha256": "3de97e13a54a478dded7da44c9b8d1d3c43e564adb9990a3143200ab83d6b03e",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "CNT",
+          "INF"
+        ],
+        "ehci.map.key": [
+          "A",
+          "A",
+          "E",
+          "N",
+          "B"
+        ],
+        "ehci.checksum.valid": []
+      }
+    },
+    {
+      "id": "ehci-nul-capability",
+      "dissector": "ehci",
+      "hex": "ehci-nul.hex",
+      "sha256": "4fc24337ceb2cc1d01cc3fb29b4eeed15ac768e14eb81ee4b12137813a3f7f9e",
+      "expectRaw": {
+        "ehci.map.value_raw": [
+          "780079"
+        ]
+      },
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.map.key": [
+          "A",
+          "A",
+          "E",
+          "N",
+          "B"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-crc-in-value",
+      "dissector": "ehci",
+      "hex": "ehci-crc-in-value.hex",
+      "sha256": "d81aff0de079e9212aac0514a233a7de58a6df3757dcc50f8a80c53ab61757f4",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.map.value": [
+          "CRC0000",
+          "after"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-crc-in-value-partial",
+      "dissector": "ehci",
+      "hex": "ehci-crc-in-value-partial.hex",
+      "sha256": "b68b9489c866acd241dbacda388ce8b49fcbe971c2e328d98dd1dc579a9ebc35",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.map.value": [
+          "CRC0000",
+          "after"
+        ],
+        "ehci.checksum.valid": []
+      }
+    },
+    {
+      "id": "ehci-unknown-zero",
+      "dissector": "ehci",
+      "hex": "ehci-unknown-zero.hex",
+      "sha256": "87f87b89508e9b15db289c4eff9c7ab60b925db7a030e2fd3fe55df5265afa84",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "CNT",
+          "ZZZ",
+          "INF"
+        ],
+        "ehci.map.value": [
+          ""
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-truncated-tag-header",
+      "dissector": "ehci",
+      "hex": "ehci-truncated-tag-header.hex",
+      "sha256": "8135f24896f4313c7441723408e3041078f3f76c6bc1dcba693f00c78d4b32f1",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [],
+        "ehci.checksum.valid": []
+      }
+    },
+    {
+      "id": "ehci-oversized-declaration",
+      "dissector": "ehci",
+      "hex": "ehci-oversized-declaration.hex",
+      "sha256": "b3c8146a19598796e4d324a05c0dc4519da301e5d1ce0454027ac2814956f065",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "INF"
+        ],
+        "ehci.tag.length": [
+          "4294967295"
+        ],
+        "ehci.map.value": [
+          "CRC0000"
+        ],
+        "ehci.checksum.valid": []
+      }
+    },
+    {
+      "id": "ehci-sei-recovery",
+      "dissector": "ehci",
+      "hex": "ehci-sei-recovery.hex",
+      "sha256": "760d9cef314184a2d42969e70362bd42351c6cb63cddcb2ac330028c3647b3bd",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "SEI",
+          "CNT",
+          "INF"
+        ],
+        "ehci.tag.actual_length": [
+          "22",
+          "8",
+          "9"
+        ],
+        "ehci.sei.account": [
+          "TEST0001"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    },
+    {
+      "id": "ehci-crc-prefix-tags",
+      "dissector": "ehci",
+      "hex": "ehci-crc-prefix-tags.hex",
+      "sha256": "382b48f138c93f5b4f309ab9ffdeee82de59213538cb024f996c219803b4c558",
+      "expect": {
+        "ehci.magic": [
+          "EHCI"
+        ],
+        "ehci.tag.name": [
+          "CRCA",
+          "CRCX",
+          "INF"
+        ],
+        "ehci.map.value": [
+          "1"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      }
+    }
+  ]
+}

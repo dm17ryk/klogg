@@ -66,3 +66,9 @@ captures passed the final 29-assertion external EHCI GUI check.
 ![EHCI preview pane](images/md03a-ehci-pane.png)
 
 ![EHCI hover tooltip](images/md03a-ehci-hover.png)
+
+For separately qualified external EHCI scripts, the [MD01e capability profile](md01e-ehci-capabilities.md)
+checks partial observed fields and exact NUL bytes through this same service.
+Use a matching trusted pack; the original pinned script retains its documented
+failures. Direct partial-message support does not change source-incomplete
+assembly handling. Raw hex is authoritative for embedded NUL values.

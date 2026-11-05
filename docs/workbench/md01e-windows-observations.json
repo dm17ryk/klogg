@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-05T08:30:45.064Z",
+  "baseCommit": "080b504c",
+  "scope": "MD01e external EHCI partial/binary/framing capability qualification",
+  "productDecoderAccepted": false,
+  "MD01Acceptance": "pending",
+  "W0Acceptance": "pending",
+  "privateLua": {
+    "originalSha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea",
+    "qualifiedSha256": "2f7d0209cf3166a38867e88603fcbdc579f00766d1c75335d7e1e7df073d3c80",
+    "distributed": false,
+    "license": "not_verified",
+    "installation": {
+      "state": "installed_versioned_local_pack",
+      "directoryRelativeToLocalAppData": "CILogg/decoder-packs/md01e-2f7d0209",
+      "configurationFile": "decoder-settings.json",
+      "scriptsByteVerified": true,
+      "scope": "CILogg-only local pack; qualification does not upgrade the global Wireshark pack or establish redistribution/full-capture acceptance"
+    }
+  },
+  "nativeApiObservation": {
+    "string_length": [
+      "1"
+    ],
+    "raw_length": [
+      "10"
+    ],
+    "raw_hex": [
+      "78007943524331323334"
+    ],
+    "can_type": [
+      "number"
+    ],
+    "can_value": [
+      "0"
+    ]
+  },
+  "redGreen": {
+    "initialOriginalPack": {
+      "cases": 8,
+      "failed": 5
+    },
+    "reviewRegression": {
+      "originalPack": {
+        "ehci.tag.name": [
+          "CRCA",
+          "CRCX",
+          "INF"
+        ],
+        "ehci.checksum.valid": [
+          "True"
+        ]
+      },
+      "firstRepairRed": {
+        "sha256": "9c06a308269486778c54b1f48f9928c6cc38256167592dd7eec2c4d3663af87e",
+        "observed": {
+          "ehci.tag.name": [],
+          "ehci.checksum.valid": [
+            "False"
+          ]
+        }
+      },
+      "qualifiedRepairGreen": {
+        "sha256": "2f7d0209cf3166a38867e88603fcbdc579f00766d1c75335d7e1e7df073d3c80",
+        "fixtureId": "ehci-crc-prefix-tags",
+        "verifiedBy": "NativeEhciCapabilityTests.test_strict_capability_manifest_covers_payload_crc_and_length_recovery on Python3.14.10 and3.9.25",
+        "passed": true,
+        "expectedStrictAssertions": {
+          "ehci.magic": [
+            "EHCI"
+          ],
+          "ehci.tag.name": [
+            "CRCA",
+            "CRCX",
+            "INF"
+          ],
+          "ehci.map.value": [
+            "1"
+          ],
+          "ehci.checksum.valid": [
+            "True"
+          ]
+        }
+      }
+    },
+    "qualifiedCapabilitySuites": [
+      {
+        "python": "3.14.10",
+        "cases": 15,
+        "passed": 15,
+        "seconds": 134.869,
+        "nativeEngineTests": 11,
+        "portableOracleTests": 4
+      },
+      {
+        "python": "3.9.25",
+        "cases": 15,
+        "passed": 15,
+        "seconds": 218.578,
+        "nativeEngineTests": 11,
+        "portableOracleTests": 4
+      }
+    ],
+    "prefixes": 71,
+    "strictManifestCases": 9,
+    "syntheticTcpReassembly": true
+  },
+  "referenceQualification": {
+    "passed": true,
+    "selectedPackets": 1,
+    "comparedProtocols": 1,
+    "records": [
+      {
+        "frameNumber": 19883,
+        "protocolOccurrenceZeroBased": 0,
+        "inputBytes": 3281,
+        "inputSha256": "f1afd14f2978b10467929057b8b94e82ce5bc2d78ff13d6af5f82d8fedf902dd",
+        "engineRawMetadata": [
+          0,
+          3281,
+          0,
+          1,
+          1
+        ],
+        "engineDataSourceIndex": 1,
+        "originalCaptureByteOffset": null,
+        "fieldTreeEqual": true,
+        "referenceTreeSha256": "757df2646ec1b513efde35c3eb556e1753a4823ac5ecb1a693ed65006af34ae4",
+        "bridgeTreeSha256": "757df2646ec1b513efde35c3eb556e1753a4823ac5ecb1a693ed65006af34ae4",
+        "reason": null
+      }
+    ],
+    "reference": {
+      "sha256": "9618b6f3e433085015687ba6cbe484470f8a1fe0908b7ec5e2c266f3e716bc9f",
+      "bytes": 18130464
+    },
+    "binaries": [
+      {
+        "name": "tshark.exe",
+        "bytes": 623272,
+        "sha256": "662e10fd28a8c58575fe567845d0248080a2856c3d18d6f2ff7a4b4c8511f69b"
+      },
+      {
+        "name": "text2pcap.exe",
+        "bytes": 375464,
+        "sha256": "e86beaa4df6ae73d294e0419bfc34f2b99b4b1c3ae0be8c44d10a6cfbcfbe5e4"
+      }
+    ],
+    "versions": {
+      "tshark": "TShark (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+      "text2pcap": "Text2pcap (Wireshark) 4.6.9 (v4.6.9-0-g2d548b197c75).",
+      "lua": "5.4.6 (UfW patched)"
+    },
+    "fullCaptureDiagnosticsBytes": 6271,
+    "fullCaptureAccepted": false,
+    "independentSemanticValidation": false
+  },
+  "verification": {
+    "portablePython": [
+      {
+        "python": "3.14.10",
+        "cases": 122,
+        "passed": 75,
+        "skipped": 47
+      },
+      {
+        "python": "3.9.25",
+        "cases": 122,
+        "passed": 75,
+        "skipped": 47
+      }
+    ],
+    "nativeBuild": {
+      "state": "passed",
+      "initialConfigurationFailure": "Stale CPM_DIRECTORY path alias caused missing cpmaddpackage; clearing only local cache entry allowed configuration.",
+      "firstFullBuild": {
+        "state": "wrapper_timeout",
+        "seconds": 1800,
+        "phase": "application_linking",
+        "compilerErrorsReported": 0,
+        "cleanup": "ProcessOwner.close executed in finally; no normal-exit claim"
+      },
+      "continuation": {
+        "exitCode": 0,
+        "seconds": 863.4145289999433,
+        "sourceHashes": {
+          "scripts/plugins/message_decoder_pdu.py": "5d8fc748f94582131470ff90d7263e5174c014c9797f608bb2aa12bb329b6a49",
+          "tests/plugins/test_message_decoder_capabilities.py": "2f7bb48f1adfde307d54c5febe54a5318a6c18dd7aa6208072dbf2cd857b0c57",
+          "tests/mcp/tshark_preview_parity.py": "8952482b2c8f72964bb73886ef2ff591d97708de67acbbc301c4722324781bd1",
+          "tests/ui/previewdecoderui_test.cpp": "06fd5bc49d8898b791ab26b2766c49cf657b26434c9b7530c2c4bae67e446c08"
+        },
+        "sourceHashEncoding": "Windows working-file bytes"
+      },
+      "toolchain": "MSVC2022, Qt6.10.1, RelWithDebInfo, Qt search backend"
+    },
+    "gui": {
+      "red": {
+        "exitCode": 4,
+        "seconds": 8.934538200031966,
+        "cases": 1,
+        "assertions": 334,
+        "failedAssertions": 4,
+        "pack": "original7cf4bef2"
+      },
+      "green": {
+        "exitCode": 0,
+        "seconds": 26.375792799983174,
+        "cases": 1,
+        "assertions": 1278,
+        "failedAssertions": 0,
+        "pack": "qualified2f7d0209"
+      },
+      "scope": "Three real native PreviewMessageTab fixtures, exact field columns/raw NUL/following map/checksum absence, tooltip HTML,10-second pane budget; offscreen Qt widget capture; no installer/compositor/interactive-input or default3-second latency acceptance"
+    },
+    "cliMcp": {
+      "passed": true,
+      "comparisons": 51,
+      "seconds": 188.5692387999734,
+      "executableSha256": "5a0ab6f0a0adbde735a6082b9603b445d19b6a83688e3601c2670f0d2bb429ce",
+      "scope": "Strict identical CLI/native-MCP field trees/errors; nine EHCI capability cases, assembly/source, raw NUL, failures and recovery; isolated host"
+    },
+    "ctest": {
+      "exitCode": 0,
+      "seconds": 579.7203708000015,
+      "registered": 7,
+      "passed": 7,
+      "failed": 0,
+      "ctestReportedSeconds": 579.54,
+      "policy": "Fresh registration, all original commands/arguments/properties preserved; native runtime/working-directory prefix relocated to a byte-verified private deployed copy; external opt-ins unset; source tree and user settings excluded from native test runtime",
+      "externalOptInSkipsAreNotPasses": true
+    },
+    "hosted": "pending_after_publication",
+    "indexes": "Code-review-graph incremental refresh:10files/121nodes/2458edges; broader delta includes already merged work. GitNexus60-second refresh timed out; staged detect-changes returned0 with stale sibling-index warning and no changes, not authoritative; its log-print wrapper hit a Windows console encoding error. Current checkout has no CodeGraph index. Exact diffs/hashes/reviews used.",
+    "nativeRuntime": {
+      "binarySha256": {
+        "cilogg.exe": "5a0ab6f0a0adbde735a6082b9603b445d19b6a83688e3601c2670f0d2bb429ce",
+        "cilogg_itests.exe": "3a966575221bd2364a13704219dac9be5e7c6ca966b012c437645b75d394d251",
+        "cilogg_tests.exe": "acc28cf6e2764448b27d4868545317c064145d89624872b897c46aff1fb8cfbe"
+      },
+      "copiedRuntimeBytesVerified": true
+    },
+    "reviews": "General, Python and C++ reviews approved; fixture staging, CRCA/CRCX private-pack regression and evidence-epoch findings addressed",
+    "logIdentities": {
+      "md01e-ci-build.log": {
+        "bytes": 417749,
+        "sha256": "ca63e8ac08e0c720eaffe2205aeef2d0d57ed2322d4a7da9bfa0fd0925d03264"
+      },
+      "md01e-resume-build.log": {
+        "bytes": 13511,
+        "sha256": "42a8ad77a717a01e43c3c8812bc899e12064b9d8a9f23f63b336d365bde2999b"
+      },
+      "md01e-full-ctest.log": {
+        "bytes": 1992897,
+        "sha256": "eb028805371b9510b1671714d33cb05beb15c138f3239b6a7333eb6d7d65ccd6"
+      },
+      "md01e-gui-red.log": {
+        "bytes": 2992,
+        "sha256": "f00f1b8ad1090c1a71ae1f1185108bcb5dd548d25e827d3f4afa060e968cbefe"
+      },
+      "md01e-gui-green.log": {
+        "bytes": 1162,
+        "sha256": "cfd253e6e4ab6e5c45103346a827b78f63dc7a90edf0eb389fee6b2867d50cec"
+      },
+      "md01e-parity.log": {
+        "bytes": 170,
+        "sha256": "236ed7f159c1865b37b6a81121c88e8d88fd35c34fe0ec5a2763132882ccb2a2"
+      },
+      "md01e-private/capabilities-red.log": {
+        "bytes": 5991,
+        "sha256": "c48f6cfe81f10ed123ee57ad0da882f303f3206bbd25848b783f70e42918adc4"
+      },
+      "md01e-private/capabilities-green.log": {
+        "bytes": 3433,
+        "sha256": "1562cb2d6833ae33c6487f8ad8530b2ef75abaab318e8447d5dd03e9efe9d5a6"
+      },
+      "md01e-private/capabilities-py39.log": {
+        "bytes": 2512,
+        "sha256": "bc33a7277ddc1b0a76215fb4907d125eba91899aae3189ec522e3a6f7fedd111"
+      },
+      "md01e-portable-Python-3.14.10.log": {
+        "bytes": 25912,
+        "sha256": "dd007941020c03e3a611bc9d92c97dd932067bb3c57ba864a1c571c9e8d19ba0"
+      },
+      "md01e-portable-Python-3.9.25.log": {
+        "bytes": 18943,
+        "sha256": "ca1f53b11565e79465baee31fcdf345527d07b648474f827dadc612b9cdb7c8f"
+      }
+    },
+    "finalCodeReviewGraphRefresh": {
+      "filesUpdated": 2,
+      "nodes": 33,
+      "edges": 385,
+      "changedFilesAnalyzed": 24,
+      "riskScore": 0.4,
+      "reportedGaps": [
+        "dynamic Lua dissector invocation",
+        "load_manifest reached via caller"
+      ],
+      "interpretation": "Dynamic native probes and direct/service/GUI/CLI/MCP tests provide actual coverage; graph report alone is not test or acceptance evidence"
+    }
+  },
+  "remaining": [
+    "Full MD01/G02/W0 acceptance",
+    "Private Lua licensing and distribution",
+    "Original-log source mapping and generated-field flags",
+    "Generic MD03 dataset contract and later MD02-MD06 core",
+    "Source-incomplete assembly semantics beyond this direct-PDU qualification",
+    "Other platforms, release packages and performance acceptance"
+  ]
+}
