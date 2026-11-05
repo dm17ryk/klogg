@@ -21,3 +21,11 @@ Current workstream is Unified Terminal per the user's2026-11-05 clarification. T
 ## Review focus
 
 Check each implementation claim against pinned source; review raw-versus-redacted TX, partial-write limits, generation/focus/authorization boundaries, plugin/source capability distinctions, preserved historical evidence and explicit formal-gate limits. No product test coverage is inferred from plan validation.
+
+## Publication
+
+Implementation audit: c1feeee27c5556f67ae4c8998c43e85871edac00.
+PR: [#94](https://github.com/dm17ryk/klogg/pull/94).
+Independent C++/general reviews approved. One minor audit wording qualification
+(when configured) is deferred; no blocking findings. Documentation only; platform
+builds intentionally skipped, no terminal runtime acceptance claimed.

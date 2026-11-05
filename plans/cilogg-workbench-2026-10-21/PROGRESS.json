@@ -125,7 +125,9 @@
       "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
       "formalEntryGatesUnchanged": true,
       "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
-      "date": "2026-11-05"
+      "date": "2026-11-05",
+      "state": "open_pr",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
     }
   },
   "tasks": {
@@ -2190,17 +2192,17 @@
         {
           "id": "UT00a",
           "status": "implemented_pending_gates",
-          "integrationState": "local_validation",
+          "integrationState": "open_pr",
           "base": "b1f820c28778f65f35401a285a9fa683970cd0f1",
           "branch": "codex/terminal-baseline-ut00",
           "scope": "Pinned terminal source/owner/automation/dependency/platform reconciliation; no terminal runtime or decoder acceptance",
-          "localVerification": "Documentation-only verification passed:119tasks/201requirements/546links,147 canonical package hashes,14 pinned source hashes, all task state/history and formal DAG edges preserved. No product tests claimed. Fresh source-map reviews pending.",
+          "localVerification": "Documentation-only verification passed119tasks/201requirements/546links,147 canonical package hashes,14 pinned source hashes and exact history/DAG preservation. Independent C++/general reviews approved; one minor wording note deferred. No terminal runtime tests claimed.",
           "limitations": [
             "UT00 MD06 and UT02 F01/D01 hard dependencies remain unchanged and open.",
             "Emulator dependency adoption, product builds/tests, terminal typing, PTY/SSH/device/privacy and release gates remain later implementation work."
           ],
-          "commit": null,
-          "pullRequest": null
+          "commit": "c1feeee27c5556f67ae4c8998c43e85871edac00",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
         }
       ]
     },

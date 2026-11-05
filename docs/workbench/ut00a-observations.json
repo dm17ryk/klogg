@@ -42,48 +42,31 @@
     "latestObserved": [
       {
         "pr": 91,
-        "head": "d83caddc1e2222f8d11c60fc15a5d3ba8a86b057",
+        "head": "3d0d57b4b4bea4585f2d74fe340fb594db9708e1",
         "state": "OPEN",
-        "success": 23,
-        "pending": 2,
-        "bad": [
-          {
-            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
-            "conclusion": "CANCELLED",
-            "url": "https://github.com/dm17ryk/klogg/actions/runs/42073381837/job/127407011228"
-          }
-        ]
+        "success": 1,
+        "pending": 25,
+        "bad": []
       },
       {
         "pr": 92,
-        "head": "01f4393ec51607625ceb197bc79bef8a3aa22e57",
+        "head": "60fecd07805067e9dd0630de79d1e156a2f64a4a",
         "state": "OPEN",
-        "success": 22,
-        "pending": 3,
-        "bad": [
-          {
-            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
-            "conclusion": "CANCELLED",
-            "url": "https://github.com/dm17ryk/klogg/actions/runs/42071860623/job/127401633835"
-          }
-        ]
+        "success": 1,
+        "pending": 25,
+        "bad": []
       },
       {
         "pr": 93,
-        "head": "3948fe5be99db1d8b42c5bb32d854d083f6b3e7f",
+        "head": "4f24bd8b683aedb41ca0fc8857a6970eea78f592",
         "state": "OPEN",
-        "success": 20,
-        "pending": 5,
-        "bad": [
-          {
-            "name": "Mac (arm64, vectorscan, Qt 6.12.0)",
-            "conclusion": "CANCELLED",
-            "url": "https://github.com/dm17ryk/klogg/actions/runs/42088866411/job/127461255735"
-          }
-        ]
+        "success": 1,
+        "pending": 25,
+        "bad": []
       }
     ],
-    "isTerminalEvidence": false
+    "isTerminalEvidence": false,
+    "observedAtUTC": "2026-11-05T22:13:35.518Z"
   },
   "dependencyCandidate": {
     "name": "libvterm",
@@ -103,17 +86,66 @@
     "validatedLocalLinks": 546,
     "sourceHashes": 14,
     "formalHardEdgesUnchanged": true,
-    "productTestsRun": false,
     "canonicalPackageHashes": 147,
-    "taskHistoryPreserved": true
+    "taskHistoryPreserved": true,
+    "terminalRuntimeTestsRun": false
   },
   "reviews": {
-    "status": "pending"
+    "status": "approved",
+    "base": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+    "head": "c1feeee27c5556f67ae4c8998c43e85871edac00",
+    "cpp": {
+      "critical": 0,
+      "important": 0,
+      "minor": 1,
+      "verdict": "APPROVE"
+    },
+    "general": {
+      "critical": 0,
+      "important": 0,
+      "minor": 0,
+      "verdict": "APPROVE"
+    },
+    "independentCanonicalPackageHashes": 588,
+    "independentSourceHashes": 14,
+    "productBuildsRerun": false,
+    "deferredMinor": "Baseline wording TShark-first should qualify when configured; existing routing depends on decoder settings."
   },
   "limitations": [
     "Documentation-only; no product build, CTest, GUI, hardware, PTY, SSH or package test run",
     "Formal MD01-MD06, G02/W0 and UT02 F01/D01 gates unchanged",
     "No new public terminal operation or runtime input capability",
     "CodeGraph reports worktree unindexed; GitNexus refresh timed out and stale output is nonauthoritative"
-  ]
+  ],
+  "ciIntegrationRegression": {
+    "python": "3.14",
+    "tests": 131,
+    "passed": 83,
+    "skipped": 48,
+    "exitCode": 0,
+    "seconds": 8.483,
+    "terminalEvidence": false
+  },
+  "implementationCommit": "c1feeee27c5556f67ae4c8998c43e85871edac00",
+  "pullRequest": "https://github.com/dm17ryk/klogg/pull/94",
+  "indexes": {
+    "codeReviewGraph": {
+      "rootRefreshExitCode": 0,
+      "rootChangedSymbols": 0,
+      "rootAffectedFlows": 0,
+      "ciCurrentBranchRefreshExitCode": 0,
+      "ciFilesRefreshed": 17,
+      "ciNodes": 201,
+      "ciEdges": 4095,
+      "ciFtsRemoved": 113,
+      "ciFtsIndexed": 188,
+      "heuristicsAreCoverageEvidence": false
+    },
+    "gitNexus": {
+      "refresh": "timed out after parser worker failures",
+      "authoritative": false,
+      "stagedDetect": "exit0, stale sibling index, no changes; not structural verification"
+    },
+    "codeGraph": "unindexed"
+  }
 }
