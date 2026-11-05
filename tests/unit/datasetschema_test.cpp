@@ -217,11 +217,25 @@ TEST_CASE( "F01 schema bounds field counts and Unicode metadata without dropping
 {
     QVector<DatasetColumn> items;
     for ( int i = 0; i < 64; ++i )
-        items.push_back( { QString::number( i ), QStringLiteral( "Value" ), FieldType::String } );
+        items.push_back( { QString::number( i ),
+                           QStringLiteral( "Value" ),
+                           FieldType::String,
+                           {},
+                           DatasetRole::Unspecified,
+                           {},
+                           false,
+                           false } );
     auto accepted = makeDatasetSchema( items );
     REQUIRE( accepted.value );
     CHECK( accepted.value->columns().size() == 64 );
-    items.push_back( { QStringLiteral( "extra" ), QStringLiteral( "Value" ), FieldType::String } );
+    items.push_back( { QStringLiteral( "extra" ),
+                       QStringLiteral( "Value" ),
+                       FieldType::String,
+                       {},
+                       DatasetRole::Unspecified,
+                       {},
+                       false,
+                       false } );
     CHECK( makeDatasetSchema( items ).error.code == "schema_column_limit" );
     items = columns();
     items[ 0 ].fieldId = QString( 129, QLatin1Char( 'x' ) );
@@ -248,8 +262,14 @@ TEST_CASE( "F01 schema bounds field counts and Unicode metadata without dropping
     roundTrip( *unicode.value );
     items.clear();
     for ( int i = 0; i < 64; ++i )
-        items.push_back(
-            { QString::number( i ), QString( 256, QChar( 0x20ac ) ), FieldType::String } );
+        items.push_back( { QString::number( i ),
+                           QString( 256, QChar( 0x20ac ) ),
+                           FieldType::String,
+                           {},
+                           DatasetRole::Unspecified,
+                           {},
+                           false,
+                           false } );
     CHECK( makeDatasetSchema( items ).error.code == "schema_metadata_limit" );
 }
 TEST_CASE( "F01 schema decoder rejects loose types versions and tampered content",
@@ -258,9 +278,9 @@ TEST_CASE( "F01 schema decoder rejects loose types versions and tampered content
     auto result = makeDatasetSchema( columns() );
     REQUIRE( result.value );
     const auto good = encodeDatasetSchema( *result.value );
-    for ( const QVariant v : { QVariant( true ), QVariant( QStringLiteral( "1" ) ), QVariant( 2 ),
-                               QVariant( 1.0000000000000002 ),
-                               QVariant( std::numeric_limits<double>::infinity() ) } ) {
+    for ( const QVariant& v : { QVariant( true ), QVariant( QStringLiteral( "1" ) ), QVariant( 2 ),
+                                QVariant( 1.0000000000000002 ),
+                                QVariant( std::numeric_limits<double>::infinity() ) } ) {
         auto bad = good;
         bad.insert( "schemaVersion", v );
         CHECK_FALSE( decodeDatasetSchema( bad ).value );
@@ -292,7 +312,7 @@ TEST_CASE( "F01 schema decoder rejects loose types versions and tampered content
         bad.insert( "columns", list );
         CHECK_FALSE( decodeDatasetSchema( bad ).value );
     }
-    for ( const QVariant v :
+    for ( const QVariant& v :
           { QVariant( 0 ), QVariant( QStringLiteral( "false" ) ), QVariant() } ) {
         auto wrong = col;
         wrong.insert( "nullable", v );
