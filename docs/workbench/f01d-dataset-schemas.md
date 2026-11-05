@@ -13,10 +13,10 @@ Test-first evidence: the QtCore-only runner compiled actual schema, value and
 logging source; empty API assertions failed all nine initial cases (14 failed
 assertions). The existing scalar baseline passed 332 assertions in six cases.
 The implemented runner passed before final interoperability coverage was added.
-Final QtCore-only and native focused tests passed506 assertions/12cases. Fresh
+Final QtCore-only and native focused tests passed 506 assertions in 12 cases. Fresh
 MSVC Qt6.10.1 ci_build passed; strict Clang conversion/sign/width checks passed
-both new TUs. Full isolated registered CTest passed7/7 in337.97s, including
-12,743 unit,3,172 integration and22,721 GUI regression assertions.
+both new TUs. Full isolated registered CTest passed 7/7 in 337.97s, including
+12,743 unit, 3,172 integration and 22,721 GUI regression assertions.
 See [structured observations](./f01d-observations.json) for frozen source hashes.
 Fresh whole-branch C++ and general reviews approved with no actionable findings.
 Reviewers inspected the supplied validation evidence without independently rerunning
