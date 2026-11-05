@@ -1232,7 +1232,7 @@
             "All factories return DataResult; physical origin stores one frozen snapshot and row endpoints. Malformed inline inputs fail and decoded physical metadata stays historical/unbound. Future consumers must check errors and obtain validated endpoint locations.",
             "SourceManifestEntry/DeferredSourceVerification are bounded metadata DTOs. Full manifest registry, richer file-change identity and strong materialization belong to F07/F16 and require versioned integration."
           ],
-          "localVerification": "Fresh MSVC Qt6.10.1 ci_build; strict Clang syntax on both new TUs; focused124 assertions/12cases. Full isolated CTest7/7 passed285.77s (unit12361/integration3172/GUI22721 assertions). Source/build-registration SHA256 unchanged through native build and tests. Final general/C++ review pending.",
+          "localVerification": "Fresh MSVC Qt6.10.1 ci_build; strict Clang syntax on both new TUs; focused124 assertions/12cases. Full isolated CTest7/7 passed285.77s (unit12361/integration3172/GUI22721 assertions). Source/build-registration SHA256 unchanged through native build and tests. Fresh general and C++ whole-branch reviews approved with no actionable findings.",
           "limitations": [
             "No new public operations or consumer parity is claimed for this unused internal contract.",
             "No source bodies, private Lua scripts, captures or user configuration are included.",
