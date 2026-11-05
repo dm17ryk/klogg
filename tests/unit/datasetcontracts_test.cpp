@@ -277,7 +277,7 @@ TEST_CASE( "F01 wire decoding rejects tampered identities and origin shapes",
     wire.insert( "eventKey", QStringLiteral( "evt1:bogus" ) );
     CHECK_FALSE( decodeEventRef( wire ).value );
     auto origin = original.value( "origin" ).toMap();
-    for ( const auto value :
+    for ( const auto& value :
           { QVariant( 17 ), QVariant( QStringLiteral( "017" ) ), QVariant( QStringLiteral( "-1" ) ),
             QVariant( QStringLiteral( "18446744073709551616" ) ) } ) {
         auto bad = origin;
@@ -329,7 +329,7 @@ TEST_CASE( "F01 wire metadata is bounded canonical and Unicode safe", "[data][F0
     auto ref = makeManagedByteEventRef( managed(), policy );
     REQUIRE( ref.value );
     auto original = encodeEventRef( *ref.value );
-    for ( const QVariant value :
+    for ( const QVariant& value :
           { QVariant( 1.0000000000000002 ), QVariant( std::numeric_limits<double>::infinity() ),
             QVariant( std::numeric_limits<double>::quiet_NaN() ) } ) {
         auto wire = original;
