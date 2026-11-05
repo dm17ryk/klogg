@@ -163,6 +163,27 @@ def load_manifest(path, *, manifest_bytes=None, read_source=None):
                     or not all(isinstance(value, str) for value in values)
                 ):
                     raise ProofError("invalid_fixture")
+            raw_expect = case.get("expectRaw", {})
+            if (
+                not isinstance(raw_expect, dict)
+                or len(case["expect"]) + len(raw_expect) > 128
+            ):
+                LOG.warning("proof_raw_oracle_rejected id=%s reason=shape_or_limit", identity)
+                raise ProofError("invalid_fixture")
+            for name, values in raw_expect.items():
+                if (
+                    not isinstance(name, str)
+                    or not isinstance(values, list)
+                    or not all(
+                        isinstance(value, str) and re.fullmatch(r"(?:[0-9a-f]{2})*", value)
+                        for value in values
+                    )
+                ):
+                    LOG.warning(
+                        "proof_raw_oracle_rejected id=%s reason=invalid_raw_hex", identity
+                    )
+                    raise ProofError("invalid_fixture")
+            LOG.debug("proof_raw_oracles_validated id=%s fields=%d", identity, len(raw_expect))
             declared_source = path.parent / case["hex"]
             source = declared_source.resolve()
             if path.parent not in source.parents:
@@ -403,9 +424,26 @@ def run_pdu_proof(engine, manifest_path, report_limit=OUTPUT_LIMIT):
             }
             record["observed"] = observed
             record["expected"] = case["expect"]
+            raw_expected = case.get("expectRaw", {})
+            raw_observed = {
+                name: [
+                    field["attributes"].get("value")
+                    for field in fields_named(result["packets"], name)
+                ]
+                for name in raw_expected
+            }
+            if "expectRaw" in case:
+                record["observedRaw"] = raw_observed
+                record["expectedRaw"] = raw_expected
+                LOG.debug(
+                    "proof_raw_oracle_checked id=%s fields=%d matched=%s",
+                    case["id"],
+                    len(raw_expected),
+                    raw_observed == raw_expected,
+                )
             if not protocol:
                 record["reason"] = "dissector_not_dispatched"
-            elif observed != case["expect"]:
+            elif observed != case["expect"] or raw_observed != raw_expected:
                 record["reason"] = "field_oracle_mismatch"
             else:
                 record["passed"] = True

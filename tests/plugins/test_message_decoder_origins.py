@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -505,6 +506,153 @@ class NativeOriginTests(OriginCase):
             (self.root / "output/result.json").read_text(encoding="utf-8")
         )
         self.assertEqual(report["reason"], "field_oracle_mismatch")
+
+
+class RawOriginOracleTests(OriginCase):
+    """Exercise real report admission/oracle code with explicitly synthetic engine output."""
+
+    def report(self, expected_raw, values, *, include_raw=True):
+        (self.root / "payload.hex").write_text("0102", encoding="ascii")
+        case = {
+            "id": "raw-oracle-double",
+            "dissector": "proof",
+            "hex": "payload.hex",
+            "sha256": "a12871fee210fb8619291eaea194581cbd2531e4b23759d225f6806923f63222",
+            "expect": {"proof.byte": ["same"] * len(values)},
+        }
+        if include_raw:
+            case["expectRaw"] = {"proof.byte": expected_raw}
+        manifest = self.root / "manifest.json"
+        manifest.write_text(json.dumps({"cases": [case]}), encoding="utf-8")
+        packets = [
+            {
+                "tag": "packet",
+                "attributes": {},
+                "children": [
+                    {
+                        "tag": "proto",
+                        "attributes": {"name": "proof"},
+                        "children": [
+                            {
+                                "tag": "field",
+                                "attributes": {
+                                    "name": "proof.byte",
+                                    "show": "same",
+                                    **({"value": value} if value is not None else {}),
+                                },
+                                "children": [],
+                            }
+                            for value in values
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        class EngineDouble(self.proof.OriginEngine):
+            def __init__(self, _tshark, _text2pcap, workspace, _lua, _timeout):
+                self.root = Path(workspace)
+                self.tshark = Path(sys.executable)
+                self.extension = []
+                self.started = time.monotonic()
+                self.commands = []
+
+            def capabilities(self):
+                return {"testDouble": True, "realEngineEvidence": False}
+
+            def decode(self, _payload, _dissector):
+                return {"packets": packets}
+
+            def command(self, _args):
+                return {"stdout": json.dumps(raw_document()).encode("ascii")}
+
+            def remaining(self):
+                return 1
+
+        self.invocations = getattr(self, "invocations", 0) + 1
+        output = self.root / ("output-%d" % self.invocations)
+        with patch.object(self.proof, "OriginEngine", EngineDouble):
+            code = self.proof.main(
+                [
+                    "--tshark",
+                    sys.executable,
+                    "--text2pcap",
+                    sys.executable,
+                    "--manifest",
+                    str(manifest),
+                    "--output",
+                    str(output),
+                ]
+            )
+        return code, json.loads((output / "result.json").read_text(encoding="utf-8"))
+
+    def test_raw_mismatch_rejects_valid_display_and_origin_bindings(self):
+        code, report = self.report(["02"], ["01"])
+        self.assertEqual(code, 1)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["reason"], "field_oracle_mismatch")
+
+    def test_repeated_raw_values_are_checked_in_occurrence_order(self):
+        code, report = self.report(["01", "02"], ["01", "02"])
+        self.assertEqual(code, 0)
+        self.assertTrue(report["passed"])
+        code, report = self.report(["02", "01"], ["01", "02"])
+        self.assertEqual(code, 1)
+        self.assertEqual(report["reason"], "field_oracle_mismatch")
+
+    def test_unavailable_empty_and_absent_raw_values_remain_distinct(self):
+        for expected, values, success in (
+            ([""], [None], False),
+            ([""], [""], True),
+            ([], [], True),
+            ([""], [], False),
+        ):
+            with self.subTest(expected=expected, values=values):
+                code, report = self.report(expected, values)
+                self.assertEqual(code, 0 if success else 1)
+                self.assertEqual(report["passed"], success)
+                if not success:
+                    self.assertEqual(report["reason"], "field_oracle_mismatch")
+
+    @unittest.skipUnless(
+        all(os.environ.get(key) for key in ("CILOGG_TSHARK", "CILOGG_TEXT2PCAP")),
+        "real TShark tools were not explicitly supplied",
+    )
+    def test_real_cli_checks_matching_and_reversed_raw_occurrences(self):
+        fixture = json.loads((FIXTURES / "probe.json").read_text(encoding="utf-8"))
+        (self.root / "probe.hex").write_bytes((FIXTURES / "probe.hex").read_bytes())
+        manifest = self.root / "real.json"
+        output = self.root / "real-output"
+        args = [
+            "--tshark",
+            os.environ["CILOGG_TSHARK"],
+            "--text2pcap",
+            os.environ["CILOGG_TEXT2PCAP"],
+            "--lua",
+            str(FIXTURES / "pdu_probe.lua"),
+            "--manifest",
+            str(manifest),
+            "--output",
+            str(output),
+        ]
+        for values, expected_code in ((["01", "02"], 0), (["02", "01"], 1)):
+            with self.subTest(raw_oracle=values):
+                fixture["cases"][0]["expectRaw"] = {"cilogg_md01_probe.item": values}
+                manifest.write_text(json.dumps(fixture), encoding="utf-8")
+                self.assertEqual(self.proof.main(args), expected_code)
+                report = json.loads(
+                    (output / "result.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(report["passed"], expected_code == 0)
+                if expected_code:
+                    self.assertEqual(report["reason"], "field_oracle_mismatch")
+
+    def test_legacy_manifest_does_not_gain_raw_oracle_report_fields(self):
+        code, report = self.report([], ["01"], include_raw=False)
+        self.assertEqual(code, 0)
+        self.assertFalse(report["productDecoderAccepted"])
+        self.assertNotIn("expectedRaw", report["cases"][0])
+        self.assertNotIn("observedRaw", report["cases"][0])
 
 
 if __name__ == "__main__":
