@@ -107,5 +107,21 @@
     "currentPreparation": "UT01a",
     "applicationConsumer": false,
     "unixAdoptionGate": "qualified_hosted_qt6_at_eee3168"
+  },
+  "currentPreparationChecks": "d01aChecks",
+  "d01aChecks": {
+    "currentPreparation": "D01a",
+    "formalParentTask": "D01",
+    "formalTaskExecution": false,
+    "applicationConsumer": false,
+    "executionMode": "independent_preparation",
+    "scope": "unused_checked_communication_contracts",
+    "plan": "slices/D01a-communication-contracts.md",
+    "taskStatesAndHistoryPreserved": true,
+    "hardDagUnchanged": true,
+    "formalEntryGatesUnchanged": true,
+    "previousPreparationPreserved": true,
+    "fourHandoffsSelectD01a": true,
+    "historicalUt01aChecksPreserved": true
   }
 }

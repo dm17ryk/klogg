@@ -710,3 +710,48 @@ TEST_CASE( "Compact receipt encoding has an explicit byte bound",
     REQUIRE_FALSE( decoded.value );
     CHECK( decoded.error.code == QStringLiteral( "resource_limit" ) );
 }
+
+TEST_CASE( "RX staging can contain the generic chunk limit",
+           "[communication][D01a][communication_review]" )
+{
+    StreamLimitsDefinition definition;
+    definition.maximumRxBytes = definition.maximumChunkBytes;
+    REQUIRE( StreamLimits::fromDefinition( definition ).value );
+    --definition.maximumRxBytes;
+    const auto rejected = StreamLimits::fromDefinition( definition );
+    REQUIRE_FALSE( rejected.value );
+    CHECK( rejected.error.code == QStringLiteral( "invalid_definition" ) );
+    CHECK( rejected.error.fieldId == QStringLiteral( "maximumChunkBytes" ) );
+    CHECK_FALSE( rejected.error.location );
+}
+
+TEST_CASE( "Cancellation codes and receipt stages agree",
+           "[communication][D01a][communication_review]" )
+{
+    const auto policy = limits();
+    const auto checked = WriteRequest::fromDefinition( request(), policy );
+    REQUIRE( checked.value );
+    REQUIRE( WriteReceipt::forRequest( *checked.value, QStringLiteral( "endpoint-a" ),
+                                       WriteStage::Cancelled, 3, 2, WriteFailure::Cancelled,
+                                       policy )
+                 .value );
+    const auto failedCancellation
+        = WriteReceipt::forRequest( *checked.value, QStringLiteral( "endpoint-a" ),
+                                    WriteStage::Failed, 3, 2, WriteFailure::Cancelled, policy );
+    CHECK_FALSE( failedCancellation.value );
+    CHECK( failedCancellation.error.code == QStringLiteral( "invalid_definition" ) );
+    CHECK( failedCancellation.error.fieldId == QStringLiteral( "stage" ) );
+    CHECK_FALSE( failedCancellation.error.location );
+    CHECK_FALSE( WriteReceipt::forRequest( *checked.value, QStringLiteral( "endpoint-a" ),
+                                           WriteStage::Cancelled, 3, 2, WriteFailure::IoError,
+                                           policy )
+                     .value );
+    auto input = receipt();
+    input.stage = WriteStage::Failed;
+    input.acceptedBytes = 3;
+    input.writtenBytes = 2;
+    input.errorCode = QStringLiteral( "cancelled" );
+    const auto conflictingSnapshot = WriteReceipt::fromDefinition( input, policy );
+    CHECK_FALSE( conflictingSnapshot.value );
+    CHECK( conflictingSnapshot.error.code == QStringLiteral( "invalid_definition" ) );
+}

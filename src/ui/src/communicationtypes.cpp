@@ -130,6 +130,10 @@ DataError checkedReceipt( const WriteReceiptDefinition& definition, const Stream
             return invalid( QStringLiteral( "errorCode" ),
                             QStringLiteral( "Failed receipts require an error code" ) );
         }
+        if ( definition.errorCode == QStringLiteral( "cancelled" ) ) {
+            return invalid( QStringLiteral( "stage" ),
+                            QStringLiteral( "Cancellation requires the cancelled receipt stage" ) );
+        }
         break;
     case WriteStage::Cancelled:
         if ( definition.errorCode != QStringLiteral( "cancelled" ) ) {
@@ -258,6 +262,11 @@ DataResult<StreamLimits> StreamLimits::fromDefinition( const StreamLimitsDefinit
         if ( !error.code.isEmpty() ) {
             return { {}, error };
         }
+    }
+    if ( definition.maximumChunkBytes > definition.maximumRxBytes ) {
+        return { {},
+                 invalid( QStringLiteral( "maximumChunkBytes" ),
+                          QStringLiteral( "Chunk limit exceeds RX staging limit" ) ) };
     }
     if ( definition.maximumChunkBytes > definition.maximumWriteBytes ) {
         return { {},
