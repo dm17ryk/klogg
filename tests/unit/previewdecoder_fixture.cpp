@@ -39,6 +39,9 @@ int main( int argc, char** argv )
     _setmode( _fileno( stdout ), _O_BINARY );
 #endif
     QCoreApplication app( argc, argv );
+    // Opt-in cold-start simulation for supervision tests; keep normal fixtures fast.
+    if ( qEnvironmentVariableIsSet( "CILOGG_PREVIEW_FIXTURE_COLD_START" ) )
+        QThread::msleep( 1200 );
     QFile input, output;
     if ( !input.open( stdin, QIODevice::ReadOnly | QIODevice::Unbuffered )
          || !output.open( stdout, QIODevice::WriteOnly ) )

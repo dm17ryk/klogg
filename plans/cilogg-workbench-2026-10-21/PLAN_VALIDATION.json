@@ -68,6 +68,12 @@
     "nativeRebuildClaimed": false,
     "scope": "Python origin-proof and qualification-test correction; exact current-source evidence in md01e-sourcery observations"
   },
+  "f01eChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01e"
+  },
   "f01cChecks": {
     "historicalTaskProgressPreserved": true,
     "otherTasksAndPolicyUnchanged": true,

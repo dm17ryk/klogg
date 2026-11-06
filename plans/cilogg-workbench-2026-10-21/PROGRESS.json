@@ -1170,13 +1170,18 @@
         "../../docs/workbench/f01b-line-provenance.md",
         "../../tests/unit/fieldvalue_test.cpp",
         "../../tests/ui/analysisjob_test.cpp",
+        "../../docs/analysis-dataset-references.md",
+        "../../docs/workbench/f01e-dataset-references.md",
+        "../../docs/workbench/f01e-observations.json",
+        "../../tests/unit/datasetreference_test.cpp",
         "../../docs/workbench/f01c-event-origins.md",
         "../../docs/workbench/f01c-observations.json",
         "../../tests/unit/datasetcontracts_test.cpp"
       ],
       "limitations": [
-        "Only internal F01a exact values, F01b physical-line provenance and F01c event-origin prerequisites are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
-        "Event/field-level byte mappings, full manifests/resolvers, dataset schema/revision cursors and GUI/CLI/native-MCP consumer parity remain pending."
+        "Internal F01a scalar, F01b physical-line provenance, F01c event origins and F01e reference foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
+        "Merged event identity/discriminated origins, event-level spans, schema descriptors, concrete dataset pages and GUI/CLI/native-MCP consumer parity remain pending.",
+        "F01e adds only internal revision/reference validation; concrete datasets, normalized lineage selectors, cursor issuance/lifetime and consumer parity remain pending. F01c/PR91 is integrated in master; F01d/PR92 remains separate open work."
       ],
       "slices": [
         {
@@ -1225,6 +1230,8 @@
         {
           "id": "F01c",
           "status": "implemented_pending_gates",
+          "integrationState": "merged",
+          "mergeCommit": "f74f2e839641fcfd022c9ccf16b099419b62efb0",
           "base": "080b504c184796ad3942383149d0385503dd9643",
           "branch": "codex/f01-event-origins",
           "scope": "Unused internal checked physical/inline/deferred-file/managed-byte event origins, weak physical lifetime validation, stable event keys and exact version-1 metadata codec; independent of PR90",
@@ -1242,8 +1249,29 @@
             "GitNexus refresh timed out; CodeGraph unindexed. Code-review-graph refreshed72nodes/689edges; unresolved global calls and static test-gap heuristics are not complete coverage proof."
           ],
           "commit": "a563edcc3ba36d2272c61c0c758bc91409adec14",
-          "pullRequest": "https://github.com/dm17ryk/klogg/pull/91",
-          "integrationState": "pull_request_open"
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/91"
+        },
+        {
+          "id": "F01e",
+          "status": "implemented_pending_gates",
+          "integrationState": "open_pr",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-dataset-references",
+          "scope": "Internal checked revision stamps, tagged cursor/lineage references, strict v1 wire codecs and mandatory owner lookup; independent of PR90 and PR92, with F01c/PR91 now integrated in master",
+          "rulings": [
+            "Generic tagged contracts only; row/page/lineage adapters and issuance/lifetime integration remain owner work. Consumers must check row association and validate/pin the retained epoch.",
+            "Schema IDs are opaque equality identities; owners must bind actual retained schema identity and issued tuple.",
+            "Retain three unsuccessful full-suite observations and require a fresh isolated pass; existing timing instability remains an acceptance concern.",
+            "Semantic preview fixtures receive5000ms cold-start headroom and safe request-ID completion guards; dedicated stall/cancellation and production deadlines unchanged. Controlled1200ms RED/ GREEN proves the distinction. Cost: semantic failures may report later."
+          ],
+          "localVerification": "Fresh MSVC/Qt6.10.1 ci_build583.88s; strictClang5TUs; focused133/9, related408/34 and controlled1200ms cold-start76 assertions; full isolated CTest7/7 passed489.98s. Eight frozen input hashes verified. Fresh whole-branch C++/general source reviews approved with no findings.",
+          "limitations": [
+            "No production token minting/store, source navigation or new GUI/CLI/native-MCP operation; full F01/W0/MD01 gates remain open.",
+            "Qt5 and hosted platforms/backends and packaging/performance acceptance pending.",
+            "CodeGraph unindexed; GitNexus90s refresh timeout leaves stale output nonauthoritative."
+          ],
+          "commit": "1ff3af07d58b055802b286e4ef24a3f683cd67e6",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/93"
         }
       ]
     },
