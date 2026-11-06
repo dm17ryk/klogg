@@ -115,7 +115,34 @@
       "G03"
     ],
     "nextAfterDecoderCore": "UT00",
-    "nextAfterUnifiedTerminal": "W1"
+    "nextAfterUnifiedTerminal": "W1",
+    "currentPreparation": {
+      "workstream": "unified_terminal",
+      "task": null,
+      "slice": "UT00a",
+      "plan": "slices/UT00a-terminal-baseline.md",
+      "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
+      "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+      "formalEntryGatesUnchanged": true,
+      "nextPreparation": {
+        "slice": "UT01a",
+        "plan": "slices/UT01a-terminal-model.md",
+        "task": null,
+        "formalParentTask": "UT01",
+        "formalTaskExecution": false,
+        "applicationConsumer": false,
+        "scope": "Only the isolated, unused feature-off model proof in the named plan; not execution or acceptance of formal UT01.",
+        "entryPolicy": "Preserve MD06/UT00/F01/D01 gates; require MSVC/Unix dependency proof before adoption; no live terminal input or endpoint ownership."
+      },
+      "date": "2026-11-05",
+      "state": "open_pr",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94",
+      "formalParentTask": "UT00",
+      "formalTaskExecution": false,
+      "executionMode": "independent_preparation",
+      "applicationConsumer": false,
+      "scope": "documentation_only"
+    }
   },
   "tasks": {
     "G01": {
@@ -2165,15 +2192,25 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": ["../../docs/workbench/tshark-preview.md"],
-      "limitations": ["MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."],
+      "evidence": [
+        "../../docs/workbench/tshark-preview.md"
+      ],
+      "limitations": [
+        "MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."
+      ],
       "slices": [
         {
           "id": "MD03a",
           "status": "completed",
           "scope": "Opt-in TShark/Lua message preview across GUI, CLI and native MCP",
-          "evidence": ["slices/MD03a-preview-integration.md", "../../tests/mcp/tshark_preview_parity.py"],
-          "limitations": ["Local Windows evidence is distinct from hosted CI, other platforms and release qualification.", "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."]
+          "evidence": [
+            "slices/MD03a-preview-integration.md",
+            "../../tests/mcp/tshark_preview_parity.py"
+          ],
+          "limitations": [
+            "Local Windows evidence is distinct from hosted CI, other platforms and release qualification.",
+            "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."
+          ]
         }
       ]
     },
@@ -2221,11 +2258,31 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": [],
+      "evidence": [
+        "../../docs/workbench/ut00-terminal-baseline.md",
+        "../../docs/workbench/ut00a-observations.json",
+        "slices/UT00a-terminal-baseline.md"
+      ],
       "limitations": [
         "Planning registration only; implementation and acceptance remain unrun."
       ],
-      "slices": []
+      "slices": [
+        {
+          "id": "UT00a",
+          "status": "implemented_pending_gates",
+          "integrationState": "open_pr",
+          "base": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+          "branch": "codex/terminal-baseline-ut00",
+          "scope": "Pinned terminal source/owner/automation/dependency/platform reconciliation; no terminal runtime or decoder acceptance",
+          "localVerification": "Documentation-only verification passed119tasks/201requirements/546links,147 canonical package hashes,14 pinned source hashes and exact history/DAG preservation. Independent C++/general reviews approved; one minor wording note deferred. No terminal runtime tests claimed.",
+          "limitations": [
+            "UT00 MD06 and UT02 F01/D01 hard dependencies remain unchanged and open.",
+            "Emulator dependency adoption, product builds/tests, terminal typing, PTY/SSH/device/privacy and release gates remain later implementation work."
+          ],
+          "commit": "c1feeee27c5556f67ae4c8998c43e85871edac00",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+        }
+      ]
     },
     "UT01": {
       "status": "planned",
@@ -2367,7 +2424,8 @@
     "D06: see ../../docs/workbench/decisions.md",
     "D07: see ../../docs/workbench/decisions.md",
     "D08: see ../../docs/workbench/decisions.md",
-    "D09: see ../../docs/workbench/decisions.md"
+    "D09: see ../../docs/workbench/decisions.md",
+    "D10: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

@@ -1,5 +1,8 @@
 # CILogg Developer Workbench Implementation Plan
 
+**Current workstream clarification (2026-11-05):** The user selected Unified Terminal next after merging PR #90. Resume the scoped [UT00a terminal preparation](slices/UT00a-terminal-baseline.md) through PROGRESS.json.executionPolicy.currentPreparation before unrelated F01 expansion. This is independent preparation; formal MD01–MD06/W0 and terminal F01/D01 acceptance gates remain open and unchanged. The dated full-milestone order below remains the acceptance order.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver every feature discussed for a polished developer logger, visualizer and automation workbench, including Docklight-style communication testing and the earlier fork roadmap.
