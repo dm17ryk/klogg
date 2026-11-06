@@ -605,3 +605,7 @@ foreach(target ${klogg_cpm_targets})
 endforeach()
 
 
+
+if(KLOGG_ENABLE_TERMINAL OR KLOGG_BUILD_TESTS)
+  add_subdirectory(libvterm)
+endif()

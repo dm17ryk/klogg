@@ -99,5 +99,13 @@
     "otherTasksAndPolicyUnchanged": true,
     "parentGatesStillOpen": true,
     "newSlice": "F01d"
+  },
+  "ut01aChecks": {
+    "taskStatesAndHistoryPreserved": true,
+    "hardDagUnchanged": true,
+    "formalGatesOpen": true,
+    "currentPreparation": "UT01a",
+    "applicationConsumer": false,
+    "unixAdoptionGate": "qualified_hosted_qt6_at_eee3168"
   }
 }

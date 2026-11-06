@@ -32,3 +32,5 @@ endif()
 
 
 
+
+add_subdirectory(terminal)

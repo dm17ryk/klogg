@@ -11,3 +11,7 @@ add_subdirectory(versioncheck)
 add_subdirectory(plugins)
 add_subdirectory(ui)
 add_subdirectory(app)
+
+if(KLOGG_ENABLE_TERMINAL OR KLOGG_BUILD_TESTS)
+  add_subdirectory(terminal)
+endif()

@@ -119,29 +119,56 @@
     "currentPreparation": {
       "workstream": "unified_terminal",
       "task": null,
-      "slice": "UT00a",
-      "plan": "slices/UT00a-terminal-baseline.md",
+      "slice": "UT01a",
+      "plan": "slices/UT01a-terminal-model.md",
       "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
-      "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+      "baseline": "7429f991c70b8937b15058802e8a342a6a4e9ddf",
       "formalEntryGatesUnchanged": true,
+      "previousPreparation": {
+        "workstream": "unified_terminal",
+        "task": "UT00",
+        "slice": "UT00a",
+        "plan": "slices/UT00a-terminal-baseline.md",
+        "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
+        "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+        "formalEntryGatesUnchanged": true,
+        "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
+        "date": "2026-11-05",
+        "state": "open_pr",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+      },
       "nextPreparation": {
-        "slice": "UT01a",
-        "plan": "slices/UT01a-terminal-model.md",
+        "slice": null,
+        "plan": null,
         "task": null,
-        "formalParentTask": "UT01",
+        "formalParentTask": "UT02",
         "formalTaskExecution": false,
         "applicationConsumer": false,
-        "scope": "Only the isolated, unused feature-off model proof in the named plan; not execution or acceptance of formal UT01.",
-        "entryPolicy": "Preserve MD06/UT00/F01/D01 gates; require MSVC/Unix dependency proof before adoption; no live terminal input or endpoint ownership."
+        "scope": "Prepare a separately scoped plan for minimal D01/shared-session foundations required by terminal integration; do not execute formal UT02 while F01/D01 gates are open."
       },
-      "date": "2026-11-05",
-      "state": "open_pr",
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94",
-      "formalParentTask": "UT00",
+      "date": "2026-11-06",
+      "state": "integrated_pending_hosted",
+      "evidence": "../../docs/workbench/ut01-terminal-model.md",
+      "branch": "codex/terminal-emulator-ut01",
+      "formalParentTask": "UT01",
       "formalTaskExecution": false,
       "executionMode": "independent_preparation",
       "applicationConsumer": false,
-      "scope": "documentation_only"
+      "scope": "unused_feature_off_model",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/95",
+      "hostedEvidence": {
+        "testedCodeHead": "eee31680f19f61c5c866a21f07220f85da30cc29",
+        "successfulChecks": 31,
+        "skippedSourceryChecks": 1,
+        "qt5": "unverified",
+        "windowsArmModel": "not_exercised_feature_off"
+      },
+      "masterIntegration": {
+        "incomingMaster": "4adda9b95965fc153d32744f23c46e646e011bc4",
+        "featureParent": "5c07ac3770bda413828ffdbbb3cd80ee3cc056b5",
+        "hostedValidation": "pending for this integration; earlier hostedEvidence remains historical",
+        "localValidation": "combined regression results recorded in PR validation evidence"
+      }
     }
   },
   "tasks": {
@@ -1000,7 +1027,7 @@
                     },
                     {
                       "name": "TIMEOUT",
-                      "value": 600.0
+                      "value": 600
                     },
                     {
                       "name": "WORKING_DIRECTORY",
