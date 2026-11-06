@@ -1039,7 +1039,7 @@ TEST_CASE( "External EHCI recovers exact fields after entered Lua timeout and ca
         expectedFields << decoded.value( "fields" ).toList();
     }
     for ( const bool cancel : { false, true } ) {
-        INFO( cancel ? "cancel after observed Lua entry" : "timeout after observed Lua entry" );
+        INFO( ( cancel ? "cancel after observed Lua entry" : "timeout after observed Lua entry" ) );
         QFile::remove( marker );
         REQUIRE_FALSE( QFile::exists( marker ) );
         const auto oldProcesses = client.findChildren<QProcess*>();
