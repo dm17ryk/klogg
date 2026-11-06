@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 146,
-  "validatedLocalLinks": 554,
+  "markdownFiles": 147,
+  "validatedLocalLinks": 559,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
