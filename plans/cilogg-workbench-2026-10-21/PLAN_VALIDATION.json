@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 141,
-  "validatedLocalLinks": 539,
+  "markdownFiles": 142,
+  "validatedLocalLinks": 541,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -67,5 +67,11 @@
     "parentGatesPreserved": true,
     "nativeRebuildClaimed": false,
     "scope": "Python origin-proof and qualification-test correction; exact current-source evidence in md01e-sourcery observations"
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
   }
 }
