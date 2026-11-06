@@ -118,16 +118,30 @@
     "nextAfterUnifiedTerminal": "W1",
     "currentPreparation": {
       "workstream": "unified_terminal",
-      "task": "UT00",
+      "task": null,
       "slice": "UT00a",
       "plan": "slices/UT00a-terminal-baseline.md",
       "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
       "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
       "formalEntryGatesUnchanged": true,
-      "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
+      "nextPreparation": {
+        "slice": "UT01a",
+        "plan": "slices/UT01a-terminal-model.md",
+        "task": null,
+        "formalParentTask": "UT01",
+        "formalTaskExecution": false,
+        "applicationConsumer": false,
+        "scope": "Only the isolated, unused feature-off model proof in the named plan; not execution or acceptance of formal UT01.",
+        "entryPolicy": "Preserve MD06/UT00/F01/D01 gates; require MSVC/Unix dependency proof before adoption; no live terminal input or endpoint ownership."
+      },
       "date": "2026-11-05",
       "state": "open_pr",
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/94",
+      "formalParentTask": "UT00",
+      "formalTaskExecution": false,
+      "executionMode": "independent_preparation",
+      "applicationConsumer": false,
+      "scope": "documentation_only"
     }
   },
   "tasks": {
@@ -2124,15 +2138,25 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": ["../../docs/workbench/tshark-preview.md"],
-      "limitations": ["MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."],
+      "evidence": [
+        "../../docs/workbench/tshark-preview.md"
+      ],
+      "limitations": [
+        "MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."
+      ],
       "slices": [
         {
           "id": "MD03a",
           "status": "completed",
           "scope": "Opt-in TShark/Lua message preview across GUI, CLI and native MCP",
-          "evidence": ["slices/MD03a-preview-integration.md", "../../tests/mcp/tshark_preview_parity.py"],
-          "limitations": ["Local Windows evidence is distinct from hosted CI, other platforms and release qualification.", "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."]
+          "evidence": [
+            "slices/MD03a-preview-integration.md",
+            "../../tests/mcp/tshark_preview_parity.py"
+          ],
+          "limitations": [
+            "Local Windows evidence is distinct from hosted CI, other platforms and release qualification.",
+            "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."
+          ]
         }
       ]
     },
