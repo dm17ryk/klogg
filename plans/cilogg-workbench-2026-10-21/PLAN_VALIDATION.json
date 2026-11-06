@@ -73,5 +73,11 @@
     "otherTasksAndPolicyUnchanged": true,
     "parentGatesStillOpen": true,
     "newSlice": "F01e"
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
   }
 }

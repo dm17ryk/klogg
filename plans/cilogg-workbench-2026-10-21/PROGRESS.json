@@ -1173,12 +1173,15 @@
         "../../docs/analysis-dataset-references.md",
         "../../docs/workbench/f01e-dataset-references.md",
         "../../docs/workbench/f01e-observations.json",
-        "../../tests/unit/datasetreference_test.cpp"
+        "../../tests/unit/datasetreference_test.cpp",
+        "../../docs/workbench/f01c-event-origins.md",
+        "../../docs/workbench/f01c-observations.json",
+        "../../tests/unit/datasetcontracts_test.cpp"
       ],
       "limitations": [
-        "Internal F01a scalar, F01b physical-line provenance and F01e reference foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
+        "Internal F01a scalar, F01b physical-line provenance, F01c event origins and F01e reference foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
         "Merged event identity/discriminated origins, event-level spans, schema descriptors, concrete dataset pages and GUI/CLI/native-MCP consumer parity remain pending.",
-        "F01e adds only internal revision/reference validation; concrete datasets, normalized lineage selectors, cursor issuance/lifetime and consumer parity remain pending. F01c/PR91 and F01d/PR92 remain separate unmerged work."
+        "F01e adds only internal revision/reference validation; concrete datasets, normalized lineage selectors, cursor issuance/lifetime and consumer parity remain pending. F01c/PR91 is integrated in master; F01d/PR92 remains separate open work."
       ],
       "slices": [
         {
@@ -1225,12 +1228,36 @@
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/87"
         },
         {
+          "id": "F01c",
+          "status": "implemented_pending_gates",
+          "integrationState": "merged",
+          "mergeCommit": "f74f2e839641fcfd022c9ccf16b099419b62efb0",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-event-origins",
+          "scope": "Unused internal checked physical/inline/deferred-file/managed-byte event origins, weak physical lifetime validation, stable event keys and exact version-1 metadata codec; independent of PR90",
+          "rulings": [
+            "All factories return DataResult; physical origin stores one frozen snapshot and row endpoints. Malformed inline inputs fail and decoded physical metadata stays historical/unbound. Future consumers must check errors and obtain validated endpoint locations.",
+            "SourceManifestEntry/DeferredSourceVerification are bounded metadata DTOs. Full manifest registry, richer file-change identity and strong materialization belong to F07/F16 and require versioned integration."
+          ],
+          "localVerification": "Fresh MSVC Qt6.10.1 ci_build; strict Clang syntax on both new TUs; focused124 assertions/12cases. Full isolated CTest7/7 passed285.77s (unit12361/integration3172/GUI22721 assertions). Source/build-registration SHA256 unchanged through native build and tests. Fresh general and C++ whole-branch reviews approved with no actionable findings.",
+          "limitations": [
+            "No new public operations or consumer parity is claimed for this unused internal contract.",
+            "No source bodies, private Lua scripts, captures or user configuration are included.",
+            "F01/W0/MD01, full manifests/resolvers, per-character byte mapping, datasets/cursors and consumer integration remain open.",
+            "Qt5, accelerated backend and hosted native platform acceptance remain pending.",
+            "Existing unmeasured P00/W0 performance and release budgets remain open.",
+            "GitNexus refresh timed out; CodeGraph unindexed. Code-review-graph refreshed72nodes/689edges; unresolved global calls and static test-gap heuristics are not complete coverage proof."
+          ],
+          "commit": "a563edcc3ba36d2272c61c0c758bc91409adec14",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/91"
+        },
+        {
           "id": "F01e",
           "status": "implemented_pending_gates",
           "integrationState": "open_pr",
           "base": "080b504c184796ad3942383149d0385503dd9643",
           "branch": "codex/f01-dataset-references",
-          "scope": "Internal checked revision stamps, tagged cursor/lineage references, strict v1 wire codecs and mandatory owner lookup; independent of open PR90/91/92",
+          "scope": "Internal checked revision stamps, tagged cursor/lineage references, strict v1 wire codecs and mandatory owner lookup; independent of PR90 and PR92, with F01c/PR91 now integrated in master",
           "rulings": [
             "Generic tagged contracts only; row/page/lineage adapters and issuance/lifetime integration remain owner work. Consumers must check row association and validate/pin the retained epoch.",
             "Schema IDs are opaque equality identities; owners must bind actual retained schema identity and issued tuple.",
