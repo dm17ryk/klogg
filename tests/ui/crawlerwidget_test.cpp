@@ -436,9 +436,11 @@ TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
     REQUIRE( QTest::qWaitFor(
         [] {
             return QToolTip::isVisible() && QToolTip::text().contains( "TShark / Lua" )
-                   && QToolTip::text().contains( "EHCI complete" );
+                   && QToolTip::text().contains( "EHCI complete" )
+                   && QToolTip::text().contains( "<tr><td>" );
         },
         15000 ) );
+    CHECK_FALSE( QToolTip::text().contains( "Preview unavailable:" ) );
     CHECK( view->getSelectedText() == selection );
     const auto capture = qEnvironmentVariable( "CILOGG_PREVIEW_ENGINE_TOOLTIP_SCREENSHOT" );
     if ( !capture.isEmpty() ) {

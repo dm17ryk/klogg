@@ -31,6 +31,25 @@ def require_visible_failure(result, reason):
     assert not result.get("fallbackReason") and "json_preview" not in result.get("decoderAttempts", []), result
 
 
+def require_budget_prefix(result, reference):
+    """Check exact whole rows in order, including their original engine offsets."""
+    assert result["backend"] == "tshark_lua" and result["state"] == "completed"
+    assert result["available"] and not result["complete"] and result["limited"]
+    assert result["reason"] == "response_limit" and not result.get("fallbackReason")
+    fields = result["fields"]
+    assert fields, "response budget discarded every fitting whole row"
+    root = copy.deepcopy(reference[0])
+    root["attributes"]["size"] = root["columns"][4] = "384"
+    assert fields[0] == root, "budget prefix changed the original protocol row"
+    assert 1 < len(fields) < 385, "expected a nonempty proper item prefix"
+    start = int(reference[1]["attributes"]["pos"])
+    for index, field in enumerate(fields[1:]):
+        expected = copy.deepcopy(reference[1 + index % 2])
+        expected["id"] = reference[1]["id"].rsplit("/", 1)[0] + "/" + str(index)
+        expected["attributes"]["pos"] = expected["columns"][3] = str(start + index)
+        assert field == expected, ("whole row changed or skipped", index)
+
+
 def setup_preview(payload):
     definitions = {"version": 1, "previews": [
         {"name": name, "regex": "^(?<value>.*)$", "format": "fields",
@@ -260,6 +279,36 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
                     actual = [field["attributes"].get("value") for field in result["fields"]
                               if field["attributes"].get("name") == name]
                     assert actual == expected, (case["id"], name, "raw bytes", actual, expected)
+    # Aggregate ASCII-JSON overflow, below the PDML and row-count limits. A long
+    # public display label grows each whole row without truncating its value.
+    budget_script = artifacts / "preview-budget.lua"
+    budget_script.write_text(
+        'local p=Proto("cilogg_budget_probe", "CILogg public budget probe")\n'
+        'local f=ProtoField.uint8("cilogg_budget_probe.item", '
+        'string.rep("Public budget label ",10),base.DEC)\n'
+        'p.fields={f}\n'
+        'function p.dissector(tvb,pinfo,tree)\n'
+        '  local root=tree:add(p,tvb())\n'
+        '  for i=0,tvb:len()-1 do root:add(f,tvb(i,1)) end\n'
+        '  return tvb:len()\nend\n', encoding="utf-8")
+    budget_config = copy.deepcopy(config)
+    budget_config.update(lua=[str(budget_script)],
+                         previewRoutes={"Mapped carrier": {"dissector": "cilogg_budget_probe",
+                                                           "protocol": "cilogg_budget_probe"}},
+                         protocolRoutes={},
+                         defaultDissector="cilogg_budget_probe")
+    pair("set_preview_decoder", budget_config)
+    budget_request = dict(request, decoder="tshark", dissector="cilogg_budget_probe",
+                          previewName="Mapped carrier", inputEncoding="utf8")
+    small = pair("preview_message", budget_request)
+    for result in small:
+        assert result["backend"] == "tshark_lua" and result["available"] and result["complete"]
+        assert not result.get("fallbackReason") and not result["limited"]
+        assert len(result["fields"]) == 3
+        assert [row["columns"][1] for row in result["fields"][1:]] == ["65", "66"]
+    large = pair("preview_message", dict(budget_request, text="AB" * 192))
+    for result, reference in zip(large, small):
+        require_budget_prefix(result, reference["fields"])
     (artifacts / "tshark-preview-observations.json").write_text(
         json.dumps(observations, indent=2, ensure_ascii=False), encoding="utf-8")
     print("PASS: %d CLI/native-MCP real preview comparisons%s" %

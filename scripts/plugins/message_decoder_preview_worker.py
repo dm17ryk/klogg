@@ -153,6 +153,38 @@ def encode_frame(value, limit=RESPONSE_LIMIT):
     return struct.pack(">I", len(data)) + data
 
 
+def _fit_response(response):
+    """Retain an exact preorder row prefix within the compact ASCII body cap."""
+    total = len(response["fields"])
+    try:
+        frame = encode_frame(response)
+    except ProofError:
+        fitted = dict(response)
+        fitted.update(complete=False, limited=True, reason="response_limit", fields=[])
+        # Empty-array brackets and all final limited-result metadata are already
+        # counted. A whole row replaces no brackets; only subsequent rows add a comma.
+        used = len(encode_frame(fitted)) - 4
+        for field in response["fields"]:
+            try:
+                size = len(encode_frame(field)) - 4
+            except ProofError:
+                break  # No truncation or skipping of an oversized row.
+            size += bool(fitted["fields"])
+            if used + size > RESPONSE_LIMIT:
+                break
+            fitted["fields"].append(field)
+            used += size
+        frame = encode_frame(fitted)  # Authoritative final cap check.
+        result = fitted
+    else:
+        result = response
+    LOG.debug(
+        "preview_response_budget retained=%d total=%d bytes=%d cap=%d",
+        len(result["fields"]), total, len(frame) - 4, RESPONSE_LIMIT,
+    )
+    return result
+
+
 def write_frame(stream, value):
     # Public helper also used by portable tests and native fixture drivers.
     frame = encode_frame(value, REQUEST_LIMIT)
@@ -571,11 +603,7 @@ class PreviewWorker:
             enginePid=self.engine.process.pid,
             scriptSha256=self.script_hashes,
         )
-        # A response budget failure is explicit and carries no partially retained tree.
-        try:
-            encode_frame(response)
-        except ProofError:
-            response.update(complete=False, limited=True, reason="response_limit", fields=[])
+        response = _fit_response(response)
         remaining(deadline)
         LOG.info(
             "preview_evaluated id=%s pid=%d payload_bytes=%d fields=%d limited=%s",

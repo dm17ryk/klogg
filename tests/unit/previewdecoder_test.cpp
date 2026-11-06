@@ -5,13 +5,16 @@
 #include "previewtree.h"
 #include "tsharkpreviewclient.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
@@ -53,6 +56,43 @@ PreviewEvaluationRequest directRequest( const QString& text, const QString& enco
     return request;
 }
 } // namespace
+
+#ifdef Q_OS_WIN
+TEST_CASE( "PATH runtime discovery prefers native Windows Python over batch shims",
+           "[previewdecoder][previewpython]" )
+{
+    QTemporaryDir sandbox;
+    REQUIRE( sandbox.isValid() );
+    const auto shimDirectory = sandbox.filePath( "shim" );
+    const auto nativeDirectory = sandbox.filePath( "native" );
+    REQUIRE( QDir().mkpath( shimDirectory ) );
+    REQUIRE( QDir().mkpath( nativeDirectory ) );
+    const auto shimPath = QDir( shimDirectory ).filePath( "python3.bat" );
+    QFile shim( shimPath );
+    REQUIRE( shim.open( QIODevice::WriteOnly ) );
+    const QByteArray batch = "@echo off\r\nexit /b 73\r\n";
+    REQUIRE( shim.write( batch ) == batch.size() );
+    shim.close();
+    const auto nativePath = QDir( nativeDirectory ).filePath( "python.exe" );
+    REQUIRE( QFile::copy( QString::fromUtf8( PREVIEW_DECODER_FIXTURE_PATH ), nativePath ) );
+    RestoreEnvironment path( "PATH" );
+    qputenv( "PATH", ( shimDirectory + QDir::listSeparator() + nativeDirectory ).toUtf8() );
+    REQUIRE( QFileInfo( QStandardPaths::findExecutable( "python3" ) ).canonicalFilePath()
+             == QFileInfo( shimPath ).canonicalFilePath() );
+
+    SECTION( "Native executable takes precedence over an earlier batch shim" )
+    {
+        CHECK( QFileInfo( cilogg::preview::detail::findPythonOnPath() ).canonicalFilePath()
+               == QFileInfo( nativePath ).canonicalFilePath() );
+    }
+    SECTION( "Batch shim remains a fallback when no native executable is on PATH" )
+    {
+        REQUIRE( QFile::remove( nativePath ) );
+        CHECK( QFileInfo( cilogg::preview::detail::findPythonOnPath() ).canonicalFilePath()
+               == QFileInfo( shimPath ).canonicalFilePath() );
+    }
+}
+#endif
 
 TEST_CASE( "Decoder settings replace atomically with strict trusted types", "[previewdecoder]" )
 {

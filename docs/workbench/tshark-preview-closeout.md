@@ -5,7 +5,105 @@ It keeps the existing 100–10000 ms request range, 3000 ms default and fixed
 3000 ms hover budget. A visible cold timeout remains a valid outcome; successful
 warm decodes do not establish cold performance acceptance.
 
-## Observed startup cost
+## Native Windows fallback discovery
+
+Windows PATH discovery could select a pyenv `python3.bat` before an available
+native `python.exe`. Qt's own `qtpaths --find-exe` confirmed the selected shim.
+A held-open-input public frame probe returned the same exact frame through both
+programs, but the shim took 3345 ms and the native executable took 124 ms. This
+is launcher overhead evidence, not evidence of corrupted or unsupported batch
+framing. A normal hover timed out while the same 3000 ms request decoded using
+the explicit native interpreter. An unchanged warm repeat also passed, so a
+wall-clock GUI failure is not the deterministic regression oracle.
+
+The Windows PATH fallback now tries `python.exe`, then `python3.exe`, before
+the generic `python3` and `python` names that can select PATHEXT batch shims.
+Explicit and bundled runtime choices retain precedence. Unix keeps its original
+`python3`/`python` order. Executable names do not validate Python versions; the
+existing supported-runtime requirements and worker error handling still apply.
+Decision diagnostics contain fixed candidate names, origins, counters and
+booleans rather than paths or payloads.
+
+A Windows PATH fixture places a real native fixture executable after a batch
+shim and checks native preference plus shim-only compatibility. It failed with
+one assertion under the old order, then passed all 17 assertions after the fix.
+The real hover fixture now requires rendered decoded field rows and rejects the
+unavailable result, instead of accepting the assembly header alone.
+
+The native-first combined build passed `ci_build` in 502.18 seconds. A fresh
+normal-selection hover passed with decoded EHCI fields under the unchanged
+3000 ms budget. Its independent observer saw the actual `python.exe` worker,
+excluded the bootstrap PID, and recorded zero active job processes or live
+observed handles before outer cleanup. The normal AB CLI/MCP pair returned exact
+TShark values 65/66 without fallback in 1771/248 ms; full normal parity then
+passed 54 strict comparisons. These are local observations, not cold-install
+performance guarantees or bundled-runtime acceptance.
+
+## Exact field prefixes at the response limit
+
+The retained private fixture assembled successfully and decoded as available,
+but hit `response_limit` and retained zero fields. The failing assertion was
+the nonempty-field check, not the availability check. Previously, any aggregate
+response overflow cleared every field, even when an exact prefix would fit.
+
+The worker now retains a whole preorder field prefix within the unchanged
+131072-byte compact ASCII JSON body cap, excluding its four-byte header. It
+counts final limited-result metadata, ASCII escaping and commas with the
+original encoder and performs a final cap check. It stops at the first field
+that does not fit; it does not truncate values, skip a large field, or mutate
+the input. A first field that cannot fit still produces an empty limited result.
+Overflow results remain `completed`, `available=true`, `complete=false`,
+`limited=true`, with reason `response_limit`. IDs, depths, attributes and engine
+positions are retained. Their `engine_data_source_unresolved` origin remains
+explicit: these positions do not establish physical carrier or decoded-payload
+offset mappings. This follows the existing JSON backend's whole-row-prefix
+policy. No request option, response cap or execution deadline was raised.
+
+Eight portable boundary cases produced five expected failures against the old
+all-empty policy, then all passed. They cover exact-cap metadata and commas,
+one-byte overflow, Unicode/supplementary/NUL escaping, oversized-first-field
+behavior, unchanged full-fit results, input immutability and linear encoding.
+Full portable discovery passed 140 cases: 92 executed passes and 48 explicit
+external-input skips. Python 3.9 grammar checks passed; no local 3.9 runtime was
+available, so runtime compatibility is still a hosted-CI check.
+
+A public routed Lua fixture isolates response-byte overflow with 384 UTF-8 bytes
+and 385 rows, within the existing row and PDML bounds. Against the old embedded
+worker, both CLI and MCP reported the expected limited metadata but zero fields;
+the new exact-prefix assertion failed after 57 comparison pairs. An earlier
+fixture run failed its setup oracle and is not counted as product RED.
+The rebuilt embedded worker passed all 57 CLI/native-MCP comparison pairs under
+normal system fallback selection, without a forced interpreter. Both transports
+retained 291 exact whole rows from the 385-row overflow fixture and reported the
+limited metadata above. Observed request times were 408/343 ms; these are local
+observations, not performance guarantees.
+
+## Final combined local qualification
+
+The final `ci_build` passed with exit 0 in 510.04 seconds, including regeneration
+and compilation of `preview_decoder.qrc`. Seven product/test file hashes were
+frozen before the build at qualification head
+`ed41f3f473841c08c7be88c72869f5f0e9b13577`; the qualification combined the
+independent PR96 communication contracts with these PR97 changes.
+
+In a fresh isolated runtime, native private-fragment recovery, the strengthened
+3000 ms hover check and capability checks each exited normally with status 0.
+Recovery decoded retained private fields before and after real Lua timeout and
+cancellation. The public hover rendered assembled EHCI fields. Independent
+observers recorded zero active jobs and zero surviving observed process handles
+before outer cleanup in all three phases, observing 38, 23 and 26 processes
+respectively. CLI/MCP parity success alone is not independent leak or normal GUI
+exit evidence. No private logs, dissectors or screenshots are distributed.
+
+The final registered CTest suite passed all 10 groups in 300.13 seconds
+(wrapper exit 0, 300.34 seconds), including 1045 terminal-model assertions in
+23 cases and 519 communication-contract assertions in 22 cases. The broad suite
+used an explicit installed interpreter; the dedicated phases above exercised
+normal system fallback without an override. Validation used Windows MSVC 19.44,
+Qt 6.10.1, Python 3.14, and Hyperscan/Vectorscan disabled. The isolated runtime
+contained no bundled Python candidate, so bundled deployment remains unqualified.
+
+## Earlier worker startup observations
 
 On the local Windows host, three fresh actual workers used the trusted configured
 EHCI pack and public synthetic bytes. The first request timed out at 3062 ms;
@@ -51,8 +149,8 @@ contents; private input is not committed.
 Supply `CILOGG_TSHARK`, `CILOGG_TEXT2PCAP`,
 `CILOGG_EHCI_CAPABILITIES_LUA`, `CILOGG_EHCI_CAPABILITY_FIXTURES` and, for the
 private-log check, `CILOGG_PREVIEW_PRIVATE_LOG_SAMPLE`. Run the built native unit
-executable with `[previewehcirecovery]`. These new native checks still require a
-source-matched build and execution; test source is not acceptance evidence.
+executable with `[previewehcirecovery]`. Qualification must use a source-matched
+build; test source alone is not acceptance evidence.
 
 The existing CLI/native-MCP parity harness now decodes external EHCI after its
 real Lua stall, compares exact display/raw fields and repeats on each recovered
@@ -64,7 +162,7 @@ for controlled tests. Its shared runtime copier excludes `python_runtime`, so
 this isolated-copy mode qualifies system fallback only. A bundled-Python package
 needs a separate deployment check that retains that runtime.
 
-## Preserved default-runtime failures
+## Preserved early default-runtime failures
 
 Two functionality probes used the existing byte-identified master-equivalent
 native runtime, before the new diagnostic fix was rebuilt. Its `cilogg.exe`
@@ -83,8 +181,9 @@ selectors, owned workers and sent worker requests, with zero worker responses
 and two visible timeout retirements. The control reached the same stages; one
 worker replied with 77 fields and 867 diagnostic bytes, and the other timed out.
 Its selectors themselves took approximately 1.4 and 1.9 seconds. The failed
-observations do not establish an interpreter-selection defect: explicit Python
-also timed out. No resolver change was made from this evidence.
+observations alone did not establish an interpreter-selection defect: explicit
+Python also timed out. The later isolated controls and Qt lookup above supplied
+the evidence for native-first discovery.
 
 The harness closes MCP input, terminates the test-owned GUI host, waits/reaps
 and removes its unique executable. This is cleanup evidence, not normal GUI
@@ -92,10 +191,16 @@ exit proof or independent OS observation of every TShark descendant. No cleanup
 error was reported. Exact summaries and stage logs remain private in
 `build_root/default-python-baseline` and `build_root/default-python-control`.
 
-GUI, new native recovery, private-log, hosted, other-platform and release checks
-remain pending until executed against the identified combined source and runtime.
-The reviewed source has a successful exact-checkout incremental CodeReviewGraph
-refresh; this is not a full flow/community rebuild. GitNexus is unregistered for
-this checkout and its required exact-root impact/detection attempts cannot prove
-scope. CodeGraph is unindexed and was not initialized. Direct staged diffs,
-portable tests and the independent Python/C++ reviews supplement these limits.
+Hosted, other-platform, accelerated-search, bundled-runtime and release checks
+remain open. Cold-start performance acceptance and broader decoder-core or
+interactive-terminal integration are not established by these local results.
+Independent C++, Python and general reviews approved the source changes.
+Exact-checkout incremental CodeReviewGraph refreshes succeeded; these are not
+full flow/community rebuilds. GitNexus is registered but stale on the primary
+qualification checkout: its requested full analysis failed with native exit
+3221226505 (0xC0000409) after 237.83 seconds following a parser file-budget
+failure. The publication checkout is unregistered. Required exact-root impact
+and staged detection attempts cannot establish complete scope from those indexes.
+CodeGraph is unindexed and was not initialized. Direct staged diffs, frozen source
+hashes and functional tests supplement these limits. No clean static-analyzer
+pass is claimed.

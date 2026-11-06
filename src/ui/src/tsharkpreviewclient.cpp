@@ -31,6 +31,38 @@ static void initializePreviewDecoderResources()
     Q_INIT_RESOURCE( preview_decoder );
 }
 
+namespace cilogg::preview::detail {
+QString findPythonOnPath()
+{
+    QStringList names;
+#ifdef Q_OS_WIN
+    // Native interpreters avoid batch-launcher overhead in the bounded worker startup.
+    names << "python.exe" << "python3.exe";
+#endif
+    names << "python3" << "python";
+    for ( const auto& name : names ) {
+        const auto candidate = QStandardPaths::findExecutable( name );
+        const QFileInfo info( candidate );
+        const bool absolute = info.isAbsolute();
+        const bool file = info.isFile();
+        const bool executable = info.isExecutable();
+        if ( absolute && file && executable ) {
+            const auto suffix = info.suffix();
+            const bool batchWrapper = suffix.compare( "bat", Qt::CaseInsensitive ) == 0
+                                      || suffix.compare( "cmd", Qt::CaseInsensitive ) == 0;
+            LOG_DEBUG << "Preview Python runtime selected source=path name=" << name
+                      << " batch_wrapper=" << batchWrapper;
+            return info.absoluteFilePath();
+        }
+        LOG_DEBUG << "Preview Python PATH candidate rejected name=" << name
+                  << " found=" << !candidate.isEmpty() << " absolute=" << absolute
+                  << " file=" << file << " executable=" << executable;
+    }
+    LOG_WARNING << "Preview Python PATH discovery found no executable runtime";
+    return {};
+}
+} // namespace cilogg::preview::detail
+
 namespace {
 constexpr int ResponseLimit = 128 * 1024;
 const QString Origin = QStringLiteral( "engine_data_source_unresolved" );
@@ -59,14 +91,25 @@ QString pythonExecutable()
                                    "python_runtime/python/bin/python3", "python/python.exe",
                                    "bin/python3", "bin/python", "python/bin/python3" } )
         candidates << QDir( app ).filePath( relative );
-    candidates << QStandardPaths::findExecutable( "python3" )
-               << QStandardPaths::findExecutable( "python" );
+    int candidateIndex = 0;
     for ( const auto& candidate : candidates ) {
         const QFileInfo info( candidate );
-        if ( info.isAbsolute() && info.isFile() && info.isExecutable() )
+        const char* origin = candidateIndex == 0 ? "override" : "bundled";
+        const bool absolute = info.isAbsolute();
+        const bool file = info.isFile();
+        const bool executable = info.isExecutable();
+        if ( absolute && file && executable ) {
+            LOG_DEBUG << "Preview Python runtime selected source=" << origin
+                      << " candidate=" << candidateIndex;
             return info.absoluteFilePath();
+        }
+        LOG_DEBUG << "Preview Python candidate rejected source=" << origin
+                  << " candidate=" << candidateIndex << " empty=" << candidate.isEmpty()
+                  << " absolute=" << absolute << " file=" << file << " executable=" << executable;
+        ++candidateIndex;
     }
-    return {};
+    LOG_DEBUG << "Preview Python explicit/bundled candidates unavailable; resolving PATH";
+    return cilogg::preview::detail::findPythonOnPath();
 }
 bool boundedString( const QJsonValue& value, int maximum = 65536 )
 {

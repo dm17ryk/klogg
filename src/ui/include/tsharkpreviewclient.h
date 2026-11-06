@@ -3,6 +3,12 @@
 #include <QObject>
 #include <QVariantMap>
 #include <functional>
+
+namespace cilogg::preview::detail {
+// Client-level explicit and bundled choices retain precedence over this PATH fallback.
+QString findPythonOnPath();
+} // namespace cilogg::preview::detail
+
 class TsharkPreviewClient : public QObject {
 public:
     using Completion = std::function<void( QVariantMap )>;
