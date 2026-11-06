@@ -1,6 +1,9 @@
 # Start This Implementation in Codex App
 
-Open the current CILogg repository in Codex App. The merged package is installed at `plans/cilogg-workbench-2026-10-21/`; no extraction or second copy is required. Read [MERGE_MAP.md](MERGE_MAP.md), [the current baseline](../../docs/workbench/baseline.md) and `PROGRESS.json` before continuing. G01 reconciliation is recorded; G02 is next and G03 is also runnable. Recheck the current source and preserve any newer changes. Paste the following task into Codex App.
+**Current workstream clarification (2026-11-06):** The user selected Unified Terminal next after configured TShark-first Preview merged through PR #90. Select the independently scoped preparation in `PROGRESS.json.executionPolicy.currentPreparation` before the historical formal task pointers. Read its named slice plan and boundaries. UT00a is a documentation audit; UT01a is an unused, feature-off model proof. Neither executes or accepts its formal parent task. MD01–MD06/W0 and terminal F01/D01 acceptance gates remain open and unchanged.
+
+
+Open the current CILogg repository in Codex App. The merged package is installed at `plans/cilogg-workbench-2026-10-21/`; no extraction or second copy is required. Read [MERGE_MAP.md](MERGE_MAP.md), [the current baseline](../../docs/workbench/baseline.md) and `PROGRESS.json` before continuing. G01 and G03 are recorded complete; broader G02/W0 acceptance remains open. The current preparation descriptor selects the user-requested terminal workstream without changing formal task eligibility. Recheck the current source and preserve any newer changes. Paste the following task into Codex App.
 
 ```text
 Implement the CILogg Developer Workbench plan in this repository.
@@ -10,7 +13,11 @@ plans/cilogg-workbench-2026-10-21/.
 Start with README.md, MASTER_GUIDE.md, 00-product-spec.md,
 BASELINE.md, TASK_INDEX.json, FEATURE_COVERAGE.md and PROGRESS.json.
 
-Resume from PROGRESS.json (G02 after the recorded G01 reconciliation).
+Select currentPreparation before the historical formal task pointers.
+Read PROGRESS.json.executionPolicy.currentPreparation and its named slice plan.
+Its task=null and formalTaskExecution=false identify independent preparation,
+not execution or acceptance of formalParentTask. previousPreparation is historical
+evidence, not a runnable instruction. Preserve all formal task states and gates.
 Recheck the real current HEAD, working tree, toolchain, merged P00–P05
 foundations, action/scenario/plugin systems and code-impact tools. Refresh
 G01 evidence if the implementation baseline or decisions have changed.
@@ -18,18 +25,22 @@ Reconcile newer completed work instead of reimplementing it. Do not reset or
 overwrite unrelated work, stop the user's active captures, or assume the
 research SHA is the required execution base.
 
-Complete G02/G03, then prioritize TShark decoder core MD01–MD06 and its
-required F01–F04/D01/E01 foundations, preserving the hard dependency graph.
-Start that phase with MD01; retain its scripts/reference-capture acceptance.
-After accepted decoder core, implement unified terminal UT00–UT13 from
-11-unified-terminal.md and its linked source specification, then resume
-remaining W1 and later waves. MD07/MD08 integration remains deferred until its
-later dependencies land. UT00 explicitly depends on MD06; do not treat a merged
-preview-only slice as completion of decoder core. Every exposed terminal
-increment includes GUI/CLI/Python/native-MCP parity and safe write arbitration;
-UT11 verifies the complete public surface. All UT tasks remain planned until
-implemented and accepted. Follow PROGRESS.json.executionPolicy; never mark a
-missing prerequisite complete to advance the schedule.
+Finish the current preparation's pending review, validation and integration
+using its recorded evidence. Then follow its nextPreparation descriptor only
+within that descriptor's independent scope. Read the referenced slice plan first;
+if plan is null, prepare and validate a bounded slice plan before implementation.
+Do not execute a formal UT task while its hard dependencies remain open. In the
+absence of a current preparation, select a formal task whose hard dependencies
+are accepted. Do not rerun completed G03 or older slices just because historical
+activeTask/nextTask fields name an earlier workstream.
+
+The unchanged full-milestone acceptance order is W0, decoder core MD01–MD06
+with its prerequisite closure, unified terminal UT00–UT13, then remaining W1
+and later waves. MD07/MD08 integration stays deferred. UT00 depends on MD06;
+a merged configured Preview or unused model does not accept decoder core or
+formal terminal tasks. Every exposed terminal increment includes shared
+GUI/CLI/Python/native-MCP parity and safe write arbitration. No preparation
+arms live shell/device input. Never mark missing prerequisites complete.
 Implement one independently reviewable task/slice at a time with the
 required tests, GUI discovery, shared CLI/Python/MCP operations, documentation,
 diagnostics, migration and rollback. Read each task's consuming contracts and
@@ -68,12 +79,18 @@ does not establish implementation or hardware support.
 
 ```text
 Continue the CILogg Developer Workbench implementation from PROGRESS.json.
-Inspect the current repository first. Select the next task whose hard
-dependencies are complete, following PROGRESS.json.executionPolicy (W0,
-decoder core MD01–MD06 with prerequisites, then unified terminal UT00–UT13,
-then remaining W1 onward; MD07/MD08 integration deferred). Read its subsystem plan and required contracts,
-and continue from the last verified evidence. Preserve unfinished unrelated
-work and active captures. Update progress and the next runnable task when done.
+Inspect the repository and current user instructions first. Select
+executionPolicy.currentPreparation before historical activeTask/nextTask.
+Read its named slice plan; task=null/formalTaskExecution=false means independent
+preparation only. Keep formalParentTask and its hard gates unchanged;
+previousPreparation is historical evidence. Finish pending review/qualification
+of that slice, then follow its independently scoped nextPreparation descriptor.
+If the next descriptor has no plan, prepare and validate that bounded plan first.
+Do not substitute formal UT01/UT02 execution for preparation. G03 is completed;
+broader G02/W0 and decoder/terminal acceptance remain open. If no current
+preparation applies, choose a formal task whose hard dependencies are accepted.
+Preserve unrelated work and active captures. Update actual evidence and the
+next scoped preparation without inventing platform or input qualification.
 ```
 
 ## Task review prompt
@@ -89,11 +106,12 @@ platform or hardware checks passed.
 
 ## Message decoder revision-2 integration
 
-Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Decoder runtime and package evidence remain unrun. See [public issue tracking](PUBLIC_TRACKING.md).
+Read [10-message-decoders.md](10-message-decoders.md) for the primary real TShark/Lua backend, shared typed results, exact provenance, EHCP/EHCI, AT and nested SRING decoding. MD01–MD08 and DEC01–DEC14 extend the same ledger/DAG; G02/G03 prerequisites, existing completed work and early V02 independence are preserved. The imported document's handoff is specification material, not authorization to execute it. Configured TShark-first Preview is merged through PR90; broader generic-decoder, package and W0 acceptance remains open. Use the current ledger to distinguish that delivered Preview from unfinished parent acceptance. See [public issue tracking](PUBLIC_TRACKING.md).
 
 ## Unified terminal planning integration
 
 Read [11-unified-terminal.md](11-unified-terminal.md) and its linked source
-specification when UT00 becomes runnable. The imported source's starter prompt
-is reference material. This update schedules the work after TShark decoder core;
-it starts no terminal implementation and grants no shell or device input.
+specification for terminal preparation boundaries. currentPreparation selects
+the explicitly scoped audit/model work now; formal UT00 remains behind MD06.
+The imported starter prompt is reference material and grants no shell or device
+input. An unused, feature-off model is not an accepted terminal milestone.

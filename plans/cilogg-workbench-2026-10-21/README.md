@@ -1,10 +1,13 @@
 # CILogg Codex Implementation Plan
 
+**Current workstream clarification (2026-11-05):** The user selected Unified Terminal next after merging PR #90. Resume the scoped [UT00a terminal preparation](slices/UT00a-terminal-baseline.md) through PROGRESS.json.executionPolicy.currentPreparation before unrelated F01 expansion. This is independent preparation; formal MD01–MD06/W0 and terminal F01/D01 acceptance gates remain open and unchanged. The dated full-milestone order below remains the acceptance order.
+
+
 Complete implementation package for a general developer logger, visualizer and automation workbench, including Docklight communication testing.
 
 **Scope:** 119 implementation tasks and 201 mapped requirements. Imported and reconciled on 2026-10-22; terminal planning integrated on 2026-11-04. G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
 
-**Execution status:** P05 is merged through PR #45; the next runnable tasks are G02 and G03. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
+**Execution status:** P05 is merged through PR #45; the formal runnable gate owner is G02. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 
 ## Start here
 
@@ -14,7 +17,7 @@ MD01–MD06 with its F01–F04/D01/E01 prerequisites, then implement the
 later waves. MD07–MD08 integration is deferred until its later-wave dependencies
 are available. See the dated policy in [the execution guide](MASTER_GUIDE.md)
 and `PROGRESS.json.executionPolicy`. Existing acceptance and hard edges remain; R04 additionally requires UT13.
-Full G02/G03 are still in progress.
+G02/W0 remain open; G03 harness acceptance is recorded separately from future terminal parity.
 
 1. [Current reconciliation and prior-roadmap coverage](MERGE_MAP.md)
 2. [Codex App starter and resume prompts](START_IN_CODEX.md)
