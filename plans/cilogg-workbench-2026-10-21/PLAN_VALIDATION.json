@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 143,
-  "validatedLocalLinks": 548,
+  "markdownFiles": 144,
+  "validatedLocalLinks": 550,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -81,5 +81,11 @@
     "preparationIsNotFormalTaskExecution": true,
     "nextPreparationHasBoundedScope": true,
     "productSourcesUnchanged": true
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
   }
 }
