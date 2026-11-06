@@ -106,8 +106,19 @@ def _detach_owned_images(roots: list[Path]) -> None:
                 continue
             result = _run(["diskutil", "unmountDisk", "force", device],
                           check=False, timeout=30)
-            print(f"DMG force-unmount: device={device} exit={result.returncode}; "
-                  "next snapshot will verify detach", flush=True)
+            print(f"DMG force-unmount: device={device} exit={result.returncode}", flush=True)
+            if result.returncode != 0:
+                continue
+            # Detach while the filesystem is unmounted, before the retry wait
+            # gives automount/background clients another chance to claim it.
+            if _owned_image_devices(roots).get(device) != image_path:
+                print(f"DMG immediate detach skipped: device={device} backing identity changed",
+                      flush=True)
+                continue
+            result = _run(["hdiutil", "detach", device, "-force"],
+                          check=False, timeout=30)
+            print(f"DMG immediate detach: device={device} exit={result.returncode}; "
+                  "next snapshot will verify removal", flush=True)
         time.sleep(2)
 
 

@@ -176,6 +176,39 @@ class DmgTests(unittest.TestCase):
         self.assertIn(["hdiutil", "detach", "/dev/disk9", "-force"], self.calls[first + 1:])
         self.assertFalse(any("/dev/disk2" in args for args in self.calls))
 
+    def test_unmounted_image_is_detached_before_automount_retry(self):
+        self.images = [self.owned_image()]
+        self.detach_busy = True
+
+        def remount_after_wait(_seconds):
+            if self.images:
+                self.detach_busy = True
+
+        with patch.object(dmg.time, "sleep", side_effect=remount_after_wait):
+            result = dmg.package(self.root, "test")
+        self.assertEqual(result.read_bytes(), b"fallback image")
+        self.assertEqual(self.images, [])
+        unmount = self.calls.index(["diskutil", "unmountDisk", "force", "/dev/disk9"])
+        self.assertEqual(self.calls[unmount + 1][:2], ["hdiutil", "info"])
+        self.assertEqual(self.calls[unmount + 2], ["hdiutil", "detach", "/dev/disk9", "-force"])
+
+    def test_reused_device_after_unmount_is_never_detached(self):
+        self.images = [self.owned_image()]
+        self.detach_busy = True
+        original = self.run_tool
+
+        def replace_after_unmount(args, **options):
+            result = original(args, **options)
+            if args[:3] == ["diskutil", "unmountDisk", "force"]:
+                self.images = [{"image-path": str(self.root / "unrelated.dmg"),
+                                "system-entities": [{"dev-entry": "/dev/disk9"}]}]
+            return result
+
+        with patch.object(dmg.subprocess, "run", replace_after_unmount):
+            dmg.package(self.root, "test")
+        unmount = self.calls.index(["diskutil", "unmountDisk", "force", "/dev/disk9"])
+        self.assertFalse(any(args[:2] == ["hdiutil", "detach"] for args in self.calls[unmount + 1:]))
+
     def test_force_unmount_failure_never_publishes_a_recovery_image(self):
         self.images = [self.owned_image()]
         self.detach_busy = self.unmount_fails = True

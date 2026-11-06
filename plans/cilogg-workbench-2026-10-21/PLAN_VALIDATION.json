@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 143,
-  "validatedLocalLinks": 548,
+  "markdownFiles": 145,
+  "validatedLocalLinks": 552,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -74,14 +74,6 @@
     "formalGatesOpen": true,
     "currentPreparation": "UT00a"
   },
-  "ut01aChecks": {
-    "taskStatesAndHistoryPreserved": true,
-    "hardDagUnchanged": true,
-    "formalGatesOpen": true,
-    "currentPreparation": "UT01a",
-    "applicationConsumer": false,
-    "unixAdoptionGate": "qualified_hosted_qt6_at_eee3168"
-  },
   "terminalHandoffReviewChecks": {
     "formalTaskStatesAndHistoryPreserved": true,
     "hardDagUnchanged": true,
@@ -89,5 +81,25 @@
     "preparationIsNotFormalTaskExecution": true,
     "nextPreparationHasBoundedScope": true,
     "productSourcesUnchanged": true
+  },
+  "f01eChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01e"
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
+  },
+  "ut01aChecks": {
+    "taskStatesAndHistoryPreserved": true,
+    "hardDagUnchanged": true,
+    "formalGatesOpen": true,
+    "currentPreparation": "UT01a",
+    "applicationConsumer": false,
+    "unixAdoptionGate": "qualified_hosted_qt6_at_eee3168"
   }
 }

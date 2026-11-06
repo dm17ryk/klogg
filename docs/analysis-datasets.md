@@ -120,3 +120,56 @@ their Commander/CLI/native-MCP operations are unchanged. Exact per-character
 byte mappings, event identity/assembly, dataset schemas and the new TShark
 preview integration remain later steps; a record range alone does not establish
 a decoded field's raw-byte span.
+## F01c event references (internal prerequisite)
+
+`eventrecord.h` adds checked, immutable `EventRef` values with exactly one
+physical, inline, deferred-file or managed-byte origin. These contracts have
+no reader, backing-store or resolver ownership and introduce no public command.
+F01, the generic dataset model and decoder consumer parity remain incomplete.
+
+Physical references freeze one weak `SourceSnapshot`, zero-based first/last
+physical rows and optional original half-open byte bounds. Both endpoints are
+validated through the existing source-location API before use. Completed ranges
+survive valid appends; an event touching a provisional final row requires its
+original revision. Closing the source releases its lifetime independently of
+retained results. Closure, replacement and generation changes refuse navigation.
+The snapshot/byte range is metadata, not retained or verified file contents;
+callers obtain actual ranges from indexed reads (F01b), never re-encode text.
+
+Inline references identify immutable inline job input and its row range, with no
+physical source UUID or byte/UTF-16 anchor. Deferred references bind observed
+rows/bytes to matching manifest/entry/revision/content-epoch metadata and a
+bounded verification descriptor. The descriptor requires a 32-byte SHA-256
+prefix digest, encoding, frozen byte boundary and final-line metadata. Its
+presence does not verify a file: F16 must check actual identity, strong prefix
+and exact mappings before materialization. Managed references identify a resolver,
+recording, segment, generation and segment-relative byte range; they have no
+physical rows or UTF-16 spans. D01/F07 will own backing availability/length/hash
+validation. Neither kind can pass `acceptsEvent` as an open-source location.
+
+All factories return `DataResult<EventRef>`, including the inline factory, so
+invalid input cannot create an apparently valid reference. `validateEventOrigin`
+checks structural metadata; `validateEventSource` returns structured
+`source_closed`, `stale_source`, `unbound_source`,
+`deferred_resolution_required` or `unsupported_source_kind` outcomes.
+Reference fields are read-only after checked construction. Use moved-from
+references only for destruction or assignment, as with other owning value types.
+
+`encodeEventRef`/`decodeEventRef` use schema version 1 with `eventKey`,
+`policy` and a single `origin.kind`. Unknown/missing/extra fields, unsupported
+versions/types, noncanonical integers, reversed ranges and inconsistent metadata
+fail explicitly. Wide counters, generations, revisions, byte offsets and public
+one-based line numbers are decimal strings; internal row indices remain zero-based.
+No line/byte conversions are inferred. IDs are SHA-256-derived, domain-separated
+by schema/origin and include the format revision, assembly revision and occurrence
+ordinal. Completed physical IDs exclude append revision/watermark; provisional
+IDs include their revision. Wire-decoded physical references are historical and
+unbound, even if a matching UUID is currently open. A future checked resolver must
+supply live binding; the codec never manufactures a lifetime token.
+
+Identifiers are limited to 256 UTF-16 units, canonical origin metadata to 4096,
+encoding to 128 and optional platform-file identity to 1024 bytes. Invalid Unicode
+and control characters fail. Exact record bodies are not copied or logged.
+Qt5 and hosted platform/backend qualification remain release gates, separate from
+local Qt6 tests. No GUI/CLI/native-MCP parity is claimed for this unused contract;
+future consumers must publish its versioned shape through the shared service.
