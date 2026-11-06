@@ -42,6 +42,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisjob.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisregex.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysiscommands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/datasetschema.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/datasetschema.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/datasetreference.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/datasetreference.cpp
   src/filedigest.cpp
@@ -93,4 +95,5 @@ if(KLOGG_USE_LTO)
   set_property(TARGET klogg_logdata PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/datasetschema.cpp")
 set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/datasetreference.cpp")
