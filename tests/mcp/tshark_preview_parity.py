@@ -234,6 +234,32 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
         assert items == ["65", "66"], result
     assert recovered_cli["enginePid"] == again_cli["enginePid"]
     assert recovered_mcp["enginePid"] == again_mcp["enginePid"]
+    if external:
+        # The original external-before-stall sequence did not qualify recovery
+        # of the user's pack. Decode exact public EHCI bytes after retiring the
+        # fault channel, then check both transports reuse their recovered engine.
+        pair("set_preview_decoder", external_config)
+        ehci_cases = [case for case in cases if case["dissector"] == "ehci"
+                      and not case.get("knownGap")]
+        case = next((case for case in ehci_cases if case.get("expectRaw")), ehci_cases[0])
+        raw = bytes.fromhex((ROOT / "test_data/message_decoders" / case["hex"]).read_text())
+        sample = {"text": raw.hex(), "reassemble": False, "decoder": "tshark",
+                  "dissector": "ehci", "inputEncoding": "hex", "timeoutMs": 10000}
+        first = pair("preview_message", sample)
+        second = pair("preview_message", sample)
+        for initial, repeated in zip(first, second):
+            assert initial["enginePid"] == repeated["enginePid"], (initial, repeated)
+            for result in (initial, repeated):
+                assert result["backend"] == "tshark_lua" and result["available"], result
+                assert not result.get("fallbackReason"), result
+                for name, expected in case["expect"].items():
+                    actual = [field["columns"][1] for field in result["fields"]
+                              if field["attributes"].get("name") == name]
+                    assert actual == expected, (case["id"], name, actual, expected)
+                for name, expected in case.get("expectRaw", {}).items():
+                    actual = [field["attributes"].get("value") for field in result["fields"]
+                              if field["attributes"].get("name") == name]
+                    assert actual == expected, (case["id"], name, "raw bytes", actual, expected)
     (artifacts / "tshark-preview-observations.json").write_text(
         json.dumps(observations, indent=2, ensure_ascii=False), encoding="utf-8")
     print("PASS: %d CLI/native-MCP real preview comparisons%s" %
@@ -249,12 +275,17 @@ if __name__ == "__main__":
     parser.add_argument("--external-config", type=Path)
     parser.add_argument("--ehci-capabilities", action="store_true",
                         help="Qualify strict partial/NUL fixtures using the supplied external pack")
+    parser.add_argument("--default-python", action="store_true",
+                        help="Qualify normal bundled/system Python selection without an override")
     options = parser.parse_args()
     if options.ehci_capabilities and not options.external_config:
         parser.error("--ehci-capabilities requires --external-config")
     os.environ.update(CILOGG_TSHARK=str(options.tshark.resolve()),
-                      CILOGG_TEXT2PCAP=str(options.text2pcap.resolve()),
-                      CILOGG_SCRIPT_PYTHON=sys.executable)
+                      CILOGG_TEXT2PCAP=str(options.text2pcap.resolve()))
+    if options.default_python:
+        os.environ.pop("CILOGG_SCRIPT_PYTHON", None)
+    else:
+        os.environ["CILOGG_SCRIPT_PYTHON"] = sys.executable
     if options.external_config:
         os.environ["CILOGG_PREVIEW_ENGINE_CONFIG"] = str(options.external_config.resolve())
     else:

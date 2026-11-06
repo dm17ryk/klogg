@@ -8,6 +8,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -120,21 +121,35 @@ class WireTests(unittest.TestCase):
         self.assertTrue(limited)
 
     def test_blocked_pipe_write_has_deadline(self):
-        class Stalled:
-            def write(self, _):
-                import time
+        entered = threading.Event()
+        release = threading.Event()
 
-                time.sleep(0.2)
+        class Stalled:
+            def write(self, value):
+                entered.set()
+                release.wait()
+                return len(value)
 
             def flush(self):
                 pass
 
-        import time
-
-        with self.assertLogs(worker.LOG, level="WARNING") as warnings:
-            with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
-                worker.write_before(Stalled(), b"x", time.monotonic() + 0.02)
+        try:
+            with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+                with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
+                    worker.write_before(Stalled(), b"x", time.monotonic() + 0.1)
+            self.assertTrue(entered.wait(2), 'the blocked writer actually started')
+        finally:
+            release.set()
         self.assertEqual([record.getMessage() for record in warnings.records], ["preview_pipe_timeout"])
+
+    def test_pipe_deadline_expired_before_wait_still_logs_timeout(self):
+        # Scheduler delay can exhaust the budget between thread start and wait.
+        # Keep this race deterministic without depending on host load or sleep.
+        with patch.object(worker, 'remaining', side_effect=wire.ProofError('execution_timeout')):
+            with self.assertLogs(worker.LOG, level='WARNING') as warnings:
+                with self.assertRaisesRegex(wire.ProofError, 'execution_timeout'):
+                    worker.operation_before(lambda: None, 1)
+        self.assertEqual([record.getMessage() for record in warnings.records], ['preview_pipe_timeout'])
 
     def test_bad_capture_headers_are_rejected(self):
         header = struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 262144, 252)

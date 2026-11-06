@@ -70,7 +70,14 @@ def operation_before(operation, deadline):
             done.set()
 
     threading.Thread(target=run, daemon=True).start()
-    if not done.wait(remaining(deadline)):
+    try:
+        wait_seconds = remaining(deadline)
+    except ProofError:
+        # Starting the writer can exhaust the budget on a busy host. Keep the
+        # same explicit timeout diagnostic as a pipe that expires during wait.
+        LOG.warning("preview_pipe_timeout")
+        raise
+    if not done.wait(wait_seconds):
         LOG.warning("preview_pipe_timeout")
         raise ProofError("execution_timeout")
     if not result[0][0]:

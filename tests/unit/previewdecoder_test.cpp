@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "previewdecodersettings.h"
 #include "previewservice.h"
+#include "previewsource.h"
 #include "previewtree.h"
 #include "tsharkpreviewclient.h"
 #include <QCoreApplication>
@@ -969,4 +970,131 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     REQUIRE( PreviewService::evaluateAndWait( unrelatedRequest ).value( "available" ).toBool() );
     CHECK( unrelatedWorker->processId() == unrelatedPid );
     client.reset();
+}
+
+TEST_CASE( "External EHCI recovers exact fields after entered Lua timeout and cancellation",
+           "[.][previewehcirecovery]" )
+{
+    RestoreDecoder restore;
+    const auto script = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITIES_LUA" );
+    const auto fixtures = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITY_FIXTURES" );
+    REQUIRE_FALSE( script.isEmpty() );
+    REQUIRE_FALSE( fixtures.isEmpty() );
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto marker = directory.filePath( "entered" );
+    QFile fault( directory.filePath( "fault.lua" ) );
+    REQUIRE( fault.open( QIODevice::WriteOnly ) );
+    const auto body = QByteArray( "local p=Proto('cilogg_recovery_fault','Recovery fault')\n"
+                                  "function p.dissector(tvb,pinfo,tree)\n"
+                                  "local f=assert(io.open([=[" )
+                      + marker.toUtf8()
+                      + "]=], 'wb')); f:write('entered'); f:close(); while true do end end\n";
+    REQUIRE( fault.write( body ) == body.size() );
+    fault.close();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true }, { "allowExternalLua", true },
+          { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+          { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+          { "lua", QVariantList{ script, fault.fileName() } },
+          { "defaultDissector", "ehci" }, { "inputEncoding", "hex" } } ) );
+    QFile fixture( fixtures + "/ehci-nul.hex" );
+    REQUIRE( fixture.open( QIODevice::ReadOnly ) );
+    auto request = directRequest( QString::fromLatin1( fixture.readAll() ), "hex" );
+    request.dissector = "ehci";
+    QObject channel;
+    request.sessionOwner = &channel;
+    auto& client = TsharkPreviewClient::instance();
+    const auto initial = PreviewService::evaluateAndWait( request );
+    REQUIRE( initial.value( "available" ).toBool() );
+    const auto fields = initial.value( "fields" ).toList();
+    REQUIRE_FALSE( fields.isEmpty() );
+    bool nul = false;
+    for ( const auto& field : fields ) {
+        const auto attributes = field.toMap().value( "attributes" ).toMap();
+        nul = nul || ( attributes.value( "name" ) == "ehci.map.value_raw"
+                       && attributes.value( "value" ) == "780079" );
+    }
+    REQUIRE( nul );
+    QList<PreviewEvaluationRequest> samples{ request };
+    QList<QVariantList> expectedFields{ fields };
+    const auto privateSample = qEnvironmentVariable( "CILOGG_PREVIEW_PRIVATE_LOG_SAMPLE" );
+    if ( !privateSample.isEmpty() ) {
+        QFile sample( privateSample );
+        REQUIRE( sample.open( QIODevice::ReadOnly ) );
+        const auto bytes = sample.read( 1024 * 1024 + 1 );
+        REQUIRE( bytes.size() <= 1024 * 1024 );
+        const auto prepared = preparePreviewText( QString::fromUtf8( bytes ) );
+        REQUIRE( prepared.error.isEmpty() );
+        REQUIRE( prepared.assembly.value( "protocol" ) == "EHCI" );
+        REQUIRE( prepared.assembly.value( "state" ) == "complete" );
+        REQUIRE( prepared.assembly.value( "physicalLinesOneBased" ).toList().size() > 1 );
+        auto actual = request;
+        actual.text = prepared.text;
+        actual.inputEncoding = "utf8";
+        const auto decoded = PreviewService::evaluateAndWait( actual );
+        REQUIRE( decoded.value( "available" ).toBool() );
+        REQUIRE_FALSE( decoded.value( "fields" ).toList().isEmpty() );
+        samples << actual;
+        expectedFields << decoded.value( "fields" ).toList();
+    }
+    for ( const bool cancel : { false, true } ) {
+        INFO( cancel ? "cancel after observed Lua entry" : "timeout after observed Lua entry" );
+        QFile::remove( marker );
+        const auto oldProcesses = client.findChildren<QProcess*>();
+        QList<QPointer<QProcess>> owned;
+        for ( auto* process : oldProcesses )
+            owned << process;
+        auto stalled = request;
+        stalled.text = "41";
+        stalled.dissector = "cilogg_recovery_fault";
+        stalled.timeoutMs = 3000;
+        QEventLoop loop;
+        QVariantMap stopped;
+        bool entered = false;
+        QPointer<QProcess> token;
+        QTimer poll;
+        poll.setInterval( 10 );
+        QObject::connect( &poll, &QTimer::timeout, &loop, [ & ] {
+            QFile entry( marker );
+            if ( !entry.open( QIODevice::ReadOnly ) || entry.readAll() != "entered" )
+                return;
+            entered = true;
+            poll.stop();
+            if ( cancel )
+                PreviewService::cancel( token );
+        } );
+        token = PreviewService::evaluate( &loop, stalled, [ & ]( QVariantMap value ) {
+            stopped = std::move( value );
+            loop.quit();
+        } );
+        poll.start();
+        QTimer::singleShot( 10000, &loop, &QEventLoop::quit );
+        if ( stopped.isEmpty() )
+            loop.exec();
+        REQUIRE( entered );
+        REQUIRE_FALSE( stopped.isEmpty() );
+        if ( cancel )
+            CHECK( stopped.value( "reason" ) == "cancelled" );
+        else
+            CHECK( ( stopped.value( "reason" ) == "timeout"
+                     || stopped.value( "reason" ) == "execution_timeout" ) );
+        CHECK( stopped.value( "state" ) == "failed" );
+        CHECK( stopped.value( "backend" ) == "tshark_lua" );
+        CHECK_FALSE( stopped.value( "available" ).toBool() );
+        CHECK( stopped.value( "fields" ).toList().isEmpty() );
+        CHECK_FALSE( stopped.contains( "fallbackReason" ) );
+        for ( int index = 0; index < samples.size(); ++index ) {
+            const auto recovered = PreviewService::evaluateAndWait( samples[ index ] );
+            REQUIRE( recovered.value( "available" ).toBool() );
+            // Keep optional private fields out of assertion diagnostics.
+            CHECK( bool( recovered.value( "fields" ).toList() == expectedFields[ index ] ) );
+            const auto repeated = PreviewService::evaluateAndWait( samples[ index ] );
+            REQUIRE( repeated.value( "available" ).toBool() );
+            CHECK( bool( repeated.value( "fields" ).toList() == expectedFields[ index ] ) );
+            CHECK( recovered.value( "enginePid" ) == repeated.value( "enginePid" ) );
+        }
+        for ( const auto& process : owned )
+            CHECK( ( !process || process->state() == QProcess::NotRunning ) );
+    }
 }
