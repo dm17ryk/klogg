@@ -8,6 +8,7 @@ add_executable(cilogg_tests
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
     fieldvalue_test.cpp
+    datasetcontracts_test.cpp
     valuecounts_commands_test.cpp
     plugins_test.cpp
     mcp_test.cpp
@@ -31,10 +32,12 @@ add_executable(cilogg_tests
     versionchecker_test.cpp
     wrappedstring_test.cpp
     datasetschema_test.cpp
+    datasetreference_test.cpp
     tests_main.cpp
 )
 
 set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/fieldvalue_test.cpp")
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetcontracts_test.cpp")
 
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
@@ -60,3 +63,4 @@ set_tests_properties(cilogg_tests PROPERTIES TIMEOUT 180)
 # set_tests_properties(cilogg_tests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:cilogg_tests>")
 
 set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetschema_test.cpp")
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetreference_test.cpp")

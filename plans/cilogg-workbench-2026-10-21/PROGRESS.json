@@ -1170,14 +1170,22 @@
         "../../docs/workbench/f01b-line-provenance.md",
         "../../tests/unit/fieldvalue_test.cpp",
         "../../tests/ui/analysisjob_test.cpp",
+        "../../docs/analysis-dataset-references.md",
+        "../../docs/workbench/f01e-dataset-references.md",
+        "../../docs/workbench/f01e-observations.json",
+        "../../tests/unit/datasetreference_test.cpp",
+        "../../docs/workbench/f01c-event-origins.md",
+        "../../docs/workbench/f01c-observations.json",
+        "../../tests/unit/datasetcontracts_test.cpp",
         "../../docs/analysis-dataset-schemas.md",
         "../../docs/workbench/f01d-dataset-schemas.md",
         "../../docs/workbench/f01d-observations.json",
         "../../tests/unit/datasetschema_test.cpp"
       ],
       "limitations": [
-        "Only merged F01a exact values/F01b physical-line provenance and proposed F01d schema metadata are present in this independent branch; F01 hard dependencies and W0/MD01 gates remain open.",
-        "Event origins are proposed separately in PR91. Full dataset/page/revision-cursor/query/formal JSON Schema and GUI/CLI/native-MCP consumer parity remain pending."
+        "Internal F01a, F01b, F01c, F01d, F01e foundations are present in this integration branch; formal F01 hard dependencies and W0/MD01 acceptance remain open.",
+        "Concrete dataset implementations/pages, revision-cursor issuance/lifetime, normalized lineage/query selectors, formal JSON Schema and GUI/CLI/Python/native-MCP consumer parity remain pending.",
+        "F01d, where included, is internal schema metadata; F01e is internal revision/reference validation. Dated slice histories retain their original evidence and limitations; this merge does not accept parent F01."
       ],
       "slices": [
         {
@@ -1224,6 +1232,30 @@
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/87"
         },
         {
+          "id": "F01c",
+          "status": "implemented_pending_gates",
+          "integrationState": "merged",
+          "mergeCommit": "f74f2e839641fcfd022c9ccf16b099419b62efb0",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-event-origins",
+          "scope": "Unused internal checked physical/inline/deferred-file/managed-byte event origins, weak physical lifetime validation, stable event keys and exact version-1 metadata codec; independent of PR90",
+          "rulings": [
+            "All factories return DataResult; physical origin stores one frozen snapshot and row endpoints. Malformed inline inputs fail and decoded physical metadata stays historical/unbound. Future consumers must check errors and obtain validated endpoint locations.",
+            "SourceManifestEntry/DeferredSourceVerification are bounded metadata DTOs. Full manifest registry, richer file-change identity and strong materialization belong to F07/F16 and require versioned integration."
+          ],
+          "localVerification": "Fresh MSVC Qt6.10.1 ci_build; strict Clang syntax on both new TUs; focused124 assertions/12cases. Full isolated CTest7/7 passed285.77s (unit12361/integration3172/GUI22721 assertions). Source/build-registration SHA256 unchanged through native build and tests. Fresh general and C++ whole-branch reviews approved with no actionable findings.",
+          "limitations": [
+            "No new public operations or consumer parity is claimed for this unused internal contract.",
+            "No source bodies, private Lua scripts, captures or user configuration are included.",
+            "F01/W0/MD01, full manifests/resolvers, per-character byte mapping, datasets/cursors and consumer integration remain open.",
+            "Qt5, accelerated backend and hosted native platform acceptance remain pending.",
+            "Existing unmeasured P00/W0 performance and release budgets remain open.",
+            "GitNexus refresh timed out; CodeGraph unindexed. Code-review-graph refreshed72nodes/689edges; unresolved global calls and static test-gap heuristics are not complete coverage proof."
+          ],
+          "commit": "a563edcc3ba36d2272c61c0c758bc91409adec14",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/91"
+        },
+        {
           "id": "F01d",
           "status": "implemented_pending_gates",
           "base": "080b504c184796ad3942383149d0385503dd9643",
@@ -1250,6 +1282,28 @@
           "commit": "26c2e2f8c55e234aa3b65b0209606932bbcb7b98",
           "pullRequest": "https://github.com/dm17ryk/klogg/pull/92",
           "integrationState": "pull_request_open"
+        },
+        {
+          "id": "F01e",
+          "status": "implemented_pending_gates",
+          "integrationState": "open_pr",
+          "base": "080b504c184796ad3942383149d0385503dd9643",
+          "branch": "codex/f01-dataset-references",
+          "scope": "Internal checked revision stamps, tagged cursor/lineage references, strict v1 wire codecs and mandatory owner lookup; independent of PR90 and PR92, with F01c/PR91 now integrated in master",
+          "rulings": [
+            "Generic tagged contracts only; row/page/lineage adapters and issuance/lifetime integration remain owner work. Consumers must check row association and validate/pin the retained epoch.",
+            "Schema IDs are opaque equality identities; owners must bind actual retained schema identity and issued tuple.",
+            "Retain three unsuccessful full-suite observations and require a fresh isolated pass; existing timing instability remains an acceptance concern.",
+            "Semantic preview fixtures receive5000ms cold-start headroom and safe request-ID completion guards; dedicated stall/cancellation and production deadlines unchanged. Controlled1200ms RED/ GREEN proves the distinction. Cost: semantic failures may report later."
+          ],
+          "localVerification": "Fresh MSVC/Qt6.10.1 ci_build583.88s; strictClang5TUs; focused133/9, related408/34 and controlled1200ms cold-start76 assertions; full isolated CTest7/7 passed489.98s. Eight frozen input hashes verified. Fresh whole-branch C++/general source reviews approved with no findings.",
+          "limitations": [
+            "No production token minting/store, source navigation or new GUI/CLI/native-MCP operation; full F01/W0/MD01 gates remain open.",
+            "Qt5 and hosted platforms/backends and packaging/performance acceptance pending.",
+            "CodeGraph unindexed; GitNexus90s refresh timeout leaves stale output nonauthoritative."
+          ],
+          "commit": "1ff3af07d58b055802b286e4ef24a3f683cd67e6",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/93"
         }
       ]
     },
@@ -2143,15 +2197,25 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": ["../../docs/workbench/tshark-preview.md"],
-      "limitations": ["MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."],
+      "evidence": [
+        "../../docs/workbench/tshark-preview.md"
+      ],
+      "limitations": [
+        "MD03a is a preview integration slice; the generic MD03 dataset contract and decoder milestone remain open."
+      ],
       "slices": [
         {
           "id": "MD03a",
           "status": "completed",
           "scope": "Opt-in TShark/Lua message preview across GUI, CLI and native MCP",
-          "evidence": ["slices/MD03a-preview-integration.md", "../../tests/mcp/tshark_preview_parity.py"],
-          "limitations": ["Local Windows evidence is distinct from hosted CI, other platforms and release qualification.", "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."]
+          "evidence": [
+            "slices/MD03a-preview-integration.md",
+            "../../tests/mcp/tshark_preview_parity.py"
+          ],
+          "limitations": [
+            "Local Windows evidence is distinct from hosted CI, other platforms and release qualification.",
+            "Initial EHCI pane availability failure remains unexplained despite a clean passing rerun; performance gate remains open."
+          ]
         }
       ]
     },

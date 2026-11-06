@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "slice": "F01c",
+  "base": "080b504c184796ad3942383149d0385503dd9643",
+  "branch": "codex/f01-event-origins",
+  "recordedAt": "2026-11-05T12:07:17.685Z",
+  "sourceSha256": {
+    "src/logdata/include/eventrecord.h": "f3970fb6efd2e01b9b0a6ac3aa98085628b7697c2c524e1262e15a817ee67121",
+    "src/logdata/src/eventrecord.cpp": "b3e9bf188b8f9f457692267f8c62ac074254313835baa9927e2ed2ae6d6259f9",
+    "tests/unit/datasetcontracts_test.cpp": "4848b5f68aefc082ae7acacb390495794d8f6d5e44ab5740df63f35f4de63300",
+    "src/logdata/CMakeLists.txt": "3380e8548afbbb34faad7f18f3a0a7f4fd429a5caa7d6e77284a526b996a80b7",
+    "tests/unit/CMakeLists.txt": "feb334cdb8a254e9c02f51fc807c48ba2912599c55dee6efbc74d7b09d5a7f72"
+  },
+  "environment": {
+    "os": "Windows x64",
+    "qt": "6.10.1",
+    "compiler": "MSVC 19.42 / VS2022",
+    "configuration": "RelWithDebInfo",
+    "searchBackend": "qt"
+  },
+  "verification": {
+    "scalarBaseline": {
+      "passedAssertions": 332,
+      "cases": 6
+    },
+    "emptyApiRed": {
+      "cases": 11,
+      "failedCases": 10,
+      "passedCases": 1,
+      "failedAssertions": 10
+    },
+    "focused": {
+      "passedAssertions": 124,
+      "cases": 12
+    },
+    "nativeBuild": {
+      "target": "ci_build",
+      "exitCode": 0,
+      "seconds": 911.9546734
+    },
+    "clangSyntax": {
+      "translationUnits": [
+        "src/logdata/src/eventrecord.cpp",
+        "tests/unit/datasetcontracts_test.cpp"
+      ],
+      "exitCode": 0,
+      "seconds": 122.0107851,
+      "checks": [
+        "conversion",
+        "sign-conversion",
+        "shorten-64-to-32",
+        "dangling-else"
+      ]
+    },
+    "ctest": {
+      "passed": 7,
+      "failed": 0,
+      "seconds": 285.77,
+      "isolatedPortableRuntime": true,
+      "nativeUnit": {
+        "assertions": 12361,
+        "cases": 259
+      },
+      "nativeIntegration": {
+        "assertions": 3172,
+        "cases": 81
+      },
+      "nativeGuiRegression": {
+        "assertions": 22721,
+        "cases": 85
+      }
+    }
+  },
+  "indexing": {
+    "codeReviewGraph": "Refreshed after staging new C++ files: 72 nodes / 689 edges; impact reports no additional affected files. Global unresolved call sites remain; manual review/tests also required.",
+    "gitNexus": "Refresh attempts timed out at 60s and 90s; stale sibling index 38 commits behind. SourceSnapshot LOW / zero callers and EventRef absent are not structural verification.",
+    "codeGraph": "Server reports this checkout unindexed; no new index created."
+  },
+  "limits": [
+    "No new public operations or consumer parity is claimed for this unused internal contract.",
+    "No source bodies, private Lua scripts, captures or user configuration are included.",
+    "F01/W0/MD01, full manifests/resolvers, per-character byte mapping, datasets/cursors and consumer integration remain open.",
+    "Qt5, accelerated backend and hosted native platform acceptance remain pending.",
+    "Existing unmeasured P00/W0 performance and release budgets remain open."
+  ],
+  "review": {
+    "range": "080b504c..a563edcc",
+    "cpp": "APPROVE: no actionable findings",
+    "general": "APPROVE: no actionable findings",
+    "sourceHashesIndependentlyMatched": true,
+    "analyzers": "Complete cppcheck unavailable: std.cfg missing. Standalone clang-tidy lacked Qt configuration; strict Clang syntax passed with actual project includes/defines."
+  }
+}

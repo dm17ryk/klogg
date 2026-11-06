@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 142,
-  "validatedLocalLinks": 541,
+  "markdownFiles": 144,
+  "validatedLocalLinks": 545,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -68,10 +68,73 @@
     "nativeRebuildClaimed": false,
     "scope": "Python origin-proof and qualification-test correction; exact current-source evidence in md01e-sourcery observations"
   },
+  "f01eChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01e"
+  },
+  "f01cChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01c"
+  },
   "f01dChecks": {
     "historicalTaskProgressPreserved": true,
     "otherTasksAndPolicyUnchanged": true,
     "parentGatesStillOpen": true,
     "newSlice": "F01d"
+  },
+  "latestConflictResolution": {
+    "branch": "codex/f01-dataset-schemas",
+    "ours": "dc03d31db3cc4e36b73717b87a6b3d32fbe94188",
+    "incoming": "186bc588b1a1e77bde7dd67667de8d8a8bd5c9fb",
+    "formalHistoryPreserved": true,
+    "semanticDecisions": [
+      {
+        "path": "tasks.F01.evidence",
+        "decision": "retain every evidence link from both branches",
+        "counts": [
+          9,
+          12,
+          16
+        ]
+      },
+      {
+        "path": "tasks.F01.limitations",
+        "decision": "refresh current aggregate scope without changing dated slice histories",
+        "retainedSliceIds": [
+          "F01a",
+          "F01b",
+          "F01c",
+          "F01d",
+          "F01e"
+        ],
+        "supersededParentLimitations": {
+          "ours": [
+            "Only merged F01a exact values/F01b physical-line provenance and proposed F01d schema metadata are present in this independent branch; F01 hard dependencies and W0/MD01 gates remain open.",
+            "Event origins are proposed separately in PR91. Full dataset/page/revision-cursor/query/formal JSON Schema and GUI/CLI/native-MCP consumer parity remain pending."
+          ],
+          "incoming": [
+            "Internal F01a scalar, F01b physical-line provenance, F01c event origins and F01e reference foundations are prepared; F01 hard dependencies and W0/MD01 acceptance remain open.",
+            "Merged event identity/discriminated origins, event-level spans, schema descriptors, concrete dataset pages and GUI/CLI/native-MCP consumer parity remain pending.",
+            "F01e adds only internal revision/reference validation; concrete datasets, normalized lineage selectors, cursor issuance/lifetime and consumer parity remain pending. F01c/PR91 is integrated in master; F01d/PR92 remains separate open work."
+          ]
+        }
+      },
+      {
+        "path": "tasks.F01.slices",
+        "decision": "union by slice ID, preserving both source orderings and every historical record",
+        "sliceIds": [
+          "F01a",
+          "F01b",
+          "F01c",
+          "F01d",
+          "F01e"
+        ]
+      }
+    ],
+    "manualProductSourceEdits": false
   }
 }
