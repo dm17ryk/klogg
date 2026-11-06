@@ -2,8 +2,8 @@
   "valid": true,
   "taskCount": 119,
   "requirementCount": 201,
-  "markdownFiles": 144,
-  "validatedLocalLinks": 550,
+  "markdownFiles": 145,
+  "validatedLocalLinks": 552,
   "topologicalTaskCount": 119,
   "issues": [],
   "integrationChecks": {
@@ -81,6 +81,12 @@
     "preparationIsNotFormalTaskExecution": true,
     "nextPreparationHasBoundedScope": true,
     "productSourcesUnchanged": true
+  },
+  "f01eChecks": {
+    "historicalTaskProgressPreserved": true,
+    "otherTasksAndPolicyUnchanged": true,
+    "parentGatesStillOpen": true,
+    "newSlice": "F01e"
   },
   "f01cChecks": {
     "historicalTaskProgressPreserved": true,
