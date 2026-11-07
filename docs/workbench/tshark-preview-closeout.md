@@ -103,6 +103,60 @@ normal system fallback without an override. Validation used Windows MSVC 19.44,
 Qt 6.10.1, Python 3.14, and Hyperscan/Vectorscan disabled. The isolated runtime
 contained no bundled Python candidate, so bundled deployment remains unqualified.
 
+## macOS decoder-watch follow-up
+
+The macOS ARM64/Qt 6.12 job at PR97 head 0f3932ff failed its script-replacement
+revision assertion on both the initial run and automatic retry. A real ordering
+gap allowed the debounce callback to rearm watches and record replacement-file
+metadata without advancing the revision. A delayed directory notification then
+looked unchanged and was ignored. The debounce callback now compares metadata
+before and after rearming, logs bounded decision/count information, and emits
+invalidation last so reentrant configuration changes cannot be followed by stale
+mutations. Unrelated sibling activity continues to preserve the revision.
+
+The internal watcher and timer have ordinary QObject parents and stable names.
+A deterministic test drives file notification, replacement, rearming and a late
+directory notification directly, with an unrelated-sibling negative case. Against
+the original rearming behavior it executed 33 assertions: 31 passed and exactly
+two failed, exposing the missing revision and signal. The real-notification
+integration check now waits for revision completion with a bounded five-second
+timeout instead of sleeping for 300 ms. The corrected native test passed all
+33 assertions. C++ and general/privacy reviews approved the source and test delta
+without findings.
+
+Qualification commit `1074009a4b9a45fc0d9ab23d0c90ced793034a97` combines this
+repair with PR96's C++17 logging correction. The selected native application and
+test targets rebuilt successfully (exit 0, 706.56 seconds), reusing unchanged
+dependency libraries; this was not an aggregate `ci_build` invocation. A fresh
+isolated runtime passed all ten registered CTest groups in 247.93 seconds
+(wrapper exit 0, 248.106 seconds), including 519 communication-contract assertions
+in 22 cases and 1045 terminal-model assertions in 23 cases. The settings and unit
+test Git blobs were frozen at `0d61ef01aa389dc5536ef775d5424698588900ab` and
+`512d3f690c5d064f639b370c63d3b49a98f361f0`, respectively.
+
+After the suite completed, the same source-matched runtime passed all 57 strict
+normal-system-fallback CLI/native-MCP comparisons and the actual decoded-field
+hover check. Both overflow responses retained 291 exact whole rows and remained
+explicitly limited. The hover test exited normally; its independent observer
+recorded zero active jobs, zero surviving observed handles and no missing required
+images before cleanup (25 processes observed). Parity success alone is not leak
+proof. No interpreter override, bundled Python candidate or private input was
+present in these dedicated checks. Budgets were unchanged. Validation used
+Windows MSVC 19.44 / Qt 6.10.1, with Hyperscan and Vectorscan disabled; latest
+hosted macOS, other-platform and release qualification remain pending.
+
+Private source/binary identities and suite evidence are in the qualification
+checkout's `build_root/ci96-97-green-runtime.json` and
+`build_root/ci96-97-green-full-ctest.log`/`.json`. The public phase's bounded
+summary is `build_root/preview-final-qualification/post-ci-1074009-normal/post-ci-summary.json`
+in the separate `f01-ci-repair` checkout. No private bodies are distributed.
+
+Local regeneration exposed equivalent workspace aliases in generated dependency
+cache paths. A same-file-checked local cache normalization retained a backup and
+changed no repository code. Two configure setup failures and a 900-second build
+guard are not product RED evidence. The resumed baseline native build passed
+with exit 0 in 567.67 seconds before the deterministic regression was run.
+
 ## Earlier worker startup observations
 
 On the local Windows host, three fresh actual workers used the trusted configured

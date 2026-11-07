@@ -191,14 +191,71 @@ TEST_CASE( "Configured scripts need approval and file changes invalidate revisio
     CHECK( changed.count() >= 1 );
     CHECK( settings.revision() != revision );
     const auto beforeReplacement = settings.revision();
+    QEventLoop replaced;
+    QObject::connect( &settings, &PreviewDecoderSettings::changed, &replaced, &QEventLoop::quit );
     REQUIRE( QFile::remove( script ) );
     REQUIRE( file.open( QIODevice::WriteOnly ) );
     file.write( "-- replacement" );
     file.close();
-    QEventLoop replaced;
-    QTimer::singleShot( 300, &replaced, &QEventLoop::quit );
-    replaced.exec();
+    if ( settings.revision() == beforeReplacement ) {
+        QTimer::singleShot( 5000, &replaced, &QEventLoop::quit );
+        replaced.exec();
+    }
     CHECK( settings.revision() != beforeReplacement );
+}
+
+TEST_CASE( "Decoder watch rearming preserves changes before delayed notifications",
+           "[previewdecoder][previewwatchrearm]" )
+{
+    QTemporaryDir directory;
+    RestoreDecoder restore;
+    REQUIRE( directory.isValid() );
+    const auto script = directory.filePath( "probe.lua" );
+    QFile file( script );
+    REQUIRE( file.open( QIODevice::WriteOnly ) );
+    REQUIRE( file.write( "-- initial" ) == 10 );
+    file.close();
+    auto& settings = PreviewDecoderSettings::instance();
+    REQUIRE( settings.setConfiguration( { { "lua", QVariantList{ script } } } ) );
+    auto* watcher = settings.findChild<QFileSystemWatcher*>( "previewDecoderFileWatcher" );
+    auto* debounce = settings.findChild<QTimer*>( "previewDecoderWatchDebounce" );
+    REQUIRE( watcher );
+    REQUIRE( debounce );
+    QSignalSpy changed( &settings, &PreviewDecoderSettings::changed );
+    REQUIRE( QMetaObject::invokeMethod( watcher, "fileChanged", Qt::DirectConnection,
+                                       Q_ARG( QString, script ) ) );
+    REQUIRE( debounce->isActive() );
+    const auto beforeRearm = settings.revision();
+    const auto changesBeforeRearm = changed.count();
+
+    SECTION( "Replacement before rearming invalidates once" )
+    {
+        REQUIRE( QFile::remove( script ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        REQUIRE( file.write( "-- replacement" ) == 14 );
+        file.close();
+        debounce->stop();
+        REQUIRE( QMetaObject::invokeMethod( debounce, "timeout", Qt::DirectConnection ) );
+        CHECK( settings.revision() != beforeRearm );
+        CHECK( changed.count() == changesBeforeRearm + 1 );
+    }
+    SECTION( "Unrelated sibling activity during rearming preserves the revision" )
+    {
+        QFile sibling( directory.filePath( "unrelated.log" ) );
+        REQUIRE( sibling.open( QIODevice::WriteOnly ) );
+        REQUIRE( sibling.write( "unrelated" ) == 9 );
+        sibling.close();
+        debounce->stop();
+        REQUIRE( QMetaObject::invokeMethod( debounce, "timeout", Qt::DirectConnection ) );
+        CHECK( settings.revision() == beforeRearm );
+        CHECK( changed.count() == changesBeforeRearm );
+    }
+    const auto afterRearm = settings.revision();
+    const auto changesAfterRearm = changed.count();
+    REQUIRE( QMetaObject::invokeMethod( watcher, "directoryChanged", Qt::DirectConnection,
+                                       Q_ARG( QString, directory.path() ) ) );
+    CHECK( settings.revision() == afterRearm );
+    CHECK( changed.count() == changesAfterRearm );
 }
 
 TEST_CASE( "Shared preview carrier retains capture and initial byte offset", "[previewdecoder]" )
