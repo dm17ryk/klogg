@@ -19,16 +19,32 @@ enum class WriteMode { Automatic, ManualArmed };
 
 class WriteOffer {
 public:
-    const WriteTicket& ticket() const { return ticket_; }
-    const QString& requestId() const { return requestId_; }
-    quint64 offset() const { return offset_; }
-    const QByteArray& bytes() const { return bytes_; }
+    const WriteTicket& ticket() const
+    {
+        return ticket_;
+    }
+    const QString& requestId() const
+    {
+        return requestId_;
+    }
+    quint64 offset() const
+    {
+        return offset_;
+    }
+    const QByteArray& bytes() const
+    {
+        return bytes_;
+    }
 
 private:
     friend class SharedWriter;
     WriteOffer( WriteTicket ticket, QString requestId, quint64 offset, QByteArray bytes )
-        : ticket_( std::move( ticket ) ), requestId_( std::move( requestId ) ),
-          offset_( offset ), bytes_( std::move( bytes ) ) {}
+        : ticket_( std::move( ticket ) )
+        , requestId_( std::move( requestId ) )
+        , offset_( offset )
+        , bytes_( std::move( bytes ) )
+    {
+    }
     WriteTicket ticket_;
     QString requestId_;
     quint64 offset_;
@@ -65,8 +81,9 @@ struct SharedWriterState {
 // Origin/mode are arbitration inputs, never authorization. Offers are private backend data.
 class SharedWriter final {
 public:
-    static DataResult<std::unique_ptr<SharedWriter>>
-    create( const WriteEpoch&, const StreamLimits&, const EndpointCapabilities&, qint64 defaultTimeoutNs );
+    static DataResult<std::unique_ptr<SharedWriter>> create( const WriteEpoch&, const StreamLimits&,
+                                                             const EndpointCapabilities&,
+                                                             qint64 defaultTimeoutNs );
     ~SharedWriter();
     SharedWriter( const SharedWriter& ) = delete;
     SharedWriter& operator=( const SharedWriter& ) = delete;
@@ -74,7 +91,7 @@ public:
     SharedWriter& operator=( SharedWriter&& ) = delete;
 
     DataResult<WriteObservation> submit( const WriteEpoch&, const WriteRequest&, WriteProducer,
-                                       qint64 nowNs );
+                                         qint64 nowNs );
     DataResult<WriteDispatch> take( const WriteEpoch&, qint64 nowNs );
     DataStatus accepted( const WriteTicket&, qint64 count, qint64 nowNs );
     DataStatus written( const WriteTicket&, qint64 count, qint64 nowNs );
@@ -84,7 +101,7 @@ public:
     DataStatus requestMode( const WriteEpoch&, WriteMode, qint64 nowNs );
     DataStatus close( const WriteEpoch&, qint64 nowNs );
     DataStatus resetAfterBackendClosed( const WriteEpoch&, quint64 nextGeneration,
-                                       const EndpointCapabilities&, qint64 nowNs );
+                                        const EndpointCapabilities&, qint64 nowNs );
     DataStatus advance( const WriteEpoch&, qint64 nowNs );
     DataResult<WriteObservation> getWrite( const QString& requestId ) const;
     SharedWriterState state() const;
