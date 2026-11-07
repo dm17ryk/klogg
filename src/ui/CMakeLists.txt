@@ -248,4 +248,6 @@ if(KLOGG_BUILD_TESTS)
   target_include_directories(cilogg_communication_contracts PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
   target_link_libraries(cilogg_communication_contracts PUBLIC
     klogg_logdata Qt${QT_VERSION_MAJOR}::Core project_options project_warnings)
+  add_library(cilogg_shared_writer STATIC include/sharedwriter.h src/sharedwriter.cpp)
+  target_link_libraries(cilogg_shared_writer PUBLIC cilogg_communication_contracts)
 endif()

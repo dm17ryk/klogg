@@ -1,6 +1,6 @@
-add_executable(cilogg_communication_tests tests_main.cpp communicationtypes_test.cpp)
+add_executable(cilogg_communication_tests tests_main.cpp communicationtypes_test.cpp sharedwriter_test.cpp)
 target_link_libraries(cilogg_communication_tests PRIVATE cilogg_communication_contracts
-  Catch2 project_options project_warnings)
+  cilogg_shared_writer Catch2 project_options project_warnings)
 set_target_properties(cilogg_communication_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/communication_tests/$<CONFIG>")
 if(WIN32)
@@ -14,4 +14,4 @@ if(WIN32)
 endif()
 add_dependencies(ci_build cilogg_communication_tests)
 add_test(NAME communication_contract_tests COMMAND $<TARGET_FILE:cilogg_communication_tests>)
-set_tests_properties(communication_contract_tests PROPERTIES TIMEOUT 60 LABELS "communication;D01a")
+set_tests_properties(communication_contract_tests PROPERTIES TIMEOUT 60 LABELS "communication;D01a;D01b")
