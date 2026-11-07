@@ -32,6 +32,24 @@ This is combined local qualification, not an isolated hosted run of PR #96. The 
 
 Local qualification used Qt Core 6.10.1 with KLOGG_USE_HYPERSCAN=OFF and KLOGG_USE_VECTORSCAN=OFF. The isolated runtime was C:/ESSENC~1/temp/cilogg-merge-validation-859dpozm; private full-suite records are build_root/preview-terminal-qualified-full-ctest.log and its JSON result, with runtime binary hashes in build_root/preview-terminal-qualified-runtime.json. Other private RED/GREEN/build logs use build_root/f01e-d01a-* names and are not distributed. Runtime TShark qualification is a separate workstream and cannot be inferred from these value tests. Hosted CI, Qt5, Windows ARM64, accelerated-search configurations and cross-platform qualification remain open. No static-analyzer or hardware/device-I/O pass is claimed. Keep PR #96 draft until its pending hosted checks are reviewed.
 
+## macOS C++17 logging follow-up
+
+The four macOS jobs at PR head 73adf063 failed compiling the same 13 stream-style
+category logging calls. Apple Clang treats omission of the variadic macro
+argument as a C++20 extension under the existing C++17 warnings-as-errors policy.
+The calls now supply an explicitly empty argument, retaining the exact Qt
+category guard, severity, stream operands and privacy behavior. Compiler warning
+policy and language level are unchanged.
+
+A focused Clang/actual-Qt-6.10.1-header fixture reproduced two omitted-argument
+errors with the original qCDebug/qCWarning forms (exit 1), then compiled the
+corrected forms (exit 0) under the same strict warning. Standalone attempts to
+compile the complete translation unit encountered dependency-include setup gaps
+and are not acceptance evidence. C++ and general/privacy reviews approved the
+13-call delta without findings. The corrected implementation's frozen Git blob
+is 6f88e93f38a1e4c99800dc48c86be1e91486642b. Combined native qualification of this
+follow-up and the PR97 decoder-watch repair remains pending.
+
 ## Code intelligence and review boundary
 
 GitNexus upstream checks for the new classes/codec functions returned target-not-found/riskUNKNOWN in the stale index; its FTS extension is unavailable. Direct source scope has only the new isolated tests as consumers. CodeGraph reported the checkout unindexed. No empty graph result is treated as proof of zero risk.

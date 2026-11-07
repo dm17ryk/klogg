@@ -13,7 +13,7 @@ DataError invalid( const QString& field, const QString& reason, bool limited = f
 {
     const auto code
         = limited ? QStringLiteral( "resource_limit" ) : QStringLiteral( "invalid_definition" );
-    qCWarning( communicationContracts )
+    qCWarning( communicationContracts, )
         << "decision=rejected" << "field=" << field << "code=" << code << "reason=" << reason;
     return { code, reason, field, {} };
 }
@@ -27,7 +27,7 @@ DataError boundedPositive( T value, T ceiling, const QString& field )
     if ( value > ceiling ) {
         return invalid( field, QStringLiteral( "The limit exceeds the supported ceiling" ), true );
     }
-    qCDebug( communicationContracts ) << "decision=limit_checked" << "field=" << field
+    qCDebug( communicationContracts, ) << "decision=limit_checked" << "field=" << field
                                       << "value=" << value << "ceiling=" << ceiling;
     return {};
 }
@@ -58,7 +58,7 @@ DataError checkedText( const QString& text, int maximumUnits, const QString& fie
             return invalid( field, QStringLiteral( "Text contains invalid Unicode" ) );
         }
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=text_checked" << "field=" << field << "units=" << text.size();
     return {};
 }
@@ -149,7 +149,7 @@ DataError checkedReceipt( const WriteReceiptDefinition& definition, const Stream
         return invalid( QStringLiteral( "errorCode" ),
                         QStringLiteral( "Successful receipt stages cannot contain errors" ) );
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=receipt_checked"
         << "requested=" << definition.requestedBytes << "accepted=" << definition.acceptedBytes
         << "written=" << definition.writtenBytes;
@@ -210,7 +210,7 @@ DataError checkedEncodingSize( const QJsonObject& boundedObject )
         return invalid( QStringLiteral( "receipt" ),
                         QStringLiteral( "Compact receipt encoding exceeds 4096 bytes" ), true );
     }
-    qCDebug( communicationContracts ) << "decision=receipt_size_checked" << "bytes=" << bytes;
+    qCDebug( communicationContracts, ) << "decision=receipt_size_checked" << "bytes=" << bytes;
     return {};
 }
 
@@ -234,7 +234,7 @@ DataResult<quint64> unsignedDecimal( const QString& text, const QString& field )
         }
         value = value * 10 + digit;
     }
-    qCDebug( communicationContracts ) << "decision=decimal_checked" << "field=" << field;
+    qCDebug( communicationContracts, ) << "decision=decimal_checked" << "field=" << field;
     return { value, {} };
 }
 } // namespace
@@ -278,7 +278,7 @@ DataResult<StreamLimits> StreamLimits::fromDefinition( const StreamLimitsDefinit
                  invalid( QStringLiteral( "maximumWriteBytes" ),
                           QStringLiteral( "Write limit exceeds pending TX limit" ) ) };
     }
-    qCDebug( communicationContracts ) << "decision=limits_created";
+    qCDebug( communicationContracts, ) << "decision=limits_created";
     return { StreamLimits( definition ), {} };
 }
 
@@ -302,7 +302,7 @@ EndpointCapabilities::fromDefinition( const EndpointCapabilitiesDefinition& defi
     for ( const auto& text : definition.limitations ) {
         owned.limitations.append( ownedText( text ) );
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=capabilities_owned"
         << "can_read=" << owned.canRead << "can_write=" << owned.canWrite
         << "limitation_count=" << owned.limitations.size();
@@ -342,7 +342,7 @@ DataResult<WriteRequest> WriteRequest::fromDefinition( const WriteRequestDefinit
         QByteArray( definition.bytes.constData(), definition.bytes.size() ), definition.sensitive,
         definition.connectionGeneration, definition.deadlineNs
     };
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=request_owned" << "request_id=" << owned.requestId
         << "generation=" << owned.connectionGeneration << "bytes=" << owned.bytes.size()
         << "maximum_write_bytes=" << limits.maximumWriteBytes() << "sensitive=" << owned.sensitive
@@ -364,7 +364,7 @@ DataResult<WriteReceipt> WriteReceipt::fromDefinition( const WriteReceiptDefinit
         definition.writtenBytes,           definition.payloadDisposition,
         ownedText( definition.errorCode ), ownedText( definition.errorMessage )
     };
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=receipt_owned" << "request_id=" << owned.requestId
         << "endpoint_id=" << owned.endpointId << "generation=" << owned.connectionGeneration
         << "stage=" << static_cast<int>( owned.stage );
@@ -419,7 +419,7 @@ DataResult<WriteReceipt> WriteReceipt::forRequest( const WriteRequest& request,
                  invalid( QStringLiteral( "failure" ),
                           QStringLiteral( "Unsupported write failure" ) ) };
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=receipt_derived" << "request_id=" << request.requestId()
         << "failure=" << static_cast<int>( failure );
     return fromDefinition(
@@ -443,7 +443,7 @@ DataResult<QJsonObject> encodeWriteReceipt( const WriteReceipt& receipt,
     if ( !sizeError.code.isEmpty() ) {
         return { {}, sizeError };
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=receipt_encoded" << "request_id=" << receipt.requestId()
         << "generation=" << receipt.connectionGeneration();
     return { object, {} };
@@ -551,7 +551,7 @@ DataResult<WriteReceipt> decodeWriteReceipt( const QJsonObject& object, const St
     if ( !sizeError.code.isEmpty() ) {
         return { {}, sizeError };
     }
-    qCDebug( communicationContracts )
+    qCDebug( communicationContracts, )
         << "decision=receipt_decoded" << "generation=" << definition.connectionGeneration;
     // Only a fully checked, byte-bounded object can reach owned domain copies.
     return WriteReceipt::fromDefinition( definition, limits );
