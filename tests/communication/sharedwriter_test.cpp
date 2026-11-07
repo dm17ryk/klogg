@@ -41,6 +41,25 @@ WriteRequest request( const QString& id, const QByteArray& bytes = "abc", bool s
     return *result.value;
 }
 const WriteEpoch epoch { "ep", 7 };
+WriteOffer offer(SharedWriter& w, const WriteEpoch& e = epoch, qint64 now = 0)
+{
+    auto result = w.take(e,now);
+    REQUIRE(result.value);
+    REQUIRE(result.value->offer);
+    return *result.value->offer;
+}
+WriteObservation observation(SharedWriter& w, const QString& id)
+{
+    auto result = w.getWrite(id);
+    REQUIRE(result.value);
+    return *result.value;
+}
+void idle(SharedWriter& w, const WriteEpoch& e = epoch, qint64 now = 0)
+{
+    auto result = w.take(e,now);
+    REQUIRE(result.value);
+    CHECK_FALSE(result.value->offer);
+}
 } // namespace
 
 TEST_CASE( "Shared writer owns borrowed endpoint identity", "[communication][D01b-factory]" )
@@ -59,6 +78,97 @@ TEST_CASE( "Shared writer owns borrowed endpoint identity", "[communication][D01
     CHECK( state.residentBytes == 0 );
     CHECK( state.pendingRequests == 0 );
     CHECK_FALSE( state.resetRequired );
+}
+
+TEST_CASE("Partial acceptance and drain preserve exact FIFO bytes", "[communication][D01b-progress]")
+{
+    auto w = writer();
+    REQUIRE(w->submit(epoch,request("a","ABCDE"),WriteProducer::Automation,0).value);
+    REQUIRE(w->submit(epoch,request("z","Z"),WriteProducer::Automation,0).value);
+    auto a = offer(*w);
+    CHECK(a.bytes() == "ABCDE"); CHECK(a.offset() == 0);
+    idle(*w);
+    CHECK(observation(*w,"a").awaitingAcceptance);
+    REQUIRE(w->accepted(a.ticket(),2,0).ok);
+    CHECK(observation(*w,"a").awaitingDrain);
+    CHECK(observation(*w,"a").receipt.writtenBytes() == 0);
+    idle(*w);
+    QByteArray wire = a.bytes().left(2);
+    REQUIRE(w->written(a.ticket(),1,0).ok);
+    idle(*w);
+    REQUIRE(w->written(a.ticket(),1,0).ok);
+    auto b = offer(*w);
+    CHECK(b.bytes() == "CDE"); CHECK(b.offset() == 2);
+    REQUIRE(w->accepted(b.ticket(),0,0).ok);
+    CHECK(w->state().backpressured);
+    idle(*w); idle(*w);
+    REQUIRE(w->ready(epoch,0).ok);
+    auto c = offer(*w);
+    CHECK(c.bytes() == "CDE"); CHECK(c.ticket().sequence != b.ticket().sequence);
+    REQUIRE(w->accepted(c.ticket(),3,0).ok);
+    wire += c.bytes();
+    idle(*w);
+    REQUIRE(w->written(c.ticket(),3,0).ok);
+    CHECK(wire == "ABCDE");
+    CHECK(observation(*w,"a").receipt.stage() == WriteStage::WrittenToBackend);
+    CHECK(w->state().retainedRequests == 1);
+    auto z = offer(*w);
+    CHECK(z.requestId() == "z"); CHECK(z.bytes() == "Z");
+    REQUIRE(w->accepted(z.ticket(),1,0).ok);
+    REQUIRE(w->written(z.ticket(),1,0).ok);
+    idle(*w);
+}
+
+TEST_CASE("Invalid acknowledgments cannot advance bytes or clock", "[communication][D01b-progress]")
+{
+    auto w = writer();
+    REQUIRE(w->submit(epoch,request("a"),WriteProducer::Automation,0).value);
+    const auto a = offer(*w);
+    auto wrong = a.ticket(); ++wrong.sequence;
+    CHECK_FALSE(w->accepted(wrong,1,90).ok);
+    wrong = a.ticket(); wrong.epoch.endpointId = "other";
+    CHECK_FALSE(w->accepted(wrong,1,90).ok);
+    wrong = a.ticket(); --wrong.epoch.generation;
+    CHECK_FALSE(w->accepted(wrong,1,90).ok);
+    CHECK_FALSE(w->accepted(a.ticket(),4,90).ok);
+    CHECK_FALSE(w->accepted(a.ticket(),-2,90).ok);
+    CHECK_FALSE(w->written(a.ticket(),1,90).ok);
+    CHECK_FALSE(w->accepted(a.ticket(),1,-1).ok);
+    REQUIRE(w->accepted(a.ticket(),3,0).ok);
+    CHECK_FALSE(w->accepted(a.ticket(),3,90).ok);
+    CHECK_FALSE(w->written(a.ticket(),0,90).ok);
+    CHECK_FALSE(w->written(a.ticket(),-1,90).ok);
+    CHECK_FALSE(w->written(a.ticket(),4,90).ok);
+    REQUIRE(w->written(a.ticket(),3,0).ok);
+    CHECK_FALSE(w->written(a.ticket(),1,90).ok);
+    CHECK(observation(*w,"a").receipt.writtenBytes() == 3);
+}
+
+TEST_CASE("Every binary byte survives bounded multichunk offers", "[communication][D01b-progress]")
+{
+    StreamLimitsDefinition definition;
+    definition.maximumChunkBytes = 16;
+    auto limits = StreamLimits::fromDefinition(definition);
+    REQUIRE(limits.value);
+    auto created = SharedWriter::create(epoch,*limits.value,writerCapabilities(),100);
+    REQUIRE(created.value);
+    auto& w = **created.value;
+    QByteArray expected;
+    for(int n=0; n<256; ++n) expected.append(static_cast<char>(n));
+    auto r = WriteRequest::fromDefinition({"binary",expected,false,7,{}},*limits.value);
+    REQUIRE(r.value);
+    REQUIRE(w.submit(epoch,*r.value,WriteProducer::Automation,0).value);
+    QByteArray wire;
+    while(wire.size() < expected.size()) {
+        auto part = offer(w);
+        REQUIRE(part.bytes().size() <= 16);
+        CHECK(part.offset() == static_cast<quint64>(wire.size()));
+        REQUIRE(w.accepted(part.ticket(),part.bytes().size(),0).ok);
+        wire += part.bytes();
+        REQUIRE(w.written(part.ticket(),part.bytes().size(),0).ok);
+    }
+    CHECK(wire == expected);
+    CHECK(observation(w,"binary").receipt.stage() == WriteStage::WrittenToBackend);
 }
 
 TEST_CASE("Writer bounds admission and preserves idempotent request identity", "[communication][D01b-admission]")
