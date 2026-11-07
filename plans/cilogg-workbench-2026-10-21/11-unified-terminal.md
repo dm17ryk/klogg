@@ -1,6 +1,6 @@
 # Unified terminal integration plan
 
-**Current workstream clarification (2026-11-05):** The user selected Unified Terminal next after merging PR #90. Resume the scoped [UT00a terminal preparation](slices/UT00a-terminal-baseline.md) through PROGRESS.json.executionPolicy.currentPreparation before unrelated F01 expansion. This is independent preparation; formal MD01–MD06/W0 and terminal F01/D01 acceptance gates remain open and unchanged. The dated full-milestone order below remains the acceptance order.
+**Current workstream clarification (2026-11-06):** The user authorized TShark Preview closeout and Unified Terminal preparation in parallel. UT00a/UT01a preparations are merged through PRs #94/#95. Resume `PROGRESS.json.executionPolicy.currentPreparation` and the [D01a communication-contract plan](slices/D01a-communication-contracts.md); its unused checked-contract implementation and qualification are in progress. The shared writer, ownership gates and public terminal attachment remain subsequent work. Formal MD01–MD06/W0 and F01/D01/UT01/UT02 acceptance gates and all historical preparation evidence remain unchanged. The dated full-milestone order below remains the acceptance order.
 
 
 **Accepted scheduling update:** 2026-11-04. Finish TShark decoder core

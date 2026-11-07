@@ -241,3 +241,11 @@ target_link_libraries(
 if(WIN32)
   target_link_libraries(klogg_ui PUBLIC user32)
 endif()
+
+if(KLOGG_BUILD_TESTS)
+  add_library(cilogg_communication_contracts STATIC
+    include/communicationtypes.h src/communicationtypes.cpp)
+  target_include_directories(cilogg_communication_contracts PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(cilogg_communication_contracts PUBLIC
+    klogg_logdata Qt${QT_VERSION_MAJOR}::Core project_options project_warnings)
+endif()
