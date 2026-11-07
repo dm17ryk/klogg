@@ -152,7 +152,11 @@ PreviewDecoderSettings& PreviewDecoderSettings::instance()
     return settings;
 }
 PreviewDecoderSettings::PreviewDecoderSettings()
+    : watcher_( this )
+    , debounce_( this )
 {
+    watcher_.setObjectName( "previewDecoderFileWatcher" );
+    debounce_.setObjectName( "previewDecoderWatchDebounce" );
     normalize( {}, &configuration_, nullptr );
     auto& settings = PersistentInfo::getSettings( app_settings{} );
     const auto bytes = settings.value( "previewDecoder/configuration" ).toByteArray();
@@ -190,7 +194,17 @@ PreviewDecoderSettings::PreviewDecoderSettings()
         invalidate();
         debounce_.start();
     } );
-    connect( &debounce_, &QTimer::timeout, this, &PreviewDecoderSettings::watchFiles );
+    connect( &debounce_, &QTimer::timeout, this, [ this ] {
+        const auto metadataBeforeRearm = fileMetadata_;
+        watchFiles();
+        const bool metadataChanged = fileMetadata_ != metadataBeforeRearm;
+        LOG_DEBUG << "Preview decoder watch rearmed metadata_changed=" << metadataChanged
+                  << " configured_files=" << fileMetadata_.size();
+        // A delayed directory notification must not lose a change observed while rearming.
+        // Emit last: changed handlers may synchronously replace the configuration.
+        if ( metadataChanged )
+            invalidate();
+    } );
     connect( this, &PreviewDecoderSettings::changed, &PreviewManager::instance(),
              &PreviewManager::previewsChanged );
     watchFiles();

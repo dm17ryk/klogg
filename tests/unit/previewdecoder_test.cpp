@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "previewdecodersettings.h"
 #include "previewservice.h"
+#include "previewsource.h"
 #include "previewtree.h"
 #include "tsharkpreviewclient.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
@@ -52,6 +56,43 @@ PreviewEvaluationRequest directRequest( const QString& text, const QString& enco
     return request;
 }
 } // namespace
+
+#ifdef Q_OS_WIN
+TEST_CASE( "PATH runtime discovery prefers native Windows Python over batch shims",
+           "[previewdecoder][previewpython]" )
+{
+    QTemporaryDir sandbox;
+    REQUIRE( sandbox.isValid() );
+    const auto shimDirectory = sandbox.filePath( "shim" );
+    const auto nativeDirectory = sandbox.filePath( "native" );
+    REQUIRE( QDir().mkpath( shimDirectory ) );
+    REQUIRE( QDir().mkpath( nativeDirectory ) );
+    const auto shimPath = QDir( shimDirectory ).filePath( "python3.bat" );
+    QFile shim( shimPath );
+    REQUIRE( shim.open( QIODevice::WriteOnly ) );
+    const QByteArray batch = "@echo off\r\nexit /b 73\r\n";
+    REQUIRE( shim.write( batch ) == batch.size() );
+    shim.close();
+    const auto nativePath = QDir( nativeDirectory ).filePath( "python.exe" );
+    REQUIRE( QFile::copy( QString::fromUtf8( PREVIEW_DECODER_FIXTURE_PATH ), nativePath ) );
+    RestoreEnvironment path( "PATH" );
+    qputenv( "PATH", ( shimDirectory + QDir::listSeparator() + nativeDirectory ).toUtf8() );
+    REQUIRE( QFileInfo( QStandardPaths::findExecutable( "python3" ) ).canonicalFilePath()
+             == QFileInfo( shimPath ).canonicalFilePath() );
+
+    SECTION( "Native executable takes precedence over an earlier batch shim" )
+    {
+        CHECK( QFileInfo( cilogg::preview::detail::findPythonOnPath() ).canonicalFilePath()
+               == QFileInfo( nativePath ).canonicalFilePath() );
+    }
+    SECTION( "Batch shim remains a fallback when no native executable is on PATH" )
+    {
+        REQUIRE( QFile::remove( nativePath ) );
+        CHECK( QFileInfo( cilogg::preview::detail::findPythonOnPath() ).canonicalFilePath()
+               == QFileInfo( shimPath ).canonicalFilePath() );
+    }
+}
+#endif
 
 TEST_CASE( "Decoder settings replace atomically with strict trusted types", "[previewdecoder]" )
 {
@@ -150,14 +191,71 @@ TEST_CASE( "Configured scripts need approval and file changes invalidate revisio
     CHECK( changed.count() >= 1 );
     CHECK( settings.revision() != revision );
     const auto beforeReplacement = settings.revision();
+    QEventLoop replaced;
+    QObject::connect( &settings, &PreviewDecoderSettings::changed, &replaced, &QEventLoop::quit );
     REQUIRE( QFile::remove( script ) );
     REQUIRE( file.open( QIODevice::WriteOnly ) );
     file.write( "-- replacement" );
     file.close();
-    QEventLoop replaced;
-    QTimer::singleShot( 300, &replaced, &QEventLoop::quit );
-    replaced.exec();
+    if ( settings.revision() == beforeReplacement ) {
+        QTimer::singleShot( 5000, &replaced, &QEventLoop::quit );
+        replaced.exec();
+    }
     CHECK( settings.revision() != beforeReplacement );
+}
+
+TEST_CASE( "Decoder watch rearming preserves changes before delayed notifications",
+           "[previewdecoder][previewwatchrearm]" )
+{
+    QTemporaryDir directory;
+    RestoreDecoder restore;
+    REQUIRE( directory.isValid() );
+    const auto script = directory.filePath( "probe.lua" );
+    QFile file( script );
+    REQUIRE( file.open( QIODevice::WriteOnly ) );
+    REQUIRE( file.write( "-- initial" ) == 10 );
+    file.close();
+    auto& settings = PreviewDecoderSettings::instance();
+    REQUIRE( settings.setConfiguration( { { "lua", QVariantList{ script } } } ) );
+    auto* watcher = settings.findChild<QFileSystemWatcher*>( "previewDecoderFileWatcher" );
+    auto* debounce = settings.findChild<QTimer*>( "previewDecoderWatchDebounce" );
+    REQUIRE( watcher );
+    REQUIRE( debounce );
+    QSignalSpy changed( &settings, &PreviewDecoderSettings::changed );
+    REQUIRE( QMetaObject::invokeMethod( watcher, "fileChanged", Qt::DirectConnection,
+                                       Q_ARG( QString, script ) ) );
+    REQUIRE( debounce->isActive() );
+    const auto beforeRearm = settings.revision();
+    const auto changesBeforeRearm = changed.count();
+
+    SECTION( "Replacement before rearming invalidates once" )
+    {
+        REQUIRE( QFile::remove( script ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        REQUIRE( file.write( "-- replacement" ) == 14 );
+        file.close();
+        debounce->stop();
+        REQUIRE( QMetaObject::invokeMethod( debounce, "timeout", Qt::DirectConnection ) );
+        CHECK( settings.revision() != beforeRearm );
+        CHECK( changed.count() == changesBeforeRearm + 1 );
+    }
+    SECTION( "Unrelated sibling activity during rearming preserves the revision" )
+    {
+        QFile sibling( directory.filePath( "unrelated.log" ) );
+        REQUIRE( sibling.open( QIODevice::WriteOnly ) );
+        REQUIRE( sibling.write( "unrelated" ) == 9 );
+        sibling.close();
+        debounce->stop();
+        REQUIRE( QMetaObject::invokeMethod( debounce, "timeout", Qt::DirectConnection ) );
+        CHECK( settings.revision() == beforeRearm );
+        CHECK( changed.count() == changesBeforeRearm );
+    }
+    const auto afterRearm = settings.revision();
+    const auto changesAfterRearm = changed.count();
+    REQUIRE( QMetaObject::invokeMethod( watcher, "directoryChanged", Qt::DirectConnection,
+                                       Q_ARG( QString, directory.path() ) ) );
+    CHECK( settings.revision() == afterRearm );
+    CHECK( changed.count() == changesAfterRearm );
 }
 
 TEST_CASE( "Shared preview carrier retains capture and initial byte offset", "[previewdecoder]" )
@@ -969,4 +1067,132 @@ TEST_CASE( "Overdue successful delivery times out and retires only its owned cha
     REQUIRE( PreviewService::evaluateAndWait( unrelatedRequest ).value( "available" ).toBool() );
     CHECK( unrelatedWorker->processId() == unrelatedPid );
     client.reset();
+}
+
+TEST_CASE( "External EHCI recovers exact fields after entered Lua timeout and cancellation",
+           "[.][previewehcirecovery]" )
+{
+    RestoreDecoder restore;
+    const auto script = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITIES_LUA" );
+    const auto fixtures = qEnvironmentVariable( "CILOGG_EHCI_CAPABILITY_FIXTURES" );
+    REQUIRE_FALSE( script.isEmpty() );
+    REQUIRE_FALSE( fixtures.isEmpty() );
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto marker = directory.filePath( "entered" );
+    QFile fault( directory.filePath( "fault.lua" ) );
+    REQUIRE( fault.open( QIODevice::WriteOnly ) );
+    const auto body = QByteArray( "local p=Proto('cilogg_recovery_fault','Recovery fault')\n"
+                                  "function p.dissector(tvb,pinfo,tree)\n"
+                                  "local f=assert(io.open([=[" )
+                      + marker.toUtf8()
+                      + "]=], 'wb')); f:write('entered'); f:close(); while true do end end\n";
+    REQUIRE( fault.write( body ) == body.size() );
+    fault.close();
+    REQUIRE( PreviewDecoderSettings::instance().setConfiguration(
+        { { "enabled", true }, { "allowExternalLua", true },
+          { "tshark", qEnvironmentVariable( "CILOGG_TSHARK" ) },
+          { "text2pcap", qEnvironmentVariable( "CILOGG_TEXT2PCAP" ) },
+          { "lua", QVariantList{ script, fault.fileName() } },
+          { "defaultDissector", "ehci" }, { "inputEncoding", "hex" } } ) );
+    QFile fixture( fixtures + "/ehci-nul.hex" );
+    REQUIRE( fixture.open( QIODevice::ReadOnly ) );
+    auto request = directRequest( QString::fromLatin1( fixture.readAll() ), "hex" );
+    request.dissector = "ehci";
+    QObject channel;
+    request.sessionOwner = &channel;
+    auto& client = TsharkPreviewClient::instance();
+    const auto initial = PreviewService::evaluateAndWait( request );
+    REQUIRE( initial.value( "available" ).toBool() );
+    const auto fields = initial.value( "fields" ).toList();
+    REQUIRE_FALSE( fields.isEmpty() );
+    bool nul = false;
+    for ( const auto& field : fields ) {
+        const auto attributes = field.toMap().value( "attributes" ).toMap();
+        nul = nul || ( attributes.value( "name" ) == "ehci.map.value_raw"
+                       && attributes.value( "value" ) == "780079" );
+    }
+    REQUIRE( nul );
+    QList<PreviewEvaluationRequest> samples{ request };
+    QList<QVariantList> expectedFields{ fields };
+    const auto privateSample = qEnvironmentVariable( "CILOGG_PREVIEW_PRIVATE_LOG_SAMPLE" );
+    if ( !privateSample.isEmpty() ) {
+        QFile sample( privateSample );
+        REQUIRE( sample.open( QIODevice::ReadOnly ) );
+        const auto bytes = sample.read( 1024 * 1024 + 1 );
+        REQUIRE( bytes.size() <= 1024 * 1024 );
+        const auto prepared = preparePreviewText( QString::fromUtf8( bytes ) );
+        REQUIRE( prepared.error.isEmpty() );
+        REQUIRE( prepared.assembly.value( "protocol" ) == "EHCI" );
+        REQUIRE( prepared.assembly.value( "state" ) == "complete" );
+        REQUIRE( prepared.assembly.value( "physicalLinesOneBased" ).toList().size() > 1 );
+        auto actual = request;
+        actual.text = prepared.text;
+        actual.inputEncoding = "utf8";
+        const auto decoded = PreviewService::evaluateAndWait( actual );
+        REQUIRE( decoded.value( "available" ).toBool() );
+        REQUIRE_FALSE( decoded.value( "fields" ).toList().isEmpty() );
+        samples << actual;
+        expectedFields << decoded.value( "fields" ).toList();
+    }
+    for ( const bool cancel : { false, true } ) {
+        INFO( ( cancel ? "cancel after observed Lua entry" : "timeout after observed Lua entry" ) );
+        QFile::remove( marker );
+        REQUIRE_FALSE( QFile::exists( marker ) );
+        const auto oldProcesses = client.findChildren<QProcess*>();
+        QList<QPointer<QProcess>> owned;
+        for ( auto* process : oldProcesses )
+            owned << process;
+        auto stalled = request;
+        stalled.text = "41";
+        stalled.dissector = "cilogg_recovery_fault";
+        stalled.timeoutMs = 3000;
+        QEventLoop loop;
+        QVariantMap stopped;
+        bool entered = false;
+        QPointer<QProcess> token;
+        QTimer poll;
+        poll.setInterval( 10 );
+        QObject::connect( &poll, &QTimer::timeout, &loop, [ & ] {
+            QFile entry( marker );
+            if ( !entry.open( QIODevice::ReadOnly ) || entry.readAll() != "entered" )
+                return;
+            entered = true;
+            poll.stop();
+            if ( cancel )
+                PreviewService::cancel( token );
+        } );
+        token = PreviewService::evaluate( &loop, stalled, [ & ]( QVariantMap value ) {
+            stopped = std::move( value );
+            loop.quit();
+        } );
+        poll.start();
+        QTimer::singleShot( 10000, &loop, &QEventLoop::quit );
+        if ( stopped.isEmpty() )
+            loop.exec();
+        REQUIRE( entered );
+        REQUIRE_FALSE( stopped.isEmpty() );
+        if ( cancel )
+            CHECK( stopped.value( "reason" ) == "cancelled" );
+        else
+            CHECK( ( stopped.value( "reason" ) == "timeout"
+                     || stopped.value( "reason" ) == "execution_timeout" ) );
+        CHECK( stopped.value( "state" ) == "failed" );
+        CHECK( stopped.value( "backend" ) == "tshark_lua" );
+        CHECK_FALSE( stopped.value( "available" ).toBool() );
+        CHECK( stopped.value( "fields" ).toList().isEmpty() );
+        CHECK_FALSE( stopped.contains( "fallbackReason" ) );
+        for ( int index = 0; index < samples.size(); ++index ) {
+            const auto recovered = PreviewService::evaluateAndWait( samples[ index ] );
+            REQUIRE( recovered.value( "available" ).toBool() );
+            // Keep optional private fields out of assertion diagnostics.
+            CHECK( bool( recovered.value( "fields" ).toList() == expectedFields[ index ] ) );
+            const auto repeated = PreviewService::evaluateAndWait( samples[ index ] );
+            REQUIRE( repeated.value( "available" ).toBool() );
+            CHECK( bool( repeated.value( "fields" ).toList() == expectedFields[ index ] ) );
+            CHECK( recovered.value( "enginePid" ) == repeated.value( "enginePid" ) );
+        }
+        for ( const auto& process : owned )
+            CHECK( ( !process || process->state() == QProcess::NotRunning ) );
+    }
 }

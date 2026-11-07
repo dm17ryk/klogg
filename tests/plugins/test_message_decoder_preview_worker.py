@@ -1,6 +1,7 @@
 """Bounded preview transport and exact real-engine import contracts."""
 
 import base64
+import copy
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -120,21 +122,35 @@ class WireTests(unittest.TestCase):
         self.assertTrue(limited)
 
     def test_blocked_pipe_write_has_deadline(self):
-        class Stalled:
-            def write(self, _):
-                import time
+        entered = threading.Event()
+        release = threading.Event()
 
-                time.sleep(0.2)
+        class Stalled:
+            def write(self, value):
+                entered.set()
+                release.wait()
+                return len(value)
 
             def flush(self):
                 pass
 
-        import time
-
-        with self.assertLogs(worker.LOG, level="WARNING") as warnings:
-            with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
-                worker.write_before(Stalled(), b"x", time.monotonic() + 0.02)
+        try:
+            with self.assertLogs(worker.LOG, level="WARNING") as warnings:
+                with self.assertRaisesRegex(wire.ProofError, "execution_timeout"):
+                    worker.write_before(Stalled(), b"x", time.monotonic() + 0.1)
+            self.assertTrue(entered.wait(2), 'the blocked writer actually started')
+        finally:
+            release.set()
         self.assertEqual([record.getMessage() for record in warnings.records], ["preview_pipe_timeout"])
+
+    def test_pipe_deadline_expired_before_wait_still_logs_timeout(self):
+        # Scheduler delay can exhaust the budget between thread start and wait.
+        # Keep this race deterministic without depending on host load or sleep.
+        with patch.object(worker, 'remaining', side_effect=wire.ProofError('execution_timeout')):
+            with self.assertLogs(worker.LOG, level='WARNING') as warnings:
+                with self.assertRaisesRegex(wire.ProofError, 'execution_timeout'):
+                    worker.operation_before(lambda: None, 1)
+        self.assertEqual([record.getMessage() for record in warnings.records], ['preview_pipe_timeout'])
 
     def test_bad_capture_headers_are_rejected(self):
         header = struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 262144, 252)
@@ -149,6 +165,124 @@ class WireTests(unittest.TestCase):
         ]:
             with self.assertRaisesRegex(wire.ProofError, "invalid_capture"):
                 worker.capture_record(data)
+
+
+class ResponseBudgetTests(unittest.TestCase):
+    @staticmethod
+    def row(show, depth=0, identity="probe.value"):
+        return {"columns": ["probe.value", show, "", "", ""], "depth": depth,
+                "attributes": {"name": "probe.value", "show": show},
+                "positionOrigin": worker.ORIGIN, "id": identity}
+
+    @staticmethod
+    def response(fields, **changes):
+        value = worker.response_base("response-fit", {"dissector": "probe"})
+        value.update(state="completed", available=True, complete=True, limited=False,
+                     fields=fields, enginePid=123, scriptSha256=[])
+        value.update(changes)
+        return value
+
+    @staticmethod
+    def body_size(value):
+        # The existing request limit is only a test oracle for oversized bodies;
+        # the production response cap is never changed.
+        return len(worker.encode_frame(value, worker.REQUEST_LIMIT)) - 4
+
+    def sized_prefix(self, target, count=1):
+        fields = [self.row("small parent", identity="parent")] if count == 2 else []
+        row = self.row("", depth=count - 1)
+        fields.append(row)
+        limited = self.response(fields, complete=False, limited=True, reason="response_limit")
+        room = target - self.body_size(limited)
+        if room % 2:
+            row["id"] += "x"
+            room -= 1
+        # The canonical show string occurs once in attributes and once in columns.
+        row["attributes"]["show"] = row["columns"][1] = "a" * (room // 2)
+        self.assertLessEqual(len(row["columns"][1]), 65536)
+        self.assertEqual(self.body_size(limited), target)
+        return fields
+
+    def test_aggregate_overflow_retains_exact_first_whole_row(self):
+        first = self.row("a" * 40000)
+        second = self.row("b" * 40000, depth=1)
+        value = self.response([first, second, self.row("small later sibling")])
+        self.assertLess(len(worker.encode_frame(self.response([first]))), worker.RESPONSE_LIMIT)
+        with self.assertRaisesRegex(wire.ProofError, "response_limit"):
+            worker.encode_frame(value)
+        fitted = worker._fit_response(value)
+        self.assertEqual(len(fitted["fields"]), 1, "aggregate overflow discarded the fitting prefix")
+        self.assertEqual(fitted["fields"], [first])
+        self.assertTrue(fitted["available"])
+        self.assertEqual(fitted["state"], "completed")
+        self.assertFalse(fitted["complete"])
+        self.assertTrue(fitted["limited"])
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertLessEqual(len(worker.encode_frame(fitted)) - 4, worker.RESPONSE_LIMIT)
+
+    def test_limited_metadata_and_two_row_comma_fit_exact_body_cap(self):
+        fields = self.sized_prefix(worker.RESPONSE_LIMIT, count=2)
+        value = self.response(fields + [self.row("last row cannot fit")])
+        fitted = worker._fit_response(value)
+        self.assertEqual(len(fitted["fields"]), 2)
+        self.assertEqual(fitted["fields"], fields)
+        self.assertEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+        self.assertEqual(struct.unpack(">I", worker.encode_frame(fitted)[:4])[0], worker.RESPONSE_LIMIT)
+
+    def test_second_row_one_byte_over_cap_stops_at_prior_row(self):
+        fields = self.sized_prefix(worker.RESPONSE_LIMIT + 1, count=2)
+        value = self.response(fields + [self.row("small row must not be sampled")])
+        fitted = worker._fit_response(value)
+        self.assertEqual(len(fitted["fields"]), 1)
+        self.assertEqual(fitted["fields"], fields[:1])
+        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+
+    def test_unicode_supplementary_and_nul_use_actual_ascii_escaping(self):
+        text = "\u00e9\U0001f680\x00" * 2000
+        first = self.row(text)
+        value = self.response([first, self.row(text, depth=1)])
+        utf8_size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        self.assertLess(utf8_size, worker.RESPONSE_LIMIT)
+        self.assertGreater(self.body_size(value), worker.RESPONSE_LIMIT)
+        fitted = worker._fit_response(value)
+        self.assertEqual(len(fitted["fields"]), 1)
+        self.assertEqual(fitted["fields"], [first])
+        self.assertEqual(fitted["fields"][0]["columns"][1], text)
+        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+
+    def test_first_oversized_row_is_not_truncated_or_skipped(self):
+        value = self.response([self.row("\U0001f680" * 10000), self.row("later small root")])
+        fitted = worker._fit_response(value)
+        self.assertEqual(fitted["fields"], [])
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertTrue(fitted["limited"])
+        self.assertFalse(fitted["complete"])
+        self.assertLessEqual(self.body_size(fitted), worker.RESPONSE_LIMIT)
+
+    def test_input_rows_and_flags_remain_immutable(self):
+        value = self.response([self.row("a" * 40000), self.row("b" * 40000)])
+        before = copy.deepcopy(value)
+        worker._fit_response(value)
+        self.assertEqual(value, before)
+
+    def test_full_fit_and_existing_other_limit_metadata_are_unchanged(self):
+        for changes in ({}, {"complete": False, "limited": True, "reason": "rendered_field_limit"}):
+            with self.subTest(changes=changes):
+                value = self.response([self.row("9007199254740993"), self.row("")], **changes)
+                before = worker.encode_frame(value)
+                fitted = worker._fit_response(value)
+                self.assertEqual(fitted, value)
+                self.assertEqual(worker.encode_frame(fitted), before)
+
+    def test_byte_overflow_replaces_other_limit_reason_and_serializes_linearly(self):
+        value = self.response([self.row("a" * 40000), self.row("b" * 40000), self.row("small")],
+                              complete=False, limited=True, reason="rendered_field_limit")
+        original = worker.encode_frame
+        with patch.object(worker, "encode_frame", wraps=original) as encoding:
+            fitted = worker._fit_response(value)
+        self.assertEqual(len(fitted["fields"]), 1)
+        self.assertEqual(fitted["reason"], "response_limit")
+        self.assertLessEqual(encoding.call_count, len(value["fields"]) + 3)
 
 
 class ProcessTests(unittest.TestCase):
