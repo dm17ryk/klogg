@@ -47,8 +47,37 @@ corrected forms (exit 0) under the same strict warning. Standalone attempts to
 compile the complete translation unit encountered dependency-include setup gaps
 and are not acceptance evidence. C++ and general/privacy reviews approved the
 13-call delta without findings. The corrected implementation's frozen Git blob
-is 6f88e93f38a1e4c99800dc48c86be1e91486642b. Combined native qualification of this
-follow-up and the PR97 decoder-watch repair remains pending.
+is 6f88e93f38a1e4c99800dc48c86be1e91486642b.
+
+Combined native qualification of this follow-up and the PR97 decoder-watch
+repair used qualification commit 1074009a4b9a45fc0d9ab23d0c90ced793034a97.
+The selected-target native build passed with exit 0 in 706.56 s; this was not
+an aggregate ci_build invocation. A fresh isolated runtime then passed all ten
+registered CTest groups in 247.93 s (wrapper exit 0, 248.106 s), including
+519 communication-contract assertions in 22 cases and 1045 terminal-model
+assertions in 23 cases. The corrected implementation blob above matches the
+tested source. The same Windows MSVC 19.44 / Qt 6.10.1, Qt-only environment was
+used; these results do not replace hosted macOS or other-platform qualification.
+
+The native evidence below lives in the primary qualification checkout,
+C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg, rather than
+the secondary PR96 publication checkout. Private evidence is in
+build_root/ci96-97-green-full-ctest.log and its JSON result, with binary/source
+identities in build_root/ci96-97-green-runtime.json.
+The isolated runtime was C:/ESSENC~1/temp/cilogg-merge-validation-xydxg_xp.
+
+Dedicated public TShark qualification on that same frozen runtime then passed
+all 57 strict normal CLI/native-MCP comparisons. Both overflow responses retained
+291 exact whole rows with their explicit limited-result metadata. The hover
+test exited normally with status 0; its independent observer recorded zero
+active jobs, zero surviving observed process handles and no missing required
+images before outer cleanup, observing 25 processes. These checks used no
+interpreter override, bundled Python candidate or private input. Parity success
+alone is not independent leak proof. Their summary lives in the secondary
+validation/publication checkout at
+build_root/preview-final-qualification/post-ci-1074009-normal/post-ci-summary.json.
+These combined local checks do not establish formal D01/UT02 or interactive
+terminal acceptance.
 
 ## Code intelligence and review boundary
 
