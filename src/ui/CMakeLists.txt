@@ -250,4 +250,8 @@ if(KLOGG_BUILD_TESTS)
     klogg_logdata Qt${QT_VERSION_MAJOR}::Core project_options project_warnings)
   add_library(cilogg_shared_writer STATIC include/sharedwriter.h src/sharedwriter.cpp)
   target_link_libraries(cilogg_shared_writer PUBLIC cilogg_communication_contracts)
+  add_library(cilogg_serial_write_driver STATIC include/serialwritedriver.h
+    include/serialwritebridge.h src/serialwritedriver.cpp)
+  set_target_properties(cilogg_serial_write_driver PROPERTIES AUTOMOC ON)
+  target_link_libraries(cilogg_serial_write_driver PUBLIC cilogg_shared_writer)
 endif()
