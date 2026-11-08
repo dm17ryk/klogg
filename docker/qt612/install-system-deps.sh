@@ -21,9 +21,13 @@ case "$ID" in
     # Compatible public repositories include the desktop libraries absent from
     # UBI. CRB supplies build prerequisites; no RHEL subscription is required.
     echo "Enabling CRB for the RHEL-compatible Qt-only build: $ID $VERSION_ID"
-    dnf install -y --setopt=install_weak_deps=False dnf-plugins-core
+    dnf_options=(--setopt=install_weak_deps=False)
+    if [[ "$ID" == almalinux && "$VERSION_ID" == 10.* ]]; then
+      dnf_options+=(--disablerepo=extras)
+    fi
+    dnf install -y "${dnf_options[@]}" dnf-plugins-core
     dnf config-manager --set-enabled crb
-    dnf install -y --setopt=install_weak_deps=False \
+    dnf install -y "${dnf_options[@]}" \
       gcc gcc-c++ make python3 python3-pip rpm-build \
       openssl-devel libcurl-devel libicu-devel glib2-devel dbus-devel \
       fontconfig freetype mesa-libGL-devel gtk3 libwayland-egl \
