@@ -400,9 +400,10 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
 #ifdef KLOGG_SHARED_SERIAL_WRITER
                         const auto admitted
                             = safeSession->submitActionWrite( bytes, sensitive, writeStamp );
-                        if ( !admitted.value )
+                        if ( !admitted.value ) {
                             LOG_WARNING << "Delayed serial Action rejected reason="
                                         << admitted.error.code;
+                        }
 #else
                         safeSession->sendBytes( bytes, sensitive );
 #endif
