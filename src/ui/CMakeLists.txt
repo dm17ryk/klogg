@@ -187,7 +187,6 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptrunnerwindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptsupervisor.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/startupprogress.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tabbedcrawlerwidget.cpp
@@ -241,6 +240,12 @@ target_link_libraries(
 if(WIN32)
   target_link_libraries(klogg_ui PUBLIC user32)
 endif()
+
+add_library(cilogg_stream_registry STATIC include/streamsourceregistry.h src/streamsourceregistry.cpp)
+target_include_directories(cilogg_stream_registry PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(cilogg_stream_registry PUBLIC klogg_logdata Qt${QT_VERSION_MAJOR}::SerialPort
+  project_options project_warnings)
+target_link_libraries(klogg_ui PUBLIC cilogg_stream_registry)
 
 if(KLOGG_BUILD_TESTS)
   add_library(cilogg_communication_contracts STATIC
