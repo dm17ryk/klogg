@@ -153,8 +153,8 @@ struct OwnerFixture {
         }
         session = std::make_unique<StreamSession>( settings );
         StreamSessionTestAccess::setOwnerFixture(
-            *session, *registry, [ state = port ]( SerialCaptureSettings settings ) {
-                auto* worker = new SerialCaptureWorker( std::move( settings ) );
+            *session, *registry, [ state = port ]( SerialCaptureSettings workerSettings ) {
+                auto* worker = new SerialCaptureWorker( std::move( workerSettings ) );
                 SerialCaptureWorkerTestAccess::factory( *worker, [ state ]( QObject* parent ) {
                     return new FakeSerialPort( state, parent );
                 } );
