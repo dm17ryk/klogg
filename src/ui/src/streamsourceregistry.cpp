@@ -118,9 +118,9 @@ StreamSourceRegistry::tryAcquireSerialPort( const QString& selector, const Strea
              static_cast<long long>( count ), qPrintable( result.error.code ) );
     return result;
 }
-DataStatus StreamSourceRegistry::releaseSerialPort( const SerialEndpointLease& lease )
+cilogg::DataStatus StreamSourceRegistry::releaseSerialPort( const SerialEndpointLease& lease )
 {
-    DataStatus result;
+    cilogg::DataStatus result;
     qsizetype count;
     {
         QMutexLocker lock( &mutex_ );

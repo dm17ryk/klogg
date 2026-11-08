@@ -24,7 +24,7 @@
   "activeTask": "G02",
   "nextTask": "MD01",
   "executionPolicy": {
-    "updatedDate": "2026-11-07",
+    "updatedDate": "2026-11-08",
     "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves. User requested the unified terminal task after finishing TShark decoding on 2026-11-04. User2026-11-06 explicitly authorized TShark Preview and terminal work in parallel.",
     "phaseOrder": [
       "W0",
@@ -117,164 +117,210 @@
     "nextAfterDecoderCore": "UT00",
     "nextAfterUnifiedTerminal": "W1",
     "currentPreparation": {
-      "workstream": "unified_terminal",
+      "slice": "D01c",
+      "plan": "slices/D01c-existing-owner-adapter.md",
       "task": null,
-      "slice": "D01b",
       "formalParentTask": "D01",
       "formalTaskExecution": false,
+      "applicationConsumer": true,
+      "scope": "Bounded checked serial writer under existing session/device worker; existing Actions and Commander surfaces; no terminal input or additional endpoint.",
+      "state": "locally_qualified_pending_hosted",
+      "branch": "codex/terminal-owner-adapter-plan",
+      "baseline": "5a3eb1450965f854e127aa3cf8f3b2f04cf54235",
+      "evidence": "../../docs/workbench/d01c-serial-owner-plan.md",
+      "plannedConsumer": "opt_in_legacy_serial_only",
+      "proposedBuildFlag": "KLOGG_SHARED_SERIAL_WRITER",
+      "proposedBuildFlagDefault": false,
+      "executionMethod": "native",
+      "entryGates": [
+        "PR98 reconciled: squash tree equals frozen07ae670; merge5b11207",
+        "Plan approved by continue instruction",
+        "Symbol impact/direct callers inspected; stale-index gaps recorded"
+      ],
+      "mergeGates": [
+        "PR98 integrated into master",
+        "D01c hosted checks/reviews complete",
+        "Default activation separately reviewed"
+      ],
+      "workstream": "unified_terminal",
       "executionMode": "independent_preparation",
-      "applicationConsumer": false,
-      "scope": "unused_bounded_shared_writer",
-      "plan": "slices/D01b-shared-writer.md",
-      "baseline": "6de6a3b941483fc26cb2e37509c6662199f68d55",
-      "authority": "User2026-11-07: all PRs merged, go to next step. Follow D01a nextPreparation; retain authorized parallel TShark/terminal work and all formal gates.",
-      "date": "2026-11-07",
-      "state": "qualified_pending_merge",
-      "implementationStatus": "locally_and_ci_qualified",
-      "branch": "codex/terminal-shared-writer",
-      "formalEntryGatesUnchanged": true,
       "previousPreparation": {
         "workstream": "unified_terminal",
         "task": null,
-        "slice": "D01a",
+        "slice": "D01b",
         "formalParentTask": "D01",
         "formalTaskExecution": false,
         "executionMode": "independent_preparation",
         "applicationConsumer": false,
-        "scope": "unused_checked_communication_contracts",
-        "plan": "slices/D01a-communication-contracts.md",
-        "baseline": "43e00df689d3ccdb8fe918fb91aa36333ff18d71",
-        "authority": "User 2026-11-06: continue after all PRs merged; follow UT01a nextPreparation by preparing a bounded D01/shared-session plan first. User explicitly authorized parallel TShark/terminal implementation on2026-11-06.",
-        "date": "2026-11-06",
+        "scope": "unused_bounded_shared_writer",
+        "plan": "slices/D01b-shared-writer.md",
+        "baseline": "6de6a3b941483fc26cb2e37509c6662199f68d55",
+        "authority": "User2026-11-07: all PRs merged, go to next step. Follow D01a nextPreparation; retain authorized parallel TShark/terminal work and all formal gates.",
+        "date": "2026-11-07",
         "state": "merged",
-        "implementationStatus": "merged_local_qualified",
-        "branch": "codex/terminal-session-foundation-plan",
-        "pullRequest": "https://github.com/dm17ryk/klogg/pull/96",
+        "implementationStatus": "locally_and_ci_qualified",
+        "branch": "codex/terminal-shared-writer",
         "formalEntryGatesUnchanged": true,
         "previousPreparation": {
           "workstream": "unified_terminal",
           "task": null,
-          "slice": "UT01a",
-          "plan": "slices/UT01a-terminal-model.md",
-          "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
-          "baseline": "7429f991c70b8937b15058802e8a342a6a4e9ddf",
+          "slice": "D01a",
+          "formalParentTask": "D01",
+          "formalTaskExecution": false,
+          "executionMode": "independent_preparation",
+          "applicationConsumer": false,
+          "scope": "unused_checked_communication_contracts",
+          "plan": "slices/D01a-communication-contracts.md",
+          "baseline": "43e00df689d3ccdb8fe918fb91aa36333ff18d71",
+          "authority": "User 2026-11-06: continue after all PRs merged; follow UT01a nextPreparation by preparing a bounded D01/shared-session plan first. User explicitly authorized parallel TShark/terminal implementation on2026-11-06.",
+          "date": "2026-11-06",
+          "state": "merged",
+          "implementationStatus": "merged_local_qualified",
+          "branch": "codex/terminal-session-foundation-plan",
+          "pullRequest": "https://github.com/dm17ryk/klogg/pull/96",
           "formalEntryGatesUnchanged": true,
           "previousPreparation": {
             "workstream": "unified_terminal",
-            "task": "UT00",
-            "slice": "UT00a",
-            "plan": "slices/UT00a-terminal-baseline.md",
+            "task": null,
+            "slice": "UT01a",
+            "plan": "slices/UT01a-terminal-model.md",
             "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
-            "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+            "baseline": "7429f991c70b8937b15058802e8a342a6a4e9ddf",
             "formalEntryGatesUnchanged": true,
-            "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
-            "date": "2026-11-05",
-            "state": "open_pr",
-            "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+            "previousPreparation": {
+              "workstream": "unified_terminal",
+              "task": "UT00",
+              "slice": "UT00a",
+              "plan": "slices/UT00a-terminal-baseline.md",
+              "authority": "User2026-11-05: TShark Preview merged through PR90; terminal is the next requested workstream",
+              "baseline": "b1f820c28778f65f35401a285a9fa683970cd0f1",
+              "formalEntryGatesUnchanged": true,
+              "nextPreparation": "UT01 emulator dependency/model proof; live integration retains F01/D01 gates",
+              "date": "2026-11-05",
+              "state": "open_pr",
+              "pullRequest": "https://github.com/dm17ryk/klogg/pull/94"
+            },
+            "nextPreparation": {
+              "slice": null,
+              "plan": null,
+              "task": null,
+              "formalParentTask": "UT02",
+              "formalTaskExecution": false,
+              "applicationConsumer": false,
+              "scope": "Prepare a separately scoped plan for minimal D01/shared-session foundations required by terminal integration; do not execute formal UT02 while F01/D01 gates are open."
+            },
+            "date": "2026-11-06",
+            "state": "integrated_pending_hosted",
+            "evidence": "../../docs/workbench/ut01-terminal-model.md",
+            "branch": "codex/terminal-emulator-ut01",
+            "formalParentTask": "UT01",
+            "formalTaskExecution": false,
+            "executionMode": "independent_preparation",
+            "applicationConsumer": false,
+            "scope": "unused_feature_off_model",
+            "pullRequest": "https://github.com/dm17ryk/klogg/pull/95",
+            "hostedEvidence": {
+              "testedCodeHead": "eee31680f19f61c5c866a21f07220f85da30cc29",
+              "successfulChecks": 31,
+              "skippedSourceryChecks": 1,
+              "qt5": "unverified",
+              "windowsArmModel": "not_exercised_feature_off"
+            },
+            "masterIntegration": {
+              "incomingMaster": "4adda9b95965fc153d32744f23c46e646e011bc4",
+              "featureParent": "5c07ac3770bda413828ffdbbb3cd80ee3cc056b5",
+              "hostedValidation": "pending for this integration; earlier hostedEvidence remains historical",
+              "localValidation": "combined regression results recorded in PR validation evidence"
+            }
+          },
+          "carryForwardQualification": {
+            "preparedModelPR": "https://github.com/dm17ryk/klogg/pull/95",
+            "mergedMaster": "43e00df689d3ccdb8fe918fb91aa36333ff18d71",
+            "testedEquivalentSource": "370c064cde9d40a5d53398a2188865d864ba11d6",
+            "localBuild": "Windows MSVC / Qt 6.10.1 ci_build passed; isolated full CTest 9/9 passed (657.57 seconds), including 23 terminal cases / 1045 assertions.",
+            "hostedRuns": [
+              "https://github.com/dm17ryk/klogg/actions/runs/42217072076",
+              "https://github.com/dm17ryk/klogg/actions/runs/42217124880"
+            ],
+            "hostedStatus": "Dispatched manually on merged master; pending when this plan was prepared. Earlier eee3168 hosted proof remains historical.",
+            "limitations": [
+              "Formal UT01/D01/F01/UT02/MD06/W0 acceptance is unchanged.",
+              "Qt5 and Windows ARM64 terminal-model qualification remain open."
+            ]
           },
           "nextPreparation": {
             "slice": null,
             "plan": null,
             "task": null,
-            "formalParentTask": "UT02",
+            "formalParentTask": "D01",
             "formalTaskExecution": false,
             "applicationConsumer": false,
-            "scope": "Prepare a separately scoped plan for minimal D01/shared-session foundations required by terminal integration; do not execute formal UT02 while F01/D01 gates are open."
+            "scope": "After D01a implementation and its actual proof/review, prepare a bounded shared-writer/arbitration plan covering suffix-only writes, cancellation/drain barriers, retained-request deduplication and generation fencing before any live StreamSession migration."
           },
-          "date": "2026-11-06",
-          "state": "integrated_pending_hosted",
-          "evidence": "../../docs/workbench/ut01-terminal-model.md",
-          "branch": "codex/terminal-emulator-ut01",
-          "formalParentTask": "UT01",
-          "formalTaskExecution": false,
-          "executionMode": "independent_preparation",
-          "applicationConsumer": false,
-          "scope": "unused_feature_off_model",
-          "pullRequest": "https://github.com/dm17ryk/klogg/pull/95",
-          "hostedEvidence": {
-            "testedCodeHead": "eee31680f19f61c5c866a21f07220f85da30cc29",
-            "successfulChecks": 31,
-            "skippedSourceryChecks": 1,
-            "qt5": "unverified",
-            "windowsArmModel": "not_exercised_feature_off"
-          },
-          "masterIntegration": {
-            "incomingMaster": "4adda9b95965fc153d32744f23c46e646e011bc4",
-            "featureParent": "5c07ac3770bda413828ffdbbb3cd80ee3cc056b5",
-            "hostedValidation": "pending for this integration; earlier hostedEvidence remains historical",
-            "localValidation": "combined regression results recorded in PR validation evidence"
-          }
+          "evidence": "../../docs/workbench/d01a-communication-contracts.md",
+          "mergedCommit": "6de6a3b941483fc26cb2e37509c6662199f68d55",
+          "testedCodeHead": "3ef12ee81b5354d57ee350afff80d67da816c3e5",
+          "qualificationBoundary": "Historical combined source-equivalent Windows Qt6.10.1 local10/10 CTest at1074009; no new hosted or formal acceptance is inferred from merge."
         },
-        "carryForwardQualification": {
-          "preparedModelPR": "https://github.com/dm17ryk/klogg/pull/95",
-          "mergedMaster": "43e00df689d3ccdb8fe918fb91aa36333ff18d71",
-          "testedEquivalentSource": "370c064cde9d40a5d53398a2188865d864ba11d6",
-          "localBuild": "Windows MSVC / Qt 6.10.1 ci_build passed; isolated full CTest 9/9 passed (657.57 seconds), including 23 terminal cases / 1045 assertions.",
-          "hostedRuns": [
-            "https://github.com/dm17ryk/klogg/actions/runs/42217072076",
-            "https://github.com/dm17ryk/klogg/actions/runs/42217124880"
-          ],
-          "hostedStatus": "Dispatched manually on merged master; pending when this plan was prepared. Earlier eee3168 hosted proof remains historical.",
-          "limitations": [
-            "Formal UT01/D01/F01/UT02/MD06/W0 acceptance is unchanged.",
-            "Qt5 and Windows ARM64 terminal-model qualification remain open."
+        "evidence": "../../docs/workbench/d01b-shared-writer.md",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/98",
+        "hostedEvidence": {
+          "head": "07ae670877f65b6505bfe5fd2ff3241029841c5a",
+          "run": "https://github.com/dm17ryk/klogg/actions/runs/42383726416",
+          "successfulWorkflowJobs": 25,
+          "unfinishedWorkflowJobs": 0,
+          "observedDate": "2026-11-07",
+          "boundaries": [
+            "Sourcery check was skipped; no Sourcery approval claimed",
+            "Windows ARM64 test execution skipped; build success is not native ARM64 runtime proof",
+            "Formal task, installed/hardware and unmeasured performance gates remain unchanged"
           ]
         },
-        "nextPreparation": {
-          "slice": null,
-          "plan": null,
-          "task": null,
-          "formalParentTask": "D01",
-          "formalTaskExecution": false,
-          "applicationConsumer": false,
-          "scope": "After D01a implementation and its actual proof/review, prepare a bounded shared-writer/arbitration plan covering suffix-only writes, cancellation/drain barriers, retained-request deduplication and generation fencing before any live StreamSession migration."
-        },
-        "evidence": "../../docs/workbench/d01a-communication-contracts.md",
-        "mergedCommit": "6de6a3b941483fc26cb2e37509c6662199f68d55",
-        "testedCodeHead": "3ef12ee81b5354d57ee350afff80d67da816c3e5",
-        "qualificationBoundary": "Historical combined source-equivalent Windows Qt6.10.1 local10/10 CTest at1074009; no new hosted or formal acceptance is inferred from merge."
+        "mergedCommit": "5a3eb1450965f854e127aa3cf8f3b2f04cf54235"
       },
-      "evidence": "../../docs/workbench/d01b-shared-writer.md",
+      "formalEntryGatesUnchanged": true,
+      "authority": "User2026-11-08: PR98 merged, continue; approved four-task Native D01c plan.",
+      "date": "2026-11-08",
+      "consumer": "opt_in_existing_serial_owner",
+      "buildFlag": "KLOGG_SHARED_SERIAL_WRITER",
+      "buildFlagDefault": false,
+      "implementationStatus": "implemented_local_gates_passed",
       "nextPreparation": {
-        "slice": "D01c",
-        "plan": "slices/D01c-existing-owner-adapter.md",
+        "slice": null,
         "task": null,
         "formalParentTask": "D01",
         "formalTaskExecution": false,
         "applicationConsumer": false,
-        "scope": "Proposed existing-owner serial driver/lease/migration plan; no runtime implementation or activation in this preparation.",
-        "state": "plan_prepared_pending_review",
-        "branch": "codex/terminal-owner-adapter-plan",
-        "baseline": "07ae670877f65b6505bfe5fd2ff3241029841c5a",
-        "evidence": "../../docs/workbench/d01c-serial-owner-plan.md",
-        "plannedConsumer": "opt_in_legacy_serial_only",
-        "proposedBuildFlag": "KLOGG_SHARED_SERIAL_WRITER",
-        "proposedBuildFlagDefault": false,
-        "executionMethod": "native",
-        "entryGates": [
-          "PR98 frozen head reconciled",
-          "Review proposed consumer and writer placement",
-          "Run current symbol impact before runtime edits"
-        ],
-        "mergeGates": [
-          "PR98 integrated into master",
-          "D01c hosted checks/reviews complete",
-          "Default activation separately reviewed"
+        "scope": "After D01c merge and actual proof/review, separately plan terminal model attachment to this same owner with GUI/Commander/CLI/native-MCP/Python parity; preserve formal F01/D01/UT02 gates."
+      },
+      "localEvidence": {
+        "toolchain": "Windows MSVC / Qt6.10.1 / C++17 / Qt-only search",
+        "optInCTest": {
+          "registrations": 10,
+          "passed": 10,
+          "seconds": 215.1245963999536,
+          "binarySha256": "34d96086ad0b2701080554161f9af1c08085dfde388e3ac87160504a04075b33"
+        },
+        "defaultOffCTest": {
+          "registrations": 10,
+          "passed": 10,
+          "seconds": 218.17716810002457,
+          "binarySha256": "3a6411d478da1512a7563ccef79fbf275c7574a80db4080904d7eeda7c392ea3"
+        },
+        "serial": "1089 assertions/56 isolated cases; includes6 review cases44 assertions",
+        "communication": "2203 assertions/63 cases including forced-debug-suppression privacy fixture",
+        "publicParity": "ON and OFF communication CLI/native-MCP status/logging/pause/coupled flags/known-action rejection; ON both pinned Python SDKs1.30.0 and2.3.0",
+        "nativeGui": "MainWindow Qt-event probe28.318s; hardware input/installed launcher conformance remains open",
+        "packaging": "36 tests passed,2 platform skips;8 new gate cases",
+        "productionConfiguration": "Tests OFF / consumer ON support and UI link targets generated; no separate production binary built",
+        "review": "One fresh C++/general/Python pass;4 Important integration findings fixed RED-to-GREEN; no deferred minors",
+        "indexes": "CRG refreshed after final fixture changes; GitNexus timeout30.125s, stale/FTS unavailable; CodeGraph unindexed",
+        "limitations": [
+          "Hosted CI pending publication; local accelerated/macOS/Linux/Qt5/native ARM64 not claimed",
+          "Physical serial/peer delivery, installed packages and unmeasured performance gates remain open"
         ]
       },
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/98",
-      "hostedEvidence": {
-        "head": "07ae670877f65b6505bfe5fd2ff3241029841c5a",
-        "run": "https://github.com/dm17ryk/klogg/actions/runs/42383726416",
-        "successfulWorkflowJobs": 25,
-        "unfinishedWorkflowJobs": 0,
-        "observedDate": "2026-11-07",
-        "boundaries": [
-          "Sourcery check was skipped; no Sourcery approval claimed",
-          "Windows ARM64 test execution skipped; build success is not native ARM64 runtime proof",
-          "Formal task, installed/hardware and unmeasured performance gates remain unchanged"
-        ]
-      }
+      "publicationSnapshot": "Hosted checks/reviews are observed on the resulting PR; no hosted pass or merge acceptance is inferred here."
     },
     "parallelWorkstreams": {
       "authority": "User2026-11-06: we can continue TShark and Terminal in parallel",
@@ -287,8 +333,8 @@
         },
         {
           "name": "unified_terminal",
-          "scope": "D01b unused bounded shared writer; then separately plan existing-owner integration",
-          "branch": "codex/terminal-shared-writer"
+          "scope": "Bounded checked serial writer under existing session/device worker; existing Actions and Commander surfaces; no terminal input or additional endpoint.",
+          "branch": "codex/terminal-owner-adapter-plan"
         }
       ],
       "policy": "Independent reviewed branches; serialize native timing qualification. Preserve formal dependency DAG, historical evidence and GUI/CLI/native-MCP parity gates."

@@ -44,7 +44,7 @@ public:
     void registerSerialPort( const QString& portName );
     void unregisterSerialPort( const QString& portName );
     DataResult<SerialEndpointLease> tryAcquireSerialPort( const QString&, const StreamLimits& );
-    DataStatus releaseSerialPort( const SerialEndpointLease& );
+    cilogg::DataStatus releaseSerialPort( const SerialEndpointLease& );
 
 private:
     friend struct StreamSourceRegistryTestAccess;

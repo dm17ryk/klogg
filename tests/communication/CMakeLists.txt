@@ -1,5 +1,5 @@
 add_executable(cilogg_communication_tests tests_main.cpp communicationtypes_test.cpp sharedwriter_test.cpp
-  serialwritedriver_test.cpp endpointlease_test.cpp)
+  serialwritedriver_test.cpp endpointlease_test.cpp statuscompatibility_test.cpp)
 target_link_libraries(cilogg_communication_tests PRIVATE cilogg_communication_contracts
   cilogg_shared_writer cilogg_serial_write_driver cilogg_stream_registry Catch2 project_options project_warnings)
 set_target_properties(cilogg_communication_tests PROPERTIES

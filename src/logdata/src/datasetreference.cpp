@@ -9,7 +9,7 @@
 #include <utility>
 
 namespace {
-DataStatus failureStatus( const char* code )
+cilogg::DataStatus failureStatus( const char* code )
 {
     const auto reason = QString::fromLatin1( code );
     LOG_DEBUG << "F01 dataset reference rejected reason=" << reason;
@@ -162,9 +162,9 @@ DataResult<DatasetReference> makeDatasetReference( DatasetReferenceKind kind,
               << " tokenUnits=" << token.size();
     return { DatasetReference( kind, std::move( revision ), std::move( token ) ), {} };
 }
-DataStatus validateDatasetReference( const DatasetReference& reference,
-                                     const DatasetRevisionStamp& current,
-                                     const IDatasetReferenceLookup& owner )
+cilogg::DataStatus validateDatasetReference( const DatasetReference& reference,
+                                             const DatasetRevisionStamp& current,
+                                             const IDatasetReferenceLookup& owner )
 {
     const auto& original = reference.revision();
     if ( !sameDatasetRevision( original, current ) ) {

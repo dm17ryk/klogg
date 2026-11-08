@@ -1,6 +1,7 @@
 #include "streamsession.h"
 #include <QDateTime>
 #include <algorithm>
+#include <limits>
 
 #include <QDir>
 #include <QFileInfo>
@@ -26,10 +27,32 @@ StreamSession::StreamSession( SerialCaptureSettings settings )
               << " actions=" << settings_.useForActions
               << " automatic=" << settings_.autoResponsesEnabled
               << " normalized=" << ( requestedResponses != settings_.autoResponsesEnabled );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    qRegisterMetaType<cilogg::communication::BackendWriteSnapshotPtr>();
+    qRegisterMetaType<cilogg::communication::SerialWriteEnvelopePtr>();
+    writeTimer_.setParent( this );
+    writeTimer_.setSingleShot( true );
+    connect( &writeTimer_, &QTimer::timeout, this, [ this ] { driveWrites( true ); } );
+    connect( &ActionsManager::instance(), &ActionsManager::autoResponsesEnabledChanged, this,
+             [ this ]( bool ) {
+                 if ( autoResponsesGeneration_ == std::numeric_limits<quint64>::max() ) {
+                     writePolicyExhausted_ = true;
+                     stop( false );
+                     return;
+                 }
+                 else
+                     ++autoResponsesGeneration_;
+                 publishWritePolicy();
+                 driveWrites();
+             } );
+#endif
 }
 
 StreamSession::~StreamSession()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    destroying_ = true;
+#endif
     stop();
 }
 
@@ -40,6 +63,9 @@ void StreamSession::start()
 
 void StreamSession::startInternal( bool resetResponseCounters )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    startChecked( resetResponseCounters );
+#else
     if ( started_ ) {
         LOG_DEBUG << "Serial session start ignored for " << settings_.portName.toStdString()
                   << ": previous worker has not finished";
@@ -61,18 +87,21 @@ void StreamSession::startInternal( bool resetResponseCounters )
     StreamSourceRegistry::get().registerSerialPort( settings_.portName );
     thread_.start();
     if ( worker_ ) {
-        const auto invoked = QMetaObject::invokeMethod( worker_, "setLoggingEnabled",
-                                                        Qt::QueuedConnection,
-                                                        Q_ARG( bool, loggingEnabled_ ) );
+        const auto invoked = QMetaObject::invokeMethod(
+            worker_, "setLoggingEnabled", Qt::QueuedConnection, Q_ARG( bool, loggingEnabled_ ) );
         if ( !invoked ) {
             LOG_ERROR << "Failed to apply logging state for " << settings_.portName.toStdString();
         }
     }
     Q_EMIT connectionOpened();
+#endif
 }
 
 void StreamSession::stop( bool waitForCompletion )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    stopChecked( waitForCompletion );
+#else
     if ( !started_ ) {
         LOG_DEBUG << "Serial session stop ignored for " << settings_.portName.toStdString()
                   << ": no active worker";
@@ -102,8 +131,7 @@ void StreamSession::stop( bool waitForCompletion )
         }
         thread_.quit();
         if ( !thread_.wait( 5000 ) ) {
-            LOG_ERROR << "Timeout stopping serial capture for "
-                      << settings_.portName.toStdString()
+            LOG_ERROR << "Timeout stopping serial capture for " << settings_.portName.toStdString()
                       << ", waiting for thread to exit.";
             thread_.wait();
         }
@@ -112,13 +140,18 @@ void StreamSession::stop( bool waitForCompletion )
     stopping_ = false;
     worker_ = nullptr;
     setConnectionClosed();
+#endif
 }
 
 void StreamSession::closeConnection()
 {
     paused_ = false;
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    stop( false );
+#else
     stop( false );
     setConnectionClosed();
+#endif
 }
 
 bool StreamSession::pauseConnection( QString* errorMessage )
@@ -132,7 +165,10 @@ bool StreamSession::pauseConnection( QString* errorMessage )
 
     paused_ = true;
     lineBuffer_.clear();
+    QPointer<StreamSession> guard( this );
     stop( false );
+    if ( !guard )
+        return true;
     setConnectionClosed();
     return true;
 }
@@ -148,7 +184,8 @@ bool StreamSession::resumeConnection( QString* errorMessage )
 
     if ( !canResume() ) {
         if ( errorMessage != nullptr ) {
-            *errorMessage = tr( "The paused stream is still closing. Please try again in a moment." );
+            *errorMessage
+                = tr( "The paused stream is still closing. Please try again in a moment." );
         }
         return false;
     }
@@ -217,7 +254,7 @@ void StreamSession::setAutoResponsesEnabled( bool enabled )
 }
 
 void StreamSession::updateActionState( bool actionsEnabled, bool autoResponsesEnabled,
-                                     const char* operation )
+                                       const char* operation )
 {
     Q_ASSERT( !autoResponsesEnabled || actionsEnabled );
     const bool actionsChanged = settings_.useForActions != actionsEnabled;
@@ -232,19 +269,34 @@ void StreamSession::updateActionState( bool actionsEnabled, bool autoResponsesEn
     }
 
     // Publish both flags before callbacks can observe the dependent state.
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( ( actionsChanged && actionsGeneration_ == std::numeric_limits<quint64>::max() )
+         || autoResponsesGeneration_ == std::numeric_limits<quint64>::max() ) {
+        writePolicyExhausted_ = true;
+        stop( false );
+        return;
+    }
+#endif
     settings_.useForActions = actionsEnabled;
     settings_.autoResponsesEnabled = autoResponsesEnabled;
     if ( actionsChanged )
         ++actionsGeneration_;
     ++autoResponsesGeneration_;
     const auto notificationGeneration = autoResponsesGeneration_;
-    LOG_DEBUG << "Actions state changed: operation=" << operation
-              << " port=" << settings_.portName << " actions=" << actionsEnabled
-              << " automatic=" << autoResponsesEnabled << " actions_changed=" << actionsChanged
-              << " automatic_changed=" << responsesChanged
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    QPointer<StreamSession> policyGuard( this );
+    publishWritePolicy();
+    driveWrites();
+    if ( !policyGuard || autoResponsesGeneration_ != notificationGeneration )
+        return;
+#endif
+    LOG_DEBUG << "Actions state changed: operation=" << operation << " port=" << settings_.portName
+              << " actions=" << actionsEnabled << " automatic=" << autoResponsesEnabled
+              << " actions_changed=" << actionsChanged << " automatic_changed=" << responsesChanged
               << " manual_generation=" << actionsGeneration_
               << " automatic_generation=" << autoResponsesGeneration_
-              << "; previous automatic work invalidated; manual work invalidated=" << actionsChanged;
+              << "; previous automatic work invalidated; manual work invalidated="
+              << actionsChanged;
     QPointer<StreamSession> guard( this );
     if ( actionsChanged ) {
         Q_EMIT actionsEnabledChanged( actionsEnabled );
@@ -281,8 +333,9 @@ bool StreamSession::startNewCaptureFile( const QString& filePath, QString* error
     bool switched = false;
     const auto invoked = QMetaObject::invokeMethod(
         worker_,
-        [ this, filePath, &switchError, &switched ] {
-            switched = worker_->switchCaptureFile( filePath, &switchError );
+        [ worker = QPointer<SerialCaptureWorker>( worker_ ), filePath, &switchError, &switched ] {
+            if ( worker )
+                switched = worker->switchCaptureFile( filePath, &switchError );
         },
         Qt::BlockingQueuedConnection );
     if ( !invoked || !switched ) {
@@ -300,6 +353,12 @@ bool StreamSession::startNewCaptureFile( const QString& filePath, QString* error
 
 void StreamSession::sendBytes( const QByteArray& data, bool sensitive )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    const auto result = submitActionWrite(
+        data, sensitive, { false, actionsGeneration_, autoResponsesGeneration_ } );
+    if ( !result.value )
+        LOG_DEBUG << "Serial compatibility write rejected reason=" << result.error.code;
+#else
     if ( !worker_ || data.isEmpty() ) {
         LOG_DEBUG << "Skipping COM send because worker or payload is unavailable";
         return;
@@ -312,6 +371,7 @@ void StreamSession::sendBytes( const QByteArray& data, bool sensitive )
     if ( !invoked ) {
         LOG_ERROR << "Failed to invoke serial send for " << settings_.portName.toStdString();
     }
+#endif
 }
 
 void StreamSession::notifyActionSend( int actionId, const QString& actionName, int stepIndex,
@@ -326,6 +386,9 @@ void StreamSession::notifyActionSend( int actionId, const QString& actionName, i
 
 void StreamSession::setupWorker()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    setupCheckedWorker();
+#else
     if ( worker_ ) {
         return;
     }
@@ -378,10 +441,14 @@ void StreamSession::setupWorker()
              &StreamSession::handleDataReceived );
     connect( worker_, &SerialCaptureWorker::dataTransmitted, this,
              [ this ]( const QByteArray& data ) { Q_EMIT dataTransmitted( data ); } );
+#endif
 }
 
 void StreamSession::setConnectionClosed()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    closeCheckedConnection();
+#else
     if ( !connectionOpen_ ) {
         return;
     }
@@ -393,12 +460,17 @@ void StreamSession::setConnectionClosed()
               << settings_.portName.toStdString() << ", generation=" << actionsGeneration_;
     stopping_ = false;
     lineBuffer_.clear();
-    StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );     
+    StreamSourceRegistry::get().unregisterSerialPort( settings_.portName );
     Q_EMIT connectionClosed();
+#endif
 }
 
 bool StreamSession::canOpenConfiguredCapture( QString* errorMessage ) const
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( capturePreflight_ )
+        return capturePreflight_( errorMessage );
+#endif
     if ( settings_.portName.trimmed().isEmpty() ) {
         if ( errorMessage != nullptr ) {
             *errorMessage = tr( "No COM port selected." );
@@ -422,16 +494,13 @@ bool StreamSession::canOpenConfiguredCapture( QString* errorMessage ) const
     }
 
     const auto availablePorts = QSerialPortInfo::availablePorts();
-    const bool portExists = std::any_of( availablePorts.cbegin(), availablePorts.cend(),
-                                         [ this ]( const QSerialPortInfo& portInfo ) {
-                                             return portInfo.portName().compare(
-                                                        settings_.portName, Qt::CaseInsensitive )
-                                                        == 0
-                                                    || portInfo.systemLocation().compare(
-                                                           settings_.portName,
-                                                           Qt::CaseInsensitive )
-                                                           == 0;
-                                         } );
+    const bool portExists = std::any_of(
+        availablePorts.cbegin(), availablePorts.cend(),
+        [ this ]( const QSerialPortInfo& portInfo ) {
+            return portInfo.portName().compare( settings_.portName, Qt::CaseInsensitive ) == 0
+                   || portInfo.systemLocation().compare( settings_.portName, Qt::CaseInsensitive )
+                          == 0;
+        } );
     if ( !portExists ) {
         if ( errorMessage != nullptr ) {
             *errorMessage = tr( "COM port %1 was not found." ).arg( settings_.portName );
@@ -442,7 +511,8 @@ bool StreamSession::canOpenConfiguredCapture( QString* errorMessage ) const
     QFile captureFile( settings_.filePath );
     if ( !captureFile.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
         if ( errorMessage != nullptr ) {
-            *errorMessage = tr( "Failed to open capture file: %1" ).arg( captureFile.errorString() );
+            *errorMessage
+                = tr( "Failed to open capture file: %1" ).arg( captureFile.errorString() );
         }
         return false;
     }
@@ -479,8 +549,7 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     else {
         lineBufferActionsSegments_.push_back( { data.size(), generation } );
         LOG_DEBUG << "Buffered Actions lineage segment: eligible=" << generation.has_value()
-                  << ", generation=" << generation.value_or( 0 )
-                  << ", bytes=" << data.size();
+                  << ", generation=" << generation.value_or( 0 ) << ", bytes=" << data.size();
     }
     qsizetype newlineIndex = lineBuffer_.indexOf( '\n' );
     while ( newlineIndex >= 0 ) {
@@ -527,12 +596,22 @@ void StreamSession::appendToFile( const QByteArray& data )
     if ( !worker_ || data.isEmpty() ) {
         return;
     }
-    const auto invoked
-        = QMetaObject::invokeMethod( worker_, "appendToFile", Qt::QueuedConnection,
-                                     Q_ARG( QByteArray, data ) );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    const auto epoch = workerGeneration_;
+    QPointer<SerialCaptureWorker> worker( worker_ );
+    const auto invoked = QMetaObject::invokeMethod(
+        worker,
+        [ worker, epoch, data ] {
+            if ( worker && worker->isCurrentEpoch( epoch ) )
+                worker->appendToFile( data );
+        },
+        Qt::QueuedConnection );
+#else
+    const auto invoked = QMetaObject::invokeMethod( worker_, "appendToFile", Qt::QueuedConnection,
+                                                    Q_ARG( QByteArray, data ) );
+#endif
     if ( !invoked ) {
-        LOG_ERROR << "Failed to append to capture file for "
-                  << settings_.portName.toStdString();
+        LOG_ERROR << "Failed to append to capture file for " << settings_.portName.toStdString();
     }
 }
 
@@ -545,9 +624,20 @@ void StreamSession::setLoggingEnabled( bool enabled )
 {
     loggingEnabled_ = enabled;
     if ( worker_ ) {
-        const auto invoked = QMetaObject::invokeMethod( worker_, "setLoggingEnabled",
-                                                        Qt::QueuedConnection,
-                                                        Q_ARG( bool, enabled ) );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+        const auto epoch = workerGeneration_;
+        QPointer<SerialCaptureWorker> worker( worker_ );
+        const auto invoked = QMetaObject::invokeMethod(
+            worker,
+            [ worker, epoch, enabled ] {
+                if ( worker && worker->isCurrentEpoch( epoch, false ) )
+                    worker->setLoggingEnabled( enabled );
+            },
+            Qt::QueuedConnection );
+#else
+        const auto invoked = QMetaObject::invokeMethod(
+            worker_, "setLoggingEnabled", Qt::QueuedConnection, Q_ARG( bool, enabled ) );
+#endif
         if ( !invoked ) {
             LOG_ERROR << "Failed to toggle logging state for " << settings_.portName.toStdString();
         }
@@ -584,7 +674,7 @@ void StreamSession::resetAllResponseCounters()
 }
 
 void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
-                                       std::optional<quint64> generation )
+                                        std::optional<quint64> generation )
 {
     if ( lineBytes.isEmpty() ) {
         return;
@@ -649,9 +739,8 @@ void StreamSession::handleIncomingLine( const QByteArray& lineBytes,
 
         QString errorMessage;
         if ( !executeResponseDefinition( this, response, match.captures, &errorMessage ) ) {
-            LOG_WARNING << "Failed to execute response action for "
-                        << response.name.toStdString() << ": "
-                        << errorMessage.toStdString();
+            LOG_WARNING << "Failed to execute response action for " << response.name.toStdString()
+                        << ": " << errorMessage.toStdString();
         }
         if ( !safeSession ) {
             return;

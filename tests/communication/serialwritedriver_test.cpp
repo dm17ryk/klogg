@@ -6,6 +6,7 @@
 #include <QLoggingCategory>
 #include <QThread>
 #include <catch2/catch.hpp>
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <vector>
@@ -257,7 +258,7 @@ TEST_CASE( "Driver validates epochs, device lifetime and calling thread",
     QObject worker;
     worker.moveToThread( &thread );
     thread.start();
-    DataStatus result;
+    cilogg::DataStatus result;
     REQUIRE( QMetaObject::invokeMethod(
         &worker, [ & ] { result = r.driver->offer( e ); }, Qt::BlockingQueuedConnection ) );
     thread.quit();
@@ -340,21 +341,32 @@ TEST_CASE( "A drained offer cannot be replayed by a late queued delivery",
 }
 namespace {
 QStringList driverMessages;
+std::atomic<QLoggingCategory::CategoryFilter> previousDriverFilter{ nullptr };
+void enableDriverDiagnostics( QLoggingCategory* category )
+{
+    if ( const auto previous = previousDriverFilter.load( std::memory_order_acquire ) )
+        previous( category );
+    if ( qstrcmp( category->categoryName(), "cilogg.communication.driver" ) == 0 )
+        category->setEnabled( QtDebugMsg, true );
+}
 void captureDriverMessage( QtMsgType, const QMessageLogContext&, const QString& message )
 {
     driverMessages.push_back( message );
 }
 struct CaptureDriverMessages {
     QtMessageHandler previous = qInstallMessageHandler( captureDriverMessage );
+    QLoggingCategory::CategoryFilter previousFilter = nullptr;
     CaptureDriverMessages()
     {
         driverMessages.clear();
-        QLoggingCategory::setFilterRules( "cilogg.communication.driver.debug=true" );
+        previousFilter = QLoggingCategory::installFilter( enableDriverDiagnostics );
+        previousDriverFilter.store( previousFilter, std::memory_order_release );
     }
     ~CaptureDriverMessages()
     {
+        QLoggingCategory::installFilter( previousFilter );
+        previousDriverFilter.store( nullptr, std::memory_order_release );
         qInstallMessageHandler( previous );
-        QLoggingCategory::setFilterRules( {} );
     }
 };
 } // namespace

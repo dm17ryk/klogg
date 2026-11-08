@@ -108,7 +108,7 @@
     "applicationConsumer": false,
     "unixAdoptionGate": "qualified_hosted_qt6_at_eee3168"
   },
-  "currentPreparationChecks": "d01bChecks",
+  "currentPreparationChecks": "d01cImplementationChecks",
   "d01aChecks": {
     "currentPreparation": "D01a",
     "formalParentTask": "D01",
@@ -149,7 +149,7 @@
     "codeReviewGraph": "refreshed",
     "codeGraph": "unindexed_not_initialized"
   },
-  "nextPreparationChecks": "d01cPlanChecks",
+  "nextPreparationChecks": null,
   "d01cPlanChecks": {
     "currentPreparationUnchanged": "D01b",
     "nextPreparation": "D01c",
@@ -165,6 +165,27 @@
     "planReviewBeforeImplementation": true,
     "parentMergeBeforeD01cMerge": true,
     "gitNexus": "fresh retry stalled at mainwindow parser budget; owned job stopped at568.27s, not refreshed",
-    "codeGraph": "unindexed_not_initialized"
+    "codeGraph": "unindexed_not_initialized",
+    "historical": true
+  },
+  "d01cImplementationChecks": {
+    "currentPreparation": "D01c",
+    "defaultConsumerOff": true,
+    "formalTaskStatesAndHardDagPreserved": true,
+    "parentMerged": "5a3eb1450965f854e127aa3cf8f3b2f04cf54235",
+    "nativeMethodPreserved": true,
+    "qualification": "local_gates_passed_hosted_pending",
+    "gitNexus": "stale; required refresh retries timed out; unknown symbols reported",
+    "codeReviewGraph": "incrementally refreshed27 source files at stagedTask4, no parse errors",
+    "codeGraph": "unindexed_not_initialized",
+    "optInCTest": "10/10",
+    "defaultOffCTest": "10/10",
+    "publicParity": true,
+    "pinnedSdkProfiles": [
+      "1.30.0",
+      "2.3.0"
+    ],
+    "freshReviews": true,
+    "defaultFlagRestoredOff": true
   }
 }
