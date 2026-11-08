@@ -10,6 +10,7 @@
 #include "log.h"
 
 namespace {
+#ifndef KLOGG_SHARED_SERIAL_WRITER
 QString previewHex( const QByteArray& data, int maxBytes = 128 )
 {
     const auto slice = data.left( maxBytes );
@@ -19,6 +20,7 @@ QString previewHex( const QByteArray& data, int maxBytes = 128 )
     }
     return hex;
 }
+#endif
 
 QByteArray timestampPrefix( const SerialCaptureSettings& settings, QStringView direction )
 {

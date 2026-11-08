@@ -356,8 +356,9 @@ void StreamSession::sendBytes( const QByteArray& data, bool sensitive )
 #ifdef KLOGG_SHARED_SERIAL_WRITER
     const auto result = submitActionWrite(
         data, sensitive, { false, actionsGeneration_, autoResponsesGeneration_ } );
-    if ( !result.value )
+    if ( !result.value ) {
         LOG_DEBUG << "Serial compatibility write rejected reason=" << result.error.code;
+    }
 #else
     if ( !worker_ || data.isEmpty() ) {
         LOG_DEBUG << "Skipping COM send because worker or payload is unavailable";
