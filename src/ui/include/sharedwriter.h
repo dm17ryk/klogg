@@ -100,6 +100,8 @@ public:
     DataStatus cancel( const WriteEpoch&, const QString& requestId, qint64 nowNs );
     DataStatus requestMode( const WriteEpoch&, WriteMode, qint64 nowNs );
     DataStatus close( const WriteEpoch&, qint64 nowNs );
+    DataStatus retireAfterBackendClosed( const WriteEpoch&, qint64 nowNs );
+    DataStatus withdrawUnsubmitted( const WriteTicket&, qint64 nowNs );
     DataStatus resetAfterBackendClosed( const WriteEpoch&, quint64 nextGeneration,
                                         const EndpointCapabilities&, qint64 nowNs );
     DataStatus advance( const WriteEpoch&, qint64 nowNs );

@@ -442,6 +442,44 @@ DataStatus SharedWriter::close( const WriteEpoch& epoch, qint64 now )
              static_cast<unsigned long long>( epoch.generation ), s.pending.has_value() );
     return { true, {} };
 }
+DataStatus SharedWriter::retireAfterBackendClosed( const WriteEpoch& epoch, qint64 now )
+{
+    auto& s = *impl_;
+    const auto error = s.context( epoch, now );
+    if ( !error.code.isEmpty() )
+        return { false, error };
+    if ( !s.closed )
+        return { false, rejected( "invalid_retirement" ) };
+    s.advanceTime( now );
+    if ( s.pending ) {
+        s.records.at( s.pending->id ).ioUnconfirmed = true;
+        s.pending.reset();
+    }
+    s.settle();
+    qCDebug( sharedWriterLog, "Backend retired generation=%llu closed=%d blocked=%d",
+             static_cast<unsigned long long>( epoch.generation ), s.closed, s.blocked );
+    return { true, {} };
+}
+DataStatus SharedWriter::withdrawUnsubmitted( const WriteTicket& ticket, qint64 now )
+{
+    auto& s = *impl_;
+    auto error = s.ticket( ticket );
+    if ( !error.code.isEmpty() )
+        return { false, error };
+    error = s.context( ticket.epoch, now );
+    if ( !error.code.isEmpty() )
+        return { false, error };
+    const auto& r = s.records.at( s.pending->id );
+    if ( !s.pending->awaitingAcceptance || ( !r.terminal() && now < r.deadline ) )
+        return { false, rejected( "invalid_withdrawal" ) };
+    s.advanceTime( now );
+    s.pending.reset();
+    s.settle();
+    qCDebug( sharedWriterLog, "Withdrawn unsubmitted generation=%llu ticket=%llu blocked=%d",
+             static_cast<unsigned long long>( ticket.epoch.generation ),
+             static_cast<unsigned long long>( ticket.sequence ), s.blocked );
+    return { true, {} };
+}
 DataStatus SharedWriter::resetAfterBackendClosed( const WriteEpoch& epoch, quint64 nextGeneration,
                                                   const EndpointCapabilities& capabilities,
                                                   qint64 now )
@@ -452,11 +490,9 @@ DataStatus SharedWriter::resetAfterBackendClosed( const WriteEpoch& epoch, quint
         return { false, error };
     if ( !s.closed || nextGeneration <= epoch.generation )
         return { false, rejected( "invalid_reset" ) };
-    s.advanceTime( now );
-    if ( s.pending ) {
-        s.records.at( s.pending->id ).ioUnconfirmed = true;
-        s.pending.reset();
-    }
+    const auto retirement = retireAfterBackendClosed( epoch, now );
+    if ( !retirement.ok )
+        return retirement;
     s.blocked = false;
     s.settle();
     s.epoch.generation = nextGeneration;
