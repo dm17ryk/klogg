@@ -1,0 +1,31 @@
+{
+  "valid": true,
+  "base": "88cb3aaf3f3af37b18fc280f1ccbe0019fdfeece",
+  "formalTasksPreserved": 119,
+  "sourceTree": "db470dc650b52af32d11e98c5e4a257acca8f926",
+  "testsTree": "7f43e0e49eb6e500d1d9c87c31cbe57703e50104",
+  "productChanges": false,
+  "pinnedSources": {
+    "src/terminal/terminalemulator.h": "0af919a828c6f6187e8c0f9fa0c6b3abab96cdf155fa4b6416b2492860c7ce21",
+    "src/ui/src/streamsessionwriter.cpp": "4c8fc9f2ef0eba59363b235b305d2622fa751e9819ebea07dfcbe900fc47fa67",
+    "src/ui/src/serialcaptureworker.cpp": "5ef768b059faa499414cff835430880b4772ab2a357798d639ae946a36818e9d",
+    "src/ui/src/streamsession.cpp": "3b80f98d7bc89323b4bb69c19d61c48dd22ff9ce948d47447b64680d0a31e29d",
+    "src/app/cli.h": "1f0ec20965989659f8339ea92b7af21d08f7a5d6df13db5480e4cca01f42978f",
+    "src/app/kloggapp.h": "bcaa3c74daff55d509a5ed3591cf0cc03feff4e9c05f4c6c0228dffc008bd173",
+    "src/app/main.cpp": "edcc340855b36efa76bbcbca7f59dd11bd38f0a6d8f4337aca564a8e401be644",
+    "src/app/mcp/runtime.cpp": "39d3886780bb0a8c52adce76427ea07318b83a87fdd03aee83cc5cb22708c0e8",
+    "tests/terminal/CMakeLists.txt": "06447c8b4b53650b5ce45feb163fc1eb0423cb58a934fea661385398715d1c23"
+  },
+  "observedDate": "2026-11-09",
+  "scope": "Planning/source reconciliation only; no runtime implementation or product tests",
+  "pr99Build": {
+    "run": "https://github.com/dm17ryk/klogg/actions/runs/42521981116",
+    "successfulJobs": 25,
+    "failedJobs": 0,
+    "unfinishedJobs": 0
+  },
+  "review": {
+    "cpp": "approved_two_Important_plan_findings_fixed",
+    "general": "approved_no_findings"
+  }
+}

@@ -1,6 +1,6 @@
 # CILogg Codex Implementation Plan
 
-**Current workstream clarification (2026-11-08):** D01b [PR #98](https://github.com/dm17ryk/klogg/pull/98) is merged. The [D01c existing-owner serial adapter](slices/D01c-existing-owner-adapter.md) is implemented behind the default-OFF `KLOGG_SHARED_SERIAL_WRITER` flag. Full local ON/OFF CTest passed10/10 per mode; public CLI/native-MCP, both pinned Python SDKs and the native MainWindow probe passed. Hosted checks/reviews remain a separate merge gate; this is the publication snapshot. This preparation adds no terminal input or endpoint type. Formal MD01–MD06/W0 and F01/D01/UT01/UT02 gates and historical evidence remain unchanged.
+**Current workstream clarification (2026-11-09):** D01c [PR #99](https://github.com/dm17ryk/klogg/pull/99) is merged; its source/test trees match tested head `7e811f03`, and all 25 jobs in its final build run passed. The next preparation is the [UT02a terminal attachment implementation plan](slices/UT02a-terminal-owner-attachment.md): bounded raw-RX delivery into the existing emulator, same-window read-only inspection and shared Commander/CLI/native-MCP/Python operations. This change prepares that plan; runtime implementation is not started. Both terminal/shared-writer flags remain default OFF. Formal MD01–MD06/W0 and F01/D01/UT01/UT02 gates and historical evidence remain unchanged.
 
 
 Complete implementation package for a general developer logger, visualizer and automation workbench, including Docklight communication testing.
