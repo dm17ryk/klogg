@@ -70,8 +70,8 @@ private:
 class IDatasetReferenceLookup {
 public:
     virtual ~IDatasetReferenceLookup() = default;
-    virtual DataStatus check( DatasetReferenceKind, const DatasetRevisionStamp&,
-                              const QString& token ) const = 0;
+    virtual cilogg::DataStatus check( DatasetReferenceKind, const DatasetRevisionStamp&,
+                                      const QString& token ) const = 0;
 };
 DataResult<DatasetRevisionStamp> makeDatasetRevisionStamp( QString jobId, quint64 datasetRevision,
                                                            quint64 requestRevision,
@@ -82,8 +82,9 @@ DataResult<DatasetReference> makeDatasetReference( DatasetReferenceKind, Dataset
                                                    QString token );
 // Point-in-time validation only: the job owner must pin this retained immutable epoch,
 // or validate and consume under the same lock, when reading any referenced data.
-DataStatus validateDatasetReference( const DatasetReference&, const DatasetRevisionStamp& current,
-                                     const IDatasetReferenceLookup& );
+cilogg::DataStatus validateDatasetReference( const DatasetReference&,
+                                             const DatasetRevisionStamp& current,
+                                             const IDatasetReferenceLookup& );
 QVariantMap encodeDatasetRevision( const DatasetRevisionStamp& );
 DataResult<DatasetRevisionStamp> decodeDatasetRevision( const QVariantMap& );
 QVariantMap encodeDatasetReference( const DatasetReference& );

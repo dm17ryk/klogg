@@ -108,8 +108,8 @@ DataResult<EventRef> makeDeferredEventRef( const DeferredFileOrigin&, const Sour
                                            const EventIdentityPolicy& );
 DataResult<EventRef> makeManagedByteEventRef( const ManagedByteOrigin&,
                                               const EventIdentityPolicy& );
-DataStatus validateEventOrigin( const EventRef& );
-DataStatus validateEventSource( const SourceSnapshot&, const EventRef& );
+cilogg::DataStatus validateEventOrigin( const EventRef& );
+cilogg::DataStatus validateEventSource( const SourceSnapshot&, const EventRef& );
 bool acceptsEvent( const SourceSnapshot&, const EventRef& );
 QVariantMap encodeEventRef( const EventRef& );
 DataResult<EventRef> decodeEventRef( const QVariantMap& );

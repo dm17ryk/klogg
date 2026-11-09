@@ -238,6 +238,14 @@ struct AnalysisJobService::Private {
                             reason = block.error;
                             break;
                         }
+                        if ( QString::fromLatin1( block.codec )
+                             != job->provenance.value( "encoding" ).toString() ) {
+                            reason = "stale_source";
+                            LOG_DEBUG << "Analysis rejected decoder change job=" << job->id
+                                      << " source=" << job->request.snapshot.sourceId
+                                      << " generation=" << job->request.snapshot.generation;
+                            break;
+                        }
                         if ( !decoder ) {
                             auto* codec = QTextCodec::codecForName( block.codec );
                             if ( !codec ) {
@@ -245,8 +253,6 @@ struct AnalysisJobService::Private {
                                 break;
                             }
                             decoder.reset( codec->makeDecoder() );
-                            std::lock_guard<std::mutex> lock( job->mutex );
-                            job->provenance[ "encoding" ] = QString::fromLatin1( block.codec );
                         }
                         const auto text = decoder->toUnicode( block.bytes );
                         decoded = text.split( '\n' );
@@ -658,6 +664,11 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
     job->request = std::move( request );
     job->createdAt = d_->elapsed();
     const auto& snapshot = job->request.snapshot;
+    // Freeze the actual decoder identity before publishing the queued job. The source
+    // description may contain a localized display label (e.g. "Detected as ...").
+    const auto encoding = job->source
+                              ? QString::fromLatin1( job->source->getDisplayEncoding()->name() )
+                              : QStringLiteral( "QString UTF-16" );
     job->provenance
         = { { "type", job->source ? "file" : "text" },
             { "sourceId",
@@ -665,8 +676,7 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
             { "generation", job->source ? QString::number( snapshot.generation ) : "1" },
             { "revision", job->source ? QString::number( snapshot.revision ) : "1" },
             { "indexedBytes", QString::number( snapshot.indexedBytes ) },
-            { "encoding", job->source ? job->request.sourceDescription.value( "encoding" )
-                                      : QVariant( "QString UTF-16" ) } };
+            { "encoding", encoding } };
     if ( !job->source )
         job->provenance[ "textUtf16Units" ] = job->request.text.size();
     const auto inlineCompleteLines = static_cast<quint64>( job->request.text.count( '\n' ) );
@@ -683,7 +693,9 @@ QString AnalysisJobService::start( AnalysisRequest request, AnalysisProcessorFac
     job->deadline = QDeadlineTimer( timeoutMs );
     const auto id = job->id;
     d_->jobs.emplace( id, std::move( job ) );
-    LOG_DEBUG << "Analysis queued id=" << id << " scope=" << d_->jobs.at( id )->request.scope;
+    LOG_DEBUG << "Analysis queued id=" << id << " scope=" << d_->jobs.at( id )->request.scope
+              << " source=" << snapshot.sourceId << " generation=" << snapshot.generation
+              << " revision=" << snapshot.revision << " encoding=" << encoding;
     return id;
 }
 void AnalysisJobService::poll()

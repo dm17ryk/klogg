@@ -16,7 +16,7 @@ constexpr auto MaxPathUnits = 4096;
 constexpr auto MaxFileIdBytes = 1024;
 constexpr auto MaxU64 = std::numeric_limits<quint64>::max();
 
-DataStatus status( const char* code = nullptr )
+cilogg::DataStatus status( const char* code = nullptr )
 {
     if ( !code )
         return { true, {} };
@@ -76,8 +76,8 @@ bool verificationShape( const DeferredSourceVerification& value )
                 || ( *value.provisionalLineStart < value.frozenBytes
                      && value.completeLineCount < MaxU64 ) );
 }
-DataStatus originStatus( const EventOrigin& origin,
-                         const std::optional<SourceManifestEntry>& entry )
+cilogg::DataStatus originStatus( const EventOrigin& origin,
+                                 const std::optional<SourceManifestEntry>& entry )
 {
     if ( const auto* physical = std::get_if<PhysicalEventOrigin>( &origin ) ) {
         if ( entry || !snapshotShape( physical->snapshot )
@@ -401,11 +401,11 @@ DataResult<EventRef> makeManagedByteEventRef( const ManagedByteOrigin& origin,
 {
     return EventRef::checked( origin, policy );
 }
-DataStatus validateEventOrigin( const EventRef& ref )
+cilogg::DataStatus validateEventOrigin( const EventRef& ref )
 {
     return originStatus( ref.origin(), ref.manifestEntry() );
 }
-DataStatus validateEventSource( const SourceSnapshot& current, const EventRef& ref )
+cilogg::DataStatus validateEventSource( const SourceSnapshot& current, const EventRef& ref )
 {
     const auto* physical = std::get_if<PhysicalEventOrigin>( &ref.origin() );
     if ( !physical )

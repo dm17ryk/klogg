@@ -10,6 +10,7 @@
 #include "log.h"
 
 namespace {
+#ifndef KLOGG_SHARED_SERIAL_WRITER
 QString previewHex( const QByteArray& data, int maxBytes = 128 )
 {
     const auto slice = data.left( maxBytes );
@@ -19,6 +20,7 @@ QString previewHex( const QByteArray& data, int maxBytes = 128 )
     }
     return hex;
 }
+#endif
 
 QByteArray timestampPrefix( const SerialCaptureSettings& settings, QStringView direction )
 {
@@ -88,22 +90,28 @@ std::optional<SerialCaptureSettings> deserializeSerialCaptureSettings( const QSt
     }
 
     settings.baudRate = object.value( QStringLiteral( "baudRate" ) ).toInt( settings.baudRate );
-    settings.dataBits = static_cast<QSerialPort::DataBits>(
-        object.value( QStringLiteral( "dataBits" ) ).toInt( static_cast<int>( settings.dataBits ) ) );
+    settings.dataBits
+        = static_cast<QSerialPort::DataBits>( object.value( QStringLiteral( "dataBits" ) )
+                                                  .toInt( static_cast<int>( settings.dataBits ) ) );
     settings.parity = static_cast<QSerialPort::Parity>(
         object.value( QStringLiteral( "parity" ) ).toInt( static_cast<int>( settings.parity ) ) );
-    settings.stopBits = static_cast<QSerialPort::StopBits>(
-        object.value( QStringLiteral( "stopBits" ) ).toInt( static_cast<int>( settings.stopBits ) ) );
+    settings.stopBits
+        = static_cast<QSerialPort::StopBits>( object.value( QStringLiteral( "stopBits" ) )
+                                                  .toInt( static_cast<int>( settings.stopBits ) ) );
     settings.flowControl = static_cast<QSerialPort::FlowControl>(
-        object.value( QStringLiteral( "flowControl" ) ).toInt( static_cast<int>( settings.flowControl ) ) );
+        object.value( QStringLiteral( "flowControl" ) )
+            .toInt( static_cast<int>( settings.flowControl ) ) );
     settings.filePath = object.value( QStringLiteral( "filePath" ) ).toString( settings.filePath );
-    settings.addTimestamps = object.value( QStringLiteral( "addTimestamps" ) ).toBool( settings.addTimestamps );
+    settings.addTimestamps
+        = object.value( QStringLiteral( "addTimestamps" ) ).toBool( settings.addTimestamps );
     settings.timestampFormat
         = object.value( QStringLiteral( "timestampFormat" ) ).toString( settings.timestampFormat );
-    settings.logTransmits = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
-    settings.useForActions = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
-    const bool requestedResponses = object.value( QStringLiteral( "autoResponsesEnabled" ) )
-                                        .toBool( settings.useForActions );
+    settings.logTransmits
+        = object.value( QStringLiteral( "logTransmits" ) ).toBool( settings.logTransmits );
+    settings.useForActions
+        = object.value( QStringLiteral( "useForActions" ) ).toBool( settings.useForActions );
+    const bool requestedResponses
+        = object.value( QStringLiteral( "autoResponsesEnabled" ) ).toBool( settings.useForActions );
     settings.autoResponsesEnabled = settings.useForActions && requestedResponses;
     LOG_DEBUG << "Restored stream Actions state: port=" << settings.portName
               << " actions=" << settings.useForActions
@@ -118,10 +126,22 @@ SerialCaptureWorker::SerialCaptureWorker( SerialCaptureSettings settings, QObjec
     , settings_( std::move( settings ) )
     , file_( settings_.filePath )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    file_.setParent( this );
+#endif
 }
 
 bool SerialCaptureWorker::switchCaptureFile( const QString& filePath, QString* errorMessage )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( stopping_ || ( writeContext_ && !isCurrentEpoch( writeContext_->epoch.generation ) )
+         || !txRequestId_.isEmpty() ) {
+        if ( errorMessage )
+            *errorMessage = tr( "Serial capture is closing or has an unfinished TX record." );
+        LOG_DEBUG << "Capture switch rejected: stale epoch or unfinished TX record";
+        return false;
+    }
+#endif
     if ( filePath.trimmed().isEmpty() ) {
         if ( errorMessage != nullptr ) {
             *errorMessage = tr( "No capture file path selected." );
@@ -159,6 +179,9 @@ bool SerialCaptureWorker::switchCaptureFile( const QString& filePath, QString* e
 
 void SerialCaptureWorker::start()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    startChecked();
+#else
     LOG_DEBUG << "Starting serial capture for " << settings_.portName.toStdString();
     if ( stopping_ ) {
         LOG_DEBUG << "Serial capture start ignored: worker is already stopped";
@@ -214,10 +237,14 @@ void SerialCaptureWorker::start()
     connect( port_, &QSerialPort::errorOccurred, this, &SerialCaptureWorker::onError,
              Qt::QueuedConnection );
     LOG_DEBUG << "Serial capture opened " << settings_.portName.toStdString();
+#endif
 }
 
 void SerialCaptureWorker::stop()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    stopChecked();
+#else
     if ( stopping_ ) {
         LOG_DEBUG << "Serial capture stop ignored: worker is already stopped";
         return;
@@ -237,10 +264,15 @@ void SerialCaptureWorker::stop()
 
     Q_EMIT finished();
     LOG_DEBUG << "Serial capture resources closed for " << settings_.portName.toStdString();
+#endif
 }
 
 void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    Q_UNUSED( sensitive )
+    LOG_DEBUG << "Unchecked serial write rejected, bytes=" << data.size();
+#else
     if ( stopping_ || data.isEmpty() || !port_ || !port_->isOpen() ) {
         LOG_DEBUG << "Skipping COM write because the worker is stopping, payload is empty, or port "
                      "is closed";
@@ -263,8 +295,10 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
         return;
     }
     if ( written != data.size() ) {
-        Q_EMIT errorOccurred(
-            tr( "Partial write to %1: %2/%3 bytes." ).arg( settings_.portName ).arg( written ).arg( data.size() ) );
+        Q_EMIT errorOccurred( tr( "Partial write to %1: %2/%3 bytes." )
+                                  .arg( settings_.portName )
+                                  .arg( written )
+                                  .arg( data.size() ) );
     }
 
     if ( !port_->waitForBytesWritten( 1000 ) ) {
@@ -282,8 +316,7 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
         const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" ) : data;
         toWrite.reserve( observableData.size() + 64 );
         if ( settings_.addTimestamps ) {
-            toWrite.append(
-                timestampPrefix( settings_, QStringView( QStringLiteral( "[TX]" ) ) ) );
+            toWrite.append( timestampPrefix( settings_, QStringView( QStringLiteral( "[TX]" ) ) ) );
         }
         else {
             toWrite.append( "[TX] - " );
@@ -300,10 +333,19 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
             file_.flush();
         }
     }
+#endif
 }
 
 void SerialCaptureWorker::appendToFile( QByteArray data )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( writeContext_ && !isCurrentEpoch( writeContext_->epoch.generation ) )
+        return;
+    QPointer<SerialCaptureWorker> guard( this );
+    finishTxSegment();
+    if ( !guard )
+        return;
+#endif
     if ( stopping_ || data.isEmpty() || !file_.isOpen() ) {
         return;
     }
@@ -311,6 +353,10 @@ void SerialCaptureWorker::appendToFile( QByteArray data )
     const auto written = file_.write( data );
     if ( written != data.size() ) {
         Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+        if ( !guard )
+            return;
+#endif
         stop();
         return;
     }
@@ -319,6 +365,15 @@ void SerialCaptureWorker::appendToFile( QByteArray data )
 
 void SerialCaptureWorker::setLoggingEnabled( bool enabled )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( writeContext_ && !isCurrentEpoch( writeContext_->epoch.generation, false ) )
+        return;
+    QPointer<SerialCaptureWorker> guard( this );
+    if ( !enabled )
+        finishTxSegment();
+    if ( !guard )
+        return;
+#endif
     loggingEnabled_ = enabled;
     if ( file_.isOpen() ) {
         file_.flush();
@@ -327,6 +382,15 @@ void SerialCaptureWorker::setLoggingEnabled( bool enabled )
 
 void SerialCaptureWorker::onReadyRead()
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( !readyPublished_ || !writeContext_
+         || !isCurrentEpoch( writeContext_->epoch.generation, false ) )
+        return;
+    QPointer<SerialCaptureWorker> guard( this );
+    finishTxSegment();
+    if ( !guard )
+        return;
+#endif
     if ( stopping_ || !port_ ) {
         return;
     }
@@ -354,13 +418,21 @@ void SerialCaptureWorker::onReadyRead()
     }
     else {
         toWrite.append( data );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+        atLineStart_ = data.endsWith( '\n' );
+#endif
     }
 
     const bool hasNewline = data.contains( '\n' );
     if ( loggingEnabled_ ) {
         const auto written = file_.write( toWrite );
         if ( written != toWrite.size() ) {
-            Q_EMIT errorOccurred( tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+            Q_EMIT errorOccurred(
+                tr( "Failed to write capture file: %1" ).arg( file_.errorString() ) );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+            if ( !guard )
+                return;
+#endif
             stop();
             return;
         }
@@ -375,6 +447,14 @@ void SerialCaptureWorker::onReadyRead()
 
 void SerialCaptureWorker::onError( QSerialPort::SerialPortError error )
 {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( stopping_ || error == QSerialPort::NoError )
+        return;
+    LOG_WARNING << "Serial I/O error generation="
+                << ( writeContext_ ? writeContext_->epoch.generation : 0 )
+                << " error=" << static_cast<int>( error );
+    failChecked( tr( "Serial I/O error (%1)." ).arg( static_cast<int>( error ) ) );
+#else
     if ( stopping_ || error == QSerialPort::NoError ) {
         LOG_DEBUG << "Serial error ignored for " << settings_.portName.toStdString()
                   << ", error=" << static_cast<int>( error ) << ", stopping=" << stopping_;
@@ -386,4 +466,5 @@ void SerialCaptureWorker::onError( QSerialPort::SerialPortError error )
                 << ", error=" << static_cast<int>( error ) << ": " << message.toStdString();
     Q_EMIT errorOccurred( message );
     stop();
+#endif
 }

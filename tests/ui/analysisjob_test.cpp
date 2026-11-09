@@ -606,6 +606,46 @@ TEST_CASE( "Analysis admission bounds active and queued jobs", "[logdata][analys
     CHECK( error == "queue_limit" );
 }
 
+TEST_CASE( "Analysis encoding provenance is frozen before the first worker read",
+           "[logdata][analysis][encoding-provenance]" )
+{
+    const auto codec = GENERATE( "ISO-8859-1", "UTF-8" );
+    const auto empty = GENERATE( false, true );
+    const auto displayLabel = GENERATE( false, true );
+    CAPTURE( codec, empty, displayLabel );
+    QTemporaryDir directory;
+    const auto path = directory.filePath( "encoding-provenance.log" );
+    writeAnalysisFixture( path, empty ? QByteArray{} : QByteArray{ "one\ntwo\n" } );
+    auto data = openAnalysisFixture( path );
+    data->setDisplayEncoding( codec );
+    REQUIRE( QTest::qWaitFor( [ & ] { return data->sourceSnapshot().available; }, 10000 ) );
+    AnalysisRequest request;
+    request.source = data;
+    request.snapshot = data->sourceSnapshot();
+    request.scope = "whole_file";
+    request.limits.batchLines = 1;
+    if ( displayLabel ) {
+        request.sourceDescription[ "encoding" ] = QString( "Detected as %1" ).arg( codec );
+    }
+    AnalysisJobService service;
+    const auto id = service.start( request );
+    REQUIRE_FALSE( id.isEmpty() );
+    // No event processing: the queued job must already carry the actual decoder identity.
+    const auto initial = service.status( id ).value( "source" ).toMap();
+    CHECK( initial.value( "encoding" ).toString() == QLatin1String( codec ) );
+    const auto finished = finishAnalysis( service, id );
+    REQUIRE( finished.value( "complete" ).toBool() );
+    CHECK( finished.value( "source" ).toMap() == initial );
+    const auto page = service.results( id );
+    CHECK( page.value( "source" ).toMap() == initial );
+    const auto rows = page.value( "rows" ).toList();
+    REQUIRE( rows.size() == ( empty ? 0 : 2 ) );
+    for ( const auto& row : rows ) {
+        CHECK( row.toMap().value( "source" ).toMap() == initial );
+    }
+    CHECK( finished.value( "sourceDescription" ).toMap() == request.sourceDescription );
+}
+
 TEST_CASE( "Analysis batch credit blocks producers and cancellation discards queued work",
            "[logdata][analysis]" )
 {

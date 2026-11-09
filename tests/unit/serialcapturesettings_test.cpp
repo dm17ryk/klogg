@@ -31,6 +31,9 @@
 #include "comportutils.h"
 #include "serialcaptureworker.h"
 #include "streamsession.h"
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+#include "../serial_owner_fixture.h"
+#endif
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -101,8 +104,8 @@ TEST_CASE( "Persisted automatic responses require Actions and retain explicit of
     CHECK( restored.actionsEnabled() == actions );
     CHECK( restored.autoResponsesEnabled() == ( actions && responses ) );
 
-    const auto stored = QStringLiteral(
-        "{\"portName\":\"TEST_SAVED_FLAGS\",\"useForActions\":%1,\"autoResponsesEnabled\":%2}" )
+    const auto stored = QStringLiteral( "{\"portName\":\"TEST_SAVED_FLAGS\",\"useForActions\":%1,"
+                                        "\"autoResponsesEnabled\":%2}" )
                             .arg( actions ? "true" : "false", responses ? "true" : "false" );
     const auto decoded = deserializeSerialCaptureSettings( stored );
     REQUIRE( decoded );
@@ -118,8 +121,8 @@ TEST_CASE( "Serial capture settings deserialize rejects invalid payload", "[seri
 {
     REQUIRE_FALSE( deserializeSerialCaptureSettings( QString{} ).has_value() );
     REQUIRE_FALSE( deserializeSerialCaptureSettings( QStringLiteral( "not_json" ) ).has_value() );
-    REQUIRE_FALSE( deserializeSerialCaptureSettings( QStringLiteral( "{\"baudRate\":115200}" ) )
-                       .has_value() );
+    REQUIRE_FALSE(
+        deserializeSerialCaptureSettings( QStringLiteral( "{\"baudRate\":115200}" ) ).has_value() );
 }
 
 TEST_CASE( "Next COM capture path uses current directory and naming convention", "[serial][path]" )
@@ -135,9 +138,11 @@ TEST_CASE( "Next COM capture path uses current directory and naming convention",
     const auto timestamp = QDateTime::fromString( "2026-05-06T14:15:16", Qt::ISODate );
     const auto nextPath = suggestedNextComCapturePath( settings, timestamp );
 
-    REQUIRE( QFileInfo( nextPath ).absolutePath() == QFileInfo( settings.filePath ).absolutePath() );
+    REQUIRE( QFileInfo( nextPath ).absolutePath()
+             == QFileInfo( settings.filePath ).absolutePath() );
     REQUIRE( QFileInfo( nextPath ).fileName() == "com7_230400_2026-05-06_14-15-16.log" );
-    REQUIRE( QFileInfo( nextPath ).absoluteFilePath() != QFileInfo( settings.filePath ).absoluteFilePath() );
+    REQUIRE( QFileInfo( nextPath ).absoluteFilePath()
+             != QFileInfo( settings.filePath ).absoluteFilePath() );
 }
 
 TEST_CASE( "Next COM capture path appends suffix for same-second collision", "[serial][path]" )
@@ -207,6 +212,9 @@ TEST_CASE( "Serial capture failed open reports one error and one completion",
     settings.portName = "CILOGG_TEST_MISSING_PORT";
     settings.filePath = tempDir.filePath( "failed_open.log" );
     SerialCaptureWorker worker( settings );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    SerialCaptureWorkerTestAccess::prepare( worker );
+#endif
     QSignalSpy errors( &worker, &SerialCaptureWorker::errorOccurred );
     QSignalSpy finished( &worker, &SerialCaptureWorker::finished );
 
@@ -235,7 +243,8 @@ TEST_CASE( "Failed serial worker remains safe until its queued error is handled"
                           [ &session ] { session.closeConnection(); } );
         session.start();
         QTest::qSleep( 25 );
-        REQUIRE( waitForState( [ & ] { return !session.isConnectionOpen(); } ) );
+        REQUIRE(
+            waitForState( [ & ] { return errors.size() == 1 && !session.isConnectionOpen(); } ) );
         REQUIRE( errors.size() == 1 );
         session.stop();
     }
@@ -255,10 +264,18 @@ TEST_CASE( "Stream session pause preserves capture settings and logging state",
     settings.logTransmits = true;
     settings.useForActions = true;
 
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    cilogg_test::OwnerFixture fixture( settings );
+    auto& session = *fixture.session;
+#else
     StreamSession session( settings );
+#endif
     session.setLoggingEnabled( false );
 
     session.start();
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    REQUIRE( fixture.ready() );
+#endif
     REQUIRE( session.isConnectionOpen() );
 
     QString errorMessage;
@@ -339,11 +356,22 @@ TEST_CASE( "Stream session failed resume keeps paused session available", "[seri
     settings.portName = "CILOGG_TEST_MISSING_PORT";
     settings.filePath = tempDir.filePath( "resume.log" );
 
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    cilogg_test::OwnerFixture fixture( settings );
+    auto& session = *fixture.session;
+#else
     StreamSession session( settings );
+#endif
     session.start();
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    REQUIRE( fixture.ready() );
+#endif
     REQUIRE( session.pauseConnection() );
     REQUIRE( waitForState( [ &session ] { return session.canResume(); } ) );
 
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    StreamSessionTestAccess::rejectResume( session );
+#endif
     QString errorMessage;
     REQUIRE_FALSE( session.resumeConnection( &errorMessage ) );
     REQUIRE_FALSE( errorMessage.isEmpty() );
@@ -361,8 +389,16 @@ TEST_CASE( "Stream session hard close clears paused state", "[serial][session]" 
     settings.portName = "CILOGG_TEST_MISSING_PORT";
     settings.filePath = tempDir.filePath( "hard_close.log" );
 
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    cilogg_test::OwnerFixture fixture( settings );
+    auto& session = *fixture.session;
+#else
     StreamSession session( settings );
+#endif
     session.start();
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    REQUIRE( fixture.ready() );
+#endif
     REQUIRE( session.isConnectionOpen() );
 
     QTest::qSleep( 25 );
@@ -395,6 +431,9 @@ TEST_CASE( "An exclusively held device reports a single permission failure safel
     SECTION( "Worker reports a busy open failure once" )
     {
         SerialCaptureWorker worker( settings );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+        SerialCaptureWorkerTestAccess::prepare( worker );
+#endif
         QSignalSpy errors( &worker, &SerialCaptureWorker::errorOccurred );
         QSignalSpy finished( &worker, &SerialCaptureWorker::finished );
         worker.start();

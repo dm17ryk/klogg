@@ -1,5 +1,6 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "serialwritebridge.h"
 #include "sharedwriter.h"
 #include <QCryptographicHash>
 #include <QJsonDocument>
@@ -102,6 +103,115 @@ struct DiagnosticCapture {
     }
 };
 } // namespace
+
+TEST_CASE( "Backend retirement keeps closed epoch and acknowledges only known prefixes",
+           "[communication][D01c-retirement]" )
+{
+    for ( bool acceptedFirst : { false, true } ) {
+        auto w = writer();
+        REQUIRE( w->submit( epoch, request( "a" ), WriteProducer::Automation, 0 ).value );
+        auto a = offer( *w );
+        if ( acceptedFirst ) {
+            REQUIRE( w->accepted( a.ticket(), 3, 0 ).ok );
+            REQUIRE( w->written( a.ticket(), 1, 0 ).ok );
+        }
+        CHECK_FALSE( w->retireAfterBackendClosed( epoch, 90 ).ok );
+        REQUIRE( w->close( epoch, 0 ).ok );
+        CHECK_FALSE( w->retireAfterBackendClosed( { "ep", 6 }, 1000 ).ok );
+        CHECK_FALSE( w->retireAfterBackendClosed( epoch, -1 ).ok );
+        REQUIRE( w->retireAfterBackendClosed( epoch, 0 ).ok );
+        REQUIRE( w->retireAfterBackendClosed( epoch, 0 ).ok );
+        auto final = observation( *w, "a" );
+        CHECK( final.receipt.stage() == WriteStage::Cancelled );
+        CHECK( final.receipt.acceptedBytes() == ( acceptedFirst ? 3 : 0 ) );
+        CHECK( final.receipt.writtenBytes() == ( acceptedFirst ? 1 : 0 ) );
+        CHECK( final.ioUnconfirmed );
+        CHECK_FALSE( final.awaitingAcceptance );
+        CHECK_FALSE( final.awaitingDrain );
+        CHECK( w->state().closed );
+        CHECK( w->state().epoch.generation == 7 );
+        CHECK_FALSE( w->written( a.ticket(), 1, 1000 ).ok );
+        CHECK_FALSE( w->accepted( a.ticket(), 1, 1000 ).ok );
+        REQUIRE( w->advance( epoch, 0 ).ok );
+    }
+}
+
+TEST_CASE( "Retirement preserves drained success and backpressure until a real reset",
+           "[communication][D01c-retirement]" )
+{
+    auto w = writer();
+    REQUIRE( w->submit( epoch, request( "a" ), WriteProducer::Automation, 0 ).value );
+    complete( *w );
+    REQUIRE( w->close( epoch, 0 ).ok );
+    REQUIRE( w->retireAfterBackendClosed( epoch, 0 ).ok );
+    CHECK( observation( *w, "a" ).receipt.stage() == WriteStage::WrittenToBackend );
+    CHECK_FALSE( observation( *w, "a" ).ioUnconfirmed );
+    auto blocked = writer();
+    REQUIRE( blocked->submit( epoch, request( "a" ), WriteProducer::Automation, 0 ).value );
+    auto a = offer( *blocked );
+    REQUIRE( blocked->accepted( a.ticket(), 0, 0 ).ok );
+    REQUIRE( blocked->close( epoch, 0 ).ok );
+    REQUIRE( blocked->retireAfterBackendClosed( epoch, 0 ).ok );
+    CHECK( blocked->state().backpressured );
+    CHECK_FALSE( observation( *blocked, "a" ).ioUnconfirmed );
+    REQUIRE( blocked->resetAfterBackendClosed( epoch, 8, writerCapabilities(), 0 ).ok );
+    CHECK_FALSE( blocked->state().backpressured );
+}
+
+TEST_CASE( "Known unsubmitted cancellation releases only its unsent offer",
+           "[communication][D01c-withdraw]" )
+{
+    auto w = writer();
+    REQUIRE( w->submit( epoch, request( "a", "ABCDE" ), WriteProducer::Automation, 0 ).value );
+    REQUIRE( w->submit( epoch, request( "b", "Z" ), WriteProducer::Automation, 0 ).value );
+    auto first = offer( *w );
+    REQUIRE( w->accepted( first.ticket(), 2, 0 ).ok );
+    REQUIRE( w->written( first.ticket(), 2, 0 ).ok );
+    auto suffix = offer( *w );
+    CHECK_FALSE( w->withdrawUnsubmitted( suffix.ticket(), 90 ).ok );
+    REQUIRE( w->cancel( epoch, "a", 0 ).ok );
+    REQUIRE( w->withdrawUnsubmitted( suffix.ticket(), 0 ).ok );
+    const auto final = observation( *w, "a" );
+    CHECK( final.receipt.acceptedBytes() == 2 );
+    CHECK( final.receipt.writtenBytes() == 2 );
+    CHECK_FALSE( final.ioUnconfirmed );
+    CHECK_FALSE( final.awaitingAcceptance );
+    CHECK_FALSE( w->state().backpressured );
+    CHECK_FALSE( w->state().faulted );
+    auto b = offer( *w );
+    CHECK( b.requestId() == "b" );
+    CHECK_FALSE( w->withdrawUnsubmitted( suffix.ticket(), 1000 ).ok );
+    REQUIRE( w->accepted( b.ticket(), 1, 0 ).ok );
+    REQUIRE( w->written( b.ticket(), 1, 0 ).ok );
+}
+
+TEST_CASE( "Unsubmitted expiry is distinct from unknown or draining I/O",
+           "[communication][D01c-withdraw]" )
+{
+    auto w = writer();
+    REQUIRE( w->submit( epoch, request( "a" ), WriteProducer::Automation, 0 ).value );
+    auto a = offer( *w );
+    auto wrong = a.ticket();
+    ++wrong.sequence;
+    CHECK_FALSE( w->withdrawUnsubmitted( wrong, 1000 ).ok );
+    wrong = a.ticket();
+    --wrong.epoch.generation;
+    CHECK_FALSE( w->withdrawUnsubmitted( wrong, 1000 ).ok );
+    CHECK_FALSE( w->withdrawUnsubmitted( a.ticket(), -1 ).ok );
+    REQUIRE( w->withdrawUnsubmitted( a.ticket(), 100 ).ok );
+    const auto expired = observation( *w, "a" );
+    CHECK( expired.receipt.errorCode() == "deadline_exceeded" );
+    CHECK_FALSE( expired.ioUnconfirmed );
+    CHECK_FALSE( w->state().backpressured );
+    auto drain = writer();
+    REQUIRE( drain->submit( epoch, request( "a" ), WriteProducer::Automation, 0 ).value );
+    auto d = offer( *drain );
+    REQUIRE( drain->accepted( d.ticket(), 3, 0 ).ok );
+    REQUIRE( drain->cancel( epoch, "a", 0 ).ok );
+    CHECK_FALSE( drain->withdrawUnsubmitted( d.ticket(), 90 ).ok );
+    CHECK( observation( *drain, "a" ).awaitingDrain );
+    REQUIRE( drain->written( d.ticket(), 3, 0 ).ok );
+}
 
 TEST_CASE( "Shared writer owns borrowed endpoint identity", "[communication][D01b-factory]" )
 {

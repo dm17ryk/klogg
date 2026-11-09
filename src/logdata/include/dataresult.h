@@ -19,7 +19,9 @@ struct DataResult {
     DataError error;
 };
 
+namespace cilogg {
 struct DataStatus {
     bool ok = false;
     DataError error;
 };
+} // namespace cilogg

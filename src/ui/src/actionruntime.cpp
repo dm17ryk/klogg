@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <optional>
 
-#include "actionsmanager.h"
 #include "actionexpression.h"
+#include "actionsmanager.h"
 #include "log.h"
 #include "previewdecodeutils.h"
 #include "streamsession.h"
@@ -155,16 +155,15 @@ std::optional<QVariantMap> responseStepParameters( const ResponseActionStep& ste
         case ResponseParameterBindingSource::Expression: {
             LOG_DEBUG << "Response step action_id=" << action.id << " evaluates expression for "
                       << name.toStdString();
-            const auto expression = expressionWithCaptureTemplates( binding.value.toString(),
-                                                                     captures, &missing );
-            const auto evaluated
-                = evaluateActionExpression( expression, expressionVariables );
+            const auto expression
+                = expressionWithCaptureTemplates( binding.value.toString(), captures, &missing );
+            const auto evaluated = evaluateActionExpression( expression, expressionVariables );
             if ( !evaluated.ok ) {
                 setError( errorMessage,
                           QObject::tr( "Response action parameter '%1' expression failed: %2" )
                               .arg( name, evaluated.error ) );
-                LOG_WARNING << "Response step action_id=" << action.id
-                            << " expression failed for " << name.toStdString();
+                LOG_WARNING << "Response step action_id=" << action.id << " expression failed for "
+                            << name.toStdString();
                 return false;
             }
             resolved = evaluated.value;
@@ -248,11 +247,12 @@ bool actionContextIsCurrent( const QPointer<StreamSession>& session, quint64 gen
 } // namespace
 
 ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
-                                            const QByteArray& lineBytes,
-                                            const QString& providedLineText )
+                                             const QByteArray& lineBytes,
+                                             const QString& providedLineText )
 {
     ResponseMatchResult result;
-    result.lineText = providedLineText.isEmpty() ? QString::fromLatin1( lineBytes ) : providedLineText;
+    result.lineText
+        = providedLineText.isEmpty() ? QString::fromLatin1( lineBytes ) : providedLineText;
 
     switch ( response.match.type ) {
     case ResponseMatchType::String:
@@ -286,12 +286,12 @@ ResponseMatchResult matchResponseDefinition( const ResponseDefinition& response,
         break;
     }
     case ResponseMatchType::Wildcard: {
-        const auto regex = response.match.compiled.isValid()
-                               ? response.match.compiled
-                               : QRegularExpression(
-                                     QRegularExpression::wildcardToRegularExpression(
-                                         response.match.value ),
-                                     QRegularExpression::CaseInsensitiveOption );
+        const auto regex
+            = response.match.compiled.isValid()
+                  ? response.match.compiled
+                  : QRegularExpression(
+                        QRegularExpression::wildcardToRegularExpression( response.match.value ),
+                        QRegularExpression::CaseInsensitiveOption );
         const auto match = regex.match( result.lineText );
         if ( match.hasMatch() ) {
             result.matched = true;
@@ -323,7 +323,8 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     const auto generation
         = automatic ? session->autoResponsesGeneration() : session->actionsGeneration();
     if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
-        setError( errorMessage, QObject::tr( "Automatic actions are disabled for this COM session." ) );
+        setError( errorMessage,
+                  QObject::tr( "Automatic actions are disabled for this COM session." ) );
         return false;
     }
 
@@ -333,21 +334,24 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
         LOG_WARNING << "Action id=" << action.id
                     << " encoding failed; parameter_count=" << parameters.size()
                     << ", missing_count=" << missing.size();
-        setError( errorMessage,
-                  encoded.error.isEmpty() ? QObject::tr( "Failed to encode action." )
-                                          : encoded.error );
+        setError( errorMessage, encoded.error.isEmpty() ? QObject::tr( "Failed to encode action." )
+                                                        : encoded.error );
         return false;
     }
 
     const bool sensitive = actionPayloadIsSensitive( action, parameters );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    const cilogg::communication::ActionWriteStamp writeStamp{ automatic,
+                                                              session->actionsGeneration(),
+                                                              session->autoResponsesGeneration() };
+#endif
     const auto observableBytes = sensitive ? QByteArrayLiteral( "<redacted>" ) : encoded.bytes;
     const auto repeatCount = effectiveRepeatCount( action );
     const auto firstDelay = qMax( 0, action.parameters.delay );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
     LOG_DEBUG << "Scheduling action id=" << action.id << ", repeats=" << repeatCount
-              << ", encoded_bytes=" << encoded.bytes.size()
-              << ", automatic=" << automatic << ", generation=" << generation
-              << ( sensitive ? ", sensitive payload" : "" );
+              << ", encoded_bytes=" << encoded.bytes.size() << ", automatic=" << automatic
+              << ", generation=" << generation << ( sensitive ? ", sensitive payload" : "" );
 
     for ( int index = 0; index < repeatCount; ++index ) {
         const auto delayMs = firstDelay + ( index * repeatInterval );
@@ -363,37 +367,60 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
                 setError( errorMessage, QObject::tr( "Action cancelled by its send observer." ) );
                 return false;
             }
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+            const auto admitted
+                = safeSession->submitActionWrite( encoded.bytes, sensitive, writeStamp );
+            if ( !admitted.value ) {
+                setError( errorMessage,
+                          QObject::tr( "Serial write rejected: %1" ).arg( admitted.error.code ) );
+                return false;
+            }
+#else
             safeSession->sendBytes( encoded.bytes, sensitive );
+#endif
             continue;
         }
 
-        QTimer::singleShot( delayMs, safeSession.data(),
-                            [ safeSession, actionId = action.id, actionName = action.name,
-                              stepIndex, bytes = encoded.bytes, observableBytes, sensitive,
-                              repeatIndex = index, generation, automatic ]() {
-                                if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
-                                    LOG_DEBUG << "Sending delayed action id=" << actionId
-                                              << "; repeat_index=" << repeatIndex;
-                                    safeSession->notifyActionSend( actionId, actionName, stepIndex,
-                                                                   observableBytes );
-                                    if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
-                                        safeSession->sendBytes( bytes, sensitive );
-                                    }
-                                }
-                                else {
-                                    LOG_WARNING << "Skipping delayed action id=" << actionId
-                                                << " because its execution context changed";
-                                }
-                            } );
+        QTimer::singleShot(
+            delayMs, safeSession.data(),
+            [ safeSession, actionId = action.id, actionName = action.name, stepIndex,
+              bytes = encoded.bytes, observableBytes, sensitive, repeatIndex = index, generation,
+              automatic
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+              ,
+              writeStamp
+#endif
+        ]() {
+                if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                    LOG_DEBUG << "Sending delayed action id=" << actionId
+                              << "; repeat_index=" << repeatIndex;
+                    safeSession->notifyActionSend( actionId, actionName, stepIndex,
+                                                   observableBytes );
+                    if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+                        const auto admitted
+                            = safeSession->submitActionWrite( bytes, sensitive, writeStamp );
+                        if ( !admitted.value ) {
+                            LOG_WARNING << "Delayed serial Action rejected reason="
+                                        << admitted.error.code;
+                        }
+#else
+                        safeSession->sendBytes( bytes, sensitive );
+#endif
+                    }
+                }
+                else {
+                    LOG_WARNING << "Skipping delayed action id=" << actionId
+                                << " because its execution context changed";
+                }
+            } );
     }
 
     return true;
 }
 
-bool executeResponseDefinition( StreamSession* session,
-                                const ResponseDefinition& requestedResponse,
-                                const QMap<QString, QString>& captures,
-                                QString* errorMessage )
+bool executeResponseDefinition( StreamSession* session, const ResponseDefinition& requestedResponse,
+                                const QMap<QString, QString>& captures, QString* errorMessage )
 {
     const auto response = requestedResponse;
     if ( session == nullptr ) {
@@ -448,7 +475,8 @@ bool executeResponseDefinition( StreamSession* session,
     int cumulativeDelay = 0;
     for ( int index = 0; index < linkedActions.size(); ++index ) {
         if ( !actionContextIsCurrent( safeSession, generation, true ) ) {
-            setError( errorMessage, QObject::tr( "Response cancelled after its session changed." ) );
+            setError( errorMessage,
+                      QObject::tr( "Response cancelled after its session changed." ) );
             return false;
         }
         cumulativeDelay += linkedDelays.at( index );
@@ -457,7 +485,8 @@ bool executeResponseDefinition( StreamSession* session,
         if ( cumulativeDelay <= 0 ) {
             LOG_DEBUG << "Response id=" << response.id << " sending linked action index=" << index
                       << " immediately";
-            if ( !sendActionDefinition( safeSession, action, parameters, index, errorMessage, true ) ) {
+            if ( !sendActionDefinition( safeSession, action, parameters, index, errorMessage,
+                                        true ) ) {
                 return false;
             }
             continue;

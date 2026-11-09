@@ -379,6 +379,22 @@ jobs:
           docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_BUILD_ROOT=$CILOGG_BUILD_ROOT \
             -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c \
             'cd /usr/local && python3 tests/mcp/workbench_ci_gate.py --executable "$CILOGG_BUILD_ROOT/output/cilogg" --cache "$CILOGG_BUILD_ROOT/CMakeCache.txt" --backend qt --artifacts "$CILOGG_BUILD_ROOT/reports/workbench-native"'
+      - name: Qualify checked serial owner (Qt-only)
+        if: ${{ matrix.config.native_parity && matrix.config.backend == 'qt' }}
+        run: |
+          docker run $CILOGG_DOCKER_PLATFORM --env CILOGG_BUILD_ROOT=$CILOGG_BUILD_ROOT \
+            -v "$CILOGG_WORKSPACE":/usr/local ${{ matrix.config.container }} /bin/bash -c \
+            'cd /usr/local && python3 scripts/codex/check-shared-serial-writer.py --build-dir "$CILOGG_BUILD_ROOT" --executable "$CILOGG_BUILD_ROOT/output/cilogg" --backend qt'
+      - name: Upload checked serial owner diagnostics
+        if: ${{ always() && matrix.config.native_parity && matrix.config.backend == 'qt' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-serial-${{ matrix.config.artifacts_id }}
+          path: |
+            ${{ env.CILOGG_BUILD_ROOT }}/reports/shared-serial-writer/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/native-payload/**
+          if-no-files-found: warn
       - name: Upload native parity diagnostics
         if: ${{ always() && matrix.config.native_parity }}
         uses: actions/upload-artifact@v4
@@ -670,6 +686,23 @@ jobs:
           name: workbench-native-${{ matrix.config.artifacts_id }}
           path: |
             ${{ env.CILOGG_BUILD_ROOT }}/reports/workbench-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
+            !${{ env.CILOGG_BUILD_ROOT }}/reports/**/native-payload/**
+          if-no-files-found: warn
+      - name: Qualify checked serial owner (Windows)
+        if: ${{ matrix.config.native_parity && matrix.config.arch == 'x64' }}
+        shell: bash
+        run: |
+          python scripts/codex/check-shared-serial-writer.py \
+            --build-dir "$CILOGG_BUILD_ROOT" --executable "$CILOGG_BUILD_ROOT/output/cilogg.exe" \
+            --backend accelerated --sdk-version 1.30.0 --sdk-version 2.3.0
+      - name: Upload checked serial owner diagnostics
+        if: ${{ always() && matrix.config.native_parity && matrix.config.arch == 'x64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-serial-${{ matrix.config.artifacts_id }}
+          path: |
+            ${{ env.CILOGG_BUILD_ROOT }}/reports/shared-serial-writer/**
             !${{ env.CILOGG_BUILD_ROOT }}/reports/**/payload-*/**
             !${{ env.CILOGG_BUILD_ROOT }}/reports/**/native-payload/**
           if-no-files-found: warn

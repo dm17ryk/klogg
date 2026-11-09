@@ -187,7 +187,6 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/serialcaptureworker.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptrunnerwindow.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/scriptsupervisor.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsourceregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/streamsession.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/startupprogress.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/tabbedcrawlerwidget.cpp
@@ -242,7 +241,13 @@ if(WIN32)
   target_link_libraries(klogg_ui PUBLIC user32)
 endif()
 
-if(KLOGG_BUILD_TESTS)
+add_library(cilogg_stream_registry STATIC include/streamsourceregistry.h src/streamsourceregistry.cpp)
+target_include_directories(cilogg_stream_registry PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(cilogg_stream_registry PUBLIC klogg_logdata Qt${QT_VERSION_MAJOR}::SerialPort
+  project_options project_warnings)
+target_link_libraries(klogg_ui PUBLIC cilogg_stream_registry)
+
+if(KLOGG_BUILD_TESTS OR KLOGG_SHARED_SERIAL_WRITER)
   add_library(cilogg_communication_contracts STATIC
     include/communicationtypes.h src/communicationtypes.cpp)
   target_include_directories(cilogg_communication_contracts PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -250,4 +255,18 @@ if(KLOGG_BUILD_TESTS)
     klogg_logdata Qt${QT_VERSION_MAJOR}::Core project_options project_warnings)
   add_library(cilogg_shared_writer STATIC include/sharedwriter.h src/sharedwriter.cpp)
   target_link_libraries(cilogg_shared_writer PUBLIC cilogg_communication_contracts)
+  add_library(cilogg_serial_write_driver STATIC include/serialwritedriver.h
+    include/serialwritebridge.h src/serialwritedriver.cpp)
+  set_target_properties(cilogg_serial_write_driver PROPERTIES AUTOMOC ON)
+  target_link_libraries(cilogg_serial_write_driver PUBLIC cilogg_shared_writer)
+endif()
+if(KLOGG_SHARED_SERIAL_WRITER)
+  target_sources(klogg_ui PRIVATE src/streamsessionwriter.cpp src/serialcapturewriter.cpp
+    src/backendthreadretirement.cpp)
+  target_compile_definitions(klogg_ui PUBLIC KLOGG_SHARED_SERIAL_WRITER=1)
+  target_link_libraries(klogg_ui PUBLIC cilogg_serial_write_driver)
+else()
+  # The flag changes QObject signals. Keep OFF metadata separate when reusing an ON build tree.
+  set_target_properties(klogg_ui PROPERTIES
+    AUTOGEN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/klogg_ui_autogen_legacy")
 endif()

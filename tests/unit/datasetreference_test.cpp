@@ -34,10 +34,10 @@ struct Owner final : IDatasetReferenceLookup {
     std::vector<DatasetReference> issued;
     bool expired = false;
     bool throwFailure = false;
-    std::optional<DataStatus> forced;
+    std::optional<cilogg::DataStatus> forced;
     mutable int calls = 0;
-    DataStatus check( DatasetReferenceKind kind, const DatasetRevisionStamp& revision,
-                      const QString& token ) const override
+    cilogg::DataStatus check( DatasetReferenceKind kind, const DatasetRevisionStamp& revision,
+                              const QString& token ) const override
     {
         ++calls;
         if ( throwFailure )
@@ -151,19 +151,19 @@ TEST_CASE( "F01 owner expiry and failure are errors rather than empty success",
     owner.expired = true;
     CHECK( validateDatasetReference( ref, stamp(), owner ).error.code == "expired_job" );
     owner.expired = false;
-    owner.forced = DataStatus{ false,
-                               { QStringLiteral( "io_error" ),
-                                 QStringLiteral( "Retained owner error" ),
-                                 QStringLiteral( "field-3" ),
-                                 {} } };
+    owner.forced = cilogg::DataStatus{ false,
+                                       { QStringLiteral( "io_error" ),
+                                         QStringLiteral( "Retained owner error" ),
+                                         QStringLiteral( "field-3" ),
+                                         {} } };
     auto error = validateDatasetReference( ref, stamp(), owner );
     CHECK_FALSE( error.ok );
     CHECK( error.error.code == "io_error" );
     CHECK( error.error.message == "Retained owner error" );
     CHECK( error.error.fieldId == "field-3" );
-    owner.forced = DataStatus{};
+    owner.forced = cilogg::DataStatus{};
     CHECK( validateDatasetReference( ref, stamp(), owner ).error.code == "invalid_lookup_result" );
-    owner.forced = DataStatus{ true, { QStringLiteral( "expired_job" ), {}, {}, {} } };
+    owner.forced = cilogg::DataStatus{ true, { QStringLiteral( "expired_job" ), {}, {}, {} } };
     CHECK( validateDatasetReference( ref, stamp(), owner ).error.code == "invalid_lookup_result" );
     owner.forced.reset();
     owner.throwFailure = true;

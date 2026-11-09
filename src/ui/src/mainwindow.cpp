@@ -2544,7 +2544,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
 
     const auto filePath = settings.filePath;
     if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
-        if ( existingSession->isConnectionOpen() ) {
+        if ( existingSession->isConnectionOpen() || existingSession->hasActiveWorker() ) {
             existingSession->closeConnection();
             showInformation(
                 tr( "The existing capture is still closing. Please try again in a moment." ) );
