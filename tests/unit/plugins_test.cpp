@@ -1315,8 +1315,17 @@ TEST_CASE( "A paused serial session reports when its port is released", "[serial
     REQUIRE( session.waitForPortRelease( 10 ) );
     session.start();
     REQUIRE_FALSE( session.isPortReleased() );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    // The checked owner reports the connection open only after the backend really opened
+    // the port. The unavailable port fails to open, so the session pauses itself and
+    // releases its lease once the worker thread retires.
+    REQUIRE( session.waitForPortRelease( 5000 ) );
+    REQUIRE( session.isPaused() );
+#else
+    // The legacy owner reports the connection open at start, so it can be paused at once.
     REQUIRE( session.pauseConnection() );
     REQUIRE( session.waitForPortRelease( 5000 ) );
+#endif
     REQUIRE( session.isPortReleased() );
     REQUIRE( session.canResume() );
     // A bounded wait fails cleanly when the condition never holds.
