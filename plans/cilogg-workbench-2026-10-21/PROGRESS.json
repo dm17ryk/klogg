@@ -2167,7 +2167,7 @@
     "E13": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/102",
       "evidence": [
         "E13a local qualification 2026-11-11 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022 Community, build-windows.ps1 exit 0): cilogg_itests [workbench][E13] 17 cases / 338 assertions passed; cilogg_tests [plugins],[E13],[commander] 81 cases / 2413 assertions passed; ctest 10/10; tests/plugins 202 OK (48 skipped); tests/mcp test_workbench_* 111 OK; workbench_parity.py --task E13 passed; host_integration.py passed.",
         "Independent C++/Qt review: 3 HIGH and 9 MEDIUM findings (modal exec lifetime, oversized events, cancel-grace side effects, stale root props, id-less nodes, text limits, warning growth, forced renders, table model edge cases, message rate) fixed with regression tests before the PR.",
