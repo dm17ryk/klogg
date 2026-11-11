@@ -3928,6 +3928,17 @@ CommanderResult MainWindow::commanderWaitResponse( const CommanderRequest& reque
     return result;
 }
 
+std::optional<CommanderResult> MainWindow::commanderPauseBusy( const StreamSession* session ) const
+{
+    if ( session == nullptr || !pauseWaits_.contains( session ) ) {
+        return std::nullopt;
+    }
+    LOG_DEBUG << "COM command rejected: pause_comm --wait is in progress";
+    return commanderFailure( CommanderResultCode::ExecutionFailed,
+                             tr( "The COM port is busy: pause_comm --wait is still waiting for it "
+                                 "to close." ) );
+}
+
 CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request )
 {
     auto* streamSession = commanderTargetStreamSession( request, false );
@@ -3935,6 +3946,9 @@ CommanderResult MainWindow::commanderStartComm( const CommanderRequest& request 
         LOG_DEBUG << "start_comm failed: requested live communication tab was not found";
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested live communication tab was not found." ) );
+    }
+    if ( const auto busy = commanderPauseBusy( streamSession ) ) {
+        return *busy;
     }
 
     if ( streamSession->isConnectionOpen() ) {
@@ -3974,10 +3988,38 @@ CommanderResult MainWindow::commanderPauseComm( const CommanderRequest& request 
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Requested live communication tab was not found." ) );
     }
+    if ( const auto busy = commanderPauseBusy( streamSession ) ) {
+        return *busy;
+    }
+
+    // --wait: return only after the worker closed the port, bounded below the client timeout.
+    // Other COM commands for this stream are rejected as busy while the wait runs.
+    constexpr int DefaultPauseWaitMs = 5000;
+    constexpr int MaxPauseWaitMs = 25000;
+    QPointer<StreamSession> guard( streamSession );
+    const auto waitForRelease = [ & ]() -> CommanderResult {
+        if ( !request.waitForCompletion ) {
+            return commanderSuccess();
+        }
+        const auto timeout
+            = qBound( 1, request.timeoutMs.value_or( DefaultPauseWaitMs ), MaxPauseWaitMs );
+        const StreamSession* waiting = streamSession;
+        pauseWaits_.insert( waiting );
+        const auto released = StreamSession::waitForCondition(
+            [ guard ] { return !guard || guard->isPortReleased(); }, timeout );
+        pauseWaits_.remove( waiting );
+        LOG_DEBUG << "pause_comm wait finished: released=" << released << " timeout_ms=" << timeout;
+        if ( !released ) {
+            return commanderFailure(
+                CommanderResultCode::ExecutionFailed,
+                tr( "Timed out after %1 ms waiting for the COM port to close." ).arg( timeout ) );
+        }
+        return commanderSuccess( {}, { { "portClosed", true } } );
+    };
 
     if ( streamSession->isPaused() ) {
         LOG_DEBUG << "pause_comm succeeded: stream is already paused";
-        return commanderSuccess();
+        return waitForRelease();
     }
 
     QString errorMessage;
@@ -3993,11 +4035,14 @@ CommanderResult MainWindow::commanderPauseComm( const CommanderRequest& request 
     updateComPortStatus();
     refreshComTabIndicators();
     refreshScriptStatusIndicators();
-    return commanderSuccess();
+    return waitForRelease();
 }
 
 CommanderResult MainWindow::commanderStopComm( const CommanderRequest& request )
 {
+    if ( const auto busy = commanderPauseBusy( commanderTargetStreamSession( request, false ) ) ) {
+        return *busy;
+    }
     auto* streamSession = commanderTargetStreamSession( request, true );
     if ( streamSession == nullptr ) {
         LOG_DEBUG << "stop_comm failed: requested live communication tab was not found";
@@ -4366,6 +4411,13 @@ CommanderResult MainWindow::closeComPortByName( const QString& portName )
 
         const auto fileName = session_.getFilename( widget );
         auto* streamSession = mainTabWidget_.streamSessionForPath( fileName );
+        if ( streamSession != nullptr
+             && streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive )
+                    == 0 ) {
+            if ( const auto busy = commanderPauseBusy( streamSession ) ) {
+                return *busy;
+            }
+        }
         if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
             continue;
         }

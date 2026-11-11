@@ -1,6 +1,7 @@
 #include "pluginuicontroller.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "pluginviewhost.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -245,8 +246,20 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
                      }
                  }
              } );
-    refreshActions();
     const auto windowId = window->pluginContext( {} ).value( "windowId" ).toString();
+    // Plugin views (docks, windows, dialogs) and message boxes of this window.
+    viewHost_ = new PluginViewHost(
+        window, windowId,
+        [ window = QPointer<MainWindow>( window ) ] {
+            return window ? window->pluginContext( {} ) : QVariantMap{};
+        },
+        manager, executor_ );
+    refreshActions();
+    connect( window, &MainWindow::windowClosed, this, [ this ] {
+        if ( viewHost_ ) {
+            viewHost_->windowClosing();
+        }
+    } );
     connect( window, &MainWindow::windowClosed, manager,
              [ manager, windowId ] { manager->closeWindow( windowId ); } );
     connect( window, &MainWindow::windowClosed, this, [ this ] {
@@ -286,7 +299,8 @@ void PluginUiController::refreshActions()
             descriptions.append( QJsonObject{
                 { "id", p.value( "id" ).toString() },
                 { "name", p.value( "name" ).toString() },
-                { "actions", QJsonArray::fromVariantList( p.value( "actions" ).toList() ) } } );
+                { "actions", QJsonArray::fromVariantList( p.value( "actions" ).toList() ) },
+                { "views", QJsonArray::fromVariantList( p.value( "views" ).toList() ) } } );
         }
     }
     if ( descriptions == actionDescriptions_ ) {
@@ -309,6 +323,29 @@ void PluginUiController::refreshActions()
             continue;
         }
         const auto id = plugin.value( "id" ).toString();
+        // Plugins → <view title> opens or raises the view in this window.
+        for ( const auto& item : plugin.value( "views" ).toList() ) {
+            const auto view = QJsonObject::fromVariantMap( item.toMap() );
+            if ( !view.value( "menu" ).toBool( true ) ) {
+                continue;
+            }
+            const auto viewId = view.value( "id" ).toString();
+            auto* action = new QAction(
+                window_->style()->standardIcon( view.value( "kind" ) == "dialog"
+                                                    ? QStyle::SP_MessageBoxInformation
+                                                    : QStyle::SP_TitleBarNormalButton ),
+                view.value( "title" ).toString( viewId ), this );
+            action->setObjectName( "pluginViewAction_" + id + "_" + viewId );
+            action->setToolTip( plugin.value( "name" ).toString() + ": " + action->text() );
+            menu_->addAction( action );
+            actions_.append( action );
+            connect( action, &QAction::triggered, this, [ this, id, viewId ] {
+                QString error;
+                if ( viewHost_ && !viewHost_->openView( id, viewId, {}, &error ) ) {
+                    report( commanderFailure( CommanderResultCode::ExecutionFailed, error ) );
+                }
+            } );
+        }
         for ( const auto& item : plugin.value( "actions" ).toList() ) {
             const auto definition = QJsonObject::fromVariantMap( item.toMap() );
             const auto type = definition.value( "capability" ).toString();
@@ -618,7 +655,7 @@ void PluginUiController::browseDialog()
                 ++row;
             }
         }
-        if ( state != "pending" && state != "running" ) {
+        if ( state != "pending" && state != "running" && state != "cancelling" ) {
             currentJob->clear();
         }
     } );

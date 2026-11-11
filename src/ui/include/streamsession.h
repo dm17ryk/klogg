@@ -7,6 +7,7 @@
 #include <QVariantList>
 
 #include <deque>
+#include <functional>
 #include <optional>
 
 #include "serialcaptureworker.h"
@@ -35,6 +36,11 @@ public:
     }
     bool isPaused() const;
     bool canResume() const;
+    // True when no worker owns the serial port (it was never opened or has fully closed).
+    bool isPortReleased() const;
+    // Processes events until the port is released; false after `timeoutMs`.
+    bool waitForPortRelease( int timeoutMs );
+    static bool waitForCondition( const std::function<bool()>& condition, int timeoutMs );
     QString sourceDisplayName() const;
     QString filePath() const;
     const SerialCaptureSettings& captureSettings() const;

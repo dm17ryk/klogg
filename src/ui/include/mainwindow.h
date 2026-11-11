@@ -372,6 +372,9 @@ class MainWindow : public QMainWindow {
 
     WindowSession session_;
     PluginUiController* pluginController_ = nullptr;
+    // Streams with a pause_comm --wait in progress; other comm commands for them are busy.
+    QSet<const StreamSession*> pauseWaits_;
+    std::optional<CommanderResult> commanderPauseBusy( const StreamSession* session ) const;
     QString loadingFileName;
 
     std::array<QAction*, MAX_RECENT_FILES> recentFileActions;

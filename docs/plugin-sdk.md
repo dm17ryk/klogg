@@ -100,8 +100,13 @@ Host requests:
 
 | Method | Parameters / result |
 | --- | --- |
-| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits; return identity/version, capabilities, actions, configuration fields |
+| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views"]`); return identity/version, capabilities, actions, configuration fields |
 | `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete |
+
+The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
+executable) and `CILOGG_INSTANCE_ID` (the single-application name that Commander clients use to
+reach this instance). A plugin can run `"$CILOGG_EXECUTABLE" command --action ...` to control its
+own CILogg, for example `pause_comm --wait` before it opens a serial port.
 
 Host notifications: `configure` (`configuration`), `cancel` (`job_id`), `shutdown`,
 `stream/opened` (`stream_id`), `stream/ack` (`stream_id`, `sequence`), and
@@ -124,9 +129,57 @@ the source tab sends `stream/stop`. Converters receive `input_path` and a
 host-assigned `output_path`; only a successful conversion opens the output.
 Never overwrite the input. Cancellation must be checked throughout long actions.
 
+Job states are `pending`, `running`, `cancelling`, `completed`, `failed` and `cancelled`;
+`pending`, `running` and `cancelling` are active, the others final. `cancel_plugin_job` on a
+running job sends `cancel` and moves the job to `cancelling` for up to 10 seconds. During that
+grace period the host still accepts the job's `progress`, `panel/update` and final answer, so a
+plugin can report its cleanup. The job then ends as `cancelled`. A late `result` or `error` is
+kept for diagnostics only: a converter's output is not opened and storage state is unchanged.
+Without an answer the job becomes `cancelled` when the grace period ends. A job that was not yet
+sent to the plugin, and a job whose window or file is closed, is cancelled at once, without a
+grace period. Job arguments that would exceed the 1 MiB message limit fail the job instead of
+the plugin.
+
 Panel elements support `text` (`text`), `table` (`columns`, `rows`), `progress`
 (`value`), and `button` (`label`, `action`, optional `arguments`). CILogg renders
 plain text and native controls, and keeps panels in the originating window.
+
+## Views and message boxes
+
+A plugin can declare interactive **views** in `plugin.json`: docks on any side or floating,
+top-level windows and dialogs with fields, buttons, progress bars and large tables. Each view
+with `"menu": true` (the default) gets a **Plugins → <title>** entry. Views are updated by
+element id, so scroll position, selection, focus and typed text survive progress updates.
+Every plugin can also show host message boxes with an optional countdown, from a job or a view,
+with or without declared views (at most 8 open and 10 new boxes per 5 seconds per plugin).
+Everything is a notification; the plugin still never sends requests to the host.
+
+```json
+"views": [
+  {"id": "main", "title": "My Tool", "kind": "dock", "area": "right"},
+  {"id": "editor", "title": "Editor", "kind": "window", "width": 800, "height": 500},
+  {"id": "ask", "title": "Question", "kind": "dialog", "modal": true, "menu": false}
+]
+```
+
+| Direction | Method | Parameters |
+| --- | --- | --- |
+| host → plugin | `view/opened` | `view_id`, `window_id`, `context` |
+| host → plugin | `view/closed` | `view_id`, `window_id` |
+| host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`), `value`, `inputs` |
+| plugin → host | `view/update` | `view_id`, optional `window_id`, and `root` or `patch` |
+| plugin → host | `view/show`, `view/hide` | `view_id`, optional `window_id`; `view/show` also takes `area`, `floating`, `title`, `focus` |
+| plugin → host | `ui/message`, `ui/close_message` | `message_id`, `title`, `text`, `icon`, `buttons`, `default`, `timeout_ms`, `modal` |
+| host → plugin | `ui/message_result` | `message_id`, `button`, `timed_out`, and `error` when the box was rejected |
+
+A view button with `action` starts a normal plugin job through `invoke_plugin`, so CLI and MCP
+callers get the same behaviour. Its `arguments` carry `inputs` (all field values) and
+`save_path` when the button has a `save_dialog`. See [plugin views](plugin-views.md) for the
+element reference, limits, lifecycle and automation names. The Python SDK has element builders
+(`column`, `label`, `field`, `button`, `table`, …), `update`, `patch`, `show_view`, `hide_view`,
+`message` (with `Message.wait()` or a callback) and `on_view_opened` / `on_view_closed` /
+`on_view_event` callbacks that run on a worker thread. `plugins/examples/view-demo` shows all of
+them; it is disabled by default.
 
 External windows belong to the plugin process. See the Python `external-window`
 SDK example: Tk runs on the main thread while the protocol reader and jobs run on
@@ -141,6 +194,15 @@ cilogg command --action invoke_plugin --plugin-id org.cilogg.generated-source --
 cilogg command --action get_plugin_job --plugin-job-id <job-id>
 cilogg command --action cancel_plugin_job --plugin-job-id <job-id>
 ```
+
+`get_plugin_job` reports `cancelling` during the cancellation grace period; callers that wait
+for a job must treat it as still active.
+`cilogg command --action pause_comm --wait [--timeout-ms <ms>] [tab selector]` returns only
+after the serial port is actually closed (default timeout 5000 ms, at most 25000 ms) and fails
+cleanly when the timeout expires. While it waits, `start_comm`, `play_comm`, `pause_comm`,
+`stop_comm` and `close_com` for the same stream fail with a "busy" error. Without `--wait`,
+`pause_comm` returns as soon as the close is queued, as before. MCP exposes the same `wait`
+option.
 
 Management options and action arguments use `--json-file <file>`. Management
 operations: `install`, `remove`, `enable`, `disable`, `configure`, `restart`,

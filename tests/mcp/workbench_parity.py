@@ -87,6 +87,14 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "plugin-views":
+            from workbench_plugin_views import exercise_plugin_views
+
+            results.append(exercise_plugin_views(cli, command, catalog, artifacts))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         jobs = []
         try:
             request = case["request"]
@@ -186,6 +194,14 @@ def main(arguments=None):
         from analysis_parity import run
 
         cases = select_cases(args.task)
+        setup_payload = None
+        if any(case.get("kind") == "plugin-views" for case in cases):
+            import os
+
+            from workbench_plugin_views import install_view_demo
+
+            setup_payload = install_view_demo
+            os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         run(
             args.executable.resolve(),
             args.artifacts.resolve(),
@@ -196,6 +212,7 @@ def main(arguments=None):
             ),
             verify=lambda *values: exercise(cases, *values),
             sdk_smoke=args.sdk_smoke,
+            setup_payload=setup_payload,
         )
         return 0
     root = args.artifacts.resolve()

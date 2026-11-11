@@ -2,12 +2,15 @@
 #include "pluginprocess.h"
 #include "pluginrepository.h"
 #include "pluginstorage.h"
+#include <QElapsedTimer>
 #include <QFile>
 #include <QNetworkAccessManager>
 #include <QSettings>
 #include <QVariantMap>
+#include <deque>
 #include <map>
 #include <memory>
+#include <vector>
 
 namespace cilogg::plugins {
 struct Result {
@@ -42,12 +45,44 @@ public:
     {
         return dataRoot_;
     }
+
+    // Plugin views and message boxes (docs/plugin-views.md). The UI owns the widgets; the
+    // manager owns the protocol, the open-view registry and the open-message limit.
+    QJsonArray viewDefinitions( const QString& pluginId ) const;
+    Result openView( const QString& pluginId, const QString& viewId, const QVariantMap& context );
+    void closeView( const QString& pluginId, const QString& viewId, const QString& windowId );
+    bool sendViewEvent( const QString& pluginId, const QString& viewId, const QString& windowId,
+                        const QJsonObject& event );
+    void finishMessage( const QString& pluginId, const QString& messageId, const QString& button,
+                        bool timedOut );
+    void noteActiveWindow( const QString& windowId );
+    QVariantMap viewState( const QString& pluginId, const QString& viewId ) const;
+    void setViewState( const QString& pluginId, const QString& viewId, const QVariantMap& state );
+    QString instanceId() const
+    {
+        return instanceId_;
+    }
+    void setInstanceId( const QString& id );
+    // Grace period between cancel_plugin_job and the forced `cancelled` state (default 10 s).
+    void setCancelGraceMs( int milliseconds );
+    // At most `count` new message boxes per plugin within `windowMs` (default 10 per 5 s).
+    void setMessageRateLimit( int count, int windowMs );
+    // Process state of a plugin ("stopped" when it has no process); empty when unknown.
+    QString pluginState( const QString& pluginId ) const;
+
 Q_SIGNALS:
     void changed();
     void fileReady( const QString& path, bool follow, const QVariantMap& context );
     void panelUpdated( const QString& pluginId, const QJsonObject& panel,
                        const QVariantMap& context );
     void pluginStopped( const QString& pluginId );
+    // view/update, view/show, view/hide, ui/message and ui/close_message from a plugin.
+    // view/show and ui/message always carry the resolved target `window_id`.
+    void viewRequest( const QString& pluginId, const QString& method, const QJsonObject& params );
+    // The plugin (re)initialized and was sent view/opened for its open views.
+    void pluginReady( const QString& pluginId );
+    // The plugin was disabled or removed: close its views without a result.
+    void viewsRevoked( const QString& pluginId );
 
 private:
     struct Entry {
@@ -81,6 +116,25 @@ private:
         std::unique_ptr<QFile> file;
         quint64 nextSequence = 0;
     };
+    struct OpenView {
+        QString pluginId;
+        QString viewId;
+        QString windowId;
+        QVariantMap context;
+    };
+    struct OpenMessage {
+        QString pluginId;
+        QString messageId;
+        QString windowId;
+    };
+    void handleUiMessage( const QString& pluginId, const QString& method,
+                          const QJsonObject& params );
+    Result cancelJob( const QString& id, bool grace );
+    void rejectMessage( const QString& pluginId, const QString& messageId, const QString& error );
+    void sendViewOpened( PluginProcess* process, const OpenView& view );
+    void revokeViews( const QString& pluginId );
+    QString resolveWindow( const QString& requested ) const;
+    bool declaresView( const QString& pluginId, const QString& viewId ) const;
     QString addJob( const QString& pluginId, const QString& action, const QVariantMap& context = {},
                     bool management = false );
     QVariantMap jobPayload( const Job& job ) const;
@@ -115,6 +169,15 @@ private:
     std::map<QString, std::unique_ptr<Entry>> entries_;
     std::map<QString, Job> jobs_;
     std::map<QString, Stream> streams_;
+    std::vector<OpenView> openViews_;
+    std::vector<OpenMessage> messages_;
+    QStringList activeWindows_; // most recently active first
+    QString instanceId_;
+    int cancelGraceMs_ = 10000;
+    std::map<QString, std::deque<qint64>> messageTimes_;
+    QElapsedTimer clock_;
+    int messageRateCount_ = 10;
+    int messageRateWindowMs_ = 5000;
     QJsonArray catalog_;
     QString catalogJobId_;
     bool storageScanActive_ = false;

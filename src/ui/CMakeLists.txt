@@ -41,6 +41,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/regexlabdock.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginuicontroller.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginuicontroller.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginview.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginviewhost.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewhost.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowplugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/uiautomation.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindowtext.h

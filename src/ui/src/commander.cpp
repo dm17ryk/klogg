@@ -610,6 +610,9 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     if ( request.searchKeepResults ) {
         map.insert( QStringLiteral( "searchKeepResults" ), true );
     }
+    if ( request.waitForCompletion ) {
+        map.insert( QStringLiteral( "wait" ), true );
+    }
 
     QVariantMap comMap;
     if ( !request.comSettings.portName.isEmpty() ) {
@@ -693,6 +696,7 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.prettyOutput = map.value( QStringLiteral( "prettyOutput" ) ).toBool();
     request.runSearch = map.value( QStringLiteral( "runSearch" ) ).toBool();
     request.rearmAutoRefresh = map.value( QStringLiteral( "rearmAutoRefresh" ) ).toBool();
+    request.waitForCompletion = map.value( QStringLiteral( "wait" ) ).toBool();
     request.searchUseRegex = map.value( QStringLiteral( "searchUseRegex" ) ).toBool();
     request.searchCaseSensitive = map.value( QStringLiteral( "searchCaseSensitive" ) ).toBool();
     request.searchInverseMatch = map.value( QStringLiteral( "searchInverseMatch" ) ).toBool();

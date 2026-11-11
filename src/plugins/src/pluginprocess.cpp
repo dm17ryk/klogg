@@ -87,7 +87,8 @@ void PluginProcess::setState( const QString& state )
 }
 
 void PluginProcess::start( const QJsonObject& configuration, const QString& configDirectory,
-                           const QString& pythonExecutable )
+                           const QString& pythonExecutable,
+                           const QMap<QString, QString>& environment )
 {
     if ( state_ != "stopped" ) {
         return;
@@ -98,12 +99,18 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
     process_.setWorkingDirectory( manifest_.directory );
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert( "PYTHONUNBUFFERED", "1" );
+    for ( auto it = environment.cbegin(); it != environment.cend(); ++it ) {
+        env.insert( it.key(), it.value() );
+    }
     process_.setProcessEnvironment( env );
     setState( "starting" );
     initializeParams_
         = { { "protocol_version", ProtocolVersion },  { "plugin_id", manifest_.id },
             { "configuration", configuration },       { "config_directory", configDirectory },
             { "max_message_bytes", MaxMessageBytes }, { "max_pending_bytes", MaxPendingBytes } };
+    // Optional host features, announced as notifications-only protocol v1 extensions.
+    // Plugins ignore unknown names; E01 may later fold this into negotiated capabilities.
+    initializeParams_.insert( "host_features", QJsonArray{ QStringLiteral( "views" ) } );
     const auto executable
         = manifest_.executable == "python"
               ? pythonExecutable

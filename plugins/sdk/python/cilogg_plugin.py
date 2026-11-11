@@ -3,18 +3,124 @@ from __future__ import annotations
 
 import json
 import pathlib
+import queue
 import sys
 import threading
 import time
 import uuid
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional, Sequence
 
 JsonObject = dict[str, Any]
 Action = Callable[["Job", JsonObject], Optional[JsonObject]]
+ViewCallback = Callable[[JsonObject], None]
 
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE
 CANCEL_FLUSH_TIMEOUT = 1.0
+VIEW_QUEUE_LIMIT = 1024
+MESSAGE_BUTTONS = ("ok", "cancel", "yes", "no", "retry", "abort", "ignore", "close")
+
+
+# Plugin view element builders (docs/plugin-views.md). Each returns a plain dict; arguments
+# that are None are omitted. Element ids must be unique within one view.
+def _element(element_type: str, element_id: Optional[str], /, **props: Any) -> JsonObject:
+    element: JsonObject = {"type": element_type}
+    if element_id is not None:
+        element["id"] = element_id
+    element.update({key: value for key, value in props.items() if value is not None})
+    return element
+
+
+def column(*children: JsonObject, id: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("column", id, children=list(children), **props)
+
+
+def row(*children: JsonObject, id: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("row", id, children=list(children), **props)
+
+
+def group(title: str, *children: JsonObject, id: Optional[str] = None,
+          collapsible: Optional[bool] = None, collapsed: Optional[bool] = None,
+          **props: Any) -> JsonObject:
+    return _element("group", id, title=title, collapsible=collapsible, collapsed=collapsed,
+                    children=list(children), **props)
+
+
+def label(id: str, text: str, tone: Optional[str] = None, bold: Optional[bool] = None,
+          **props: Any) -> JsonObject:
+    return _element("label", id, text=text, tone=tone, bold=bold, **props)
+
+
+def badge(id: str, text: str, tone: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("badge", id, text=text, tone=tone, **props)
+
+
+def field(id: str, kind: str = "text", label: Optional[str] = None, value: Any = None,
+          choices: Optional[Sequence[Any]] = None, filter: Optional[str] = None,
+          placeholder: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("field", id, kind=kind, label=label, value=value,
+                    choices=list(choices) if choices is not None else None,
+                    filter=filter, placeholder=placeholder, **props)
+
+
+def button(id: str, label: str, action: Optional[str] = None,
+           arguments: Optional[JsonObject] = None, event: Optional[bool] = None,
+           tone: Optional[str] = None, confirm: Optional[JsonObject] = None,
+           save_dialog: Optional[JsonObject] = None, **props: Any) -> JsonObject:
+    return _element("button", id, label=label, action=action, arguments=arguments,
+                    event=event, tone=tone, confirm=confirm, save_dialog=save_dialog, **props)
+
+
+def progress(id: str, value: Optional[float] = None, busy: Optional[bool] = None,
+             text: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("progress", id, value=value, busy=busy, text=text, **props)
+
+
+def table_column(id: str, title: Optional[str] = None, width: Optional[int] = None) -> JsonObject:
+    column_object: JsonObject = {"id": id, "title": title if title is not None else id}
+    if width is not None:
+        column_object["width"] = width
+    return column_object
+
+
+def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None) -> JsonObject:
+    row_object: JsonObject = {"id": id, "cells": [str(cell) for cell in cells]}
+    if tone is not None:
+        row_object["tone"] = tone
+    return row_object
+
+
+def table(id: str, columns: Sequence[JsonObject], rows: Optional[Sequence[JsonObject]] = None,
+          sortable: Optional[bool] = None, filter_box: Optional[bool] = None,
+          selection: Optional[str] = None, **props: Any) -> JsonObject:
+    return _element("table", id, columns=list(columns),
+                    rows=list(rows) if rows is not None else None, sortable=sortable,
+                    filter_box=filter_box, selection=selection, **props)
+
+
+# Patch entries for Plugin.patch().
+def set_props(element_id: str, **props: Any) -> JsonObject:
+    return {"id": element_id, "set": props}
+
+
+def replace_rows(table_id: str, rows: Sequence[JsonObject]) -> JsonObject:
+    return {"id": table_id, "replace_rows": list(rows)}
+
+
+def update_rows(table_id: str, rows: Sequence[JsonObject]) -> JsonObject:
+    return {"id": table_id, "update_rows": list(rows)}
+
+
+def insert_rows(table_id: str, rows: Sequence[JsonObject],
+                before: Optional[str] = None) -> JsonObject:
+    entry: JsonObject = {"id": table_id, "insert_rows": list(rows)}
+    if before is not None:
+        entry["before"] = before
+    return entry
+
+
+def remove_rows(table_id: str, row_ids: Sequence[str]) -> JsonObject:
+    return {"id": table_id, "remove_rows": list(row_ids)}
 
 
 class Cancelled(Exception):
@@ -131,6 +237,56 @@ class Stream:
         self.close()
 
 
+class Message:
+    """An open host message box; the result arrives as ui/message_result."""
+
+    def __init__(self, plugin: Plugin, identifier: str,
+                 callback: Optional[ViewCallback]) -> None:
+        self.plugin = plugin
+        self.id = identifier
+        self.callback = callback
+        self.result: Optional[JsonObject] = None
+        self.done = threading.Event()
+
+    def wait(self, timeout: Optional[float] = None) -> Optional[JsonObject]:
+        """Block for the result: {message_id, button, timed_out}; None on timeout or shutdown."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while not self.done.wait(0.1):
+            if self.plugin.stopping.is_set():
+                return None
+            if deadline is not None and time.monotonic() >= deadline:
+                return None
+        return self.result
+
+    def close(self) -> None:
+        """Close the box; the result reports button "closed"."""
+        self.plugin.notify("ui/close_message", {"message_id": self.id})
+
+
+class View:
+    """Convenience wrapper that binds a declared view id."""
+
+    def __init__(self, plugin: Plugin, identifier: str) -> None:
+        self.plugin = plugin
+        self.id = identifier
+
+    def update(self, root: JsonObject, window_id: Optional[str] = None) -> None:
+        self.plugin.update(self.id, root, window_id)
+
+    def patch(self, element_id: Optional[str] = None, window_id: Optional[str] = None,
+              changes: Optional[Sequence[JsonObject]] = None, **props: Any) -> None:
+        entries = list(changes or [])
+        if element_id is not None:
+            entries.append(set_props(element_id, **props))
+        self.plugin.patch(self.id, entries, window_id)
+
+    def show(self, window_id: Optional[str] = None, **overrides: Any) -> None:
+        self.plugin.show_view(self.id, window_id, **overrides)
+
+    def hide(self, window_id: Optional[str] = None) -> None:
+        self.plugin.hide_view(self.id, window_id)
+
+
 class Plugin:
     def __init__(self, manifest_path: str = "plugin.json") -> None:
         self.manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
@@ -140,18 +296,140 @@ class Plugin:
         self.workers: dict[str, threading.Thread] = {}
         self.configuration: JsonObject = {}
         self.config_directory = None
+        self.host_features: list[str] = []
         self.lock = threading.RLock()
         self.output_lock = threading.Lock()
         self.credit = threading.Condition()
         self.pending_bytes = 0
         self.stopping = threading.Event()
         self.initialized = False
+        self.view_callbacks: dict[str, list[ViewCallback]] = {
+            "view/opened": [], "view/closed": [], "view/event": []}
+        self.messages: dict[str, Message] = {}
+        self.view_queue: queue.Queue = queue.Queue(maxsize=VIEW_QUEUE_LIMIT)
+        self.view_worker: Optional[threading.Thread] = None
 
     def action(self, identifier: str) -> Callable[[Action], Action]:
         def register(callback: Action) -> Action:
             self.actions[identifier] = callback
             return callback
         return register
+
+    # Plugin views and message boxes (docs/plugin-views.md).
+    @property
+    def supports_views(self) -> bool:
+        return "views" in self.host_features
+
+    def on_view_opened(self, callback: ViewCallback) -> ViewCallback:
+        """Register callback(params) for view/opened {view_id, window_id, context}."""
+        self.view_callbacks["view/opened"].append(callback)
+        return callback
+
+    def on_view_closed(self, callback: ViewCallback) -> ViewCallback:
+        """Register callback(params) for view/closed {view_id, window_id}."""
+        self.view_callbacks["view/closed"].append(callback)
+        return callback
+
+    def on_view_event(self, callback: ViewCallback) -> ViewCallback:
+        """Register callback(params) for view/event {view_id, window_id, element_id, type,
+        value, inputs}. Callbacks run in order on one worker thread, never the reader."""
+        self.view_callbacks["view/event"].append(callback)
+        return callback
+
+    def view(self, identifier: str) -> View:
+        return View(self, identifier)
+
+    def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
+        """Replace a view's element tree (in every window without window_id)."""
+        params: JsonObject = {"view_id": view_id, "root": root}
+        if window_id:
+            params["window_id"] = window_id
+        self.notify("view/update", params)
+
+    def patch(self, view_id: str, changes: Sequence[JsonObject],
+              window_id: Optional[str] = None) -> None:
+        """Apply set_props()/row operation entries to existing elements."""
+        params: JsonObject = {"view_id": view_id, "patch": list(changes)}
+        if window_id:
+            params["window_id"] = window_id
+        self.notify("view/update", params)
+
+    def show_view(self, view_id: str, window_id: Optional[str] = None, *,
+                  area: Optional[str] = None, floating: Optional[bool] = None,
+                  title: Optional[str] = None, focus: Optional[bool] = None) -> None:
+        """Open or raise a declared view (default: the most recently active window)."""
+        params = _element("view", None, view_id=view_id, window_id=window_id or None,
+                          area=area, floating=floating, title=title, focus=focus)
+        del params["type"]
+        self.notify("view/show", params)
+
+    def hide_view(self, view_id: str, window_id: Optional[str] = None) -> None:
+        params: JsonObject = {"view_id": view_id}
+        if window_id:
+            params["window_id"] = window_id
+        self.notify("view/hide", params)
+
+    def message(self, text: str, title: str = "", icon: str = "info",
+                buttons: Sequence[str] = ("ok",), default: Optional[str] = None,
+                timeout_ms: Optional[int] = None, modal: bool = True,
+                window_id: Optional[str] = None, callback: Optional[ViewCallback] = None,
+                message_id: Optional[str] = None) -> Message:
+        """Show a host message box. Use the returned Message.wait() or a result callback."""
+        unknown = [name for name in buttons if name not in MESSAGE_BUTTONS]
+        if unknown or not buttons:
+            raise ValueError(f"Unsupported message buttons: {unknown or 'none'}")
+        identifier = message_id or str(uuid.uuid4())
+        handle = Message(self, identifier, callback)
+        with self.lock:
+            self.messages[identifier] = handle
+        params = _element("message", None, message_id=identifier, title=title, text=text[:4096],
+                          icon=icon, buttons=list(buttons), default=default,
+                          timeout_ms=timeout_ms, modal=modal, window_id=window_id or None)
+        del params["type"]
+        try:
+            self.notify("ui/message", params)
+        except BaseException:
+            with self.lock:
+                self.messages.pop(identifier, None)
+            raise
+        return handle
+
+    def _queue_view_callback(self, callbacks: list[ViewCallback], params: JsonObject) -> None:
+        if not callbacks:
+            return
+        with self.lock:
+            if self.view_worker is None:
+                self.view_worker = threading.Thread(target=self._run_view_callbacks,
+                                                    name="plugin-view-callbacks", daemon=True)
+                self.view_worker.start()
+        try:
+            self.view_queue.put_nowait((list(callbacks), params))
+        except queue.Full:
+            print("Plugin view callback queue is full; event dropped", file=sys.stderr, flush=True)
+
+    def _run_view_callbacks(self) -> None:
+        while True:
+            item = self.view_queue.get()
+            if item is None:
+                return
+            callbacks, params = item
+            for callback in callbacks:
+                try:
+                    callback(params)
+                except Exception as error:  # A callback failure never stops the protocol.
+                    print(f"Plugin view callback failed: {error}", file=sys.stderr, flush=True)
+
+    def _view_notification(self, method: str, params: JsonObject) -> None:
+        if method == "ui/message_result":
+            with self.lock:
+                handle = self.messages.pop(str(params.get("message_id")), None)
+            if handle:
+                handle.result = params
+                handle.done.set()
+                if handle.callback:
+                    self._queue_view_callback([handle.callback], params)
+            return
+        self._queue_view_callback(self.view_callbacks[method], params)
 
     @staticmethod
     def encode(message: JsonObject) -> bytes:
@@ -208,6 +486,7 @@ class Plugin:
                 raise ValueError("Incompatible initialization")
             self.configuration = params.get("configuration", {})
             self.config_directory = params.get("config_directory")
+            self.host_features = [str(name) for name in params.get("host_features", [])]
             self.initialized = True
             self.send({"jsonrpc": "2.0", "id": message["id"], "result": {
                 "plugin_id": self.manifest["id"], "protocol_version": 1,
@@ -238,6 +517,8 @@ class Plugin:
                         stream.ack.set()
                     elif method == "stream/stop":
                         stream.closed.set()
+        elif method in ("view/opened", "view/closed", "view/event", "ui/message_result"):
+            self._view_notification(method, params)
         else:
             raise ValueError(f"Unknown host method: {method}")
 
@@ -263,8 +544,18 @@ class Plugin:
                 for stream in self.streams.values():
                     stream.closed.set()
                 workers = list(self.workers.values())
+                view_worker = self.view_worker
+                for handle in self.messages.values():
+                    handle.done.set()
+                self.messages.clear()
             with self.credit:
                 self.credit.notify_all()
             deadline = time.monotonic() + 2.8
             for worker in workers:
                 worker.join(max(0.0, deadline - time.monotonic()))
+            if view_worker is not None:
+                try:
+                    self.view_queue.put(None, timeout=max(0.0, deadline - time.monotonic()))
+                    view_worker.join(max(0.0, deadline - time.monotonic()))
+                except queue.Full:
+                    pass

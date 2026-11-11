@@ -139,6 +139,49 @@ QString validateActions( const QJsonArray& actions, const QJsonArray& capabiliti
     return {};
 }
 
+QString validateViews( const QJsonArray& views )
+{
+    if ( views.size() > MaxViewsPerPlugin ) {
+        return QStringLiteral( "Too many plugin views (maximum %1)." ).arg( MaxViewsPerPlugin );
+    }
+    const auto optionalBool = []( const QJsonObject& view, const char* key ) {
+        return !view.contains( QLatin1String( key ) )
+               || view.value( QLatin1String( key ) ).isBool();
+    };
+    const auto optionalSize = []( const QJsonObject& view, const char* key ) {
+        const auto value = view.value( QLatin1String( key ) );
+        return value.isUndefined()
+               || ( value.isDouble() && value.toDouble() == std::floor( value.toDouble() )
+                    && value.toDouble() >= 1 && value.toDouble() <= MaxViewSize );
+    };
+    QSet<QString> ids;
+    for ( const auto& item : views ) {
+        const auto view = item.toObject();
+        const auto id = view.value( "id" ).toString();
+        if ( !item.isObject() || id.isEmpty() || ids.contains( id ) || id.size() > 128
+             || ( view.contains( "title" )
+                  && ( !view.value( "title" ).isString()
+                       || view.value( "title" ).toString().size() > 256 ) ) ) {
+            return QStringLiteral( "Invalid view: %1" ).arg( id );
+        }
+        const auto kind = view.value( "kind" ).toString( "dock" );
+        const auto area = view.value( "area" ).toString( "right" );
+        if ( ( view.contains( "kind" ) && !view.value( "kind" ).isString() )
+             || !QStringList{ "dock", "window", "dialog" }.contains( kind )
+             || ( view.contains( "area" ) && !view.value( "area" ).isString() )
+             || !QStringList{ "left", "right", "top", "bottom" }.contains( area ) ) {
+            return QStringLiteral( "Invalid view kind or area: %1" ).arg( id );
+        }
+        if ( !optionalBool( view, "menu" ) || !optionalBool( view, "floating" )
+             || !optionalBool( view, "modal" ) || !optionalSize( view, "width" )
+             || !optionalSize( view, "height" ) ) {
+            return QStringLiteral( "Invalid view flag or size: %1" ).arg( id );
+        }
+        ids.insert( id );
+    }
+    return {};
+}
+
 Manifest Manifest::read( const QString& directory )
 {
     QFile file( QDir( directory ).filePath( "plugin.json" ) );
@@ -177,7 +220,8 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
          || m.json.value( "protocol_version" ) != QJsonValue( ProtocolVersion )
          || ( m.json.contains( "arguments" ) && !m.json.value( "arguments" ).isArray() )
          || ( m.json.contains( "actions" ) && !m.json.value( "actions" ).isArray() )
-         || ( m.json.contains( "configuration" ) && !m.json.value( "configuration" ).isArray() ) ) {
+         || ( m.json.contains( "configuration" ) && !m.json.value( "configuration" ).isArray() )
+         || ( m.json.contains( "views" ) && !m.json.value( "views" ).isArray() ) ) {
         m.error = QStringLiteral( "Invalid manifest identity, version, JSON or protocol version." );
     }
     const auto capabilities = m.json.value( "capabilities" ).toArray();
@@ -202,8 +246,12 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
     }
     const auto actionError = validateActions( m.json.value( "actions" ).toArray(), capabilities );
     const auto fieldError = validateFields( m.json.value( "configuration" ).toArray() );
+    const auto viewError = validateViews( m.json.value( "views" ).toArray() );
     if ( !actionError.isEmpty() ) {
         m.error = actionError;
+    }
+    if ( !viewError.isEmpty() ) {
+        m.error = viewError;
     }
     if ( !fieldError.isEmpty() ) {
         m.error = fieldError;

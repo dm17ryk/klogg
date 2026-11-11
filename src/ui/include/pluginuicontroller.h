@@ -7,6 +7,7 @@
 #include <functional>
 
 class MainWindow;
+class PluginViewHost;
 class PluginUiController final : public QObject {
     Q_OBJECT
 public:
@@ -15,6 +16,10 @@ public:
                         Executor executor );
     ~PluginUiController() override;
     void closeFile( const QString& path );
+    PluginViewHost* viewHost() const
+    {
+        return viewHost_;
+    }
 
 private:
     void refreshActions();
@@ -34,4 +39,5 @@ private:
     QMap<QString, QPair<QJsonObject, QVariantMap>> pendingPanels_;
     QTimer* panelTimer_ = nullptr;
     QJsonArray actionDescriptions_;
+    PluginViewHost* viewHost_ = nullptr;
 };
