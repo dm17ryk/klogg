@@ -1586,6 +1586,21 @@
       "taskFile": "tasks/E12.md"
     },
     {
+      "id": "E13",
+      "title": "Add interactive plugin views",
+      "plan": "08-ecosystem.md",
+      "anchor": "e13--add-interactive-plugin-views",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "in_progress",
+      "requirements": [],
+      "task_body_chars": 5098,
+      "taskFile": "tasks/E13.md"
+    },
+    {
       "id": "I02",
       "title": "Compare files, runs, periods and distributions",
       "plan": "05-insights.md",
@@ -2147,6 +2162,7 @@
         "E10",
         "E11",
         "E12",
+        "E13",
         "G01",
         "G02",
         "G03",
@@ -2723,6 +2739,7 @@
     "V15",
     "D12",
     "E12",
+    "E13",
     "I02",
     "V09",
     "V11",
