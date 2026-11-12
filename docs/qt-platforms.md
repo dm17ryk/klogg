@@ -67,6 +67,18 @@ on `macos-26-intel`. This changes the build host, not the deployment target or Q
 version. The ARM job continues to build and test on macOS 26. Intel macOS 26
 runtime validation remains separate from the Intel build on macOS 15.
 
+On 2026-11-12 hosted `macos-15` (ARM) runners stopped being allocated. Jobs
+waited 15 minutes and were cancelled without starting. These jobs moved to
+`macos-26` (ARM):
+
+- the Qt 6.10.1 ARM build;
+- the workbench parity and benchmark self-tests;
+- the ARM DMG packaging check;
+- the release macOS validation.
+
+Deployment targets and package names are unchanged. `macos-15-intel` is
+unaffected.
+
 Modern Qt 6.12 builds are **manual-install packages**. They do not produce an
 automatic-update ZIP, since older installed updater clients do not understand
 a package's minimum macOS version. Automatic updates, including updates from a
