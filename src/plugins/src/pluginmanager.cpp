@@ -36,7 +36,21 @@ QString platformName()
 }
 bool pending( const QString& state )
 {
-    return state == "pending" || state == "running";
+    // `cancelling`: cancel was requested; progress, panels and the final answer still count.
+    return state == "pending" || state == "running" || state == "cancelling";
+}
+
+constexpr int MaxOpenMessages = 8;
+constexpr int MaxMessageText = 4096;
+constexpr int MaxEventBytes = 512 * 1024; // a view/event, well below the 1 MiB message limit
+const QStringList MessageButtons{
+    "ok", "cancel", "yes", "no", "retry", "abort", "ignore", "close"
+};
+
+QString settingsSafe( QString text )
+{
+    static const QRegularExpression unsafe( "[^A-Za-z0-9._-]" );
+    return text.replace( unsafe, "_" );
 }
 
 QStringList secretFieldNames( const QJsonArray& fields )
@@ -81,6 +95,7 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     , settings_( QDir( dataRoot_ ).filePath( "settings.ini" ), QSettings::IniFormat )
     , storage_( QDir( dataRoot_ ).filePath( "captures" ) )
     , networkAccess_( network ? network : &network_ )
+    , instanceId_( QStringLiteral( "pid-%1" ).arg( QCoreApplication::applicationPid() ) )
 {
     QDir().mkpath( dataRoot_ );
     QDir().mkpath( QDir( dataRoot_ ).filePath( "captures" ) );
@@ -609,6 +624,14 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
             for ( const auto& jobId : waiting ) {
                 dispatchJob( jobId );
             }
+            // Views stay open across restarts; tell the new process about each of them.
+            const auto views = openViews_;
+            for ( const auto& view : views ) {
+                if ( view.pluginId == id && readyProcess->state() == "ready" ) {
+                    sendViewOpened( readyProcess, view );
+                }
+            }
+            Q_EMIT pluginReady( id );
         }
     } );
     connect( process, &PluginProcess::message, this,
@@ -658,7 +681,10 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
     if ( python.isEmpty() ) {
         python = QStandardPaths::findExecutable( "python" );
     }
-    process->start( config, configDir, python );
+    // Lets a plugin call Commander on its own instance (docs/plugin-sdk.md).
+    process->start( config, configDir, python,
+                    { { "CILOGG_EXECUTABLE", QCoreApplication::applicationFilePath() },
+                      { "CILOGG_INSTANCE_ID", instanceId_ } } );
     return process;
 }
 
@@ -750,16 +776,28 @@ void PluginManager::dispatchJob( const QString& jobId )
         params.insert( "output_path", j.outputPath );
         j.outputSupervised = true;
     }
+    const QJsonObject invoke{ { "job_id", jobId },
+                              { "action", j.action },
+                              { "arguments", params },
+                              { "context", QJsonObject::fromVariantMap( j.context ) } };
+    // Oversized arguments (for example from a view button) fail the job, never the transport.
+    if ( QJsonDocument( invoke ).toJson( QJsonDocument::Compact ).size() + 128 > MaxMessageBytes ) {
+        LOG_WARNING << "Plugin job arguments exceed the message limit plugin="
+                    << j.pluginId.toStdString() << " job=" << jobId.toStdString();
+        finishJob( jobId, "Plugin job arguments exceed the 1 MiB message limit." );
+        return;
+    }
     j.state = "running";
-    process->request( jobId, "invoke",
-                      { { "job_id", jobId },
-                        { "action", j.action },
-                        { "arguments", params },
-                        { "context", QJsonObject::fromVariantMap( j.context ) } } );
+    process->request( jobId, "invoke", invoke );
     Q_EMIT changed();
 }
 
 Result PluginManager::cancel( const QString& id )
+{
+    return cancelJob( id, true );
+}
+
+Result PluginManager::cancelJob( const QString& id, bool grace )
 {
     const auto it = jobs_.find( id );
     if ( it == jobs_.end() ) {
@@ -768,12 +806,37 @@ Result PluginManager::cancel( const QString& id )
     if ( !pending( it->second.state ) ) {
         return job( id );
     }
+    if ( it->second.state == "cancelling" ) {
+        // A closed window or file ends the grace period at once.
+        if ( !grace ) {
+            finishJob( id, {} );
+        }
+        return job( id );
+    }
     it->second.cancelRequested = true;
     const auto plugin = entries_.find( it->second.pluginId );
+    const bool delivered = it->second.invocation && it->second.state == "running" && !shuttingDown_
+                           && plugin != entries_.end() && plugin->second->process
+                           && plugin->second->process->state() == "ready";
     if ( plugin != entries_.end() && plugin->second->process ) {
         plugin->second->process->cancelRequest( id );
     }
-    finishJob( id, {} );
+    if ( !delivered || !grace ) {
+        finishJob( id, {} );
+        return job( id );
+    }
+    // The plugin may still report cleanup progress, panels and its final answer.
+    it->second.state = "cancelling";
+    LOG_DEBUG << "Plugin job cancelling plugin=" << it->second.pluginId.toStdString()
+              << " job=" << id.toStdString() << " grace_ms=" << cancelGraceMs_;
+    QTimer::singleShot( cancelGraceMs_, this, [ this, id ] {
+        const auto cancelling = jobs_.find( id );
+        if ( cancelling != jobs_.end() && cancelling->second.state == "cancelling" ) {
+            LOG_DEBUG << "Plugin job cancel grace expired job=" << id.toStdString();
+            finishJob( id, {} );
+        }
+    } );
+    Q_EMIT changed();
     return job( id );
 }
 
@@ -800,6 +863,11 @@ void PluginManager::processStopped( const QString& id )
             finishJob( key, terminalError( it->second->process->error() ) );
         }
     }
+    // Open message boxes close without a result; views stay open in a stopped state.
+    messages_.erase(
+        std::remove_if( messages_.begin(), messages_.end(),
+                        [ &id ]( const OpenMessage& message ) { return message.pluginId == id; } ),
+        messages_.end() );
     Q_EMIT pluginStopped( id );
     Q_EMIT changed();
 }
@@ -846,7 +914,7 @@ void PluginManager::closeFile( const QString& path, const QString& windowId )
             }
         }
         for ( const auto& id : pendingIds ) {
-            cancel( id );
+            cancelJob( id, false ); // the target is gone: no grace period
         }
     }
 }
@@ -871,8 +939,27 @@ void PluginManager::closeWindow( const QString& windowId )
         }
     }
     for ( const auto& id : jobIds ) {
-        cancel( id );
+        cancelJob( id, false ); // the target window is gone: no grace period
     }
+    QList<OpenView> views;
+    for ( const auto& view : openViews_ ) {
+        if ( view.windowId == windowId ) {
+            views.append( view );
+        }
+    }
+    for ( const auto& view : views ) {
+        closeView( view.pluginId, view.viewId, view.windowId );
+    }
+    QList<OpenMessage> boxes;
+    for ( const auto& message : messages_ ) {
+        if ( message.windowId == windowId ) {
+            boxes.append( message );
+        }
+    }
+    for ( const auto& message : boxes ) {
+        finishMessage( message.pluginId, message.messageId, "closed", false );
+    }
+    activeWindows_.removeAll( windowId );
 }
 void PluginManager::shutdown()
 {
@@ -900,7 +987,9 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
                                                            .value( "message" )
                                                            .toString( "Plugin action failed." )
                                                      : QString{};
-        if ( error.isEmpty() && !it->second.outputPath.isEmpty() ) {
+        // A late answer to a cancelled job is kept for diagnostics only: it never opens the
+        // converter output or changes storage state.
+        if ( error.isEmpty() && !it->second.outputPath.isEmpty() && !it->second.cancelRequested ) {
             if ( !QFileInfo( it->second.outputPath ).isFile() ) {
                 finishJob( id, "Converter produced no output." );
                 return;
@@ -928,7 +1017,8 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
         jobIt->second.progress = qBound( 0.0, params.value( "value" ).toDouble(), 1.0 );
         Q_EMIT changed();
     }
-    else if ( method == "panel/update" && ownsJob && !jobIt->second.cancelRequested ) {
+    else if ( method == "panel/update" && ownsJob
+              && ( !jobIt->second.cancelRequested || jobIt->second.state == "cancelling" ) ) {
         Q_EMIT panelUpdated( pluginId, params.value( "panel" ).toObject(), jobIt->second.context );
     }
     else if ( method == "stream/open" ) {
@@ -1028,6 +1118,11 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
         LOG_DEBUG << "Plugin log id=" << pluginId.toStdString() << " "
                   << params.value( "message" ).toString().toStdString();
     }
+    else if ( !frame.contains( "id" )
+              && ( method == "view/update" || method == "view/show" || method == "view/hide"
+                   || method == "ui/message" || method == "ui/close_message" ) ) {
+        handleUiMessage( pluginId, method, params );
+    }
     else {
         LOG_WARNING << "Plugin unknown message id=" << pluginId.toStdString()
                     << " method=" << method.toStdString();
@@ -1121,6 +1216,9 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         return { "Plugin not found.", {} };
     }
     auto& e = *it->second;
+    if ( operation == "remove" || operation == "disable" ) {
+        revokeViews( id );
+    }
     if ( operation == "remove" || operation == "restart" ) {
         if ( operation == "restart" || ( e.process && e.process->isRunning() ) ) {
             const auto jobId = addJob( id, operation, {}, true );
@@ -1449,5 +1547,418 @@ void PluginManager::loadCatalog( const QByteArray& bytes, const QString& jobId )
     }
     catalog_ = selected;
     finishJob( jobId, {}, { { "plugins", catalog_.toVariantList() } } );
+}
+
+// Plugin views and message boxes (docs/plugin-views.md).
+QJsonArray PluginManager::viewDefinitions( const QString& pluginId ) const
+{
+    const auto it = entries_.find( pluginId );
+    return it == entries_.end() || !it->second->manifest.valid()
+               ? QJsonArray{}
+               : it->second->manifest.json.value( "views" ).toArray();
+}
+
+bool PluginManager::declaresView( const QString& pluginId, const QString& viewId ) const
+{
+    const auto views = viewDefinitions( pluginId );
+    return std::any_of( views.begin(), views.end(), [ &viewId ]( const QJsonValue& view ) {
+        return view.toObject().value( "id" ).toString() == viewId;
+    } );
+}
+
+void PluginManager::sendViewOpened( PluginProcess* process, const OpenView& view )
+{
+    LOG_DEBUG << "Plugin view opened plugin=" << view.pluginId.toStdString()
+              << " view=" << view.viewId.toStdString() << " window=" << view.windowId.toStdString();
+    process->notify( "view/opened",
+                     { { "view_id", view.viewId },
+                       { "window_id", view.windowId },
+                       { "context", QJsonObject::fromVariantMap( view.context ) } } );
+}
+
+Result PluginManager::openView( const QString& pluginId, const QString& viewId,
+                                const QVariantMap& context )
+{
+    if ( shuttingDown_ ) {
+        return { "CILogg is shutting down.", {} };
+    }
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() ) {
+        return { "Plugin not found.", {} };
+    }
+    auto& e = *it->second;
+    if ( !e.manifest.valid() ) {
+        return { e.manifest.error, {} };
+    }
+    if ( !settings_.value( configurationKey( pluginId ) + "enabled", false ).toBool() ) {
+        return { "Plugin is disabled.", {} };
+    }
+    if ( !declaresView( pluginId, viewId ) ) {
+        return { "Plugin view not declared in plugin.json.", {} };
+    }
+    if ( e.process && ( e.process->state() == "failed" || e.process->state() == "stopping" ) ) {
+        return { "Plugin failed or is stopping; restart it explicitly.", {} };
+    }
+    const auto windowId = context.value( "windowId" ).toString();
+    auto open = std::find_if( openViews_.begin(), openViews_.end(), [ & ]( const OpenView& view ) {
+        return view.pluginId == pluginId && view.viewId == viewId && view.windowId == windowId;
+    } );
+    if ( open == openViews_.end() ) {
+        openViews_.push_back( { pluginId, viewId, windowId, context } );
+        open = std::prev( openViews_.end() );
+    }
+    else {
+        open->context = context;
+    }
+    const auto view = *open;
+    auto* process = ensureProcess( e );
+    if ( process->state() == "failed" ) {
+        openViews_.erase( std::remove_if( openViews_.begin(), openViews_.end(),
+                                          [ & ]( const OpenView& candidate ) {
+                                              return candidate.pluginId == pluginId
+                                                     && candidate.viewId == viewId
+                                                     && candidate.windowId == windowId;
+                                          } ),
+                          openViews_.end() );
+        return { terminalError( process->error() ), {} };
+    }
+    if ( process->state() == "ready" ) {
+        sendViewOpened( process, view );
+    }
+    Q_EMIT changed();
+    return { {},
+             { { "pluginId", pluginId },
+               { "viewId", viewId },
+               { "windowId", windowId },
+               { "state", process->state() } } };
+}
+
+void PluginManager::closeView( const QString& pluginId, const QString& viewId,
+                               const QString& windowId )
+{
+    const auto open = std::find_if(
+        openViews_.begin(), openViews_.end(), [ & ]( const OpenView& view ) {
+            return view.pluginId == pluginId && view.viewId == viewId && view.windowId == windowId;
+        } );
+    if ( open == openViews_.end() ) {
+        return;
+    }
+    openViews_.erase( open );
+    LOG_DEBUG << "Plugin view closed plugin=" << pluginId.toStdString()
+              << " view=" << viewId.toStdString() << " window=" << windowId.toStdString();
+    const auto entry = entries_.find( pluginId );
+    if ( entry != entries_.end() && entry->second->process
+         && entry->second->process->state() == "ready" ) {
+        entry->second->process->notify( "view/closed",
+                                        { { "view_id", viewId }, { "window_id", windowId } } );
+    }
+}
+
+bool PluginManager::sendViewEvent( const QString& pluginId, const QString& viewId,
+                                   const QString& windowId, const QJsonObject& event )
+{
+    const auto open = std::find_if(
+        openViews_.begin(), openViews_.end(), [ & ]( const OpenView& view ) {
+            return view.pluginId == pluginId && view.viewId == viewId && view.windowId == windowId;
+        } );
+    const auto entry = entries_.find( pluginId );
+    if ( open == openViews_.end() || entry == entries_.end() || !entry->second->process
+         || entry->second->process->state() != "ready" ) {
+        return false;
+    }
+    auto params = event;
+    params.insert( "view_id", viewId );
+    params.insert( "window_id", windowId );
+    // User input must never exceed the transport limit (which would fail the plugin): drop
+    // the inputs, then the value, and mark the event as truncated.
+    const auto size = [ &params ] {
+        return QJsonDocument( params ).toJson( QJsonDocument::Compact ).size() + 128;
+    };
+    if ( size() > MaxEventBytes ) {
+        params.insert( "inputs", QJsonObject{} );
+        params.insert( "truncated", true );
+        if ( size() > MaxEventBytes ) {
+            params.insert( "value", QJsonValue::Null );
+        }
+        if ( size() > MaxEventBytes ) {
+            LOG_WARNING << "Plugin view event dropped: too large plugin=" << pluginId.toStdString()
+                        << " view=" << viewId.toStdString();
+            return false;
+        }
+        LOG_WARNING << "Plugin view event truncated plugin=" << pluginId.toStdString()
+                    << " view=" << viewId.toStdString();
+    }
+    if ( entry->second->process->pendingOutputBytes() + size() > MaxPendingBytes / 2 ) {
+        // The plugin is not reading its input: drop user events rather than fail the transport.
+        LOG_WARNING << "Plugin view event dropped: plugin input backlog plugin="
+                    << pluginId.toStdString();
+        return false;
+    }
+    LOG_DEBUG << "Plugin view event plugin=" << pluginId.toStdString()
+              << " view=" << viewId.toStdString()
+              << " element=" << event.value( "element_id" ).toString().left( 128 ).toStdString()
+              << " type=" << event.value( "type" ).toString().left( 16 ).toStdString();
+    entry->second->process->notify( "view/event", params );
+    return true;
+}
+
+void PluginManager::rejectMessage( const QString& pluginId, const QString& messageId,
+                                   const QString& error )
+{
+    LOG_WARNING << "Plugin message rejected plugin=" << pluginId.toStdString()
+                << " message=" << messageId.left( 128 ).toStdString()
+                << " reason=" << error.toStdString();
+    const auto entry = entries_.find( pluginId );
+    if ( entry != entries_.end() && entry->second->process ) {
+        entry->second->process->notify( "ui/message_result", { { "message_id", messageId },
+                                                               { "button", "" },
+                                                               { "timed_out", false },
+                                                               { "error", error } } );
+    }
+}
+
+void PluginManager::finishMessage( const QString& pluginId, const QString& messageId,
+                                   const QString& button, bool timedOut )
+{
+    const auto open
+        = std::find_if( messages_.begin(), messages_.end(), [ & ]( const OpenMessage& message ) {
+              return message.pluginId == pluginId && message.messageId == messageId;
+          } );
+    if ( open == messages_.end() ) {
+        return;
+    }
+    messages_.erase( open );
+    LOG_DEBUG << "Plugin message finished plugin=" << pluginId.toStdString()
+              << " message=" << messageId.toStdString() << " button=" << button.toStdString()
+              << " timed_out=" << timedOut;
+    const auto entry = entries_.find( pluginId );
+    if ( entry != entries_.end() && entry->second->process
+         && entry->second->process->state() == "ready" ) {
+        entry->second->process->notify(
+            "ui/message_result",
+            { { "message_id", messageId }, { "button", button }, { "timed_out", timedOut } } );
+    }
+}
+
+void PluginManager::noteActiveWindow( const QString& windowId )
+{
+    if ( windowId.isEmpty() ) {
+        return;
+    }
+    activeWindows_.removeAll( windowId );
+    activeWindows_.prepend( windowId );
+}
+
+QString PluginManager::resolveWindow( const QString& requested ) const
+{
+    if ( !requested.isEmpty() ) {
+        return activeWindows_.contains( requested ) ? requested : QString{};
+    }
+    return activeWindows_.isEmpty() ? QString{} : activeWindows_.front();
+}
+
+void PluginManager::revokeViews( const QString& pluginId )
+{
+    const auto before = openViews_.size() + messages_.size();
+    openViews_.erase( std::remove_if( openViews_.begin(), openViews_.end(),
+                                      [ &pluginId ]( const OpenView& view ) {
+                                          return view.pluginId == pluginId;
+                                      } ),
+                      openViews_.end() );
+    messages_.erase( std::remove_if( messages_.begin(), messages_.end(),
+                                     [ &pluginId ]( const OpenMessage& message ) {
+                                         return message.pluginId == pluginId;
+                                     } ),
+                     messages_.end() );
+    LOG_DEBUG << "Plugin views revoked plugin=" << pluginId.toStdString()
+              << " entries=" << before - openViews_.size() - messages_.size();
+    Q_EMIT viewsRevoked( pluginId );
+}
+
+void PluginManager::handleUiMessage( const QString& pluginId, const QString& method,
+                                     const QJsonObject& params )
+{
+    const auto size
+        = QJsonDocument( params ).toJson( QJsonDocument::Compact ).size(); // ids and sizes only
+    if ( method == "ui/message" || method == "ui/close_message" ) {
+        const auto messageId = params.value( "message_id" ).toString();
+        if ( messageId.isEmpty() || messageId.size() > 128 ) {
+            LOG_WARNING << "Plugin message without a valid message_id plugin="
+                        << pluginId.toStdString();
+            return;
+        }
+        const auto open = std::find_if(
+            messages_.begin(), messages_.end(), [ & ]( const OpenMessage& message ) {
+                return message.pluginId == pluginId && message.messageId == messageId;
+            } );
+        if ( method == "ui/close_message" ) {
+            if ( open != messages_.end() ) {
+                Q_EMIT viewRequest(
+                    pluginId, method,
+                    { { "message_id", messageId }, { "window_id", open->windowId } } );
+            }
+            return;
+        }
+        if ( open != messages_.end() ) {
+            rejectMessage( pluginId, messageId, "A message box with this id is already open." );
+            return;
+        }
+        const auto count = std::count_if(
+            messages_.begin(), messages_.end(),
+            [ & ]( const OpenMessage& message ) { return message.pluginId == pluginId; } );
+        if ( count >= MaxOpenMessages ) {
+            rejectMessage( pluginId, messageId,
+                           QStringLiteral( "Too many open message boxes (maximum %1)." )
+                               .arg( MaxOpenMessages ) );
+            return;
+        }
+        // Boxes take the focus: a plugin may show only a few within a sliding window.
+        if ( !clock_.isValid() ) {
+            clock_.start();
+        }
+        auto& shown = messageTimes_[ pluginId ];
+        const auto now = clock_.elapsed();
+        while ( !shown.empty() && now - shown.front() >= messageRateWindowMs_ ) {
+            shown.pop_front();
+        }
+        if ( static_cast<int>( shown.size() ) >= messageRateCount_ ) {
+            rejectMessage( pluginId, messageId,
+                           QStringLiteral( "Message box rate limit: at most %1 per %2 ms." )
+                               .arg( messageRateCount_ )
+                               .arg( messageRateWindowMs_ ) );
+            return;
+        }
+        QJsonArray buttons;
+        for ( const auto& value : params.value( "buttons" ).toArray( { "ok" } ) ) {
+            if ( !MessageButtons.contains( value.toString() ) || buttons.contains( value ) ) {
+                rejectMessage( pluginId, messageId, "Invalid message box button." );
+                return;
+            }
+            buttons.append( value );
+        }
+        const auto icon = params.value( "icon" ).toString( "info" );
+        const auto timeout = params.value( "timeout_ms" );
+        if ( buttons.isEmpty()
+             || !QStringList{ "info", "warning", "error", "question" }.contains( icon )
+             || ( params.contains( "default" ) && !buttons.contains( params.value( "default" ) ) )
+             || ( !timeout.isUndefined() && !timeout.isNull()
+                  && ( !timeout.isDouble() || timeout.toDouble() < 1
+                       || timeout.toDouble() > 24.0 * 3600 * 1000 ) )
+             || ( params.contains( "modal" ) && !params.value( "modal" ).isBool() ) ) {
+            rejectMessage( pluginId, messageId, "Invalid message box parameters." );
+            return;
+        }
+        const auto windowId = resolveWindow( params.value( "window_id" ).toString() );
+        if ( windowId.isEmpty() ) {
+            rejectMessage( pluginId, messageId, "No CILogg window can show the message box." );
+            return;
+        }
+        QJsonObject message{
+            { "message_id", messageId },
+            { "window_id", windowId },
+            { "title", params.value( "title" ).toString().left( 256 ) },
+            { "text", params.value( "text" ).toString().left( MaxMessageText ) },
+            { "icon", icon },
+            { "buttons", buttons },
+            { "default", params.value( "default" ).toString( buttons.first().toString() ) },
+            { "modal", params.value( "modal" ).toBool( true ) },
+        };
+        if ( timeout.isDouble() ) {
+            message.insert( "timeout_ms", static_cast<qint64>( timeout.toDouble() ) );
+        }
+        messages_.push_back( { pluginId, messageId, windowId } );
+        shown.push_back( now );
+        LOG_DEBUG << "Plugin message shown plugin=" << pluginId.toStdString()
+                  << " message=" << messageId.toStdString() << " window=" << windowId.toStdString()
+                  << " bytes=" << size;
+        Q_EMIT viewRequest( pluginId, method, message );
+        return;
+    }
+    const auto viewId = params.value( "view_id" ).toString();
+    if ( !declaresView( pluginId, viewId ) ) {
+        LOG_WARNING << "Plugin message for an undeclared view plugin=" << pluginId.toStdString()
+                    << " method=" << method.toStdString()
+                    << " view=" << viewId.left( 128 ).toStdString();
+        return;
+    }
+    if ( params.contains( "window_id" ) && !params.value( "window_id" ).isString() ) {
+        LOG_WARNING << "Plugin view message with an invalid window_id plugin="
+                    << pluginId.toStdString();
+        return;
+    }
+    if ( method == "view/update" ) {
+        if ( !params.value( "root" ).isObject() && !params.value( "patch" ).isArray() ) {
+            LOG_WARNING << "Plugin view/update needs root or patch plugin="
+                        << pluginId.toStdString() << " view=" << viewId.toStdString();
+            return;
+        }
+        LOG_DEBUG << "Plugin view update plugin=" << pluginId.toStdString()
+                  << " view=" << viewId.toStdString()
+                  << " kind=" << ( params.value( "root" ).isObject() ? "root" : "patch" )
+                  << " bytes=" << size;
+        Q_EMIT viewRequest( pluginId, method, params );
+    }
+    else if ( method == "view/show" ) {
+        auto resolved = params;
+        const auto windowId = resolveWindow( params.value( "window_id" ).toString() );
+        if ( windowId.isEmpty() ) {
+            LOG_WARNING << "Plugin view/show has no target window plugin="
+                        << pluginId.toStdString();
+            return;
+        }
+        resolved.insert( "window_id", windowId );
+        LOG_DEBUG << "Plugin view show plugin=" << pluginId.toStdString()
+                  << " view=" << viewId.toStdString() << " window=" << windowId.toStdString();
+        Q_EMIT viewRequest( pluginId, method, resolved );
+    }
+    else {
+        LOG_DEBUG << "Plugin view hide plugin=" << pluginId.toStdString()
+                  << " view=" << viewId.toStdString();
+        Q_EMIT viewRequest( pluginId, method, params );
+    }
+}
+
+QVariantMap PluginManager::viewState( const QString& pluginId, const QString& viewId ) const
+{
+    return QJsonDocument::fromJson(
+               settings_.value( configurationKey( pluginId ) + "views/" + settingsSafe( viewId ) )
+                   .toByteArray() )
+        .object()
+        .toVariantMap();
+}
+
+void PluginManager::setViewState( const QString& pluginId, const QString& viewId,
+                                  const QVariantMap& state )
+{
+    settings_.setValue(
+        configurationKey( pluginId ) + "views/" + settingsSafe( viewId ),
+        QJsonDocument( QJsonObject::fromVariantMap( state ) ).toJson( QJsonDocument::Compact ) );
+}
+
+void PluginManager::setInstanceId( const QString& id )
+{
+    if ( !id.isEmpty() ) {
+        instanceId_ = id;
+    }
+}
+
+void PluginManager::setCancelGraceMs( int milliseconds )
+{
+    cancelGraceMs_ = qBound( 0, milliseconds, 600000 );
+}
+
+void PluginManager::setMessageRateLimit( int count, int windowMs )
+{
+    messageRateCount_ = qMax( 1, count );
+    messageRateWindowMs_ = qMax( 1, windowMs );
+}
+
+QString PluginManager::pluginState( const QString& pluginId ) const
+{
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() ) {
+        return {};
+    }
+    return it->second->process ? it->second->process->state() : QStringLiteral( "stopped" );
 }
 } // namespace cilogg::plugins

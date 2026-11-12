@@ -2164,6 +2164,23 @@
       "limitations": [],
       "slices": []
     },
+    "E13": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/102",
+      "evidence": [
+        "E13a local qualification 2026-11-11 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022 Community, build-windows.ps1 exit 0): cilogg_itests [workbench][E13] 17 cases / 338 assertions passed; cilogg_tests [plugins],[E13],[commander] 81 cases / 2413 assertions passed; ctest 10/10; tests/plugins 202 OK (48 skipped); tests/mcp test_workbench_* 111 OK; workbench_parity.py --task E13 passed; host_integration.py passed.",
+        "Independent C++/Qt review: 3 HIGH and 9 MEDIUM findings (modal exec lifetime, oversized events, cancel-grace side effects, stale root props, id-less nodes, text limits, warning growth, forced renders, table model edge cases, message rate) fixed with regression tests before the PR.",
+        "../../docs/plugin-views.md"
+      ],
+      "limitations": [
+        "E13a (plugin views engine, branch feat/plugin-views) authorized out of wave order by decision D11.",
+        "pause_comm --wait busy guard has no automated test (needs a real COM tab in MainWindow); the KLOGG_SHARED_SERIAL_WRITER branch of the port-release check is not built or tested.",
+        "No C++ SDK view example; no dedicated MCP command to open a view (automation uses the pluginViewAction_<plugin>_<view> menu action).",
+        "Hosted CI (Windows/Linux/macOS) and a packaged manual view-demo check are not run locally."
+      ],
+      "slices": []
+    },
     "I02": {
       "status": "planned",
       "commit": null,
@@ -2727,7 +2744,8 @@
     "D07: see ../../docs/workbench/decisions.md",
     "D08: see ../../docs/workbench/decisions.md",
     "D09: see ../../docs/workbench/decisions.md",
-    "D10: see ../../docs/workbench/decisions.md"
+    "D10: see ../../docs/workbench/decisions.md",
+    "D11: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

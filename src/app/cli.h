@@ -187,7 +187,7 @@ private:
             "  cilogg command --action get_info [--pretty]\n"
             "  cilogg command --action start_comm [tab selector]\n"
             "  cilogg command --action play_comm [tab selector]\n"
-            "  cilogg command --action pause_comm [tab selector]\n"
+            "  cilogg command --action pause_comm [tab selector] [--wait [--timeout-ms <ms>]]\n"
             "  cilogg command --action stop_comm [tab selector]\n"
             "  cilogg command --action start_new_comm_file [tab selector]\n"
             "  cilogg command --action get_comm_status [tab selector] [--pretty]\n"
@@ -353,7 +353,8 @@ private:
         "  apply_regex_lab_pattern [--window-index <index> | tab selector]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
+            "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>] [--wait "
+            "[--timeout-ms <ms>]]\n"
             "  stop_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  start_new_comm_file [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  get_comm_status [--tab-id <id> | --window-index <n> --tab-index <n>] "
@@ -1494,6 +1495,10 @@ private:
         const QCommandLineOption timeoutMsOption( QStringLiteral( "timeout-ms" ),
                                                   QStringLiteral( "Timeout in milliseconds." ),
                                                   QStringLiteral( "ms" ) );
+        const QCommandLineOption waitOption(
+            QStringLiteral( "wait" ),
+            QStringLiteral( "pause_comm: return after the port is closed (--timeout-ms, default "
+                            "5000)." ) );
         const QCommandLineOption predefinedOption(
             QStringLiteral( "predefined" ),
             QStringLiteral( "Use predefined filters instead of search-history filters." ) );
@@ -1615,6 +1620,7 @@ private:
         parser.addOption( jsonFileOption );
         parser.addOption( paramsJsonFileOption );
         parser.addOption( timeoutMsOption );
+        parser.addOption( waitOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
@@ -1699,8 +1705,14 @@ private:
         request.suiteFilePath = normalizeCommanderFilePath( parser.value( suiteFileOption ) );
         request.allEntities = parser.isSet( allOption );
         request.timestampComment = parser.isSet( timestampOption );
+        request.waitForCompletion = parser.isSet( waitOption );
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
+        }
+        if ( request.waitForCompletion && request.action != CommanderAction::PauseComm ) {
+            result.output_message = formatParserError(
+                parser, QStringLiteral( "--wait is only supported by pause_comm." ) );
+            return result;
         }
 
         const auto parseFilterCount

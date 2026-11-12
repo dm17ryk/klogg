@@ -2,6 +2,7 @@
 
 #include "pluginmanifest.h"
 #include <QList>
+#include <QMap>
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
@@ -13,8 +14,9 @@ class PluginProcess final : public QObject {
 public:
     explicit PluginProcess( Manifest manifest, QObject* parent = nullptr );
     ~PluginProcess() override;
+    // `environment` adds host variables (CILOGG_EXECUTABLE, CILOGG_INSTANCE_ID) to the child.
     void start( const QJsonObject& configuration, const QString& configDirectory,
-                const QString& pythonExecutable );
+                const QString& pythonExecutable, const QMap<QString, QString>& environment = {} );
     void request( const QString& id, const QString& method, const QJsonObject& params );
     void notify( const QString& method, const QJsonObject& params );
     void cancelRequest( const QString& id );
@@ -35,6 +37,11 @@ public:
     qint64 pid() const
     {
         return process_.processId();
+    }
+    // Bytes written to the plugin's stdin that it has not consumed yet.
+    qint64 pendingOutputBytes() const
+    {
+        return process_.bytesToWrite();
     }
     void fail( const QString& error );
     bool isRunning() const

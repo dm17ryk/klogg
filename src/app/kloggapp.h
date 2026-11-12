@@ -97,6 +97,8 @@ class KloggApp : public QApplication {
         QFontDatabase::addApplicationFont( ":/fonts/DejaVuSansMono.ttf" );
 
         QNetworkProxyFactory::setUseSystemConfiguration( true );
+        // Commander clients reach this instance through its single-application name.
+        pluginManager_.setInstanceId( singleApplication_.name() );
         scriptSupervisor_.setCommanderExecutor(
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
         scenarioRunner_.setCommanderExecutor(

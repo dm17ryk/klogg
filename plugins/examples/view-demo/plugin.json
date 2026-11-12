@@ -1,0 +1,20 @@
+{
+  "id": "org.cilogg.view-demo",
+  "name": "View Demo",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "capabilities": ["tool"],
+  "executable": "python",
+  "arguments": ["main.py"],
+  "description": "Interactive plugin views: a dock, a window, a dialog and message boxes.",
+  "actions": [
+    {"id": "process", "label": "Process (view demo)", "capability": "tool", "fields": []},
+    {"id": "reset", "label": "Reset table (view demo)", "capability": "tool", "fields": []},
+    {"id": "export", "label": "Export table (view demo)", "capability": "tool", "fields": []}
+  ],
+  "views": [
+    {"id": "main", "title": "View Demo", "kind": "dock", "area": "right", "width": 520},
+    {"id": "editor", "title": "View Demo Editor", "kind": "window", "width": 640, "height": 420},
+    {"id": "confirm", "title": "View Demo Question", "kind": "dialog", "modal": true, "menu": false}
+  ]
+}

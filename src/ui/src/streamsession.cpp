@@ -4,10 +4,13 @@
 #include <limits>
 
 #include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QPointer>
 #include <QSerialPortInfo>
+#include <QTimer>
 #include <QVariantMap>
 
 #include "actionruntime.h"
@@ -211,6 +214,45 @@ bool StreamSession::isPaused() const
 bool StreamSession::canResume() const
 {
     return paused_ && !started_ && !stopping_ && !thread_.isRunning() && worker_ == nullptr;
+}
+
+bool StreamSession::isPortReleased() const
+{
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    if ( serialLease_ ) {
+        return false;
+    }
+#endif
+    return !started_ && !stopping_ && !thread_.isRunning() && worker_ == nullptr;
+}
+
+bool StreamSession::waitForPortRelease( int timeoutMs )
+{
+    QPointer<StreamSession> guard( this );
+    const auto released
+        = waitForCondition( [ guard ] { return !guard || guard->isPortReleased(); }, timeoutMs );
+    if ( guard ) {
+        LOG_DEBUG << "Serial port release wait for " << settings_.portName.toStdString()
+                  << ": released=" << released;
+    }
+    return released;
+}
+
+bool StreamSession::waitForCondition( const std::function<bool()>& condition, int timeoutMs )
+{
+    // pause_comm --wait: the worker closes the port on its own thread and reports through
+    // queued signals, so the GUI thread must keep processing events while it waits.
+    QElapsedTimer elapsed;
+    elapsed.start();
+    while ( !condition() ) {
+        if ( elapsed.elapsed() >= timeoutMs ) {
+            return condition();
+        }
+        QEventLoop loop;
+        QTimer::singleShot( 10, &loop, &QEventLoop::quit );
+        loop.exec( QEventLoop::ExcludeUserInputEvents );
+    }
+    return true;
 }
 
 QString StreamSession::sourceDisplayName() const

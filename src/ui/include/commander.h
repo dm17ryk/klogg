@@ -164,6 +164,8 @@ struct CommanderRequest {
     bool searchUseBoolean = false;
     bool searchAutoRefresh = false;
     bool searchKeepResults = false;
+    // pause_comm --wait: return only after the port is closed (bounded by timeoutMs).
+    bool waitForCompletion = false;
     CommanderComSettings comSettings;
     QVariantMap definitionPayload;
     QVariantMap actionParameters;

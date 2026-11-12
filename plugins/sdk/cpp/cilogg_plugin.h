@@ -70,6 +70,46 @@ public:
         std::lock_guard<std::mutex> guard( mutex_ );
         return configuration_;
     }
+    // Plugin views and message boxes (docs/plugin-views.md). All are notifications.
+    using Notification = std::function<void( const QString& method, const QJsonObject& params )>;
+    // Receives view/opened, view/closed, view/event and ui/message_result on the protocol
+    // reader thread; keep the handler short or hand work to another thread.
+    void onNotification( Notification callback )
+    {
+        notification_ = std::move( callback );
+    }
+    QJsonArray hostFeatures() const
+    {
+        std::lock_guard<std::mutex> guard( mutex_ );
+        return hostFeatures_;
+    }
+    void updateView( const QString& viewId, const QJsonObject& root, const QString& windowId = {} )
+    {
+        notify( "view/update",
+                withWindow( { { "view_id", viewId }, { "root", root } }, windowId ) );
+    }
+    void patchView( const QString& viewId, const QJsonArray& patch, const QString& windowId = {} )
+    {
+        notify( "view/update",
+                withWindow( { { "view_id", viewId }, { "patch", patch } }, windowId ) );
+    }
+    void showView( const QString& viewId, QJsonObject options = {} )
+    {
+        options.insert( "view_id", viewId );
+        notify( "view/show", options );
+    }
+    void hideView( const QString& viewId, const QString& windowId = {} )
+    {
+        notify( "view/hide", withWindow( { { "view_id", viewId } }, windowId ) );
+    }
+    void message( const QJsonObject& params )
+    {
+        notify( "ui/message", params );
+    }
+    void closeMessage( const QString& messageId )
+    {
+        notify( "ui/close_message", { { "message_id", messageId } } );
+    }
 
     QString openStream( Job& job )
     {
@@ -197,6 +237,13 @@ private:
         bool acknowledged = false;
         quint64 sequence = 0;
     };
+    static QJsonObject withWindow( QJsonObject params, const QString& windowId )
+    {
+        if ( !windowId.isEmpty() ) {
+            params.insert( "window_id", windowId );
+        }
+        return params;
+    }
     template <typename Predicate>
     void wait( std::unique_lock<std::mutex>& lock, Job& job, Predicate predicate )
     {
@@ -232,7 +279,11 @@ private:
                 throw std::runtime_error( "Incompatible initialization" );
             }
             initialized_ = true;
-            configuration_ = params.value( "configuration" ).toObject();
+            {
+                std::lock_guard<std::mutex> guard( mutex_ );
+                configuration_ = params.value( "configuration" ).toObject();
+                hostFeatures_ = params.value( "host_features" ).toArray();
+            }
             send(
                 { { "jsonrpc", "2.0" },
                   { "id", frame.value( "id" ) },
@@ -284,6 +335,11 @@ private:
                 jobs_.erase( job->id );
             } ) );
         }
+        else if ( method.startsWith( "view/" ) || method.startsWith( "ui/" ) ) {
+            if ( notification_ ) {
+                notification_( method, params );
+            }
+        }
         else {
             std::lock_guard<std::mutex> guard( mutex_ );
             if ( method == "configure" ) {
@@ -316,6 +372,8 @@ private:
     }
     QJsonObject manifest_;
     QJsonObject configuration_;
+    QJsonArray hostFeatures_;
+    Notification notification_;
     std::map<QString, Action> actions_;
     std::map<QString, std::shared_ptr<Job>> jobs_;
     std::map<QString, StreamState> streams_;

@@ -2,6 +2,7 @@
 #include "commander.h"
 #include "pluginmanager.h"
 #include "pluginrepository.h"
+#include "streamsession.h"
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QElapsedTimer>
@@ -100,7 +101,29 @@ QJsonObject manifest( const QString& id = "org.test.fixture" )
                            QJsonObject{ { "id", "convert" }, { "capability", "converter" } },
                            QJsonObject{ { "id", "summary" }, { "capability", "tool" } },
                            QJsonObject{ { "id", "wait" }, { "capability", "tool" } },
-                           QJsonObject{ { "id", "crash" }, { "capability", "tool" } } } } };
+                           QJsonObject{ { "id", "crash" }, { "capability", "tool" } },
+                           QJsonObject{ { "id", "env" }, { "capability", "tool" } },
+                           QJsonObject{ { "id", "cleanup" }, { "capability", "tool" } },
+                           QJsonObject{ { "id", "stubborn" }, { "capability", "tool" } },
+                           QJsonObject{ { "id", "convert-late" }, { "capability", "converter" } },
+                           QJsonObject{ { "id", "panel-after-cancel" }, { "capability", "tool" } },
+                           QJsonObject{ { "id", "ask" }, { "capability", "tool" } } } } };
+}
+// Host notifications the fixture recorded (view/*, ui/*), in arrival order.
+QList<QJsonObject> hostMessages( const QString& folder, const QString& method = {} )
+{
+    QList<QJsonObject> result;
+    QFile log( QDir( folder ).filePath( "host-messages.jsonl" ) );
+    if ( !log.open( QIODevice::ReadOnly ) ) {
+        return result;
+    }
+    for ( const auto& line : log.readAll().split( '\n' ) ) {
+        const auto frame = QJsonDocument::fromJson( line ).object();
+        if ( !frame.isEmpty() && ( method.isEmpty() || frame.value( "method" ) == method ) ) {
+            result.append( frame );
+        }
+    }
+    return result;
 }
 void writeFile( const QString& path, const QByteArray& bytes )
 {
@@ -339,6 +362,9 @@ TEST_CASE( "Plugin jobs stream, convert and render using a stable target", "[plu
     REQUIRE( panels[ 0 ][ 2 ].toMap() == context );
     const auto waiting = jobId( manager.invoke( "org.test.fixture", "wait", {}, context ) );
     REQUIRE( manager.cancel( waiting ).ok() );
+    // A running job keeps a grace period until the plugin acknowledges the cancellation.
+    REQUIRE( manager.job( waiting ).payload.value( "state" ) == "cancelling" );
+    REQUIRE( waitFor( [ & ] { return finished( manager, waiting ); } ) );
     REQUIRE( manager.job( waiting ).payload.value( "state" ) == "cancelled" );
     manager.shutdown();
     REQUIRE(
@@ -1019,4 +1045,406 @@ TEST_CASE( "Full converter history preserves supervision and leaves restart capa
     REQUIRE(
         QDir( QDir( manager.dataRoot() ).filePath( "captures" ) ).entryList( QDir::Files ).size()
         == 241 );
+}
+
+namespace {
+QJsonObject viewManifest( const QString& id = "org.test.fixture" )
+{
+    auto json = manifest( id );
+    json[ "views" ]
+        = QJsonArray{ QJsonObject{ { "id", "main" }, { "title", "Main" }, { "area", "left" } },
+                      QJsonObject{ { "id", "tool" }, { "title", "Tool" }, { "kind", "window" } },
+                      QJsonObject{ { "id", "dialog" },
+                                   { "title", "Dialog" },
+                                   { "kind", "dialog" },
+                                   { "modal", true },
+                                   { "menu", false } } };
+    return json;
+}
+QString viewPackage( const QString& root, const QString& id = "org.test.fixture" )
+{
+    const auto folder = package( root, id );
+    writeFile( QDir( folder ).filePath( "plugin.json" ),
+               QJsonDocument( viewManifest( id ) ).toJson() );
+    return folder;
+}
+QString pluginState( PluginManager& manager )
+{
+    return manager.plugins().front().toMap().value( "state" ).toString();
+}
+} // namespace
+
+TEST_CASE( "Plugin manifests validate views", "[plugins][views][E13]" )
+{
+    auto json = viewManifest();
+    REQUIRE( Manifest::parse( QJsonDocument( json ).toJson(), "test" ).valid() );
+    REQUIRE( validateViews( {} ).isEmpty() );
+    const auto invalid = [ & ]( const QJsonObject& view ) {
+        auto broken = viewManifest();
+        broken[ "views" ] = QJsonArray{ view };
+        return !Manifest::parse( QJsonDocument( broken ).toJson(), "test" ).valid();
+    };
+    REQUIRE( invalid( QJsonObject{ { "title", "No id" } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", QString( 129, 'v' ) } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "kind", "panel" } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "area", "center" } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "menu", "yes" } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "floating", 1 } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "width", 0 } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "height", 10.5 } } ) );
+    REQUIRE( invalid( QJsonObject{ { "id", "v" }, { "title", 3 } } ) );
+    REQUIRE_FALSE( invalid( QJsonObject{ { "id", "v" },
+                                         { "kind", "dock" },
+                                         { "area", "top" },
+                                         { "floating", true },
+                                         { "width", 400 },
+                                         { "height", 300 } } ) );
+    QJsonArray duplicate{ QJsonObject{ { "id", "same" } }, QJsonObject{ { "id", "same" } } };
+    REQUIRE_FALSE( validateViews( duplicate ).isEmpty() );
+    QJsonArray tooMany;
+    for ( int index = 0; index <= MaxViewsPerPlugin; ++index ) {
+        tooMany.append( QJsonObject{ { "id", QString::number( index ) } } );
+    }
+    REQUIRE_FALSE( validateViews( tooMany ).isEmpty() );
+    json[ "views" ] = QJsonObject{};
+    REQUIRE_FALSE( Manifest::parse( QJsonDocument( json ).toJson(), "test" ).valid() );
+}
+
+TEST_CASE( "Plugins receive host features and the instance environment", "[plugins][views][E13]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE_FALSE( manager.instanceId().isEmpty() );
+    manager.setInstanceId( "cilogg-test-instance" );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    const auto id = jobId( manager.invoke( "org.test.fixture", "env", {}, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+    const auto result = manager.job( id ).payload.value( "result" ).toMap();
+    REQUIRE( result.value( "host_features" ).toList() == QVariantList{ "views" } );
+    REQUIRE( QFileInfo( result.value( "executable" ).toString() )
+             == QFileInfo( QCoreApplication::applicationFilePath() ) );
+    REQUIRE( result.value( "instance" ) == "cilogg-test-instance" );
+}
+
+TEST_CASE( "Cancelled plugin jobs keep a grace period for cleanup", "[plugins][E13]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    SECTION( "progress and the final answer are accepted while cancelling" )
+    {
+        const auto id = jobId( manager.invoke( "org.test.fixture", "cleanup", {}, {} ) );
+        REQUIRE(
+            waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+        const auto cancelled = manager.cancel( id );
+        REQUIRE( cancelled.ok() );
+        REQUIRE( cancelled.payload.value( "state" ) == "cancelling" );
+        REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+        const auto job = manager.job( id ).payload;
+        REQUIRE( job.value( "state" ) == "cancelled" );
+        REQUIRE( job.value( "progress" ).toDouble() == Approx( 0.9 ) );
+        // The plugin's own answer is retained, not a host-generated empty cancellation.
+        REQUIRE( job.value( "error" ).toString().contains( "cancelled", Qt::CaseInsensitive ) );
+    }
+    SECTION( "a plugin that ignores cancellation is cancelled after the grace period" )
+    {
+        manager.setCancelGraceMs( 200 );
+        const auto id = jobId( manager.invoke( "org.test.fixture", "stubborn", {}, {} ) );
+        REQUIRE(
+            waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+        REQUIRE( manager.cancel( id ).ok() );
+        QElapsedTimer elapsed;
+        elapsed.start();
+        REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelling" );
+        REQUIRE( waitFor( [ & ] { return finished( manager, id ); }, 2000 ) );
+        REQUIRE( elapsed.elapsed() < 1500 );
+        REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelled" );
+        REQUIRE( manager.job( id ).payload.value( "error" ).toString().isEmpty() );
+    }
+    SECTION( "a queued job is cancelled immediately" )
+    {
+        REQUIRE( manager.manage( "disable", "org.test.fixture", {} ).ok() );
+        REQUIRE( waitFor( [ & ] { return pluginState( manager ) == "stopped"; } ) );
+        REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+        const auto id = jobId( manager.invoke( "org.test.fixture", "cleanup", {}, {} ) );
+        REQUIRE( manager.cancel( id ).payload.value( "state" ) == "cancelled" );
+    }
+}
+
+TEST_CASE( "Plugin views reopen after restart and close with their window",
+           "[plugins][views][E13]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = viewPackage( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    QSignalSpy requests( &manager, &PluginManager::viewRequest );
+    QSignalSpy ready( &manager, &PluginManager::pluginReady );
+    const QVariantMap context{ { "windowId", "w1" }, { "windowIndex", 0 } };
+    REQUIRE_FALSE( manager.openView( "org.test.fixture", "main", context ).ok() ); // disabled
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    REQUIRE( manager.viewDefinitions( "org.test.fixture" ).size() == 3 );
+    REQUIRE_FALSE( manager.openView( "org.test.fixture", "missing", context ).ok() );
+    REQUIRE( manager.openView( "org.test.fixture", "main", context ).ok() );
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "view/opened" ).isEmpty(); } ) );
+    auto opened = hostMessages( folder, "view/opened" ).front()[ "params" ].toObject();
+    REQUIRE( opened[ "view_id" ] == "main" );
+    REQUIRE( opened[ "window_id" ] == "w1" );
+    REQUIRE( opened[ "context" ].toObject()[ "windowIndex" ] == 0 );
+    // The fixture answers view/opened with a root tree routed to the UI.
+    REQUIRE( waitFor( [ & ] {
+        return std::any_of( requests.begin(), requests.end(), []( const QList<QVariant>& args ) {
+            return args[ 1 ] == "view/update"
+                   && args[ 2 ].toJsonObject().value( "root" ).isObject();
+        } );
+    } ) );
+    REQUIRE( manager.sendViewEvent( "org.test.fixture", "main", "w1",
+                                    { { "element_id", "ping" },
+                                      { "type", "clicked" },
+                                      { "value", QJsonValue::Null },
+                                      { "inputs", QJsonObject{ { "name", "abc" } } } } ) );
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "view/event" ).isEmpty(); } ) );
+    const auto event = hostMessages( folder, "view/event" ).front()[ "params" ].toObject();
+    REQUIRE( event[ "element_id" ] == "ping" );
+    REQUIRE( event[ "view_id" ] == "main" );
+    REQUIRE( event[ "window_id" ] == "w1" );
+    REQUIRE( event[ "inputs" ].toObject()[ "name" ] == "abc" );
+    REQUIRE_FALSE( manager.sendViewEvent( "org.test.fixture", "main", "other-window", {} ) );
+
+    // Restart re-sends view/opened for the open view.
+    const auto restart = jobId( manager.manage( "restart", "org.test.fixture", {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, restart ); } ) );
+    REQUIRE( waitFor( [ & ] { return hostMessages( folder, "view/opened" ).size() == 2; } ) );
+    REQUIRE( ready.size() >= 2 );
+
+    manager.closeWindow( "w1" );
+    REQUIRE( waitFor( [ & ] { return hostMessages( folder, "view/closed" ).size() == 1; } ) );
+    const auto closed = hostMessages( folder, "view/closed" ).front()[ "params" ].toObject();
+    REQUIRE( closed[ "view_id" ] == "main" );
+    REQUIRE( closed[ "window_id" ] == "w1" );
+    REQUIRE_FALSE( manager.sendViewEvent( "org.test.fixture", "main", "w1", {} ) );
+
+    // Disabling revokes views without another protocol message.
+    QSignalSpy revoked( &manager, &PluginManager::viewsRevoked );
+    REQUIRE( manager.openView( "org.test.fixture", "main", context ).ok() );
+    REQUIRE( manager.manage( "disable", "org.test.fixture", {} ).ok() );
+    REQUIRE( revoked.size() == 1 );
+}
+
+TEST_CASE( "Plugin message boxes are validated, routed and limited", "[plugins][views][E13]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = viewPackage( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    manager.noteActiveWindow( "w2" );
+    manager.noteActiveWindow( "w1" );
+    QSignalSpy requests( &manager, &PluginManager::viewRequest );
+    REQUIRE( manager.openView( "org.test.fixture", "main", { { "windowId", "w1" } } ).ok() );
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "view/opened" ).isEmpty(); } ) );
+    const auto messages = [ & ] {
+        QList<QJsonObject> result;
+        for ( const auto& args : requests ) {
+            if ( args[ 1 ] == "ui/message" ) {
+                result.append( args[ 2 ].toJsonObject() );
+            }
+        }
+        return result;
+    };
+    REQUIRE( manager.sendViewEvent( "org.test.fixture", "main", "w1",
+                                    { { "element_id", "ask_many" }, { "type", "clicked" } } ) );
+    REQUIRE( waitFor( [ & ] { return messages().size() == 8; } ) );
+    // Without a window id the most recently active window is used.
+    REQUIRE( messages().front()[ "window_id" ] == "w1" );
+    REQUIRE( messages().front()[ "buttons" ].toArray() == QJsonArray{ "yes", "no" } );
+    // The ninth box is rejected at once with an error result.
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "ui/message_result" ).isEmpty(); } ) );
+    auto rejected = hostMessages( folder, "ui/message_result" ).front()[ "params" ].toObject();
+    REQUIRE( rejected[ "message_id" ] == "many-8" );
+    REQUIRE( rejected[ "button" ] == "" );
+    REQUIRE_FALSE( rejected[ "error" ].toString().isEmpty() );
+    manager.finishMessage( "org.test.fixture", "many-0", "yes", false );
+    manager.finishMessage( "org.test.fixture", "many-0", "no", false ); // already finished
+    REQUIRE( waitFor( [ & ] { return hostMessages( folder, "ui/message_result" ).size() == 2; } ) );
+    auto answered = hostMessages( folder, "ui/message_result" )[ 1 ][ "params" ].toObject();
+    REQUIRE( answered[ "message_id" ] == "many-0" );
+    REQUIRE( answered[ "button" ] == "yes" );
+    REQUIRE( answered[ "timed_out" ] == false );
+    // Boxes of a stopped plugin are dropped without results.
+    REQUIRE( manager.manage( "disable", "org.test.fixture", {} ).ok() );
+    REQUIRE( waitFor( [ & ] { return pluginState( manager ) == "stopped"; } ) );
+    manager.finishMessage( "org.test.fixture", "many-1", "yes", false );
+    QTest::qWait( 50 );
+    REQUIRE( hostMessages( folder, "ui/message_result" ).size() == 2 );
+}
+
+TEST_CASE( "pause_comm --wait round trips through CLI and Commander", "[plugins][commander][E13]" )
+{
+    const CliParameters waiting( QStringList{ "cilogg", "command", "--action", "pause_comm",
+                                              "--wait", "--timeout-ms", "1500" } );
+    REQUIRE( waiting.commander_request );
+    REQUIRE( waiting.commander_request->waitForCompletion );
+    REQUIRE( waiting.commander_request->timeoutMs == 1500 );
+    const auto restored = commanderRequestFromVariantMap(
+        commanderRequestToVariantMap( *waiting.commander_request ) );
+    REQUIRE( restored );
+    REQUIRE( restored->waitForCompletion );
+    const CliParameters plain(
+        QStringList{ "cilogg", "command", "--action", "pause_comm", "--tab-id", "tab" } );
+    REQUIRE( plain.commander_request );
+    REQUIRE_FALSE( plain.commander_request->waitForCompletion );
+    REQUIRE_FALSE( commanderRequestToVariantMap( *plain.commander_request ).contains( "wait" ) );
+    const CliParameters invalid(
+        QStringList{ "cilogg", "command", "--action", "get_info", "--wait" } );
+    REQUIRE_FALSE( invalid.commander_request );
+}
+
+TEST_CASE( "A paused serial session reports when its port is released", "[serial][E13]" )
+{
+    QTemporaryDir temp;
+    SerialCaptureSettings settings;
+    settings.portName = QStringLiteral( "CILOGG_TEST_UNAVAILABLE_E13" );
+    settings.filePath = QDir( temp.path() ).filePath( "capture.log" );
+    StreamSession session( settings );
+    REQUIRE( session.isPortReleased() );
+    REQUIRE( session.waitForPortRelease( 10 ) );
+    session.start();
+    REQUIRE_FALSE( session.isPortReleased() );
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+    // The checked owner reports the connection open only after the backend really opened
+    // the port. The unavailable port fails to open, so the session pauses itself and
+    // releases its lease once the worker thread retires.
+    REQUIRE( session.waitForPortRelease( 5000 ) );
+    REQUIRE( session.isPaused() );
+#else
+    // The legacy owner reports the connection open at start, so it can be paused at once.
+    REQUIRE( session.pauseConnection() );
+    REQUIRE( session.waitForPortRelease( 5000 ) );
+#endif
+    REQUIRE( session.isPortReleased() );
+    REQUIRE( session.canResume() );
+    // A bounded wait fails cleanly when the condition never holds.
+    QElapsedTimer elapsed;
+    elapsed.start();
+    REQUIRE_FALSE( StreamSession::waitForCondition( [] { return false; }, 50 ) );
+    REQUIRE( elapsed.elapsed() < 2000 );
+}
+
+TEST_CASE( "A converter answer that arrives while cancelling opens no output",
+           "[plugins][E13][review]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    const auto input = QDir( temp.path() ).filePath( "input.log" );
+    writeFile( input, "record\n" );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    QSignalSpy opened( &manager, &PluginManager::fileReady );
+    const auto id = jobId(
+        manager.invoke( "org.test.fixture", "convert-late", { { "input_path", input } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+    REQUIRE( manager.cancel( id ).payload.value( "state" ) == "cancelling" );
+    REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+    const auto job = manager.job( id ).payload;
+    REQUIRE( job.value( "state" ) == "cancelled" );
+    // The late success is kept for diagnostics only.
+    REQUIRE( job.value( "result" ).toMap().value( "converted" ).toBool() );
+    QTest::qWait( 100 );
+    REQUIRE( opened.isEmpty() );
+}
+
+TEST_CASE( "Jobs cancelled by a closed window finish at once and render no panels",
+           "[plugins][E13][review]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    package( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    QSignalSpy panels( &manager, &PluginManager::panelUpdated );
+    const auto id = jobId( manager.invoke( "org.test.fixture", "panel-after-cancel", {},
+                                           { { "windowId", "closing" } } ) );
+    REQUIRE( waitFor( [ & ] { return manager.job( id ).payload.value( "state" ) == "running"; } ) );
+    manager.closeWindow( "closing" );
+    REQUIRE( manager.job( id ).payload.value( "state" ) == "cancelled" ); // no grace period
+    QTest::qWait( 300 );
+    REQUIRE( panels.isEmpty() );
+    // A grace-period job is finished at once when its window closes.
+    manager.setCancelGraceMs( 60000 );
+    const auto graced = jobId(
+        manager.invoke( "org.test.fixture", "stubborn", {}, { { "windowId", "second" } } ) );
+    REQUIRE(
+        waitFor( [ & ] { return manager.job( graced ).payload.value( "state" ) == "running"; } ) );
+    REQUIRE( manager.cancel( graced ).payload.value( "state" ) == "cancelling" );
+    manager.closeWindow( "second" );
+    REQUIRE( manager.job( graced ).payload.value( "state" ) == "cancelled" );
+}
+
+TEST_CASE( "Message boxes are available without views and are rate limited",
+           "[plugins][E13][review]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = package( shipped ); // a manifest without views
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.viewDefinitions( "org.test.fixture" ).isEmpty() );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    manager.noteActiveWindow( "w1" );
+    manager.setMessageRateLimit( 1, 60000 );
+    QSignalSpy requests( &manager, &PluginManager::viewRequest );
+    const auto first = jobId( manager.invoke( "org.test.fixture", "ask", {}, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, first ); } ) );
+    REQUIRE( waitFor( [ & ] { return !requests.isEmpty(); } ) );
+    REQUIRE( requests.front()[ 1 ] == "ui/message" );
+    REQUIRE( requests.front()[ 2 ].toJsonObject()[ "window_id" ] == "w1" );
+    manager.finishMessage( "org.test.fixture", "job-ask", "ok", false );
+    REQUIRE( waitFor( [ & ] { return hostMessages( folder, "ui/message_result" ).size() == 1; } ) );
+    REQUIRE( hostMessages( folder, "ui/message_result" ).front()[ "params" ].toObject()[ "button" ]
+             == "ok" );
+    const auto second = jobId( manager.invoke( "org.test.fixture", "ask", {}, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, second ); } ) );
+    REQUIRE( waitFor( [ & ] { return hostMessages( folder, "ui/message_result" ).size() == 2; } ) );
+    REQUIRE( hostMessages( folder, "ui/message_result" )[ 1 ][ "params" ]
+                 .toObject()[ "error" ]
+                 .toString()
+                 .contains( "rate", Qt::CaseInsensitive ) );
+    REQUIRE( requests.size() == 1 );
+}
+
+TEST_CASE( "Oversized user input never fails the plugin transport", "[plugins][E13][review]" )
+{
+    QTemporaryDir temp;
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = viewPackage( shipped );
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", "org.test.fixture", {} ).ok() );
+    REQUIRE( manager.openView( "org.test.fixture", "main", { { "windowId", "w1" } } ).ok() );
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "view/opened" ).isEmpty(); } ) );
+    const QString huge( 2 * 1024 * 1024, QLatin1Char( 'x' ) );
+    REQUIRE( manager.sendViewEvent( "org.test.fixture", "main", "w1",
+                                    { { "element_id", "big" },
+                                      { "type", "changed" },
+                                      { "value", "small" },
+                                      { "inputs", QJsonObject{ { "name", huge } } } } ) );
+    REQUIRE( waitFor( [ & ] { return !hostMessages( folder, "view/event" ).isEmpty(); } ) );
+    const auto event = hostMessages( folder, "view/event" ).front()[ "params" ].toObject();
+    REQUIRE( event[ "truncated" ] == true );
+    REQUIRE( event[ "inputs" ].toObject().isEmpty() );
+    REQUIRE( event[ "value" ] == "small" );
+    // Oversized job arguments fail that job, not the plugin.
+    const auto id = jobId( manager.invoke(
+        "org.test.fixture", "summary", { { "inputs", QVariantMap{ { "name", huge } } } }, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
+    REQUIRE( manager.job( id ).payload.value( "state" ) == "failed" );
+    REQUIRE( manager.job( id ).payload.value( "error" ).toString().contains( "1 MiB" ) );
+    REQUIRE( pluginState( manager ) == "ready" );
+    const auto next = jobId( manager.invoke( "org.test.fixture", "summary", {}, {} ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, next ); } ) );
+    REQUIRE( manager.job( next ).payload.value( "state" ) == "completed" );
 }

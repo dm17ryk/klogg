@@ -478,3 +478,13 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 
 **References:**
 - https://github.com/dm17ryk/klogg/blob/bd74c338424845a2caac03d62fdff5187e7e8f0a/src/app/mcp/runtime.cpp
+
+### E13 — Add interactive plugin views
+
+**Integrated hard dependencies:** G01, G02, G03. Slice E13a is authorized ahead of G02/G03 by [decision D11](../../docs/workbench/decisions.md).
+
+**Outcome:** Process plugins can build interactive views (fields, buttons, progress, large tables) in every window kind CILogg uses: docks on any side or floating, top-level windows, modal or modeless dialogs, and message boxes with an optional auto-close timeout. Their buttons run ordinary plugin jobs that CLI and native MCP can run too.
+
+**Coordination:** E01 later absorbs the single `host_features` entry into its negotiated capabilities. Plugins without views keep byte-for-byte protocol-v1 behaviour.
+
+The full card, with files, interfaces, test cases and acceptance, is [tasks/E13.md](tasks/E13.md). The design is [docs/plugin-views.md](../../docs/plugin-views.md).

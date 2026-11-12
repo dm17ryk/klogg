@@ -243,6 +243,41 @@ def run(build: Path, artifacts: Path) -> None:
                         break
                     assert time.monotonic() < deadline
                     time.sleep(0.05)
+                # Plugin views: open the view-demo dock from its menu entry (GUI), fill a field
+                # through MCP set_ui, press its job button, and cancel a CLI job (grace state).
+                demo = "org.cilogg.view-demo"
+                if demo in identifiers:
+                    cli("activate_ui", "--object-name", f"pluginViewAction_{demo}_main")
+                    deadline = time.monotonic() + 30
+                    process_button = f"pluginView_{demo}_main_process"
+                    while not any(o.get("objectName") == process_button and o.get("enabled")
+                                  for o in cli("get_ui")["objects"]):
+                        assert time.monotonic() < deadline, "View demo dock was not rendered"
+                        time.sleep(0.1)
+                    mcp.command("set_ui", {"object_name": f"pluginView_{demo}_main_name",
+                                           "definition": {"text": "integration"}})
+                    prior = {j["jobId"] for j in cli("get_plugins")["jobs"]}
+                    cli("activate_ui", "--object-name", process_button)
+                    deadline = time.monotonic() + 10
+                    while True:
+                        new_jobs = [j for j in cli("get_plugins")["jobs"] if j["jobId"] not in prior]
+                        if new_jobs:
+                            job = completed(new_jobs[0]["jobId"])
+                            assert job["result"]["inputs"]["name"] == "integration", job
+                            break
+                        assert time.monotonic() < deadline, "View button did not start a job"
+                        time.sleep(0.05)
+                    started = cli("invoke_plugin", "--plugin-id", demo, "--plugin-action", "process")
+                    deadline = time.monotonic() + 10
+                    while cli("get_plugin_job", "--plugin-job-id", started["jobId"])["state"] != "running":
+                        assert time.monotonic() < deadline, "View demo job did not start"
+                        time.sleep(0.05)
+                    cancelled = mcp.command("cancel_plugin_job", {"plugin_job_id": started["jobId"]})
+                    assert cancelled["state"] == "cancelling", cancelled
+                    deadline = time.monotonic() + 15
+                    while cli("get_plugin_job", "--plugin-job-id", started["jobId"])["state"] != "cancelled":
+                        assert time.monotonic() < deadline, "Cancelling job did not finish"
+                        time.sleep(0.05)
                 # Syslog crosses real UDP, the plugin protocol and the native capture writer.
                 syslog = "org.cilogg.syslog-server"
                 for protocol in ("cli", "mcp", "gui"):

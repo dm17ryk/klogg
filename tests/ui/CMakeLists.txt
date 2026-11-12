@@ -19,6 +19,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/configurationproject_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/uiautomation_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/plugins_ui_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e13_test.cpp
 )
 
 if(NOT APPLE)
@@ -34,8 +35,9 @@ target_link_libraries(analysis_worker_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Cor
 target_compile_definitions(cilogg_itests PRIVATE
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     ANALYSIS_WORKER_PATH="$<TARGET_FILE:klogg>"
-    ANALYSIS_FIXTURE_PATH="$<TARGET_FILE:analysis_worker_fixture>")
-add_dependencies(cilogg_itests klogg analysis_worker_fixture preview_decoder_fixture)
+    ANALYSIS_FIXTURE_PATH="$<TARGET_FILE:analysis_worker_fixture>"
+    PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
+add_dependencies(cilogg_itests klogg analysis_worker_fixture preview_decoder_fixture plugin_fixture)
 
 target_link_libraries(cilogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
 set_target_properties(

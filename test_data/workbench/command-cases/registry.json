@@ -8,9 +8,16 @@
     "P03c": ["analysis"],
     "P03d": ["analysis"],
     "P04": ["regex-lab"],
-    "P05": ["value-counts"]
+    "P05": ["value-counts"],
+    "E13": ["plugin-views"]
   },
   "cases": [
+    {
+      "id": "plugin-views",
+      "kind": "plugin-views",
+      "action": "invoke_plugin",
+      "operations": ["get_plugins", "plugin_manage", "invoke_plugin", "get_plugin_job", "cancel_plugin_job", "pause_comm", "get_ui", "set_ui", "activate_ui"]
+    },
     {
       "id": "analysis",
       "action": "regex_evaluate",

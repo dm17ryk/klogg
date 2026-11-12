@@ -104,6 +104,192 @@ int main( int argc, char** argv )
         return 0;
     }
     cilogg_plugin::Server plugin;
+    // Plugin views: record every view/ui notification and answer like a small view plugin.
+    const auto record = []( const QString& method, const QJsonObject& params ) {
+        QFile log( "host-messages.jsonl" );
+        if ( log.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+            log.write( QJsonDocument( QJsonObject{ { "method", method }, { "params", params } } )
+                           .toJson( QJsonDocument::Compact ) );
+            log.write( "\n" );
+        }
+    };
+    const auto rootFor = []( const QString& viewId ) {
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "children",
+              QJsonArray{
+                  QJsonObject{
+                      { "type", "label" }, { "id", "status" }, { "text", "ready " + viewId } },
+                  QJsonObject{ { "type", "field" },
+                               { "id", "name" },
+                               { "kind", "text" },
+                               { "label", "Name" },
+                               { "value", "" } },
+                  QJsonObject{ { "type", "field" },
+                               { "id", "mode" },
+                               { "kind", "choice" },
+                               { "choices", QJsonArray{ "a", "b" } },
+                               { "value", "a" } },
+                  QJsonObject{ { "type", "button" },
+                               { "id", "run" },
+                               { "label", "Run" },
+                               { "action", "summary" } },
+                  QJsonObject{ { "type", "button" },
+                               { "id", "ping" },
+                               { "label", "Ping" },
+                               { "event", true } },
+                  QJsonObject{
+                      { "type", "table" },
+                      { "id", "rows" },
+                      { "columns", QJsonArray{ QJsonObject{ { "id", "c" }, { "title", "C" } } } },
+                      { "rows",
+                        QJsonArray{
+                            QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "1" } } },
+                            QJsonObject{ { "id", "r2" }, { "cells", QJsonArray{ "2" } } } } } } } }
+        };
+    };
+    const auto status = [ &plugin ]( const QString& viewId, const QString& windowId,
+                                     const QString& text ) {
+        plugin.patchView( viewId,
+                          QJsonArray{ QJsonObject{ { "id", "status" },
+                                                   { "set", QJsonObject{ { "text", text } } } } },
+                          windowId );
+    };
+    plugin.onNotification( [ & ]( const QString& method, const QJsonObject& params ) {
+        record( method, params );
+        const auto view = params.value( "view_id" ).toString();
+        const auto window = params.value( "window_id" ).toString();
+        if ( method == "view/opened" ) {
+            plugin.updateView( view, rootFor( view ), window );
+        }
+        else if ( method == "ui/message_result" ) {
+            plugin.patchView(
+                "main",
+                QJsonArray{ QJsonObject{
+                    { "id", "status" },
+                    { "set",
+                      QJsonObject{ { "text", QString( "answer:%1:%2:%3" )
+                                                 .arg( params.value( "message_id" ).toString(),
+                                                       params.value( "button" ).toString(),
+                                                       params.value( "timed_out" ).toBool()
+                                                           ? "timeout"
+                                                           : "user" ) } } } } } );
+        }
+        else if ( method == "view/event" ) {
+            const auto element = params.value( "element_id" ).toString();
+            const QJsonObject box{ { "title", "Fixture" },
+                                   { "text", "Proceed?" },
+                                   { "icon", "question" },
+                                   { "buttons", QJsonArray{ "yes", "no" } },
+                                   { "default", "no" } };
+            if ( element == "ping" ) {
+                status( view, window,
+                        "pong:" + params.value( "inputs" ).toObject().value( "name" ).toString() );
+            }
+            else if ( element == "show_dialog" ) {
+                plugin.showView( "dialog" );
+            }
+            else if ( element == "show_left" ) {
+                plugin.showView( "side", { { "area", "left" }, { "title", "Shown side" } } );
+            }
+            else if ( element == "hide_dialog" ) {
+                plugin.hideView( "dialog" );
+            }
+            else if ( element == "ask" ) {
+                auto ask = box;
+                ask.insert( "message_id", "ask" );
+                plugin.message( ask );
+            }
+            else if ( element == "ask_timeout" ) {
+                auto ask = box;
+                ask.insert( "message_id", "timed" );
+                ask.insert( "buttons", QJsonArray{ "ok", "cancel" } );
+                ask.insert( "default", "ok" );
+                ask.insert( "timeout_ms", 3000 );
+                plugin.message( ask );
+            }
+            else if ( element == "ask_closable" ) {
+                auto ask = box;
+                ask.insert( "message_id", "closable" );
+                ask.insert( "modal", false );
+                plugin.message( ask );
+            }
+            else if ( element == "close_message" ) {
+                plugin.closeMessage( "closable" );
+            }
+            else if ( element == "ask_many" ) {
+                for ( int index = 0; index < 9; ++index ) {
+                    auto ask = box;
+                    ask.insert( "message_id", QString( "many-%1" ).arg( index ) );
+                    ask.insert( "modal", false );
+                    plugin.message( ask );
+                }
+            }
+        }
+    } );
+    plugin.action( "env", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+        return QJsonObject{ { "executable", qEnvironmentVariable( "CILOGG_EXECUTABLE" ) },
+                            { "instance", qEnvironmentVariable( "CILOGG_INSTANCE_ID" ) },
+                            { "host_features", plugin.hostFeatures() } };
+    } );
+    plugin.action( "cleanup", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
+        // Report cleanup progress after cancellation; the SDK then answers "Job cancelled".
+        while ( !job.cancelled.load() && !plugin.stopping() ) {
+            std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+        }
+        plugin.notify( "progress", { { "job_id", job.id }, { "value", 0.9 } } );
+        std::this_thread::sleep_for( std::chrono::milliseconds( 50 ) );
+        return QJsonObject{ { "cleaned", true } };
+    } );
+    plugin.action( "convert-late", []( cilogg_plugin::Job& job, const QJsonObject& args ) {
+        QFile output( args.value( "output_path" ).toString() );
+        if ( !output.open( QIODevice::WriteOnly ) ) {
+            throw std::runtime_error( "Cannot open converter output" );
+        }
+        output.write( "LATE\n" );
+        output.close();
+        while ( !job.cancelled.load() ) {
+            std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+        }
+        // A successful answer after the cancel (the SDK itself would report the cancellation).
+        std::cout << QJsonDocument(
+                         QJsonObject{ { "jsonrpc", "2.0" },
+                                      { "id", job.id },
+                                      { "result", QJsonObject{ { "converted", true } } } } )
+                         .toJson( QJsonDocument::Compact )
+                         .constData()
+                  << '\n'
+                  << std::flush;
+        return QJsonObject{};
+    } );
+    plugin.action(
+        "panel-after-cancel", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
+            while ( !job.cancelled.load() && !plugin.stopping() ) {
+                std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+            }
+            plugin.notify( "panel/update",
+                           { { "job_id", job.id },
+                             { "panel", QJsonObject{ { "id", "late" },
+                                                     { "title", "Late" },
+                                                     { "elements", QJsonArray{} } } } } );
+            std::this_thread::sleep_for( std::chrono::milliseconds( 50 ) );
+            return QJsonObject{};
+        } );
+    plugin.action( "ask", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+        // Message boxes need no declared view.
+        plugin.message( { { "message_id", "job-ask" },
+                          { "title", "Fixture" },
+                          { "text", "From a job" },
+                          { "buttons", QJsonArray{ "ok" } } } );
+        return QJsonObject{};
+    } );
+    plugin.action( "stubborn", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+        for ( int tick = 0; tick < 3000 && !plugin.stopping(); ++tick ) {
+            std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        }
+        return QJsonObject{};
+    } );
     plugin.action( "source", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& args ) {
         const auto stream = plugin.openStream( job );
         const auto records
