@@ -115,3 +115,63 @@ TEST_CASE( "Value Counts dock uses shared jobs raw text and revision guards", "[
                .value( "missing" )
                .toBool() );
 }
+
+TEST_CASE( "apply_targets_result_tab", "[workbench][U15][ui][valuecounts]" )
+{
+    QMainWindow window;
+    auto* service = applicationAnalysisService();
+    QStringList counted;
+    CommanderRequest applied;
+    auto* dock = new ValueCountDock(
+        &window,
+        [ & ]( const CommanderRequest& request ) {
+            if ( request.action == CommanderAction::ApplyValueCount
+                 || request.action == CommanderAction::OpenValueCount ) {
+                applied = request;
+                return commanderSuccess();
+            }
+            auto arguments = request.analysisArguments;
+            if ( request.action == CommanderAction::ValueCounts ) {
+                counted << request.tabId;
+                arguments[ "scope" ] = "text";
+                arguments[ "text" ] = "id=" + request.tabId + "\nid=" + request.tabId + "\n";
+            }
+            auto result
+                = executeAnalysisOperation( *service, commanderActionToString( request.action ),
+                                            arguments, {}, ANALYSIS_WORKER_PATH );
+            return CommanderResult{ result.ok ? CommanderResultCode::Success
+                                              : CommanderResultCode::InvalidRequest,
+                                    result.payload.value( "reason" ).toString(), result.payload };
+        },
+        [] {
+            return QVariantList{
+                QVariantMap{ { "tabId", "t1" }, { "label", "1: a.log" }, { "filePath", "/a.log" } },
+                QVariantMap{ { "tabId", "t2" }, { "label", "2: b.log" }, { "filePath", "/b.log" } } };
+        } );
+    window.addDockWidget( Qt::RightDockWidgetArea, dock );
+    window.show();
+    const auto completed = [ & ] {
+        return QTest::qWaitFor(
+            [ & ] { return dock->state().value( "job" ).toMap().value( "state" ) == "completed"; },
+            15000 );
+    };
+
+    REQUIRE( dock->setDefinition( { { "pattern", "id=\\w+" },
+                                    { "scope", "whole_file" },
+                                    { "source", "all" },
+                                    { "operation", "run" } } )
+                 .ok() );
+    REQUIRE( counted == QStringList{ "t1", "t2" } );
+    REQUIRE( completed() );
+    REQUIRE( dock->state().value( "runs" ).toList().size() == 2 );
+    REQUIRE( dock->setDefinition( { { "resultSourceIndex", 1 } } ).ok() );
+    REQUIRE( completed() );
+    const auto rows = dock->state().value( "page" ).toMap().value( "rows" ).toList();
+    REQUIRE( rows.size() == 1 );
+    REQUIRE( rows.front().toMap().value( "value" ) == "id=t2" );
+    REQUIRE( dock->setDefinition( { { "operation", "apply" }, { "rowIndex", 0 } } ).ok() );
+    REQUIRE( applied.action == CommanderAction::ApplyValueCount );
+    REQUIRE( applied.tabId == "t2" );
+    REQUIRE( dock->setDefinition( { { "operation", "release" } } ).ok() );
+    REQUIRE( dock->state().value( "runs" ).toList().isEmpty() );
+}

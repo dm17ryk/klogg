@@ -19,19 +19,8 @@ void MainWindow::createValueCounts()
 {
     valueCountDock_ = new ValueCountDock(
         this,
-        [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); },
-        [ this ] {
-            QVariantList sources;
-            for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-                auto* crawler = crawlerWidgetByIndex( index );
-                if ( crawler )
-                    sources.push_back(
-                        QVariantMap{ { "tabId", mainTabWidget_.tabIdAt( index ) },
-                                     { "label", QString::number( index + 1 ) + ": "
-                                                    + session_.getFilename( crawler ) } } );
-            }
-            return sources;
-        } );
+        [ this ]( const CommanderRequest& request ) { return executeDockRequest( request ); },
+        [ this ] { return dockAnalysisSources(); } );
     addDockWidget( Qt::RightDockWidgetArea, valueCountDock_ );
     valueCountDock_->hide();
 }

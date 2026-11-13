@@ -71,12 +71,28 @@ cilogg command --action apply_regex_lab_pattern --window-index 0
 ```
 
 Native MCP accepts the same object as `analysis_json` or `definition` on
-`set_regex_lab`. Draft keys are `pattern`, `scope`, `text`, `sourceTabId`,
-`options`, `limits`, `visible` and `floating`. Options and limits share the
-analysis service's bounds. Operations are `run`, `cancel`, `release`,
+`set_regex_lab`. Draft keys are `pattern`, `scope`, `text`, `source`,
+`sourceTabId`, `options`, `limits`, `visible` and `floating`. Options and limits
+share the analysis service's bounds. Operations are `run`, `cancel`, `release`,
 `first_page`, and `next_page`. A definition containing only
 `activateResultIndex` activates that zero-based current-page result index;
 invalid types and stale locations return structured errors.
+
+### Choosing the source
+
+The Source list offers the focused tab, **All open files**, every open tab of
+every CILogg window, and **File…**. The `source` key takes the same choices:
+`focused`, `all`, `tab:<tab id>` or `file:<path>`; `sourceTabId` remains a
+shorthand for `tab:<tab id>`.
+
+- `all` runs one job per open tab, at most eight; with more tabs open the run is
+  rejected with `too_many_sources`. The dock shows a source selector above the
+  results, and `resultSourceIndex` selects it from automation. The state lists
+  every job under `runs`.
+- `file:<path>` uses the tab that already shows that file. If no tab does, CILogg
+  opens it and asks you to run again once it has loaded.
+- Apply sends the validated pattern to the tab whose results are shown; result
+  rows open in their own tab, in whichever window holds it.
 
 Use `get_analysis_results` with the returned job ID for exact machine-readable
 captures and opaque-cursor paging. The dock state exposes only a 4,096 UTF-16

@@ -6,6 +6,7 @@
 #include <QDockWidget>
 #include <QVariantMap>
 #include <functional>
+#include <vector>
 
 class QCheckBox;
 class QComboBox;
@@ -31,6 +32,13 @@ public:
     void prepareSelection( const QString& tabId );
 
 private:
+    // One job per source of the last Run ("all open files" runs several).
+    struct SourceRun {
+        QString tabId;
+        QString label;
+        QString jobId;
+    };
+
     void draftChanged();
     QVariantMap draft( bool fullText ) const;
     void refreshSources();
@@ -38,14 +46,22 @@ private:
     CommanderResult run();
     CommanderResult page( const QString& cursor );
     CommanderResult activate( int index );
-    CommanderResult command( CommanderAction action, QVariantMap arguments = {} );
+    CommanderResult command( CommanderAction action, QVariantMap arguments = {},
+                             const QString& tabId = {} );
     void showFailure( const CommanderResult& result );
     void showDetails( int index );
+    QString sourceSelection() const;
+    void showRun( int index );
+    void releaseRuns();
+    QString runsSummary();
     Executor execute_;
     Sources sources_;
     Navigate navigate_;
     QLineEdit* pattern_;
     QComboBox* source_;
+    QComboBox* resultSource_;
+    std::vector<SourceRun> runs_;
+    QString previousSource_;
     QComboBox* scope_;
     QComboBox* matchMode_;
     QCheckBox* case_;

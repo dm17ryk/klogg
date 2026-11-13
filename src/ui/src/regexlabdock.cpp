@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "regexlabdock.h"
 #include "analysiscommands.h"
+#include "analysissource.h"
 #include "analysisstatus.h"
 #include "analysistextedit.h"
 #include "log.h"
@@ -73,7 +74,8 @@ RegexLabDock::RegexLabDock( QWidget* parent, Executor executor, Sources sources,
     pattern_->setPlaceholderText( tr( "Regular expression or CILogg Boolean expression" ) );
     form->addRow( tr( "&Pattern" ), pattern_ );
     source_ = named( new QComboBox( body ), "regexLabSource", tr( "Analysis source" ) );
-    source_->addItem( tr( "Current tab at Run" ), QString{} );
+    source_->addItem( tr( "Focused tab at Run" ), QStringLiteral( "focused" ) );
+    previousSource_ = QStringLiteral( "focused" );
     form->addRow( tr( "&Source" ), source_ );
     scope_ = named( new QComboBox( body ), "regexLabScope", tr( "Analysis scope" ) );
     for ( const auto& item : std::vector<std::pair<QString, QString>>{
@@ -146,6 +148,11 @@ RegexLabDock::RegexLabDock( QWidget* parent, Executor executor, Sources sources,
     status_->setTextFormat( Qt::PlainText );
     status_->setTextInteractionFlags( Qt::TextSelectableByMouse );
     layout->addWidget( status_ );
+    resultSource_ = named( new QComboBox( body ), "regexLabResultSource",
+                           tr( "Show results of source" ) );
+    resultSource_->setToolTip( tr( "Each source of the last Run has its own results" ) );
+    resultSource_->hide();
+    layout->addWidget( resultSource_ );
     auto* results = new QSplitter( Qt::Vertical, body );
     table_ = named( new QTableWidget( 0, 4, results ), "regexLabResults",
                     tr( "Analysis result page" ) );
@@ -189,9 +196,20 @@ RegexLabDock::RegexLabDock( QWidget* parent, Executor executor, Sources sources,
     for ( auto* spin : { batchBudget_, jobBudget_ } )
         connect( spin, qOverload<int>( &QSpinBox::valueChanged ), this,
                  [ this ] { draftChanged(); } );
+    connect( source_, qOverload<int>( &QComboBox::activated ), this, [ this ]( int index ) {
+        const auto data = source_->itemData( index ).toString();
+        if ( data == QLatin1String( "file:" ) )
+            chooseAnalysisSourceFile( source_, this, previousSource_ );
+        previousSource_ = sourceSelection();
+    } );
+    connect( resultSource_, qOverload<int>( &QComboBox::activated ), this,
+             [ this ]( int index ) { showRun( index ); } );
     connect( run_, &QPushButton::clicked, this, [ this ] { showFailure( run() ); } );
-    connect( cancel_, &QPushButton::clicked, this,
-             [ this ] { showFailure( command( CommanderAction::CancelAnalysisJob ) ); } );
+    connect( cancel_, &QPushButton::clicked, this, [ this ] {
+        for ( const auto& sourceRun : runs_ )
+            showFailure( command( CommanderAction::CancelAnalysisJob,
+                                  { { "jobId", sourceRun.jobId } } ) );
+    } );
     connect( apply_, &QPushButton::clicked, this, [ this ] { showFailure( apply() ); } );
     connect( first, &QPushButton::clicked, this, [ this ] { showFailure( page( {} ) ); } );
     connect( next_, &QPushButton::clicked, this, [ this ] { showFailure( page( nextCursor_ ) ); } );
@@ -209,21 +227,76 @@ RegexLabDock::RegexLabDock( QWidget* parent, Executor executor, Sources sources,
 RegexLabDock::~RegexLabDock()
 {
     // Teardown cannot call back into a partly destroyed MainWindow.
-    if ( auto* service = applicationAnalysisService( false ); service && !jobId_.isEmpty() )
-        service->release( jobId_ );
+    if ( auto* service = applicationAnalysisService( false ) ) {
+        for ( const auto& sourceRun : runs_ )
+            service->release( sourceRun.jobId );
+        if ( !jobId_.isEmpty() && runs_.empty() )
+            service->release( jobId_ );
+    }
 }
-CommanderResult RegexLabDock::command( CommanderAction action, QVariantMap arguments )
+CommanderResult RegexLabDock::command( CommanderAction action, QVariantMap arguments,
+                                       const QString& tabId )
 {
-    if ( jobId_.isEmpty() && action != CommanderAction::RegexEvaluate )
-        return rejected( "job_expired" );
+    if ( action != CommanderAction::RegexEvaluate && !arguments.contains( "jobId" ) ) {
+        if ( jobId_.isEmpty() )
+            return rejected( "job_expired" );
+        arguments[ "jobId" ] = jobId_;
+    }
     CommanderRequest request;
     request.action = action;
-    if ( action != CommanderAction::RegexEvaluate )
-        arguments[ "jobId" ] = jobId_;
     request.analysisArguments = std::move( arguments );
     if ( action == CommanderAction::RegexEvaluate )
-        request.tabId = source_->currentData().toString();
+        request.tabId = tabId;
     return execute_( request );
+}
+QString RegexLabDock::sourceSelection() const
+{
+    const auto data = source_->currentData().toString();
+    return data.isEmpty() ? QStringLiteral( "focused" ) : data;
+}
+void RegexLabDock::releaseRuns()
+{
+    for ( const auto& sourceRun : runs_ )
+        command( CommanderAction::ReleaseAnalysisJob, { { "jobId", sourceRun.jobId } } );
+    if ( runs_.empty() && !jobId_.isEmpty() )
+        command( CommanderAction::ReleaseAnalysisJob );
+    runs_.clear();
+    resultSource_->clear();
+    resultSource_->hide();
+}
+void RegexLabDock::showRun( int index )
+{
+    if ( index < 0 || index >= static_cast<int>( runs_.size() ) )
+        return;
+    jobId_ = runs_.at( static_cast<size_t>( index ) ).jobId;
+    rows_.clear();
+    pageCursor_.clear();
+    nextCursor_.clear();
+    fetchedRecords_ = -1;
+    jobStatus_.clear();
+    table_->setRowCount( 0 );
+    details_->clear();
+    LOG_DEBUG << "Regex Lab shows results of source " << index << " job=" << jobId_;
+    refresh( true );
+}
+QString RegexLabDock::runsSummary()
+{
+    if ( runs_.size() < 2 )
+        return {};
+    std::map<QString, int> states;
+    for ( const auto& sourceRun : runs_ ) {
+        const auto status
+            = command( CommanderAction::GetAnalysisJob, { { "jobId", sourceRun.jobId } } );
+        ++states[ status.ok() ? status.payload.value( "state" ).toString()
+                              : status.payload.value( "reason" ).toString() ];
+    }
+    QStringList parts;
+    for ( const auto& state : states )
+        parts << tr( "%1 %2" ).arg( state.second ).arg( state.first );
+    return tr( "%1 sources: %2. Showing %3." )
+        .arg( runs_.size() )
+        .arg( parts.join( QStringLiteral( ", " ) ) )
+        .arg( resultSource_->currentText() );
 }
 void RegexLabDock::showFailure( const CommanderResult& result )
 {
@@ -273,31 +346,46 @@ void RegexLabDock::draftChanged()
 void RegexLabDock::refreshSources()
 {
     const auto available = sources_();
-    if ( available == sourceCache_ )
+    // The first call also adds the fixed entries (all open files, File…).
+    if ( available == sourceCache_ && source_->count() > 1 )
         return;
     sourceCache_ = available;
-    const auto selected = source_->currentData().toString();
-    const QSignalBlocker blocker( source_ );
-    source_->clear();
-    source_->addItem( tr( "Current tab at Run" ), QString{} );
-    for ( const auto& value : available ) {
-        const auto item = value.toMap();
-        source_->addItem( item.value( "label" ).toString(), item.value( "tabId" ) );
-    }
-    auto index = source_->findData( selected );
-    if ( index < 0 ) {
-        source_->addItem( tr( "Closed source (%1)" ).arg( selected ), selected );
-        index = source_->count() - 1;
-    }
-    source_->setCurrentIndex( index );
+    populateAnalysisSourceCombo( source_, available, sourceSelection() );
 }
 CommanderResult RegexLabDock::run()
 {
     if ( scope_->currentData() == "text"
          && static_cast<LabTextEdit*>( text_ )->rawText().size() > TextUnits )
         return rejected( "invalid_input" );
-    if ( !jobId_.isEmpty() )
-        command( CommanderAction::ReleaseAnalysisJob );
+    // Resolve the sources first: a rejected selection keeps the previous results.
+    refreshSources();
+    QStringList tabIds{ QString{} };
+    if ( scope_->currentData() != "text" ) {
+        const auto selection = AnalysisSource::parse( sourceSelection() );
+        if ( !selection )
+            return rejected( "source_not_found" );
+        if ( selection->kind != AnalysisSource::Kind::Focused ) {
+            const auto resolution
+                = resolveAnalysisSource( *selection, OpenSource::fromVariantList( sources_() ) );
+            if ( !resolution.ok() )
+                return { CommanderResultCode::InvalidRequest,
+                         resolution.message,
+                         { { "reason", resolution.reason } } };
+            if ( !resolution.fileToOpen.isEmpty() ) {
+                CommanderRequest open;
+                open.action = CommanderAction::OpenFile;
+                open.filePath = resolution.fileToOpen;
+                const auto opened = execute_( open );
+                if ( !opened.ok() )
+                    return opened;
+                status_->setText( tr( "Opened %1. Run again once it has loaded." )
+                                      .arg( resolution.fileToOpen ) );
+                return commanderSuccess( {}, { { "opened", resolution.fileToOpen } } );
+            }
+            tabIds = resolution.tabIds;
+        }
+    }
+    releaseRuns();
     jobId_.clear();
     rows_.clear();
     pageCursor_.clear();
@@ -309,14 +397,43 @@ CommanderResult RegexLabDock::run()
     apply_->setEnabled( false );
     cancel_->setEnabled( false );
     next_->setEnabled( false );
-    const auto result = command( CommanderAction::RegexEvaluate, draft( true ) );
-    if ( result.ok() ) {
-        jobId_ = result.payload.value( "jobId" ).toString();
-        jobRevision_ = revision_;
-        LOG_DEBUG << "Regex Lab run id=" << jobId_ << " revision=" << revision_;
-        refresh( true );
+    const auto request = draft( true );
+    CommanderResult result;
+    QVariantList jobs;
+    for ( const auto& tabId : tabIds ) {
+        auto attempt = command( CommanderAction::RegexEvaluate, request, tabId );
+        if ( !attempt.ok() ) {
+            // Keep the sources that started; report the first that did not.
+            if ( result.ok() )
+                result = attempt;
+            continue;
+        }
+        QString label = tr( "Focused tab" );
+        for ( const auto& value : sourceCache_ ) {
+            const auto source = value.toMap();
+            if ( source.value( "tabId" ).toString() == tabId )
+                label = source.value( "label" ).toString();
+        }
+        runs_.push_back( { tabId, label, attempt.payload.value( "jobId" ).toString() } );
+        jobs.push_back( QVariantMap{ { "tabId", tabId }, { "jobId", runs_.back().jobId } } );
     }
-    return result;
+    if ( runs_.empty() )
+        return result;
+    {
+        const QSignalBlocker blocker( resultSource_ );
+        for ( const auto& sourceRun : runs_ )
+            resultSource_->addItem( sourceRun.label, sourceRun.tabId );
+        resultSource_->setCurrentIndex( 0 );
+    }
+    resultSource_->setVisible( runs_.size() > 1 );
+    jobId_ = runs_.front().jobId;
+    jobRevision_ = revision_;
+    LOG_DEBUG << "Regex Lab run sources=" << runs_.size() << " first id=" << jobId_
+              << " revision=" << revision_;
+    refresh( true );
+    if ( !result.ok() )
+        return result;
+    return commanderSuccess( {}, { { "jobId", jobId_ }, { "jobs", jobs } } );
 }
 void RegexLabDock::refresh( bool requestPage )
 {
@@ -385,6 +502,8 @@ void RegexLabDock::refresh( bool requestPage )
     if ( !error.isEmpty() )
         description << QString::fromUtf8(
             QJsonDocument::fromVariant( error ).toJson( QJsonDocument::Compact ) );
+    if ( const auto summary = runsSummary(); !summary.isEmpty() )
+        description.prepend( summary );
     status_->setText( description.join( '\n' ) );
     // Status/history stays live while hidden, but retained pages are delivered
     // only when the consumer can use them and the record count has changed.
@@ -473,7 +592,11 @@ CommanderResult RegexLabDock::apply()
     request.searchCaseSensitive = case_->isChecked();
     request.searchInverseMatch = exclude_->isChecked();
     request.matchMode = matchMode_->currentData().toString();
-    // MainWindow preserves the current viewer's context/limit/refresh options for Lab apply.
+    // Apply to the tab the shown results came from; the focused tab otherwise.
+    const auto shown = resultSource_->currentIndex();
+    if ( shown >= 0 && shown < static_cast<int>( runs_.size() ) )
+        request.tabId = runs_.at( static_cast<size_t>( shown ) ).tabId;
+    // MainWindow preserves the target viewer's context/limit/refresh options for Lab apply.
     return execute_( request );
 }
 QVariantMap RegexLabDock::state()
@@ -482,11 +605,20 @@ QVariantMap RegexLabDock::state()
     QVariantList numbers;
     for ( const auto& row : rows_ )
         numbers.push_back( row.toMap().value( "lineNumber" ) );
+    QVariantList runs;
+    for ( const auto& sourceRun : runs_ )
+        runs.push_back( QVariantMap{ { "tabId", sourceRun.tabId },
+                                     { "label", sourceRun.label },
+                                     { "jobId", sourceRun.jobId } } );
+    const auto selection = sourceSelection();
     return { { "objectName", objectName() },
              { "visible", isVisible() },
              { "floating", isFloating() },
              { "draft", draft( false ) },
-             { "sourceTabId", source_->currentData() },
+             { "source", selection },
+             { "sourceTabId", selection.startsWith( "tab:" ) ? selection.mid( 4 ) : QString{} },
+             { "runs", runs },
+             { "resultSourceIndex", resultSource_->currentIndex() },
              { "jobId", jobId_ },
              { "jobRevision", QString::number( jobRevision_ ) },
              { "job", jobStatus_ },
@@ -499,9 +631,8 @@ QVariantMap RegexLabDock::state()
 void RegexLabDock::prepareSelection( const QString& tabId )
 {
     refreshSources();
-    const auto index = source_->findData( tabId );
-    if ( index >= 0 )
-        source_->setCurrentIndex( index );
+    if ( selectAnalysisSource( source_, QStringLiteral( "tab:" ) + tabId ) )
+        previousSource_ = sourceSelection();
     scope_->setCurrentIndex( scope_->findData( "selection" ) );
     show();
     raise();
@@ -509,7 +640,8 @@ void RegexLabDock::prepareSelection( const QString& tabId )
 }
 CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
 {
-    const std::set<QString> strings{ "pattern", "scope", "text", "sourceTabId", "operation" };
+    const std::set<QString> strings{ "pattern",     "scope",  "text",
+                                     "sourceTabId", "source", "operation" };
     const std::set<QString> booleans{ "visible", "floating" };
     for ( auto it = definition.cbegin(); it != definition.cend(); ++it ) {
         if ( strings.count( it.key() ) ) {
@@ -524,9 +656,19 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
             if ( it.value().userType() != QMetaType::QVariantMap )
                 return rejected( "invalid_definition" );
         }
+        else if ( it.key() == "resultSourceIndex" ) {
+            const auto type = it.value().userType();
+            const auto index = it.value().toInt();
+            if ( ( type != QMetaType::Int && type != QMetaType::LongLong
+                   && type != QMetaType::Double )
+                 || index < 0 || index >= static_cast<int>( runs_.size() ) )
+                return rejected( "invalid_result_source" );
+        }
         else if ( it.key() != "activateResultIndex" )
             return rejected( "invalid_definition" );
     }
+    if ( definition.contains( "source" ) && !AnalysisSource::parse( definition.value( "source" ).toString() ) )
+        return rejected( "invalid_source" );
     if ( definition.value( "text" ).toString().size() > TextUnits
          || definition.value( "pattern" ).toString().size() > 65536 )
         return rejected( "input_limit" );
@@ -585,7 +727,10 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
     }
     refreshSources();
     if ( definition.contains( "sourceTabId" )
-         && source_->findData( definition.value( "sourceTabId" ) ) < 0 )
+         && source_->findData( "tab:" + definition.value( "sourceTabId" ).toString() ) < 0 )
+        return rejected( "source_not_found" );
+    if ( const auto requested = definition.value( "source" ).toString();
+         requested.startsWith( "tab:" ) && source_->findData( requested ) < 0 )
         return rejected( "source_not_found" );
     {
         const QScopedValueRollback<bool> guard( updating_, true );
@@ -596,7 +741,10 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
         if ( definition.contains( "scope" ) )
             scope_->setCurrentIndex( scope_->findData( definition.value( "scope" ) ) );
         if ( definition.contains( "sourceTabId" ) )
-            source_->setCurrentIndex( source_->findData( definition.value( "sourceTabId" ) ) );
+            selectAnalysisSource( source_, "tab:" + definition.value( "sourceTabId" ).toString() );
+        if ( definition.contains( "source" ) )
+            selectAnalysisSource( source_, definition.value( "source" ).toString() );
+        previousSource_ = sourceSelection();
         for ( const auto& flag : flags )
             if ( options.contains( flag.first ) )
                 flag.second->setChecked( options.value( flag.first ).toBool() );
@@ -613,7 +761,7 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
     }
     if ( definition.contains( "pattern" ) || definition.contains( "text" )
          || definition.contains( "scope" ) || definition.contains( "sourceTabId" )
-         || !options.isEmpty() || !limits.isEmpty() )
+         || definition.contains( "source" ) || !options.isEmpty() || !limits.isEmpty() )
         draftChanged();
     if ( definition.contains( "floating" ) )
         setFloating( definition.value( "floating" ).toBool() );
@@ -622,11 +770,20 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
     CommanderResult result;
     if ( operation == "run" )
         result = run();
-    else if ( operation == "cancel" )
-        result = command( CommanderAction::CancelAnalysisJob );
+    else if ( operation == "cancel" ) {
+        if ( runs_.empty() )
+            result = command( CommanderAction::CancelAnalysisJob );
+        for ( const auto& sourceRun : runs_ ) {
+            const auto cancelled = command( CommanderAction::CancelAnalysisJob,
+                                            { { "jobId", sourceRun.jobId } } );
+            if ( result.ok() && !cancelled.ok() )
+                result = cancelled;
+        }
+    }
     else if ( operation == "release" ) {
-        result = command( CommanderAction::ReleaseAnalysisJob );
+        result = jobId_.isEmpty() ? rejected( "job_expired" ) : commanderSuccess();
         if ( result.ok() ) {
+            releaseRuns();
             jobId_.clear();
             jobStatus_.clear();
             rows_.clear();
@@ -641,6 +798,11 @@ CommanderResult RegexLabDock::setDefinition( const QVariantMap& definition )
         result = operation == "next_page" && nextCursor_.isEmpty()
                      ? rejected( "no_next_page" )
                      : page( operation == "first_page" ? QString{} : nextCursor_ );
+    if ( result.ok() && definition.contains( "resultSourceIndex" ) ) {
+        const auto index = definition.value( "resultSourceIndex" ).toInt();
+        resultSource_->setCurrentIndex( index );
+        showRun( index );
+    }
     if ( result.ok() && definition.contains( "activateResultIndex" ) )
         result = activate( definition.value( "activateResultIndex" ).toInt() );
     if ( !result.ok() ) {
