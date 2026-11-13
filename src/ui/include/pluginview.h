@@ -77,6 +77,8 @@ public:
     }
     // Rejects this view's open confirmation and file dialogs.
     void cancelDialogs();
+    // Sets edited cells back to their text before the edit (the plugin stopped before it confirmed them).
+    void revertPendingEdits();
     void setTextDebounceMs( int milliseconds )
     {
         debounceMs_ = milliseconds;
@@ -86,8 +88,9 @@ public:
     static QString limitText( const QString& text, int maximum = MaxTextChars );
 
 Q_SIGNALS:
-    // `element_id`, `type` (changed|clicked|selected), `value`, `inputs`, and `truncated` when a
-    // value or the inputs were shortened.
+    // `element_id`, `type` (changed|clicked|selected|edited), `value`, `inputs`, and `truncated`
+    // when a value or the inputs were shortened. `edited` also carries `row_id`, `column_id` and
+    // `previous` (the cell's text before the edit).
     void eventRaised( const QJsonObject& event );
     // A button with `action`: arguments carry `inputs` and, after a save dialog, `save_path`.
     void actionRequested( const QString& action, const QVariantMap& arguments );
@@ -102,6 +105,7 @@ private:
     bool sameShape( const QJsonObject& element ) const;
     void applyInPlace( const QJsonObject& element, const QString& path );
     void clear();
+    void detachTables();
     void emitEvent( const QString& id, const QString& type, const QJsonValue& value,
                     const QJsonObject& extra = {} );
     void emitSelection( const QString& id );

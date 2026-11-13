@@ -2,13 +2,21 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QFocusEvent>
+#include <QFont>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
+#include <QPointer>
 #include <QSignalSpy>
 #include <QStandardItemModel>
+#include <QStyleOptionViewItem>
 #include <QStyledItemDelegate>
+#include <QTableView>
 #include <QTest>
+
+#include <memory>
 
 #include "checkcombobox.h"
 #include "pluginview.h"
@@ -245,4 +253,357 @@ TEST_CASE( "E14 multichoice patches: choices raise no event and apply before val
         { "set", QJsonObject{ { "choices", days() }, { "value", QJsonArray{ "0", "4" } } } } } } );
     CHECK( box->checkedValues() == QJsonArray{ "0", "4" } );
     CHECK( events.count() == 0 );
+}
+
+namespace {
+QJsonObject editableTable()
+{
+    const QJsonObject choice{ { "kind", "choice" },
+                              { "choices", QJsonArray{ QJsonObject{ { "value", "0" }, { "label", "Off (0)" } },
+                                                       QJsonObject{ { "value", "1" }, { "label", "On (1)" } } } } };
+    const QJsonObject multi{ { "kind", "multichoice" }, { "choices", days() } };
+    const QJsonObject number{ { "kind", "number" }, { "min", 1 }, { "max", 180 } };
+    return QJsonObject{
+        { "type", "table" }, { "id", "fields" }, { "sortable", true }, { "selection", "single" },
+        { "columns", QJsonArray{ QJsonObject{ { "id", "name" }, { "title", "Name" } },
+                                 QJsonObject{ { "id", "file" }, { "title", "File" }, { "editable", true } } } },
+        { "rows", QJsonArray{
+                      QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "zeta", "1" } },
+                                   { "editors", QJsonObject{ { "file", choice } } } },
+                      QJsonObject{ { "id", "r2" }, { "cells", QJsonArray{ "alpha", "Sun" } },
+                                   { "tooltip", "was Mon" }, { "tone", "accent" },
+                                   { "editors", QJsonObject{ { "file", multi } } } },
+                      QJsonObject{ { "id", "r3" }, { "cells", QJsonArray{ "beta", "30" } },
+                                   { "editors", QJsonObject{ { "file", number } } } },
+                      QJsonObject{ { "id", "r4" }, { "cells", QJsonArray{ "gamma", "ro" } } } } } };
+}
+
+struct EditableView {
+    PluginView view{ "org.test.e14", "main", PluginViewDialogs{} };
+    QTableView* table = nullptr;
+    EditableView()
+    {
+        view.setRoot( QJsonObject{ { "type", "column" }, { "children", QJsonArray{ editableTable() } } } );
+        table = qobject_cast<QTableView*>( view.element( "fields" ) );
+    }
+    QModelIndex cell( const QString& rowId, int column ) const
+    {
+        auto* model = table->model();
+        for ( int row = 0; row < model->rowCount(); ++row ) {
+            if ( model->index( row, 0 ).data( Qt::UserRole + 1 ).toString() == rowId ) {
+                return model->index( row, column );
+            }
+        }
+        return {};
+    }
+};
+
+// QAbstractItemView::state() is protected; a derived class may still form a pointer to it.
+struct ViewState : QTableView {
+    static bool editing( const QAbstractItemView* view )
+    {
+        return ( view->*&ViewState::state )() == EditingState;
+    }
+};
+
+bool editing( const QTableView* table )
+{
+    return ViewState::editing( table );
+}
+} // namespace
+
+TEST_CASE( "E14 only cells with an editor in an editable column are editable", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    REQUIRE( v.table );
+    CHECK( v.cell( "r1", 1 ).flags().testFlag( Qt::ItemIsEditable ) );
+    CHECK_FALSE( v.cell( "r1", 0 ).flags().testFlag( Qt::ItemIsEditable ) );   // column not editable
+    CHECK_FALSE( v.cell( "r4", 1 ).flags().testFlag( Qt::ItemIsEditable ) );   // no editor
+    CHECK( v.cell( "r2", 1 ).data( Qt::ToolTipRole ).toString() == "was Mon" );
+    CHECK( v.cell( "r2", 0 ).data( Qt::ForegroundRole ).value<QColor>() == QColor( 0x15, 0x65, 0xc0 ) );
+}
+
+TEST_CASE( "E14 a committed edit is pending and raises an edited event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.table->sortByColumn( 0, Qt::AscendingOrder );                 // proxy rows differ from source rows
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    REQUIRE( v.table->model()->setData( v.cell( "r1", 1 ), QVariant( QJsonValue( "0" ) ), Qt::EditRole ) );
+    REQUIRE( events.count() == 1 );
+    const auto event = events.last().front().toJsonObject();
+    CHECK( event.value( "type" ) == "edited" );
+    CHECK( event.value( "element_id" ) == "fields" );
+    CHECK( event.value( "row_id" ) == "r1" );
+    CHECK( event.value( "column_id" ) == "file" );
+    CHECK( event.value( "value" ) == "0" );
+    CHECK( event.value( "previous" ) == "1" );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );
+    CHECK( v.cell( "r1", 1 ).data( Qt::FontRole ).value<QFont>().italic() );
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" },
+                                                { "update_rows", QJsonArray{ QJsonObject{
+                                                                     { "id", "r1" },
+                                                                     { "cells", QJsonArray{ "zeta", "0" } },
+                                                                     { "tone", "accent" } } } } } } );
+    CHECK_FALSE( v.cell( "r1", 1 ).data( Qt::FontRole ).value<QFont>().italic() );
+}
+
+TEST_CASE( "E14 multichoice and number edits", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    REQUIRE( v.table->model()->setData( v.cell( "r2", 1 ), QVariant( QJsonValue( QJsonArray{ "0", "4" } ) ),
+                                        Qt::EditRole ) );
+    CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "0", "4" } );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "Sun, Thu" );
+    REQUIRE( v.table->model()->setData( v.cell( "r3", 1 ), QVariant( QJsonValue( "45" ) ), Qt::EditRole ) );
+    CHECK( events.last().front().toJsonObject().value( "value" ) == "45" );
+}
+
+TEST_CASE( "E14 revertPendingEdits restores the previous text", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.table->model()->setData( v.cell( "r3", 1 ), QVariant( QJsonValue( "45" ) ), Qt::EditRole );
+    v.view.revertPendingEdits();
+    CHECK( v.cell( "r3", 1 ).data().toString() == "30" );
+    CHECK_FALSE( v.cell( "r3", 1 ).data( Qt::FontRole ).value<QFont>().italic() );
+}
+
+TEST_CASE( "E14 the delegate builds the right editor for each kind", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    auto* delegate = v.table->itemDelegate();
+    QStyleOptionViewItem option;
+    std::unique_ptr<QWidget> combo( delegate->createEditor( v.table->viewport(), option, v.cell( "r1", 1 ) ) );
+    CHECK( qobject_cast<QComboBox*>( combo.get() ) );
+    CHECK_FALSE( qobject_cast<CheckComboBox*>( combo.get() ) );
+    std::unique_ptr<QWidget> checks( delegate->createEditor( v.table->viewport(), option, v.cell( "r2", 1 ) ) );
+    REQUIRE( qobject_cast<CheckComboBox*>( checks.get() ) );
+    delegate->setEditorData( checks.get(), v.cell( "r2", 1 ) );
+    CHECK( qobject_cast<CheckComboBox*>( checks.get() )->checkedValues() == QJsonArray{ "0" } );   // "Sun"
+    std::unique_ptr<QWidget> line( delegate->createEditor( v.table->viewport(), option, v.cell( "r3", 1 ) ) );
+    CHECK( qobject_cast<QLineEdit*>( line.get() ) );
+}
+
+TEST_CASE( "E14 replacing rows while an editor is open closes it without an event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.table->show();
+    v.table->edit( v.cell( "r3", 1 ) );
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" },
+                                                { "replace_rows", editableTable().value( "rows" ) } } } );
+    QApplication::processEvents();
+    CHECK( events.count() == 0 );
+    CHECK( !editing( v.table ) );
+}
+
+// Controller ruling A10 and hardening around the editable-cell contract.
+
+namespace {
+bool italic( const QModelIndex& index )
+{
+    return index.data( Qt::FontRole ).value<QFont>().italic();
+}
+} // namespace
+
+TEST_CASE( "E14 a multichoice cell editor opens its popup and Esc cancels without an event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.table->edit( v.cell( "r2", 1 ) );
+    REQUIRE( editing( v.table ) );
+    auto* box = v.table->viewport()->findChild<CheckComboBox*>();
+    REQUIRE( box );
+    QApplication::processEvents();                                  // the popup opens once the editor is shown
+    REQUIRE( box->view()->isVisible() );
+    CHECK( box->checkedValues() == QJsonArray{ "0" } );
+    QTest::mouseClick( box->view()->viewport(), Qt::LeftButton, {},
+                       box->view()->visualRect( box->model()->index( 1, 0 ) ).center() );
+    CHECK( box->checkedValues() == QJsonArray{ "0", "1" } );
+    QTest::keyClick( box->view(), Qt::Key_Escape );
+    QApplication::processEvents();
+    CHECK( events.count() == 0 );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "Sun" );
+    CHECK_FALSE( italic( v.cell( "r2", 1 ) ) );
+    CHECK( !editing( v.table ) );   // Esc ended the edit
+}
+
+TEST_CASE( "E14 a multichoice popup commit raises one event even when focus loss commits again", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.table->edit( v.cell( "r2", 1 ) );
+    QPointer<CheckComboBox> box = v.table->viewport()->findChild<CheckComboBox*>();
+    REQUIRE( box );
+    QApplication::processEvents();
+    REQUIRE( box->view()->isVisible() );
+    box->view()->setCurrentIndex( box->model()->index( 2, 0 ) );
+    QTest::keyClick( box->view(), Qt::Key_Space );                   // ticks Thu
+    QTest::keyClick( box->view(), Qt::Key_Return );                  // popupClosed(true): commit and close
+    REQUIRE( events.count() == 1 );
+    const auto event = events.last().front().toJsonObject();
+    CHECK( event.value( "type" ) == "edited" );
+    CHECK( event.value( "value" ).toArray() == QJsonArray{ "0", "4" } );
+    CHECK( event.value( "previous" ) == "Sun" );
+    CHECK( !editing( v.table ) );
+    REQUIRE( box );                                                   // deleted later, never inside the Hide handler
+    QFocusEvent focusOut( QEvent::FocusOut, Qt::ActiveWindowFocusReason );
+    QApplication::sendEvent( box, &focusOut );
+    v.table->itemDelegate()->setModelData( box, v.table->model(), v.cell( "r2", 1 ) );   // the same value again
+    QApplication::processEvents();
+    CHECK( events.count() == 1 );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "Sun, Thu" );
+    CHECK( italic( v.cell( "r2", 1 ) ) );
+}
+
+TEST_CASE( "E14 a choice cell editor opens its list and commits when an item is activated", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.table->edit( v.cell( "r1", 1 ) );
+    auto* combo = v.table->viewport()->findChild<QComboBox*>();
+    REQUIRE( combo );
+    REQUIRE_FALSE( qobject_cast<CheckComboBox*>( combo ) );
+    CHECK( combo->currentData().toString() == "1" );                  // starts at the cell's value
+    QApplication::processEvents();
+    REQUIRE( combo->view()->isVisible() );
+    combo->view()->setCurrentIndex( combo->model()->index( 0, 0 ) );
+    QTest::keyClick( combo->view(), Qt::Key_Return );                 // activates "Off (0)"
+    REQUIRE( events.count() == 1 );
+    const auto event = events.last().front().toJsonObject();
+    CHECK( event.value( "type" ) == "edited" );
+    CHECK( event.value( "row_id" ) == "r1" );
+    CHECK( event.value( "column_id" ) == "file" );
+    CHECK( event.value( "value" ) == "0" );
+    CHECK( event.value( "previous" ) == "1" );
+    CHECK( !editing( v.table ) );
+    QApplication::processEvents();
+    CHECK( events.count() == 1 );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );
+    CHECK( italic( v.cell( "r1", 1 ) ) );
+}
+
+TEST_CASE( "E14 any patch to a pending row ends its pending state", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    REQUIRE( v.table->model()->setData( v.cell( "r1", 1 ), QVariant( QJsonValue( "0" ) ), Qt::EditRole ) );
+    REQUIRE( italic( v.cell( "r1", 1 ) ) );
+    v.view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "fields" },
+        { "update_rows", QJsonArray{ QJsonObject{ { "id", "r1" }, { "tone", "warn" } } } } } } );
+    CHECK_FALSE( italic( v.cell( "r1", 1 ) ) );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );              // no cells in the patch: the text stays
+    CHECK( v.cell( "r1", 1 ).data( Qt::ForegroundRole ).value<QColor>() == QColor( 0xb2, 0x6a, 0x00 ) );
+}
+
+TEST_CASE( "E14 setData takes a QJsonValue or a plain variant", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    auto* model = v.table->model();
+    REQUIRE( model->setData( v.cell( "r3", 1 ), QVariant( QStringLiteral( "60" ) ), Qt::EditRole ) );
+    CHECK( events.last().front().toJsonObject().value( "value" ) == "60" );
+    REQUIRE( model->setData( v.cell( "r2", 1 ), QVariant( QVariantList{ "1", "4" } ), Qt::EditRole ) );
+    CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "1", "4" } );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "Mon, Thu" );
+    CHECK_FALSE( model->setData( v.cell( "r2", 1 ), QVariant( QStringLiteral( "Mon" ) ), Qt::EditRole ) );
+    CHECK_FALSE( model->setData( v.cell( "r1", 0 ), QVariant( QStringLiteral( "x" ) ), Qt::EditRole ) );
+    CHECK_FALSE( model->setData( v.cell( "r4", 1 ), QVariant( QStringLiteral( "x" ) ), Qt::EditRole ) );
+    CHECK_FALSE( model->setData( v.cell( "r3", 1 ), QVariant( QStringLiteral( "61" ) ), Qt::DisplayRole ) );
+    CHECK( events.count() == 2 );
+}
+
+TEST_CASE( "E14 a disabled view refuses cell edits", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.view.setEnabled( false );                                       // a stopped plugin's view
+    CHECK_FALSE( v.table->model()->setData( v.cell( "r3", 1 ), QVariant( QJsonValue( "45" ) ), Qt::EditRole ) );
+    CHECK( v.cell( "r3", 1 ).data().toString() == "30" );
+    CHECK_FALSE( italic( v.cell( "r3", 1 ) ) );
+    CHECK( events.count() == 0 );
+}
+
+TEST_CASE( "E14 an editor value is the starting value; an unchanged value raises no event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    // The plugin shows a bitmask and gives the checked values separately.
+    const QJsonObject multi{ { "kind", "multichoice" }, { "choices", days() }, { "value", QJsonArray{ "0", "4" } } };
+    v.view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "fields" },
+        { "update_rows", QJsonArray{ QJsonObject{ { "id", "r2" },
+                                                  { "cells", QJsonArray{ "alpha", "17" } },
+                                                  { "editors", QJsonObject{ { "file", multi } } } } } } } } );
+    auto* delegate = v.table->itemDelegate();
+    auto* model = v.table->model();
+    QStyleOptionViewItem option;
+    std::unique_ptr<QWidget> editor( delegate->createEditor( v.table->viewport(), option, v.cell( "r2", 1 ) ) );
+    auto* box = qobject_cast<CheckComboBox*>( editor.get() );
+    REQUIRE( box );
+    delegate->setEditorData( box, v.cell( "r2", 1 ) );
+    CHECK( box->checkedValues() == QJsonArray{ "0", "4" } );
+    delegate->setModelData( box, model, v.cell( "r2", 1 ) );         // closed without a change
+    CHECK( events.count() == 0 );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "17" );
+    CHECK_FALSE( italic( v.cell( "r2", 1 ) ) );
+
+    box->setCheckedValues( { "1" } );
+    delegate->setModelData( box, model, v.cell( "r2", 1 ) );
+    REQUIRE( events.count() == 1 );
+    CHECK( v.cell( "r2", 1 ).data().toString() == "Mon" );
+    // A pending cell reopens with its pending value, not the plugin's older starting value...
+    delegate->setEditorData( box, v.cell( "r2", 1 ) );
+    CHECK( box->checkedValues() == QJsonArray{ "1" } );
+    // ...and going back to the plugin's value is a real edit while the first one is pending.
+    box->setCheckedValues( { "0", "4" } );
+    delegate->setModelData( box, model, v.cell( "r2", 1 ) );
+    CHECK( events.count() == 2 );
+    CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "0", "4" } );
+}
+
+TEST_CASE( "E14 a choice editor starts at the cell's value, numeric values included", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    const QJsonObject numbers{ { "kind", "choice" }, { "choices", QJsonArray{ 1, 2, 3 } } };
+    v.view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "fields" },
+        { "update_rows", QJsonArray{ QJsonObject{ { "id", "r1" },
+                                                  { "cells", QJsonArray{ "zeta", "2" } },
+                                                  { "editors", QJsonObject{ { "file", numbers } } } } } } } } );
+    auto* delegate = v.table->itemDelegate();
+    QStyleOptionViewItem option;
+    std::unique_ptr<QWidget> editor( delegate->createEditor( v.table->viewport(), option, v.cell( "r1", 1 ) ) );
+    auto* combo = qobject_cast<QComboBox*>( editor.get() );
+    REQUIRE( combo );
+    delegate->setEditorData( combo, v.cell( "r1", 1 ) );
+    CHECK( combo->currentIndex() == 1 );
+    CHECK( combo->currentText() == "2" );
+}
+
+TEST_CASE( "E14 a root that re-sends the original rows replaces an edited cell", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    REQUIRE( v.table->model()->setData( v.cell( "r3", 1 ), QVariant( QJsonValue( "45" ) ), Qt::EditRole ) );
+    v.view.setRoot( QJsonObject{ { "type", "column" }, { "children", QJsonArray{ editableTable() } } } );
+    CHECK( v.cell( "r3", 1 ).data().toString() == "30" );
+    CHECK_FALSE( italic( v.cell( "r3", 1 ) ) );
+}
+
+TEST_CASE( "E14 removing the edited row closes its editor without an event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    v.table->edit( v.cell( "r3", 1 ) );
+    REQUIRE( editing( v.table ) );
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" }, { "remove_rows", QJsonArray{ "r3" } } } } );
+    QApplication::processEvents();
+    CHECK( events.count() == 0 );
+    CHECK( !editing( v.table ) );
+    v.table->edit( v.cell( "r1", 1 ) );                               // editing still works afterwards
+    CHECK( editing( v.table ) );
 }
