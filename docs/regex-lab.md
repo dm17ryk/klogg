@@ -85,14 +85,23 @@ every CILogg window, and **File…**. The `source` key takes the same choices:
 `focused`, `all`, `tab:<tab id>` or `file:<path>`; `sourceTabId` remains a
 shorthand for `tab:<tab id>`.
 
-- `all` runs one job per open tab, at most eight; with more tabs open the run is
-  rejected with `too_many_sources`. The dock shows a source selector above the
-  results, and `resultSourceIndex` selects it from automation. The state lists
-  every job under `runs`.
+- `all` runs one job per open tab, however many tabs are open. The analysis
+  service admits ten jobs at a time for the whole application, so the dock starts
+  at most eight of them at once and starts the next ones as jobs finish; the
+  status line counts the waiting, running and completed sources. The dock keeps
+  the results of the shown source and of the 16 most recently finished ones;
+  showing an older source runs it again. The dock shows a source selector above
+  the results, and `resultSourceIndex` (a whole number) selects it from
+  automation. The state lists every source under `runs` with its `jobId` (empty
+  while it waits) and `state`.
+- `focused` is the current tab of the dock's window; the run remembers that tab,
+  so Apply still targets it after you switch tabs.
 - `file:<path>` uses the tab that already shows that file. If no tab does, CILogg
   opens it and asks you to run again once it has loaded.
-- Apply sends the validated pattern to the tab whose results are shown; result
+- Apply sends the validated pattern to the tab whose results are shown, unless
+  `apply_regex_lab_pattern` names a tab with `--tab-id` or `--tab-index`. Result
   rows open in their own tab, in whichever window holds it.
+- Cancel stops every source of the last Run, including those still waiting.
 
 Use `get_analysis_results` with the returned job ID for exact machine-readable
 captures and opaque-cursor paging. The dock state exposes only a 4,096 UTF-16

@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CILOGG_REGEXLABDOCK_H
 #define CILOGG_REGEXLABDOCK_H
+#include "analysisruns.h"
 #include "commander.h"
 #include <QDockWidget>
-#include <QHash>
 #include <QVariantMap>
 #include <functional>
-#include <vector>
 
 class QCheckBox;
 class QComboBox;
@@ -29,17 +28,11 @@ public:
     ~RegexLabDock() override;
     QVariantMap state();
     CommanderResult setDefinition( const QVariantMap& definition );
-    CommanderResult apply();
+    // Applies the pattern to `tabId`, or to the tab of the shown results when it is empty.
+    CommanderResult apply( const QString& tabId = {} );
     void prepareSelection( const QString& tabId );
 
 private:
-    // One job per source of the last Run ("all open files" runs several).
-    struct SourceRun {
-        QString tabId;
-        QString label;
-        QString jobId;
-    };
-
     void draftChanged();
     QVariantMap draft( bool fullText ) const;
     void refreshSources();
@@ -54,16 +47,18 @@ private:
     QString sourceSelection() const;
     void showRun( int index );
     void releaseRuns();
-    QString runsSummary();
+    // Starts waiting sources, polls running ones and follows the shown source's job.
+    void advanceRuns();
     Executor execute_;
     Sources sources_;
     Navigate navigate_;
     QLineEdit* pattern_;
     QComboBox* source_;
     QComboBox* resultSource_;
-    std::vector<SourceRun> runs_;
-    // Terminal states of the runs, so the status summary stops polling finished jobs.
-    QHash<QString, QString> finishedStates_;
+    // One job per source of the last Run ("all open files" runs every open tab).
+    AnalysisRuns runs_;
+    // The request of the last Run, for the sources that start later.
+    QVariantMap runRequest_;
     QString previousSource_;
     QComboBox* scope_;
     QComboBox* matchMode_;

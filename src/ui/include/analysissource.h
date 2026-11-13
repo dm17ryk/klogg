@@ -46,7 +46,7 @@ struct AnalysisSourceResolution {
     QStringList tabIds;
     QString fileToOpen;
     // Empty on success; otherwise a stable reason (source_not_found, no_focused_tab,
-    // no_open_sources, too_many_sources).
+    // no_open_sources).
     QString reason;
     QString message;
 
@@ -56,12 +56,13 @@ struct AnalysisSourceResolution {
     }
 };
 
-// Runs on at most this many tabs at once: analysis jobs are bounded (10 active).
-inline constexpr int MaxAnalysisSources = 8;
-
+// "all" resolves to every open tab: the docks start the jobs as the analysis service admits
+// them (see AnalysisRuns).
 AnalysisSourceResolution resolveAnalysisSource( const AnalysisSource& source,
-                                                const QList<OpenSource>& open,
-                                                int maxSources = MaxAnalysisSources );
+                                                const QList<OpenSource>& open );
+
+// True if `tabId` is one of the open tabs in `sources` (the dock source list).
+bool isListedSource( const QVariantList& sources, const QString& tabId );
 
 class QComboBox;
 class QWidget;

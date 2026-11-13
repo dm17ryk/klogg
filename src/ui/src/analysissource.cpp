@@ -10,6 +10,8 @@
 #include <QSignalBlocker>
 #include <QVariantMap>
 
+#include <algorithm>
+
 namespace {
 QString tr( const char* text )
 {
@@ -102,7 +104,7 @@ QList<OpenSource> OpenSource::fromVariantList( const QVariantList& sources )
 }
 
 AnalysisSourceResolution resolveAnalysisSource( const AnalysisSource& source,
-                                                const QList<OpenSource>& open, int maxSources )
+                                                const QList<OpenSource>& open )
 {
     AnalysisSourceResolution result;
     switch ( source.kind ) {
@@ -142,17 +144,17 @@ AnalysisSourceResolution resolveAnalysisSource( const AnalysisSource& source,
         if ( result.tabIds.isEmpty() ) {
             return failure( QStringLiteral( "no_open_sources" ), tr( "No file is open." ) );
         }
-        if ( result.tabIds.size() > maxSources ) {
-            return failure( QStringLiteral( "too_many_sources" ),
-                            tr( "%1 files are open; at most %2 can be analyzed together. Choose "
-                                "a tab, or close some files." )
-                                .arg( result.tabIds.size() )
-                                .arg( maxSources ) );
-        }
         return result;
     }
     }
     return failure( QStringLiteral( "source_not_found" ), tr( "Unknown source." ) );
+}
+
+bool isListedSource( const QVariantList& sources, const QString& tabId )
+{
+    return std::any_of( sources.cbegin(), sources.cend(), [ &tabId ]( const QVariant& value ) {
+        return value.toMap().value( QStringLiteral( "tabId" ) ).toString() == tabId;
+    } );
 }
 
 namespace {

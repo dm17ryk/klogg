@@ -50,9 +50,24 @@ bool MainWindow::hasTab( const QString& tabId ) const
 
 QVariantList MainWindow::dockAnalysisSources() const
 {
-    if ( applicationSources_ )
-        return applicationSources_();
-    return analysisSources( static_cast<int>( session_.windowIndex() ), true );
+    if ( !applicationSources_ )
+        return analysisSources( static_cast<int>( session_.windowIndex() ), true );
+    // "Focused tab" in this window's docks is this window's current tab, whichever window
+    // was activated last.
+    QString currentTabId;
+    const auto* current = currentCrawlerWidget();
+    for ( int index = 0; current && index < mainTabWidget_.count(); ++index ) {
+        if ( crawlerWidgetByIndex( index ) == current )
+            currentTabId = mainTabWidget_.tabIdAt( index );
+    }
+    auto sources = applicationSources_();
+    for ( auto& value : sources ) {
+        auto source = value.toMap();
+        source[ "focused" ]
+            = !currentTabId.isEmpty() && source.value( "tabId" ).toString() == currentTabId;
+        value = source;
+    }
+    return sources;
 }
 
 CommanderResult MainWindow::executeDockRequest( const CommanderRequest& request )
@@ -62,7 +77,15 @@ CommanderResult MainWindow::executeDockRequest( const CommanderRequest& request 
          && !crawlerWidgetByTabId( request.tabId ) ) {
         LOG_DEBUG << "Routing dock request " << commanderActionToString( request.action )
                   << " to the window of tab " << request.tabId;
-        return applicationExecutor_( request );
+        const auto result = applicationExecutor_( request );
+        // Opening a value shows its line, so bring the window that shows it forward.
+        if ( result.ok() && request.action == CommanderAction::OpenValueCount && windowForTab_ ) {
+            if ( auto* owner = windowForTab_( request.tabId ); owner && owner != this ) {
+                owner->raise();
+                owner->activateWindow();
+            }
+        }
+        return result;
     }
     return executeCommanderRequest( request );
 }
@@ -161,9 +184,11 @@ CommanderResult MainWindow::commanderRegexLab( const CommanderRequest& request )
         return regexLabDock_->setDefinition( definition );
     }
     case CommanderAction::ApplyRegexLabPattern:
-        if ( target )
-            mainTabWidget_.setCurrentWidget( target );
-        return regexLabDock_->apply();
+        // An explicit --tab-id / --tab-index wins over the tab of the shown results.
+        if ( !target )
+            return regexLabDock_->apply();
+        mainTabWidget_.setCurrentWidget( target );
+        return regexLabDock_->apply( mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) ) );
     default:
         return labFailure( "unsupported_operation", tr( "Unsupported Regex Lab operation." ) );
     }

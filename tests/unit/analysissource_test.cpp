@@ -61,13 +61,21 @@ TEST_CASE( "file_source_without_tab", "[workbench][U15]" )
     REQUIRE( closed.fileToOpen == "/logs/c.log" );
 }
 
-TEST_CASE( "all_open_files_limits", "[workbench][U15]" )
+TEST_CASE( "all_open_files_every_tab", "[workbench][U15]" )
 {
     REQUIRE( resolveAnalysisSource( *AnalysisSource::parse( "all" ), {} ).reason
              == "no_open_sources" );
     REQUIRE( resolveAnalysisSource( *AnalysisSource::parse( "focused" ), {} ).reason
              == "no_focused_tab" );
-    const auto limited = resolveAnalysisSource( *AnalysisSource::parse( "all" ), openTabs(), 2 );
-    REQUIRE( limited.reason == "too_many_sources" );
-    REQUIRE( limited.message.contains( "3" ) );
+    // No cap: the docks start the jobs as the analysis service admits them.
+    QVariantList many;
+    QStringList ids;
+    for ( int index = 0; index < 40; ++index ) {
+        ids << QString( "t%1" ).arg( index );
+        many << QVariantMap{ { "tabId", ids.back() }, { "filePath", "/logs/" + ids.back() } };
+    }
+    const auto all
+        = resolveAnalysisSource( *AnalysisSource::parse( "all" ), OpenSource::fromVariantList( many ) );
+    REQUIRE( all.ok() );
+    REQUIRE( all.tabIds == ids );
 }

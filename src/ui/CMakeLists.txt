@@ -35,6 +35,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/regexlabdock.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysissource.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysissource.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisruns.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisruns.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysistextedit.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisstatus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountdock.h

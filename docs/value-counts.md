@@ -76,10 +76,13 @@ The same transport serves retained-row/export operations. Dock operations are
 with pattern, scope, text, source, sourceTabId, options, counts, limits,
 visible/floating, resultSourceIndex, and operation
 `run/cancel/release/first_page/next_page/apply/open/export`.
-`source` is `focused`, `all` (one job per open tab of every window, at most
-eight), `tab:<tab id>` or `file:<path>` (the file's tab, or the file is opened
-first); see [Regex Lab](regex-lab.md#choosing-the-source). With several sources
-the dock shows whose counts are listed, and Apply/Open act on that source's tab.
+`source` is `focused`, `all` (one job per open tab of every window, however many;
+they start as the analysis service admits them), `tab:<tab id>` or `file:<path>`
+(the file's tab, or the file is opened first); see
+[Regex Lab](regex-lab.md#choosing-the-source). With several sources the dock shows
+whose counts are listed, and Apply/Open act on that source's tab; an explicit
+`--tab-id`/`--tab-index` on `set_value_counts` receives `apply`. Opening a value
+of a tab in another window brings that window forward.
 Apply/Open accept global rowIndex; export takes filePath/allowPartial. All accept
 existing window/tab selectors. Numeric capture selectors mean indexes; strings
 mean exact names, even `"0"`. Editing the GUI field interprets numeric text as an index.

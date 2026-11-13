@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CILOGG_VALUECOUNTDOCK_H
 #define CILOGG_VALUECOUNTDOCK_H
+#include "analysisruns.h"
 #include "commander.h"
 #include <QDockWidget>
-#include <QHash>
 #include <functional>
-#include <vector>
 class QLineEdit;
 class QComboBox;
 class QCheckBox;
@@ -24,16 +23,12 @@ public:
     ValueCountDock( QWidget* parent, Executor executor, Sources sources );
     ~ValueCountDock() override;
     QVariantMap state();
-    CommanderResult setDefinition( const QVariantMap& definition );
+    // `applyTabId` (an explicit Commander tab) receives "apply"; otherwise the tab of the
+    // shown counts does.
+    CommanderResult setDefinition( const QVariantMap& definition,
+                                   const QString& applyTabId = {} );
 
 private:
-    // One job per source of the last Run ("all open files" runs several).
-    struct SourceRun {
-        QString tabId;
-        QString label;
-        QString jobId;
-    };
-
     QVariantMap draft() const;
     void draftChanged();
     void updateApplyState();
@@ -47,18 +42,24 @@ private:
     void showFailure( const CommanderResult& result );
     QString sourceSelection() const;
     QString shownTabId() const;
+    // The shown counts came from a tab that is no longer open.
+    bool shownSourceClosed() const;
     void showRun( int index );
     void releaseRuns();
-    QString runsSummary();
+    // Starts waiting sources, polls running ones and follows the shown source's job.
+    void advanceRuns();
     Executor execute_;
     Sources sources_;
     QLineEdit* pattern_;
     QLineEdit* capture_;
     QComboBox* source_;
     QComboBox* resultSource_;
-    std::vector<SourceRun> runs_;
-    // Terminal states of the runs, so the status summary stops polling finished jobs.
-    QHash<QString, QString> finishedStates_;
+    // One job per source of the last Run ("all open files" runs every open tab).
+    AnalysisRuns runs_;
+    // The request of the last Run, for the sources that start later.
+    QVariantMap runRequest_;
+    // An explicit Commander tab for "apply" during setDefinition().
+    QString applyTabId_;
     QString previousSource_;
     QComboBox* scope_;
     QComboBox* missing_;
@@ -77,6 +78,7 @@ private:
     QTableWidget* table_;
     QPushButton* cancel_;
     QPushButton* apply_;
+    QPushButton* open_;
     QPushButton* next_;
     QVariantMap limits_;
     QVariantMap extraOptions_;

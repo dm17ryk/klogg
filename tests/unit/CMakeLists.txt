@@ -5,6 +5,7 @@ target_link_libraries(preview_decoder_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Cor
 add_executable(cilogg_tests
     actionsconfig_test.cpp
     analysissource_test.cpp
+    analysisruns_test.cpp
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
