@@ -100,7 +100,7 @@ Host requests:
 
 | Method | Parameters / result |
 | --- | --- |
-| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views"]`); return identity/version, capabilities, actions, configuration fields |
+| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit"]`); return identity/version, capabilities, actions, configuration fields |
 | `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete |
 
 The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
@@ -166,7 +166,7 @@ Everything is a notification; the plugin still never sends requests to the host.
 | --- | --- | --- |
 | host → plugin | `view/opened` | `view_id`, `window_id`, `context` |
 | host → plugin | `view/closed` | `view_id`, `window_id` |
-| host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`), `value`, `inputs` |
+| host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`, `edited`), `value`, `inputs`; `edited` also has `row_id`, `column_id`, `previous` |
 | plugin → host | `view/update` | `view_id`, optional `window_id`, and `root` or `patch` |
 | plugin → host | `view/show`, `view/hide` | `view_id`, optional `window_id`; `view/show` also takes `area`, `floating`, `title`, `focus` |
 | plugin → host | `ui/message`, `ui/close_message` | `message_id`, `title`, `text`, `icon`, `buttons`, `default`, `timeout_ms`, `modal` |
@@ -180,6 +180,14 @@ element reference, limits, lifecycle and automation names. The Python SDK has el
 `message` (with `Message.wait()` or a callback) and `on_view_opened` / `on_view_closed` /
 `on_view_event` callbacks that run on a worker thread. `plugins/examples/view-demo` shows all of
 them; it is disabled by default.
+
+Hosts that announce `view_edit` also support editable table cells, the `multichoice` field and the
+`toolbar` / `menu` / `icon` manifest keys (see [plugin views](plugin-views.md), section 2.5). The Python
+SDK helpers are `table_column(id, title=None, width=None, editable=None)`,
+`table_row(id, cells, tone=None, tooltip=None, editors=None)` and
+`editor(kind, choices=None, min=None, max=None, max_length=None, placeholder=None, value=None)`.
+`Plugin.supports_view_edit` is true when the host announced `view_edit`; a plugin should fall back to
+read-only tables when it is false. The view-demo has an editable table.
 
 External windows belong to the plugin process. See the Python `external-window`
 SDK example: Tk runs on the main thread while the protocol reader and jobs run on

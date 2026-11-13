@@ -491,7 +491,7 @@ The full card, with files, interfaces, test cases and acceptance, is [tasks/E13.
 
 ### E14 — Editable plugin table cells, check-dropdown, toolbar and icon keys
 
-**Integrated hard dependencies:** E13 (plugin views, merged).
+**Integrated hard dependencies:** E13a (the plugin views engine slice of E13, merged as PR #102).
 
 **Outcome:** Plugin views gain editable table cells (text, number, choice, multichoice, boolean) confirmed by a plugin patch, a `multichoice` check-dropdown field, and toolbar/menu/icon keys for actions and views. The host announces `view_edit`; plugins that do not use the new keys behave exactly as before. See [decision D13](../../docs/workbench/decisions.md).
 
