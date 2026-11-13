@@ -488,3 +488,11 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 **Coordination:** E01 later absorbs the single `host_features` entry into its negotiated capabilities. Plugins without views keep byte-for-byte protocol-v1 behaviour.
 
 The full card, with files, interfaces, test cases and acceptance, is [tasks/E13.md](tasks/E13.md). The design is [docs/plugin-views.md](../../docs/plugin-views.md).
+
+### E14 — Editable plugin table cells, check-dropdown, toolbar and icon keys
+
+**Integrated hard dependencies:** E13 (plugin views, merged).
+
+**Outcome:** Plugin views gain editable table cells (text, number, choice, multichoice, boolean) confirmed by a plugin patch, a `multichoice` check-dropdown field, and toolbar/menu/icon keys for actions and views. The host announces `view_edit`; plugins that do not use the new keys behave exactly as before. See [decision D12](../../docs/workbench/decisions.md).
+
+The full card, with files, interfaces and acceptance, is [tasks/E14.md](tasks/E14.md).

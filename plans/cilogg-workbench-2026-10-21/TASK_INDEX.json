@@ -1601,6 +1601,19 @@
       "taskFile": "tasks/E13.md"
     },
     {
+      "id": "E14",
+      "title": "Editable plugin table cells, check-dropdown, toolbar and icon keys",
+      "plan": "08-ecosystem.md",
+      "anchor": "e14--editable-plugin-table-cells-check-dropdown-toolbar-and-icon-keys",
+      "dependencies": [
+        "E13"
+      ],
+      "status": "todo",
+      "requirements": [],
+      "task_body_chars": 1947,
+      "taskFile": "tasks/E14.md"
+    },
+    {
       "id": "I02",
       "title": "Compare files, runs, periods and distributions",
       "plan": "05-insights.md",
