@@ -20,7 +20,10 @@ UpdateUiController::UpdateUiController( VersionChecker& checker, ParentProvider 
     connect( &checker_, &VersionChecker::downloadProgress, this,
              &UpdateUiController::updateProgress );
     connect( &checker_, &VersionChecker::updateReady, this, &UpdateUiController::updateReady );
+    // Only user-initiated operations report errorOccurred; background check failures are
+    // logged by the checker and retried without a dialog.
     connect( &checker_, &VersionChecker::errorOccurred, this, &UpdateUiController::updateFailed );
+    connect( &checker_, &VersionChecker::installFailed, this, &UpdateUiController::installFailed );
     LOG_INFO << "Update UI controller attached; context=" << context_;
 }
 
@@ -99,6 +102,12 @@ void UpdateUiController::updateFailed( const QString& message )
 {
     closeProgress();
     LOG_WARNING << "Update UI reports failure; context=" << context_ << ", message=" << message;
+    QMessageBox::warning( parentWidget(), tr( "CILogg Update" ), message );
+}
+
+void UpdateUiController::installFailed( const QString& message )
+{
+    LOG_WARNING << "Update UI reports a failed exit-time install; context=" << context_;
     QMessageBox::warning( parentWidget(), tr( "CILogg Update" ), message );
 }
 

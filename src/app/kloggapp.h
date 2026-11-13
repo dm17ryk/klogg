@@ -1045,10 +1045,20 @@ class KloggApp : public QApplication {
         startupCommanderReady_ = ready;
     }
 
+    // An updated build confirms its start to the updater helper as early as possible: the helper
+    // rolls a self-contained update back when no acknowledgement arrives within its timeout,
+    // however long session restore or opening files later takes.
+    void acknowledgeUpdatedStartup()
+    {
+        versionChecker_.acknowledgeStartup();
+    }
+
     void startBackgroundTasks()
     {
         LOG_DEBUG << "startBackgroundTasks";
-        versionChecker_.acknowledgeStartup();
+        // Only the primary GUI process binds the updater to this installation. CLI and
+        // secondary processes leave the persisted update transaction alone.
+        versionChecker_.activate();
         versionChecker_.startCheck();
     }
 
