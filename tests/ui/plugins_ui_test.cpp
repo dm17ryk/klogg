@@ -6,8 +6,11 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QElapsedTimer>
+#include <QFileInfo>
+#include <QImage>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -181,4 +184,79 @@ TEST_CASE( "Plugin UI routes panels to captured windows and cleans them up", "[u
     manager.panelUpdated( "fixture", { { "id", "late" }, { "elements", QJsonArray{} } }, context );
     QTest::qWait( 150 );
     REQUIRE_FALSE( second.findChild<QDockWidget*>( "pluginPanel_fixture_late" ) );
+}
+
+TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys",
+           "[ui][plugins][E14]" )
+{
+    QTemporaryDir temp;
+    const QString pluginId = "org.test.e14";
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = QDir( shipped ).filePath( pluginId );
+    REQUIRE( QDir().mkpath( folder ) );
+    const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
+    REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
+                          QDir( folder ).filePath( executable ) ) );
+    REQUIRE( QImage( 16, 16, QImage::Format_ARGB32 ).save( QDir( folder ).filePath( "icon.png" ) ) );
+    QFile broken( QDir( folder ).filePath( "broken.png" ) );
+    REQUIRE( broken.open( QIODevice::WriteOnly ) );
+    broken.write( "not a png" );
+    broken.close();
+    const QJsonObject description{
+        { "id", pluginId },
+        { "name", "E14 fixture" },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "executable", executable },
+        { "capabilities", QJsonArray{ "tool" } },
+        { "actions",
+          QJsonArray{ QJsonObject{ { "id", "a1" },
+                                   { "capability", "tool" },
+                                   { "toolbar", false },
+                                   { "menu", false } },
+                      QJsonObject{ { "id", "a2" }, { "capability", "tool" } } } },
+        { "views",
+          QJsonArray{ QJsonObject{ { "id", "main" },
+                                   { "title", "Main" },
+                                   { "toolbar", true },
+                                   { "icon", "icon.png" } },
+                      QJsonObject{ { "id", "other" },
+                                   { "title", "Other" },
+                                   { "icon", "broken.png" } } } }
+    };
+    QFile manifest( QDir( folder ).filePath( "plugin.json" ) );
+    REQUIRE( manifest.open( QIODevice::WriteOnly ) );
+    REQUIRE( manifest.write( QJsonDocument( description ).toJson() ) > 0 );
+    manifest.close();
+    cilogg::plugins::PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", pluginId, {} ).ok() );
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession{ session, "PluginE14", 0 } );
+    window.setPluginManager( manager, []( const CommanderRequest& ) { return CommanderResult{}; } );
+    window.show();
+
+    auto* toolbar = window.findChild<QToolBar*>( "mainToolBar" );
+    auto* menu = window.findChild<QMenu*>( "pluginsMenu" );
+    REQUIRE( toolbar );
+    REQUIRE( menu );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return window.findChild<QAction*>( "pluginViewAction_org.test.e14_main" ); },
+        5000 ) );
+    auto* a1 = window.findChild<QAction*>( "pluginAction_org.test.e14_a1" );
+    auto* a2 = window.findChild<QAction*>( "pluginAction_org.test.e14_a2" );
+    auto* main = window.findChild<QAction*>( "pluginViewAction_org.test.e14_main" );
+    auto* other = window.findChild<QAction*>( "pluginViewAction_org.test.e14_other" );
+    CHECK( a1 == nullptr ); // neither toolbar nor menu: no QAction at all
+    REQUIRE( a2 );
+    CHECK( toolbar->actions().contains( a2 ) );
+    CHECK( menu->actions().contains( a2 ) );
+    REQUIRE( main );
+    CHECK( toolbar->actions().contains( main ) );
+    CHECK( menu->actions().contains( main ) );
+    CHECK( main->icon().cacheKey()
+           != window.style()->standardIcon( QStyle::SP_TitleBarNormalButton ).cacheKey() );
+    CHECK_FALSE( main->icon().pixmap( 16, 16 ).isNull() );
+    REQUIRE( other );
+    CHECK_FALSE( toolbar->actions().contains( other ) ); // views default to toolbar:false
+    CHECK_FALSE( other->icon().isNull() );               // broken file: generic icon, not empty
 }

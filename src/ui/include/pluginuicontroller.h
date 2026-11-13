@@ -4,6 +4,8 @@
 #include <QDockWidget>
 #include <QMenu>
 #include <QPointer>
+#include <QSet>
+#include <QStyle>
 #include <functional>
 
 class MainWindow;
@@ -23,6 +25,8 @@ public:
 
 private:
     void refreshActions();
+    QIcon iconFor( const QVariantMap& plugin, const QJsonObject& item,
+                   QStyle::StandardPixmap fallback );
     void manageDialog();
     void browseDialog();
     void invoke( const QString& pluginId, const QJsonObject& action );
@@ -39,5 +43,6 @@ private:
     QMap<QString, QPair<QJsonObject, QVariantMap>> pendingPanels_;
     QTimer* panelTimer_ = nullptr;
     QJsonArray actionDescriptions_;
+    QSet<QString> iconWarnings_;
     PluginViewHost* viewHost_ = nullptr;
 };

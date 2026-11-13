@@ -5,10 +5,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDir>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QDoubleValidator>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QJsonDocument>
@@ -323,21 +325,30 @@ void PluginUiController::refreshActions()
             continue;
         }
         const auto id = plugin.value( "id" ).toString();
-        // Plugins → <view title> opens or raises the view in this window.
+        // Views: a Plugins menu entry (menu, default true) and/or a toolbar button (toolbar, default
+        // false) that open or raise the view in this window.
         for ( const auto& item : plugin.value( "views" ).toList() ) {
             const auto view = QJsonObject::fromVariantMap( item.toMap() );
-            if ( !view.value( "menu" ).toBool( true ) ) {
+            const bool inMenu = view.value( "menu" ).toBool( true );
+            const bool inToolbar = view.value( "toolbar" ).toBool( false );
+            if ( !inMenu && !inToolbar ) {
                 continue;
             }
             const auto viewId = view.value( "id" ).toString();
-            auto* action = new QAction(
-                window_->style()->standardIcon( view.value( "kind" ) == "dialog"
-                                                    ? QStyle::SP_MessageBoxInformation
-                                                    : QStyle::SP_TitleBarNormalButton ),
-                view.value( "title" ).toString( viewId ), this );
+            auto* action = new QAction( iconFor( plugin, view,
+                                                 view.value( "kind" ) == "dialog"
+                                                     ? QStyle::SP_MessageBoxInformation
+                                                     : QStyle::SP_TitleBarNormalButton ),
+                                        view.value( "title" ).toString( viewId ), this );
             action->setObjectName( "pluginViewAction_" + id + "_" + viewId );
             action->setToolTip( plugin.value( "name" ).toString() + ": " + action->text() );
-            menu_->addAction( action );
+            if ( inMenu ) {
+                menu_->addAction( action );
+            }
+            if ( inToolbar && toolbar ) {
+                toolbar->addAction( action );
+                toolbar->widgetForAction( action )->setAccessibleName( action->text() );
+            }
             actions_.append( action );
             connect( action, &QAction::triggered, this, [ this, id, viewId ] {
                 QString error;
@@ -348,20 +359,27 @@ void PluginUiController::refreshActions()
         }
         for ( const auto& item : plugin.value( "actions" ).toList() ) {
             const auto definition = QJsonObject::fromVariantMap( item.toMap() );
+            const bool inMenu = definition.value( "menu" ).toBool( true );
+            const bool inToolbar = definition.value( "toolbar" ).toBool( true );
+            if ( !inMenu && !inToolbar ) {
+                continue; // still callable from Commander, CLI and MCP
+            }
             const auto type = definition.value( "capability" ).toString();
-            const auto icon = type == "datasource"  ? QStyle::SP_MediaPlay
-                              : type == "converter" ? QStyle::SP_FileDialogContentsView
-                                                    : QStyle::SP_ComputerIcon;
+            const auto standard = type == "datasource"  ? QStyle::SP_MediaPlay
+                                  : type == "converter" ? QStyle::SP_FileDialogContentsView
+                                                        : QStyle::SP_ComputerIcon;
             auto* action = new QAction(
-                window_->style()->standardIcon( icon ),
+                iconFor( plugin, definition, standard ),
                 plugin.value( "name" ).toString() + ": "
                     + definition.value( "label" ).toString( definition.value( "id" ).toString() ),
                 this );
             action->setObjectName( "pluginAction_" + id + "_"
                                    + definition.value( "id" ).toString() );
             action->setToolTip( action->text() );
-            menu_->addAction( action );
-            if ( toolbar ) {
+            if ( inMenu ) {
+                menu_->addAction( action );
+            }
+            if ( inToolbar && toolbar ) {
                 toolbar->addAction( action );
                 toolbar->widgetForAction( action )->setAccessibleName( action->text() );
             }
@@ -370,6 +388,26 @@ void PluginUiController::refreshActions()
                      [ this, id, definition ] { invoke( id, definition ); } );
         }
     }
+}
+QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject& item,
+                                   QStyle::StandardPixmap fallback )
+{
+    const auto generic = window_->style()->standardIcon( fallback );
+    const auto icon = item.value( "icon" ).toString();
+    if ( icon.isEmpty() ) {
+        return generic;
+    }
+    const auto path = QDir( plugin.value( "directory" ).toString() ).filePath( icon );
+    QIcon loaded( path );
+    if ( QFileInfo::exists( path ) && !loaded.isNull() && !loaded.pixmap( 16, 16 ).isNull() ) {
+        return loaded;
+    }
+    const auto key = plugin.value( "id" ).toString() + '|' + icon;
+    if ( !iconWarnings_.contains( key ) ) {
+        iconWarnings_.insert( key );
+        LOG_WARNING << "Plugin icon not usable, using the generic icon: " << path.toStdString();
+    }
+    return generic;
 }
 void PluginUiController::invoke( const QString& id, const QJsonObject& action )
 {
