@@ -5,6 +5,9 @@ execution authority. This proposal extends the 97-task/173-requirement merged
 package with eight decoder tasks/fourteen DEC requirements and fourteen terminal
 tasks/fourteen TERM requirements: 119 tasks and 201 requirements. Task acceptance
 remains controlled by the ledger; terminal implementation is planned, not delivered.
+Later user requests added E13 (2026-11-11, decision D11) and R05/U14/U15/U16 with
+UX19–UX21 and QUAL11 (2026-11-13, decisions D12/D13): 124 tasks and 205 requirements. They are tracked by
+their own pull requests, not by new milestone issues.
 
 | Tracker | Execution scope |
 |---|---|

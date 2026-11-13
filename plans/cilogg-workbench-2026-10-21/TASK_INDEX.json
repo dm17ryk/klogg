@@ -151,14 +151,15 @@
         "G02",
         "G03",
         "U01",
-        "F01"
+        "F01",
+        "U16"
       ],
       "status": "planned",
       "requirements": [
         "VIS34",
         "UX04"
       ],
-      "task_body_chars": 3599,
+      "task_body_chars": 3771,
       "taskFile": "tasks/U03.md"
     },
     {
@@ -1786,6 +1787,51 @@
       "taskFile": "tasks/U13.md"
     },
     {
+      "id": "U14",
+      "title": "Show which filter matched each filtered line, and clear the results",
+      "plan": "04-workspace.md",
+      "anchor": "u14--show-which-filter-matched-each-filtered-line-and-clear-the-results",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "in_progress",
+      "requirements": [
+        "UX19"
+      ],
+      "task_body_chars": 6346,
+      "taskFile": "tasks/U14.md"
+    },
+    {
+      "id": "U15",
+      "title": "One source picker for every tool that takes a tab",
+      "plan": "04-workspace.md",
+      "anchor": "u15--one-source-picker-for-every-tool-that-takes-a-tab",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "in_progress",
+      "requirements": [
+        "UX20"
+      ],
+      "task_body_chars": 11230,
+      "taskFile": "tasks/U15.md"
+    },
+    {
+      "id": "U16",
+      "title": "Split the main window into panes",
+      "plan": "04-workspace.md",
+      "anchor": "u16--split-the-main-window-into-panes",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "UX21"
+      ],
+      "task_body_chars": 5786,
+      "taskFile": "tasks/U16.md"
+    },
+    {
       "id": "V16",
       "title": "Add custom charts and markdown/text without opening a second engine",
       "plan": "03-visualization.md",
@@ -2222,15 +2268,34 @@
         "D17",
         "D18",
         "MD08",
-        "UT13"
+        "UT13",
+        "R05",
+        "U14",
+        "U15",
+        "U16"
       ],
       "status": "planned",
       "requirements": [
         "UX18",
         "QUAL10"
       ],
-      "task_body_chars": 2870,
+      "task_body_chars": 2973,
       "taskFile": "tasks/R04.md"
+    },
+    {
+      "id": "R05",
+      "title": "Make the in-app update hand-off and scheduled checks robust",
+      "plan": "09-release.md",
+      "anchor": "r05--make-the-in-app-update-hand-off-and-scheduled-checks-robust",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "in_progress",
+      "requirements": [
+        "QUAL11"
+      ],
+      "task_body_chars": 7755,
+      "taskFile": "tasks/R05.md"
     },
     {
       "id": "MD01",
@@ -2665,6 +2730,10 @@
   ],
   "suggestedTopologicalOrder": [
     "G01",
+    "R05",
+    "U14",
+    "U15",
+    "U16",
     "G02",
     "G03",
     "U01",
@@ -2789,7 +2858,8 @@
     "Exact hard dependencies include shared G01-G03 prerequisites. Optional capability descriptions are not backwards hard edges.",
     "P03/P04 and P05 state is refreshed and credited in G01; no new tasks repeat that implemented work.",
     "R04 is the full-program completion gate.",
-    "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13."
+    "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13.",
+    "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests. They depend only on the completed G01 and are selectable ahead of G02/G03; U03 depends on U16 (its workspace snapshot embeds the pane layout) and R04 on all four. Decision D13 records the user's answers (U14 confirmed, U15 'all' means every open tab, U16 design approved)."
   ],
   "reconciledDate": "2026-11-04"
 }

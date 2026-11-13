@@ -1,6 +1,6 @@
 # Complete Feature Coverage
 
-201 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
+205 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
 
 ## Exploration, fields, time and data
 
@@ -117,6 +117,9 @@
 | UX16 | Keyboard-only use, accessible names and table alternatives | U13, V08 |
 | UX17 | Translations and discoverable tooltips/shortcuts | U01, U13 |
 | UX18 | Guided sample projects across all developer domains | U02, U13, E09, R04 |
+| UX19 | Filtered view names the filter or term that matched each line and clears its results without losing the search | U14 |
+| UX20 | One source picker (tab of any window, file, focused tab, all open tabs) for every tab-bound tool | U15 |
+| UX21 | Split a window into panes, each with its own tabs and filtered views, restored with the session | U16 |
 
 ## Automation, tests and reproducibility
 
@@ -214,6 +217,7 @@
 | QUAL08 | C++17 and supported Qt5/Qt6 core compatibility | G01, R03 |
 | QUAL09 | Useful diagnostics, capability errors and truthful partial results | A08, R01, R02 |
 | QUAL10 | Documentation, examples, screenshots and traceable completion | R04 |
+| QUAL11 | In-app updates install exactly once, report a failed or abandoned install once and retry scheduled checks silently | R05 |
 
 ## Message decoding and protocol inspection
 
