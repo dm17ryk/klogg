@@ -4,6 +4,7 @@
 #include "regexlabdock.h"
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QInputMethodEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -16,6 +17,7 @@
 #include <QTextCursor>
 #include <QThread>
 #include <QTimer>
+#include <algorithm>
 #include <catch2/catch.hpp>
 
 namespace {
@@ -104,6 +106,165 @@ TEST_CASE( "Regex Lab shows bounded captures and applies only validated drafts",
         3000 ) );
     CHECK( table->rowCount() == 0 );
     CHECK( details->toPlainText().isEmpty() );
+}
+
+TEST_CASE( "all_open_files_fan_out_and_merge", "[workbench][U15][ui][regexlab]" )
+{
+    QMainWindow window;
+    auto* service = applicationAnalysisService();
+    QStringList evaluated;
+    CommanderRequest applied;
+    auto* dock = new RegexLabDock(
+        &window,
+        [ & ]( const CommanderRequest& request ) {
+            if ( request.action == CommanderAction::Search ) {
+                applied = request;
+                return commanderSuccess();
+            }
+            auto arguments = request.analysisArguments;
+            if ( request.action == CommanderAction::RegexEvaluate ) {
+                // Each tab's content stands in for its log file.
+                evaluated << request.tabId;
+                arguments[ "scope" ] = "text";
+                arguments[ "text" ] = "hit in " + request.tabId + "\nmiss\n";
+            }
+            auto result
+                = executeAnalysisOperation( *service, commanderActionToString( request.action ),
+                                            arguments, {}, ANALYSIS_WORKER_PATH );
+            return CommanderResult{ result.ok ? CommanderResultCode::Success
+                                              : CommanderResultCode::InvalidRequest,
+                                    result.payload.value( "reason" ).toString(), result.payload };
+        },
+        [] {
+            return QVariantList{
+                QVariantMap{ { "tabId", "t1" }, { "label", "1: a.log" }, { "filePath", "/a.log" } },
+                QVariantMap{ { "tabId", "t2" },
+                             { "label", "Window 2 · 1: b.log" },
+                             { "filePath", "/b.log" },
+                             { "focused", true } } };
+        },
+        []( const QString&, quint64 ) { return commanderSuccess(); } );
+    window.addDockWidget( Qt::RightDockWidgetArea, dock );
+    window.resize( 1000, 900 );
+    window.show();
+
+    REQUIRE( dock->setDefinition( { { "pattern", "hit in (t\\d)" },
+                                    { "scope", "whole_file" },
+                                    { "source", "all" },
+                                    { "operation", "run" } } )
+                 .ok() );
+    REQUIRE( evaluated == QStringList{ "t1", "t2" } );
+    auto state = finishLab( dock );
+    REQUIRE( state.value( "source" ) == "all" );
+    REQUIRE( state.value( "runs" ).toList().size() == 2 );
+    auto* resultSource = dock->findChild<QComboBox*>( "regexLabResultSource" );
+    REQUIRE( resultSource );
+    REQUIRE( resultSource->isVisible() );
+    REQUIRE( resultSource->itemText( 1 ) == "Window 2 · 1: b.log" );
+    const auto firstJob = state.value( "jobId" ).toString();
+
+    // Results of the second source, and Apply goes to that source's tab.
+    REQUIRE( dock->setDefinition( { { "resultSourceIndex", 1 } } ).ok() );
+    state = finishLab( dock );
+    REQUIRE( state.value( "jobId" ).toString() != firstJob );
+    REQUIRE( state.value( "resultSourceIndex" ).toInt() == 1 );
+    REQUIRE( dock->apply().ok() );
+    REQUIRE( applied.tabId == "t2" );
+
+    // One chosen tab runs one job; a closed tab is rejected.
+    evaluated.clear();
+    REQUIRE( dock->setDefinition( { { "source", "tab:t1" }, { "operation", "run" } } ).ok() );
+    REQUIRE( evaluated == QStringList{ "t1" } );
+    REQUIRE_FALSE( resultSource->isVisible() );
+    REQUIRE( dock->state().value( "sourceTabId" ) == "t1" );
+    REQUIRE_FALSE( dock->setDefinition( { { "source", "tab:gone" } } ).ok() );
+    REQUIRE_FALSE( dock->setDefinition( { { "source", "everything" } } ).ok() );
+    // The new runs are unknown before a run, so their index cannot be chosen with it.
+    REQUIRE_FALSE(
+        dock->setDefinition( { { "operation", "run" }, { "resultSourceIndex", 0 } } ).ok() );
+    // An empty sourceTabId, as state() reports for the focused tab, selects the focused tab.
+    REQUIRE( dock->setDefinition( { { "sourceTabId", "" } } ).ok() );
+    REQUIRE( dock->state().value( "source" ) == "focused" );
+    REQUIRE( dock->setDefinition( { { "operation", "release" } } ).ok() );
+}
+
+TEST_CASE( "all_open_files_staged_beyond_queue_limit", "[workbench][U15][ui][regexlab]" )
+{
+    QMainWindow window;
+    auto* service = applicationAnalysisService();
+    QStringList evaluated;
+    CommanderRequest applied;
+    QVariantList sources;
+    QStringList ids;
+    // More tabs than the analysis service admits at once.
+    for ( int index = 0; index < 12; ++index ) {
+        ids << QString( "t%1" ).arg( index );
+        sources << QVariantMap{ { "tabId", ids.back() },
+                                { "label", QString( "%1: f%1.log" ).arg( index + 1 ) },
+                                { "filePath", "/f" + ids.back() },
+                                { "focused", index == 3 } };
+    }
+    auto* dock = new RegexLabDock(
+        &window,
+        [ & ]( const CommanderRequest& request ) {
+            if ( request.action == CommanderAction::Search ) {
+                applied = request;
+                return commanderSuccess();
+            }
+            auto arguments = request.analysisArguments;
+            if ( request.action == CommanderAction::RegexEvaluate ) {
+                evaluated << request.tabId;
+                arguments[ "scope" ] = "text";
+                arguments[ "text" ] = "hit in " + request.tabId + "\nmiss\n";
+            }
+            auto result
+                = executeAnalysisOperation( *service, commanderActionToString( request.action ),
+                                            arguments, {}, ANALYSIS_WORKER_PATH );
+            return CommanderResult{ result.ok ? CommanderResultCode::Success
+                                              : CommanderResultCode::InvalidRequest,
+                                    result.payload.value( "reason" ).toString(), result.payload };
+        },
+        [ sources ] { return sources; },
+        []( const QString&, quint64 ) { return commanderSuccess(); } );
+    window.addDockWidget( Qt::RightDockWidgetArea, dock );
+    window.resize( 1000, 900 );
+    window.show();
+
+    REQUIRE( dock->setDefinition( { { "pattern", "hit in (t\\d+)" },
+                                    { "scope", "whole_file" },
+                                    { "source", "all" },
+                                    { "operation", "run" } } )
+                 .ok() );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] {
+            const auto runs = dock->state().value( "runs" ).toList();
+            return runs.size() == 12
+                   && std::all_of( runs.cbegin(), runs.cend(), []( const QVariant& run ) {
+                          return run.toMap().value( "state" ) == "completed";
+                      } );
+        },
+        30000 ) );
+    // Every tab ran once, in order.
+    REQUIRE( evaluated == ids );
+    REQUIRE( dock->setDefinition( { { "resultSourceIndex", 11 } } ).ok() );
+    auto state = finishLab( dock );
+    REQUIRE( state.value( "page" ).toMap().value( "lineNumbers" ).toList().size() == 1 );
+    REQUIRE( dock->apply().ok() );
+    REQUIRE( applied.tabId == "t11" );
+    // An explicit tab (Commander --tab-id) wins over the shown source.
+    REQUIRE( dock->apply( "t2" ).ok() );
+    REQUIRE( applied.tabId == "t2" );
+    REQUIRE( dock->setDefinition( { { "resultSourceIndex", 0.5 } } ).payload.value( "reason" )
+             == "invalid_result_source" );
+
+    // "focused" runs on the focused tab's id, so Apply still targets it later.
+    evaluated.clear();
+    REQUIRE( dock->setDefinition( { { "source", "focused" }, { "operation", "run" } } ).ok() );
+    REQUIRE( evaluated == QStringList{ "t3" } );
+    finishLab( dock );
+    REQUIRE( dock->apply().ok() );
+    REQUIRE( applied.tabId == "t3" );
+    REQUIRE( dock->setDefinition( { { "operation", "release" } } ).ok() );
 }
 
 TEST_CASE( "Editing a pending Regex Lab draft rejects old deliveries", "[ui][regexlab]" )

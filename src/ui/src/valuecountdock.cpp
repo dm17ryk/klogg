@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "valuecountdock.h"
 #include "analysiscommands.h"
+#include "analysissource.h"
 #include "analysisstatus.h"
 #include "analysistextedit.h"
 #include "log.h"
@@ -39,7 +40,7 @@ CommanderResult failure( const QString& reason )
 }
 bool terminal( const QString& state )
 {
-    return state == "completed" || state == "failed" || state == "cancelled";
+    return isTerminalAnalysisState( state );
 }
 } // namespace
 
@@ -66,6 +67,7 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     subpattern_->setRange( 0, 63 );
     form->addRow( tr( "Boolean subpattern (0-based)" ), subpattern_ );
     source_ = named( new QComboBox( body ), "valueCountsSource", tr( "Source" ) );
+    previousSource_ = QStringLiteral( "focused" );
     form->addRow( tr( "&Source" ), source_ );
     scope_ = named( new QComboBox( body ), "valueCountsScope", tr( "Scope" ) );
     for ( const auto& item :
@@ -125,12 +127,12 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
                      tr( "Cancel counts" ) );
     apply_ = named( new QPushButton( tr( "Apply selected value" ), body ), "valueCountsApply",
                     tr( "Apply selected literal value to current search" ) );
-    auto* open = named( new QPushButton( tr( "Go to first occurrence" ), body ), "valueCountsOpen",
-                        tr( "Go to first source occurrence" ) );
+    open_ = named( new QPushButton( tr( "Go to first occurrence" ), body ), "valueCountsOpen",
+                   tr( "Go to first source occurrence" ) );
     buttons->addWidget( runButton, 0, 0 );
     buttons->addWidget( cancel_, 0, 1 );
     buttons->addWidget( apply_, 1, 0 );
-    buttons->addWidget( open, 1, 1 );
+    buttons->addWidget( open_, 1, 1 );
     layout->addLayout( buttons );
     status_ = named( new QLabel( tr( "Run exact counts on a bounded sample." ), body ),
                      "valueCountsStatus", tr( "Count status" ) );
@@ -138,6 +140,11 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     status_->setWordWrap( true );
     status_->setTextInteractionFlags( Qt::TextSelectableByMouse );
     layout->addWidget( status_ );
+    resultSource_ = named( new QComboBox( body ), "valueCountsResultSource",
+                           tr( "Show counts of source" ) );
+    resultSource_->setToolTip( tr( "Each source of the last Run has its own counts" ) );
+    resultSource_->hide();
+    layout->addWidget( resultSource_ );
     table_ = named( new QTableWidget( 0, 4, body ), "valueCountsResults",
                     tr( "Value count result page" ) );
     table_->setHorizontalHeaderLabels(
@@ -178,12 +185,29 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     for ( auto* combo : { source_, scope_, missing_, matchMode_ } )
         connect( combo, qOverload<int>( &QComboBox::currentIndexChanged ), this,
                  [ this ] { draftChanged(); } );
+    connect( source_, qOverload<int>( &QComboBox::activated ), this, [ this ]( int item ) {
+        if ( source_->itemData( item ).toString() == QLatin1String( "file:" ) ) {
+            {
+                // Only a chosen file changes the draft; a cancelled dialog restores it.
+                const QScopedValueRollback<bool> guard( updating_, true );
+                chooseAnalysisSourceFile( source_, this, previousSource_ );
+            }
+            if ( sourceSelection() != previousSource_ )
+                draftChanged();
+        }
+        previousSource_ = sourceSelection();
+    } );
+    connect( resultSource_, qOverload<int>( &QComboBox::activated ), this,
+             [ this ]( int item ) { showRun( item ); } );
     connect( runButton, &QPushButton::clicked, this, [ this ] { showFailure( run() ); } );
-    connect( cancel_, &QPushButton::clicked, this,
-             [ this ] { showFailure( command( CommanderAction::CancelAnalysisJob ) ); } );
+    connect( cancel_, &QPushButton::clicked, this, [ this ] {
+        showFailure( runs_.cancel( [ this ]( const QString& id ) {
+            return command( CommanderAction::CancelAnalysisJob, { { "jobId", id } } );
+        } ) );
+    } );
     connect( apply_, &QPushButton::clicked, this,
              [ this ] { showFailure( selected( CommanderAction::ApplyValueCount ) ); } );
-    connect( open, &QPushButton::clicked, this,
+    connect( open_, &QPushButton::clicked, this,
              [ this ] { showFailure( selected( CommanderAction::OpenValueCount ) ); } );
     connect( table_, &QTableWidget::cellActivated, this, [ this ]( int, int ) {
         showFailure( selected( CommanderAction::ApplyValueCount ) );
@@ -211,8 +235,87 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
 
 ValueCountDock::~ValueCountDock()
 {
-    if ( auto* service = applicationAnalysisService( false ); service && !id_.isEmpty() )
-        service->release( id_ );
+    if ( auto* service = applicationAnalysisService( false ) ) {
+        if ( runs_.empty() && !id_.isEmpty() )
+            service->release( id_ );
+        runs_.releaseAll( [ service ]( const QString& id ) {
+            service->release( id );
+            return commanderSuccess();
+        } );
+    }
+}
+QString ValueCountDock::sourceSelection() const
+{
+    const auto selected = source_->currentData().toString();
+    return selected.isEmpty() ? QStringLiteral( "focused" ) : selected;
+}
+QString ValueCountDock::shownTabId() const
+{
+    const auto shown = resultSource_->currentIndex();
+    return shown >= 0 && shown < runs_.size() ? runs_.at( shown ).tabId : QString{};
+}
+void ValueCountDock::releaseRuns()
+{
+    if ( runs_.empty() && !id_.isEmpty() )
+        command( CommanderAction::ReleaseAnalysisJob );
+    runs_.releaseAll( [ this ]( const QString& id ) {
+        return command( CommanderAction::ReleaseAnalysisJob, { { "jobId", id } } );
+    } );
+    runRequest_.clear();
+    resultSource_->clear();
+    resultSource_->hide();
+}
+void ValueCountDock::advanceRuns()
+{
+    if ( runs_.empty() )
+        return;
+    const auto shown = resultSource_->currentIndex();
+    const auto start = [ this ]( const QString& tabId ) {
+        return command( CommanderAction::ValueCounts, runRequest_, tabId );
+    };
+    const auto startFailure = runs_.startWaiting( start );
+    if ( !startFailure.ok() ) {
+        LOG_DEBUG << "Value Counts source did not start: " << startFailure.message;
+    }
+    runs_.update(
+        [ this ]( const QString& id ) {
+            return command( CommanderAction::GetAnalysisJob, { { "jobId", id } } );
+        },
+        [ this ]( const QString& id ) {
+            return command( CommanderAction::ReleaseAnalysisJob, { { "jobId", id } } );
+        },
+        shown );
+    if ( shown < 0 || shown >= runs_.size() )
+        return;
+    // The shown source's counts were dropped (released or evicted): count them again.
+    if ( runs_.size() > 1 && runs_.restart( shown ) ) {
+        LOG_DEBUG << "Value Counts counts source " << shown << " again";
+        runs_.startWaiting( start );
+    }
+    const auto& current = runs_.at( shown );
+    if ( current.jobId != id_ && !current.jobId.isEmpty() ) {
+        id_ = current.jobId;
+        rows_.clear();
+        job_.clear();
+        cursor_.clear();
+        fetched_ = false;
+        table_->setRowCount( 0 );
+        next_->setEnabled( false );
+    }
+}
+void ValueCountDock::showRun( int index )
+{
+    if ( index < 0 || index >= runs_.size() )
+        return;
+    id_ = runs_.at( index ).jobId;
+    rows_.clear();
+    job_.clear();
+    cursor_.clear();
+    fetched_ = false;
+    table_->setRowCount( 0 );
+    next_->setEnabled( false );
+    LOG_DEBUG << "Value Counts shows counts of source " << index << " job=" << id_;
+    refresh();
 }
 void ValueCountDock::showFailure( const CommanderResult& result )
 {
@@ -222,7 +325,8 @@ void ValueCountDock::showFailure( const CommanderResult& result )
 }
 void ValueCountDock::draftChanged()
 {
-    if ( updating_ )
+    // "File…" is a transient choice that opens a dialog, not a source of its own.
+    if ( updating_ || source_->currentData().toString() == QLatin1String( "file:" ) )
         return;
     ++revision_;
     updateApplyState();
@@ -233,12 +337,23 @@ void ValueCountDock::draftChanged()
         tr( "Draft changed; Run to count this revision. Previous output is historical." ) );
     LOG_DEBUG << "Value Counts draft changed revision=" << revision_;
 }
+bool ValueCountDock::shownSourceClosed() const
+{
+    const auto tabId = shownTabId();
+    return !tabId.isEmpty() && !isListedSource( sourceCache_, tabId );
+}
 void ValueCountDock::updateApplyState()
 {
     const auto selection = table_->selectionModel()->selectedRows();
     const auto row = selection.size() == 1 ? selection.front().row() : -1;
-    const bool enabled
-        = !id_.isEmpty() && revision_ == jobRevision_ && row >= 0 && row < rows_.size();
+    // Counts of a tab that was closed since cannot be applied or opened.
+    const bool closed = shownSourceClosed();
+    const auto reason = closed ? tr( "The tab these counts came from is closed." ) : QString{};
+    open_->setEnabled( !closed );
+    open_->setToolTip( reason );
+    apply_->setToolTip( reason );
+    const bool enabled = !id_.isEmpty() && revision_ == jobRevision_ && row >= 0
+                         && row < rows_.size() && !closed;
     if ( apply_->isEnabled() == enabled )
         return;
     LOG_DEBUG << "Value Counts Apply availability enabled=" << enabled << " job=" << id_
@@ -274,16 +389,35 @@ QVariantMap ValueCountDock::draft() const
         result[ "text" ] = text_->rawText();
     return result;
 }
-CommanderResult ValueCountDock::command( CommanderAction action, QVariantMap arguments )
+CommanderResult ValueCountDock::command( CommanderAction action, QVariantMap arguments,
+                                         const QString& tabId )
 {
     CommanderRequest request;
     request.action = action;
     if ( action == CommanderAction::ValueCounts )
-        request.tabId = source_->currentData().toString();
+        request.tabId = tabId;
     else {
-        if ( id_.isEmpty() )
-            return failure( "job_expired" );
-        arguments[ "jobId" ] = id_;
+        if ( !arguments.contains( "jobId" ) ) {
+            if ( id_.isEmpty() )
+                return failure( "job_expired" );
+            arguments[ "jobId" ] = id_;
+        }
+        // Apply and Open go to the tab the shown counts came from, in any window; an explicit
+        // Commander tab receives Apply.
+        if ( action == CommanderAction::ApplyValueCount && !applyTabId_.isEmpty() )
+            request.tabId = applyTabId_;
+        else if ( action == CommanderAction::ApplyValueCount
+                  || action == CommanderAction::OpenValueCount ) {
+            refreshSources();
+            if ( shownSourceClosed() ) {
+                LOG_DEBUG << "Value Counts " << commanderActionToString( action )
+                          << " rejected: source tab " << shownTabId() << " is closed";
+                return { CommanderResultCode::InvalidRequest,
+                         tr( "The tab these counts came from is closed." ),
+                         { { "reason", QStringLiteral( "source_closed" ) } } };
+            }
+            request.tabId = shownTabId();
+        }
     }
     request.analysisArguments = std::move( arguments );
     return execute_( request );
@@ -292,8 +426,41 @@ CommanderResult ValueCountDock::run()
 {
     if ( text_->rawText().size() > 2 * 1024 * 1024 )
         return failure( "input_limit" );
-    if ( !id_.isEmpty() )
-        command( CommanderAction::ReleaseAnalysisJob );
+    // Resolve the sources first: a rejected selection keeps the previous counts.
+    refreshSources();
+    QStringList tabIds{ QString{} };
+    if ( scope_->currentData() != "text" ) {
+        const auto selection = AnalysisSource::parse( sourceSelection() );
+        if ( !selection )
+            return failure( "source_not_found" );
+        const auto resolution
+            = resolveAnalysisSource( *selection, OpenSource::fromVariantList( sources_() ) );
+        if ( selection->kind == AnalysisSource::Kind::Focused ) {
+            // The focused tab's id, so Apply and Open still target it after the focus moves.
+            // Without a listed focused tab the window counts its current tab.
+            if ( resolution.ok() )
+                tabIds = resolution.tabIds;
+        }
+        else {
+            if ( !resolution.ok() )
+                return { CommanderResultCode::InvalidRequest,
+                         resolution.message,
+                         { { "reason", resolution.reason } } };
+            if ( !resolution.fileToOpen.isEmpty() ) {
+                CommanderRequest open;
+                open.action = CommanderAction::OpenFile;
+                open.filePath = resolution.fileToOpen;
+                const auto opened = execute_( open );
+                if ( !opened.ok() )
+                    return opened;
+                status_->setText( tr( "Opened %1. Run again once it has loaded." )
+                                      .arg( resolution.fileToOpen ) );
+                return commanderSuccess( {}, { { "opened", resolution.fileToOpen } } );
+            }
+            tabIds = resolution.tabIds;
+        }
+    }
+    releaseRuns();
     id_.clear();
     rows_.clear();
     job_.clear();
@@ -302,14 +469,44 @@ CommanderResult ValueCountDock::run()
     table_->setRowCount( 0 );
     cancel_->setEnabled( false );
     next_->setEnabled( false );
-    const auto result = command( CommanderAction::ValueCounts, draft() );
-    if ( result.ok() ) {
-        id_ = result.payload.value( "jobId" ).toString();
-        jobRevision_ = revision_;
-        LOG_DEBUG << "Value Counts run id=" << id_ << " revision=" << revision_;
-        refresh();
+    runRequest_ = draft();
+    runs_.reset( tabIds, sourceCache_ );
+    // Sources start in order as the analysis service admits them; the rest wait.
+    auto result = runs_.startWaiting( [ this ]( const QString& tabId ) {
+        return command( CommanderAction::ValueCounts, runRequest_, tabId );
+    } );
+    if ( runs_.started() == 0 && !runs_.active() ) {
+        runs_.clear();
+        runRequest_.clear();
+        return result;
     }
-    return result;
+    if ( !result.ok() ) {
+        int failed = 0;
+        for ( int index = 0; index < runs_.size(); ++index )
+            failed += runs_.at( index ).finished ? 1 : 0;
+        result.message = tr( "%1 of %2 sources could not start: %3" )
+                             .arg( failed )
+                             .arg( runs_.size() )
+                             .arg( result.message.isEmpty()
+                                       ? result.payload.value( "reason" ).toString()
+                                       : result.message );
+    }
+    const auto shown = runs_.firstStarted();
+    {
+        const QSignalBlocker blocker( resultSource_ );
+        for ( int index = 0; index < runs_.size(); ++index )
+            resultSource_->addItem( runs_.at( index ).label, runs_.at( index ).tabId );
+        resultSource_->setCurrentIndex( shown );
+    }
+    resultSource_->setVisible( runs_.size() > 1 );
+    id_ = runs_.at( shown ).jobId;
+    jobRevision_ = revision_;
+    LOG_DEBUG << "Value Counts run sources=" << runs_.size() << " started=" << runs_.started()
+              << " shown id=" << id_ << " revision=" << revision_;
+    refresh();
+    if ( !result.ok() )
+        return result;
+    return commanderSuccess( {}, { { "jobId", id_ }, { "jobs", runs_.toVariantList() } } );
 }
 void ValueCountDock::refreshSources()
 {
@@ -317,20 +514,7 @@ void ValueCountDock::refreshSources()
     if ( available == sourceCache_ && source_->count() > 0 )
         return;
     sourceCache_ = available;
-    const auto selected = source_->currentData().toString();
-    const QSignalBlocker blocker( source_ );
-    source_->clear();
-    source_->addItem( tr( "Current tab at Run" ), QString{} );
-    for ( const auto& value : available ) {
-        const auto item = value.toMap();
-        source_->addItem( item.value( "label" ).toString(), item.value( "tabId" ) );
-    }
-    auto index = source_->findData( selected );
-    if ( index < 0 ) {
-        source_->addItem( tr( "Closed source (%1)" ).arg( selected ), selected );
-        index = source_->count() - 1;
-    }
-    source_->setCurrentIndex( index );
+    populateAnalysisSourceCombo( source_, available, sourceSelection() );
 }
 void ValueCountDock::refresh()
 {
@@ -339,20 +523,36 @@ void ValueCountDock::refresh()
     const QScopedValueRollback<bool> guard( refreshing_, true );
     if ( isVisible() )
         refreshSources();
-    if ( id_.isEmpty() )
+    advanceRuns();
+    if ( id_.isEmpty() ) {
+        cancel_->setEnabled( runs_.active() );
+        const auto shown = resultSource_->currentIndex();
+        if ( shown >= 0 && shown < runs_.size() ) {
+            // The shown source waits for the analysis service, or could not start.
+            const auto& sourceRun = runs_.at( shown );
+            QStringList lines;
+            if ( const auto summary = runs_.summary( shown ); !summary.isEmpty() )
+                lines << summary;
+            lines << ( sourceRun.finished
+                           ? tr( "This source did not start: %1" ).arg( sourceRun.state )
+                           : tr( "Waiting for the analysis service to start this source." ) );
+            status_->setText( lines.join( '\n' ) );
+        }
         return;
+    }
     const auto result = command( CommanderAction::GetAnalysisJob );
     if ( !result.ok() ) {
         rows_.clear();
         table_->setRowCount( 0 );
-        cancel_->setEnabled( false );
+        cancel_->setEnabled( runs_.active() );
         next_->setEnabled( false );
         showFailure( result );
         return;
     }
     job_ = result.payload;
     const auto state = job_.value( "state" ).toString();
-    cancel_->setEnabled( !terminal( state ) );
+    // Cancel stops every source of the Run, so it stays available while any is unfinished.
+    cancel_->setEnabled( !terminal( state ) || runs_.active() );
     if ( revision_ != jobRevision_ )
         return;
     const auto aggregate = job_.value( "aggregation" ).toMap();
@@ -375,6 +575,8 @@ void ValueCountDock::refresh()
                   .arg( job_.value( "captureBackend" ).toString(),
                         job_.value( "scannedLines" ).toString() );
     text += '\n' + analysisWorkerMemoryText( job_.value( "metrics" ).toMap() );
+    if ( const auto summary = runs_.summary( resultSource_->currentIndex() ); !summary.isEmpty() )
+        text.prepend( summary + '\n' );
     status_->setText( text );
     if ( terminal( state ) && !fetched_ )
         showFailure( page( {} ) );
@@ -430,6 +632,7 @@ CommanderResult ValueCountDock::selected( CommanderAction action )
 QVariantMap ValueCountDock::state()
 {
     refresh();
+    const auto runs = runs_.toVariantList();
     auto definition = draft();
     if ( definition.value( "text" ).toString().size() > 4096 ) {
         definition[ "text" ] = definition.value( "text" ).toString().left( 4096 );
@@ -439,17 +642,23 @@ QVariantMap ValueCountDock::state()
              { "visible", isVisible() },
              { "floating", isFloating() },
              { "draft", definition },
-             { "sourceTabId", source_->currentData() },
+             { "source", sourceSelection() },
+             { "sourceTabId",
+               sourceSelection().startsWith( "tab:" ) ? sourceSelection().mid( 4 ) : QString{} },
+             { "runs", runs },
+             { "resultSourceIndex", resultSource_->currentIndex() },
              { "jobId", id_ },
              { "job", job_ },
              { "draftChanged", !id_.isEmpty() && revision_ != jobRevision_ },
              { "page", QVariantMap{ { "rows", rows_ }, { "nextCursor", cursor_ } } } };
 }
 
-CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
+CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition,
+                                               const QString& applyTabId )
 {
-    const std::set<QString> strings{ "pattern",     "scope",     "text",
-                                     "sourceTabId", "operation", "filePath" };
+    const QScopedValueRollback<QString> applyTarget( applyTabId_, applyTabId );
+    const std::set<QString> strings{ "pattern",   "scope",    "text",  "sourceTabId",
+                                     "operation", "filePath", "source" };
     const std::set<QString> flags{ "visible", "floating", "allowPartial" };
     for ( auto it = definition.cbegin(); it != definition.cend(); ++it ) {
         if ( strings.count( it.key() ) ) {
@@ -464,9 +673,17 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
             if ( it.value().userType() != QMetaType::QVariantMap )
                 return failure( "invalid_definition" );
         }
+        else if ( it.key() == "resultSourceIndex" ) {
+            const auto index = analysisRunIndex( it.value() );
+            if ( !index || *index >= runs_.size() )
+                return failure( "invalid_result_source" );
+        }
         else if ( it.key() != "rowIndex" )
             return failure( "invalid_definition" );
     }
+    if ( definition.contains( "source" )
+         && !AnalysisSource::parse( definition.value( "source" ).toString() ) )
+        return failure( "invalid_source" );
     const auto operation = definition.value( "operation" ).toString();
     if ( !QStringList{ "", "run", "cancel", "release", "first_page", "next_page", "apply", "open",
                        "export" }
@@ -522,14 +739,23 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
              || number < 0 || number > 10000 )
             return failure( "invalid_result_index" );
     }
+    // The new runs are not known before a run, so their index cannot be chosen with it.
+    if ( definition.contains( "resultSourceIndex" ) && operation == "run" )
+        return failure( "invalid_result_source" );
     refreshSources();
-    if ( definition.contains( "sourceTabId" )
-         && source_->findData( definition.value( "sourceTabId" ) ) < 0 )
+    // An empty sourceTabId (as state() reports for the focused tab) means the focused tab.
+    const auto sourceTabId = definition.value( "sourceTabId" ).toString();
+    const QString tabSelection = sourceTabId.isEmpty() ? QStringLiteral( "focused" )
+                                                       : QString( "tab:" + sourceTabId );
+    if ( definition.contains( "sourceTabId" ) && source_->findData( tabSelection ) < 0 )
+        return failure( "source_not_found" );
+    if ( const auto requested = definition.value( "source" ).toString();
+         requested.startsWith( "tab:" ) && source_->findData( requested ) < 0 )
         return failure( "source_not_found" );
     const auto hasDraft = definition.contains( "pattern" ) || definition.contains( "scope" )
                           || definition.contains( "text" ) || definition.contains( "sourceTabId" )
-                          || definition.contains( "counts" ) || definition.contains( "options" )
-                          || definition.contains( "limits" );
+                          || definition.contains( "source" ) || definition.contains( "counts" )
+                          || definition.contains( "options" ) || definition.contains( "limits" );
     {
         const QScopedValueRollback<bool> guard( updating_, true );
         if ( definition.contains( "pattern" ) )
@@ -537,7 +763,10 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
         if ( definition.contains( "scope" ) )
             scope_->setCurrentIndex( scope_->findData( definition.value( "scope" ) ) );
         if ( definition.contains( "sourceTabId" ) )
-            source_->setCurrentIndex( source_->findData( definition.value( "sourceTabId" ) ) );
+            selectAnalysisSource( source_, tabSelection );
+        if ( definition.contains( "source" ) )
+            selectAnalysisSource( source_, definition.value( "source" ).toString() );
+        previousSource_ = sourceSelection();
         if ( definition.contains( "text" ) )
             text_->setRawText( definition.value( "text" ).toString() );
         capture_->setText( countOptions->capture.toString() );
@@ -570,12 +799,24 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
         setFloating( definition.value( "floating" ).toBool() );
     if ( definition.contains( "visible" ) )
         setVisible( definition.value( "visible" ).toBool() );
+    if ( definition.contains( "resultSourceIndex" ) ) {
+        const auto index = *analysisRunIndex( definition.value( "resultSourceIndex" ) );
+        resultSource_->setCurrentIndex( index );
+        showRun( index );
+    }
     if ( operation == "run" )
         return run();
-    if ( operation == "cancel" )
-        return command( CommanderAction::CancelAnalysisJob );
+    if ( operation == "cancel" ) {
+        if ( runs_.empty() )
+            return command( CommanderAction::CancelAnalysisJob );
+        return runs_.cancel( [ this ]( const QString& id ) {
+            return command( CommanderAction::CancelAnalysisJob, { { "jobId", id } } );
+        } );
+    }
     if ( operation == "release" ) {
-        const auto result = command( CommanderAction::ReleaseAnalysisJob );
+        const auto result
+            = id_.isEmpty() && runs_.empty() ? failure( "job_expired" ) : commanderSuccess();
+        releaseRuns();
         id_.clear();
         rows_.clear();
         job_.clear();

@@ -115,6 +115,22 @@ class MainWindow : public QMainWindow {
                            std::function<CommanderResult( const CommanderRequest& )> executor );
     QVariantMap pluginContext( const CommanderRequest& request ) const;
 
+    // Lets the analysis docks list the tabs of every window and reach them: `sources` lists all
+    // open tabs (see analysisSources()), `executor` routes a request to the window that owns its
+    // tab, and `windowForTab` finds that window.
+    void setApplicationSources( std::function<QVariantList()> sources,
+                                std::function<CommanderResult( const CommanderRequest& )> executor,
+                                std::function<MainWindow*( const QString& tabId )> windowForTab );
+    // This window's tabs as analysis sources: tabId, filePath, label, windowIndex, tabIndex and
+    // focused (the current tab of the active window).
+    QVariantList analysisSources( int windowIndex, bool activeWindow ) const;
+    // Shows result `physicalLine` of analysis job `jobId` in the tab the job ran on.
+    CommanderResult navigateToAnalysisResult( const QString& jobId, quint64 physicalLine );
+    // Applies a Regex Lab pattern to the request's tab (the current tab when empty), in the
+    // window that holds it, keeping that viewer's search options.
+    CommanderResult applyAnalysisSearch( const CommanderRequest& request );
+    bool hasTab( const QString& tabId ) const;
+
     void reTranslateUI();
 
     static int installLanguage( QString lang );
@@ -439,6 +455,13 @@ class MainWindow : public QMainWindow {
     QAction* showRegexLabAction;
     RegexLabDock* regexLabDock_ = nullptr;
     ValueCountDock* valueCountDock_ = nullptr;
+    std::function<QVariantList()> applicationSources_;
+    std::function<CommanderResult( const CommanderRequest& )> applicationExecutor_;
+    std::function<MainWindow*( const QString& )> windowForTab_;
+    // Analysis sources for the docks: every window's tabs when the application provides them.
+    QVariantList dockAnalysisSources() const;
+    // Runs a dock request here, or in the window that owns its tab.
+    CommanderResult executeDockRequest( const CommanderRequest& request );
     QAction* showValueCountsAction = nullptr;
     QAction* importPreviewsAction;
     QAction* importActionsAction;
