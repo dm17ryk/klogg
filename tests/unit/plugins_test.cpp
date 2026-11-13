@@ -1153,7 +1153,7 @@ TEST_CASE( "Plugins receive host features and the instance environment", "[plugi
     const auto id = jobId( manager.invoke( "org.test.fixture", "env", {}, {} ) );
     REQUIRE( waitFor( [ & ] { return finished( manager, id ); } ) );
     const auto result = manager.job( id ).payload.value( "result" ).toMap();
-    REQUIRE( result.value( "host_features" ).toList() == QVariantList{ "views" } );
+    REQUIRE( result.value( "host_features" ).toList() == QVariantList{ "views", "view_edit" } );
     REQUIRE( QFileInfo( result.value( "executable" ).toString() )
              == QFileInfo( QCoreApplication::applicationFilePath() ) );
     REQUIRE( result.value( "instance" ) == "cilogg-test-instance" );
