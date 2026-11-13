@@ -197,7 +197,9 @@ TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys
     const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
     REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
                           QDir( folder ).filePath( executable ) ) );
-    REQUIRE( QImage( 16, 16, QImage::Format_ARGB32 ).save( QDir( folder ).filePath( "icon.png" ) ) );
+    QImage image( 16, 16, QImage::Format_ARGB32 );
+    image.fill( Qt::red );
+    REQUIRE( image.save( QDir( folder ).filePath( "icon.png" ) ) );
     QFile broken( QDir( folder ).filePath( "broken.png" ) );
     REQUIRE( broken.open( QIODevice::WriteOnly ) );
     broken.write( "not a png" );
@@ -250,13 +252,17 @@ TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys
     REQUIRE( a2 );
     CHECK( toolbar->actions().contains( a2 ) );
     CHECK( menu->actions().contains( a2 ) );
+    // QStyle::standardIcon() builds a new QIcon (a new cacheKey) on every call: compare pixels.
+    const auto generic
+        = window.style()->standardIcon( QStyle::SP_TitleBarNormalButton ).pixmap( 16, 16 ).toImage();
+    REQUIRE_FALSE( generic.isNull() );
     REQUIRE( main );
     CHECK( toolbar->actions().contains( main ) );
     CHECK( menu->actions().contains( main ) );
-    CHECK( main->icon().cacheKey()
-           != window.style()->standardIcon( QStyle::SP_TitleBarNormalButton ).cacheKey() );
     CHECK_FALSE( main->icon().pixmap( 16, 16 ).isNull() );
+    CHECK( main->icon().pixmap( 16, 16 ).toImage() != generic );   // the plugin's icon.png
     REQUIRE( other );
     CHECK_FALSE( toolbar->actions().contains( other ) ); // views default to toolbar:false
     CHECK_FALSE( other->icon().isNull() );               // broken file: generic icon, not empty
+    CHECK( other->icon().pixmap( 16, 16 ).toImage() == generic );  // the fallback is the generic icon
 }
