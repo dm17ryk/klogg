@@ -641,24 +641,33 @@ TEST_CASE( "clear_restarts_the_match_cap", "[workbench][U14][logdata][max-count]
     SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
     SearchOptions options;
     options.maxMatches = 3;
-    // Lines 9, 19 and 29 match before the cap stops the scan; 39, 49, 59... are never read.
+    // Lines 9, 19 and 29 match before the cap. Where the capped scan stops depends on the
+    // platform's search chunking (it may read the whole file), so nothing below relies on it.
     runSearch( filtered_data.get(), RegularExpressionPattern( "line 000[0-9][0-9]9" ), options,
                searchSpy );
     REQUIRE( filtered_data->limitReached() );
     REQUIRE( filtered_data->getNbMatches() == 3_lcount );
     const auto scanned = filtered_data->lastProcessedLine();
-    REQUIRE( scanned < LineNumber( SL_NB_LINES ) );
 
     filtered_data->forgetResults();
     REQUIRE_FALSE( filtered_data->limitReached() );
     REQUIRE( filtered_data->getNbMatches() == 0_lcount );
     REQUIRE( filtered_data->resultsStartLine() == scanned );
 
-    // The next refresh reads on from where the scan stopped, under a fresh cap: the forgotten
-    // matches (including the re-read last line) do not use it up.
+    // More matching lines arrive. The next refresh reads on from the cut under a fresh cap:
+    // the forgotten matches (including the re-read last line) do not use it up.
+    logDataLoader.file.seek( logDataLoader.file.size() );
+    for ( const int value : { 109, 119, 129, 139, 149 } )
+        logDataLoader.file.write( formattedLine( value ).toLatin1() );
+    logDataLoader.file.flush();
+    SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    logDataLoader.log_data.reload();
+    REQUIRE( reloadSpy.safeWait() );
+    REQUIRE( logDataLoader.log_data.getNbLine() == LinesCount( SL_NB_LINES + 5 ) );
+
     SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
-    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum, LineNumber( SL_NB_LINES ),
-                              updateSpy ) );
+    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                              LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
     REQUIRE( filtered_data->getNbMatches() == 3_lcount );
     REQUIRE( filtered_data->limitReached() );
     REQUIRE( filtered_data->getMatchingLineNumber( 0_lnum ) >= scanned );

@@ -587,7 +587,9 @@ TEST_CASE( "Hover preview maps main and filtered rows without changing selection
     for ( auto* view :
           { static_cast<AbstractLogView*>( main ), static_cast<AbstractLogView*>( filtered ) } ) {
         const int height = view->fontMetrics().height();
-        const QPoint point( 80, height / 2 );
+        // Inside the text area whatever the width of the line-number and "Matched by" columns
+        // (fonts differ between platforms); hovering those columns shows no preview.
+        const QPoint point( view->viewport()->width() / 2, height / 2 );
         QTest::mouseClick( view->viewport(), Qt::LeftButton, Qt::NoModifier, point );
         const auto selection = view->getSelectedText();
         QSignalSpy requested( view, &AbstractLogView::linePreviewRequested );
