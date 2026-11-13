@@ -59,6 +59,7 @@
 #include "downloader.h"
 #include "iconloader.h"
 #include "actionsresponseswindow.h"
+#include "logpane.h"
 #include "pathline.h"
 #include "previewwindow.h"
 #include "quickfindmux.h"
@@ -91,6 +92,22 @@ class MainWindow : public QMainWindow {
 
   public:
     explicit MainWindow( WindowSession session );
+    ~MainWindow() override;
+
+    // Split panes. The current tab of the active pane is the window's focused tab; tab indices
+    // count tabs pane by pane in layout order.
+    enum class PaneTabsOnClose { Ask, Close, Move };
+    LogPane* activePane() const;
+    std::vector<LogPane*> panes() const;
+    LogPane* paneForTabId( const QString& tabId ) const;
+    // Returns the new pane, or nullptr when the window already has the maximum of panes.
+    LogPane* splitPane( LogPane* pane, Qt::Orientation orientation );
+    bool moveTabToPane( const QString& tabId, LogPane* target );
+    LogPane* moveTabToNewPane( const QString& tabId, Qt::Orientation orientation );
+    // A pane with tabs asks whether to close its tabs or move them to the neighbouring pane
+    // (PaneTabsOnClose::Ask); automation passes Close or Move.
+    bool closePane( LogPane* pane, PaneTabsOnClose tabs = PaneTabsOnClose::Ask );
+    void mergeAllPanes();
 
     // Re-install the geometry stored in config file
     // (should be done before 'Widget::show()')
@@ -252,6 +269,15 @@ class MainWindow : public QMainWindow {
     };
 
     void createActions();
+    void createPaneActions();
+    void addPaneMenuEntries();
+    void updatePaneActions();
+    void populateMoveToPaneMenu( QMenu* menu, const QString& tabId );
+    void extendTabContextMenu( QMenu& menu, LogPane* pane, int index );
+    QString paneTitle( const LogPane* pane ) const;
+    QString capturePaneLayout( const std::map<const QWidget*, int>& savedIndexByWidget ) const;
+    bool applySavedPaneLayout( PaneLayout& layout, std::map<int, LogPane*>& paneBySavedIndex );
+    void restorePaneSelection( const PaneLayout& layout, const OpenedFilesList& openedFiles );
     void createRegexLab();
     void createValueCounts();
     CommanderResult commanderValueCounts( const CommanderRequest& request );
@@ -423,6 +449,12 @@ class MainWindow : public QMainWindow {
     QAction* followAction;
     QAction* textWrapAction;
     QAction* showTabsBarAction;
+    QAction* splitPaneRightAction = nullptr;
+    QAction* splitPaneDownAction = nullptr;
+    QAction* closePaneAction = nullptr;
+    QAction* equalizePanesAction = nullptr;
+    QAction* mergePanesAction = nullptr;
+    QMenu* moveTabToPaneMenu = nullptr;
     QAction* reloadAction;
     QAction* stopAction;
     QAction* editHighlightersAction;
@@ -482,8 +514,8 @@ class MainWindow : public QMainWindow {
     // Multiplex signals to/from the QuickFindWidget
     QuickFindMux quickFindMux_;
 
-    // The main widget
-    TabbedCrawlerWidget mainTabWidget_;
+    // The main widget: the split panes with their tabs (owned by the central widget).
+    LogPaneArea* paneArea_;
 
     TabbedScratchPad scratchPad_;
     PreviewWindow previewWindow_;

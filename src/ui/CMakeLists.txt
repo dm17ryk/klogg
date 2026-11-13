@@ -95,6 +95,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/streamsession.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/startupprogress.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/tabbedcrawlerwidget.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/logpane.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewinterface.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/viewtools.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/scratchpad.h
@@ -147,6 +148,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pathline.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/logmainview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowpanes.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/logpane.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowregexlab.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/uiautomation.cpp

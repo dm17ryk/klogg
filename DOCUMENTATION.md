@@ -277,6 +277,33 @@ Switching from one opened file to another can be done from the
 `View->Opened files` menu or by using the `Ctrl+Shift+O` shortcut 
 which displays special dialogue to choose between opened files.
 
+#### Split panes
+
+One window can show several logs side by side, like several *CILogg* windows running in
+parallel. Each **pane** has its own row of file, COM and URL tabs, and every tab keeps its
+own log view, search line and filtered view.
+
+| To | Use |
+|---|---|
+| Split the active pane | `View->Split Right` (`Ctrl+Alt+Right`) or `View->Split Down` (`Ctrl+Alt+Down`), or the tab context menu |
+| Move a tab to another pane | Tab context menu `Move to Pane`, or `View->Move Tab to Pane`; `New Pane Right` / `New Pane Down` split and move in one step |
+| Close a pane | `View->Close Pane` or the tab context menu. A pane with tabs asks whether to **close all its tabs** or **move them to the neighbouring pane** |
+| Resize | Drag the splitter between panes; `View->Equalize Panes` gives all panes the same size |
+| Go back to one pane | `View->Merge All Panes` moves every tab into one pane, in the same order |
+
+- The **active pane** has a thin accent frame; click its tab row or into one of its views to
+  activate a pane. Files you open go into the active pane, and the menus, the toolbar, Quick
+  Find and Commander requests without a tab selector act on the current tab of the active
+  pane. `Ctrl+Tab` switches tabs within the active pane.
+- Moving a tab keeps everything it owns: its tab id, log, search and filtered view, follow
+  mode, COM capture, Actions and running script. Nothing restarts.
+- A window holds up to 8 panes; each pane holds any number of tabs.
+- The layout is saved with the session and with projects. Sessions and projects saved
+  before split panes open in one pane, and older *CILogg* versions open a split session's
+  tabs in one pane.
+- Commander keeps its tab selectors: `--tab-id` is unchanged, and `--tab-index` counts tabs
+  pane by pane in layout order, so the indices of a window with one pane are as before.
+
 ### Encodings
 
 *CILogg* tries to guess the encoding of an opened file. If that guess happens to

@@ -40,7 +40,8 @@ CLI, or an MCP client.
 | 🧩 | **Process plugins** | Add live sources, converters, and tools through plugins running in separate processes. |
 
 The familiar essentials are still here: accelerated regex and Boolean search, live
-file following, multiple tabs, highlighters, encoding detection, archives, and a scratchpad.
+file following, multiple tabs, [split panes](DOCUMENTATION.md#split-panes), highlighters, encoding
+detection, archives, and a scratchpad.
 
 Development is tracked in the [workbench roadmap](plans/cilogg-workbench-2026-10-21/README.md)
 and [GitHub milestones](https://github.com/dm17ryk/klogg/milestones).

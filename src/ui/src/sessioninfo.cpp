@@ -63,6 +63,8 @@ void SessionInfo::retrieveFromStorage( QSettings& settings )
             auto window = Window{ windowId };
             window.geometry = settings.value( "geometry" ).toByteArray();
             window.dockState = settings.value( "dockState" ).toByteArray();
+            // Absent in sessions saved before split panes: the window opens in one pane.
+            window.paneLayout = settings.value( "paneLayout" ).toString();
 
             if ( settings.contains( "OpenFiles/version" ) ) {
                 settings.beginGroup( "OpenFiles" );
@@ -129,6 +131,9 @@ void SessionInfo::saveToStorage( QSettings& settings ) const
         settings.setValue( "id", window.id );
         settings.setValue( "geometry", window.geometry );
         settings.setValue( "dockState", window.dockState );
+        if ( !window.paneLayout.isEmpty() ) {
+            settings.setValue( "paneLayout", window.paneLayout );
+        }
 
         settings.beginGroup( "OpenFiles" );
         settings.setValue( "version", OPENFILES_VERSION );

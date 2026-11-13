@@ -22,11 +22,11 @@ void MainWindow::createValueCounts()
         [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); },
         [ this ] {
             QVariantList sources;
-            for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+            for ( int index = 0; index < paneArea_->count(); ++index ) {
                 auto* crawler = crawlerWidgetByIndex( index );
                 if ( crawler )
                     sources.push_back(
-                        QVariantMap{ { "tabId", mainTabWidget_.tabIdAt( index ) },
+                        QVariantMap{ { "tabId", paneArea_->tabIdAt( index ) },
                                      { "label", QString::number( index + 1 ) + ": "
                                                     + session_.getFilename( crawler ) } } );
             }
@@ -58,7 +58,7 @@ CommanderResult MainWindow::commanderValueCounts( const CommanderRequest& reques
                            || definition.value( "operation" ) == "run";
         if ( target && draft && !definition.contains( "sourceTabId" ) )
             definition[ "sourceTabId" ]
-                = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) );
+                = paneArea_->tabIdAt( paneArea_->indexOf( target ) );
         return valueCountDock_->setDefinition( definition );
     }
     return commanderSuccess( {}, valueCountDock_->state() );
@@ -87,7 +87,7 @@ CommanderResult MainWindow::commanderValueCountResult( const CommanderRequest& r
             return countFailure( "source_not_found", CommanderResultCode::NotFound );
         CommanderRequest search;
         search.action = CommanderAction::Search;
-        search.tabId = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+        search.tabId = paneArea_->tabIdAt( paneArea_->indexOf( crawler ) );
         search.searchText = row.value( "filterPattern" ).toString();
         search.searchUseRegex = true;
         search.searchUseBoolean = false;
@@ -109,7 +109,7 @@ CommanderResult MainWindow::commanderValueCountResult( const CommanderRequest& r
         return countFailure( "source_not_found", CommanderResultCode::NotFound );
     if ( !position || !crawler )
         return countFailure( "stale_location" );
-    mainTabWidget_.setCurrentWidget( crawler );
+    paneArea_->setCurrentWidget( crawler );
     if ( !crawler || !crawler->navigateToAnalysisResult( *position ) )
         return countFailure( "stale_location" );
     LOG_DEBUG << "Value count source activated id=" << id << " source=" << position->sourceId()

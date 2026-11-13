@@ -17,6 +17,7 @@
 #include "actionsrepository.h"
 #include "configuration.h"
 #include "configurationexportdialog.h"
+#include "logpane.h"
 #include "persistentinfo.h"
 #include "previewmanager.h"
 #include "previewrepository.h"
@@ -424,4 +425,76 @@ TEST_CASE( "Project save rejects unsupported collection sizes and removes failed
     REQUIRE_FALSE( ConfigurationExport::saveProject( path, testSession(), {}, {}, &error ) );
     REQUIRE_FALSE( QFileInfo::exists( path ) );
     REQUIRE( QDir( directory.path() ).entryList( QDir::Dirs | QDir::NoDotAndDotDot ).isEmpty() );
+}
+
+TEST_CASE( "Project pane layouts are saved and validated; projects without one load into one pane",
+           "[configurationexport][project][workbench][U16]" )
+{
+    ConfigurationRestoreGuard restore;
+    seedConfiguration();
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    QString error;
+    ConfigurationProject project;
+
+    // A project saved before split panes has no layout: its window opens in one pane.
+    const auto oldPath = directory.filePath( "old.cilogproj" );
+    REQUIRE( ConfigurationExport::saveProject( oldPath, testSession(), {}, {}, &error ) );
+    REQUIRE( ConfigurationExport::readProject( oldPath, &project, &error ) );
+    REQUIRE( project.session.paneLayout( "window-1" ).isEmpty() );
+
+    // A valid layout is kept with the window's session.
+    PaneLayout layout;
+    layout.root.isPane = false;
+    PaneLayoutNode first;
+    first.paneId = "first";
+    first.files = { 0 };
+    first.currentFile = 0;
+    PaneLayoutNode second;
+    second.paneId = "second";
+    layout.root.children = { first, second };
+    layout.root.sizes = { 1, 1 };
+    layout.activePaneId = "second";
+    auto session = testSession();
+    session.setPaneLayout( "window-1", PaneLayoutFormat::serialize( layout ) );
+    const auto path = directory.filePath( "panes.cilogproj" );
+    REQUIRE( ConfigurationExport::saveProject( path, session, {}, {}, &error ) );
+    REQUIRE( ConfigurationExport::readProject( path, &project, &error ) );
+    REQUIRE( project.session.paneLayout( "window-1" ) == session.paneLayout( "window-1" ) );
+
+    // A layout that names a file the window does not have is refused when saving...
+    session.setPaneLayout(
+        "window-1",
+        R"({"version":1,"root":{"type":"split","orientation":"horizontal","children":[)"
+        R"({"type":"pane","id":"a","files":[0]},{"type":"pane","id":"b","files":[4]}]}})" );
+    REQUIRE_FALSE(
+        ConfigurationExport::saveProject( directory.filePath( "bad.cilogproj" ), session, {}, {},
+                                          &error ) );
+    REQUIRE( error.contains( "pane layout" ) );
+
+    // ...and when reading a project whose session file was edited.
+    QFile manifest( path );
+    REQUIRE( manifest.open( QIODevice::ReadOnly ) );
+    const auto refs = QJsonDocument::fromJson( manifest.readAll() )
+                          .object()
+                          .value( "configurations" )
+                          .toObject();
+    manifest.close();
+    {
+        QSettings stored( directory.filePath( refs.value( "session" ).toString() ),
+                          QSettings::IniFormat );
+        stored.setValue( "Window/windows/1/paneLayout", "{broken" );
+        stored.sync();
+    }
+    REQUIRE_FALSE( ConfigurationExport::readProject( path, &project, &error ) );
+    REQUIRE( error.contains( "pane layout" ) );
+
+    // A newer layout version is ignored, so the project still opens (in one pane).
+    {
+        QSettings stored( directory.filePath( refs.value( "session" ).toString() ),
+                          QSettings::IniFormat );
+        stored.setValue( "Window/windows/1/paneLayout", R"({"version":7})" );
+        stored.sync();
+    }
+    REQUIRE( ConfigurationExport::readProject( path, &project, &error ) );
 }

@@ -12,6 +12,7 @@
 
 #include "configurationexportdialog.h"
 #include "crawlerwidget.h"
+#include "logpane.h"
 #include "mainwindow.h"
 #include "serialcaptureworker.h"
 #include "session.h"
@@ -276,4 +277,86 @@ TEST_CASE(
     REQUIRE( QFileInfo( capturePath ).absoluteDir().path()
              == parent.filePath( "project/captures" ) );
     REQUIRE_FALSE( QFileInfo::exists( parent.filePath( "other/captures" ) ) );
+}
+
+TEST_CASE( "old_project_loads_into_one_pane: a project saved before split panes opens in one pane",
+           "[ui][configurationexport][project][workbench][U16]" )
+{
+    SessionRestoreGuard restore;
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    for ( const auto* name : { "first.log", "second.log" } ) {
+        QFile file( directory.filePath( name ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        REQUIRE( file.write( "old project line\n" ) > 0 );
+    }
+    SessionInfo saved;
+    saved.add( "OldProjectWindow" );
+    saved.setOpenFiles( "OldProjectWindow", { { directory.filePath( "first.log" ), 0, {} },
+                                              { directory.filePath( "second.log" ), 0, {} } } );
+    QString error;
+    const auto path = directory.filePath( "old.cilogproj" );
+    REQUIRE( ConfigurationExport::saveProject( path, saved, { { "OldProjectWindow", 1 } }, {},
+                                               &error ) );
+
+    // The window is split before loading; the old project replaces that layout with one pane.
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession( session, "OldProjectTarget", 0 ) );
+    window.show();
+    auto* tabs = window.findChild<TabbedCrawlerWidget*>();
+    REQUIRE( tabs );
+    REQUIRE( window.splitPane( window.activePane(), Qt::Horizontal ) != nullptr );
+    REQUIRE( window.panes().size() == 2 );
+    INFO( error.toStdString() );
+    REQUIRE( window.loadProject( path, &error ) );
+    REQUIRE( waitForLoaded( window ) );
+    REQUIRE( window.panes().size() == 1 );
+    REQUIRE( window.panes().front()->tabs() == tabs );
+    REQUIRE( tabs->count() == 2 );
+    REQUIRE( tabs->currentIndex() == 1 );
+}
+
+TEST_CASE( "Projects save and restore the pane layout with the active tab",
+           "[ui][configurationexport][project][workbench][U16]" )
+{
+    SessionRestoreGuard restore;
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    for ( const auto* name : { "left.log", "right.log" } ) {
+        QFile file( directory.filePath( name ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        REQUIRE( file.write( "pane project line\n" ) > 0 );
+    }
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession( session, "PaneProject", 0 ) );
+    window.show();
+    window.loadFileNonInteractive( directory.filePath( "left.log" ) );
+    window.loadFileNonInteractive( directory.filePath( "right.log" ) );
+    REQUIRE( waitForLoaded( window ) );
+    const auto tabsInfo = window.commanderWindowInfo().value( "tabs" ).toList();
+    REQUIRE( tabsInfo.size() == 2 );
+    const auto rightTab = tabsInfo.at( 1 ).toMap().value( "tabId" ).toString();
+    auto* rightPane = window.moveTabToNewPane( rightTab, Qt::Horizontal );
+    REQUIRE( rightPane != nullptr );
+    const auto rightPaneId = rightPane->paneId();
+
+    QString error;
+    const auto path = directory.filePath( "panes.cilogproj" );
+    REQUIRE( window.saveProject( path, &error ) );
+    ConfigurationProject project;
+    REQUIRE( ConfigurationExport::readProject( path, &project, &error ) );
+    const auto parsed = PaneLayoutFormat::parse( project.session.paneLayout( "PaneProject" ), 2 );
+    REQUIRE( parsed.status == PaneLayoutFormat::Status::Valid );
+    REQUIRE( parsed.layout.paneCount() == 2 );
+
+    window.mergeAllPanes();
+    REQUIRE( window.panes().size() == 1 );
+    INFO( error.toStdString() );
+    REQUIRE( window.loadProject( path, &error ) );
+    REQUIRE( waitForLoaded( window ) );
+    REQUIRE( window.panes().size() == 2 );
+    REQUIRE( window.panes().at( 1 )->paneId() == rightPaneId );
+    REQUIRE( window.activePane() == window.panes().at( 1 ) );
+    REQUIRE( window.panes().at( 0 )->tabs()->count() == 1 );
+    REQUIRE( window.panes().at( 1 )->tabs()->tabPathAt( 0 ) == directory.filePath( "right.log" ) );
 }

@@ -177,11 +177,130 @@ void TabbedCrawlerWidget::addTabBarItem( int index, const QString& fileName )
     }
 }
 
+void TabbedCrawlerWidget::connectCrawlerSignals( QWidget* widget, const QString& fileName )
+{
+    auto* crawler = qobject_cast<CrawlerWidget*>( widget );
+    if ( crawler == nullptr ) {
+        return;
+    }
+
+    connect( crawler, &CrawlerWidget::dataStatusChanged, this,
+             [ this, fileName ]( DataStatus status ) {
+                 const auto tabsCount = count();
+                 for ( int i = 0; i < tabsCount; ++i ) {
+                     if ( tabPathAt( i ) == fileName ) {
+                         setTabDataStatus( i, status );
+                         return;
+                     }
+                 }
+             } );
+}
+
 void TabbedCrawlerWidget::removeCrawler( int index )
 {
     QTabWidget::removeTab( index );
 
     updateTabBarVisibility();
+}
+
+QVariantMap TabbedCrawlerWidget::tabData( int index ) const
+{
+    if ( index < 0 || index >= count() ) {
+        return {};
+    }
+
+    return myTabBar_.tabData( index ).toMap();
+}
+
+std::shared_ptr<StreamSession>
+TabbedCrawlerWidget::takeStreamSessionForPath( const QString& fileName )
+{
+    const auto sessionIt = streamSessions_.find( fileName );
+    if ( sessionIt == streamSessions_.end() ) {
+        return {};
+    }
+
+    auto session = sessionIt->second;
+    streamSessions_.erase( sessionIt );
+    setTabConnectionState( fileName, false );
+    return session;
+}
+
+DetachedTab TabbedCrawlerWidget::detachTab( int index )
+{
+    DetachedTab detached;
+    if ( index < 0 || index >= count() ) {
+        LOG_WARNING << "Cannot detach tab " << index << ": the pane has " << count() << " tabs";
+        return detached;
+    }
+
+    detached.widget = widget( index );
+    detached.tabData = tabData( index );
+    const auto fileName = detached.tabData.value( PathKey ).toString();
+    const auto sessionIt = streamSessions_.find( fileName );
+    if ( sessionIt != streamSessions_.end() ) {
+        detached.streamSession = sessionIt->second;
+        streamSessions_.erase( sessionIt );
+    }
+
+    if ( auto* crawler = qobject_cast<CrawlerWidget*>( detached.widget ) ) {
+        // Only the connection made by connectCrawlerSignals; the window's own connections to
+        // the crawler stay untouched.
+        disconnect( crawler, &CrawlerWidget::dataStatusChanged, this, nullptr );
+    }
+
+    QTabWidget::removeTab( index );
+    updateTabBarVisibility();
+
+    LOG_DEBUG << "Detached tab: tab_id=" << detached.tabData.value( TabIdKey ).toString()
+              << " stream=" << ( detached.streamSession != nullptr );
+    return detached;
+}
+
+int TabbedCrawlerWidget::attachTab( DetachedTab tab, int index )
+{
+    if ( !tab.isValid() ) {
+        LOG_WARNING << "Cannot attach an empty tab";
+        return -1;
+    }
+
+    const auto fileName = tab.tabData.value( PathKey ).toString();
+    if ( tab.streamSession && !fileName.isEmpty() ) {
+        streamSessions_[ fileName ] = tab.streamSession;
+    }
+
+    const auto insertIndex = ( index < 0 || index > count() ) ? count() : index;
+    const auto inserted = QTabWidget::insertTab( insertIndex, tab.widget, QString{} );
+    myTabBar_.setTabData( inserted, tab.tabData );
+    connectCrawlerSignals( tab.widget, fileName );
+
+    if ( tab.streamSession ) {
+        setTabConnectionState( fileName, tab.streamSession->isConnectionOpen(),
+                               &tab.streamSession->captureSettings() );
+    }
+    updateTabPresentation( inserted );
+    updateTabBarVisibility();
+
+    LOG_DEBUG << "Attached tab: tab_id=" << tab.tabData.value( TabIdKey ).toString()
+              << " index=" << inserted;
+    return inserted;
+}
+
+void TabbedCrawlerWidget::setContextMenuExtension( ContextMenuExtension extension )
+{
+    contextMenuExtension_ = std::move( extension );
+}
+
+void TabbedCrawlerWidget::tabInserted( int index )
+{
+    QTabWidget::tabInserted( index );
+    Q_EMIT tabCountChanged();
+}
+
+void TabbedCrawlerWidget::tabRemoved( int index )
+{
+    QTabWidget::tabRemoved( index );
+    Q_EMIT tabCountChanged();
 }
 
 void TabbedCrawlerWidget::setStreamSessionForPath( const QString& fileName,
@@ -519,6 +638,10 @@ void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )
         TabNameMapping::getSynced().setTabName( tabPath, "" ).save();
         updateTabPresentation( tab );
     } );
+
+    if ( contextMenuExtension_ ) {
+        contextMenuExtension_( menu, tab );
+    }
 
     menu.exec( globalPoint );
 }
