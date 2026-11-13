@@ -84,9 +84,9 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
   generic icon and is logged once per plugin and path. `.svg` icons need Qt's SVG image plugin in
   the deployment; without it the generic icon is used.
 - The host announces support in `initialize` with `"host_features": ["views", "view_edit"]`.
-  `views` covers the views described above; `view_edit` covers editable cells and the `multichoice`
-  field (section 2.5). On an older host, a plugin falls back to actions and panels, or to read-only
-  tables.
+  `views` covers the views described above; `view_edit` covers editable cells (section 2.5) and the
+  `multichoice` field (section 2.3). On an older host, a plugin falls back to actions and panels, or
+  to read-only tables.
 
 ### 2.2 Messages
 
@@ -194,8 +194,9 @@ by the host feature `view_edit`.
 - **Pending state.** On a real change the cell shows the new text at once, in italic (a `choice` or
   `boolean` cell shows the choice label), and the host sends a `view/event` of type `edited` with
   `element_id` (the table), `row_id`, `column_id`, `value`, `previous` and `inputs`. If the host
-  cannot deliver the event (the plugin is stopping or not reading its input, or the event is too
-  large), the cell shows what it showed before that edit again.
+  cannot deliver the event (the plugin is stopping or not reading its input), the cell shows what it
+  showed before that edit again. An event over the size limit is still delivered, shortened as
+  section 8 describes (`inputs` first, then `value`, with `truncated: true`).
 - **The plugin answers with a patch.** To confirm, patch the row with the accepted cell text. To
   reject, patch it with the previous text, or whatever it should show. Any patch to the row ends its
   pending state. A patch to a row whose editor is open leaves the editor alone once the user has

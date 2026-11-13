@@ -2183,7 +2183,7 @@
     },
     "E14": {
       "status": "in_progress",
-      "commit": "6ba2edb",
+      "commit": "6ba2edbf",
       "pullRequest": null,
       "evidence": [
         "2026-11-13 final review fix wave (ruling A14) d434d8f..6ba2edb: [workbench][E14],[workbench][E13] 59 cases / 710 assertions, 3 runs after the last build (4 more runs of the 58-case build before two tests were added); [ui][plugins] 3 cases / 55 assertions; plan validator valid. The 9 cases written first failed before the fixes (RED); the unknown-kind case was added after. Full ctest left to the controller. Status stays in_progress until the PR merges.",
