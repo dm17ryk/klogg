@@ -33,6 +33,8 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <optional>
+#include <utility>
 
 namespace {
 const QStringList ContainerTypes{ "column", "row", "group" };
@@ -228,9 +230,10 @@ public:
         : QAbstractTableModel( parent )
     {
     }
-    // Set by the view: whether an edit may be committed now, and the report of a committed edit.
+    // Set by the view: whether an edit may be committed now, and the report of a committed edit,
+    // which returns false when the edit could not be sent to the plugin.
     std::function<bool()> canEdit;
-    std::function<void( const QString& rowId, const QString& columnId, const QJsonValue& value,
+    std::function<bool( const QString& rowId, const QString& columnId, const QJsonValue& value,
                         const QString& previous )>
         onEdited;
     int rowCount( const QModelIndex& parent = {} ) const override
@@ -330,7 +333,11 @@ public:
         while ( row.cells.size() <= column ) {
             row.cells.append( QString{} );
         }
-        if ( !row.pending.contains( column ) ) {
+        // An earlier edit of this cell that still waits for the plugin.
+        const auto earlier = row.pending.contains( column )
+                                 ? std::optional<Pending>( row.pending.value( column ) )
+                                 : std::nullopt;
+        if ( !earlier ) {
             row.pending.insert( column, { previous, {}, {} } ); // the text to revert to
         }
         auto& pending = row.pending[ column ];
@@ -340,8 +347,9 @@ public:
         const auto rowId = row.id;
         const auto columnId = columns_.at( column ).id;
         Q_EMIT dataChanged( index, index );
-        if ( onEdited ) {
-            onEdited( rowId, columnId, json, previous );
+        if ( onEdited && !onEdited( rowId, columnId, json, previous ) ) {
+            undoEdit( rowId, column, display, previous, earlier );
+            return false;
         }
         return true;
     }
@@ -566,6 +574,30 @@ public:
     }
 
 private:
+    // An edit that never reached the plugin: the cell shows what it showed before it again, the
+    // confirmed text or an earlier edit that still waits for the plugin. Skipped when something
+    // changed the cell meanwhile.
+    void undoEdit( const QString& rowId, int column, const QString& display, const QString& shown,
+                   const std::optional<Pending>& earlier )
+    {
+        const auto found = index_.find( rowId );
+        if ( found == index_.end() ) {
+            return;
+        }
+        auto& row = rows_[ *found ];
+        if ( column >= row.cells.size() || row.cells.at( column ) != display
+             || !row.pending.contains( column ) ) {
+            return;
+        }
+        row.cells[ column ] = shown;
+        if ( earlier ) {
+            row.pending.insert( column, *earlier );
+        }
+        else {
+            row.pending.remove( column );
+        }
+        Q_EMIT dataChanged( index( *found, column ), index( *found, column ) );
+    }
     // A row patch without `editors` that leaves a pending cell showing its edit confirms the edit:
     // the editor's starting value (when the plugin gave one) becomes the committed value, so the
     // editor does not reopen on the value before the edit.
@@ -611,6 +643,9 @@ class PluginCellDelegate final : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
 
+    // Set by the view: reports an editor kind this delegate does not know (it gets a text editor).
+    std::function<void( const QString& kind )> onUnknownKind;
+
     QWidget* createEditor( QWidget* parent, const QStyleOptionViewItem& option,
                            const QModelIndex& index ) const override
     {
@@ -625,6 +660,9 @@ public:
             widget = createChoice( parent, editor );
         }
         else {
+            if ( kind != "text" && kind != "number" && onUnknownKind ) {
+                onUnknownKind( kind );
+            }
             widget = createLine( parent, editor, kind == "number" );
         }
         widget->setProperty( CellEditorProperty, true );
@@ -632,13 +670,19 @@ public:
     }
     void setEditorData( QWidget* widget, const QModelIndex& index ) const override
     {
+        // Every patch to a row re-reads the open editors in it (dataChanged). Once the user has
+        // changed an editor's value, keep it and the start it is compared with on commit; the model
+        // still drops a second commit of the same text.
+        if ( const auto recorded = widget->property( CellStartProperty );
+             recorded.isValid() && !sameValue( editorValue( widget ), recorded.value<QJsonValue>() ) ) {
+            return;
+        }
         const auto editor = index.data( EditorRole ).value<QJsonObject>();
         // The plugin's starting value, unless the cell shows an edit the plugin has not confirmed.
         const auto start = index.data( PendingRole ).toBool() ? QJsonValue( QJsonValue::Undefined )
                                                               : editor.value( "value" );
         const bool single = !start.isUndefined() && !start.isArray() && !start.isObject();
-        const auto text = single ? cellText( start, PluginView::MaxFieldValueChars )
-                                 : index.data( Qt::EditRole ).toString();
+        const auto text = single ? cellText( start ) : index.data( Qt::EditRole ).toString();
         if ( auto* box = qobject_cast<CheckComboBox*>( widget ) ) {
             QJsonArray checked = start.toArray();
             if ( !start.isArray() ) {
@@ -689,7 +733,10 @@ public:
         if ( start.isValid() && sameValue( value, start.value<QJsonValue>() ) ) {
             return;
         }
-        model->setData( index, QVariant::fromValue( value ), Qt::EditRole );
+        if ( model->setData( index, QVariant::fromValue( value ), Qt::EditRole ) ) {
+            // Committed: the same value committed again (Enter, then the focus leaving) is no edit.
+            widget->setProperty( CellStartProperty, QVariant::fromValue( value ) );
+        }
     }
     bool eventFilter( QObject* watched, QEvent* event ) override
     {
@@ -786,10 +833,11 @@ private:
     static QWidget* createLine( QWidget* parent, const QJsonObject& editor, bool number )
     {
         auto* line = new QLineEdit( parent );
-        line->setMaxLength(
-            editor.contains( "max_length" )
-                ? qBound( 1, editor.value( "max_length" ).toInt(), PluginView::MaxFieldValueChars )
-                : PluginView::MaxFieldValueChars );
+        // No more than a cell shows (MaxTextChars): a change beyond that would leave the cell's
+        // text unchanged and commit nothing.
+        line->setMaxLength( editor.contains( "max_length" )
+                                ? qBound( 1, editor.value( "max_length" ).toInt(), PluginView::MaxTextChars )
+                                : PluginView::MaxTextChars );
         line->setPlaceholderText( text( editor, "placeholder" ) );
         if ( number ) {
             auto* validator = new QDoubleValidator( line );
@@ -1025,6 +1073,11 @@ void PluginView::revertPendingEdits()
             node->model->revertPending();
         }
     }
+}
+
+void PluginView::markEventDropped()
+{
+    eventDropped_ = true; // read by emitEvent once the eventRaised slots return
 }
 
 void PluginView::setDialogs( PluginViewDialogs dialogs )
@@ -1431,7 +1484,15 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
     // Only cells whose flags() grant editing open an editor (an `editable` column and a row
     // editor), so tables without editable columns stay read-only.
     table->setEditTriggers( QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed );
-    table->setItemDelegate( new PluginCellDelegate( table ) );
+    auto* delegate = new PluginCellDelegate( table );
+    delegate->onUnknownKind = [ guard = QPointer<PluginView>( this ), id ]( const QString& kind ) {
+        if ( guard ) {
+            guard->warnOnce( "editor-kind:" + kind.left( 64 ),
+                             "unknown cell editor kind treated as text in table " + id + ": "
+                                 + kind.left( 64 ) );
+        }
+    };
+    table->setItemDelegate( delegate );
     auto* model = node.model;
     model->canEdit = [ this, id, model ] {
         // This tree's table in a live view, outside a plugin update: a focus change caused by a
@@ -1444,8 +1505,8 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
         if ( const auto found = nodes_.value( id ) ) {
             found->rowsDirty = true; // the rows no longer match the ones last set as a whole
         }
-        emitEvent( id, "edited", value,
-                   { { "row_id", rowId }, { "column_id", columnId }, { "previous", previous } } );
+        return emitEvent( id, "edited", value,
+                          { { "row_id", rowId }, { "column_id", columnId }, { "previous", previous } } );
     };
     table->setSelectionBehavior( QAbstractItemView::SelectRows );
     table->setSelectionMode( QAbstractItemView::NoSelection );
@@ -1700,10 +1761,13 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
 void PluginView::applyTableOperation( Node& node, const QJsonObject& entry )
 {
     auto* table = qobject_cast<QTableView*>( node.widget.data() );
-    if ( entry.contains( "replace_rows" ) || entry.contains( "remove_rows" ) ) {
+    if ( entry.contains( "replace_rows" ) ) {
         // Close an open cell editor first, without committing it. Cell editors are direct children
         // of the viewport; closing through the delegate's closeEditor signal (connected to the
         // view) reverts instead of committing, and also ends the view's editing state.
+        // remove_rows needs none of this: the view itself releases the editors of removed rows
+        // (rowsAboutToBeRemoved, or a reset for large batches) without committing them, and an
+        // editor in another row stays open.
         for ( auto* editor :
               table->viewport()->findChildren<QWidget*>( QString{}, Qt::FindDirectChildrenOnly ) ) {
             if ( editor->property( CellEditorProperty ).toBool() && !editor->isHidden() ) {
@@ -1912,11 +1976,11 @@ QJsonObject PluginView::inputs( bool* truncated ) const
     return values;
 }
 
-void PluginView::emitEvent( const QString& id, const QString& type, const QJsonValue& value,
+bool PluginView::emitEvent( const QString& id, const QString& type, const QJsonValue& value,
                             const QJsonObject& extra )
 {
     if ( !isEnabled() ) {
-        return; // a stopped or stale view never talks to the plugin
+        return false; // a stopped or stale view never talks to the plugin
     }
     bool truncated = false;
     QJsonObject event{ { "element_id", id },
@@ -1929,7 +1993,10 @@ void PluginView::emitEvent( const QString& id, const QString& type, const QJsonV
     if ( truncated ) {
         event.insert( "truncated", true );
     }
+    eventDropped_ = false;
+    const QPointer<PluginView> guard( this );
     Q_EMIT eventRaised( event );
+    return !guard || !std::exchange( eventDropped_, false );
 }
 
 void PluginView::pressButton( const QString& id )

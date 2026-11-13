@@ -389,6 +389,7 @@ void PluginUiController::refreshActions()
         }
     }
 }
+
 QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject& item,
                                    QStyle::StandardPixmap fallback )
 {
@@ -409,6 +410,7 @@ QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject&
     }
     return generic;
 }
+
 void PluginUiController::invoke( const QString& id, const QJsonObject& action )
 {
     QJsonObject arguments;

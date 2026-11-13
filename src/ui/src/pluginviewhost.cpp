@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QVBoxLayout>
 #include <cmath>
+#include <utility>
 
 namespace {
 constexpr int DefaultRenderIntervalMs = 100; // at most 10 renders per second
@@ -74,6 +75,7 @@ struct PluginViewHost::Open {
     bool stopped = false;
     // Disabled until the plugin sends a root, after opening and after every restart.
     bool awaitingRoot = true;
+    bool editDropLogged = false; // an undelivered edit is logged once per open view
 };
 
 struct PluginViewHost::Message {
@@ -313,9 +315,18 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     open->container = container;
 
     connect( view, &PluginView::eventRaised, this,
-             [ this, pluginId, viewId ]( const QJsonObject& event ) {
-                 if ( manager_ ) {
-                     manager_->sendViewEvent( pluginId, viewId, windowId_, event );
+             [ this, pluginId, viewId, key, view ]( const QJsonObject& event ) {
+                 if ( !manager_ || manager_->sendViewEvent( pluginId, viewId, windowId_, event )
+                      || event.value( "type" ) != "edited" ) {
+                     return;
+                 }
+                 // Not delivered (the plugin is stopping, not reading its input, or the event is
+                 // too large): the plugin will never answer, so the cell must not stay pending.
+                 view->markEventDropped();
+                 const auto it = open_.find( key );
+                 if ( it != open_.end() && !std::exchange( it->second->editDropLogged, true ) ) {
+                     LOG_WARNING << "Plugin view edit not delivered, cell set back plugin="
+                                 << pluginId.toStdString() << " view=" << viewId.toStdString();
                  }
              } );
     connect( view, &PluginView::actionRequested, this,

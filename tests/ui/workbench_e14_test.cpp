@@ -949,3 +949,155 @@ TEST_CASE( "E14 CheckComboBox caps labels and values like a choice field", "[ui]
     REQUIRE( box.checkedValues().size() == 1 );
     CHECK( box.checkedValues().at( 0 ).toString().size() == PluginView::MaxFieldValueChars );
 }
+
+TEST_CASE( "E14 a row patch keeps the input of an open text cell editor", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.view.show();
+    v.table->edit( v.cell( "t1" ) );
+    QPointer<QLineEdit> line = v.table->viewport()->findChild<QLineEdit*>();
+    REQUIRE( line );
+    line->selectAll();
+    QTest::keyClicks( line, "typed" );
+    v.patch( QJsonObject{ { "id", "t1" }, { "tone", "warn" } } );
+    QApplication::processEvents();
+    REQUIRE( line );
+    CHECK( line->text() == "typed" );
+    QTest::keyClick( line, Qt::Key_Return );
+    QApplication::processEvents();
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue() == "typed" );
+    CHECK( v.events.last().front().toJsonObject().value( "previous" ) == "hello" );
+    CHECK( v.cell( "t1" ).data().toString() == "typed" );
+    CHECK( !editing( v.table ) );
+}
+
+TEST_CASE( "E14 a row patch keeps the ticks of an open multichoice cell list", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.view.show();
+    v.table->edit( v.cell( "m1" ) );
+    QPointer<CheckComboBox> box = v.table->viewport()->findChild<CheckComboBox*>();
+    REQUIRE( box );
+    QApplication::processEvents();                                  // the list opens once the editor is shown
+    REQUIRE( box->view()->isVisible() );
+    REQUIRE( box->checkedValues() == QJsonArray{ "0", "4" } );
+    box->view()->setCurrentIndex( box->model()->index( 1, 0 ) );
+    QTest::keyClick( box->view(), Qt::Key_Space );                   // ticks Mon
+    REQUIRE( box->checkedValues() == QJsonArray{ "0", "1", "4" } );
+    v.patch( QJsonObject{ { "id", "m1" }, { "tone", "warn" } } );
+    QApplication::processEvents();
+    REQUIRE( box );
+    CHECK( box->checkedValues() == QJsonArray{ "0", "1", "4" } );
+    CHECK( box->view()->isVisible() );
+    QTest::keyClick( box->view(), Qt::Key_Return );                  // closing with Enter commits
+    QApplication::processEvents();
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue().toArray() == QJsonArray{ "0", "1", "4" } );
+    CHECK( v.cell( "m1" ).data().toString() == "Sun, Mon, Thu" );
+    CHECK( !editing( v.table ) );
+}
+
+TEST_CASE( "E14 removing another row keeps an open cell editor", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    v.table->edit( v.cell( "r3", 1 ) );
+    QPointer<QLineEdit> line = v.table->viewport()->findChild<QLineEdit*>();
+    REQUIRE( line );
+    line->selectAll();
+    QTest::keyClicks( line, "45" );
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" }, { "remove_rows", QJsonArray{ "r4" } } } } );
+    QApplication::processEvents();
+    REQUIRE( line );
+    CHECK( line->isVisible() );                                      // Qt releases only the removed rows' editors
+    CHECK( line->text() == "45" );
+    CHECK( events.count() == 0 );
+    QTest::keyClick( line, Qt::Key_Return );
+    QApplication::processEvents();
+    REQUIRE( events.count() == 1 );
+    CHECK( events.last().front().toJsonObject().value( "row_id" ) == "r3" );
+    CHECK( events.last().front().toJsonObject().value( "value" ) == "45" );
+}
+
+TEST_CASE( "E14 text and number cell editors take at most MaxTextChars characters", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    const auto maxLength = []( const std::unique_ptr<QWidget>& editor ) {
+        const auto* line = qobject_cast<const QLineEdit*>( editor.get() );
+        return line ? line->maxLength() : -1;
+    };
+    CHECK( maxLength( v.open( "t1" ) ) == PluginView::MaxTextChars );
+    CHECK( maxLength( v.open( "n1" ) ) == PluginView::MaxTextChars );
+    const auto textEditor = []( int length ) {
+        return QJsonObject{ { "v", QJsonObject{ { "kind", "text" }, { "max_length", length } } } };
+    };
+    v.patch( QJsonObject{ { "id", "t1" }, { "editors", textEditor( 100000 ) } } );
+    CHECK( maxLength( v.open( "t1" ) ) == PluginView::MaxTextChars );   // clamped
+    v.patch( QJsonObject{ { "id", "t1" }, { "editors", textEditor( 10 ) } } );
+    CHECK( maxLength( v.open( "t1" ) ) == 10 );
+
+    // The editor holds no more than the cell shows, so every change is a change of the cell.
+    v.patch( QJsonObject{ { "id", "t1" }, { "editors", QJsonObject{ { "v", QJsonObject{ { "kind", "text" } } } } } } );
+    auto editor = v.open( "t1" );
+    auto* line = qobject_cast<QLineEdit*>( editor.get() );
+    REQUIRE( line );
+    line->setText( QString( PluginView::MaxTextChars + 100, QLatin1Char( 'a' ) ) );
+    CHECK( line->text().size() == PluginView::MaxTextChars );
+    v.commit( line, "t1" );
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue().toString().size() == PluginView::MaxTextChars );
+}
+
+TEST_CASE( "E14 an unknown cell editor kind gets a text editor", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.patch( QJsonObject{ { "id", "t1" }, { "editors", QJsonObject{ { "v", QJsonObject{ { "kind", "slider" } } } } } } );
+    for ( int open = 0; open < 2; ++open ) {                         // logged once per view and kind
+        auto editor = v.open( "t1" );
+        auto* line = qobject_cast<QLineEdit*>( editor.get() );
+        REQUIRE( line );
+        CHECK( line->text() == "hello" );
+        CHECK( line->validator() == nullptr );
+    }
+}
+
+TEST_CASE( "E14 an edited event the host could not deliver puts that cell back", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    bool drop = false;
+    QObject::connect( &v.view, &PluginView::eventRaised, &v.view, [ & ]( const QJsonObject& event ) {
+        if ( drop && event.value( "type" ) == "edited" ) {
+            v.view.markEventDropped();
+        }
+    } );
+    const auto edit = [ & ]( const QString& rowId, const QString& text ) {
+        auto editor = v.open( rowId );
+        auto* line = qobject_cast<QLineEdit*>( editor.get() );
+        REQUIRE( line );
+        line->setText( text );
+        v.commit( line, rowId );
+    };
+    edit( "t1", "first" );                                          // delivered: pending
+    REQUIRE( v.events.count() == 1 );
+    REQUIRE( v.cell( "t1" ).data().toString() == "first" );
+    REQUIRE( italic( v.cell( "t1" ) ) );
+
+    drop = true;
+    edit( "t1", "second" );
+    CHECK( v.events.count() == 2 );                                 // raised, but never reached the plugin
+    CHECK( v.cell( "t1" ).data().toString() == "first" );          // back to the delivered edit...
+    CHECK( italic( v.cell( "t1" ) ) );                              // ...which still waits for the plugin
+    edit( "n1", "45" );
+    CHECK( v.cell( "n1" ).data().toString() == "30 s" );           // a cell without an earlier edit
+    CHECK_FALSE( italic( v.cell( "n1" ) ) );
+
+    v.view.revertPendingEdits();                                     // the plugin stops
+    CHECK( v.cell( "t1" ).data().toString() == "hello" );
+
+    drop = false;
+    edit( "n1", "45" );
+    CHECK( v.cell( "n1" ).data().toString() == "45" );
+    CHECK( italic( v.cell( "n1" ) ) );
+}

@@ -10,6 +10,7 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QFileInfo>
+#include <QFont>
 #include <QGroupBox>
 #include <QItemSelectionModel>
 #include <QJsonDocument>
@@ -757,6 +758,26 @@ TEST_CASE( "E13 view lifecycle survives plugin stop, restart and window close",
     fixture.open( "side" );
     REQUIRE( manager.manage( "disable", PluginId, {} ).ok() );
     REQUIRE( waitFor( [ & ] { return !fixture.host->container( PluginId, "side" ); } ) );
+}
+
+TEST_CASE( "E14 the host puts a cell back when its edited event is not delivered",
+           "[ui][workbench][E14]" )
+{
+    HostFixture fixture;
+    fixture.open( "main" );
+    auto* model = modelOf( *fixture.host->view( PluginId, "main" ), "rows" );
+    REQUIRE( model );
+    const auto cell = model->index( 0, 0 );
+    const auto original = cell.data().toString();
+    // The manager no longer has the view open, so sendViewEvent refuses the event, as it does for
+    // a plugin that is stopping, an input backlog or an oversized event.
+    fixture.plugin.manager->closeView( PluginId, "main", "w1" );
+    CHECK_FALSE( model->setData( cell, QVariant::fromValue( QJsonValue( "edited" ) ), Qt::EditRole ) );
+    CHECK( cell.data().toString() == original );
+    CHECK_FALSE( cell.data( Qt::FontRole ).value<QFont>().italic() );
+    // A second undelivered edit is put back too (the host logs only the first one per view).
+    CHECK_FALSE( model->setData( cell, QVariant::fromValue( QJsonValue( "again" ) ), Qt::EditRole ) );
+    CHECK( cell.data().toString() == original );
 }
 
 TEST_CASE( "E13 plugins show and hide views themselves", "[ui][workbench][E13]" )

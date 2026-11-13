@@ -79,6 +79,9 @@ public:
     void cancelDialogs();
     // Sets edited cells back to their text before the edit (the plugin stopped before it confirmed them).
     void revertPendingEdits();
+    // Called from an eventRaised slot when the event could not be delivered to the plugin. For an
+    // `edited` event the cell then shows what it showed before that edit.
+    void markEventDropped();
     void setTextDebounceMs( int milliseconds )
     {
         debounceMs_ = milliseconds;
@@ -106,7 +109,8 @@ private:
     void applyInPlace( const QJsonObject& element, const QString& path );
     void clear();
     void detachTables();
-    void emitEvent( const QString& id, const QString& type, const QJsonValue& value,
+    // False when nothing reached the plugin: the view is disabled, or a slot called markEventDropped().
+    bool emitEvent( const QString& id, const QString& type, const QJsonValue& value,
                     const QJsonObject& extra = {} );
     void emitSelection( const QString& id );
     void pressButton( const QString& id );
@@ -135,6 +139,7 @@ private:
     int renders_ = 0;
     int debounceMs_ = 300;
     bool applying_ = false;
+    bool eventDropped_ = false; // set by markEventDropped() during an eventRaised emission
     bool limitReached_ = false;
     bool warningsSuppressed_ = false;
 };
