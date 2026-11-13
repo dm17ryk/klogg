@@ -176,13 +176,15 @@ by the host feature `view_edit`.
   | `number` | number edit (`min`, `max`) | string |
   | `choice` | drop-down list | the choice's own value as given in `choices` (a string in practice, as for form fields) |
   | `multichoice` | check-dropdown | list of the checked choice values |
-  | `boolean` | check box | `true` or `false` |
+  | `boolean` | Yes/No drop-down list | `true` or `false` |
 
   A number editor accepts standard notation only, without group separators, within `min` and `max`.
   The `value` key of an editor is its starting value (a list for `multichoice`).
-- **Opening and closing.** Double-click or F2 opens the editor. `choice` and `multichoice` editors
-  open their list at once. Picking a `choice` item commits it; closing the list without picking (Esc
-  or a click outside) ends the edit unchanged. For text and number editors, Enter or leaving the cell
+- **Opening and closing.** Double-click or F2 opens the editor. `choice`, `boolean` and `multichoice`
+  editors open their list at once. Picking an item in a `choice` or `boolean` list commits it;
+  closing that list without picking (Esc or a click outside) ends the edit unchanged. If the cell
+  text matches none of a `choice` editor's choices (for example an out-of-range value) and the editor
+  has no `value`, the list opens with nothing selected, and any pick commits. For text and number editors, Enter or leaving the cell
   commits and Esc cancels. In a `multichoice` list Esc restores the ticks from before it opened.
   Opening and leaving a cell without changing it sends nothing.
 - **Pending state.** On a real change the cell shows the new text at once, in italic (a `choice` or
