@@ -1,6 +1,7 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pluginview.h"
+#include "checkcombobox.h"
 #include "log.h"
 #include <QAbstractTableModel>
 #include <QCheckBox>
@@ -34,7 +35,7 @@ const QStringList ContainerTypes{ "column", "row", "group" };
 const QStringList ElementTypes{ "column", "row",    "group",    "label", "badge",
                                 "field",  "button", "progress", "table" };
 const QStringList FieldKinds{ "text",      "number",    "choice",   "boolean",
-                              "file_open", "file_save", "directory" };
+                              "file_open", "file_save", "directory", "multichoice" };
 const QStringList CommonKeys{ "id", "type", "enabled", "visible", "tooltip" };
 // Properties that keep their state when a same-shaped root omits them.
 const QStringList KeptWhenAbsent{ "value", "rows", "columns", "kind", "children" };
@@ -796,6 +797,18 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
             found->debounce->start( debounceMs_ );
         }
     };
+    if ( kind == "multichoice" ) {
+        auto* box = new CheckComboBox( row );
+        connect( box, &CheckComboBox::checkedChanged, this, [ this, id ] {
+            const auto found = nodes_.value( id );
+            if ( !applying_ && found ) {
+                emitEvent( id, "changed", fieldValue( *found ) );
+            }
+        } );
+        layout->addWidget( box, 1 );
+        node.widget = box;
+        return row;
+    }
     if ( kind == "boolean" ) {
         auto* box = new QCheckBox( row );
         connect( box, &QCheckBox::toggled, this, [ this, id ]( bool checked ) {
@@ -1072,7 +1085,10 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             }
         }
         if ( props.contains( "choices" ) && !unchanged( "choices" ) ) {
-            if ( auto* combo = qobject_cast<QComboBox*>( node.widget.data() ) ) {
+            if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+                checks->setChoices( props.value( "choices" ).toArray() );
+            }
+            else if ( auto* combo = qobject_cast<QComboBox*>( node.widget.data() ) ) {
                 const auto current = combo->currentData();
                 combo->clear();
                 for ( const auto& choice : props.value( "choices" ).toArray() ) {
@@ -1278,6 +1294,9 @@ void PluginView::applyPatch( const QJsonArray& patch )
 
 QJsonValue PluginView::fieldValue( const Node& node ) const
 {
+    if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+        return checks->checkedValues();
+    }
     if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() ) ) {
         return box->isChecked();
     }
@@ -1301,6 +1320,10 @@ void PluginView::setFieldValue( Node& node, const QJsonValue& value )
 {
     if ( node.debounce ) {
         node.debounce->stop();
+    }
+    if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+        checks->setCheckedValues( value.toArray() );
+        return;
     }
     if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() ) ) {
         box->setChecked( value.toBool() );

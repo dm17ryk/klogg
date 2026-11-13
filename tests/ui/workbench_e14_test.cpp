@@ -10,6 +10,7 @@
 #include <QTest>
 
 #include "checkcombobox.h"
+#include "pluginview.h"
 
 namespace {
 QJsonArray days()
@@ -149,4 +150,33 @@ TEST_CASE( "E14 CheckComboBox repopulating while the popup is open updates the v
     CHECK( box.view()->model()->rowCount() == 1 );
     CHECK( box.view()->model()->index( 0, 0 ).data().toString() == "Sat" );
     box.hidePopup();
+}
+
+TEST_CASE( "E14 multichoice field: inputs and changed events carry a list", "[ui][workbench][E14]" )
+{
+    PluginView view( "org.test.e14", "main", PluginViewDialogs{} );
+    view.setRoot( QJsonObject{ { "type", "column" },
+                               { "children", QJsonArray{ QJsonObject{
+                                                 { "type", "field" }, { "id", "days" },
+                                                 { "kind", "multichoice" }, { "choices", days() },
+                                                 { "value", QJsonArray{ "1" } } } } } } );
+    auto* box = qobject_cast<CheckComboBox*>( view.element( "days" ) );
+    REQUIRE( box );
+    CHECK( view.inputs().value( "days" ).toArray() == QJsonArray{ "1" } );
+    QSignalSpy events( &view, &PluginView::eventRaised );
+    box->setCheckedValues( { "0", "1" } );
+    REQUIRE( events.count() == 1 );
+    const auto event = events.last().front().toJsonObject();
+    CHECK( event.value( "type" ) == "changed" );
+    CHECK( event.value( "value" ).toArray() == QJsonArray{ "0", "1" } );
+    view.applyPatch( QJsonArray{ QJsonObject{ { "id", "days" },
+                                              { "set", QJsonObject{ { "value", QJsonArray{ "4" } } } } } } );
+    CHECK( box->checkedValues() == QJsonArray{ "4" } );
+    CHECK( events.count() == 1 );                                // plugin patches never echo back
+
+    // A non-array value is an empty list, not a crash.
+    view.applyPatch( QJsonArray{ QJsonObject{ { "id", "days" },
+                                              { "set", QJsonObject{ { "value", "oops" } } } } } );
+    CHECK( box->checkedValues().isEmpty() );
+    CHECK( events.count() == 1 );
 }
