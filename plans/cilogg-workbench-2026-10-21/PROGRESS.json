@@ -24,7 +24,7 @@
   "activeTask": "G02",
   "nextTask": "MD01",
   "executionPolicy": {
-    "updatedDate": "2026-11-09",
+    "updatedDate": "2026-11-13",
     "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves. User requested the unified terminal task after finishing TShark decoding on 2026-11-04. User2026-11-06 explicitly authorized TShark Preview and terminal work in parallel.",
     "phaseOrder": [
       "W0",
@@ -412,6 +412,43 @@
         }
       ],
       "policy": "Independent reviewed branches; serialize native timing qualification. Preserve formal dependency DAG, historical evidence and GUI/CLI/native-MCP parity gates."
+    },
+    "userRequestTasks": {
+      "decisions": [
+        "D12",
+        "D13"
+      ],
+      "date": "2026-11-13",
+      "authority": "User 2026-11-13: two updater bug reports and four workspace requests; R05, U14 and U15 authorized ahead of G02/G03 and the current terminal workstream; U16 design approved the same day.",
+      "tasks": [
+        "R05",
+        "U14",
+        "U15",
+        "U16"
+      ],
+      "hardDependencies": [
+        "G01"
+      ],
+      "addedHardEdges": [
+        "U03 -> U16",
+        "R04 -> R05",
+        "R04 -> U14",
+        "R04 -> U15",
+        "R04 -> U16"
+      ],
+      "requirements": [
+        "UX19",
+        "UX20",
+        "UX21",
+        "QUAL11"
+      ],
+      "pullRequests": {
+        "plan": "https://github.com/dm17ryk/klogg/pull/104",
+        "R05": "https://github.com/dm17ryk/klogg/pull/105",
+        "U14": "https://github.com/dm17ryk/klogg/pull/106",
+        "U15a": "https://github.com/dm17ryk/klogg/pull/107"
+      },
+      "policy": "Selectable now; each task or slice is its own branch and PR with green hosted CI. G02/G03 formal gates, the terminal workstream and every other hard edge are unchanged."
     }
   },
   "tasks": {
@@ -2254,7 +2291,7 @@
         "Independent C++ review: no critical/high findings; medium findings fixed in the PR."
       ],
       "limitations": [
-        "Interpretation of the request (which filter selected each line) recorded in tasks/U14.md; confirm with the user.",
+        "Interpretation confirmed by the user 2026-11-13 (decision D13). The card was clarified the same day: clear cutoff and new search generation, typed search for the labeler, labels computed off the GUI thread, marked rows stay after a clear. PR #106 must pass the added cases (labels_same_text_different_mode, clear_discards_in_flight_results, clear_keeps_marked_rows) before acceptance.",
         "No manual visual check; dark theme not checked."
       ],
       "slices": []
@@ -2268,6 +2305,7 @@
         "Independent C++ review: high finding (empty sourceTabId) and medium findings fixed in the PR."
       ],
       "limitations": [
+        "User 2026-11-13 (decision D13): 'all opened' means every open tab. PR #107's source-count limit (too_many_sources) is replaced by staged submission through AnalysisJobService (2 running, 8 queued, 26 retained) with a per-source summary and re-run of evicted sources; an explicit Commander tab selector wins for Apply; the public Python route (klogg.app.command, set_regex_lab, set_value_counts) and its parity case belong to U15a.",
         "U15b (plugin actions/views, Script Runner, Preview, search all open tabs) not started.",
         "Cross-window routing has no automated test."
       ],
@@ -2280,11 +2318,17 @@
       "status": "planned",
       "commit": null,
       "pullRequest": null,
-      "evidence": [],
-      "limitations": [
-        "Design docs/split-panes.md awaits the user approval; no implementation."
+      "evidence": [
+        "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)"
       ],
-      "slices": []
+      "limitations": [
+        "Implementation not started."
+      ],
+      "slices": [
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, planned",
+        "U16b: Commander/CLI/MCP/Python pane operations, planned",
+        "U16c: drag and drop between panes, planned"
+      ]
     },
     "V16": {
       "status": "planned",
@@ -2408,6 +2452,7 @@
         "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run."
       ],
       "limitations": [
+        "Design revision in progress on PR #105 (2026-11-13): non-replacing claim with token re-check, launchedAt, exclusive updater.lock, next-start recovery of a launched record (running / report once / young kept / abandoned reported once and restored as ready, not re-armed), reconciliation consumes the record atomically, cleanup keeps every referenced package, foreign pending records never overwritten, distinct relaunch phase, stagedPath == packagePath with a hash of the launched file, startup acknowledgement before session restore. The qualification above predates it.",
         "No real elevated (UAC) install was exercised locally.",
         "Hosted CI pending at registration time."
       ],
@@ -2802,7 +2847,8 @@
     "D09: see ../../docs/workbench/decisions.md",
     "D10: see ../../docs/workbench/decisions.md",
     "D11: see ../../docs/workbench/decisions.md",
-    "D12: see ../../docs/workbench/decisions.md"
+    "D12: see ../../docs/workbench/decisions.md",
+    "D13: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
@@ -2811,7 +2857,11 @@
     "Third-party hardware/project compatibility requires D-task conformance; source inspection is not a hardware pass."
   ],
   "runnableTasks": [
-    "G02"
+    "G02",
+    "R05",
+    "U14",
+    "U15",
+    "U16"
   ],
   "addenda": {
     "messageDecoders": {

@@ -835,6 +835,30 @@
     ]
   },
   {
+    "id": "UX19",
+    "group": "Usability, workspace and developer experience",
+    "description": "Filtered view names the filter or term that matched each line and clears its results without losing the search",
+    "tasks": [
+      "U14"
+    ]
+  },
+  {
+    "id": "UX20",
+    "group": "Usability, workspace and developer experience",
+    "description": "One source picker (tab of any window, file, focused tab, all open tabs) for every tab-bound tool",
+    "tasks": [
+      "U15"
+    ]
+  },
+  {
+    "id": "UX21",
+    "group": "Usability, workspace and developer experience",
+    "description": "Split a window into panes, each with its own tabs and filtered views, restored with the session",
+    "tasks": [
+      "U16"
+    ]
+  },
+  {
     "id": "AUTO01",
     "group": "Automation, tests and reproducibility",
     "description": "Versioned workflows, variables and schema validation",
@@ -1470,6 +1494,14 @@
     "description": "Documentation, examples, screenshots and traceable completion",
     "tasks": [
       "R04"
+    ]
+  },
+  {
+    "id": "QUAL11",
+    "group": "Quality, compatibility and delivery",
+    "description": "In-app updates install exactly once, report a failed or abandoned install once and retry scheduled checks silently",
+    "tasks": [
+      "R05"
     ]
   },
   {
