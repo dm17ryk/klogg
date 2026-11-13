@@ -724,9 +724,17 @@ TEST_CASE( "E13 view lifecycle survives plugin stop, restart and window close",
     auto& manager = *fixture.plugin.manager;
     fixture.open( "main" );
     auto* container = fixture.host->container( PluginId, "main" );
+    // An edit the plugin never confirms is put back when the plugin stops.
+    auto* model = modelOf( *fixture.host->view( PluginId, "main" ), "rows" );
+    REQUIRE( model );
+    const auto cell = model->index( 0, 0 );
+    const auto original = cell.data().toString();
+    REQUIRE( model->setData( cell, QVariant::fromValue( QJsonValue( "edited" ) ), Qt::EditRole ) );
+    CHECK( cell.data().toString() == "edited" );
     const auto crash = manager.invoke( PluginId, "crash", {}, { { "windowId", "w1" } } );
     REQUIRE( crash.ok() );
     REQUIRE( waitFor( [ & ] { return !fixture.host->view( PluginId, "main" )->isEnabled(); } ) );
+    CHECK( cell.data().toString() == original );
     REQUIRE( fixture.host->container( PluginId, "main" ) == container );
     auto* note = container->findChild<QLabel*>( "pluginViewStatus_org.test.e13_main" );
     REQUIRE( note );

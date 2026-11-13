@@ -558,6 +558,10 @@ void PluginViewHost::setStopped( const QString& pluginId, bool stopped )
         // Disabled while stopped, and after a restart until the plugin sends a new root, so a
         // stale view never looks live.
         open->awaitingRoot = true;
+        if ( stopped ) {
+            // An edit the plugin never confirmed must not look saved.
+            open->view->revertPendingEdits();
+        }
         open->view->setEnabled( false );
         open->pendingRoot.reset();
         open->pendingPatch = {};
