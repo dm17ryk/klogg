@@ -16,8 +16,10 @@ examples are disabled initially. Saved disable choices survive rescans and upgra
 Both log sources and their SDK files ship in Windows installers/portable ZIPs,
 Linux DEB/RPM/AppImage packages, and macOS app bundles/DMGs.
 Enabled plugins start on the first action.
-Actions appear in the Plugins menu and toolbar. A failed plugin needs an explicit
-restart. Captured logs survive stream stop or plugin failure.
+Actions appear in the Plugins menu and on the main toolbar unless their manifest
+sets `menu` or `toolbar` to false; views get a toolbar button only with
+`toolbar: true`. A failed plugin needs an explicit restart. Captured logs survive
+stream stop or plugin failure.
 
 **Browse Plugins…** fetches a configurable HTTPS catalog and installs or updates
 a selected entry. All catalog packages require SHA-256. Updates preserve enabled
@@ -181,9 +183,10 @@ element reference, limits, lifecycle and automation names. The Python SDK has el
 `on_view_event` callbacks that run on a worker thread. `plugins/examples/view-demo` shows all of
 them; it is disabled by default.
 
-Hosts that announce `view_edit` also support editable table cells, the `multichoice` field and the
-`toolbar` / `menu` / `icon` manifest keys (see [plugin views](plugin-views.md), section 2.5). The Python
-SDK helpers are `table_column(id, title=None, width=None, editable=None)`,
+Hosts that announce `view_edit` also support editable table cells and the `multichoice` field (see
+[plugin views](plugin-views.md), sections 2.5 and 2.3) and the `toolbar` / `menu` / `icon` manifest
+keys (section 2.1). The Python SDK helpers are
+`table_column(id, title=None, width=None, editable=None)`,
 `table_row(id, cells, tone=None, tooltip=None, editors=None)` and
 `editor(kind, choices=None, min=None, max=None, max_length=None, placeholder=None, value=None)`.
 `Plugin.supports_view_edit` is true when the host announced `view_edit`; a plugin should fall back to

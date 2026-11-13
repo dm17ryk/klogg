@@ -69,7 +69,7 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 | `width`, `height` | pixels | the content's own size | Starting size for windows, dialogs and floating docks. The host remembers the user's size. |
 | `modal` | bool | false | Dialogs only: modal to the CILogg window. |
 | `menu` | bool | true | Adds the **Plugins → <title>** entry. |
-| `toolbar` | bool | false | Adds a button for the view to the plugin toolbar. |
+| `toolbar` | bool | false | Adds a button for the view to the main toolbar. |
 | `icon` | relative path | the generic icon | Icon of the menu entry and the toolbar button. See below. |
 
 - A **window** is a top-level window owned by its CILogg window, with its own title, like Script
@@ -138,6 +138,8 @@ that set the value never echo back, as for other fields.
 - Clicking an item toggles it and keeps the list open. Space toggles the current item.
 - Esc closes the list and restores the ticks the list had when it was opened. Any other way of
   closing it keeps the ticks.
+- The field sends `changed` on each toggle while the list is open, and again when Esc restores
+  different ticks. Opening and closing the list without a toggle sends nothing.
 - List values count toward the bound on `inputs` (section 8).
 
 ### 2.4 Message boxes
@@ -170,7 +172,7 @@ by the host feature `view_edit`.
 
 - **Editor kinds and value types.**
 
-  | `kind` | Editor | `value` and `previous` |
+  | `kind` | Editor | `value` |
   | --- | --- | --- |
   | `text` | line edit (`max_length`, `placeholder`) | string |
   | `number` | number edit (`min`, `max`) | string |
@@ -178,30 +180,38 @@ by the host feature `view_edit`.
   | `multichoice` | check-dropdown | list of the checked choice values |
   | `boolean` | Yes/No drop-down list | `true` or `false` |
 
+  `previous` is always the cell's text before the edit, a string, for every kind.
   A number editor accepts standard notation only, without group separators, within `min` and `max`.
   The `value` key of an editor is its starting value (a list for `multichoice`).
 - **Opening and closing.** Double-click or F2 opens the editor. `choice`, `boolean` and `multichoice`
   editors open their list at once. Picking an item in a `choice` or `boolean` list commits it;
   closing that list without picking (Esc or a click outside) ends the edit unchanged. If the cell
   text matches none of a `choice` editor's choices (for example an out-of-range value) and the editor
-  has no `value`, the list opens with nothing selected, and any pick commits. For text and number editors, Enter or leaving the cell
-  commits and Esc cancels. In a `multichoice` list Esc restores the ticks from before it opened.
-  Opening and leaving a cell without changing it sends nothing.
+  has no `value`, the list opens with nothing selected, and any pick commits. Closing a
+  `multichoice` list with Enter or a click outside commits its ticks; Esc restores the ticks from
+  before it opened and ends the edit unchanged. For text and number editors, Enter or leaving the
+  cell commits and Esc cancels. Opening and leaving a cell without changing it sends nothing.
 - **Pending state.** On a real change the cell shows the new text at once, in italic (a `choice` or
   `boolean` cell shows the choice label), and the host sends a `view/event` of type `edited` with
-  `element_id` (the table), `row_id`, `column_id`, `value`, `previous` and `inputs`.
+  `element_id` (the table), `row_id`, `column_id`, `value`, `previous` and `inputs`. If the host
+  cannot deliver the event (the plugin is stopping or not reading its input, or the event is too
+  large), the cell shows what it showed before that edit again.
 - **The plugin answers with a patch.** To confirm, patch the row with the accepted cell text. To
   reject, patch it with the previous text, or whatever it should show. Any patch to the row ends its
-  pending state.
-- **Editor value after a confirm.** If the confirming patch carries no `editors` for that column and
-  its cell text equals the pending text, the host updates that editor's `value` to the committed value
-  itself. Otherwise a plugin whose editor carries `value` should send `editors` again, with the new
-  `value`, in its confirming patch.
+  pending state. A patch to a row whose editor is open leaves the editor alone once the user has
+  changed its value.
+- **Editors in a patch.** A row patch with `editors` replaces the row's whole `editors` map, so it
+  must carry the editor of every column that should stay editable, not only the changed one.
+- **Editor value after a confirm.** If the confirming patch carries no `editors` and its cell text
+  equals the pending text, the host updates that editor's `value` to the committed value itself.
+  Otherwise a plugin whose editor carries `value` should send the row's `editors` again (all of
+  them), with the new `value`, in its confirming patch.
 - **Refused edits.** Edits are refused while the view is disabled or applying a plugin update.
 - **Plugin stops.** If the plugin stops while an edit is pending, the host sets the cell back to its
   previous text.
-- **Limits.** A cell editor has at most 512 choices (`PluginView::MaxElements`). A text editor takes
-  at most 65,536 characters (the field value limit). Tooltips are at most 4,096 characters.
+- **Limits.** A cell editor has at most 512 choices (`PluginView::MaxElements`). Text and number
+  editors take at most 4,096 characters, as many as a cell shows; a larger `max_length` is clamped.
+  Tooltips are at most 4,096 characters.
 
 ## 3. Limits
 
@@ -287,7 +297,7 @@ and message boxes of one CILogg window) and `src/ui/src/pluginuicontroller.cpp` 
   Any other tree is rebuilt.
 - **Patches.** `{"id": "x", "set": {...}}` changes properties; `children` and a field's `kind`
   cannot be patched. Table entries are `{"id": "t", "replace_rows": [...]}`,
-  `{"id": "t", "update_rows": [{"id", "cells"?, "tone"?}]}`,
+  `{"id": "t", "update_rows": [{"id", "cells"?, "tone"?, "tooltip"?, "editors"?}]}`,
   `{"id": "t", "insert_rows": [...], "before": "<row id>"}` (default: append) and
   `{"id": "t", "remove_rows": ["<row id>", ...]}`. Row ids are unique: the first row with an id
   wins, also within one `replace_rows` or `insert_rows` batch. Removals use contiguous ranges;
