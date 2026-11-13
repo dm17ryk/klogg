@@ -1110,6 +1110,37 @@ TEST_CASE( "Plugin manifests validate views", "[plugins][views][E13]" )
     REQUIRE_FALSE( Manifest::parse( QJsonDocument( json ).toJson(), "test" ).valid() );
 }
 
+TEST_CASE( "E14 manifest toolbar, menu and icon keys", "[plugins][views][E14]" )
+{
+    const QJsonArray capabilities{ "tool" };
+    const auto action = []( QJsonObject extra ) {
+        QJsonObject a{ { "id", "a" }, { "label", "A" }, { "capability", "tool" } };
+        for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+            a.insert( it.key(), it.value() );
+        }
+        return QJsonArray{ a };
+    };
+    CHECK( validateActions( action( { { "toolbar", false }, { "menu", false } } ), capabilities ).isEmpty() );
+    CHECK( validateActions( action( { { "icon", "icons/a.png" } } ), capabilities ).isEmpty() );
+    CHECK_FALSE( validateActions( action( { { "toolbar", "no" } } ), capabilities ).isEmpty() );
+    CHECK_FALSE( validateActions( action( { { "icon", "../a.png" } } ), capabilities ).isEmpty() );
+    CHECK_FALSE( validateActions( action( { { "icon", "a.exe" } } ), capabilities ).isEmpty() );
+    CHECK_FALSE( validateActions( action( { { "icon", "C:/a.png" } } ), capabilities ).isEmpty() );
+
+    const auto view = []( QJsonObject extra ) {
+        QJsonObject v{ { "id", "main" }, { "title", "Main" } };
+        for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+            v.insert( it.key(), it.value() );
+        }
+        return QJsonArray{ v };
+    };
+    CHECK( validateViews( view( { { "toolbar", true }, { "icon", "icons/cms.ico" } } ) ).isEmpty() );
+    CHECK( validateViews( view( { { "icon", "art/x.svg" } } ) ).isEmpty() );
+    CHECK_FALSE( validateViews( view( { { "toolbar", 1 } } ) ).isEmpty() );
+    CHECK_FALSE( validateViews( view( { { "icon", "icons\\cms.ico" } } ) ).isEmpty() );
+    CHECK_FALSE( validateViews( view( { { "icon", QString( 300, 'a' ) + ".png" } } ) ).isEmpty() );
+}
+
 TEST_CASE( "Plugins receive host features and the instance environment", "[plugins][views][E13]" )
 {
     QTemporaryDir temp;
