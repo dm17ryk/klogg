@@ -36,6 +36,15 @@ TEST_CASE( "labels_regex_alternatives", "[workbench][U14]" )
     REQUIRE( MatchLabeler::splitTopLevelAlternatives( "a|b(c|d)|[x|y]|e\\|f" )
              == QStringList{ "a", "b(c|d)", "[x|y]", "e\\|f" } );
     REQUIRE( MatchLabeler::splitTopLevelAlternatives( "[]|]x|y" ) == QStringList{ "[]|]x", "y" } );
+    REQUIRE( MatchLabeler::splitTopLevelAlternatives( "[^]|]x|y" )
+             == QStringList{ "[^]|]x", "y" } );
+    // A literal '[' inside a class does not reopen it.
+    REQUIRE( MatchLabeler::splitTopLevelAlternatives( "[a[]|b" ) == QStringList{ "[a[]", "b" } );
+
+    // Empty alternatives match everything and name nothing.
+    const auto withEmpty = MatchLabeler::fromSearch( regexSearch( "a||b|" ) );
+    REQUIRE( withEmpty.label( "only b here" ) == "b" );
+    REQUIRE( withEmpty.label( "a and b" ) == "a, b" );
 
     const auto labeler = MatchLabeler::fromSearch( regexSearch( "WARN|ERROR", false ) );
     REQUIRE( labeler.label( "error: disk" ) == "ERROR" );

@@ -2231,9 +2231,8 @@ void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
         auto& config = Configuration::get();
         config.setFilteredViewMatchedByColumn( visible );
         config.save();
-        for ( const auto& [ otherView, data ] : filteredViewsData_ ) {
-            Q_UNUSED( data );
-            otherView->setMatchedByColumnVisible( visible );
+        for ( const auto& entry : filteredViewsData_ ) {
+            entry.first->setMatchedByColumnVisible( visible );
         }
         filteredView_->setMatchedByColumnVisible( visible );
     } );

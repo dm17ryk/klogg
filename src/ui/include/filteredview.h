@@ -100,8 +100,13 @@ private:
     bool matchedByVisible_ = true;
     QAction* matchedByAction_ = nullptr;
     QAction* clearResultsAction_ = nullptr;
-    // Labels of visible lines by source line number; reset with the labeler.
-    mutable QHash<quint64, QString> annotationCache_;
+    // Labels of visible lines by source line number; reset with the labeler. The text length is
+    // kept so a line that was still being written is labelled again once it grows.
+    struct CachedAnnotation {
+        qsizetype textSize = 0;
+        QString label;
+    };
+    mutable QHash<quint64, CachedAnnotation> annotationCache_;
 };
 
 #endif

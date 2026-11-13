@@ -126,14 +126,14 @@ QString FilteredView::lineAnnotation( LineNumber lineNumber, const QString& line
         }
         const auto sourceLine = logFilteredData_->getMatchingLineNumber( lineNumber ).get();
         if ( const auto cached = annotationCache_.constFind( sourceLine );
-             cached != annotationCache_.cend() ) {
-            return *cached;
+             cached != annotationCache_.cend() && cached->textSize == lineText.size() ) {
+            return cached->label;
         }
         if ( annotationCache_.size() >= MaxCachedAnnotations ) {
             annotationCache_.clear();
         }
         const auto label = matchLabeler_->label( lineText );
-        annotationCache_.insert( sourceLine, label );
+        annotationCache_.insert( sourceLine, { lineText.size(), label } );
         return label;
     }
     if ( type.testFlag( LineTypeFlags::Mark ) ) {

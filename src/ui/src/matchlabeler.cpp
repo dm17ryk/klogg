@@ -25,6 +25,8 @@ QStringList MatchLabeler::splitTopLevelAlternatives( const QString& regex )
     QString current;
     int groupDepth = 0;
     bool inClass = false;
+    // Index in `current` of the first member of the open character class.
+    qsizetype classMembersStart = 0;
     for ( int i = 0; i < regex.size(); ++i ) {
         const auto character = regex.at( i );
         if ( character == QLatin1Char( '\\' ) && i + 1 < regex.size() ) {
@@ -33,16 +35,21 @@ QStringList MatchLabeler::splitTopLevelAlternatives( const QString& regex )
             continue;
         }
         if ( inClass ) {
-            // A ']' right after '[' or '[^' is a literal member of the class.
-            const bool classStart = current.endsWith( QLatin1Char( '[' ) )
-                                    || current.endsWith( QLatin1String( "[^" ) );
-            if ( character == QLatin1Char( ']' ) && !classStart )
+            // A ']' as the first member (after '[' or '[^') is a literal.
+            if ( character == QLatin1Char( '^' ) && current.size() == classMembersStart
+                 && current.endsWith( QLatin1Char( '[' ) ) ) {
+                ++classMembersStart;
+            }
+            else if ( character == QLatin1Char( ']' ) && current.size() > classMembersStart ) {
                 inClass = false;
+            }
             current.append( character );
             continue;
         }
-        if ( character == QLatin1Char( '[' ) )
+        if ( character == QLatin1Char( '[' ) ) {
             inClass = true;
+            classMembersStart = current.size() + 1;
+        }
         else if ( character == QLatin1Char( '(' ) )
             ++groupDepth;
         else if ( character == QLatin1Char( ')' ) && groupDepth > 0 )
@@ -112,7 +119,10 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
     }
     else if ( !search.isPlainText ) {
         for ( const auto& alternative : splitTopLevelAlternatives( search.pattern ) ) {
-            addTerm( alternative, alternative, false );
+            // An empty alternative matches every line and names nothing.
+            if ( !alternative.isEmpty() ) {
+                addTerm( alternative, alternative, false );
+            }
         }
     }
     else {

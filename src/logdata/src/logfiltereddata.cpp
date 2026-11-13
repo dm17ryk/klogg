@@ -705,6 +705,8 @@ void LogFilteredData::applySearchResults( const char* source )
         newMatches -= forgotten;
         matching_lines_ |= newMatches;
         addDisplayedLines( newMatches );
+        // Context rows of a new match stop at the cleared point too.
+        displayed_lines_ -= forgotten;
     }
     else {
         matching_lines_ |= searchResults.newMatches;

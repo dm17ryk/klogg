@@ -540,9 +540,9 @@ TEST_CASE( "clear_keeps_search_and_autorefresh", "[workbench][U14][logdata][incr
     REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
                               LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
     REQUIRE( filtered_data->getNbMatches() == 1_lcount );
-    REQUIRE( toFlags( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES ) ) )
+    REQUIRE( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES ) )
                  .testFlag( LineTypeFlags::Match ) );
-    REQUIRE_FALSE( toFlags( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES - 1 ) ) )
+    REQUIRE_FALSE( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES - 1 ) )
                        .testFlag( LineTypeFlags::Match ) );
 
     // Searching again restores every match.
@@ -550,6 +550,35 @@ TEST_CASE( "clear_keeps_search_and_autorefresh", "[workbench][U14][logdata][incr
     runSearch( filtered_data.get(), "line 000[0-9][0-9]9", fullSpy );
     REQUIRE( filtered_data->getNbMatches() == 51_lcount );
     REQUIRE( filtered_data->resultsStartLine() == 0_lnum );
+}
+
+TEST_CASE( "clear_drops_context_before_the_cleared_point",
+           "[workbench][U14][logdata][incremental][context]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+    SearchOptions options;
+    options.contextBefore = 2;
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    runSearch( filtered_data.get(), RegularExpressionPattern( "line 000499" ), options,
+               searchSpy );
+    REQUIRE( filtered_data->getNbLine() == 3_lcount );
+
+    filtered_data->forgetResults();
+    REQUIRE( filtered_data->getNbLine() == 0_lcount );
+
+    logDataLoader.file.seek( logDataLoader.file.size() );
+    logDataLoader.file.write( formattedLine( 499 ).toLatin1() );
+    logDataLoader.file.flush();
+    SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    logDataLoader.log_data.reload();
+    REQUIRE( reloadSpy.safeWait() );
+    SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                              LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
+    // The new match shows, but no context row from before the cleared point.
+    REQUIRE( filtered_data->getNbMatches() == 1_lcount );
+    REQUIRE( filtered_data->getNbLine() == 1_lcount );
 }
 
 SCENARIO( "manual scan then auto refresh avoids full rescan when no new data",
