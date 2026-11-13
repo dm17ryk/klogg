@@ -882,3 +882,70 @@ TEST_CASE( "E14 replacing rows while a choice list is open closes the editor wit
     CHECK( !editing( v.table ) );
     CHECK( v.cell( "r1", 1 ).data().toString() == "1" );
 }
+
+// Final review fixes (ruling A14).
+
+TEST_CASE( "E14 CheckComboBox emits checkedChanged only when the checked set changes", "[ui][workbench][E14]" )
+{
+    CheckComboBox box;
+    box.setChoices( days() );
+    QSignalSpy changed( &box, &CheckComboBox::checkedChanged );
+    box.setCheckedValues( { "0", "4" } );
+    CHECK( changed.count() == 1 );
+    box.setCheckedValues( { "4", "0" } );                        // the same set in another order
+    CHECK( changed.count() == 1 );
+    box.setCheckedValues( { "0", "4", "99" } );                  // an unknown value changes nothing
+    CHECK( changed.count() == 1 );
+    box.setCheckedValues( {} );
+    CHECK( changed.count() == 2 );
+    box.setCheckedValues( {} );
+    CHECK( changed.count() == 2 );
+}
+
+TEST_CASE( "E14 a multichoice field closed with Esc and no toggle sends no changed event", "[ui][workbench][E14]" )
+{
+    PluginView view( "org.test.e14", "main", PluginViewDialogs{} );
+    view.setRoot( QJsonObject{ { "type", "column" },
+                               { "children", QJsonArray{ QJsonObject{
+                                                 { "type", "field" }, { "id", "days" },
+                                                 { "kind", "multichoice" }, { "choices", days() },
+                                                 { "value", QJsonArray{ "1" } } } } } } );
+    view.show();
+    auto* box = qobject_cast<CheckComboBox*>( view.element( "days" ) );
+    REQUIRE( box );
+    QSignalSpy events( &view, &PluginView::eventRaised );
+    box->showPopup();
+    REQUIRE( box->view()->isVisible() );
+    QTest::keyClick( box->view(), Qt::Key_Escape );
+    CHECK( !box->view()->isVisible() );
+    CHECK( events.count() == 0 );
+    CHECK( box->checkedValues() == QJsonArray{ "1" } );
+
+    // Each toggle while the list is open sends `changed`; Esc then sends the restored set.
+    box->showPopup();
+    REQUIRE( box->view()->isVisible() );
+    box->view()->setCurrentIndex( box->model()->index( 2, 0 ) );
+    QTest::keyClick( box->view(), Qt::Key_Space );
+    REQUIRE( events.count() == 1 );
+    CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "1", "4" } );
+    QTest::keyClick( box->view(), Qt::Key_Escape );
+    REQUIRE( events.count() == 2 );
+    CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "1" } );
+}
+
+TEST_CASE( "E14 CheckComboBox caps labels and values like a choice field", "[ui][workbench][E14]" )
+{
+    const QString longLabel( PluginView::MaxTextChars + 10, QLatin1Char( 'L' ) );
+    const QString longValue( PluginView::MaxFieldValueChars + 10, QLatin1Char( 'v' ) );
+    const QString unlabelled( PluginView::MaxTextChars + 10, QLatin1Char( 'u' ) );
+    CheckComboBox box;
+    box.setChoices( QJsonArray{ QJsonObject{ { "value", longValue }, { "label", longLabel } },
+                                QJsonObject{ { "value", unlabelled } } } );
+    auto* model = qobject_cast<QStandardItemModel*>( box.model() );
+    REQUIRE( model );
+    CHECK( model->item( 0 )->text().size() == PluginView::MaxTextChars );
+    CHECK( model->item( 1 )->text().size() == PluginView::MaxTextChars );   // label from the value
+    box.setCheckedValues( { longValue } );                        // the value as the plugin sent it
+    REQUIRE( box.checkedValues().size() == 1 );
+    CHECK( box.checkedValues().at( 0 ).toString().size() == PluginView::MaxFieldValueChars );
+}

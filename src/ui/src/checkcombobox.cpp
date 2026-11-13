@@ -1,6 +1,7 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "checkcombobox.h"
+#include "pluginview.h" // the plugin view limits (pluginview.h does not include this header)
 
 #include <QAbstractItemView>
 #include <QJsonObject>
@@ -14,8 +15,14 @@
 #include <utility>
 
 namespace {
-constexpr int MaxChoices = 512;
 constexpr int ValueRole = Qt::UserRole + 1;
+
+// A string value is capped like a `choice` field's value.
+QJsonValue limitValue( const QJsonValue& value )
+{
+    return value.isString() ? QJsonValue( value.toString().left( PluginView::MaxFieldValueChars ) )
+                            : value;
+}
 } // namespace
 
 CheckComboBox::CheckComboBox( QWidget* parent )
@@ -43,13 +50,16 @@ void CheckComboBox::setChoices( const QJsonArray& choices )
     populating_ = true;
     items_->clear();
     for ( const auto& choice : choices ) {
-        if ( items_->rowCount() >= MaxChoices ) {
+        if ( items_->rowCount() >= PluginView::MaxElements ) {
             break;
         }
         const auto object = choice.toObject();
-        const auto value = choice.isObject() ? object.value( "value" ) : choice;
+        const auto value = limitValue( choice.isObject() ? object.value( "value" ) : choice );
         const auto label = object.value( "label" );
-        auto* item = new QStandardItem( label.isString() ? label.toString() : value.toVariant().toString() );
+        // Labels are plain text of at most MaxTextChars, as for a `choice` field.
+        auto* item = new QStandardItem(
+            ( label.isString() ? label.toString() : value.toVariant().toString() )
+                .left( PluginView::MaxTextChars ) );
         item->setData( value.toVariant(), ValueRole );
         item->setFlags( Qt::ItemIsEnabled | Qt::ItemIsUserCheckable );
         item->setData( checked.contains( value ) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole );
@@ -61,15 +71,23 @@ void CheckComboBox::setChoices( const QJsonArray& choices )
 
 void CheckComboBox::setCheckedValues( const QJsonArray& values )
 {
+    QJsonArray wanted;
+    for ( const auto& value : values ) {
+        wanted.append( limitValue( value ) );
+    }
+    const auto before = checkedValues();
     populating_ = true;
     for ( int row = 0; row < items_->rowCount(); ++row ) {
         auto* item = items_->item( row );
         const auto value = QJsonValue::fromVariant( item->data( ValueRole ) );
-        item->setCheckState( values.contains( value ) ? Qt::Checked : Qt::Unchecked );
+        item->setCheckState( wanted.contains( value ) ? Qt::Checked : Qt::Unchecked );
     }
     populating_ = false;
     update();
-    Q_EMIT checkedChanged();
+    // Both lists are in choice order, so equal lists are equal sets.
+    if ( checkedValues() != before ) {
+        Q_EMIT checkedChanged();
+    }
 }
 
 QJsonArray CheckComboBox::checkedValues() const

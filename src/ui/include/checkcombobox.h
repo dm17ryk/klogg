@@ -10,12 +10,14 @@ class QStandardItemModel;
 
 // A dropdown whose items are checkboxes (the plugin views `multichoice` editor and field kind).
 // The popup stays open while items are toggled; Esc restores the set it opened with.
+// Choices, labels and values are capped like a `choice` field's (PluginView limits).
 class CheckComboBox : public QComboBox {
     Q_OBJECT
   public:
     explicit CheckComboBox( QWidget* parent = nullptr );
     // Checked values that are not in the new list are dropped, without emitting checkedChanged.
     void setChoices( const QJsonArray& choices );
+    // Emits checkedChanged only when the checked set changes.
     void setCheckedValues( const QJsonArray& values );
     QJsonArray checkedValues() const;
     QString summary() const;
