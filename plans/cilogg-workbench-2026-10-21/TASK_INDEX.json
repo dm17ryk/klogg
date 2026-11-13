@@ -1786,6 +1786,51 @@
       "taskFile": "tasks/U13.md"
     },
     {
+      "id": "U14",
+      "title": "Show which filter matched each filtered line, and clear the results",
+      "plan": "04-workspace.md",
+      "anchor": "u14--show-which-filter-matched-each-filtered-line-and-clear-the-results",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "in_progress",
+      "requirements": [],
+      "task_body_chars": 4035,
+      "taskFile": "tasks/U14.md"
+    },
+    {
+      "id": "U15",
+      "title": "One source picker for every tool that takes a tab",
+      "plan": "04-workspace.md",
+      "anchor": "u15--one-source-picker-for-every-tool-that-takes-a-tab",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [],
+      "task_body_chars": 4500,
+      "taskFile": "tasks/U15.md"
+    },
+    {
+      "id": "U16",
+      "title": "Split the main window into panes",
+      "plan": "04-workspace.md",
+      "anchor": "u16--split-the-main-window-into-panes",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "planned",
+      "requirements": [],
+      "task_body_chars": 3090,
+      "taskFile": "tasks/U16.md"
+    },
+    {
       "id": "V16",
       "title": "Add custom charts and markdown/text without opening a second engine",
       "plan": "03-visualization.md",
@@ -2231,6 +2276,21 @@
       ],
       "task_body_chars": 2870,
       "taskFile": "tasks/R04.md"
+    },
+    {
+      "id": "R05",
+      "title": "Make the in-app update hand-off and scheduled checks robust",
+      "plan": "09-release.md",
+      "anchor": "r05--make-the-in-app-update-hand-off-and-scheduled-checks-robust",
+      "dependencies": [
+        "G01",
+        "G02",
+        "G03"
+      ],
+      "status": "in_progress",
+      "requirements": [],
+      "task_body_chars": 4522,
+      "taskFile": "tasks/R05.md"
     },
     {
       "id": "MD01",
@@ -2748,6 +2808,9 @@
     "V06",
     "V10",
     "U13",
+    "U14",
+    "U15",
+    "U16",
     "V16",
     "D14",
     "D15",
@@ -2783,13 +2846,15 @@
     "UT11",
     "UT12",
     "UT13",
-    "R04"
+    "R04",
+    "R05"
   ],
   "notes": [
     "Exact hard dependencies include shared G01-G03 prerequisites. Optional capability descriptions are not backwards hard edges.",
     "P03/P04 and P05 state is refreshed and credited in G01; no new tasks repeat that implemented work.",
     "R04 is the full-program completion gate.",
-    "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13."
+    "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13.",
+    "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests; R05/U14/U15 run ahead of the wave order and U16 waits for design approval."
   ],
   "reconciledDate": "2026-11-04"
 }

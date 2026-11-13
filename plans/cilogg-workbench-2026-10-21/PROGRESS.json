@@ -2245,6 +2245,30 @@
       "limitations": [],
       "slices": []
     },
+    "U14": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U15": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "U16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
     "V16": {
       "status": "planned",
       "commit": null,
@@ -2351,6 +2375,14 @@
     },
     "R04": {
       "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [],
+      "limitations": [],
+      "slices": []
+    },
+    "R05": {
+      "status": "in_progress",
       "commit": null,
       "pullRequest": null,
       "evidence": [],
@@ -2745,7 +2777,8 @@
     "D08: see ../../docs/workbench/decisions.md",
     "D09: see ../../docs/workbench/decisions.md",
     "D10: see ../../docs/workbench/decisions.md",
-    "D11: see ../../docs/workbench/decisions.md"
+    "D11: see ../../docs/workbench/decisions.md",
+    "D12: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

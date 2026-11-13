@@ -504,3 +504,28 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 **References:**
 - https://doc.qt.io/qt-6.10/qaccessiblewidget.html
 - https://www.elastic.co/docs/explore-analyze/visualize/lens
+
+
+### U14 — Show which filter matched each filtered line, and clear the results
+
+**Integrated hard dependencies:** G01, G02, G03. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md).
+
+**Outcome:** The filtered view names the predefined filter, alternative or matched text that selected each line, and "Clear results" empties the view while the search keeps running on new lines.
+
+The full card is [tasks/U14.md](tasks/U14.md).
+
+### U15 — One source picker for every tool that takes a tab
+
+**Integrated hard dependencies:** G01, G02, G03. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md).
+
+**Outcome:** Value Counts, Regex Lab and the other tab-bound tools choose a tab, a file, the focused tab or all opened files. Slice U15a covers the analysis tools; U15b the remaining tools.
+
+The full card, with the tool inventory, is [tasks/U15.md](tasks/U15.md).
+
+### U16 — Split the main window into panes
+
+**Integrated hard dependencies:** G01, G02, G03. Implementation waits for the user's approval of the [split-pane design](../../docs/split-panes.md) under [decision D12](../../docs/workbench/decisions.md).
+
+**Outcome:** One window shows several panes, each with its own file tabs and filtered views. It is the first slice of U03's pane layout.
+
+The full card is [tasks/U16.md](tasks/U16.md).

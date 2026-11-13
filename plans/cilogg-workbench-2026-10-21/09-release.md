@@ -96,3 +96,12 @@ Cross-feature source lifetime; altered byte/field meaning; restored settings and
 **Acceptance:** The shipped product and its documentation agree; users can reproduce examples and understand limitations. A plan checkbox is never substituted for runtime evidence.
 
 **Rollback:** Correct/retract inaccurate documentation or capability claims and keep prior validated example versions available.
+
+
+### R05 — Make the in-app update hand-off and scheduled checks robust
+
+**Integrated hard dependencies:** G01, G02, G03. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md).
+
+**Outcome:** An update downloaded for install on exit is installed once, by the installation that downloaded it; a failed install is explained once; a scheduled check that cannot reach GitHub never shows a dialog and is retried.
+
+The full card, with the root cause, is [tasks/R05.md](tasks/R05.md).

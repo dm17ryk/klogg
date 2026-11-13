@@ -119,3 +119,14 @@ On 2026-11-05 the user clarified that Unified Terminal follows the merged TShark
 On 2026-11-11 the user asked for a generic plugin-engine extension: interactive plugin views in every window kind CILogg uses (docks on any side or floating, top-level windows, modal or modeless dialogs, and message boxes with an auto-close timeout), plus `CILOGG_EXECUTABLE` / `CILOGG_INSTANCE_ID` for plugin processes, a `cancelling` grace period for plugin jobs, and `pause_comm --wait`. It is delivered as a branch and PR in this repository. A proprietary plugin outside this repository is the first consumer. The work is recorded as task [E13](../../plans/cilogg-workbench-2026-10-21/tasks/E13.md), and its first slice E13a is authorized ahead of G02/G03 completion and the current terminal workstream. It does not change any other task's order or hard edges.
 
 E13 coordinates with E01: views announce themselves only through `"host_features": ["views"]` in `initialize`, which E01's negotiated capabilities absorb later without changing the view messages. Plugins that declare no views keep byte-for-byte protocol-v1 behaviour. See the [plugin views design](../plugin-views.md).
+
+## D12 — Updater fixes and workspace requests of 2026-11-13 ahead of the wave order
+
+On 2026-11-13, after installing release `continuous-26.04.2.1203` through the in-app updater, the user reported two updater bugs and asked for four workspace features. They are recorded as four tasks:
+
+- [R05](../../plans/cilogg-workbench-2026-10-21/tasks/R05.md): the exit-time install hand-off (a shell error box naming the downloaded installer, repeated installs) and the startup error when the update server is unreachable.
+- [U14](../../plans/cilogg-workbench-2026-10-21/tasks/U14.md): the filtered view shows which filter matched each line, and its results can be cleared.
+- [U15](../../plans/cilogg-workbench-2026-10-21/tasks/U15.md): one source picker (a tab, a file, the focused tab, or all opened files) for Value Counts, Regex Lab and every other tool that takes a tab.
+- [U16](../../plans/cilogg-workbench-2026-10-21/tasks/U16.md): split the main window into panes, each with its own file tabs and filtered views.
+
+R05, U14 and U15 are authorized ahead of G02/G03 completion and the current terminal workstream, like E13a under D11, and each is delivered as its own branch and PR. U16 stays design-only until the user approves the [split-pane design](../split-panes.md). U16 is the first slice of the pane layout that U03 plans, and it keeps U03/U08 compatible by addressing panes, tabs and sources through stable IDs. These tasks change no other task's order or hard edges.
