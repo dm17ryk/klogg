@@ -186,8 +186,15 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
         connect( combo, qOverload<int>( &QComboBox::currentIndexChanged ), this,
                  [ this ] { draftChanged(); } );
     connect( source_, qOverload<int>( &QComboBox::activated ), this, [ this ]( int index ) {
-        if ( source_->itemData( index ).toString() == QLatin1String( "file:" ) )
-            chooseAnalysisSourceFile( source_, this, previousSource_ );
+        if ( source_->itemData( index ).toString() == QLatin1String( "file:" ) ) {
+            {
+                // Only a chosen file changes the draft; a cancelled dialog restores it.
+                const QScopedValueRollback<bool> guard( updating_, true );
+                chooseAnalysisSourceFile( source_, this, previousSource_ );
+            }
+            if ( sourceSelection() != previousSource_ )
+                draftChanged();
+        }
         previousSource_ = sourceSelection();
     } );
     connect( resultSource_, qOverload<int>( &QComboBox::activated ), this,
@@ -254,6 +261,7 @@ void ValueCountDock::releaseRuns()
     if ( runs_.empty() && !id_.isEmpty() )
         command( CommanderAction::ReleaseAnalysisJob );
     runs_.clear();
+    finishedStates_.clear();
     resultSource_->clear();
     resultSource_->hide();
 }
@@ -277,10 +285,17 @@ QString ValueCountDock::runsSummary()
         return {};
     std::map<QString, int> states;
     for ( const auto& sourceRun : runs_ ) {
-        const auto status
-            = command( CommanderAction::GetAnalysisJob, { { "jobId", sourceRun.jobId } } );
-        ++states[ status.ok() ? status.payload.value( "state" ).toString()
-                              : status.payload.value( "reason" ).toString() ];
+        // A finished job does not change; only running ones are asked again.
+        auto state = finishedStates_.value( sourceRun.jobId );
+        if ( state.isEmpty() ) {
+            const auto status
+                = command( CommanderAction::GetAnalysisJob, { { "jobId", sourceRun.jobId } } );
+            state = status.ok() ? status.payload.value( "state" ).toString()
+                                : status.payload.value( "reason" ).toString();
+            if ( !status.ok() || terminal( state ) )
+                finishedStates_.insert( sourceRun.jobId, state );
+        }
+        ++states[ state ];
     }
     QStringList parts;
     for ( const auto& state : states )
@@ -298,7 +313,8 @@ void ValueCountDock::showFailure( const CommanderResult& result )
 }
 void ValueCountDock::draftChanged()
 {
-    if ( updating_ )
+    // "File…" is a transient choice that opens a dialog, not a source of its own.
+    if ( updating_ || source_->currentData().toString() == QLatin1String( "file:" ) )
         return;
     ++revision_;
     updateApplyState();
@@ -434,6 +450,14 @@ CommanderResult ValueCountDock::run()
     }
     if ( runs_.empty() )
         return result;
+    if ( !result.ok() ) {
+        result.message = tr( "%1 of %2 sources started; the others failed: %3" )
+                             .arg( runs_.size() )
+                             .arg( tabIds.size() )
+                             .arg( result.message.isEmpty()
+                                       ? result.payload.value( "reason" ).toString()
+                                       : result.message );
+    }
     {
         const QSignalBlocker blocker( resultSource_ );
         for ( const auto& sourceRun : runs_ )
@@ -670,9 +694,15 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
              || number < 0 || number > 10000 )
             return failure( "invalid_result_index" );
     }
+    // The new runs are not known before a run, so their index cannot be chosen with it.
+    if ( definition.contains( "resultSourceIndex" ) && operation == "run" )
+        return failure( "invalid_result_source" );
     refreshSources();
-    if ( definition.contains( "sourceTabId" )
-         && source_->findData( "tab:" + definition.value( "sourceTabId" ).toString() ) < 0 )
+    // An empty sourceTabId (as state() reports for the focused tab) means the focused tab.
+    const auto sourceTabId = definition.value( "sourceTabId" ).toString();
+    const QString tabSelection = sourceTabId.isEmpty() ? QStringLiteral( "focused" )
+                                                       : QString( "tab:" + sourceTabId );
+    if ( definition.contains( "sourceTabId" ) && source_->findData( tabSelection ) < 0 )
         return failure( "source_not_found" );
     if ( const auto requested = definition.value( "source" ).toString();
          requested.startsWith( "tab:" ) && source_->findData( requested ) < 0 )
@@ -688,7 +718,7 @@ CommanderResult ValueCountDock::setDefinition( const QVariantMap& definition )
         if ( definition.contains( "scope" ) )
             scope_->setCurrentIndex( scope_->findData( definition.value( "scope" ) ) );
         if ( definition.contains( "sourceTabId" ) )
-            selectAnalysisSource( source_, "tab:" + definition.value( "sourceTabId" ).toString() );
+            selectAnalysisSource( source_, tabSelection );
         if ( definition.contains( "source" ) )
             selectAnalysisSource( source_, definition.value( "source" ).toString() );
         previousSource_ = sourceSelection();

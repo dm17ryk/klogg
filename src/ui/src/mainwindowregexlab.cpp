@@ -79,9 +79,12 @@ CommanderResult MainWindow::navigateToAnalysisResult( const QString& id, quint64
     QPointer<CrawlerWidget> crawler = crawlerWidgetByTabId( tabId );
     if ( !crawler && windowForTab_ ) {
         if ( auto* owner = windowForTab_( tabId ); owner && owner != this ) {
-            owner->raise();
-            owner->activateWindow();
-            return owner->navigateToAnalysisResult( id, physicalLine );
+            const auto result = owner->navigateToAnalysisResult( id, physicalLine );
+            if ( result.ok() ) {
+                owner->raise();
+                owner->activateWindow();
+            }
+            return result;
         }
     }
     const auto position = service->location( id, physicalLine );
@@ -96,22 +99,27 @@ CommanderResult MainWindow::navigateToAnalysisResult( const QString& id, quint64
     return commanderSuccess();
 }
 
+CommanderResult MainWindow::applyAnalysisSearch( const CommanderRequest& request )
+{
+    auto* crawler = request.tabId.isEmpty() ? currentCrawlerWidget()
+                                            : crawlerWidgetByTabId( request.tabId );
+    if ( !crawler && windowForTab_ ) {
+        // The owner window applies it with that viewer's context, limit and refresh options.
+        if ( auto* owner = windowForTab_( request.tabId ); owner && owner != this )
+            return owner->applyAnalysisSearch( request );
+    }
+    if ( !crawler )
+        return labFailure( "source_not_found", tr( "No current search tab is available." ) );
+    return executeCommanderRequest( crawler->analysisSearchRequest( request ) );
+}
+
 void MainWindow::createRegexLab()
 {
     regexLabDock_ = new RegexLabDock(
         this,
-        [ this ]( const CommanderRequest& input ) {
-            auto request = input;
-            if ( request.action == CommanderAction::Search ) {
-                auto* crawler = request.tabId.isEmpty() ? currentCrawlerWidget()
-                                                        : crawlerWidgetByTabId( request.tabId );
-                if ( crawler )
-                    request = crawler->analysisSearchRequest( request );
-                else if ( request.tabId.isEmpty() )
-                    return labFailure( "source_not_found",
-                                       tr( "No current search tab is available." ) );
-                // A tab of another window is searched there with its own viewer options.
-            }
+        [ this ]( const CommanderRequest& request ) {
+            if ( request.action == CommanderAction::Search )
+                return applyAnalysisSearch( request );
             return executeDockRequest( request );
         },
         [ this ] { return dockAnalysisSources(); },

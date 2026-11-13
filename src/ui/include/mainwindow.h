@@ -126,6 +126,9 @@ class MainWindow : public QMainWindow {
     QVariantList analysisSources( int windowIndex, bool activeWindow ) const;
     // Shows result `physicalLine` of analysis job `jobId` in the tab the job ran on.
     CommanderResult navigateToAnalysisResult( const QString& jobId, quint64 physicalLine );
+    // Applies a Regex Lab pattern to the request's tab (the current tab when empty), in the
+    // window that holds it, keeping that viewer's search options.
+    CommanderResult applyAnalysisSearch( const CommanderRequest& request );
     bool hasTab( const QString& tabId ) const;
 
     void reTranslateUI();

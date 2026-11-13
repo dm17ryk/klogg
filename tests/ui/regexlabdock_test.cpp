@@ -178,6 +178,12 @@ TEST_CASE( "all_open_files_fan_out_and_merge", "[workbench][U15][ui][regexlab]" 
     REQUIRE( dock->state().value( "sourceTabId" ) == "t1" );
     REQUIRE_FALSE( dock->setDefinition( { { "source", "tab:gone" } } ).ok() );
     REQUIRE_FALSE( dock->setDefinition( { { "source", "everything" } } ).ok() );
+    // The new runs are unknown before a run, so their index cannot be chosen with it.
+    REQUIRE_FALSE(
+        dock->setDefinition( { { "operation", "run" }, { "resultSourceIndex", 0 } } ).ok() );
+    // An empty sourceTabId, as state() reports for the focused tab, selects the focused tab.
+    REQUIRE( dock->setDefinition( { { "sourceTabId", "" } } ).ok() );
+    REQUIRE( dock->state().value( "source" ) == "focused" );
     REQUIRE( dock->setDefinition( { { "operation", "release" } } ).ok() );
 }
 

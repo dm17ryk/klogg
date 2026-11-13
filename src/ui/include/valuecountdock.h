@@ -4,6 +4,7 @@
 #define CILOGG_VALUECOUNTDOCK_H
 #include "commander.h"
 #include <QDockWidget>
+#include <QHash>
 #include <functional>
 #include <vector>
 class QLineEdit;
@@ -56,6 +57,8 @@ private:
     QComboBox* source_;
     QComboBox* resultSource_;
     std::vector<SourceRun> runs_;
+    // Terminal states of the runs, so the status summary stops polling finished jobs.
+    QHash<QString, QString> finishedStates_;
     QString previousSource_;
     QComboBox* scope_;
     QComboBox* missing_;
