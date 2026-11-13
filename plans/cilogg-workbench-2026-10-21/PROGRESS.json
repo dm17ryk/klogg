@@ -2248,25 +2248,42 @@
     "U14": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/106",
+      "evidence": [
+        "Local qualification 2026-11-13: cilogg_tests [U14] 5 cases / 24 assertions; cilogg_itests [U14],[logdata],[ui][automation] 88 cases / 3449 assertions passed.",
+        "Independent C++ review: no critical/high findings; medium findings fixed in the PR."
+      ],
+      "limitations": [
+        "Interpretation of the request (which filter selected each line) recorded in tasks/U14.md; confirm with the user.",
+        "No manual visual check; dark theme not checked."
+      ],
       "slices": []
     },
     "U15": {
-      "status": "planned",
+      "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
-      "slices": []
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/107",
+      "evidence": [
+        "U15a local qualification 2026-11-13: cilogg_tests [U15] 3 cases / 24 assertions; cilogg_itests [U15],[regexlab],[valuecounts],[analysiscommands] 34 cases / 551 assertions passed.",
+        "Independent C++ review: high finding (empty sourceTabId) and medium findings fixed in the PR."
+      ],
+      "limitations": [
+        "U15b (plugin actions/views, Script Runner, Preview, search all open tabs) not started.",
+        "Cross-window routing has no automated test."
+      ],
+      "slices": [
+        "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107",
+        "U15b: remaining tab-bound tools, planned"
+      ]
     },
     "U16": {
       "status": "planned",
       "commit": null,
       "pullRequest": null,
       "evidence": [],
-      "limitations": [],
+      "limitations": [
+        "Design docs/split-panes.md awaits the user approval; no implementation."
+      ],
       "slices": []
     },
     "V16": {
@@ -2384,9 +2401,16 @@
     "R05": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
-      "evidence": [],
-      "limitations": [],
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/105",
+      "evidence": [
+        "Root cause from the user update cache (2026-11-13): 1203 helper run ended with 1223 after 78 s (shell error box), another transaction installed 1203 at 12:07:34, pending-update.json for 1203 never cleared; every cilogg.exe process (incl. one per MCP tool call) loaded and locked it and armed the exit-time install.",
+        "Local qualification 2026-11-13 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022): cilogg_tests [updater] 22 cases / 165 assertions; full cilogg_tests 305 cases / 13794 assertions passed.",
+        "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run."
+      ],
+      "limitations": [
+        "No real elevated (UAC) install was exercised locally.",
+        "Hosted CI pending at registration time."
+      ],
       "slices": []
     },
     "MD01": {

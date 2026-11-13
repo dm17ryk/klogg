@@ -1810,9 +1810,9 @@
         "G02",
         "G03"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [],
-      "task_body_chars": 4500,
+      "task_body_chars": 4717,
       "taskFile": "tasks/U15.md"
     },
     {
