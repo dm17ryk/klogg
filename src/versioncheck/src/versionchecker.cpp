@@ -56,6 +56,12 @@ constexpr qint64 AbandonedClaimAgeMs = 2 * 60 * 1000;
 // while security software reads the record) is retried briefly at exit.
 constexpr int ClaimRenameAttempts = 5;
 constexpr int ClaimRenameRetryDelayMs = 50;
+// Held by the one process (or thread) claiming the scheduled update, so the read, rename,
+// read-back and claim stamp of two claimants never interleave. Released when the claim ends
+// or its process dies.
+constexpr auto ClaimLockFileName = "pending-update.claim.lock";
+constexpr int ClaimLockAttempts = 40;
+constexpr int ClaimLockRetryDelayMs = 25;
 
 using cilogg::update_files::RenameResult;
 
@@ -1219,6 +1225,25 @@ bool VersionChecker::claimScheduledUpdate( const QString& updateRoot, const QStr
     const QDir root( updateRoot );
     const auto pendingPath = root.filePath( QString::fromLatin1( PendingFileName ) );
     const auto launchedPath = root.filePath( QString::fromLatin1( LaunchedFileName ) );
+    // One claimant at a time. Concurrent claimants otherwise interleave their reads of the
+    // record with the winner's rename and read-back (sharing violations on Windows), and a
+    // claim handed back by one of them can be claimed again.
+    cilogg::update_files::ExclusiveFileLock claimLock;
+    const auto claimLockPath
+        = nativePath( root.filePath( QString::fromLatin1( ClaimLockFileName ) ) );
+    std::string lockError;
+    for ( int attempt = 1; attempt <= ClaimLockAttempts; ++attempt ) {
+        if ( claimLock.acquire( claimLockPath, QCoreApplication::applicationPid(), &lockError ) )
+            break;
+        std::this_thread::sleep_for( std::chrono::milliseconds( ClaimLockRetryDelayMs ) );
+    }
+    if ( !claimLock.isAcquired() ) {
+        if ( errorMessage )
+            *errorMessage = QStringLiteral( "Another CILogg process is claiming the scheduled "
+                                            "update: %1" )
+                                .arg( QString::fromStdString( lockError ) );
+        return false;
+    }
     QString error;
     const auto scheduled = readPendingFile( pendingPath, &error );
     if ( !scheduled || scheduled->transactionToken != token ) {
@@ -1228,13 +1253,12 @@ bool VersionChecker::claimScheduledUpdate( const QString& updateRoot, const QStr
                                             .arg( error );
         return false;
     }
-    // Records the claim time in the file time too, so a reconciliation that runs between the
-    // rename and the stamp below still sees a fresh claim. Best effort.
-    std::error_code touchError;
-    std::filesystem::last_write_time( nativePath( pendingPath ),
-                                      std::filesystem::file_time_type::clock::now(), touchError );
     // The rename is the claim: it fails for every process but one. It never replaces a launch
     // record, which belongs to an install that may still be running or is not reconciled yet.
+    // Nothing touches the record before the rename: a handle another claimant still holds on
+    // it would make the winner's read-back below fail (sharing violation) and hand the record
+    // back. The claim time is stamped right after the read-back; a reconciliation only runs
+    // when a new primary instance starts, which cannot happen while the claiming one exits.
     auto renamed = RenameResult::Failed;
     for ( int attempt = 1; attempt <= ClaimRenameAttempts; ++attempt ) {
         renamed = renameWithoutReplacing( pendingPath, launchedPath, &error );
