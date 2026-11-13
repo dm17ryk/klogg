@@ -120,7 +120,7 @@ On 2026-11-11 the user asked for a generic plugin-engine extension: interactive 
 
 E13 coordinates with E01: views announce themselves only through `"host_features": ["views"]` in `initialize`, which E01's negotiated capabilities absorb later without changing the view messages. Plugins that declare no views keep byte-for-byte protocol-v1 behaviour. See the [plugin views design](../plugin-views.md).
 
-## D12 — Editable plugin table cells and toolbar keys
+## D13 — Editable plugin table cells and toolbar keys
 
 On 2026-11-13 the user approved extending the plugin views SDK (E13) so that a plugin can make table cells editable, offer a `multichoice` check-dropdown field, and choose toolbar/menu presence and an icon for its actions and views. This is recorded as task [E14](../../plans/cilogg-workbench-2026-10-21/tasks/E14.md) and is the host-side groundwork for editing CPF files in a CILogg plugin.
 
