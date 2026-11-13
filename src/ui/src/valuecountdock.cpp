@@ -185,8 +185,8 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
     for ( auto* combo : { source_, scope_, missing_, matchMode_ } )
         connect( combo, qOverload<int>( &QComboBox::currentIndexChanged ), this,
                  [ this ] { draftChanged(); } );
-    connect( source_, qOverload<int>( &QComboBox::activated ), this, [ this ]( int index ) {
-        if ( source_->itemData( index ).toString() == QLatin1String( "file:" ) ) {
+    connect( source_, qOverload<int>( &QComboBox::activated ), this, [ this ]( int item ) {
+        if ( source_->itemData( item ).toString() == QLatin1String( "file:" ) ) {
             {
                 // Only a chosen file changes the draft; a cancelled dialog restores it.
                 const QScopedValueRollback<bool> guard( updating_, true );
@@ -198,7 +198,7 @@ ValueCountDock::ValueCountDock( QWidget* parent, Executor executor, Sources sour
         previousSource_ = sourceSelection();
     } );
     connect( resultSource_, qOverload<int>( &QComboBox::activated ), this,
-             [ this ]( int index ) { showRun( index ); } );
+             [ this ]( int item ) { showRun( item ); } );
     connect( runButton, &QPushButton::clicked, this, [ this ] { showFailure( run() ); } );
     connect( cancel_, &QPushButton::clicked, this, [ this ] {
         showFailure( runs_.cancel( [ this ]( const QString& id ) {
