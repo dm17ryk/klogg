@@ -7,8 +7,11 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QStandardItemModel>
+#include <QStyledItemDelegate>
 #include <QStylePainter>
 #include <QTimer>
+
+#include <utility>
 
 namespace {
 constexpr int MaxChoices = 512;
@@ -20,9 +23,15 @@ CheckComboBox::CheckComboBox( QWidget* parent )
     , items_( new QStandardItemModel( this ) )
 {
     setModel( items_ );
+    // The combo's default (menu-style) delegate does not paint CheckStateRole under Fusion / Windows 11.
+    view()->setItemDelegate( new QStyledItemDelegate( view() ) );
     view()->viewport()->installEventFilter( this );
     view()->installEventFilter( this );
+    view()->window()->installEventFilter( this ); // the popup container: its Hide is the one close signal
     connect( items_, &QStandardItemModel::itemChanged, this, [ this ] {
+        if ( populating_ ) {
+            return;
+        }
         update();
         Q_EMIT checkedChanged();
     } );
@@ -31,7 +40,7 @@ CheckComboBox::CheckComboBox( QWidget* parent )
 void CheckComboBox::setChoices( const QJsonArray& choices )
 {
     const auto checked = checkedValues();
-    QSignalBlocker block( items_ );
+    populating_ = true;
     items_->clear();
     for ( const auto& choice : choices ) {
         if ( items_->rowCount() >= MaxChoices ) {
@@ -39,26 +48,26 @@ void CheckComboBox::setChoices( const QJsonArray& choices )
         }
         const auto object = choice.toObject();
         const auto value = choice.isObject() ? object.value( "value" ) : choice;
-        auto* item = new QStandardItem(
-            object.contains( "label" ) ? object.value( "label" ).toString() : value.toVariant().toString() );
+        const auto label = object.value( "label" );
+        auto* item = new QStandardItem( label.isString() ? label.toString() : value.toVariant().toString() );
         item->setData( value.toVariant(), ValueRole );
         item->setFlags( Qt::ItemIsEnabled | Qt::ItemIsUserCheckable );
         item->setData( checked.contains( value ) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole );
         items_->appendRow( item );
     }
+    populating_ = false;
     update();
 }
 
 void CheckComboBox::setCheckedValues( const QJsonArray& values )
 {
-    {
-        QSignalBlocker block( items_ );
-        for ( int row = 0; row < items_->rowCount(); ++row ) {
-            auto* item = items_->item( row );
-            const auto value = QJsonValue::fromVariant( item->data( ValueRole ) );
-            item->setCheckState( values.contains( value ) ? Qt::Checked : Qt::Unchecked );
-        }
+    populating_ = true;
+    for ( int row = 0; row < items_->rowCount(); ++row ) {
+        auto* item = items_->item( row );
+        const auto value = QJsonValue::fromVariant( item->data( ValueRole ) );
+        item->setCheckState( values.contains( value ) ? Qt::Checked : Qt::Unchecked );
     }
+    populating_ = false;
     update();
     Q_EMIT checkedChanged();
 }
@@ -89,11 +98,18 @@ QString CheckComboBox::summary() const
     return labels.size() == items_->rowCount() && labels.size() > 1 ? tr( "All" ) : labels.join( ", " );
 }
 
+void CheckComboBox::toggle( QStandardItem* item )
+{
+    item->setCheckState( item->checkState() == Qt::Checked ? Qt::Unchecked : Qt::Checked );
+}
+
 void CheckComboBox::showPopup()
 {
     openedWith_ = checkedValues();
     cancelled_ = false;
+    pressedInView_ = false;
     QComboBox::showPopup();
+    open_ = view()->window()->isVisible();
 }
 
 void CheckComboBox::hidePopup()
@@ -102,29 +118,63 @@ void CheckComboBox::hidePopup()
         keepOpen_ = false;
         return; // a click toggled an item: stay open
     }
-    QComboBox::hidePopup();
+    QComboBox::hidePopup(); // the container's Hide event reports the close
+}
+
+// The single place popupClosed is emitted: once per real close, however the popup was dismissed
+// (Esc, Enter, hidePopup(), or a click outside, where Qt hides the container without calling hidePopup()).
+void CheckComboBox::finishClose()
+{
+    if ( !open_ ) {
+        return;
+    }
+    open_ = false;
+    pressedInView_ = false;
+    const bool accepted = !cancelled_;
     if ( cancelled_ ) {
+        cancelled_ = false;
         setCheckedValues( openedWith_ );
     }
-    Q_EMIT popupClosed( !cancelled_ );
+    Q_EMIT popupClosed( accepted );
 }
 
 bool CheckComboBox::eventFilter( QObject* watched, QEvent* event )
 {
-    if ( watched == view()->viewport() && event->type() == QEvent::MouseButtonRelease ) {
-        const auto index = view()->indexAt( static_cast<QMouseEvent*>( event )->position().toPoint() );
-        if ( auto* item = items_->itemFromIndex( index ) ) {
-            item->setCheckState( item->checkState() == Qt::Checked ? Qt::Unchecked : Qt::Checked );
-            // Swallow the release, and the hidePopup() the combo's own handler may still call for it.
-            // The flag clears on the next event-loop turn, so a later outside click still closes the popup.
-            keepOpen_ = true;
-            QTimer::singleShot( 0, this, [ this ] { keepOpen_ = false; } );
+    if ( watched == view()->window() && event->type() == QEvent::Hide ) {
+        finishClose();
+    }
+    else if ( watched == view()->viewport() && open_ ) {
+        if ( event->type() == QEvent::MouseButtonPress ) {
+            pressedInView_ = true;
+        }
+        else if ( event->type() == QEvent::MouseButtonRelease ) {
+            // Only a release that follows a press inside the popup toggles: the release of the click
+            // that opened the popup must not.
+            const bool pressed = std::exchange( pressedInView_, false );
+            const auto index = view()->indexAt( static_cast<QMouseEvent*>( event )->position().toPoint() );
+            if ( pressed ) {
+                if ( auto* item = items_->itemFromIndex( index ) ) {
+                    toggle( item );
+                    // Swallow the release, and the hidePopup() the combo's own handler may still call for it.
+                    // The flag clears on the next event-loop turn, so a later outside click still closes the popup.
+                    keepOpen_ = true;
+                    QTimer::singleShot( 0, this, [ this ] { keepOpen_ = false; } );
+                }
+            }
             return true;
         }
     }
-    if ( watched == view() && event->type() == QEvent::KeyPress
-         && static_cast<QKeyEvent*>( event )->key() == Qt::Key_Escape ) {
-        cancelled_ = true;
+    else if ( watched == view() && event->type() == QEvent::KeyPress ) {
+        const auto key = static_cast<QKeyEvent*>( event )->key();
+        if ( key == Qt::Key_Escape ) {
+            cancelled_ = true;
+        }
+        else if ( key == Qt::Key_Space ) {
+            if ( auto* item = items_->itemFromIndex( view()->currentIndex() ) ) {
+                toggle( item );
+            }
+            return true;
+        }
     }
     return QComboBox::eventFilter( watched, event );
 }
