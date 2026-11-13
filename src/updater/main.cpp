@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "updatearguments.h"
+#include "updatefiles.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -29,6 +30,8 @@ namespace {
 constexpr int MissingSystemToolExitCode = 7;
 constexpr int UnsupportedInstallModeExitCode = 8;
 #endif
+// 100 ms apart: a CILogg start probing the lock at the same moment only delays the helper.
+constexpr int UpdaterLockAttempts = 100;
 
 struct Arguments {
     long long waitPid = 0;
@@ -39,7 +42,9 @@ struct Arguments {
     fs::path relaunch;
     fs::path acknowledgement;
     fs::path log;
+    fs::path lock;
     std::string token;
+    std::string sha256;
 };
 
 std::ofstream logFile;
@@ -67,7 +72,8 @@ bool parse( int argc, wchar_t** argv, Arguments& result )
 {
     std::map<std::wstring, std::string*> strings{
         { cilogg::update_protocol::ModeOptionWide, &result.mode },
-        { cilogg::update_protocol::HelperTokenOptionWide, &result.token }
+        { cilogg::update_protocol::HelperTokenOptionWide, &result.token },
+        { cilogg::update_protocol::Sha256OptionWide, &result.sha256 }
     };
     std::map<std::wstring, fs::path*> paths{
         { cilogg::update_protocol::CurrentOptionWide, &result.current },
@@ -75,7 +81,8 @@ bool parse( int argc, wchar_t** argv, Arguments& result )
         { cilogg::update_protocol::BackupOptionWide, &result.backup },
         { cilogg::update_protocol::RelaunchOptionWide, &result.relaunch },
         { cilogg::update_protocol::HelperAcknowledgementOptionWide, &result.acknowledgement },
-        { cilogg::update_protocol::LogOptionWide, &result.log }
+        { cilogg::update_protocol::LogOptionWide, &result.log },
+        { cilogg::update_protocol::LockOptionWide, &result.lock }
     };
     for ( int i = 1; i < argc; ++i ) {
         const std::wstring key = argv[ i ];
@@ -104,14 +111,16 @@ bool parse( int argc, wchar_t** argv, Arguments& result )
             return false;
     }
     return result.waitPid > 0 && !result.mode.empty() && !result.current.empty()
-           && !result.staged.empty() && !result.relaunch.empty() && !result.log.empty();
+           && !result.staged.empty() && !result.relaunch.empty() && !result.log.empty()
+           && !result.lock.empty();
 }
 #else
 bool parse( int argc, char** argv, Arguments& result )
 {
     std::map<std::string, std::string*> strings{
         { cilogg::update_protocol::ModeOption, &result.mode },
-        { cilogg::update_protocol::HelperTokenOption, &result.token }
+        { cilogg::update_protocol::HelperTokenOption, &result.token },
+        { cilogg::update_protocol::Sha256Option, &result.sha256 }
     };
     std::map<std::string, fs::path*> paths{
         { cilogg::update_protocol::CurrentOption, &result.current },
@@ -119,7 +128,8 @@ bool parse( int argc, char** argv, Arguments& result )
         { cilogg::update_protocol::BackupOption, &result.backup },
         { cilogg::update_protocol::RelaunchOption, &result.relaunch },
         { cilogg::update_protocol::HelperAcknowledgementOption, &result.acknowledgement },
-        { cilogg::update_protocol::LogOption, &result.log }
+        { cilogg::update_protocol::LogOption, &result.log },
+        { cilogg::update_protocol::LockOption, &result.lock }
     };
     for ( int i = 1; i < argc; ++i ) {
         const std::string key = argv[ i ];
@@ -142,9 +152,38 @@ bool parse( int argc, char** argv, Arguments& result )
             return false;
     }
     return result.waitPid > 0 && !result.mode.empty() && !result.current.empty()
-           && !result.staged.empty() && !result.relaunch.empty() && !result.log.empty();
+           && !result.staged.empty() && !result.relaunch.empty() && !result.log.empty()
+           && !result.lock.empty();
 }
 #endif
+
+long long currentProcessId()
+{
+#ifdef _WIN32
+    return static_cast<long long>( GetCurrentProcessId() );
+#else
+    return static_cast<long long>( getpid() );
+#endif
+}
+
+// Held until the helper exits, after its result is written: while it is held, the next CILogg
+// start knows this install is still running and neither reports nor restores it.
+void acquireUpdaterLock( const Arguments& args, cilogg::update_files::ExclusiveFileLock& lock )
+{
+    std::string error;
+    for ( int attempt = 0; attempt < UpdaterLockAttempts; ++attempt ) {
+        error.clear();
+        if ( lock.acquire( args.lock, currentProcessId(), &error ) ) {
+            log( "Updater lock held: " + args.lock.u8string()
+                 + ( error.empty() ? std::string{} : "; " + error ) );
+            return;
+        }
+        std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+    }
+    // Only the liveness report suffers: the transaction itself was claimed exclusively.
+    log( "Could not take the updater lock " + args.lock.u8string() + ": " + error
+         + "; continuing without it" );
+}
 
 void waitForProcess( long long pid )
 {
@@ -470,6 +509,39 @@ bool rollback( const Arguments& args )
     return launch( args );
 }
 
+// The record that named this package lives in the user's writable profile, so the package is
+// trusted only as the verified download: it must lie in the update directory and match the
+// SHA-256 CILogg verified. `package` keeps the exact file open while the installer or package
+// manager uses it; on Windows that handle denies every writer, rename and deletion.
+int verifyPackage( const Arguments& args, cilogg::update_files::VerifiedFile& package )
+{
+    namespace protocol = cilogg::update_protocol;
+    namespace files = cilogg::update_files;
+    if ( !files::isInsideDirectory( args.staged, args.lock.parent_path() ) ) {
+        log( "System-package installation blocked: the package is outside the update "
+             "directory: "
+             + args.staged.u8string() );
+        return protocol::PackageVerificationFailedExitCode;
+    }
+    std::string error;
+    for ( int attempt = 1;; ++attempt ) {
+        const auto result = package.open( args.staged, args.sha256, &error );
+        if ( result == files::VerifiedFile::Result::Verified ) {
+            log( "Package SHA-256 verified; it stays open until the installation finished" );
+            return 0;
+        }
+        if ( result == files::VerifiedFile::Result::Mismatch
+             || attempt >= protocol::InstallerLaunchAttempts ) {
+            log( "System-package installation blocked: package verification failed: " + error );
+            return protocol::PackageVerificationFailedExitCode;
+        }
+        const auto delay = protocol::installerLaunchRetryDelayMs( attempt );
+        log( "Package not readable yet (" + error + "); retrying in " + std::to_string( delay )
+             + " ms" );
+        std::this_thread::sleep_for( std::chrono::milliseconds( delay ) );
+    }
+}
+
 int installSystemPackage( const Arguments& args )
 {
     std::error_code missing;
@@ -478,6 +550,11 @@ int installSystemPackage( const Arguments& args )
              + args.staged.u8string() );
         resultPhase = cilogg::update_protocol::LaunchPhase;
         return cilogg::update_protocol::StagedPackageMissingExitCode;
+    }
+    cilogg::update_files::VerifiedFile package;
+    if ( const auto refused = verifyPackage( args, package ); refused != 0 ) {
+        resultPhase = cilogg::update_protocol::LaunchPhase;
+        return refused;
     }
 #ifdef _WIN32
     const auto installDir = args.current.parent_path();
@@ -542,7 +619,12 @@ int runTransaction( const Arguments& args )
         log( "System installer completed with exit code " + std::to_string( code ) );
         if ( code != 0 )
             return code;
-        return launch( args ) ? 0 : 3;
+        // Installed: a failure from here on is the restart of CILogg, not the installer.
+        resultPhase = cilogg::update_protocol::RelaunchPhase;
+        if ( launch( args ) )
+            return 0;
+        log( "The updated CILogg could not be started" );
+        return cilogg::update_protocol::RelaunchFailedExitCode;
     }
     resultPhase = cilogg::update_protocol::ReplacePhase;
     if ( !replaceSelfContained( args ) )
@@ -573,6 +655,8 @@ int main( int argc, char** argv )
     }
     logFile.open( args.log, std::ios::app );
     log( "Updater helper started; mode=" + args.mode );
+    cilogg::update_files::ExclusiveFileLock updaterLock;
+    acquireUpdaterLock( args, updaterLock );
 #ifdef _WIN32
     // ShellExecuteEx may use COM; Microsoft recommends this apartment for it.
     const auto comResult
@@ -585,6 +669,8 @@ int main( int argc, char** argv )
     fs::remove( args.acknowledgement, error );
 
     const auto code = runTransaction( args );
+    // The result first: whoever finds the lock free must also find the result.
     writeResult( args, code );
+    updaterLock.release();
     return code;
 }

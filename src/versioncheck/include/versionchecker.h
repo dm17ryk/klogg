@@ -76,9 +76,10 @@ public:
     explicit VersionChecker( const QUrl& testReleasesUrl, QObject* parent = nullptr );
     ~VersionChecker() override;
 
-    // Binds this checker to the running installation: acknowledges an updated startup,
-    // reconciles the persisted update transaction and arms the exit-time install. Call once,
-    // from the primary GUI process.
+    // Binds this checker to the running installation: reconciles the persisted update
+    // transactions and arms the exit-time install. Call once, from the primary GUI process.
+    // Automation and headless processes (CILOGG_AUTOMATION, an offscreen or minimal Qt
+    // platform) stay passive. The startup acknowledgement is separate: acknowledgeStartup().
     void activate();
     bool isActive() const
     {
@@ -109,13 +110,26 @@ public:
                                                      const QString& installationPath );
     // The path an update of `kind` replaces for this process.
     static QString installationPath( InstallKind kind );
-    // Moves the scheduled transaction `token` out of the way of every other process.
-    // Exactly one caller can claim a transaction.
+    // Moves the scheduled transaction `token` out of the way of every other process and stamps
+    // its claim time. Exactly one caller can claim a transaction, and a claim never replaces a
+    // launch record that is still running or not yet reconciled ("busy").
     static bool claimScheduledUpdate( const QString& updateRoot, const QString& token,
                                       QString* errorMessage = nullptr );
-    // `phase` is the helper's "launch" (the installer could not be started) or "installer"
-    // (it ran and returned `code`); empty for results without a phase.
+    // `phase` is the helper's "launch" (the installer could not be started), "installer" (it
+    // ran and returned `code`), "replace" (self-contained replacement) or "relaunch" (installed,
+    // then the updated CILogg could not be started); empty for results without a phase.
     static QString describeInstallResult( int code, const QString& phase = {} );
+    // The package and staging paths of `pending` must lie inside `updateRoot`; a system
+    // installer (setup, deb, rpm) must run exactly the verified package.
+    static bool validateLaunchPaths( const PendingUpdate& pending, const QString& updateRoot,
+                                     QString* errorMessage = nullptr );
+    // Whether a new pending update of `installationPath` may replace `existing` in the update
+    // directory shared by every installation: never while it belongs to another installation
+    // that still exists.
+    static bool mayReplacePendingUpdate( const PendingUpdate& existing,
+                                         const QString& installationPath );
+    // Qt platform plugins without a real display ("offscreen", "minimal").
+    static bool isHeadlessPlatform( const QString& platformName );
 
     static bool isVersionNewer( const QString& currentVersion, const QString& candidateVersion );
     static std::optional<ReleaseInfo> selectRelease( const QByteArray& releasesJson,
@@ -136,6 +150,8 @@ public Q_SLOTS:
     void downloadUpdate( const ReleaseInfo& release, bool installOnExit );
     void cancelDownload();
     void launchPendingUpdate();
+    // Confirms to the updater helper that an updated build started. Call early in startup, in
+    // every process that carries the acknowledgement arguments; it touches no transaction.
     void acknowledgeStartup();
 
 Q_SIGNALS:
@@ -169,14 +185,19 @@ private:
     bool preparePendingUpdate( QString* errorMessage );
     bool persistPendingUpdate( QString* errorMessage = nullptr ) const;
     bool writePendingUpdate( const PendingUpdate& pending, QString* errorMessage = nullptr ) const;
+    void recoverInterruptedReconciliation();
     void reconcileLaunchedUpdate();
+    void restoreReadyUpdate( const PendingUpdate& failed );
     void reconcileScheduledUpdate();
     void removeExpiredDownloads();
     void retryBackgroundCheck();
+    bool isUpdaterRunning() const;
     QString updateRoot() const;
     QString currentVersion() const;
     QString pendingFilePath() const;
     QString launchedFilePath() const;
+    QString reconcilingFilePath() const;
+    QString updaterLockPath() const;
     void initialize();
 
     QNetworkAccessManager* manager_ = nullptr;

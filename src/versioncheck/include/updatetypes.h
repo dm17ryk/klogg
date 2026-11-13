@@ -67,6 +67,9 @@ struct PendingUpdate {
     QString acknowledgementPath;
     QString helperLogPath;
     bool installOnExit = false;
+    // UTC milliseconds since the epoch at which an exit-time install claimed this transaction;
+    // 0 while it is only scheduled or ready.
+    qint64 launchedAt = 0;
 
     bool isValid() const
     {
