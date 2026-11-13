@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleValidator>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFont>
 #include <QGroupBox>
@@ -48,6 +49,10 @@ constexpr int EditorRole = Qt::UserRole + 2;  // the cell's editor spec; empty w
 constexpr int PendingRole = Qt::UserRole + 3; // true while an edit waits for the plugin
 // Marks the widgets PluginCellDelegate creates (direct children of a table's viewport).
 constexpr char CellEditorProperty[] = "pluginCellEditor";
+// On a cell editor: the value it started with (a QJsonValue), and for a choice editor whether an
+// item was chosen from its list.
+constexpr char CellStartProperty[] = "pluginCellStart";
+constexpr char CellChosenProperty[] = "pluginCellChosen";
 
 QStringList knownKeys( const QString& type )
 {
@@ -167,6 +172,16 @@ QString choiceLabel( const QJsonValue& choice )
                             : cellText( choiceValue( choice ) );
 }
 
+// The items of a choice or boolean cell editor.
+QJsonArray editorChoices( const QJsonObject& editor )
+{
+    if ( editor.value( "kind" ) == "boolean" ) {
+        return { QJsonObject{ { "value", true }, { "label", QObject::tr( "Yes" ) } },
+                 QJsonObject{ { "value", false }, { "label", QObject::tr( "No" ) } } };
+    }
+    return editor.value( "choices" ).toArray();
+}
+
 // Equal editor values; lists (multichoice) compare as sets.
 bool sameValue( const QJsonValue& left, const QJsonValue& right )
 {
@@ -194,13 +209,19 @@ public:
         QString title;
         bool editable = false;
     };
+    // An edit the plugin has not confirmed yet.
+    struct Pending {
+        QString previous; // the cell's text before the first unconfirmed edit
+        QString display;  // the text the edit shows
+        QJsonValue value; // the committed value
+    };
     struct Row {
         QString id;
         QStringList cells;
         QString tone;
         QString tooltip;
         QJsonObject editors;         // column id -> editor spec
-        QHash<int, QString> pending; // column -> its text before an edit the plugin has not confirmed
+        QHash<int, Pending> pending; // by column
     };
 
     explicit PluginTableModel( QObject* parent )
@@ -301,18 +322,20 @@ public:
         auto& row = rows_[ index.row() ];
         const auto previous = column < row.cells.size() ? row.cells.at( column ) : QString{};
         const auto display = displayFor( editor, json );
-        // The plugin's starting value may be shown differently (a bitmask as "17").
-        const bool startValue = editor.contains( "value" ) && !row.pending.contains( column )
-                                && sameValue( json, editor.value( "value" ) );
-        if ( display == previous || startValue ) {
+        // An editor closed without a change commits nothing (PluginCellDelegate::setModelData);
+        // this guard catches the same text committed twice.
+        if ( display == previous ) {
             return false; // nothing changed: no event
         }
         while ( row.cells.size() <= column ) {
             row.cells.append( QString{} );
         }
         if ( !row.pending.contains( column ) ) {
-            row.pending.insert( column, previous );
+            row.pending.insert( column, { previous, {}, {} } ); // the text to revert to
         }
+        auto& pending = row.pending[ column ];
+        pending.display = display;
+        pending.value = json;
         row.cells[ column ] = display;
         const auto rowId = row.id;
         const auto columnId = columns_.at( column ).id;
@@ -322,9 +345,23 @@ public:
         }
         return true;
     }
+    // The text a committed value shows: the chosen items' labels for choice editors.
     static QString displayFor( const QJsonObject& editor, const QJsonValue& value )
     {
-        if ( editor.value( "kind" ) != "multichoice" ) {
+        const auto kind = editor.value( "kind" );
+        if ( kind == "choice" || kind == "boolean" ) {
+            int seen = 0;
+            for ( const auto& choice : editorChoices( editor ) ) {
+                if ( ++seen > PluginView::MaxElements ) {
+                    break;
+                }
+                if ( choiceValue( choice ) == value ) {
+                    return choiceLabel( choice );
+                }
+            }
+            return cellText( value );
+        }
+        if ( kind != "multichoice" ) {
             return cellText( value );
         }
         QStringList labels;
@@ -350,7 +387,7 @@ public:
             }
             for ( auto it = row.pending.cbegin(); it != row.pending.cend(); ++it ) {
                 if ( it.key() < row.cells.size() ) {
-                    row.cells[ it.key() ] = it.value();
+                    row.cells[ it.key() ] = it->previous;
                 }
             }
             row.pending.clear();
@@ -380,7 +417,7 @@ public:
         columns_ = parsed;
         for ( auto& row : rows_ ) {
             row.cells = row.cells.mid( 0, cellLimit() );
-            row.pending.removeIf( [ &row ]( QHash<int, QString>::iterator it ) {
+            row.pending.removeIf( [ &row ]( QHash<int, Pending>::iterator it ) {
                 return it.key() >= row.cells.size();
             } );
         }
@@ -442,7 +479,10 @@ public:
                 row.tooltip = text( object, "tooltip" );
             }
             if ( object.contains( "editors" ) ) {
-                row.editors = object.value( "editors" ).toObject();
+                row.editors = object.value( "editors" ).toObject(); // the plugin's editors win
+            }
+            else {
+                confirmStartValues( row );
             }
             row.pending.clear(); // any patch to the row ends its pending state
             Q_EMIT dataChanged( index( *found, 0 ), index( *found, qMax( 0, columnCount() - 1 ) ) );
@@ -526,6 +566,25 @@ public:
     }
 
 private:
+    // A row patch without `editors` that leaves a pending cell showing its edit confirms the edit:
+    // the editor's starting value (when the plugin gave one) becomes the committed value, so the
+    // editor does not reopen on the value before the edit.
+    void confirmStartValues( Row& row ) const
+    {
+        for ( auto it = row.pending.cbegin(); it != row.pending.cend(); ++it ) {
+            const int column = it.key();
+            if ( column >= columns_.size() || column >= row.cells.size()
+                 || row.cells.at( column ) != it->display ) {
+                continue;
+            }
+            const auto& columnId = columns_.at( column ).id;
+            auto editor = row.editors.value( columnId ).toObject();
+            if ( editor.contains( "value" ) ) {
+                editor.insert( "value", it->value );
+                row.editors.insert( columnId, editor );
+            }
+        }
+    }
     int cellLimit() const
     {
         return columns_.isEmpty() ? PluginView::MaxTableColumns
@@ -544,8 +603,10 @@ private:
 };
 
 // Cell editors from the row's `editors` spec (docs/plugin-views.md, editable cells).
-// Enter or leaving commits, Esc cancels. Choice editors open their list at once; choosing an item
-// (or closing a multichoice list with Enter or a click outside) commits and ends the edit.
+// Enter or leaving commits, Esc cancels; an editor closed without a change commits nothing.
+// Choice editors open their list at once: choosing an item (or closing a multichoice list with
+// Enter or a click outside) commits and ends the edit; closing a choice list without choosing
+// ends it unchanged.
 class PluginCellDelegate final : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -561,7 +622,7 @@ public:
             widget = createChecks( parent, editor );
         }
         else if ( kind == "choice" || kind == "boolean" ) {
-            widget = createChoice( parent, editor, kind == "boolean" );
+            widget = createChoice( parent, editor );
         }
         else {
             widget = createLine( parent, editor, kind == "number" );
@@ -579,15 +640,13 @@ public:
         const auto text = single ? cellText( start, PluginView::MaxFieldValueChars )
                                  : index.data( Qt::EditRole ).toString();
         if ( auto* box = qobject_cast<CheckComboBox*>( widget ) ) {
-            if ( start.isArray() ) {
-                box->setCheckedValues( start.toArray() );
-                return;
-            }
-            QJsonArray checked;
-            const auto labels = text.split( QStringLiteral( ", " ) );
-            for ( const auto& choice : editor.value( "choices" ).toArray() ) {
-                if ( labels.contains( choiceLabel( choice ) ) ) {
-                    checked.append( choiceValue( choice ) );
+            QJsonArray checked = start.toArray();
+            if ( !start.isArray() ) {
+                const auto labels = text.split( QStringLiteral( ", " ) );
+                for ( const auto& choice : editor.value( "choices" ).toArray() ) {
+                    if ( labels.contains( choiceLabel( choice ) ) ) {
+                        checked.append( choiceValue( choice ) );
+                    }
                 }
             }
             box->setCheckedValues( checked );
@@ -595,41 +654,80 @@ public:
         else if ( auto* combo = qobject_cast<QComboBox*>( widget ) ) {
             auto found = findChoice( combo, text );
             if ( found < 0 && editor.value( "kind" ) == "boolean" ) {
-                found = combo->findData( text == QLatin1String( "1" )
-                                         || text.compare( QLatin1String( "true" ), Qt::CaseInsensitive )
-                                                == 0 );
+                static const QStringList truthy{ "1", "true", "yes", "on" };
+                found = combo->findData( truthy.contains( text.trimmed(), Qt::CaseInsensitive ) );
             }
             combo->setCurrentIndex( qMax( 0, found ) );
         }
         else if ( auto* line = qobject_cast<QLineEdit*>( widget ) ) {
             line->setText( text );
         }
+        // What the editor shows now, however the cell reads (a boolean "1", a label, "30 s").
+        widget->setProperty( CellStartProperty, QVariant::fromValue( editorValue( widget ) ) );
     }
     void setModelData( QWidget* widget, QAbstractItemModel* model, const QModelIndex& index ) const override
     {
-        QJsonValue value;
-        if ( auto* box = qobject_cast<CheckComboBox*>( widget ) ) {
-            value = box->checkedValues();
+        if ( auto* line = qobject_cast<QLineEdit*>( widget );
+             line && line->validator() && !line->hasAcceptableInput() ) {
+            return; // out of range: nothing is committed
         }
-        else if ( auto* combo = qobject_cast<QComboBox*>( widget ) ) {
-            if ( combo->currentIndex() < 0 ) {
-                return; // no choices
-            }
-            value = QJsonValue::fromVariant( combo->currentData() );
+        const auto value = editorValue( widget );
+        if ( value.isUndefined() ) {
+            return; // no choices
         }
-        else if ( auto* line = qobject_cast<QLineEdit*>( widget ) ) {
-            if ( !line->hasAcceptableInput() && line->validator() ) {
-                return; // out of range: nothing is committed
-            }
-            value = line->text();
-        }
-        else {
+        // Closing an editor without a change is no edit.
+        const auto start = widget->property( CellStartProperty );
+        if ( start.isValid() && sameValue( value, start.value<QJsonValue>() ) ) {
             return;
         }
         model->setData( index, QVariant::fromValue( value ), Qt::EditRole );
     }
+    bool eventFilter( QObject* watched, QEvent* event ) override
+    {
+        // A choice editor's list window (createChoice). Never passed on: the base class would take
+        // the window for an editor.
+        if ( auto* combo = comboOfList( watched ) ) {
+            if ( event->type() == QEvent::Show ) {
+                combo->setProperty( CellChosenProperty, false );
+            }
+            else if ( event->type() == QEvent::Hide && !combo->property( CellChosenProperty ).toBool() ) {
+                // Closed without choosing an item (Esc, a click outside): the edit ends unchanged.
+                // Queued: when an item is chosen, its list hides just before `activated`.
+                QTimer::singleShot( 0, combo, [ self = QPointer<PluginCellDelegate>( this ), combo ] {
+                    if ( self && !combo->isHidden() && !combo->property( CellChosenProperty ).toBool() ) {
+                        Q_EMIT self->closeEditor( combo, QAbstractItemDelegate::RevertModelCache );
+                    }
+                } );
+            }
+            return false;
+        }
+        return QStyledItemDelegate::eventFilter( watched, event );
+    }
 
 private:
+    // The value an editor holds; undefined for a choice editor without choices.
+    static QJsonValue editorValue( const QWidget* widget )
+    {
+        if ( const auto* box = qobject_cast<const CheckComboBox*>( widget ) ) {
+            return box->checkedValues();
+        }
+        if ( const auto* combo = qobject_cast<const QComboBox*>( widget ) ) {
+            return combo->currentIndex() < 0 ? QJsonValue( QJsonValue::Undefined )
+                                             : QJsonValue::fromVariant( combo->currentData() );
+        }
+        if ( const auto* line = qobject_cast<const QLineEdit*>( widget ) ) {
+            return line->text();
+        }
+        return QJsonValue( QJsonValue::Undefined );
+    }
+    // The choice editor whose list window `watched` is, or null.
+    static QComboBox* comboOfList( QObject* watched )
+    {
+        auto* combo = qobject_cast<QComboBox*>( watched->parent() );
+        return combo && !qobject_cast<CheckComboBox*>( combo ) && combo->view()->window() == watched
+                   ? combo
+                   : nullptr;
+    }
     QWidget* createChecks( QWidget* parent, const QJsonObject& editor ) const
     {
         auto* box = new CheckComboBox( parent );
@@ -638,7 +736,7 @@ private:
         // popupClosed comes from inside the popup's Hide handler: only signal here, the view
         // deletes the editor later (destroyEditor uses deleteLater).
         connect( box, &CheckComboBox::popupClosed, this, [ self, box ]( bool accepted ) {
-            if ( !box->isVisible() ) {
+            if ( box->isHidden() ) {
                 return; // the view is closing the editor itself
             }
             if ( accepted ) {
@@ -649,14 +747,10 @@ private:
         openPopupWhenShown( box );
         return box;
     }
-    QWidget* createChoice( QWidget* parent, const QJsonObject& editor, bool boolean ) const
+    QWidget* createChoice( QWidget* parent, const QJsonObject& editor ) const
     {
         auto* combo = new QComboBox( parent );
-        const auto choices
-            = boolean ? QJsonArray{ QJsonObject{ { "value", true }, { "label", tr( "Yes" ) } },
-                                    QJsonObject{ { "value", false }, { "label", tr( "No" ) } } }
-                      : editor.value( "choices" ).toArray();
-        for ( const auto& choice : choices ) {
+        for ( const auto& choice : editorChoices( editor ) ) {
             if ( combo->count() >= PluginView::MaxElements ) {
                 break;
             }
@@ -668,12 +762,15 @@ private:
         }
         auto* self = const_cast<PluginCellDelegate*>( this );
         connect( combo, &QComboBox::activated, this, [ self, combo ] {
-            if ( !combo->isVisible() ) {
+            if ( combo->isHidden() ) {
                 return; // already closed
             }
+            combo->setProperty( CellChosenProperty, true );
             Q_EMIT self->commitData( combo );
             Q_EMIT self->closeEditor( combo, QAbstractItemDelegate::NoHint );
         } );
+        // Closing the list without choosing ends the edit (eventFilter).
+        combo->view()->window()->installEventFilter( self );
         openPopupWhenShown( combo );
         return combo;
     }
@@ -687,7 +784,11 @@ private:
         line->setPlaceholderText( text( editor, "placeholder" ) );
         if ( number ) {
             auto* validator = new QDoubleValidator( line );
-            validator->setLocale( QLocale::c() );
+            // Plain decimal numbers only: no exponent, no group separators ("1e2", "1,000").
+            auto locale = QLocale::c();
+            locale.setNumberOptions( QLocale::OmitGroupSeparator | QLocale::RejectGroupSeparator );
+            validator->setLocale( locale );
+            validator->setNotation( QDoubleValidator::StandardNotation );
             if ( editor.contains( "min" ) ) {
                 validator->setBottom( editor.value( "min" ).toDouble() );
             }

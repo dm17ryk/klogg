@@ -337,7 +337,7 @@ TEST_CASE( "E14 a committed edit is pending and raises an edited event", "[ui][w
     CHECK( event.value( "column_id" ) == "file" );
     CHECK( event.value( "value" ) == "0" );
     CHECK( event.value( "previous" ) == "1" );
-    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "Off (0)" );     // the chosen item's label (fix round 1)
     CHECK( v.cell( "r1", 1 ).data( Qt::FontRole ).value<QFont>().italic() );
     v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" },
                                                 { "update_rows", QJsonArray{ QJsonObject{
@@ -482,7 +482,7 @@ TEST_CASE( "E14 a choice cell editor opens its list and commits when an item is 
     CHECK( !editing( v.table ) );
     QApplication::processEvents();
     CHECK( events.count() == 1 );
-    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "Off (0)" );
     CHECK( italic( v.cell( "r1", 1 ) ) );
 }
 
@@ -495,7 +495,7 @@ TEST_CASE( "E14 any patch to a pending row ends its pending state", "[ui][workbe
         { "id", "fields" },
         { "update_rows", QJsonArray{ QJsonObject{ { "id", "r1" }, { "tone", "warn" } } } } } } );
     CHECK_FALSE( italic( v.cell( "r1", 1 ) ) );
-    CHECK( v.cell( "r1", 1 ).data().toString() == "0" );              // no cells in the patch: the text stays
+    CHECK( v.cell( "r1", 1 ).data().toString() == "Off (0)" );        // no cells in the patch: the text stays
     CHECK( v.cell( "r1", 1 ).data( Qt::ForegroundRole ).value<QColor>() == QColor( 0xb2, 0x6a, 0x00 ) );
 }
 
@@ -606,4 +606,221 @@ TEST_CASE( "E14 removing the edited row closes its editor without an event", "[u
     CHECK( !editing( v.table ) );
     v.table->edit( v.cell( "r1", 1 ) );                               // editing still works afterwards
     CHECK( editing( v.table ) );
+}
+
+// Task 7 fix round 1 (ruling A12).
+
+namespace {
+// One row per editor kind; each cell's text differs from how the editor reads its value.
+QJsonObject kindsTable()
+{
+    const QJsonObject boolean{ { "kind", "boolean" } };
+    const QJsonObject choice{ { "kind", "choice" },
+                              { "choices", QJsonArray{ QJsonObject{ { "value", "0" }, { "label", "Off (0)" } },
+                                                       QJsonObject{ { "value", "1" }, { "label", "On (1)" } } } } };
+    const QJsonObject number{ { "kind", "number" }, { "min", 1 }, { "max", 180 }, { "value", 30 } };
+    const QJsonObject text{ { "kind", "text" } };
+    const QJsonObject multi{ { "kind", "multichoice" }, { "choices", days() }, { "value", QJsonArray{ "0", "4" } } };
+    const auto row = []( const char* id, const char* cell, const QJsonObject& editor ) {
+        return QJsonObject{ { "id", id },
+                            { "cells", QJsonArray{ id, cell } },
+                            { "editors", QJsonObject{ { "v", editor } } } };
+    };
+    return QJsonObject{
+        { "type", "table" }, { "id", "kinds" },
+        { "columns", QJsonArray{ QJsonObject{ { "id", "k" } }, QJsonObject{ { "id", "v" }, { "editable", true } } } },
+        { "rows", QJsonArray{ row( "b1", "1", boolean ), row( "b2", "Yes", boolean ), row( "b3", "on", boolean ),
+                              row( "c1", "On (1)", choice ), row( "n1", "30 s", number ), row( "t1", "hello", text ),
+                              row( "m1", "17", multi ) } } };
+}
+
+QJsonObject multiEditor( const QJsonArray& value )
+{
+    return QJsonObject{ { "kind", "multichoice" }, { "choices", days() }, { "value", value } };
+}
+
+struct KindsView {
+    PluginView view{ "org.test.e14", "kinds", PluginViewDialogs{} };
+    QTableView* table = nullptr;
+    QSignalSpy events{ &view, &PluginView::eventRaised };
+    KindsView()
+    {
+        view.setRoot( QJsonObject{ { "type", "column" }, { "children", QJsonArray{ kindsTable() } } } );
+        table = qobject_cast<QTableView*>( view.element( "kinds" ) );
+    }
+    QModelIndex cell( const QString& rowId ) const
+    {
+        auto* model = table->model();
+        for ( int row = 0; row < model->rowCount(); ++row ) {
+            if ( model->index( row, 0 ).data( Qt::UserRole + 1 ).toString() == rowId ) {
+                return model->index( row, 1 );
+            }
+        }
+        return {};
+    }
+    // An editor built and filled by the delegate, as the view does when an edit starts.
+    std::unique_ptr<QWidget> open( const QString& rowId ) const
+    {
+        QStyleOptionViewItem option;
+        std::unique_ptr<QWidget> editor(
+            table->itemDelegate()->createEditor( table->viewport(), option, cell( rowId ) ) );
+        table->itemDelegate()->setEditorData( editor.get(), cell( rowId ) );
+        return editor;
+    }
+    void commit( QWidget* editor, const QString& rowId ) const
+    {
+        table->itemDelegate()->setModelData( editor, table->model(), cell( rowId ) );
+    }
+    void patch( const QJsonObject& row )
+    {
+        view.applyPatch( QJsonArray{ QJsonObject{ { "id", "kinds" }, { "update_rows", QJsonArray{ row } } } } );
+    }
+    QJsonValue lastValue() const
+    {
+        return events.last().front().toJsonObject().value( "value" );
+    }
+};
+} // namespace
+
+TEST_CASE( "E14 closing a cell editor without a change raises no event", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    REQUIRE( v.table );
+    for ( const auto* id : { "b1", "b2", "b3", "c1", "n1", "t1", "m1" } ) {
+        INFO( "row " << id );
+        const auto before = v.cell( id ).data().toString();
+        auto editor = v.open( id );
+        REQUIRE( editor );
+        v.commit( editor.get(), id );
+        CHECK( v.events.count() == 0 );
+        CHECK( v.cell( id ).data().toString() == before );
+        CHECK_FALSE( italic( v.cell( id ) ) );
+    }
+    // What the editors started with.
+    auto b1 = v.open( "b1" );
+    CHECK( qobject_cast<QComboBox*>( b1.get() )->currentData() == QVariant( true ) );
+    auto b3 = v.open( "b3" );
+    CHECK( qobject_cast<QComboBox*>( b3.get() )->currentData() == QVariant( true ) );   // "on"
+    auto c1 = v.open( "c1" );
+    CHECK( qobject_cast<QComboBox*>( c1.get() )->currentData() == QVariant( "1" ) );   // found by its label
+    auto n1 = v.open( "n1" );
+    CHECK( qobject_cast<QLineEdit*>( n1.get() )->text() == "30" );                      // the editor value
+    auto m1 = v.open( "m1" );
+    CHECK( qobject_cast<CheckComboBox*>( m1.get() )->checkedValues() == QJsonArray{ "0", "4" } );
+}
+
+TEST_CASE( "E14 a boolean cell edit commits a bool and shows the item's label", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    auto editor = v.open( "b1" );
+    auto* combo = qobject_cast<QComboBox*>( editor.get() );
+    REQUIRE( combo );
+    combo->setCurrentIndex( combo->findData( false ) );
+    v.commit( combo, "b1" );
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue().isBool() );
+    CHECK( v.lastValue() == QJsonValue( false ) );
+    CHECK( v.cell( "b1" ).data().toString() == "No" );
+    CHECK( italic( v.cell( "b1" ) ) );
+}
+
+TEST_CASE( "E14 a confirmed edit becomes the editor's starting value", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    {
+        auto editor = v.open( "m1" );
+        auto* box = qobject_cast<CheckComboBox*>( editor.get() );
+        REQUIRE( box );
+        box->setCheckedValues( { "1" } );
+        v.commit( box, "m1" );
+    }
+    REQUIRE( v.events.count() == 1 );
+    REQUIRE( v.cell( "m1" ).data().toString() == "Mon" );
+
+    SECTION( "a cells-only confirmation showing the edit keeps it as the starting value" )
+    {
+        v.patch( QJsonObject{ { "id", "m1" }, { "cells", QJsonArray{ "m1", "Mon" } } } );
+        CHECK_FALSE( italic( v.cell( "m1" ) ) );
+        auto editor = v.open( "m1" );
+        auto* box = qobject_cast<CheckComboBox*>( editor.get() );
+        CHECK( box->checkedValues() == QJsonArray{ "1" } );
+        // A real change after the confirmation is never swallowed, even back to the old value.
+        box->setCheckedValues( { "0", "4" } );
+        v.commit( box, "m1" );
+        REQUIRE( v.events.count() == 2 );
+        CHECK( v.lastValue().toArray() == QJsonArray{ "0", "4" } );
+    }
+    SECTION( "the plugin's editors win" )
+    {
+        v.patch( QJsonObject{ { "id", "m1" },
+                              { "cells", QJsonArray{ "m1", "Mon" } },
+                              { "editors", QJsonObject{ { "v", multiEditor( { "4" } ) } } } } );
+        auto editor = v.open( "m1" );
+        CHECK( qobject_cast<CheckComboBox*>( editor.get() )->checkedValues() == QJsonArray{ "4" } );
+    }
+    SECTION( "a confirmation showing other text leaves the starting value to the plugin" )
+    {
+        v.patch( QJsonObject{ { "id", "m1" }, { "cells", QJsonArray{ "m1", "2" } } } );
+        auto editor = v.open( "m1" );
+        CHECK( qobject_cast<CheckComboBox*>( editor.get() )->checkedValues() == QJsonArray{ "0", "4" } );
+    }
+}
+
+TEST_CASE( "E14 Esc in a choice cell's list ends the edit without an event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.table->edit( v.cell( "r1", 1 ) );
+    auto* combo = v.table->viewport()->findChild<QComboBox*>();
+    REQUIRE( combo );
+    QApplication::processEvents();
+    REQUIRE( combo->view()->isVisible() );
+    combo->view()->setCurrentIndex( combo->model()->index( 0, 0 ) );   // moved to, not chosen
+    QTest::keyClick( combo->view(), Qt::Key_Escape );
+    QApplication::processEvents();
+    CHECK( !editing( v.table ) );
+    CHECK( events.count() == 0 );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "1" );
+    CHECK_FALSE( italic( v.cell( "r1", 1 ) ) );
+}
+
+TEST_CASE( "E14 a text cell commits through the view on Enter", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.view.show();
+    v.table->edit( v.cell( "t1" ) );
+    auto* line = v.table->viewport()->findChild<QLineEdit*>();
+    REQUIRE( line );
+    CHECK( line->text() == "hello" );
+    line->selectAll();
+    QTest::keyClicks( line, "world" );
+    QTest::keyClick( line, Qt::Key_Return );
+    QApplication::processEvents();                                    // Enter commits on the next turn
+    REQUIRE( v.events.count() == 1 );
+    const auto event = v.events.last().front().toJsonObject();
+    CHECK( event.value( "value" ) == "world" );
+    CHECK( event.value( "previous" ) == "hello" );
+    CHECK( !editing( v.table ) );
+    CHECK( v.cell( "t1" ).data().toString() == "world" );
+}
+
+TEST_CASE( "E14 a number cell refuses values outside its range and other notations", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    auto editor = v.open( "n1" );
+    auto* line = qobject_cast<QLineEdit*>( editor.get() );
+    REQUIRE( line );
+    for ( const auto* text : { "500", "0", "1e2", "1,000" } ) {
+        INFO( "text " << text );
+        line->setText( text );
+        CHECK_FALSE( line->hasAcceptableInput() );
+        v.commit( line, "n1" );
+    }
+    CHECK( v.events.count() == 0 );
+    line->setText( "45" );
+    CHECK( line->hasAcceptableInput() );
+    v.commit( line, "n1" );
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue() == "45" );
 }
