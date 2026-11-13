@@ -1377,10 +1377,12 @@ void VersionChecker::reconcileLaunchedUpdate()
     // again on every exit. The verified package stays ready for an explicit install.
     auto ready = *launched;
     ready.installOnExit = false;
-    if ( QFileInfo::exists( pendingFilePath() ) )
+    if ( QFileInfo::exists( pendingFilePath() ) ) {
         LOG_INFO << "A newer scheduled update supersedes the failed one";
-    else if ( !writePendingUpdate( ready, &error ) )
+    }
+    else if ( !writePendingUpdate( ready, &error ) ) {
         LOG_WARNING << "Cannot keep the failed update as ready: " << error;
+    }
     const auto message
         = tr( "CILogg %1 was downloaded but was not installed when CILogg last exited.\n\n%2\n\n"
               "It will not be retried automatically. Use Help > Check for Updates to install "
@@ -1471,11 +1473,13 @@ void VersionChecker::launchPendingUpdate()
     }
     const auto releaseClaim = [ this ] {
         QString renameError;
-        if ( QFileInfo::exists( pendingFilePath() ) )
+        if ( QFileInfo::exists( pendingFilePath() ) ) {
             LOG_WARNING << "A newer scheduled update exists; the unlaunched one is dropped";
-        else if ( !replaceRename( launchedFilePath(), pendingFilePath(), &renameError ) )
+        }
+        else if ( !replaceRename( launchedFilePath(), pendingFilePath(), &renameError ) ) {
             LOG_WARNING << "Could not return the unlaunched update to the schedule: "
                         << renameError;
+        }
     };
     pendingUpdate_ = *scheduled;
     const auto helperName = QStringLiteral( "cilogg_updater" )
