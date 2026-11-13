@@ -19,6 +19,7 @@
 
 #include <catch2/catch.hpp>
 
+#include <QAction>
 #include <QApplication>
 #include <QHelpEvent>
 #include <QToolTip>
@@ -39,6 +40,7 @@
 #include <qnamespace.h>
 #include <qtestmouse.h>
 
+#include "configuration.h"
 #include "savedsearches.h"
 #include "session.h"
 #include "test_utils.h"
@@ -1011,6 +1013,53 @@ TEST_CASE( "Crawler widget lazy view context reports invalid filters asynchronou
         return targetVisitor.searchInfoText().contains( "Error in expression" );
     } ) );
     REQUIRE( targetVisitor.getLogFilteredNbLines().get() == 0 );
+}
+
+TEST_CASE( "matched_by_column_toggle", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_matched_by_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\nWARN low battery\nERROR modem lost\nidle\nWARN again\n" );
+    file.flush();
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+    visitor.setSearchPattern( "WARN|ERROR" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 3_lcount; } ) );
+
+    auto* filtered = visitor.crawler->findChild<FilteredView*>();
+    REQUIRE( filtered != nullptr );
+    REQUIRE( filtered->isMatchedByColumnVisible() );
+    REQUIRE( filtered->matchedByText( 0_lnum ) == "WARN" );
+    REQUIRE( filtered->matchedByText( 1_lnum ) == "ERROR" );
+    REQUIRE( filtered->matchedByText( 2_lnum ) == "WARN" );
+
+    auto* toggle = filtered->findChild<QAction*>( "showMatchedByColumnAction" );
+    REQUIRE( toggle != nullptr );
+    toggle->trigger();
+    REQUIRE_FALSE( filtered->isMatchedByColumnVisible() );
+    REQUIRE_FALSE( Configuration::get().filteredViewMatchedByColumn() );
+    toggle->trigger();
+    REQUIRE( filtered->isMatchedByColumnVisible() );
+    REQUIRE( Configuration::get().filteredViewMatchedByColumn() );
+
+    // Clearing empties the view but keeps the search; searching again restores every match.
+    auto* clear = visitor.crawler->findChild<QToolButton*>( "clearFilteredResultsButton" );
+    REQUIRE( clear != nullptr );
+    REQUIRE( filtered->findChild<QAction*>( "clearFilteredResultsAction" ) != nullptr );
+    clear->click();
+    REQUIRE( visitor.getLogFilteredNbLines() == 0_lcount );
+    REQUIRE( visitor.currentSearchText() == "WARN|ERROR" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 3_lcount; } ) );
 }
 
 TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automation]" )

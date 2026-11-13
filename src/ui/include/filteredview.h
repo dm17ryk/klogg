@@ -42,8 +42,14 @@
 #include "abstractlogview.h"
 
 #include "logfiltereddata.h"
+#include "matchlabeler.h"
 
+#include <memory>
+
+#include <QHash>
 #include <QKeyEvent>
+
+class QAction;
 
 // Class implementing the filtered (bottom) view widget.
 class FilteredView : public AbstractLogView {
@@ -57,6 +63,21 @@ public:
     void setVisibility( Visibility visi );
     Visibility visibility() const;
 
+    // Names the filter that selected each line in the "Matched by" column. A null or empty
+    // labeler hides the column.
+    void setMatchLabeler( std::shared_ptr<const MatchLabeler> labeler );
+    void setMatchedByColumnVisible( bool visible );
+    bool isMatchedByColumnVisible() const
+    {
+        return matchedByVisible_;
+    }
+    // The "Matched by" text of the filtered line at `index`.
+    QString matchedByText( LineNumber index ) const;
+
+Q_SIGNALS:
+    void matchedByColumnToggled( bool visible );
+    void clearResultsRequested();
+
 protected:
     LogFilteredData::LineType lineType( LineNumber lineNumber ) const override;
     bool groupSeparatorBefore( LineNumber lineNumber ) const override;
@@ -66,10 +87,21 @@ protected:
     LineNumber lineIndex( LineNumber lineNumber ) const override;
     LineNumber maxDisplayLineNumber() const override;
 
+    int annotationColumnChars() const override;
+    QString lineAnnotation( LineNumber lineNumber, const QString& lineText ) const override;
+
     void doRegisterShortcuts() override;
 
 private:
+    static constexpr int MaxCachedAnnotations = 4096;
+
     LogFilteredData* logFilteredData_;
+    std::shared_ptr<const MatchLabeler> matchLabeler_;
+    bool matchedByVisible_ = true;
+    QAction* matchedByAction_ = nullptr;
+    QAction* clearResultsAction_ = nullptr;
+    // Labels of visible lines by source line number; reset with the labeler.
+    mutable QHash<quint64, QString> annotationCache_;
 };
 
 #endif

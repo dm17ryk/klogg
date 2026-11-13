@@ -42,6 +42,10 @@
 
 #include <cassert>
 
+#include <QAction>
+#include <QMenu>
+#include <QSignalBlocker>
+
 #include "filteredview.h"
 #include "shortcuts.h"
 
@@ -51,6 +55,92 @@ FilteredView::FilteredView( LogFilteredData* newLogData,
 {
     // We keep a copy of the filtered data for fast lookup of the line type
     logFilteredData_ = newLogData;
+
+    matchedByAction_ = new QAction( tr( "Show \"Matched by\" column" ), this );
+    matchedByAction_->setObjectName( QStringLiteral( "showMatchedByColumnAction" ) );
+    matchedByAction_->setCheckable( true );
+    matchedByAction_->setChecked( matchedByVisible_ );
+    connect( matchedByAction_, &QAction::toggled, this, [ this ]( bool visible ) {
+        setMatchedByColumnVisible( visible );
+        Q_EMIT matchedByColumnToggled( visible );
+    } );
+
+    clearResultsAction_ = new QAction( tr( "Clear results" ), this );
+    clearResultsAction_->setObjectName( QStringLiteral( "clearFilteredResultsAction" ) );
+    clearResultsAction_->setToolTip(
+        tr( "Remove the current matches; new matching lines keep arriving" ) );
+    connect( clearResultsAction_, &QAction::triggered, this,
+             [ this ] { Q_EMIT clearResultsRequested(); } );
+
+    if ( auto* menu = popupMenu(); menu != nullptr ) {
+        menu->addSeparator();
+        menu->addAction( matchedByAction_ );
+        menu->addAction( clearResultsAction_ );
+    }
+}
+
+void FilteredView::setMatchLabeler( std::shared_ptr<const MatchLabeler> labeler )
+{
+    matchLabeler_ = std::move( labeler );
+    annotationCache_.clear();
+    update();
+}
+
+void FilteredView::setMatchedByColumnVisible( bool visible )
+{
+    if ( matchedByVisible_ == visible ) {
+        return;
+    }
+    matchedByVisible_ = visible;
+    {
+        const QSignalBlocker blocker( matchedByAction_ );
+        matchedByAction_->setChecked( visible );
+    }
+    // The text area starts after the column, so the whole view is laid out again.
+    updateData();
+}
+
+int FilteredView::annotationColumnChars() const
+{
+    if ( !matchedByVisible_ || !matchLabeler_ || matchLabeler_->isEmpty() ) {
+        return 0;
+    }
+    return matchLabeler_->preferredColumnChars();
+}
+
+QString FilteredView::matchedByText( LineNumber index ) const
+{
+    if ( index >= logFilteredData_->getNbLine() ) {
+        return {};
+    }
+    return lineAnnotation( index, logFilteredData_->getLineString( index ) );
+}
+
+QString FilteredView::lineAnnotation( LineNumber lineNumber, const QString& lineText ) const
+{
+    using LineTypeFlags = LogFilteredData::LineTypeFlags;
+    const auto type = logFilteredData_->lineTypeByIndex( lineNumber );
+    if ( type.testFlag( LineTypeFlags::Match ) ) {
+        if ( !matchLabeler_ || matchLabeler_->isEmpty() ) {
+            return {};
+        }
+        const auto sourceLine = logFilteredData_->getMatchingLineNumber( lineNumber ).get();
+        if ( const auto cached = annotationCache_.constFind( sourceLine );
+             cached != annotationCache_.cend() ) {
+            return *cached;
+        }
+        if ( annotationCache_.size() >= MaxCachedAnnotations ) {
+            annotationCache_.clear();
+        }
+        const auto label = matchLabeler_->label( lineText );
+        annotationCache_.insert( sourceLine, label );
+        return label;
+    }
+    if ( type.testFlag( LineTypeFlags::Mark ) ) {
+        return tr( "mark" );
+    }
+    // Context lines around a match are not selected by any filter.
+    return {};
 }
 
 void FilteredView::setVisibility( Visibility visi )

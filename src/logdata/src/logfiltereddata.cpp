@@ -270,9 +270,43 @@ void LogFilteredData::interruptSearch()
     workerThread_.interrupt();
 }
 
+void LogFilteredData::forgetResults()
+{
+    if ( currentRegExp_.pattern.isEmpty() ) {
+        LOG_DEBUG << "forgetResults ignored: no active search";
+        return;
+    }
+    const auto end = LineNumber( getNbTotalLines().get() );
+    LOG_INFO << "Forgetting search results before line " << end << " for generation "
+             << searchGeneration_;
+    if ( searchRunning_ ) {
+        // Late results of the interrupted run carry the old generation and are ignored; its
+        // final progress still detaches the reader it attached.
+        interruptSearch();
+        ++searchGeneration_;
+        searchRunning_ = false;
+        pendingUpdateSearch_ = false;
+    }
+    searchCompletionHandled_ = true;
+    resultsStartLine_ = end;
+    matching_lines_ = {};
+    displayed_lines_ = {};
+    marks_and_matches_ = marks_;
+    maxLength_ = 0_length;
+    nbLinesProcessed_ = LinesCount( end.get() );
+    lastSearchStart_ = end;
+    lastSearchEnd_ = end;
+    lastSearchIncremental_ = false;
+    fullScanCompleted_ = true;
+    limitReached_ = false;
+    // Partial results must never be cached as the complete result of the full range.
+    currentSearchKey_ = makeCacheKey( currentRegExp_, end, end );
+}
+
 void LogFilteredData::clearSearch( bool dropCache )
 {
     interruptSearch();
+    resultsStartLine_ = 0_lnum;
 
     currentRegExp_ = {};
     currentSearchOptions_ = {};
@@ -663,8 +697,19 @@ void LogFilteredData::applySearchResults( const char* source )
               << searchResults.processedLines << ", max length " << searchResults.maxLength
               << ", limit reached=" << searchResults.limitReached;
 
-    matching_lines_ |= searchResults.newMatches;
-    addDisplayedLines( searchResults.newMatches );
+    if ( resultsStartLine_ > 0_lnum ) {
+        // An incremental scan re-reads the last processed line; keep forgotten matches out.
+        auto newMatches = searchResults.newMatches;
+        SearchResultArray forgotten;
+        forgotten.addRange( 0, resultsStartLine_.get() );
+        newMatches -= forgotten;
+        matching_lines_ |= newMatches;
+        addDisplayedLines( newMatches );
+    }
+    else {
+        matching_lines_ |= searchResults.newMatches;
+        addDisplayedLines( searchResults.newMatches );
+    }
     marks_and_matches_ = displayed_lines_ | marks_;
 
     maxLength_ = qMax( maxLength_, searchResults.maxLength );

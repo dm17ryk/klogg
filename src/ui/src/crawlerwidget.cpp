@@ -1395,7 +1395,47 @@ void CrawlerWidget::setSearchPatternFromPredefinedFilters( const QList<Predefine
     for ( const auto& filter : filters ) {
         combinePatterns( searchPattern, escapeSearchPattern( filter.pattern, filter.useRegex ) );
     }
+    predefinedFiltersForSearch_ = filters;
+    predefinedFiltersPattern_ = searchPattern;
     setSearchPattern( searchPattern );
+}
+
+std::shared_ptr<const MatchLabeler>
+CrawlerWidget::makeMatchLabeler( const QString& searchText,
+                                 const RegularExpressionPattern& pattern ) const
+{
+    // Name the predefined filters only while the search text is still their combination.
+    const auto filters = !predefinedFiltersPattern_.isEmpty()
+                                 && searchText == predefinedFiltersPattern_
+                             ? predefinedFiltersForSearch_
+                             : QList<PredefinedFilter>{};
+    auto labeler = std::make_shared<const MatchLabeler>( MatchLabeler::fromSearch( pattern, filters ) );
+    LOG_DEBUG << "Matched-by labels for search: predefined filters=" << filters.size()
+              << ", empty=" << labeler->isEmpty();
+    return labeler;
+}
+
+void CrawlerWidget::clearFilteredResults()
+{
+    if ( !logFilteredData_->hasCurrentRegexp() ) {
+        LOG_DEBUG << "Clear filtered results ignored: no active search";
+        return;
+    }
+    logFilteredData_->forgetResults();
+    startupFilterSearchInProgress_ = false;
+    nbMatches_ = 0_lcount;
+    filteredView_->updateData();
+    overview_.updateData( logData_->getNbLine() );
+    overviewWidget_->update();
+    // A search interrupted by the clear no longer reports its completion.
+    stopButton_->setEnabled( false );
+    stopButton_->hide();
+    searchButton_->show();
+    clearButton_->show();
+    searchInfoLine_->hideGauge();
+    printSearchInfoMessage( 0_lcount );
+    LOG_INFO << "Filtered results cleared; later lines from "
+             << logFilteredData_->resultsStartLine() << " are still searched";
 }
 
 QString CrawlerWidget::escapeSearchPattern( const QString& pattern, bool isRegex ) const
@@ -1796,6 +1836,17 @@ void CrawlerWidget::setup()
     keepSearchResultsButton_->setCheckable( true );
     keepSearchResultsButton_->setContentsMargins( 2, 2, 2, 2 );
 
+    clearResultsButton_ = new QToolButton();
+    clearResultsButton_->setObjectName( QStringLiteral( "clearFilteredResultsButton" ) );
+    clearResultsButton_->setAccessibleName( tr( "Clear results" ) );
+    clearResultsButton_->setText( tr( "Clear Results" ) );
+    clearResultsButton_->setToolTip(
+        tr( "Clear the filtered view; new matching lines keep arriving. Search again to "
+            "restore all results." ) );
+    clearResultsButton_->setAutoRaise( true );
+    clearResultsButton_->setFocusPolicy( Qt::NoFocus );
+    clearResultsButton_->setContentsMargins( 2, 2, 2, 2 );
+
     stopButton_ = new QToolButton();
     stopButton_->setObjectName( QStringLiteral( "stopSearchButton" ) );
     stopButton_->setAccessibleName( tr( "Stop search" ) );
@@ -1824,6 +1875,7 @@ void CrawlerWidget::setup()
     searchLineLayout->addWidget( searchButton_ );
     searchLineLayout->addWidget( keepSearchResultsButton_ );
     searchLineLayout->addWidget( stopButton_ );
+    searchLineLayout->addWidget( clearResultsButton_ );
     searchLineLayout->addWidget( searchInfoLine_ );
 
     // Construct the bottom window
@@ -1916,6 +1968,8 @@ void CrawlerWidget::setup()
     connect( searchButton_, &QToolButton::clicked, this, &CrawlerWidget::startNewSearch );
     connect( stopButton_, &QToolButton::clicked, this, &CrawlerWidget::stopSearch );
     connect( clearButton_, &QToolButton::clicked, searchLineEdit_, &QComboBox::clearEditText );
+    connect( clearResultsButton_, &QToolButton::clicked, this,
+             &CrawlerWidget::clearFilteredResults );
 
     connect( visibilityBox_, QOverload<int>::of( &QComboBox::currentIndexChanged ), this,
              &CrawlerWidget::changeFilteredViewVisibility );
@@ -2164,6 +2218,25 @@ bool CrawlerWidget::navigateToAnalysisResult( const SourceLocation& location )
 
 void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 {
+    view->setMatchedByColumnVisible( Configuration::get().filteredViewMatchedByColumn() );
+    connect( view, &FilteredView::clearResultsRequested, this, [ this, view ] {
+        if ( view == filteredView_ ) {
+            clearFilteredResults();
+        }
+        else {
+            LOG_DEBUG << "Clear results ignored for a kept (inactive) search tab";
+        }
+    } );
+    connect( view, &FilteredView::matchedByColumnToggled, this, [ this ]( bool visible ) {
+        auto& config = Configuration::get();
+        config.setFilteredViewMatchedByColumn( visible );
+        config.save();
+        for ( const auto& [ otherView, data ] : filteredViewsData_ ) {
+            Q_UNUSED( data );
+            otherView->setMatchedByColumnVisible( visible );
+        }
+        filteredView_->setMatchedByColumnVisible( visible );
+    } );
     connect( view, &AbstractLogView::analyzeSelectionRequested, this, [ this, view ] {
         lastAnalysisView_ = view;
         Q_EMIT openRegexLabRequested();
@@ -2455,6 +2528,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
 
         if ( searchText.isEmpty() ) {
             logFilteredData_->clearSearch();
+            filteredView_->setMatchLabeler( nullptr );
             filteredView_->updateData();
             searchState_.resetState();
             startupFilterSearchInProgress_ = false;
@@ -2503,6 +2577,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             searchInfoLine_->hide();
             logMainView_->setSearchPattern( regexpPattern );
             filteredView_->setSearchPattern( regexpPattern );
+            filteredView_->setMatchLabeler( makeMatchLabeler( searchText, regexpPattern ) );
             return;
         }
 
@@ -2531,6 +2606,7 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         searchInfoLine_->hide();
         logMainView_->setSearchPattern( regexpPattern );
         filteredView_->setSearchPattern( regexpPattern );
+        filteredView_->setMatchLabeler( makeMatchLabeler( searchText, regexpPattern ) );
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Search update failed: " << e.what();
         startupFilterSearchInProgress_ = false;

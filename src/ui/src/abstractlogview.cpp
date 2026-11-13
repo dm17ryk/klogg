@@ -2594,6 +2594,23 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         // contentStartPosX += SEPARATOR_WIDTH;
     }
 
+    // Draw the optional annotation column (for example, the filter that selected a line)
+    int annotationAreaStartX = 0;
+    int annotationTextWidth = 0;
+    if ( const auto annotationChars = annotationColumnChars(); annotationChars > 0 ) {
+        annotationTextWidth = charWidth_ * annotationChars;
+        const auto annotationAreaWidth = 2 * LineNumberPadding + annotationTextWidth;
+        annotationAreaStartX = contentStartPosX;
+        painter->fillRect( contentStartPosX, 0, annotationAreaWidth, paintDeviceHeight,
+                           palette.color( QPalette::AlternateBase ) );
+        painter->setPen( palette.color( QPalette::Mid ) );
+        painter->drawLine( contentStartPosX + annotationAreaWidth - SeparatorWidth, 0,
+                           contentStartPosX + annotationAreaWidth - SeparatorWidth,
+                           paintDeviceHeight );
+        contentStartPosX += annotationAreaWidth;
+    }
+
+    painter->setPen( palette.color( QPalette::Text ) );
     painter->drawLine( BulletAreaWidth, 0, BulletAreaWidth, paintDeviceHeight - 1 );
 
     // This is the total width of the 'margin' (including line number if any)
@@ -2676,6 +2693,8 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         using LineTypeFlags = AbstractLogData::LineTypeFlags;
         const auto currentLineType = lineType( lineNumber );
         QString logLine = logLines[ currentLine.get() ];
+        const auto annotation
+            = annotationTextWidth > 0 ? lineAnnotation( lineNumber, logLine ) : QString{};
 
         const int xPos = contentStartPosX + ContentMarginWidth;
 
@@ -2900,6 +2919,12 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
             painter->setPen( Qt::white );
             painter->drawText( lineNumberAreaStartX + LineNumberPadding, yPos + fontAscent,
                                lineNumberStr );
+        }
+        if ( !annotation.isEmpty() ) {
+            painter->setPen( palette.color( QPalette::Text ) );
+            painter->drawText(
+                annotationAreaStartX + LineNumberPadding, yPos + fontAscent,
+                painter->fontMetrics().elidedText( annotation, Qt::ElideRight, annotationTextWidth ) );
         }
         for ( size_t i = 0u; i < wrappedLineView.wrappedLinesCount(); ++i ) {
             wrappedLinesInfo_.emplace_back(

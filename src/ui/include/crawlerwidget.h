@@ -154,6 +154,10 @@ public Q_SLOTS:
     void focusSearchEdit();
     void goToLine();
 
+    // Removes the matches found so far from the filtered view and keeps the search, so lines
+    // added later still appear. Searching again restores every match.
+    void clearFilteredResults();
+
     // Instructs the widget to reconfigure itself because Config() has changed.
     void applyConfiguration();
 
@@ -402,6 +406,8 @@ private:
     void updateColorLabels( const ColorLabelsManager::QuickHighlightersCollection& labels );
 
     void connectAllFilteredViewSlots( FilteredView* view );
+    std::shared_ptr<const MatchLabeler> makeMatchLabeler( const QString& searchText,
+                                                          const RegularExpressionPattern& pattern ) const;
     void handleLinePreviewRequested( quint64 physicalLine, const QPoint& globalPosition, quint64 serial );
     QString previewSelectionText( AbstractLogView* view ) const;
     PreparedPreview preparedPreviewSelection( AbstractLogView* view ) const;
@@ -448,6 +454,12 @@ private:
     QToolButton* searchButton_;
     QToolButton* keepSearchResultsButton_;
     QToolButton* stopButton_;
+    QToolButton* clearResultsButton_ = nullptr;
+
+    // The predefined filters that produced predefinedFiltersPattern_, to name the filter that
+    // selected each filtered line while the search text is still that combination.
+    QList<PredefinedFilter> predefinedFiltersForSearch_;
+    QString predefinedFiltersPattern_;
 
     QToolButton* matchCaseButton_;
     QToolButton* useRegexpButton_;

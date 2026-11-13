@@ -506,6 +506,52 @@ SCENARIO( "auto refresh scans only appended lines", "[logdata][incremental]" )
     }
 }
 
+TEST_CASE( "clear_keeps_search_and_autorefresh", "[workbench][U14][logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+
+    // Every 10th line matches; the last existing line (000499) matches too.
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    runSearch( filtered_data.get(), "line 000[0-9][0-9]9", searchSpy );
+    REQUIRE( filtered_data->getNbMatches() == 50_lcount );
+
+    filtered_data->forgetResults();
+    REQUIRE( filtered_data->getNbMatches() == 0_lcount );
+    REQUIRE( filtered_data->getNbLine() == 0_lcount );
+    REQUIRE( filtered_data->hasCurrentRegexp() );
+    REQUIRE( filtered_data->resultsStartLine() == LineNumber( SL_NB_LINES ) );
+
+    // Marks survive a clear.
+    filtered_data->addMark( 3_lnum );
+    REQUIRE( filtered_data->getNbMarks() == 1_lcount );
+
+    // Append a matching and a non-matching line; only the new match appears, even though the
+    // incremental scan re-reads the last old (matching) line.
+    logDataLoader.file.seek( logDataLoader.file.size() );
+    logDataLoader.file.write( formattedLine( 509 ).toLatin1() );
+    logDataLoader.file.write( formattedLine( 600 ).toLatin1() );
+    logDataLoader.file.flush();
+    SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    logDataLoader.log_data.reload();
+    REQUIRE( reloadSpy.safeWait() );
+
+    SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                              LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
+    REQUIRE( filtered_data->getNbMatches() == 1_lcount );
+    REQUIRE( toFlags( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES ) ) )
+                 .testFlag( LineTypeFlags::Match ) );
+    REQUIRE_FALSE( toFlags( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES - 1 ) ) )
+                       .testFlag( LineTypeFlags::Match ) );
+
+    // Searching again restores every match.
+    SafeQSignalSpy fullSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    runSearch( filtered_data.get(), "line 000[0-9][0-9]9", fullSpy );
+    REQUIRE( filtered_data->getNbMatches() == 51_lcount );
+    REQUIRE( filtered_data->resultsStartLine() == 0_lnum );
+}
+
 SCENARIO( "manual scan then auto refresh avoids full rescan when no new data",
           "[logdata][incremental]" )
 {
