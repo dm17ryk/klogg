@@ -127,8 +127,17 @@ public:
 
     LineNumber getLastProcessedLine() const;
 
+    // First line whose matches are reported and counted (0 unless restartFrom() moved it): an
+    // update re-reads the last processed line, which may lie before it.
+    LineNumber getFirstCountedLine() const;
+
     // Delete the match for the passed line (if it exist)
     void deleteMatch( LineNumber line );
+
+    // Continues the search from `firstLine` with a fresh match count and match limit: the next
+    // update scans from there, pending matches are dropped (they are scanned again) and matches
+    // before `firstLine` are no longer reported.
+    void restartFrom( LineNumber firstLine );
 
     // Atomically clear the data.
     void clear();
@@ -141,6 +150,7 @@ private:
     LineLength maxLength_{ 0 };
     LinesCount nbLinesProcessed_{ 0 };
     LinesCount nbMatches_{ 0 };
+    LineNumber firstCountedLine_{ 0_lnum };
     bool limitReached_ = false;
 };
 
@@ -258,6 +268,10 @@ public:
 
     // Interrupts the search if one is in progress
     void interrupt();
+
+    // Once the operation in progress has ended, continues the search from `firstLine` with a
+    // fresh match count and match limit (see SearchData::restartFrom()).
+    void restartFrom( LineNumber firstLine );
 
     // get the current indexing data
     SearchResults getSearchResults() const;

@@ -684,6 +684,10 @@ void CrawlerWidget::applyCommanderPredefinedFilter( const PredefinedFilter& filt
 {
     QString searchPattern;
     combinePatterns( searchPattern, escapeSearchPattern( filter.pattern, filter.useRegex ) );
+    // The "Matched by" column names the filter, as when it is picked from the filter list.
+    pendingFilterSelection_
+        = PredefinedFilterSelection{ QList<PredefinedFilter>{ filter }, searchPattern };
+    LOG_DEBUG << "Commander predefined filter selected for the next search: " << filter.name;
     applyCommanderSearchPattern( searchPattern, request );
 }
 
@@ -998,6 +1002,13 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
                                         LineNumber initialPosition )
 {
     LOG_DEBUG << "updateFilteredView received.";
+
+    if ( pendingClearMarkers_.find( sender() ) != pendingClearMarkers_.end() ) {
+        // Queued before Clear Results: it counts the matches that were just forgotten.
+        LOG_DEBUG << "Ignoring search progress " << progress << "% (" << nbMatches
+                  << " matches) queued before the results were cleared";
+        return;
+    }
 
     searchInfoLine_->show();
 
@@ -1395,21 +1406,27 @@ void CrawlerWidget::setSearchPatternFromPredefinedFilters( const QList<Predefine
     for ( const auto& filter : filters ) {
         combinePatterns( searchPattern, escapeSearchPattern( filter.pattern, filter.useRegex ) );
     }
-    predefinedFiltersForSearch_ = filters;
-    predefinedFiltersPattern_ = searchPattern;
+    pendingFilterSelection_ = PredefinedFilterSelection{ filters, searchPattern };
     setSearchPattern( searchPattern );
 }
 
 std::shared_ptr<const MatchLabeler>
-CrawlerWidget::makeMatchLabeler( const QString& searchText,
-                                 const RegularExpressionPattern& pattern ) const
+CrawlerWidget::makeMatchLabeler( const FilteredView* view, const QString& searchText,
+                                 const RegularExpressionPattern& pattern )
 {
     // Name the predefined filters only while the search text is still their combination.
-    const auto filters = !predefinedFiltersPattern_.isEmpty()
-                                 && searchText == predefinedFiltersPattern_
-                             ? predefinedFiltersForSearch_
-                             : QList<PredefinedFilter>{};
-    auto labeler = std::make_shared<const MatchLabeler>( MatchLabeler::fromSearch( pattern, filters ) );
+    const bool fromFilters = !pendingFilterSelection_.filters.isEmpty()
+                             && searchText == pendingFilterSelection_.searchText;
+    if ( fromFilters ) {
+        viewFilterSelections_[ view ] = pendingFilterSelection_;
+    }
+    else {
+        viewFilterSelections_.erase( view );
+    }
+    const auto& filters
+        = fromFilters ? pendingFilterSelection_.filters : QList<PredefinedFilter>{};
+    auto labeler
+        = std::make_shared<const MatchLabeler>( MatchLabeler::fromSearch( pattern, filters ) );
     LOG_DEBUG << "Matched-by labels for search: predefined filters=" << filters.size()
               << ", empty=" << labeler->isEmpty();
     return labeler;
@@ -1417,25 +1434,56 @@ CrawlerWidget::makeMatchLabeler( const QString& searchText,
 
 void CrawlerWidget::clearFilteredResults()
 {
-    if ( !logFilteredData_->hasCurrentRegexp() ) {
-        LOG_DEBUG << "Clear filtered results ignored: no active search";
+    clearResultsOf( filteredView_ );
+}
+
+void CrawlerWidget::clearResultsOf( FilteredView* view )
+{
+    const auto entry = filteredViewsData_.find( view );
+    if ( entry == filteredViewsData_.end() || !entry->second->hasCurrentRegexp() ) {
+        LOG_DEBUG << "Clear filtered results ignored: no active search in this view";
         return;
     }
-    logFilteredData_->forgetResults();
-    startupFilterSearchInProgress_ = false;
-    nbMatches_ = 0_lcount;
-    filteredView_->updateData();
+    const auto filteredData = entry->second;
+
+    // Progress of this search already queued describes the matches being forgotten: drop it
+    // until this marker, queued behind it, has been delivered.
+    const QObject* const progressSource = filteredData.get();
+    ++pendingClearMarkers_[ progressSource ];
+    QMetaObject::invokeMethod(
+        this,
+        [ this, progressSource ] {
+            const auto marker = pendingClearMarkers_.find( progressSource );
+            if ( marker != pendingClearMarkers_.end() && --marker->second <= 0 ) {
+                pendingClearMarkers_.erase( marker );
+            }
+        },
+        Qt::QueuedConnection );
+
+    filteredData->forgetResults();
+    view->updateData();
+    const bool stillSearching = filteredData->isSearchRunning();
+    LOG_INFO << "Filtered results cleared; lines from " << filteredData->resultsStartLine()
+             << " are still searched, scan running=" << stillSearching
+             << ", active tab=" << ( view == filteredView_ );
+    if ( view != filteredView_ ) {
+        // A kept tab that is not shown: its search state is not on the search line.
+        return;
+    }
+
+    nbMatches_ = filteredData->getNbMatches();
     overview_.updateData( logData_->getNbLine() );
     overviewWidget_->update();
-    // A search interrupted by the clear no longer reports its completion.
-    stopButton_->setEnabled( false );
-    stopButton_->hide();
-    searchButton_->show();
-    clearButton_->show();
-    searchInfoLine_->hideGauge();
-    printSearchInfoMessage( 0_lcount );
-    LOG_INFO << "Filtered results cleared; later lines from "
-             << logFilteredData_->resultsStartLine() << " are still searched";
+    if ( !stillSearching ) {
+        startupFilterSearchInProgress_ = false;
+        stopButton_->setEnabled( false );
+        stopButton_->hide();
+        searchButton_->show();
+        clearButton_->show();
+        searchInfoLine_->hideGauge();
+    }
+    // Otherwise the scan goes on from where it was and reports its own progress.
+    printSearchInfoMessage( nbMatches_ );
 }
 
 QString CrawlerWidget::escapeSearchPattern( const QString& pattern, bool isRegex ) const
@@ -2129,6 +2177,11 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
             }
             updateMatchModeCompatibility();
             nbMatches_ = logFilteredData_->getNbMatches();
+            // The search line now holds this tab's search: so do the filters that named it.
+            const auto selection = viewFilterSelections_.find( tabFilteredView );
+            pendingFilterSelection_ = selection != viewFilterSelections_.end()
+                                          ? selection->second
+                                          : PredefinedFilterSelection{};
             LOG_INFO << "Restored retained filter tab options mode="
                      << matchModeName( pattern.matchMode ) << " before=" << options.contextBefore
                      << " after=" << options.contextAfter << " max="
@@ -2153,6 +2206,8 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
     filteredViewsData_.erase( qobject_cast<FilteredView*>( view ) );
+    // Keyed by the QObject address, which destroyed() still reports.
+    viewFilterSelections_.erase( view );
 }
 
 void CrawlerWidget::saveSplitterSizes() const
@@ -2219,14 +2274,8 @@ bool CrawlerWidget::navigateToAnalysisResult( const SourceLocation& location )
 void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 {
     view->setMatchedByColumnVisible( Configuration::get().filteredViewMatchedByColumn() );
-    connect( view, &FilteredView::clearResultsRequested, this, [ this, view ] {
-        if ( view == filteredView_ ) {
-            clearFilteredResults();
-        }
-        else {
-            LOG_DEBUG << "Clear results ignored for a kept (inactive) search tab";
-        }
-    } );
+    connect( view, &FilteredView::clearResultsRequested, this,
+             [ this, view ] { clearResultsOf( view ); } );
     connect( view, &FilteredView::matchedByColumnToggled, this, [ this ]( bool visible ) {
         auto& config = Configuration::get();
         config.setFilteredViewMatchedByColumn( visible );
@@ -2576,7 +2625,8 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
             searchInfoLine_->hide();
             logMainView_->setSearchPattern( regexpPattern );
             filteredView_->setSearchPattern( regexpPattern );
-            filteredView_->setMatchLabeler( makeMatchLabeler( searchText, regexpPattern ) );
+            filteredView_->setMatchLabeler(
+                makeMatchLabeler( filteredView_, searchText, regexpPattern ) );
             return;
         }
 
@@ -2605,7 +2655,8 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText, bool forceF
         searchInfoLine_->hide();
         logMainView_->setSearchPattern( regexpPattern );
         filteredView_->setSearchPattern( regexpPattern );
-        filteredView_->setMatchLabeler( makeMatchLabeler( searchText, regexpPattern ) );
+        filteredView_->setMatchLabeler(
+            makeMatchLabeler( filteredView_, searchText, regexpPattern ) );
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Search update failed: " << e.what();
         startupFilterSearchInProgress_ = false;

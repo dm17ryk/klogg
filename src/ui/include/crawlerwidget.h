@@ -406,8 +406,13 @@ private:
     void updateColorLabels( const ColorLabelsManager::QuickHighlightersCollection& labels );
 
     void connectAllFilteredViewSlots( FilteredView* view );
-    std::shared_ptr<const MatchLabeler> makeMatchLabeler( const QString& searchText,
-                                                          const RegularExpressionPattern& pattern ) const;
+    // Builds the "Matched by" labeler of a search run in `view`, and remembers with the view the
+    // predefined filters its search text was built from.
+    std::shared_ptr<const MatchLabeler> makeMatchLabeler( const FilteredView* view,
+                                                          const QString& searchText,
+                                                          const RegularExpressionPattern& pattern );
+    // Clear Results for the search shown in `view`, the active tab or a kept one.
+    void clearResultsOf( FilteredView* view );
     void handleLinePreviewRequested( quint64 physicalLine, const QPoint& globalPosition, quint64 serial );
     QString previewSelectionText( AbstractLogView* view ) const;
     PreparedPreview preparedPreviewSelection( AbstractLogView* view ) const;
@@ -456,10 +461,21 @@ private:
     QToolButton* stopButton_;
     QToolButton* clearResultsButton_ = nullptr;
 
-    // The predefined filters that produced predefinedFiltersPattern_, to name the filter that
-    // selected each filtered line while the search text is still that combination.
-    QList<PredefinedFilter> predefinedFiltersForSearch_;
-    QString predefinedFiltersPattern_;
+    // The predefined filters a search text was built from, to name the filter that selected each
+    // filtered line while the search text is still that combination.
+    struct PredefinedFilterSelection {
+        QList<PredefinedFilter> filters;
+        QString searchText;
+    };
+    // The latest selection (filter list or Commander), for the next search; switching to a kept
+    // tab brings back the selection of that tab's search.
+    PredefinedFilterSelection pendingFilterSelection_;
+    // The selection each filtered view (search tab) last searched with.
+    std::unordered_map<const QObject*, PredefinedFilterSelection> viewFilterSelections_;
+    // Search progress queued before Clear Results describes the forgotten matches: progress of a
+    // cleared search (LogFilteredData) is dropped until the marker each clear queues behind it
+    // has been delivered.
+    std::unordered_map<const QObject*, int> pendingClearMarkers_;
 
     QToolButton* matchCaseButton_;
     QToolButton* useRegexpButton_;

@@ -104,8 +104,9 @@ public:
     void interruptSearch();
     // Clear the search and the list of results.
     void clearSearch( bool dropCache = false );
-    // Forgets the matches found so far but keeps the search: lines appended later are still
-    // searched by updateSearch(). Running a search again restores every match.
+    // Forgets the matches of the lines scanned so far but keeps the search: lines not scanned yet
+    // (the rest of a running search, appended lines) still show their matches. Marks stay.
+    // Running a search again restores every match.
     void forgetResults();
     // First source line whose matches are kept (0 unless forgetResults() was used).
     LineNumber resultsStartLine() const
@@ -291,6 +292,8 @@ private:
     // Matches before this line were forgotten by forgetResults().
     LineNumber resultsStartLine_{ 0_lnum };
     LineNumber activeSearchInitialLine_{ 0_lnum };
+    // End of the range requested from the running search.
+    LineNumber activeSearchEndLine_{ 0_lnum };
     uint64_t searchGeneration_{ 0 };
     SourceSnapshot searchSourceSnapshot_;
     uint64_t lastDetachedStaleSearchGeneration_{ 0 };

@@ -22,6 +22,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QHelpEvent>
+#include <QScrollBar>
 #include <QToolTip>
 #include <QComboBox>
 #include <QJsonDocument>
@@ -50,6 +51,7 @@
 #include "logfiltereddata.h"
 
 #include "crawlerwidget.h"
+#include "commander.h"
 #include "analysiscommands.h"
 #include "previewmanager.h"
 #include "previewdecodersettings.h"
@@ -289,6 +291,52 @@ struct CrawlerWidget::access_by<CrawlerWidgetPrivate> {
     int filteredTabCount() const
     {
         return crawler->tabbedFilteredView_->count();
+    }
+
+    FilteredView* activeFilteredView() const
+    {
+        return crawler->filteredView_;
+    }
+
+    LogFilteredData* activeFilteredData() const
+    {
+        return crawler->logFilteredData_.get();
+    }
+
+    FilteredView* filteredTabView( int index ) const
+    {
+        return qobject_cast<FilteredView*>( crawler->tabbedFilteredView_->widget( index ) );
+    }
+
+    LogFilteredData* filteredTabData( int index ) const
+    {
+        return crawler->filteredViewsData_.at( filteredTabView( index ) ).get();
+    }
+
+    // As when filters are ticked in the predefined filter list.
+    void applyPredefinedFilters( const QList<PredefinedFilter>& filters )
+    {
+        crawler->setSearchPatternFromPredefinedFilters( filters );
+    }
+
+    void applyCommanderFilter( const PredefinedFilter& filter )
+    {
+        CommanderRequest request;
+        request.runSearch = true;
+        crawler->applyCommanderPredefinedFilter( filter, request );
+        QTest::qWait( 100 );
+        waitUiState( [ this ]() { return crawler->stopButton_->isHidden(); } );
+    }
+
+    // Progress the search had queued before a clear, delivered after it.
+    void queueSearchProgress( LinesCount nbMatches )
+    {
+        Q_EMIT crawler->logFilteredData_->searchProgressed( nbMatches, 100, 0_lnum );
+    }
+
+    void clearFilteredResults()
+    {
+        crawler->clearFilteredResults();
     }
 
     void enableTextWrap()
@@ -1035,12 +1083,13 @@ TEST_CASE( "matched_by_column_toggle", "[workbench][U14][ui]" )
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 3_lcount; } ) );
 
-    auto* filtered = visitor.crawler->findChild<FilteredView*>();
+    auto* filtered = visitor.activeFilteredView();
     REQUIRE( filtered != nullptr );
     REQUIRE( filtered->isMatchedByColumnVisible() );
-    REQUIRE( filtered->matchedByText( 0_lnum ) == "WARN" );
-    REQUIRE( filtered->matchedByText( 1_lnum ) == "ERROR" );
-    REQUIRE( filtered->matchedByText( 2_lnum ) == "WARN" );
+    // Labels are computed in the background and arrive shortly after the lines.
+    REQUIRE( waitUiState( [ & ] { return filtered->matchedByText( 0_lnum ) == "WARN"; } ) );
+    REQUIRE( waitUiState( [ & ] { return filtered->matchedByText( 1_lnum ) == "ERROR"; } ) );
+    REQUIRE( waitUiState( [ & ] { return filtered->matchedByText( 2_lnum ) == "WARN"; } ) );
 
     auto* toggle = filtered->findChild<QAction*>( "showMatchedByColumnAction" );
     REQUIRE( toggle != nullptr );
@@ -1051,15 +1100,220 @@ TEST_CASE( "matched_by_column_toggle", "[workbench][U14][ui]" )
     REQUIRE( filtered->isMatchedByColumnVisible() );
     REQUIRE( Configuration::get().filteredViewMatchedByColumn() );
 
-    // Clearing empties the view but keeps the search; searching again restores every match.
+    // A marked line says "mark", also where the search matches it.
+    visitor.activeFilteredData()->addMark( 1_lnum );
+    filtered->updateData();
+    REQUIRE( visitor.getLogFilteredNbLines() == 3_lcount );
+    REQUIRE( filtered->matchedByText( 0_lnum ) == "mark" );
+
+    // Clearing removes the matches but keeps the search and the marked line; searching again
+    // restores every match.
     auto* clear = visitor.crawler->findChild<QToolButton*>( "clearFilteredResultsButton" );
     REQUIRE( clear != nullptr );
     REQUIRE( filtered->findChild<QAction*>( "clearFilteredResultsAction" ) != nullptr );
     clear->click();
-    REQUIRE( visitor.getLogFilteredNbLines() == 0_lcount );
+    REQUIRE( visitor.getLogFilteredNbLines() == 1_lcount );
+    REQUIRE( filtered->matchedByText( 0_lnum ) == "mark" );
     REQUIRE( visitor.currentSearchText() == "WARN|ERROR" );
     visitor.runSearch();
     REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 3_lcount; } ) );
+}
+
+TEST_CASE( "matched_by_column_shows_marks_in_inverse_search", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_matched_by_inverse_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\nWARN low battery\nERROR modem lost\nidle\nWARN again\n" );
+    file.flush();
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+    visitor.enableInverseMatch();
+    visitor.setSearchPattern( "WARN|ERROR" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() >= 2_lcount; } ) );
+    const auto inverseLines = visitor.getLogFilteredNbLines();
+
+    // An inverse match names no filter: without marks there is no column.
+    auto* filtered = visitor.activeFilteredView();
+    REQUIRE( filtered->annotationColumnChars() == 0 );
+
+    // A marked line still says "mark", so the column comes back for it.
+    visitor.activeFilteredData()->addMark( 1_lnum );
+    filtered->updateData();
+    REQUIRE( visitor.getLogFilteredNbLines() == inverseLines + 1_lcount );
+    REQUIRE( filtered->annotationColumnChars() >= QString( "mark" ).size() );
+    REQUIRE( filtered->matchedByText( 1_lnum ) == "mark" );
+    REQUIRE( filtered->matchedByText( 0_lnum ).isEmpty() );
+}
+
+TEST_CASE( "matched_by_names_predefined_filters_per_tab", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_matched_by_filters_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( "boot\nWARN low battery\nERROR modem lost\nidle\nWARN again\n" );
+    file.flush();
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+
+    const PredefinedFilter warnings{ "warnings", "Warnings", "WARN", false };
+    const PredefinedFilter errors{ "errors", "Errors", "ERROR", false };
+    const PredefinedFilter lost{ "lost", "Connection lost", "lost", false };
+
+    // A search built from one predefined filter names the filter, not the matched text.
+    visitor.applyPredefinedFilters( { warnings } );
+    REQUIRE( visitor.currentSearchText() == "WARN" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
+    auto* firstTab = visitor.activeFilteredView();
+    REQUIRE( waitUiState( [ & ] { return firstTab->matchedByText( 0_lnum ) == "Warnings"; } ) );
+
+    // A kept tab searches with another filter.
+    visitor.keepNextSearchResults();
+    visitor.applyPredefinedFilters( { errors } );
+    visitor.runSearch();
+    REQUIRE( visitor.filteredTabCount() == 2 );
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    auto* secondTab = visitor.activeFilteredView();
+    REQUIRE( secondTab != firstTab );
+    REQUIRE( waitUiState( [ & ] { return secondTab->matchedByText( 0_lnum ) == "Errors"; } ) );
+
+    // Back in the first tab, its search run again still names its own filter.
+    visitor.selectFilteredTab( 0 );
+    REQUIRE( waitUiState( [ & ] { return visitor.currentSearchText() == "WARN"; } ) );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 2_lcount; } ) );
+    REQUIRE( waitUiState( [ & ] { return firstTab->matchedByText( 0_lnum ) == "Warnings"; } ) );
+
+    // A filter applied through Commander is named too.
+    visitor.applyCommanderFilter( lost );
+    REQUIRE( visitor.currentSearchText() == "lost" );
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+    REQUIRE( waitUiState(
+        [ & ] { return firstTab->matchedByText( 0_lnum ) == "Connection lost"; } ) );
+}
+
+TEST_CASE( "clear_results_of_a_kept_tab", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_clear_kept_tab_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableBooleanCombinationMode();
+
+    visitor.setSearchPattern( "line 00001" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 10_lcount; } ) );
+    visitor.keepNextSearchResults();
+    visitor.setSearchPattern( "line 00002" );
+    visitor.runSearch();
+    REQUIRE( visitor.filteredTabCount() == 2 );
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 10_lcount; } ) );
+
+    // "Clear results" in the menu of the tab that is not shown clears that tab's search.
+    auto* keptTab = visitor.filteredTabView( 0 );
+    REQUIRE( keptTab != nullptr );
+    REQUIRE( keptTab != visitor.activeFilteredView() );
+    REQUIRE( visitor.filteredTabData( 0 )->getNbLine() == 10_lcount );
+    auto* clear = keptTab->findChild<QAction*>( "clearFilteredResultsAction" );
+    REQUIRE( clear != nullptr );
+    clear->trigger();
+    REQUIRE( visitor.filteredTabData( 0 )->getNbLine() == 0_lcount );
+    REQUIRE( visitor.filteredTabData( 0 )->hasCurrentRegexp() );
+    REQUIRE( visitor.getLogFilteredNbLines() == 10_lcount );
+}
+
+TEST_CASE( "clear_results_drops_progress_queued_before_it", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_clear_stale_progress_XXXXXX" };
+    REQUIRE( generateDataFiles( file ) );
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.disableBooleanCombinationMode();
+    visitor.setSearchPattern( "line 00001" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 10_lcount; } ) );
+
+    // Progress of the search still queued when the results are cleared must not bring back
+    // its match count.
+    visitor.queueSearchProgress( 7_lcount );
+    visitor.clearFilteredResults();
+    QTest::qWait( 200 );
+    REQUIRE( visitor.crawler->matchCount() == 0 );
+    REQUIRE( visitor.getLogFilteredNbLines() == 0_lcount );
+    REQUIRE_FALSE( visitor.searchInfoText().contains( "7" ) );
+
+    // Progress queued after the clear is shown again.
+    visitor.queueSearchProgress( 3_lcount );
+    REQUIRE( waitUiState( [ & ] { return visitor.crawler->matchCount() == 3; } ) );
+}
+
+TEST_CASE( "matched_by_column_toggle_updates_the_horizontal_range", "[workbench][U14][ui]" )
+{
+    QTemporaryFile file{ "crawler_matched_by_hscroll_XXXXXX" };
+    REQUIRE( file.open() );
+    file.write( QByteArray( "boot\nWARN " ) + QByteArray( 400, 'x' ) + QByteArray( "\nidle\n" ) );
+    file.flush();
+
+    Session session;
+    CrawlerWidgetVisitor visitor;
+    visitor.crawler.reset( static_cast<CrawlerWidget*>(
+        session.open( file.fileName(), [] { return new CrawlerWidget(); } ) ) );
+    REQUIRE( waitUiState( [ & ] { return visitor.isLoadingFinished(); } ) );
+    visitor.resizeAndShow( 800, 600 );
+    visitor.disableTextWrap();
+    visitor.disableBooleanCombinationMode();
+    visitor.enableRegexSearch();
+    visitor.enableCaseSensitiveSearch();
+    visitor.setSearchPattern( "WARN" );
+    visitor.runSearch();
+    REQUIRE( waitUiState( [ & ] { return visitor.getLogFilteredNbLines() == 1_lcount; } ) );
+
+    auto* filtered = visitor.activeFilteredView();
+    auto* scrollBar = filtered->horizontalScrollBar();
+    REQUIRE( filtered->annotationColumnChars() > 0 );
+    const auto paintAndSettle = [ & ] {
+        visitor.render();
+        QTest::qWait( 100 );
+        visitor.render();
+        QTest::qWait( 100 );
+    };
+    paintAndSettle();
+    const auto withColumn = scrollBar->maximum();
+    REQUIRE( withColumn > 0 );
+
+    // Without the column the text area is wider: less of the long line is left to scroll.
+    filtered->setMatchedByColumnVisible( false );
+    paintAndSettle();
+    REQUIRE( scrollBar->maximum() < withColumn );
+
+    // With it again the end of the long line is still reachable.
+    filtered->setMatchedByColumnVisible( true );
+    paintAndSettle();
+    REQUIRE( scrollBar->maximum() == withColumn );
 }
 
 TEST_CASE( "Crawler widget exposes stable automation object names", "[ui][automation]" )

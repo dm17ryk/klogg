@@ -78,6 +78,52 @@ TEST_CASE( "labels_single_term_shows_match", "[workbench][U14]" )
     REQUIRE( label.size() == MatchLabeler::MaxLabelLength );
 }
 
+TEST_CASE( "labels_single_predefined_filter_by_name", "[workbench][U14]" )
+{
+    // One predefined filter still names the filter, not the matched text.
+    const auto labeler = MatchLabeler::fromSearch( regexSearch( "WARN" ),
+                                                   { filter( "Warnings", "WARN", false ) } );
+    REQUIRE_FALSE( labeler.isEmpty() );
+    REQUIRE( labeler.label( "12:00 WARN low battery" ) == "Warnings" );
+    REQUIRE( labeler.label( "12:01 ERROR modem" ).isEmpty() );
+    REQUIRE( labeler.preferredColumnChars() >= QString( "Warnings" ).size() );
+}
+
+TEST_CASE( "labels_keep_inline_options_across_alternatives", "[workbench][U14]" )
+{
+    REQUIRE( MatchLabeler::topLevelOptionSettings( "(?i)warn" ) == "(?i)" );
+    REQUIRE( MatchLabeler::topLevelOptionSettings( "a|(?im)b(?-m)" ) == "(?im)(?-m)" );
+    // Scoped groups, nested settings and escaped parentheses are not top-level settings.
+    REQUIRE( MatchLabeler::topLevelOptionSettings( "a(?i:b)(c(?m)d)\\(?x)" ).isEmpty() );
+
+    // A top-level (?i) applies to the alternatives after it, as in the search itself.
+    const auto labeler = MatchLabeler::fromSearch( regexSearch( "(?i)warn|error" ) );
+    REQUIRE( labeler.label( "ERROR modem lost" ) == "error" );
+    REQUIRE( labeler.label( "Warn: low battery" ) == "(?i)warn" );
+
+    // A setting in a later alternative carries on from there only.
+    const auto later = MatchLabeler::fromSearch( regexSearch( "warn|(?i)error|fail" ) );
+    REQUIRE( later.label( "WARN" ).isEmpty() );
+    REQUIRE( later.label( "Error" ) == "(?i)error" );
+    REQUIRE( later.label( "FAIL" ) == "fail" );
+
+    // A scoped "(?i:...)" group does not reach the alternatives after it.
+    const auto scoped = MatchLabeler::fromSearch( regexSearch( "(?i:warn)|error" ) );
+    REQUIRE( scoped.label( "ERROR" ).isEmpty() );
+    REQUIRE( scoped.label( "WARN" ) == "(?i:warn)" );
+
+    // Predefined filters combined into one expression inherit the same way, plain-text ones too.
+    const auto filters = MatchLabeler::fromSearch(
+        regexSearch( "(?i)warn|ERROR" ),
+        { filter( "Any warning", "(?i)warn", true ), filter( "Errors", "ERROR", false ) } );
+    REQUIRE( filters.label( "error: disk" ) == "Errors" );
+    REQUIRE( filters.label( "WARN error" ) == "Any warning, Errors" );
+
+    // "(*...)" settings belong at the start of a pattern: such a pattern stays whole.
+    const auto verbs = MatchLabeler::fromSearch( regexSearch( "(*UCP)alpha|beta" ) );
+    REQUIRE( verbs.label( "x alpha y" ) == "alpha" );
+}
+
 TEST_CASE( "labels_inverse_and_empty", "[workbench][U14]" )
 {
     REQUIRE( MatchLabeler::fromSearch( RegularExpressionPattern( "x", true, true, false, false ) )

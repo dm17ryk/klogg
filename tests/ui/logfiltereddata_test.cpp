@@ -581,6 +581,108 @@ TEST_CASE( "clear_drops_context_before_the_cleared_point",
     REQUIRE( filtered_data->getNbLine() == 1_lcount );
 }
 
+TEST_CASE( "clear_keeps_marked_lines", "[workbench][U14][logdata]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+    // Line 3 matches nothing; line 9 is marked and matched.
+    filtered_data->addMark( 3_lnum );
+    filtered_data->addMark( 9_lnum );
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    runSearch( filtered_data.get(), "line 000[0-9][0-9]9", searchSpy );
+    REQUIRE( filtered_data->getNbMatches() == 50_lcount );
+    REQUIRE( filtered_data->getNbLine() == 51_lcount );
+
+    // Clear removes search matches only: both marked lines stay, line 9 without its match.
+    filtered_data->forgetResults();
+    REQUIRE( filtered_data->getNbMatches() == 0_lcount );
+    REQUIRE( filtered_data->getNbMarks() == 2_lcount );
+    REQUIRE( filtered_data->getNbLine() == 2_lcount );
+    CHECK( filtered_data->getMatchingLineNumber( 0_lnum ) == 3_lnum );
+    CHECK( filtered_data->getMatchingLineNumber( 1_lnum ) == 9_lnum );
+    CHECK( toFlags( filtered_data->lineTypeByIndex( 1_lnum ) ) == LineTypeFlags::Mark );
+}
+
+TEST_CASE( "clear_scans_lines_appended_before_their_refresh",
+           "[workbench][U14][logdata][incremental]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    runSearch( filtered_data.get(), "line 000[0-9][0-9]9", searchSpy );
+    REQUIRE( filtered_data->getNbMatches() == 50_lcount );
+
+    // The source has taken the appended lines in, but their refresh has not run yet.
+    logDataLoader.file.seek( logDataLoader.file.size() );
+    logDataLoader.file.write( formattedLine( 509 ).toLatin1() );
+    logDataLoader.file.write( formattedLine( 600 ).toLatin1() );
+    logDataLoader.file.flush();
+    SafeQSignalSpy reloadSpy( &logDataLoader.log_data, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    logDataLoader.log_data.reload();
+    REQUIRE( reloadSpy.safeWait() );
+    REQUIRE( logDataLoader.log_data.getNbLine() == LinesCount( SL_NB_LINES + 2 ) );
+
+    // Only the scanned lines are forgotten: the appended ones were never seen.
+    filtered_data->forgetResults();
+    REQUIRE( filtered_data->resultsStartLine() == LineNumber( SL_NB_LINES ) );
+
+    SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum,
+                              LineNumber( logDataLoader.log_data.getNbLine().get() ), updateSpy ) );
+    REQUIRE( filtered_data->getNbMatches() == 1_lcount );
+    REQUIRE( filtered_data->lineTypeByLine( LineNumber( SL_NB_LINES ) )
+                 .testFlag( LineTypeFlags::Match ) );
+}
+
+TEST_CASE( "clear_restarts_the_match_cap", "[workbench][U14][logdata][max-count]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    SearchOptions options;
+    options.maxMatches = 3;
+    // Lines 9, 19 and 29 match before the cap stops the scan; 39, 49, 59... are never read.
+    runSearch( filtered_data.get(), RegularExpressionPattern( "line 000[0-9][0-9]9" ), options,
+               searchSpy );
+    REQUIRE( filtered_data->limitReached() );
+    REQUIRE( filtered_data->getNbMatches() == 3_lcount );
+    const auto scanned = filtered_data->lastProcessedLine();
+    REQUIRE( scanned < LineNumber( SL_NB_LINES ) );
+
+    filtered_data->forgetResults();
+    REQUIRE_FALSE( filtered_data->limitReached() );
+    REQUIRE( filtered_data->getNbMatches() == 0_lcount );
+    REQUIRE( filtered_data->resultsStartLine() == scanned );
+
+    // The next refresh reads on from where the scan stopped, under a fresh cap: the forgotten
+    // matches (including the re-read last line) do not use it up.
+    SafeQSignalSpy updateSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+    REQUIRE( runUpdateSearch( filtered_data.get(), 0_lnum, LineNumber( SL_NB_LINES ),
+                              updateSpy ) );
+    REQUIRE( filtered_data->getNbMatches() == 3_lcount );
+    REQUIRE( filtered_data->limitReached() );
+    REQUIRE( filtered_data->getMatchingLineNumber( 0_lnum ) >= scanned );
+}
+
+TEST_CASE( "clear_while_searching_keeps_scanning", "[workbench][U14][logdata]" )
+{
+    LogDataLoader logDataLoader;
+    auto filtered_data = logDataLoader.log_data.getNewFilteredData();
+    SafeQSignalSpy searchSpy{ filtered_data.get(), &LogFilteredData::searchProgressed };
+
+    // Cleared before any result was applied: nothing was seen, so nothing is forgotten and
+    // the scan goes on to the end of its range.
+    filtered_data->runSearch( RegularExpressionPattern( "line 000[0-9][0-9]9" ) );
+    REQUIRE( filtered_data->isSearchRunning() );
+    const auto scanned = filtered_data->lastProcessedLine();
+    filtered_data->forgetResults();
+    REQUIRE( filtered_data->resultsStartLine() == scanned );
+    REQUIRE( filtered_data->isSearchRunning() );
+
+    REQUIRE( waitUiState( [ & ] { return !filtered_data->isSearchRunning(); } ) );
+    REQUIRE( filtered_data->getNbMatches() == 50_lcount );
+}
+
 SCENARIO( "manual scan then auto refresh avoids full rescan when no new data",
           "[logdata][incremental]" )
 {

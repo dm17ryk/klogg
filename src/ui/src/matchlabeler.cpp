@@ -17,19 +17,46 @@ QString elided( QString text )
     }
     return text;
 }
+
+bool isOptionCharacter( QChar character )
+{
+    return QStringLiteral( "imnsxJU^-" ).contains( character );
+}
+
+// Length of the inline option setting, such as "(?i)" or "(?im-s)", that starts at `position`,
+// or 0. A "(?i:...)" group is not one: its options stay inside the group.
+int optionSettingLength( const QString& regex, int position )
+{
+    const auto regexSize = static_cast<int>( regex.size() );
+    const auto lettersStart = position + 2;
+    if ( lettersStart >= regexSize || regex.at( position ) != QLatin1Char( '(' )
+         || regex.at( position + 1 ) != QLatin1Char( '?' ) ) {
+        return 0;
+    }
+    auto end = lettersStart;
+    while ( end < regexSize && isOptionCharacter( regex.at( end ) ) ) {
+        ++end;
+    }
+    if ( end == lettersStart || end >= regexSize || regex.at( end ) != QLatin1Char( ')' ) ) {
+        return 0;
+    }
+    return end - position + 1;
+}
 } // namespace
 
-QStringList MatchLabeler::splitTopLevelAlternatives( const QString& regex )
+std::vector<MatchLabeler::Alternative>
+MatchLabeler::scanTopLevelAlternatives( const QString& regex )
 {
-    QStringList alternatives;
-    QString current;
+    std::vector<Alternative> alternatives( 1 );
     int groupDepth = 0;
     bool inClass = false;
-    // Index in `current` of the first member of the open character class.
+    // Index in the current alternative of the first member of the open character class.
     qsizetype classMembersStart = 0;
-    for ( int i = 0; i < regex.size(); ++i ) {
+    const auto regexSize = static_cast<int>( regex.size() );
+    for ( int i = 0; i < regexSize; ++i ) {
+        auto& current = alternatives.back().text;
         const auto character = regex.at( i );
-        if ( character == QLatin1Char( '\\' ) && i + 1 < regex.size() ) {
+        if ( character == QLatin1Char( '\\' ) && i + 1 < regexSize ) {
             current.append( character );
             current.append( regex.at( ++i ) );
             continue;
@@ -50,19 +77,45 @@ QStringList MatchLabeler::splitTopLevelAlternatives( const QString& regex )
             inClass = true;
             classMembersStart = current.size() + 1;
         }
-        else if ( character == QLatin1Char( '(' ) )
+        else if ( character == QLatin1Char( '(' ) ) {
+            const auto settingLength = groupDepth == 0 ? optionSettingLength( regex, i ) : 0;
+            if ( settingLength > 0 ) {
+                const auto setting = regex.mid( i, settingLength );
+                current.append( setting );
+                alternatives.back().optionSettings.append( setting );
+                i += settingLength - 1;
+                continue;
+            }
             ++groupDepth;
-        else if ( character == QLatin1Char( ')' ) && groupDepth > 0 )
+        }
+        else if ( character == QLatin1Char( ')' ) && groupDepth > 0 ) {
             --groupDepth;
+        }
         else if ( character == QLatin1Char( '|' ) && groupDepth == 0 ) {
-            alternatives.append( current );
-            current.clear();
+            alternatives.emplace_back();
             continue;
         }
         current.append( character );
     }
-    alternatives.append( current );
     return alternatives;
+}
+
+QStringList MatchLabeler::splitTopLevelAlternatives( const QString& regex )
+{
+    QStringList texts;
+    for ( const auto& alternative : scanTopLevelAlternatives( regex ) ) {
+        texts.append( alternative.text );
+    }
+    return texts;
+}
+
+QString MatchLabeler::topLevelOptionSettings( const QString& regex )
+{
+    QString settings;
+    for ( const auto& alternative : scanTopLevelAlternatives( regex ) ) {
+        settings.append( alternative.optionSettings );
+    }
+    return settings;
 }
 
 MatchLabeler MatchLabeler::fromTerms( const QList<RegularExpressionPattern>& patterns,
@@ -96,11 +149,21 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
                                                    plainText, search.matchMode ) );
         names.append( name );
     };
+    // Within one regular expression a top-level "(?i)" also applies to the alternatives after
+    // it; each term inherits the option settings of the terms before it, as in the search.
+    const bool optionsSpanAlternatives = !search.isBoolean && !search.isPlainText;
 
     if ( !filters.isEmpty() ) {
+        QString inheritedOptions;
         for ( const auto& filter : filters ) {
-            addTerm( filter.name.isEmpty() ? filter.pattern : filter.name, filter.pattern,
-                     search.isPlainText || !filter.useRegex );
+            const bool plainText = search.isPlainText || !filter.useRegex;
+            const auto expression
+                = plainText ? QRegularExpression::escape( filter.pattern ) : filter.pattern;
+            addTerm( filter.name.isEmpty() ? filter.pattern : filter.name,
+                     inheritedOptions + expression, false );
+            if ( optionsSpanAlternatives && !plainText ) {
+                inheritedOptions += topLevelOptionSettings( filter.pattern );
+            }
         }
     }
     else if ( search.isBoolean ) {
@@ -117,16 +180,20 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
             return {};
         }
     }
-    else if ( !search.isPlainText ) {
-        for ( const auto& alternative : splitTopLevelAlternatives( search.pattern ) ) {
-            // An empty alternative matches every line and names nothing.
-            if ( !alternative.isEmpty() ) {
-                addTerm( alternative, alternative, false );
+    else if ( !search.isPlainText && !search.pattern.startsWith( QLatin1String( "(*" ) ) ) {
+        // A pattern starting with "(*...)" settings is kept whole: they only apply at its start.
+        QString inheritedOptions;
+        for ( const auto& alternative : scanTopLevelAlternatives( search.pattern ) ) {
+            // An empty alternative (or one of option settings only) matches every line and
+            // names nothing.
+            if ( alternative.text != alternative.optionSettings ) {
+                addTerm( alternative.text, inheritedOptions + alternative.text, false );
             }
+            inheritedOptions += alternative.optionSettings;
         }
     }
     else {
-        addTerm( search.pattern, search.pattern, true );
+        addTerm( search.pattern, search.pattern, search.isPlainText );
     }
 
     if ( patterns.isEmpty() ) {
@@ -137,6 +204,7 @@ MatchLabeler MatchLabeler::fromSearch( const RegularExpressionPattern& search,
         // A split broke a construct that spans alternatives; label with the whole pattern.
         return fromTerms( { search }, { search.pattern } );
     }
+    labeler.namesFilters_ = !filters.isEmpty();
     return labeler;
 }
 
@@ -145,8 +213,11 @@ int MatchLabeler::preferredColumnChars() const
     constexpr int SingleTermChars = 24;
     constexpr int MinChars = 8;
     constexpr int MaxChars = 32;
-    if ( terms_.size() <= 1 ) {
-        return terms_.empty() ? 0 : SingleTermChars;
+    if ( terms_.empty() ) {
+        return 0;
+    }
+    if ( terms_.size() == 1 && !namesFilters_ ) {
+        return SingleTermChars;
     }
     int longest = 0;
     for ( const auto& term : terms_ ) {
@@ -157,7 +228,7 @@ int MatchLabeler::preferredColumnChars() const
 
 QString MatchLabeler::label( const QString& line ) const
 {
-    if ( terms_.size() == 1 ) {
+    if ( terms_.size() == 1 && !namesFilters_ ) {
         const auto match = terms_.front().expression.match( line );
         if ( !match.hasMatch() ) {
             return {};
