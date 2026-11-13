@@ -124,6 +124,32 @@ TEST_CASE( "labels_keep_inline_options_across_alternatives", "[workbench][U14]" 
     REQUIRE( verbs.label( "x alpha y" ) == "alpha" );
 }
 
+TEST_CASE( "labels_same_text_different_mode", "[workbench][U14]" )
+{
+    // The labeler reads the typed search: the same text is split by the search mode.
+    const QString alternatives = "warn|error";
+    const auto asRegex = MatchLabeler::fromSearch(
+        RegularExpressionPattern( alternatives, true, false, false, false ) );
+    REQUIRE( asRegex.label( "error: disk" ) == "error" );
+    const auto asPlain = MatchLabeler::fromSearch(
+        RegularExpressionPattern( alternatives, true, false, false, true ) );
+    REQUIRE( asPlain.label( "error: disk" ).isEmpty() );
+    REQUIRE( asPlain.label( "x warn|error y" ) == "warn|error" );
+
+    const QString terms = R"("warn" or "error")";
+    const auto asBoolean
+        = MatchLabeler::fromSearch( RegularExpressionPattern( terms, true, false, true, false ) );
+    REQUIRE( asBoolean.label( "error: disk" ) == "error" );
+    const auto asLiteralRegex
+        = MatchLabeler::fromSearch( RegularExpressionPattern( terms, true, false, false, false ) );
+    REQUIRE( asLiteralRegex.label( "error: disk" ).isEmpty() );
+
+    // An inverse search names nothing, whatever the mode.
+    REQUIRE( MatchLabeler::fromSearch(
+                 RegularExpressionPattern( alternatives, true, true, false, false ) )
+                 .isEmpty() );
+}
+
 TEST_CASE( "labels_inverse_and_empty", "[workbench][U14]" )
 {
     REQUIRE( MatchLabeler::fromSearch( RegularExpressionPattern( "x", true, true, false, false ) )

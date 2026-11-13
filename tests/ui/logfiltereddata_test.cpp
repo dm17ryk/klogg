@@ -581,7 +581,7 @@ TEST_CASE( "clear_drops_context_before_the_cleared_point",
     REQUIRE( filtered_data->getNbLine() == 1_lcount );
 }
 
-TEST_CASE( "clear_keeps_marked_lines", "[workbench][U14][logdata]" )
+TEST_CASE( "clear_keeps_marked_rows", "[workbench][U14][logdata]" )
 {
     LogDataLoader logDataLoader;
     auto filtered_data = logDataLoader.log_data.getNewFilteredData();
