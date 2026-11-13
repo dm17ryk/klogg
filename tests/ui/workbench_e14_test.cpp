@@ -3,6 +3,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QStandardItemModel>
@@ -179,4 +180,69 @@ TEST_CASE( "E14 multichoice field: inputs and changed events carry a list", "[ui
                                               { "set", QJsonObject{ { "value", "oops" } } } } } );
     CHECK( box->checkedValues().isEmpty() );
     CHECK( events.count() == 1 );
+}
+
+TEST_CASE( "E14 multichoice inputs stay within the documented bound", "[ui][workbench][E14]" )
+{
+    PluginView view( "org.test.e14", "main", PluginViewDialogs{} );
+    QJsonArray choices;
+    QJsonArray all;
+    for ( int i = 0; i < 512; ++i ) {
+        const auto value = QString::number( i ).rightJustified( 1000, QLatin1Char( 'v' ) );
+        choices.append( QJsonObject{ { "value", value }, { "label", QString::number( i ) } } );
+        all.append( value );
+    }
+    QJsonArray children;
+    for ( int field = 0; field < 3; ++field ) {
+        children.append( QJsonObject{ { "type", "field" }, { "id", QString( "m%1" ).arg( field ) },
+                                      { "kind", "multichoice" }, { "choices", choices },
+                                      { "value", all } } );
+    }
+    view.setRoot( QJsonObject{ { "type", "column" }, { "children", children } } );
+    bool truncated = false;
+    const auto inputs = view.inputs( &truncated );
+    CHECK( truncated );
+    CHECK( QJsonDocument( inputs ).toJson( QJsonDocument::Compact ).size()
+           < PluginView::MaxInputsBytes + 1024 );
+    for ( const auto& key : inputs.keys() ) {
+        CHECK( inputs.value( key ).isArray() );
+    }
+    CHECK( inputs.value( "m0" ).toArray().size() > 0 );          // the first field keeps its head
+    CHECK( inputs.value( "m2" ).toArray().size() < 512 );
+
+    // Small lists are not touched.
+    bool small = true;
+    PluginView few( "org.test.e14", "main", PluginViewDialogs{} );
+    few.setRoot( QJsonObject{ { "type", "column" },
+                              { "children", QJsonArray{ QJsonObject{
+                                                { "type", "field" }, { "id", "d" },
+                                                { "kind", "multichoice" }, { "choices", days() },
+                                                { "value", QJsonArray{ "0", "4" } } } } } } );
+    CHECK( few.inputs( &small ).value( "d" ).toArray() == QJsonArray{ "0", "4" } );
+    CHECK( !small );
+}
+
+TEST_CASE( "E14 multichoice patches: choices raise no event and apply before value", "[ui][workbench][E14]" )
+{
+    PluginView view( "org.test.e14", "main", PluginViewDialogs{} );
+    view.setRoot( QJsonObject{ { "type", "column" },
+                               { "children", QJsonArray{ QJsonObject{
+                                                 { "type", "field" }, { "id", "days" },
+                                                 { "kind", "multichoice" }, { "choices", days() },
+                                                 { "value", QJsonArray{ "1" } } } } } } );
+    auto* box = qobject_cast<CheckComboBox*>( view.element( "days" ) );
+    REQUIRE( box );
+    QSignalSpy events( &view, &PluginView::eventRaised );
+    view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "days" },
+        { "set", QJsonObject{ { "choices", QJsonArray{ QJsonObject{ { "value", "1" }, { "label", "Mon" } },
+                                                       QJsonObject{ { "value", "5" }, { "label", "Fri" } } } } } } } } );
+    CHECK( events.count() == 0 );
+    CHECK( box->checkedValues() == QJsonArray{ "1" } );
+
+    view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "days" },
+        { "set", QJsonObject{ { "choices", days() }, { "value", QJsonArray{ "0", "4" } } } } } } );
+    CHECK( box->checkedValues() == QJsonArray{ "0", "4" } );
+    CHECK( events.count() == 0 );
 }

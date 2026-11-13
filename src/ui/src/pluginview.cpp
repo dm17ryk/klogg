@@ -798,6 +798,7 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
         }
     };
     if ( kind == "multichoice" ) {
+        // Skips the text-field debounce path on purpose: no typing, every toggle is final.
         auto* box = new CheckComboBox( row );
         connect( box, &CheckComboBox::checkedChanged, this, [ this, id ] {
             const auto found = nodes_.value( id );
@@ -1367,6 +1368,24 @@ QJsonObject PluginView::inputs( bool* truncated ) const
             }
             budget -= string.toUtf8().size();
             value = string;
+        }
+        else if ( value.isArray() ) {
+            // A list (multichoice) is counted by its serialized size; trailing elements that
+            // no longer fit are dropped, the value stays an array.
+            QJsonArray kept;
+            for ( const auto& element : value.toArray() ) {
+                const auto bytes = QJsonDocument( QJsonArray{ element } )
+                                       .toJson( QJsonDocument::Compact )
+                                       .size()
+                                   - 1; // the element plus its separator
+                if ( bytes > budget ) {
+                    shortened = true;
+                    break;
+                }
+                budget -= bytes;
+                kept.append( element );
+            }
+            value = kept;
         }
         values.insert( id, value );
     }
