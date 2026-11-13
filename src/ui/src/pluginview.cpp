@@ -655,9 +655,18 @@ public:
             auto found = findChoice( combo, text );
             if ( found < 0 && editor.value( "kind" ) == "boolean" ) {
                 static const QStringList truthy{ "1", "true", "yes", "on" };
-                found = combo->findData( truthy.contains( text.trimmed(), Qt::CaseInsensitive ) );
+                static const QStringList falsy{ "0", "false", "no", "off" };
+                const auto spelling = text.trimmed();
+                if ( truthy.contains( spelling, Qt::CaseInsensitive ) ) {
+                    found = combo->findData( true );
+                }
+                else if ( falsy.contains( spelling, Qt::CaseInsensitive ) ) {
+                    found = combo->findData( false );
+                }
             }
-            combo->setCurrentIndex( qMax( 0, found ) );
+            // No matching item (an out-of-range "7", an empty boolean): start with none, so any pick
+            // is a change and leaving without a pick commits nothing.
+            combo->setCurrentIndex( found );
         }
         else if ( auto* line = qobject_cast<QLineEdit*>( widget ) ) {
             line->setText( text );

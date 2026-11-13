@@ -631,7 +631,9 @@ QJsonObject kindsTable()
         { "columns", QJsonArray{ QJsonObject{ { "id", "k" } }, QJsonObject{ { "id", "v" }, { "editable", true } } } },
         { "rows", QJsonArray{ row( "b1", "1", boolean ), row( "b2", "Yes", boolean ), row( "b3", "on", boolean ),
                               row( "c1", "On (1)", choice ), row( "n1", "30 s", number ), row( "t1", "hello", text ),
-                              row( "m1", "17", multi ) } } };
+                              row( "m1", "17", multi ),
+                              // Text that matches no item (fix round 2): an out-of-range value, an empty boolean.
+                              row( "c2", "7", choice ), row( "b4", "", boolean ) } } };
 }
 
 QJsonObject multiEditor( const QJsonArray& value )
@@ -686,7 +688,7 @@ TEST_CASE( "E14 closing a cell editor without a change raises no event", "[ui][w
 {
     KindsView v;
     REQUIRE( v.table );
-    for ( const auto* id : { "b1", "b2", "b3", "c1", "n1", "t1", "m1" } ) {
+    for ( const auto* id : { "b1", "b2", "b3", "c1", "n1", "t1", "m1", "c2", "b4" } ) {
         INFO( "row " << id );
         const auto before = v.cell( id ).data().toString();
         auto editor = v.open( id );
@@ -823,4 +825,60 @@ TEST_CASE( "E14 a number cell refuses values outside its range and other notatio
     v.commit( line, "n1" );
     REQUIRE( v.events.count() == 1 );
     CHECK( v.lastValue() == "45" );
+}
+
+// Task 7 fix round 2 (ruling A13).
+
+TEST_CASE( "E14 a cell list with no matching item commits any pick", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    SECTION( "an out-of-range choice: picking the first item from the list commits it" )
+    {
+        v.view.show();
+        v.table->edit( v.cell( "c2" ) );
+        auto* combo = v.table->viewport()->findChild<QComboBox*>();
+        REQUIRE( combo );
+        CHECK( combo->currentIndex() == -1 );                         // "7" is no item
+        QApplication::processEvents();
+        REQUIRE( combo->view()->isVisible() );
+        combo->view()->setCurrentIndex( combo->model()->index( 0, 0 ) );
+        QTest::keyClick( combo->view(), Qt::Key_Return );             // picks "Off (0)"
+        QApplication::processEvents();
+        REQUIRE( v.events.count() == 1 );
+        CHECK( v.lastValue() == "0" );
+        CHECK( v.events.last().front().toJsonObject().value( "previous" ) == "7" );
+        CHECK( v.cell( "c2" ).data().toString() == "Off (0)" );
+        CHECK( !editing( v.table ) );
+    }
+    SECTION( "an empty boolean: picking No commits false" )
+    {
+        auto editor = v.open( "b4" );
+        auto* combo = qobject_cast<QComboBox*>( editor.get() );
+        REQUIRE( combo );
+        CHECK( combo->currentIndex() == -1 );                         // "" is neither true nor false
+        combo->setCurrentIndex( combo->findData( false ) );
+        v.commit( combo, "b4" );
+        REQUIRE( v.events.count() == 1 );
+        CHECK( v.lastValue().isBool() );
+        CHECK( v.lastValue() == QJsonValue( false ) );
+        CHECK( v.cell( "b4" ).data().toString() == "No" );
+    }
+}
+
+TEST_CASE( "E14 replacing rows while a choice list is open closes the editor without an event", "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    v.table->edit( v.cell( "r1", 1 ) );
+    auto* combo = v.table->viewport()->findChild<QComboBox*>();
+    REQUIRE( combo );
+    QApplication::processEvents();
+    REQUIRE( combo->view()->isVisible() );
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" },
+                                                { "replace_rows", editableTable().value( "rows" ) } } } );
+    QApplication::processEvents();
+    CHECK( events.count() == 0 );
+    CHECK( !editing( v.table ) );
+    CHECK( v.cell( "r1", 1 ).data().toString() == "1" );
 }
