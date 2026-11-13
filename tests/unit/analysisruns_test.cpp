@@ -5,8 +5,6 @@
 #include <QMap>
 #include <QVariantMap>
 
-#include <limits>
-
 #include "analysisruns.h"
 
 namespace {
@@ -206,5 +204,6 @@ TEST_CASE( "result_source_index_must_be_a_whole_number", "[workbench][U15]" )
     REQUIRE_FALSE( analysisRunIndex( true ) );
     REQUIRE_FALSE( analysisRunIndex( QString( "1" ) ) );
     REQUIRE_FALSE( analysisRunIndex( QVariant{} ) );
-    REQUIRE_FALSE( analysisRunIndex( std::numeric_limits<double>::infinity() ) );
+    // Out of the int range. (No infinity here: some builds use fast-math, where it is undefined.)
+    REQUIRE_FALSE( analysisRunIndex( 1e20 ) );
 }
