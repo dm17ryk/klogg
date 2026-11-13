@@ -157,6 +157,11 @@ void Configuration::retrieveFromStorage( QSettings& settings )
                       DefaultConfiguration.enableMainSearchHighlightVariance_ )
               .toBool();
 
+    filteredViewMatchedByColumn_ = settings
+                                       .value( "filteredView.matchedByColumn",
+                                               DefaultConfiguration.filteredViewMatchedByColumn_ )
+                                       .toBool();
+
     mainSearchBackColor_
 #if QT_VERSION <= QT_VERSION_CHECK( 6, 4, 0 )
         .setNamedColor(
@@ -450,6 +455,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "regexpType.mainBackColor", mainSearchBackColor_.name( QColor::HexArgb ) );
     settings.setValue( "regexpType.mainHighlight", enableMainSearchHighlight_ );
     settings.setValue( "regexpType.mainHighlightVariate", enableMainSearchHighlightVariance_ );
+    settings.setValue( "filteredView.matchedByColumn", filteredViewMatchedByColumn_ );
     settings.setValue( "regexpType.autoRunSearch", autoRunSearchOnPatternChange_ );
 
     settings.setValue( "regexpType.quickfind", static_cast<int>( quickfindRegexpType_ ) );

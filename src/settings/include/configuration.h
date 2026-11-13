@@ -490,6 +490,16 @@ class Configuration final : public Persistable<Configuration> {
         enableMainSearchHighlightVariance_ = enable;
     }
 
+    // The filtered view's "Matched by" column.
+    bool filteredViewMatchedByColumn() const
+    {
+        return filteredViewMatchedByColumn_;
+    }
+    void setFilteredViewMatchedByColumn( bool visible )
+    {
+        filteredViewMatchedByColumn_ = visible;
+    }
+
     QColor mainSearchBackColor() const
     {
         return mainSearchBackColor_;
@@ -753,6 +763,7 @@ class Configuration final : public Persistable<Configuration> {
     QColor mainSearchBackColor_ = Qt::lightGray;
     bool enableMainSearchHighlight_ = false;
     bool enableMainSearchHighlightVariance_ = false;
+    bool filteredViewMatchedByColumn_ = true;
 
     bool allowFollowOnScroll_ = true;
     bool autoRunSearchOnPatternChange_ = false;

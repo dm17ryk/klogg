@@ -203,6 +203,25 @@ protected:
     virtual LineNumber lineIndex( LineNumber lineNumber ) const;
     virtual LineNumber maxDisplayLineNumber() const;
 
+    // An optional column between the line numbers and the text, for example the filter that
+    // selected a filtered line. A width of zero characters hides it. Called for visible lines only.
+    virtual int annotationColumnChars() const
+    {
+        return 0;
+    }
+    virtual QString lineAnnotation( LineNumber lineNumber, const QString& lineText ) const
+    {
+        Q_UNUSED( lineNumber );
+        Q_UNUSED( lineText );
+        return {};
+    }
+
+    // The context menu, for subclasses that add their own entries.
+    QMenu* popupMenu() const
+    {
+        return popupMenu_;
+    }
+
     // Get the overview associated with this view, or NULL if there is none
     Overview* getOverview() const
     {

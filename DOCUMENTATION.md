@@ -215,6 +215,25 @@ view mode to show either only the lines matching search pattern or only marked l
 
 Marks also appear as blue lines in the match overview.
 
+The filtered view has a "Matched by" column between the line numbers and the text:
+
+* for a search built from predefined filters it shows the name of the filter (or filters)
+  that selected each line, also when only one filter is used;
+* for a typed expression with alternatives, such as `WARN|ERROR`, it shows the alternative
+  that matched. A leading inline option such as `(?i)` applies to the alternatives after it,
+  exactly as in the search;
+* for a single typed pattern it shows the matched text;
+* an inverse search names nothing, and marked lines show `mark`.
+
+Labels are computed in the background, so a cell can stay blank for a moment after the line
+appears. The column is shown or hidden from the filtered view context menu.
+
+`Clear Results` (next to the search buttons, and `Clear results` in the filtered view context
+menu of any search tab) empties the filtered view but keeps the search: lines the search has
+not reached yet, and lines appended to the file later, still appear when they match, and a
+maximum match count starts again from zero. Marked lines stay visible, because marks are your
+own lines and not search results. Running the search again restores every match.
+
 It is possible to quickly jump to a specific line using `Ctrl+L` shortcut.
 
 *CILogg* uses Hyperscan library to perform regular expressions search. Hyperscan is very

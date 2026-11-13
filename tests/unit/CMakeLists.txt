@@ -18,6 +18,7 @@ add_executable(cilogg_tests
     encodingdetector_test.cpp
     importpreviewsdialog_test.cpp
     linepositionarray_test.cpp
+    matchlabeler_test.cpp
     patternmatcher_test.cpp
     previewdecodeutils_test.cpp
     previewmatchstage_test.cpp
