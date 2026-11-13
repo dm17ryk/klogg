@@ -1798,7 +1798,7 @@
       "requirements": [
         "UX19"
       ],
-      "task_body_chars": 5774,
+      "task_body_chars": 6346,
       "taskFile": "tasks/U14.md"
     },
     {
@@ -2294,7 +2294,7 @@
       "requirements": [
         "QUAL11"
       ],
-      "task_body_chars": 7489,
+      "task_body_chars": 7755,
       "taskFile": "tasks/R05.md"
     },
     {

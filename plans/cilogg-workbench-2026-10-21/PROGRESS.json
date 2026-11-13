@@ -2288,10 +2288,11 @@
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/106",
       "evidence": [
         "Local qualification 2026-11-13: cilogg_tests [U14] 5 cases / 24 assertions; cilogg_itests [U14],[logdata],[ui][automation] 88 cases / 3449 assertions passed.",
-        "Independent C++ review: no critical/high findings; medium findings fixed in the PR."
+        "Independent C++ review: no critical/high findings; medium findings fixed in the PR.",
+        "Codex/Sourcery review fixes, commits d3f6244e + 1afc338f, local qualification 2026-11-13: cilogg_tests [U14] 8 cases / 47 assertions; cilogg_itests [U14],[logdata],[ui][automation],[ui][context],[ui][filter-options],[ui][wrap],[ui][analysiscommands] 108 cases / 3675 assertions passed."
       ],
       "limitations": [
-        "Interpretation confirmed by the user 2026-11-13 (decision D13). The card was clarified the same day: clear cutoff and new search generation, typed search for the labeler, labels computed off the GUI thread, marked rows stay after a clear. PR #106 must pass the added cases (labels_same_text_different_mode, clear_discards_in_flight_results, clear_keeps_marked_rows) before acceptance.",
+        "Interpretation confirmed by the user 2026-11-13 (decision D13). Labels are computed off the GUI thread (one shared worker thread, blank until ready); Clear cuts at the scanned position and restarts the worker's match cap; queued progress of a cleared search is ignored; marked rows stay after a clear; each kept tab remembers its predefined filters.",
         "No manual visual check; dark theme not checked."
       ],
       "slices": []
@@ -2450,10 +2451,11 @@
       "evidence": [
         "Root cause from the user update cache (2026-11-13): 1203 helper run ended with 1223 after 78 s (shell error box), another transaction installed 1203 at 12:07:34, pending-update.json for 1203 never cleared; every cilogg.exe process (incl. one per MCP tool call) loaded and locked it and armed the exit-time install.",
         "Local qualification 2026-11-13 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022): cilogg_tests [updater] 22 cases / 165 assertions; full cilogg_tests 305 cases / 13794 assertions passed.",
-        "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run."
+        "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run.",
+        "Codex/Sourcery review redesign, commits 72eea42f + b7eb06d3, local qualification 2026-11-13: cilogg_tests [updater] 32 cases passed; the concurrent-claim case passed 30/30 runs after the claim lock; full cilogg_tests 315 cases, 314 passed (the failure, preview decoder 'Overdue successful delivery times out', passes 5/5 alone and is unrelated)."
       ],
       "limitations": [
-        "Design revision in progress on PR #105 (2026-11-13): non-replacing claim with token re-check, launchedAt, exclusive updater.lock, next-start recovery of a launched record (running / report once / young kept / abandoned reported once and restored as ready, not re-armed), reconciliation consumes the record atomically, cleanup keeps every referenced package, foreign pending records never overwritten, distinct relaunch phase, stagedPath == packagePath with a hash of the launched file, startup acknowledgement before session restore. The qualification above predates it.",
+        "PR #105 implements (2026-11-13): claim lock + non-replacing claim with token re-check, launchedAt, exclusive updater.lock, next-start recovery of a launched record (running / report once / young kept / abandoned reported once and restored as ready, not re-armed), reconciliation consumes the record atomically, cleanup keeps every referenced package, foreign pending records never overwritten, distinct relaunch phase, stagedPath == packagePath with a hash of the launched file, startup acknowledgement before session restore. POSIX branches compile only in hosted CI; the deny-write verification is Windows-only and cannot stop a same-user attacker who controls the record.",
         "No real elevated (UAC) install was exercised locally.",
         "Hosted CI pending at registration time."
       ],
