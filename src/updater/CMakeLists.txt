@@ -4,7 +4,7 @@ target_include_directories(cilogg_updater PRIVATE "${CMAKE_SOURCE_DIR}/src/versi
 set_target_properties(cilogg_updater PROPERTIES OUTPUT_NAME "cilogg_updater")
 
 if(WIN32)
-  target_link_libraries(cilogg_updater PRIVATE shell32)
+  target_link_libraries(cilogg_updater PRIVATE shell32 ole32)
 endif()
 
 install(TARGETS cilogg_updater RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

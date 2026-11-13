@@ -43,6 +43,8 @@ struct Arguments {
 };
 
 std::ofstream logFile;
+// Which step produced the transaction's exit code (see update_protocol::*Phase).
+std::string resultPhase = cilogg::update_protocol::InstallerPhase;
 
 void log( const std::string& message )
 {
@@ -166,22 +168,80 @@ std::wstring quote( const fs::path& value )
     return L"\"" + value.wstring() + L"\"";
 }
 
+std::string describeSystemError( DWORD code )
+{
+    wchar_t* buffer = nullptr;
+    const auto length = FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr, code, 0, reinterpret_cast<wchar_t*>( &buffer ), 0, nullptr );
+    std::string text;
+    if ( length > 0 && buffer ) {
+        const auto size = WideCharToMultiByte( CP_UTF8, 0, buffer, static_cast<int>( length ),
+                                               nullptr, 0, nullptr, nullptr );
+        text.resize( static_cast<size_t>( size > 0 ? size : 0 ) );
+        if ( size > 0 )
+            WideCharToMultiByte( CP_UTF8, 0, buffer, static_cast<int>( length ), text.data(),
+                                 size, nullptr, nullptr );
+        while ( !text.empty() && ( text.back() == '\n' || text.back() == '\r' ) )
+            text.pop_back();
+    }
+    if ( buffer )
+        LocalFree( buffer );
+    return text;
+}
+
+// Starts the installer elevated and waits for it. SEE_MASK_FLAG_NO_UI keeps the shell from
+// showing its own error box (for example "The specified path does not exist", titled with the
+// package path); failures are logged and reported to the next CILogg start instead. The UAC
+// prompt itself is not affected by that flag.
 int runElevated( const fs::path& executable, const std::wstring& parameters )
 {
-    SHELLEXECUTEINFOW info{};
-    info.cbSize = sizeof( info );
-    info.fMask = SEE_MASK_NOCLOSEPROCESS;
-    info.lpVerb = L"runas";
-    info.lpFile = executable.c_str();
-    info.lpParameters = parameters.c_str();
-    info.nShow = SW_SHOWNORMAL;
-    if ( !ShellExecuteExW( &info ) )
-        return static_cast<int>( GetLastError() );
-    WaitForSingleObject( info.hProcess, INFINITE );
-    DWORD code = 1;
-    GetExitCodeProcess( info.hProcess, &code );
-    CloseHandle( info.hProcess );
-    return static_cast<int>( code );
+    namespace protocol = cilogg::update_protocol;
+    // ShellExecuteEx resolves the file through the shell namespace; give it a native path.
+    const auto file = fs::path( executable ).make_preferred();
+    DWORD error = ERROR_SUCCESS;
+    for ( int attempt = 1;; ++attempt ) {
+        std::error_code status;
+        if ( !fs::is_regular_file( file, status ) ) {
+            error = ERROR_FILE_NOT_FOUND;
+            log( "Installer package is not accessible: " + file.u8string()
+                 + ( status ? "; error=" + status.message() : std::string{} ) );
+        }
+        else {
+            SHELLEXECUTEINFOW info{};
+            info.cbSize = sizeof( info );
+            info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
+            info.lpVerb = L"runas";
+            info.lpFile = file.c_str();
+            info.lpParameters = parameters.c_str();
+            info.lpDirectory = nullptr;
+            info.nShow = SW_SHOWNORMAL;
+            if ( ShellExecuteExW( &info ) ) {
+                resultPhase = protocol::InstallerPhase;
+                if ( !info.hProcess ) {
+                    log( "Installer started without a process handle; exit code unknown" );
+                    return 1;
+                }
+                WaitForSingleObject( info.hProcess, INFINITE );
+                DWORD code = 1;
+                GetExitCodeProcess( info.hProcess, &code );
+                CloseHandle( info.hProcess );
+                return static_cast<int>( code );
+            }
+            error = GetLastError();
+            log( "Elevated installer launch attempt " + std::to_string( attempt )
+                 + " failed: code=" + std::to_string( error ) + " ("
+                 + describeSystemError( error ) + ")" );
+        }
+        if ( !protocol::isTransientLaunchError( error )
+             || attempt >= protocol::InstallerLaunchAttempts ) {
+            resultPhase = protocol::LaunchPhase;
+            return static_cast<int>( error );
+        }
+        const auto delay = protocol::installerLaunchRetryDelayMs( attempt );
+        log( "Retrying installer launch in " + std::to_string( delay ) + " ms" );
+        std::this_thread::sleep_for( std::chrono::milliseconds( delay ) );
+    }
 }
 
 bool launch( const Arguments& args )
@@ -412,6 +472,13 @@ bool rollback( const Arguments& args )
 
 int installSystemPackage( const Arguments& args )
 {
+    std::error_code missing;
+    if ( !fs::is_regular_file( args.staged, missing ) ) {
+        log( "System-package installation blocked: staged package is missing: "
+             + args.staged.u8string() );
+        resultPhase = cilogg::update_protocol::LaunchPhase;
+        return cilogg::update_protocol::StagedPackageMissingExitCode;
+    }
 #ifdef _WIN32
     const auto installDir = args.current.parent_path();
     // NSIS requires /D to be last and unquoted, even when the path contains spaces.
@@ -451,6 +518,46 @@ int installSystemPackage( const Arguments& args )
         { pkexecPath.string(), dnfPath.string(), "install", "-y", args.staged.string() } );
 #endif
 }
+
+// Records the outcome for the next CILogg start, which explains a failed exit-time install
+// once instead of silently retrying it on every exit.
+void writeResult( const Arguments& args, int code )
+{
+    const auto path = args.log.parent_path() / cilogg::update_protocol::InstallResultFileName;
+    std::ofstream result( path, std::ios::trunc );
+    result << "token=" << args.token << "\n"
+           << "mode=" << args.mode << "\n"
+           << "phase=" << resultPhase << "\n"
+           << "code=" << code << "\n";
+    if ( !result )
+        log( "Could not write the install result file" );
+}
+
+int runTransaction( const Arguments& args )
+{
+    const bool selfContained
+        = args.mode == "windows-portable" || args.mode == "macos-bundle" || args.mode == "appimage";
+    if ( !selfContained ) {
+        const auto code = installSystemPackage( args );
+        log( "System installer completed with exit code " + std::to_string( code ) );
+        if ( code != 0 )
+            return code;
+        return launch( args ) ? 0 : 3;
+    }
+    resultPhase = cilogg::update_protocol::ReplacePhase;
+    if ( !replaceSelfContained( args ) )
+        return 4;
+    if ( !launch( args ) ) {
+        log( "New-version launch failed immediately" );
+        return rollback( args ) ? 0 : 5;
+    }
+    if ( acknowledgementArrived( args ) ) {
+        log( "New version acknowledged startup; backup retained for this transaction" );
+        return 0;
+    }
+    log( "New version did not acknowledge startup before timeout" );
+    return rollback( args ) ? 0 : 6;
+}
 } // namespace
 
 #ifdef _WIN32
@@ -466,29 +573,18 @@ int main( int argc, char** argv )
     }
     logFile.open( args.log, std::ios::app );
     log( "Updater helper started; mode=" + args.mode );
+#ifdef _WIN32
+    // ShellExecuteEx may use COM; Microsoft recommends this apartment for it.
+    const auto comResult
+        = CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE );
+    if ( FAILED( comResult ) )
+        log( "COM initialization failed; continuing" );
+#endif
     waitForProcess( args.waitPid );
     std::error_code error;
     fs::remove( args.acknowledgement, error );
 
-    const bool selfContained
-        = args.mode == "windows-portable" || args.mode == "macos-bundle" || args.mode == "appimage";
-    if ( !selfContained ) {
-        const auto code = installSystemPackage( args );
-        log( "System installer completed with exit code " + std::to_string( code ) );
-        if ( code != 0 )
-            return code;
-        return launch( args ) ? 0 : 3;
-    }
-    if ( !replaceSelfContained( args ) )
-        return 4;
-    if ( !launch( args ) ) {
-        log( "New-version launch failed immediately" );
-        return rollback( args ) ? 0 : 5;
-    }
-    if ( acknowledgementArrived( args ) ) {
-        log( "New version acknowledged startup; backup retained for this transaction" );
-        return 0;
-    }
-    log( "New version did not acknowledge startup before timeout" );
-    return rollback( args ) ? 0 : 6;
+    const auto code = runTransaction( args );
+    writeResult( args, code );
+    return code;
 }

@@ -6,6 +6,9 @@
 
 #include <algorithm>
 #include <ctime>
+#include <filesystem>
+#include <limits>
+#include <system_error>
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -23,6 +26,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSysInfo>
+#include <QTimer>
 #include <QUuid>
 #include <QVersionNumber>
 
@@ -33,6 +37,103 @@
 namespace {
 constexpr auto ReleasesUrl = "https://api.github.com/repos/dm17ryk/klogg/releases?per_page=30";
 constexpr auto ManifestName = "cilogg-update-manifest.json";
+// The scheduled transaction, armed for the next clean exit (or ready for a manual install).
+constexpr auto PendingFileName = "pending-update.json";
+// The transaction handed to the helper at exit. The next start of this installation either
+// finds the new version running (completed) or reports why the install did not happen.
+constexpr auto LaunchedFileName = "pending-update.launched.json";
+
+bool automationOrHeadless()
+{
+    return qEnvironmentVariableIntValue( "CILOGG_AUTOMATION" ) > 0
+           || QCoreApplication::arguments().contains( QStringLiteral( "-platform" ) );
+}
+
+bool samePath( const QString& left, const QString& right )
+{
+    if ( left.isEmpty() || right.isEmpty() )
+        return false;
+    const auto normalized = []( const QString& path ) {
+        return QDir::cleanPath( QFileInfo( QDir::fromNativeSeparators( path ) ).absoluteFilePath() );
+    };
+#ifdef Q_OS_WIN
+    constexpr auto sensitivity = Qt::CaseInsensitive;
+#else
+    constexpr auto sensitivity = Qt::CaseSensitive;
+#endif
+    return normalized( left ).compare( normalized( right ), sensitivity ) == 0;
+}
+
+// Reads a persisted transaction and closes the file before returning, so no other process is
+// blocked from replacing or deleting it.
+std::optional<PendingUpdate> readPendingFile( const QString& path, QString* errorMessage )
+{
+    QByteArray bytes;
+    {
+        QFile file( path );
+        if ( !file.exists() ) {
+            if ( errorMessage )
+                *errorMessage = QStringLiteral( "No persisted update transaction" );
+            return std::nullopt;
+        }
+        if ( !file.open( QIODevice::ReadOnly ) ) {
+            if ( errorMessage )
+                *errorMessage = QStringLiteral( "Cannot read %1: %2" )
+                                    .arg( QDir::toNativeSeparators( path ), file.errorString() );
+            return std::nullopt;
+        }
+        bytes = file.readAll();
+    }
+    QString error;
+    auto pending = PendingUpdate::fromJson( QJsonDocument::fromJson( bytes ).object(), &error );
+    if ( !pending.isValid() ) {
+        if ( errorMessage )
+            *errorMessage = error.isEmpty() ? QStringLiteral( "Invalid update transaction" ) : error;
+        return std::nullopt;
+    }
+    return pending;
+}
+
+// Parses the helper's install-result.txt; true only for a result of transaction `token`.
+bool readInstallResult( const QString& directory, const QString& token, int* code,
+                        QString* phase )
+{
+    QFile file( QDir( directory ).filePath(
+        QString::fromLatin1( cilogg::update_protocol::InstallResultFileName ) ) );
+    if ( !file.open( QIODevice::ReadOnly | QIODevice::Text ) )
+        return false;
+    QString resultToken;
+    bool haveCode = false;
+    while ( !file.atEnd() ) {
+        const auto line = QString::fromUtf8( file.readLine() ).trimmed();
+        if ( line.startsWith( QLatin1String( "token=" ) ) )
+            resultToken = line.mid( 6 );
+        else if ( line.startsWith( QLatin1String( "phase=" ) ) )
+            *phase = line.mid( 6 );
+        else if ( line.startsWith( QLatin1String( "code=" ) ) )
+            *code = static_cast<int>( line.mid( 5 ).toLongLong( &haveCode ) );
+    }
+    return haveCode && resultToken == token;
+}
+
+// One native rename that replaces `to`. Unlike QFile::rename it never falls back to
+// copy-and-delete, so it is a usable claim: of two processes renaming the same source, exactly
+// one succeeds.
+bool replaceRename( const QString& from, const QString& to, QString* errorMessage )
+{
+    const auto native = []( const QString& path ) {
+#ifdef Q_OS_WIN
+        return std::filesystem::path( QDir::toNativeSeparators( path ).toStdWString() );
+#else
+        return std::filesystem::path( QFile::encodeName( path ).toStdString() );
+#endif
+    };
+    std::error_code error;
+    std::filesystem::rename( native( from ), native( to ), error );
+    if ( error && errorMessage )
+        *errorMessage = QString::fromStdString( error.message() );
+    return !error;
+}
 
 std::time_t checkIntervalForFrequency( UpdateFrequency frequency )
 {
@@ -269,14 +370,76 @@ void VersionChecker::initialize()
     qRegisterMetaType<PendingUpdate>( "PendingUpdate" );
     qRegisterMetaType<UpdateState>( "UpdateState" );
     manager_->setRedirectPolicy( QNetworkRequest::NoLessSafeRedirectPolicy );
-    loadPendingUpdate();
+    backgroundRetryTimer_ = new QTimer( this );
+    backgroundRetryTimer_->setSingleShot( true );
+    connect( backgroundRetryTimer_, &QTimer::timeout, this, &VersionChecker::retryBackgroundCheck );
+    LOG_DEBUG << "Updater controller constructed (passive) with strict TLS and safe redirects";
+}
+
+void VersionChecker::activate()
+{
+    if ( active_ ) {
+        LOG_DEBUG << "Updater activation ignored: already active";
+        return;
+    }
+    acknowledgeStartup();
+    if ( !testTransport_ && automationOrHeadless() ) {
+        LOG_INFO << "Updater activation skipped in automation/headless mode; the persisted "
+                    "update transaction is left untouched and no exit-time install is armed";
+        return;
+    }
+    active_ = true;
+    reconcileLaunchedUpdate();
+    reconcileScheduledUpdate();
+    removeExpiredDownloads();
+    connect( QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
+             &VersionChecker::launchPendingUpdate, Qt::UniqueConnection );
+    LOG_INFO << "Updater activated for installation "
+             << installationPath( InstallKind::WindowsSetup ) << "; state="
+             << updateStateName( state_ );
+}
+
+void VersionChecker::setUpdateRootForTesting( const QString& updateRoot )
+{
+    if ( !testTransport_ ) {
+        LOG_WARNING << "Ignoring a test update root on a production updater";
+        return;
+    }
+    testUpdateRoot_ = updateRoot;
+}
+
+void VersionChecker::setBackgroundRetryDelaysForTesting( const QList<int>& delaysMs )
+{
+    if ( !testTransport_ ) {
+        LOG_WARNING << "Ignoring test retry delays on a production updater";
+        return;
+    }
+    backgroundRetryDelaysMs_ = delaysMs;
+}
+
+void VersionChecker::setCurrentVersionForTesting( const QString& version )
+{
+    if ( !testTransport_ ) {
+        LOG_WARNING << "Ignoring a test version on a production updater";
+        return;
+    }
+    testCurrentVersion_ = version;
+}
+
+QString VersionChecker::currentVersion() const
+{
+    return testCurrentVersion_.isEmpty() ? QString( kloggVersion() ) : testCurrentVersion_;
+}
+
+void VersionChecker::removeExpiredDownloads()
+{
     const QDir cacheRoot( updateRoot() );
     for ( const auto& entry : cacheRoot.entryInfoList( QDir::Dirs | QDir::NoDotAndDotDot ) ) {
         const bool protectsPending
             = pendingUpdate_.isValid()
               && QFileInfo( pendingUpdate_.packagePath )
                      .absoluteFilePath()
-                     .startsWith( entry.absoluteFilePath() + QDir::separator() );
+                     .startsWith( entry.absoluteFilePath() + QLatin1Char( '/' ) );
         const bool expired = entry.lastModified().daysTo( QDateTime::currentDateTimeUtc() ) > 30;
         if ( expired && !protectsPending ) {
             const bool removed = QDir( entry.absoluteFilePath() ).removeRecursively();
@@ -289,9 +452,6 @@ void VersionChecker::initialize()
                       << ", removed=false";
         }
     }
-    connect( QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this,
-             &VersionChecker::launchPendingUpdate );
-    LOG_INFO << "Updater controller initialized with strict TLS and safe redirects";
 }
 
 VersionChecker::~VersionChecker()
@@ -322,8 +482,7 @@ void VersionChecker::startCheck()
         LOG_INFO << "Scheduled update check skipped because version checking is disabled";
         return;
     }
-    if ( qEnvironmentVariableIntValue( "CILOGG_AUTOMATION" ) > 0
-         || QCoreApplication::arguments().contains( QStringLiteral( "-platform" ) ) ) {
+    if ( automationOrHeadless() ) {
         LOG_INFO << "Scheduled update check skipped in automation/headless mode";
         return;
     }
@@ -335,7 +494,23 @@ void VersionChecker::startCheck()
                   << " seconds away";
         return;
     }
-    requestReleases( config.updateChannel(), false );
+    startBackgroundCheck( config.updateChannel() );
+}
+
+void VersionChecker::startBackgroundCheck( UpdateChannel channel )
+{
+    backgroundRetries_ = 0;
+    requestReleases( channel, false );
+}
+
+void VersionChecker::retryBackgroundCheck()
+{
+    if ( !backgroundCheck_ || activeReply_ ) {
+        LOG_DEBUG << "Background update retry dropped: a user operation took over";
+        return;
+    }
+    LOG_INFO << "Retrying background update check; retry=" << backgroundRetries_;
+    requestReleases( requestedChannel_, false );
 }
 
 void VersionChecker::forceCheck()
@@ -358,8 +533,11 @@ void VersionChecker::requestReleases( UpdateChannel channel, bool forced )
             Q_EMIT checkFinished( false, tr( "An update check is already running." ) );
         return;
     }
+    if ( forced )
+        backgroundRetryTimer_->stop();
     requestedChannel_ = channel;
     forced_ = forced;
+    backgroundCheck_ = !forced;
     setState( UpdateState::Checking, forced ? QStringLiteral( "manual check" )
                                             : QStringLiteral( "scheduled deadline reached" ) );
     startRequest( releasesUrl_, RequestPurpose::Releases,
@@ -448,14 +626,17 @@ void VersionChecker::handleReplyFinished()
         data = reply->readAll();
     }
     else {
+        const bool rateLimited = status == 403 || status == 429;
+        // No HTTP status means the server was not reached (DNS, proxy, VPN, TLS, timeout).
+        const bool transient = !rateLimited && ( status == 0 || status == 408 || status >= 500 );
         const auto message
-            = status == 403 || status == 429
+            = rateLimited
                   ? tr( "GitHub rate-limited the update check. Please try again later." )
                   : tr( "Update request failed (%1): %2" )
                         .arg( status )
                         .arg( reply->errorString() );
         reply->deleteLater();
-        fail( message );
+        fail( message, transient );
         return;
     }
     if ( purpose == RequestPurpose::Releases )
@@ -813,16 +994,135 @@ void VersionChecker::handleManifestReply( QNetworkReply& reply, const QByteArray
 
 QString VersionChecker::updateRoot() const
 {
+    if ( !testUpdateRoot_.isEmpty() )
+        return testUpdateRoot_;
     return QDir( QStandardPaths::writableLocation( QStandardPaths::AppLocalDataLocation ) )
         .filePath( QStringLiteral( "updates" ) );
+}
+
+QString VersionChecker::pendingFilePath() const
+{
+    return QDir( updateRoot() ).filePath( QString::fromLatin1( PendingFileName ) );
+}
+
+QString VersionChecker::launchedFilePath() const
+{
+    return QDir( updateRoot() ).filePath( QString::fromLatin1( LaunchedFileName ) );
+}
+
+QString VersionChecker::installationPath( InstallKind kind )
+{
+    switch ( kind ) {
+    case InstallKind::WindowsPortable:
+        return QCoreApplication::applicationDirPath();
+    case InstallKind::MacBundle: {
+        // <bundle>.app/Contents/MacOS/<executable>
+        auto path = QDir( QCoreApplication::applicationDirPath() ).absolutePath();
+        for ( auto i = 0; i < 2; ++i )
+            path = QFileInfo( path ).absolutePath();
+        return path;
+    }
+    case InstallKind::AppImage:
+        return qEnvironmentVariable( "APPIMAGE", QCoreApplication::applicationFilePath() );
+    case InstallKind::WindowsSetup:
+    case InstallKind::Deb:
+    case InstallKind::Rpm:
+    case InstallKind::None:
+        break;
+    }
+    return QCoreApplication::applicationFilePath();
+}
+
+VersionChecker::PendingDisposition
+VersionChecker::classifyPendingUpdate( const PendingUpdate& pending, const QString& currentVersion,
+                                       const QString& installationPath )
+{
+    if ( !pending.isValid() )
+        return PendingDisposition::Invalid;
+    // Checked before the version: a development build or a second installation that shares
+    // the update directory must never consume or delete another installation's transaction.
+    if ( !samePath( pending.currentPath, installationPath ) )
+        return PendingDisposition::ForeignInstallation;
+    if ( !isVersionNewer( currentVersion, pending.release.version ) )
+        return PendingDisposition::Completed;
+    return PendingDisposition::Applicable;
+}
+
+bool VersionChecker::claimScheduledUpdate( const QString& updateRoot, const QString& token,
+                                           QString* errorMessage )
+{
+    const QDir root( updateRoot );
+    const auto pendingPath = root.filePath( QString::fromLatin1( PendingFileName ) );
+    const auto launchedPath = root.filePath( QString::fromLatin1( LaunchedFileName ) );
+    QString error;
+    const auto scheduled = readPendingFile( pendingPath, &error );
+    if ( !scheduled || scheduled->transactionToken != token ) {
+        if ( errorMessage )
+            *errorMessage = scheduled ? QStringLiteral( "The scheduled update was replaced" )
+                                      : QStringLiteral( "The scheduled update is gone: %1" )
+                                            .arg( error );
+        return false;
+    }
+    // The rename is the claim: it fails for every process but one. It replaces a leftover
+    // launch record, which activation has already reconciled.
+    if ( !replaceRename( pendingPath, launchedPath, &error ) ) {
+        if ( errorMessage )
+            *errorMessage
+                = QStringLiteral( "Another CILogg process claimed the scheduled update: %1" )
+                      .arg( error );
+        return false;
+    }
+    return true;
+}
+
+QString VersionChecker::describeInstallResult( int code, const QString& phase )
+{
+    namespace protocol = cilogg::update_protocol;
+    if ( phase == QLatin1String( protocol::InstallerPhase ) ) {
+        switch ( code ) {
+        case 0:
+            return tr( "The installer completed, but the new version did not start." );
+        case 1:
+            return tr( "The installer was cancelled." );
+        case 2:
+            return tr( "The installer stopped before replacing any files, for example because "
+                       "CILogg processes could not be closed." );
+        default:
+            return tr( "The installer failed with exit code %1." ).arg( code );
+        }
+    }
+    if ( phase == QLatin1String( protocol::LaunchPhase ) || phase.isEmpty() ) {
+        switch ( code ) {
+        case static_cast<int>( protocol::FileNotFoundError ):
+        case static_cast<int>( protocol::PathNotFoundError ):
+        case static_cast<int>( protocol::AccessDeniedError ):
+        case static_cast<int>( protocol::SharingViolationError ):
+        case static_cast<int>( protocol::LockViolationError ):
+            return tr( "Windows could not start the installer (system error %1). Security "
+                       "software may have been inspecting the newly downloaded file." )
+                .arg( code );
+        case protocol::StagedPackageMissingExitCode:
+            return tr( "The downloaded update package was missing when CILogg exited." );
+        case static_cast<int>( protocol::CancelledError ):
+            return tr( "The administrator (UAC) prompt was declined." );
+        default:
+            break;
+        }
+    }
+    return tr( "The update helper finished with code %1." ).arg( code );
 }
 
 void VersionChecker::downloadUpdate( const ReleaseInfo& release, bool installOnExit )
 {
     if ( activeReply_ ) {
-        fail( tr( "Another updater operation is already active." ) );
+        // Leave the running operation and its state alone; only the user's request fails.
+        LOG_WARNING << "Download request rejected: another updater operation is active";
+        Q_EMIT errorOccurred( tr( "Another updater operation is already active." ) );
         return;
     }
+    // From here on every failure answers the user's request.
+    backgroundCheck_ = false;
+    backgroundRetryTimer_->stop();
     if ( !release.canAutomaticallyUpdate() ) {
         fail( release.automaticUpdateBlockReason.isEmpty()
                   ? tr( "This release has no verified package for this installation." )
@@ -922,11 +1222,10 @@ bool VersionChecker::preparePendingUpdate( QString* errorMessage )
     pendingUpdate_.acknowledgementPath = QDir( root ).filePath( QStringLiteral( "startup.ack" ) );
     pendingUpdate_.helperLogPath = QDir( root ).filePath( QStringLiteral( "cilogg-updater.log" ) );
     pendingUpdate_.backupPath = QDir( root ).filePath( QStringLiteral( "backup" ) );
-    pendingUpdate_.currentPath = QCoreApplication::applicationFilePath();
+    pendingUpdate_.currentPath = installationPath( pendingUpdate_.release.asset.installKind );
     switch ( pendingUpdate_.release.asset.installKind ) {
     case InstallKind::WindowsPortable: {
         setState( UpdateState::Staging, QStringLiteral( "extracting portable archive" ) );
-        pendingUpdate_.currentPath = QCoreApplication::applicationDirPath();
         pendingUpdate_.stagedPath = QDir( root ).filePath( QStringLiteral( "staged" ) );
         if ( !extractPortableArchive( pendingUpdate_.packagePath, pendingUpdate_.stagedPath,
                                       errorMessage ) )
@@ -948,9 +1247,6 @@ bool VersionChecker::preparePendingUpdate( QString* errorMessage )
     case InstallKind::MacBundle: {
         setState( UpdateState::Staging,
                   QStringLiteral( "extracting macOS app bundle with ditto" ) );
-        pendingUpdate_.currentPath = QDir( QCoreApplication::applicationDirPath() ).absolutePath();
-        for ( auto i = 0; i < 2; ++i )
-            pendingUpdate_.currentPath = QFileInfo( pendingUpdate_.currentPath ).absolutePath();
         pendingUpdate_.stagedPath = QDir( root ).filePath( QStringLiteral( "staged" ) );
         QDir( pendingUpdate_.stagedPath ).removeRecursively();
         QDir().mkpath( pendingUpdate_.stagedPath );
@@ -976,8 +1272,6 @@ bool VersionChecker::preparePendingUpdate( QString* errorMessage )
         break;
     }
     case InstallKind::AppImage:
-        pendingUpdate_.currentPath
-            = qEnvironmentVariable( "APPIMAGE", QCoreApplication::applicationFilePath() );
         pendingUpdate_.stagedPath = pendingUpdate_.packagePath;
         break;
     case InstallKind::WindowsSetup:
@@ -1004,64 +1298,186 @@ bool VersionChecker::preparePendingUpdate( QString* errorMessage )
 
 bool VersionChecker::persistPendingUpdate( QString* errorMessage ) const
 {
-    const auto path = QDir( updateRoot() ).filePath( QStringLiteral( "pending-update.json" ) );
-    QSaveFile file( path );
+    return writePendingUpdate( pendingUpdate_, errorMessage );
+}
+
+bool VersionChecker::writePendingUpdate( const PendingUpdate& pending, QString* errorMessage ) const
+{
+    QDir().mkpath( updateRoot() );
+    QSaveFile file( pendingFilePath() );
     if ( !file.open( QIODevice::WriteOnly )
-         || file.write( QJsonDocument( pendingUpdate_.toJson() ).toJson( QJsonDocument::Indented ) )
-                < 0
+         || file.write( QJsonDocument( pending.toJson() ).toJson( QJsonDocument::Indented ) ) < 0
          || !file.commit() ) {
         if ( errorMessage )
             *errorMessage
                 = tr( "Cannot persist pending update state: %1" ).arg( file.errorString() );
         return false;
     }
-    LOG_INFO << "Pending update state persisted; install-on-exit=" << pendingUpdate_.installOnExit;
+    LOG_INFO << "Pending update state persisted; install-on-exit=" << pending.installOnExit;
     return true;
 }
 
-void VersionChecker::loadPendingUpdate()
+void VersionChecker::reconcileLaunchedUpdate()
 {
-    QFile file( QDir( updateRoot() ).filePath( QStringLiteral( "pending-update.json" ) ) );
-    if ( !file.exists() ) {
-        LOG_DEBUG << "No persisted pending update exists";
-        return;
-    }
-    if ( !file.open( QIODevice::ReadOnly ) ) {
-        LOG_WARNING << "Cannot read persisted pending update: " << file.errorString();
+    const auto path = launchedFilePath();
+    if ( !QFileInfo::exists( path ) ) {
+        LOG_DEBUG << "No exit-time install awaits reconciliation";
         return;
     }
     QString error;
-    pendingUpdate_
-        = PendingUpdate::fromJson( QJsonDocument::fromJson( file.readAll() ).object(), &error );
-    if ( !pendingUpdate_.isValid() ) {
-        LOG_WARNING << "Persisted pending update rejected: " << error;
-        pendingUpdate_ = {};
+    const auto launched = readPendingFile( path, &error );
+    const auto disposition
+        = launched ? classifyPendingUpdate( *launched, currentVersion(),
+                                            installationPath( launched->release.asset.installKind ) )
+                   : PendingDisposition::Invalid;
+    switch ( disposition ) {
+    case PendingDisposition::Invalid:
+        LOG_WARNING << "Discarding unreadable exit-time install record: " << error;
+        QFile::remove( path );
+        return;
+    case PendingDisposition::ForeignInstallation:
+        LOG_INFO << "Exit-time install record belongs to " << launched->currentPath
+                 << "; left untouched";
+        return;
+    case PendingDisposition::Completed:
+        LOG_INFO << "Exit-time install of " << launched->release.version
+                 << " completed; clearing its record";
+        QFile::remove( path );
+        return;
+    case PendingDisposition::Applicable:
+        break;
+    }
+
+    // The helper was started, yet this installation still runs the old version.
+    int code = 0;
+    QString phase;
+    const auto logDirectory = QFileInfo( launched->helperLogPath ).absolutePath();
+    const bool haveResult
+        = readInstallResult( logDirectory, launched->transactionToken, &code, &phase );
+    if ( !haveResult ) {
+        // CILogg may have been restarted while the helper still waits for the UAC prompt or
+        // the installer; judge the transaction at a later start instead of reporting it now.
+        const QFileInfo helperLog( launched->helperLogPath );
+        const auto quietSeconds = helperLog.exists()
+                                      ? helperLog.lastModified().secsTo( QDateTime::currentDateTime() )
+                                      : std::numeric_limits<qint64>::max();
+        if ( quietSeconds < 15 * 60 ) {
+            LOG_INFO << "Exit-time install of " << launched->release.version
+                     << " may still be running (helper log updated " << quietSeconds
+                     << " s ago); its record is kept";
+            return;
+        }
+    }
+    const auto reason = haveResult ? describeInstallResult( code, phase )
+                                   : tr( "The update helper did not report a result." );
+    LOG_WARNING << "Exit-time install of " << launched->release.version
+                << " did not complete: " << reason;
+    QFile::remove( path );
+    // Never re-arm automatically: a declined or blocked installer would otherwise be started
+    // again on every exit. The verified package stays ready for an explicit install.
+    auto ready = *launched;
+    ready.installOnExit = false;
+    if ( QFileInfo::exists( pendingFilePath() ) )
+        LOG_INFO << "A newer scheduled update supersedes the failed one";
+    else if ( !writePendingUpdate( ready, &error ) )
+        LOG_WARNING << "Cannot keep the failed update as ready: " << error;
+    const auto message
+        = tr( "CILogg %1 was downloaded but was not installed when CILogg last exited.\n\n%2\n\n"
+              "It will not be retried automatically. Use Help > Check for Updates to install "
+              "it.\n\nDetails: %3" )
+              .arg( launched->release.version, reason,
+                    QDir::toNativeSeparators( launched->helperLogPath ) );
+    QMetaObject::invokeMethod(
+        this, [ this, message ] { Q_EMIT installFailed( message ); }, Qt::QueuedConnection );
+}
+
+void VersionChecker::reconcileScheduledUpdate()
+{
+    pendingUpdate_ = {};
+    const auto path = pendingFilePath();
+    if ( !QFileInfo::exists( path ) ) {
+        LOG_DEBUG << "No persisted pending update exists";
         return;
     }
-    if ( !fileMatchesVerifiedAsset( pendingUpdate_.packagePath, pendingUpdate_.release.asset ) ) {
+    QString error;
+    const auto pending = readPendingFile( path, &error );
+    const auto disposition
+        = pending ? classifyPendingUpdate( *pending, currentVersion(),
+                                           installationPath( pending->release.asset.installKind ) )
+                  : PendingDisposition::Invalid;
+    switch ( disposition ) {
+    case PendingDisposition::Invalid:
+        LOG_WARNING << "Persisted pending update rejected: " << error;
+        QFile::remove( path );
+        return;
+    case PendingDisposition::ForeignInstallation:
+        LOG_INFO << "Persisted pending update belongs to " << pending->currentPath
+                 << "; left untouched";
+        return;
+    case PendingDisposition::Completed:
+        LOG_INFO << "Persisted pending update " << pending->release.version
+                 << " is already installed (current " << currentVersion() << "); clearing it";
+        QFile::remove( path );
+        return;
+    case PendingDisposition::Applicable:
+        break;
+    }
+    if ( !fileMatchesVerifiedAsset( pending->packagePath, pending->release.asset ) ) {
         LOG_ERROR << "Persisted pending update package failed restart-time verification";
-        pendingUpdate_ = {};
-        QFile::remove( file.fileName() );
+        QFile::remove( path );
         return;
     }
     LOG_INFO << "Persisted pending update package passed restart-time SHA-256 verification";
+    pendingUpdate_ = *pending;
     setState( pendingUpdate_.installOnExit ? UpdateState::Scheduled : UpdateState::Ready,
               QStringLiteral( "restored persisted pending update" ) );
 }
 
 void VersionChecker::launchPendingUpdate()
 {
-    if ( !pendingUpdate_.isValid() || !pendingUpdate_.installOnExit ) {
+    if ( !active_ ) {
+        LOG_DEBUG << "Exit-time updater launch skipped: updater is not active in this process";
+        return;
+    }
+    // The persisted transaction is authoritative: the Preferences dialog may have replaced it
+    // since startup, and another CILogg process may already have consumed it.
+    QString error;
+    const auto scheduled = readPendingFile( pendingFilePath(), &error );
+    if ( !scheduled || !scheduled->installOnExit ) {
         LOG_DEBUG << "Exit-time updater launch skipped: no scheduled verified update";
         return;
     }
-    if ( !fileMatchesVerifiedAsset( pendingUpdate_.packagePath, pendingUpdate_.release.asset ) ) {
+    const auto disposition = classifyPendingUpdate(
+        *scheduled, currentVersion(), installationPath( scheduled->release.asset.installKind ) );
+    if ( disposition != PendingDisposition::Applicable ) {
+        LOG_INFO << "Exit-time updater launch skipped: the scheduled update "
+                 << scheduled->release.version << " is "
+                 << ( disposition == PendingDisposition::Completed ? "already installed"
+                                                                   : "for another installation" );
+        if ( disposition == PendingDisposition::Completed )
+            QFile::remove( pendingFilePath() );
+        return;
+    }
+    if ( !fileMatchesVerifiedAsset( scheduled->packagePath, scheduled->release.asset ) ) {
         LOG_ERROR << "Exit-time install blocked because the pending package no longer matches its "
                      "verified digest";
         setState( UpdateState::Error, QStringLiteral( "pending package was modified" ) );
         return;
     }
     LOG_INFO << "Exit-time package re-verification succeeded";
+    if ( !claimScheduledUpdate( updateRoot(), scheduled->transactionToken, &error ) ) {
+        LOG_INFO << "Exit-time updater launch skipped: " << error;
+        return;
+    }
+    const auto releaseClaim = [ this ] {
+        QString renameError;
+        if ( QFileInfo::exists( pendingFilePath() ) )
+            LOG_WARNING << "A newer scheduled update exists; the unlaunched one is dropped";
+        else if ( !replaceRename( launchedFilePath(), pendingFilePath(), &renameError ) )
+            LOG_WARNING << "Could not return the unlaunched update to the schedule: "
+                        << renameError;
+    };
+    pendingUpdate_ = *scheduled;
     const auto helperName = QStringLiteral( "cilogg_updater" )
 #ifdef Q_OS_WIN
                             + QStringLiteral( ".exe" )
@@ -1071,8 +1487,12 @@ void VersionChecker::launchPendingUpdate()
     const auto helper
         = QDir( QFileInfo( pendingUpdate_.packagePath ).absolutePath() ).filePath( helperName );
     QFile::remove( helper );
+    QFile::remove( QDir( QFileInfo( pendingUpdate_.helperLogPath ).absolutePath() )
+                       .filePath( QString::fromLatin1(
+                           cilogg::update_protocol::InstallResultFileName ) ) );
     if ( !QFile::copy( source, helper ) ) {
         LOG_ERROR << "Updater helper copy failed; source=" << source << ", destination=" << helper;
+        releaseClaim();
         return;
     }
     QFile::setPermissions( helper, QFile::permissions( helper ) | QFileDevice::ExeUser );
@@ -1101,6 +1521,8 @@ void VersionChecker::launchPendingUpdate()
              << ", kind=" << installKindName( pendingUpdate_.release.asset.installKind );
     if ( launched )
         setState( UpdateState::Installing, QStringLiteral( "helper detached" ) );
+    else
+        releaseClaim();
 }
 
 void VersionChecker::acknowledgeStartup()
@@ -1121,17 +1543,9 @@ void VersionChecker::acknowledgeStartup()
         LOG_ERROR << "Failed to acknowledge updated startup: " << ack.errorString();
         return;
     }
+    // The transaction records are cleared by version during activation, which also covers a
+    // record that could not be removed here.
     LOG_INFO << "Updated startup acknowledged successfully";
-    const auto pendingPath
-        = QDir( updateRoot() ).filePath( QStringLiteral( "pending-update.json" ) );
-    if ( !QFile::remove( pendingPath ) && QFileInfo::exists( pendingPath ) ) {
-        LOG_WARNING << "Startup was acknowledged but pending-update state could not be removed";
-    }
-    else {
-        pendingUpdate_ = {};
-        setState( UpdateState::Idle, QStringLiteral( "startup transaction acknowledged" ) );
-        LOG_INFO << "Cleared completed pending-update transaction";
-    }
 }
 
 void VersionChecker::finishScheduledCheck()
@@ -1148,10 +1562,29 @@ void VersionChecker::finishScheduledCheck()
         LOG_DEBUG << "Manual update check preserved the scheduled deadline";
     }
     forced_ = false;
+    backgroundCheck_ = false;
 }
 
-void VersionChecker::fail( const QString& message )
+void VersionChecker::fail( const QString& message, bool transient )
 {
+    if ( backgroundCheck_ ) {
+        // Nobody asked for this check: never interrupt the user with it. Transient failures
+        // (offline at startup, VPN still connecting, server errors) are retried.
+        const bool willRetry = transient && backgroundRetries_ < backgroundRetryDelaysMs_.size();
+        LOG_WARNING << "Background update check failed in state " << updateStateName( state_ )
+                    << "; transient=" << transient << ", will-retry=" << willRetry << ": "
+                    << message;
+        setState( UpdateState::Error, message );
+        if ( willRetry ) {
+            const auto delay = backgroundRetryDelaysMs_.at( backgroundRetries_++ );
+            LOG_INFO << "Background update check retry " << backgroundRetries_ << " in " << delay
+                     << " ms";
+            backgroundRetryTimer_->start( delay );
+        }
+        Q_EMIT backgroundCheckFailed( message, willRetry );
+        // The scheduled deadline is kept, so the next start checks again.
+        return;
+    }
     LOG_ERROR << "Updater failure in state " << updateStateName( state_ ) << ": " << message;
     setState( UpdateState::Error, message );
     if ( forced_ )

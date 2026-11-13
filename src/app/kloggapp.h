@@ -1048,7 +1048,9 @@ class KloggApp : public QApplication {
     void startBackgroundTasks()
     {
         LOG_DEBUG << "startBackgroundTasks";
-        versionChecker_.acknowledgeStartup();
+        // Only the primary GUI process binds the updater to this installation. CLI and
+        // secondary processes leave the persisted update transaction alone.
+        versionChecker_.activate();
         versionChecker_.startCheck();
     }
 

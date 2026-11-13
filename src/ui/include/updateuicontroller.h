@@ -26,6 +26,7 @@ private:
     void updateProgress( qint64 received, qint64 total );
     void updateReady( const PendingUpdate& pending );
     void updateFailed( const QString& message );
+    void installFailed( const QString& message );
     void closeProgress();
 
     VersionChecker& checker_;
