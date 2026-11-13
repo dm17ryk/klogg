@@ -325,14 +325,15 @@ LogPane::LogPane( const QString& paneId, QWidget* parent )
     , layout_( new QVBoxLayout() )
 {
     setObjectName( QStringLiteral( "logPane" ) );
+    // An empty pane can hold the keyboard focus, so tab shortcuts never reach another pane.
+    setFocusPolicy( Qt::ClickFocus );
 
     tabs_->setDocumentMode( true );
     tabs_->setMovable( true );
     tabs_->setTabsClosable( true );
 
     placeholder_->setObjectName( QStringLiteral( "logPanePlaceholder" ) );
-    placeholder_->setText(
-        tr( "Empty pane.\nOpen a file here, or move a tab here with its menu Move to Pane." ) );
+    retranslate();
     placeholder_->setAlignment( Qt::AlignCenter );
     placeholder_->setWordWrap( true );
     placeholder_->setForegroundRole( QPalette::PlaceholderText );
@@ -353,6 +354,20 @@ LogPane::LogPane( const QString& paneId, QWidget* parent )
 void LogPane::setPaneId( const QString& paneId )
 {
     paneId_ = paneId;
+}
+
+void LogPane::retranslate()
+{
+    placeholder_->setText(
+        tr( "Empty pane.\nOpen a file here, or move a tab here with its menu Move to Pane." ) );
+}
+
+void LogPane::changeEvent( QEvent* event )
+{
+    if ( event->type() == QEvent::LanguageChange ) {
+        retranslate();
+    }
+    QWidget::changeEvent( event );
 }
 
 void LogPane::setPresentation( bool active, bool multiPane )
@@ -384,6 +399,16 @@ bool LogPane::eventFilter( QObject* watched, QEvent* event )
         Q_EMIT activated( this );
     }
     return QWidget::eventFilter( watched, event );
+}
+
+void LogPane::focusInEvent( QFocusEvent* event )
+{
+    QWidget::focusInEvent( event );
+    // The pane itself only keeps the focus while it is empty; otherwise its current tab gets it,
+    // so the tab widget's shortcuts (Ctrl+Tab, Ctrl+1..9) keep working.
+    if ( auto* current = tabs_->currentWidget(); current != nullptr && tabs_->isVisible() ) {
+        current->setFocus();
+    }
 }
 
 void LogPane::mousePressEvent( QMouseEvent* event )

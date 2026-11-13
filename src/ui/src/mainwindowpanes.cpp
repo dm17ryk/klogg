@@ -74,42 +74,59 @@ LogPane* MainWindow::paneForTabId( const QString& tabId ) const
 
 void MainWindow::createPaneActions()
 {
-    splitPaneRightAction = new QAction( tr( "Split Right" ), this );
+    // Texts are set by retranslatePaneActions, which reTranslateUI also calls on a language
+    // change.
+    splitPaneRightAction = new QAction( this );
     splitPaneRightAction->setObjectName( QStringLiteral( "splitPaneRightAction" ) );
     splitPaneRightAction->setShortcut( QKeySequence( Qt::CTRL | Qt::ALT | Qt::Key_Right ) );
-    splitPaneRightAction->setStatusTip( tr( "Open a new pane right of the active pane" ) );
     connect( splitPaneRightAction, &QAction::triggered, this,
              [ this ] { splitPane( activePane(), Qt::Horizontal ); } );
 
-    splitPaneDownAction = new QAction( tr( "Split Down" ), this );
+    splitPaneDownAction = new QAction( this );
     splitPaneDownAction->setObjectName( QStringLiteral( "splitPaneDownAction" ) );
     splitPaneDownAction->setShortcut( QKeySequence( Qt::CTRL | Qt::ALT | Qt::Key_Down ) );
-    splitPaneDownAction->setStatusTip( tr( "Open a new pane below the active pane" ) );
     connect( splitPaneDownAction, &QAction::triggered, this,
              [ this ] { splitPane( activePane(), Qt::Vertical ); } );
 
-    closePaneAction = new QAction( tr( "Close Pane" ), this );
+    closePaneAction = new QAction( this );
     closePaneAction->setObjectName( QStringLiteral( "closePaneAction" ) );
-    closePaneAction->setStatusTip(
-        tr( "Close the active pane; its tabs can be closed or moved to the neighbouring pane" ) );
     connect( closePaneAction, &QAction::triggered, this,
              [ this ] { closePane( activePane(), PaneTabsOnClose::Ask ); } );
 
-    equalizePanesAction = new QAction( tr( "Equalize Panes" ), this );
+    equalizePanesAction = new QAction( this );
     equalizePanesAction->setObjectName( QStringLiteral( "equalizePanesAction" ) );
-    equalizePanesAction->setStatusTip( tr( "Give all panes the same size" ) );
     connect( equalizePanesAction, &QAction::triggered, this, [ this ] { paneArea_->equalize(); } );
 
-    mergePanesAction = new QAction( tr( "Merge All Panes" ), this );
+    mergePanesAction = new QAction( this );
     mergePanesAction->setObjectName( QStringLiteral( "mergePanesAction" ) );
-    mergePanesAction->setStatusTip( tr( "Move all tabs back into one pane" ) );
     connect( mergePanesAction, &QAction::triggered, this, [ this ] { mergeAllPanes(); } );
 
-    moveTabToPaneMenu = new QMenu( tr( "Move Tab to Pane" ), this );
+    moveTabToPaneMenu = new QMenu( this );
     moveTabToPaneMenu->setObjectName( QStringLiteral( "moveTabToPaneMenu" ) );
     connect( moveTabToPaneMenu, &QMenu::aboutToShow, this, [ this ] {
         populateMoveToPaneMenu( moveTabToPaneMenu, paneArea_->tabIdAt( paneArea_->currentIndex() ) );
     } );
+
+    retranslatePaneActions();
+}
+
+void MainWindow::retranslatePaneActions()
+{
+    if ( splitPaneRightAction == nullptr ) {
+        return;
+    }
+    splitPaneRightAction->setText( tr( "Split Right" ) );
+    splitPaneRightAction->setStatusTip( tr( "Open a new pane right of the active pane" ) );
+    splitPaneDownAction->setText( tr( "Split Down" ) );
+    splitPaneDownAction->setStatusTip( tr( "Open a new pane below the active pane" ) );
+    closePaneAction->setText( tr( "Close Pane" ) );
+    closePaneAction->setStatusTip(
+        tr( "Close the active pane; its tabs can be closed or moved to the neighbouring pane" ) );
+    equalizePanesAction->setText( tr( "Equalize Panes" ) );
+    equalizePanesAction->setStatusTip( tr( "Give all panes the same size" ) );
+    mergePanesAction->setText( tr( "Merge All Panes" ) );
+    mergePanesAction->setStatusTip( tr( "Move all tabs back into one pane" ) );
+    moveTabToPaneMenu->setTitle( tr( "Move Tab to Pane" ) );
 }
 
 void MainWindow::addPaneMenuEntries()
@@ -229,6 +246,8 @@ LogPane* MainWindow::splitPane( LogPane* pane, Qt::Orientation orientation )
         return nullptr;
     }
     paneArea_->setActivePane( created );
+    // Keyboard focus follows the active pane, so tab shortcuts act on the new pane.
+    created->setFocus();
     statusBar()->showMessage( tr( "New pane: files you open now open here; move tabs here with "
                                   "Move to Pane." ),
                               PaneStatusTimeoutMs );

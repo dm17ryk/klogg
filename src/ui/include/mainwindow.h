@@ -270,6 +270,7 @@ class MainWindow : public QMainWindow {
 
     void createActions();
     void createPaneActions();
+    void retranslatePaneActions();
     void addPaneMenuEntries();
     void updatePaneActions();
     void populateMoveToPaneMenu( QMenu* menu, const QString& tabId );

@@ -22,6 +22,8 @@
 #include <catch2/catch.hpp>
 
 #include <QAction>
+#include <QLabel>
+#include <QMenu>
 #include <QApplication>
 #include <QFile>
 #include <QMessageBox>
@@ -33,6 +35,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTranslator>
 
 #include "test_utils.h"
 
@@ -649,4 +652,73 @@ TEST_CASE( "old_session_loads_into_one_pane: sessions without a usable layout op
     REQUIRE( window.panes().size() == 1 );
     REQUIRE( tabs->count() == 2 );
     REQUIRE( tabs->currentIndex() == 1 );
+}
+
+TEST_CASE( "Keyboard focus follows the active pane and pane commands follow the language",
+           "[ui][workbench][U16]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    PaneFixture fixture( "U16FocusLanguage" );
+    auto& window = fixture.window();
+    const auto a = fixture.open( writeLog( directory, "a.log" ) );
+    const auto b = fixture.open( writeLog( directory, "b.log" ) );
+
+    const auto focusIsIn = [ &window ]( const LogPane* pane ) {
+        auto* focused = window.focusWidget();
+        return focused != nullptr && ( focused == pane || pane->isAncestorOf( focused ) );
+    };
+
+    // A split moves the keyboard focus into the new, empty pane.
+    fixture.action( "splitPaneRightAction" )->trigger();
+    REQUIRE( window.panes().size() == 2 );
+    auto* created = window.activePane();
+    REQUIRE( created->tabs()->count() == 0 );
+    REQUIRE( focusIsIn( created ) );
+
+    // focus_tab activates the tab's pane and moves the focus there.
+    REQUIRE( fixture.focusTab( a ).ok() );
+    REQUIRE( window.activePane() == window.panes().front() );
+    REQUIRE( focusIsIn( window.panes().front() ) );
+    REQUIRE( window.moveTabToPane( b, created ) );
+    REQUIRE( focusIsIn( created ) );
+
+    class PaneTranslator final : public QTranslator {
+      public:
+        bool isEmpty() const override
+        {
+            return false;
+        }
+        QString translate( const char* context, const char* sourceText, const char* = nullptr,
+                           int = -1 ) const override
+        {
+            return qstrcmp( context, "MainWindow" ) == 0 || qstrcmp( context, "LogPane" ) == 0
+                       ? QStringLiteral( "translated: " ) + QString::fromUtf8( sourceText )
+                       : QString{};
+        }
+    } translator;
+    struct TranslatorGuard {
+        QTranslator* installed;
+        ~TranslatorGuard()
+        {
+            QApplication::removeTranslator( installed );
+        }
+    } guard{ &translator };
+    REQUIRE( QApplication::installTranslator( &translator ) );
+    QEvent languageChange( QEvent::LanguageChange );
+    QApplication::sendEvent( &window, &languageChange );
+
+    REQUIRE( fixture.action( "splitPaneRightAction" )->text()
+             == QStringLiteral( "translated: Split Right" ) );
+    REQUIRE( fixture.action( "mergePanesAction" )->statusTip()
+             == QStringLiteral( "translated: Move all tabs back into one pane" ) );
+    auto* moveMenu = window.findChild<QMenu*>( "moveTabToPaneMenu" );
+    REQUIRE( moveMenu != nullptr );
+    REQUIRE( moveMenu->title() == QStringLiteral( "translated: Move Tab to Pane" ) );
+
+    REQUIRE( window.splitPane( created, Qt::Vertical ) != nullptr );
+    auto* placeholder = window.activePane()->findChild<QLabel*>( "logPanePlaceholder" );
+    REQUIRE( placeholder != nullptr );
+    QApplication::sendEvent( &window, &languageChange );
+    REQUIRE( placeholder->text().startsWith( QStringLiteral( "translated: " ) ) );
 }

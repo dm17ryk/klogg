@@ -1549,6 +1549,8 @@ void MainWindow::reTranslateUI()
     importActionsAction->setText( transAction( action::importActionsDialogText ) );
     importActionsAction->setStatusTip( transAction( action::importActionsDialogStatusTip ) );
 
+    retranslatePaneActions();
+
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
                                                     klogg::mainwindow::trayicon::trayiconTip ) );
@@ -3774,6 +3776,10 @@ CommanderResult MainWindow::focusTabByIndex( int tabIndex )
     }
 
     paneArea_->setCurrentIndex( tabIndex );
+    // The tab's pane becomes active; keyboard focus follows it.
+    if ( auto* current = paneArea_->currentWidget() ) {
+        current->setFocus();
+    }
     setWindowState( windowState() & ~Qt::WindowMinimized );
     show();
     raise();

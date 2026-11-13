@@ -110,10 +110,13 @@ class LogPane : public QWidget {
     bool eventFilter( QObject* watched, QEvent* event ) override;
     void mousePressEvent( QMouseEvent* event ) override;
     void paintEvent( QPaintEvent* event ) override;
+    void changeEvent( QEvent* event ) override;
+    void focusInEvent( QFocusEvent* event ) override;
 
   private:
     friend class LogPaneArea;
     void setPaneId( const QString& paneId );
+    void retranslate();
     void setPresentation( bool active, bool multiPane );
     void updatePlaceholder();
 
