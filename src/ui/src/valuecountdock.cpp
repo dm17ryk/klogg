@@ -244,8 +244,8 @@ ValueCountDock::~ValueCountDock()
 }
 QString ValueCountDock::sourceSelection() const
 {
-    const auto data = source_->currentData().toString();
-    return data.isEmpty() ? QStringLiteral( "focused" ) : data;
+    const auto selected = source_->currentData().toString();
+    return selected.isEmpty() ? QStringLiteral( "focused" ) : selected;
 }
 QString ValueCountDock::shownTabId() const
 {

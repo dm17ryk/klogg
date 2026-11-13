@@ -257,8 +257,8 @@ CommanderResult RegexLabDock::command( CommanderAction action, QVariantMap argum
 }
 QString RegexLabDock::sourceSelection() const
 {
-    const auto data = source_->currentData().toString();
-    return data.isEmpty() ? QStringLiteral( "focused" ) : data;
+    const auto selected = source_->currentData().toString();
+    return selected.isEmpty() ? QStringLiteral( "focused" ) : selected;
 }
 void RegexLabDock::releaseRuns()
 {
