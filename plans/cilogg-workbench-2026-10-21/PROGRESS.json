@@ -2182,10 +2182,11 @@
       "slices": []
     },
     "E14": {
-      "status": "done",
-      "commit": "83eb8edf",
+      "status": "in_progress",
+      "commit": "6ba2edb",
       "pullRequest": null,
       "evidence": [
+        "2026-11-13 final review fix wave (ruling A14) d434d8f..6ba2edb: [workbench][E14],[workbench][E13] 59 cases / 710 assertions, 3 runs after the last build (4 more runs of the 58-case build before two tests were added); [ui][plugins] 3 cases / 55 assertions; plan validator valid. The 9 cases written first failed before the fixes (RED); the unknown-kind case was added after. Full ctest left to the controller. Status stays in_progress until the PR merges.",
         "2026-11-13 clean run at 83eb8edf (no concurrent build): cmake --build build_root --config RelWithDebInfo exit 0; ctest --build-config RelWithDebInfo --output-on-failure: 100% of 10 tests passed (227.6 s). [workbench][E14],[workbench][E13]: 49 cases / 622 assertions, 3 runs; [ui][plugins]: 3 cases / 53 assertions.",
         "Earlier run at 69aaf3ae: 8 of 10 ctest suites passed; the 11 failing cases (Value Counts, Regex Lab, shared worker memory: the analysis job never completed) ran while another build relinked cilogg.exe in the same build_root; the clean run at 83eb8edf above passed all 10.",
         "python -m unittest discover -s tests/plugins -v: 204 tests OK (48 skipped, pre-existing).",
