@@ -56,6 +56,10 @@ constexpr char CellEditorProperty[] = "pluginCellEditor";
 // item was chosen from its list.
 constexpr char CellStartProperty[] = "pluginCellStart";
 constexpr char CellChosenProperty[] = "pluginCellChosen";
+// On a choice editor: its list window, recorded when the editor is made. The event filter compares
+// with it instead of asking the combo box, which may be half destroyed when its list window sends
+// its last events (Qt 6.12 sends a Hide from the combo box's destructor).
+constexpr char CellListProperty[] = "pluginCellList";
 
 QStringList knownKeys( const QString& type )
 {
@@ -764,7 +768,8 @@ public:
     bool eventFilter( QObject* watched, QEvent* event ) override
     {
         // A choice editor's list window (createChoice). Never passed on: the base class would take
-        // the window for an editor.
+        // the window for an editor. If the combo box is being destroyed, the queued close below is
+        // dropped with it (the combo box is the timer's context object).
         if ( auto* combo = comboOfList( watched ) ) {
             if ( event->type() == QEvent::Show ) {
                 combo->setProperty( CellChosenProperty, false );
@@ -799,11 +804,13 @@ private:
         }
         return QJsonValue( QJsonValue::Undefined );
     }
-    // The choice editor whose list window `watched` is, or null.
+    // The choice editor whose list window `watched` is, or null. Uses the window recorded in
+    // createChoice: no call into the combo box's view, which can be gone during its destruction.
     static QComboBox* comboOfList( QObject* watched )
     {
         auto* combo = qobject_cast<QComboBox*>( watched->parent() );
-        return combo && !qobject_cast<CheckComboBox*>( combo ) && combo->view()->window() == watched
+        return combo && !qobject_cast<CheckComboBox*>( combo )
+                       && combo->property( CellListProperty ).value<QObject*>() == watched
                    ? combo
                    : nullptr;
     }
@@ -849,7 +856,9 @@ private:
             Q_EMIT self->closeEditor( combo, QAbstractItemDelegate::NoHint );
         } );
         // Closing the list without choosing ends the edit (eventFilter).
-        combo->view()->window()->installEventFilter( self );
+        auto* list = combo->view()->window();
+        combo->setProperty( CellListProperty, QVariant::fromValue<QObject*>( list ) );
+        list->installEventFilter( self );
         openPopupWhenShown( combo );
         return combo;
     }
