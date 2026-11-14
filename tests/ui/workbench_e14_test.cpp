@@ -1189,3 +1189,36 @@ TEST_CASE( "E14 a cell already showing the picked label is edited when its edito
     CHECK_FALSE( v.table->model()->setData( v.cell( "t1" ), QVariant( QJsonValue( "hello" ) ), Qt::EditRole ) );
     CHECK( v.events.count() == 1 );
 }
+
+// PR #109 review: a replace_rows the table rejects leaves an open cell editor alone.
+
+TEST_CASE( "E14 a replace_rows over the cell limit keeps the open cell editor and its input",
+           "[ui][workbench][E14]" )
+{
+    EditableView v;
+    v.view.show();
+    v.table->edit( v.cell( "r3", 1 ) );
+    QPointer<QLineEdit> line = v.table->viewport()->findChild<QLineEdit*>();
+    REQUIRE( line );
+    line->selectAll();
+    QTest::keyClicks( line, "45" );
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    QJsonArray tooMany;                                               // two columns: one row too many
+    for ( int i = 0; i <= PluginView::MaxTableCells / 2; ++i ) {
+        tooMany.append( QJsonObject{ { "id", QString( "x%1" ).arg( i ) }, { "cells", QJsonArray{ "x", "y" } } } );
+    }
+    v.view.applyPatch( QJsonArray{ QJsonObject{ { "id", "fields" }, { "replace_rows", tooMany } } } );
+    QApplication::processEvents();
+    CHECK( v.table->model()->rowCount() == 4 );                        // rejected: the table is unchanged
+    CHECK( v.cell( "r3", 1 ).data().toString() == "30" );
+    REQUIRE( line );
+    CHECK( editing( v.table ) );
+    CHECK( line->isVisible() );
+    CHECK( line->text() == "45" );
+    CHECK( events.count() == 0 );
+    QTest::keyClick( line, Qt::Key_Return );
+    QApplication::processEvents();
+    REQUIRE( events.count() == 1 );
+    CHECK( events.last().front().toJsonObject().value( "row_id" ) == "r3" );
+    CHECK( events.last().front().toJsonObject().value( "value" ) == "45" );
+}

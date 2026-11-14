@@ -424,6 +424,11 @@ public:
     {
         return rows * qMax<qsizetype>( 1, columns_.size() );
     }
+    // Whether a table of `rows` rows stays within PluginView::MaxTableCells.
+    bool fits( qsizetype rows ) const
+    {
+        return cellCount( rows ) <= PluginView::MaxTableCells;
+    }
     bool setColumns( const QJsonArray& columns )
     {
         QVector<Column> parsed;
@@ -467,7 +472,7 @@ public:
     }
     bool replace( const QJsonArray& rows )
     {
-        if ( cellCount( rows.size() ) > PluginView::MaxTableCells ) {
+        if ( !fits( rows.size() ) ) {
             return false;
         }
         beginResetModel();
@@ -527,7 +532,7 @@ public:
         if ( added.isEmpty() ) {
             return true;
         }
-        if ( cellCount( rows_.size() + added.size() ) > PluginView::MaxTableCells ) {
+        if ( !fits( rows_.size() + added.size() ) ) {
             return false;
         }
         const int position
@@ -1779,10 +1784,13 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
 void PluginView::applyTableOperation( Node& node, const QJsonObject& entry )
 {
     auto* table = qobject_cast<QTableView*>( node.widget.data() );
-    if ( entry.contains( "replace_rows" ) ) {
+    if ( entry.contains( "replace_rows" )
+         && node.model->fits( entry.value( "replace_rows" ).toArray().size() ) ) {
         // Close an open cell editor first, without committing it. Cell editors are direct children
         // of the viewport; closing through the delegate's closeEditor signal (connected to the
         // view) reverts instead of committing, and also ends the view's editing state.
+        // A replacement over the cell limit changes nothing (replace() rejects it below), so it
+        // leaves the editor and the user's input alone.
         // remove_rows needs none of this: the view itself releases the editors of removed rows
         // (rowsAboutToBeRemoved, or a reset for large batches) without committing them, and an
         // editor in another row stays open.

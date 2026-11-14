@@ -325,8 +325,9 @@ and message boxes of one CILogg window) and `src/ui/src/pluginuicontroller.cpp` 
 - **Values.** `number` fields send a number or `null`; `choice` sends the selected choice value
   (choices may be strings, numbers or `{value, label}`); `boolean` sends `true`/`false`.
 - **Tables.** At most 64 columns and 50,000 cells; an operation that would exceed the limit is
-  rejected and logged once. A `sortable` table keeps the plugin's row order until the user
-  clicks a column header; sorting uses numeric order for cells that parse as numbers.
+  rejected and logged once, and leaves the table and an open cell editor as they were. A
+  `sortable` table keeps the plugin's row order until the user clicks a column header; sorting
+  uses numeric order for cells that parse as numbers.
 - **Coalescing.** Updates for one CILogg window are applied together at most every 100 ms; a root
   replaces queued patches. When more than 4,096 patch entries are queued for a view, only that
   view renders early, at most once per interval (and always beyond 65,536 entries).
