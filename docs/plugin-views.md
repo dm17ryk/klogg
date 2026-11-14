@@ -82,7 +82,8 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 - `icon` is a safe relative path to a `.png`, `.ico` or `.svg` file inside the plugin folder, at most
   256 characters; anything else is a manifest error. A missing or unreadable file falls back to the
   generic icon and is logged once per plugin and path. `.svg` icons need Qt's SVG image plugin in
-  the deployment; without it the generic icon is used.
+  the deployment; without it the generic icon is used. A plugin update that replaces an icon file
+  shows the new icon.
 - The host announces support in `initialize` with `"host_features": ["views", "view_edit"]`.
   `views` covers the views described above; `view_edit` covers editable cells (section 2.5) and the
   `multichoice` field (section 2.3). On an older host, a plugin falls back to actions and panels, or

@@ -165,6 +165,28 @@ bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields
     } );
     return dialog.exec() == QDialog::Accepted;
 }
+
+// The size and modification time of every icon file a plugin's actions and views name, so that
+// an update which only replaces an icon file still rebuilds the icons (refreshActions). A few
+// file stats per plugin: cheap enough for every refresh.
+QJsonArray iconFiles( const QVariantMap& plugin )
+{
+    QJsonArray files;
+    const QDir directory( plugin.value( "directory" ).toString() );
+    for ( const auto* key : { "actions", "views" } ) {
+        for ( const auto& item : plugin.value( key ).toList() ) {
+            const auto icon = item.toMap().value( "icon" ).toString();
+            if ( icon.isEmpty() ) {
+                continue;
+            }
+            const QFileInfo file( directory.filePath( icon ) );
+            const bool exists = file.exists();
+            files.append( QJsonArray{ icon, exists ? file.size() : qint64( -1 ),
+                                      exists ? file.lastModified().toMSecsSinceEpoch() : 0 } );
+        }
+    }
+    return files;
+}
 } // namespace
 
 PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::PluginManager* manager,
@@ -298,11 +320,15 @@ void PluginUiController::refreshActions()
     for ( const auto& value : plugins ) {
         const auto p = value.toMap();
         if ( p.value( "enabled" ).toBool() && p.value( "error" ).toString().isEmpty() ) {
+            // Everything the menu entries and buttons are built from, icon files included.
             descriptions.append( QJsonObject{
                 { "id", p.value( "id" ).toString() },
                 { "name", p.value( "name" ).toString() },
+                { "version", p.value( "version" ).toString() },
+                { "directory", p.value( "directory" ).toString() },
                 { "actions", QJsonArray::fromVariantList( p.value( "actions" ).toList() ) },
-                { "views", QJsonArray::fromVariantList( p.value( "views" ).toList() ) } } );
+                { "views", QJsonArray::fromVariantList( p.value( "views" ).toList() ) },
+                { "icons", iconFiles( p ) } } );
         }
     }
     if ( descriptions == actionDescriptions_ ) {

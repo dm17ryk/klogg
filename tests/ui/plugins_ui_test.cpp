@@ -265,4 +265,25 @@ TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys
     CHECK_FALSE( toolbar->actions().contains( other ) ); // views default to toolbar:false
     CHECK_FALSE( other->icon().isNull() );               // broken file: generic icon, not empty
     CHECK( other->icon().pixmap( 16, 16 ).toImage() == generic );  // the fallback is the generic icon
+
+    // A plugin update that only replaces icon files (the manifest unchanged) shows the new icons,
+    // also where the old file was unusable.
+    const auto iconPath = QDir( folder ).filePath( "icon.png" );
+    const auto oldSize = QFileInfo( iconPath ).size();
+    QImage green( 24, 24, QImage::Format_ARGB32 );
+    green.fill( Qt::green );
+    REQUIRE( QFile::remove( iconPath ) );
+    REQUIRE( green.save( iconPath ) );
+    REQUIRE( QFileInfo( iconPath ).size() != oldSize );
+    REQUIRE( QFile::remove( QDir( folder ).filePath( "broken.png" ) ) );
+    REQUIRE( green.save( QDir( folder ).filePath( "broken.png" ) ) );
+    Q_EMIT manager.changed();                                     // what the update ends with
+    const auto showsGreen = [ &window ]( const char* name ) {
+        // Rebuilt actions replace the old ones (deleted later) under the same name.
+        const auto* action = window.findChild<QAction*>( name );
+        return action
+               && action->icon().pixmap( 16, 16 ).toImage().pixelColor( 8, 8 ) == QColor( Qt::green );
+    };
+    CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_main" ); }, 5000 ) );
+    CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_other" ); }, 5000 ) );
 }
