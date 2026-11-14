@@ -1222,3 +1222,69 @@ TEST_CASE( "E14 a replace_rows over the cell limit keeps the open cell editor an
     CHECK( events.last().front().toJsonObject().value( "row_id" ) == "r3" );
     CHECK( events.last().front().toJsonObject().value( "value" ) == "45" );
 }
+
+// PR #109 review: a value the plugin sets while a multichoice list is open is what Esc restores.
+
+TEST_CASE( "E14 Esc after a plugin patch to an open multichoice list keeps the patched value",
+           "[ui][workbench][E14]" )
+{
+    PluginView view( "org.test.e14", "main", PluginViewDialogs{} );
+    view.setRoot( QJsonObject{ { "type", "column" },
+                               { "children", QJsonArray{ QJsonObject{
+                                                 { "type", "field" }, { "id", "days" },
+                                                 { "kind", "multichoice" }, { "choices", days() },
+                                                 { "value", QJsonArray{ "1" } } } } } } );
+    view.show();
+    auto* box = qobject_cast<CheckComboBox*>( view.element( "days" ) );
+    REQUIRE( box );
+    QSignalSpy events( &view, &PluginView::eventRaised );
+    box->showPopup();
+    REQUIRE( box->view()->isVisible() );
+    view.applyPatch( QJsonArray{ QJsonObject{
+        { "id", "days" }, { "set", QJsonObject{ { "value", QJsonArray{ "0", "4" } } } } } } );
+    REQUIRE( box->checkedValues() == QJsonArray{ "0", "4" } );
+    REQUIRE( events.count() == 0 );                                    // plugin patches never echo back
+
+    SECTION( "no toggle since the patch: Esc changes nothing and sends nothing" )
+    {
+        QTest::keyClick( box->view(), Qt::Key_Escape );
+        CHECK( !box->view()->isVisible() );
+        CHECK( box->checkedValues() == QJsonArray{ "0", "4" } );
+        CHECK( events.count() == 0 );
+    }
+    SECTION( "a toggle after the patch: Esc restores the patched value" )
+    {
+        box->view()->setCurrentIndex( box->model()->index( 1, 0 ) );
+        QTest::keyClick( box->view(), Qt::Key_Space );                 // ticks Mon
+        REQUIRE( events.count() == 1 );
+        QTest::keyClick( box->view(), Qt::Key_Escape );
+        CHECK( !box->view()->isVisible() );
+        CHECK( box->checkedValues() == QJsonArray{ "0", "4" } );
+        REQUIRE( events.count() == 2 );
+        CHECK( events.last().front().toJsonObject().value( "value" ).toArray() == QJsonArray{ "0", "4" } );
+    }
+}
+
+TEST_CASE( "E14 an open multichoice cell list follows a row patch until the user toggles",
+           "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.view.show();
+    v.table->edit( v.cell( "m1" ) );
+    QPointer<CheckComboBox> box = v.table->viewport()->findChild<CheckComboBox*>();
+    REQUIRE( box );
+    QApplication::processEvents();                                  // the list opens once the editor is shown
+    REQUIRE( box->view()->isVisible() );
+    REQUIRE( box->checkedValues() == QJsonArray{ "0", "4" } );
+    v.patch( QJsonObject{ { "id", "m1" }, { "editors", QJsonObject{ { "v", multiEditor( { "1" } ) } } } } );
+    QApplication::processEvents();
+    REQUIRE( box );
+    CHECK( box->checkedValues() == QJsonArray{ "1" } );               // not touched yet: the new start
+    CHECK( box->view()->isVisible() );
+    QTest::keyClick( box->view(), Qt::Key_Escape );
+    QApplication::processEvents();
+    CHECK( v.events.count() == 0 );
+    CHECK( !editing( v.table ) );
+    CHECK( v.cell( "m1" ).data().toString() == "17" );
+    CHECK_FALSE( italic( v.cell( "m1" ) ) );
+}

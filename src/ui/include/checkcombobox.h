@@ -9,7 +9,8 @@ class QStandardItem;
 class QStandardItemModel;
 
 // A dropdown whose items are checkboxes (the plugin views `multichoice` editor and field kind).
-// The popup stays open while items are toggled; Esc restores the set it opened with.
+// The popup stays open while items are toggled; Esc restores the set it opened with, or the set
+// last given to setCheckedValues() while it was open.
 // Choices, labels and values are capped like a `choice` field's (PluginView limits).
 class CheckComboBox : public QComboBox {
     Q_OBJECT
@@ -17,7 +18,8 @@ class CheckComboBox : public QComboBox {
     explicit CheckComboBox( QWidget* parent = nullptr );
     // Checked values that are not in the new list are dropped, without emitting checkedChanged.
     void setChoices( const QJsonArray& choices );
-    // Emits checkedChanged only when the checked set changes.
+    // Emits checkedChanged only when the checked set changes. While the popup is open, the new set
+    // is also what Esc restores.
     void setCheckedValues( const QJsonArray& values );
     QJsonArray checkedValues() const;
     QString summary() const;

@@ -84,6 +84,11 @@ void CheckComboBox::setCheckedValues( const QJsonArray& values )
     }
     populating_ = false;
     update();
+    // A value set while the popup is open (a plugin patch) is what Esc goes back to: the user's
+    // toggles before it are superseded. finishClose() restores with open_ already false.
+    if ( open_ ) {
+        openedWith_ = checkedValues();
+    }
     // Both lists are in choice order, so equal lists are equal sets.
     if ( checkedValues() != before ) {
         Q_EMIT checkedChanged();

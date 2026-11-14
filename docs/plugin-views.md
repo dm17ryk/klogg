@@ -137,8 +137,8 @@ that set the value never echo back, as for other fields.
 - Closed, it shows the labels of the checked items, `None` when nothing is checked, or `All` when
   every item is.
 - Clicking an item toggles it and keeps the list open. Space toggles the current item.
-- Esc closes the list and restores the ticks the list had when it was opened. Any other way of
-  closing it keeps the ticks.
+- Esc closes the list and restores the ticks the list had when it was opened, or the value a
+  plugin patch set while it was open. Any other way of closing it keeps the ticks.
 - The field sends `changed` on each toggle while the list is open, and again when Esc restores
   different ticks. Opening and closing the list without a toggle sends nothing.
 - List values count toward the bound on `inputs` (section 8).
