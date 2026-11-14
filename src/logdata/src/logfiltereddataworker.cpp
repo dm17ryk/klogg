@@ -172,6 +172,24 @@ void SearchData::deleteMatch( LineNumber line )
     matches_.remove( line.get() );
 }
 
+LineNumber SearchData::getFirstCountedLine() const
+{
+    SharedLock lock( dataMutex_ );
+    return firstCountedLine_;
+}
+
+void SearchData::restartFrom( LineNumber firstLine )
+{
+    UniqueLock lock( dataMutex_ );
+    // An interrupted parallel scan may have finished chunks past others it dropped: the next
+    // update scans everything from `firstLine` again instead of trusting that position.
+    nbLinesProcessed_ = LinesCount( firstLine.get() );
+    nbMatches_ = LinesCount( 0 );
+    newMatches_ = {};
+    firstCountedLine_ = firstLine;
+    limitReached_ = false;
+}
+
 void SearchData::clear()
 {
     UniqueLock locker( dataMutex_ );
@@ -179,6 +197,7 @@ void SearchData::clear()
     maxLength_ = LineLength( 0 );
     nbLinesProcessed_ = LinesCount( 0 );
     nbMatches_ = LinesCount( 0 );
+    firstCountedLine_ = 0_lnum;
     matches_ = {};
     newMatches_ = {};
     limitReached_ = false;
@@ -390,6 +409,18 @@ void LogFilteredDataWorker::interrupt()
     }
 }
 
+void LogFilteredDataWorker::restartFrom( LineNumber firstLine )
+{
+    ScopedLock locker( operationsMutex_ );
+    LOG_INFO << "Search restart requested from line " << firstLine;
+    // The single operations thread runs this after the (interrupted) operation in progress, so
+    // that operation cannot add matches or progress to the restarted search.
+    operationsPool_.start( createRunnable( [ this, firstLine ] {
+        searchData_.restartFrom( firstLine );
+        LOG_DEBUG << "Search restarted from line " << firstLine;
+    } ) );
+}
+
 // This will do an atomic copy of the object
 SearchResults LogFilteredDataWorker::getSearchResults() const
 {
@@ -550,6 +581,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     LinesCount totalProcessedLines = 0_lcount;
     LineLength maxLength = 0_length;
     LinesCount nbMatches = searchData.getNbMatches();
+    // The results before this line were cleared: an update that re-reads the last cleared line
+    // neither reports nor counts its match.
+    const auto firstCountedLine = searchData.getFirstCountedLine();
     auto reportedMatches = nbMatches;
     int reportedPercentage = 0;
 
@@ -582,6 +616,11 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
                     maxLength = qMax( maxLength, matchResults.maxLength );
                     auto acceptedMatches = matchResults.matchingLines;
+                    if ( firstCountedLine > matchResults.chunkStart ) {
+                        acceptedMatches.removeRangeClosed(
+                            static_cast<uint64_t>( matchResults.chunkStart.get() ),
+                            static_cast<uint64_t>( firstCountedLine.get() - 1 ) );
+                    }
                     auto acceptedCount = acceptedMatches.cardinality();
 
                     if ( isCappedSearch ) {
