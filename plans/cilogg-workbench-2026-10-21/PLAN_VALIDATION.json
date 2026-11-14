@@ -1,10 +1,10 @@
 {
   "valid": true,
-  "taskCount": 119,
-  "requirementCount": 201,
-  "markdownFiles": 150,
-  "validatedLocalLinks": 574,
-  "topologicalTaskCount": 119,
+  "taskCount": 124,
+  "requirementCount": 205,
+  "markdownFiles": 155,
+  "validatedLocalLinks": 620,
+  "topologicalTaskCount": 124,
   "issues": [],
   "integrationChecks": {
     "originalTasksAndHardEdgesPreserved": 97,
@@ -212,5 +212,68 @@
     "codeReviewGraph": "refreshed_at_merged_baseline_no_source_changes",
     "codeGraph": "unindexed_not_initialized",
     "gitNexus": "staged_detection_completed_low_risk_4_documentation_symbols_0_processes_FTS_unavailable"
+  },
+  "d12Checks": {
+    "date": "2026-11-13",
+    "decisions": [
+      "D12",
+      "D13"
+    ],
+    "tasksAddedSincePreviousSnapshot": [
+      "E13",
+      "R05",
+      "U14",
+      "U15",
+      "U16"
+    ],
+    "addedRequirements": [
+      "UX19",
+      "UX20",
+      "UX21",
+      "QUAL11"
+    ],
+    "d12TaskHardDependencies": [
+      "G01"
+    ],
+    "addedHardEdges": [
+      "U03 -> U16",
+      "R04 -> R05",
+      "R04 -> U14",
+      "R04 -> U15",
+      "R04 -> U16"
+    ],
+    "otherTaskRecordsPreserved": true,
+    "u03OnlyGainedU16": true,
+    "r04OnlyGainedD12Tasks": true,
+    "everyD12TaskOwnsARequirement": true,
+    "previousRequirementsAndOwnershipPreserved": true,
+    "otherTaskProgressAndEvidencePreserved": true,
+    "storedTopologicalOrderComplete": true,
+    "storedTopologicalOrderDependencyValid": true,
+    "dagRunnableTasks": [
+      "G02",
+      "R05",
+      "U14",
+      "U15",
+      "U16"
+    ],
+    "ledgerRunnableTasks": [
+      "G02",
+      "R05",
+      "U14",
+      "U15",
+      "U16"
+    ],
+    "hashManifestFiles": 161,
+    "filesAddedToHashManifest": [
+      "tasks/E13.md",
+      "tasks/R05.md",
+      "tasks/U14.md",
+      "tasks/U15.md",
+      "tasks/U16.md"
+    ],
+    "u16DesignApproved": true,
+    "productCodeChanged": false,
+    "productBuildRun": false
   }
 }

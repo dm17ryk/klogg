@@ -19,19 +19,8 @@ void MainWindow::createValueCounts()
 {
     valueCountDock_ = new ValueCountDock(
         this,
-        [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); },
-        [ this ] {
-            QVariantList sources;
-            for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-                auto* crawler = crawlerWidgetByIndex( index );
-                if ( crawler )
-                    sources.push_back(
-                        QVariantMap{ { "tabId", mainTabWidget_.tabIdAt( index ) },
-                                     { "label", QString::number( index + 1 ) + ": "
-                                                    + session_.getFilename( crawler ) } } );
-            }
-            return sources;
-        } );
+        [ this ]( const CommanderRequest& request ) { return executeDockRequest( request ); },
+        [ this ] { return dockAnalysisSources(); } );
     addDockWidget( Qt::RightDockWidgetArea, valueCountDock_ );
     valueCountDock_->hide();
 }
@@ -56,10 +45,12 @@ CommanderResult MainWindow::commanderValueCounts( const CommanderRequest& reques
                            || definition.contains( "text" ) || definition.contains( "counts" )
                            || definition.contains( "options" ) || definition.contains( "limits" )
                            || definition.value( "operation" ) == "run";
+        const auto targetTabId
+            = target ? mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) ) : QString{};
         if ( target && draft && !definition.contains( "sourceTabId" ) )
-            definition[ "sourceTabId" ]
-                = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) );
-        return valueCountDock_->setDefinition( definition );
+            definition[ "sourceTabId" ] = targetTabId;
+        // An explicit --tab-id / --tab-index receives "apply" instead of the shown source.
+        return valueCountDock_->setDefinition( definition, targetTabId );
     }
     return commanderSuccess( {}, valueCountDock_->state() );
 }

@@ -18,6 +18,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/configurationexportdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filteredview.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/matchlabeler.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlighteredit.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersetedit.h
@@ -34,6 +35,10 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/logmainview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mainwindow.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/regexlabdock.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analysissource.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/analysissource.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisruns.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisruns.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysistextedit.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisstatus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountdock.h
@@ -135,6 +140,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidget.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidgetpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/matchlabeler.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlighteredit.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersmenu.cpp

@@ -713,6 +713,10 @@ int main( int argc, char* argv[] )
         QThreadPool::globalInstance()->setMaxThreadCount( static_cast<int>( maxConcurrency ) );
     }
 
+    // Before the instance hand-off, session restore and opening files: an updated build that
+    // forwards to an already running instance has started successfully too.
+    app.acknowledgeUpdatedStartup();
+
     if ( !parameters.multi_instance && app.isSecondary() ) {
         LOG_INFO << "Found another klogg, pid " << app.primaryPid();
         if ( parameters.commander_request ) {
