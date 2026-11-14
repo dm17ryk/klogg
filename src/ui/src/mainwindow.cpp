@@ -743,8 +743,8 @@ void MainWindow::reloadSession( int preferredFileIndex )
     // Without a layout, or for an explicitly preferred entry (a project's active tab), select the
     // restored tab as before panes existed.
     if ( current_file_index >= 0 && ( !layoutApplied || preferredFileIndex >= 0 ) ) {
-        paneArea_->setCurrentWidget(
-            static_cast<CrawlerWidget*>( openedFiles.at( current_file_index ).view ) );
+        paneArea_->setCurrentWidget( static_cast<CrawlerWidget*>(
+            openedFiles.at( static_cast<size_t>( current_file_index ) ).view ) );
     }
 
     if ( paneArea_->currentIndex() >= 0 && followFileOnLoad ) {
