@@ -462,13 +462,14 @@ MainWindow::MainWindow( WindowSession session )
     , iconLoader_( this )
     , signalMux_()
     , quickFindMux_( session_.getQuickFindPattern() )
-    , mainTabWidget_()
+    , paneArea_( new LogPaneArea() )
     , tempDir_( QDir::temp().filePath( "cilogg_temp_" ) )
 {
     setObjectName( QStringLiteral( "mainWindow" ) );
     createRegexLab();
     createValueCounts();
     createActions();
+    createPaneActions();
     createMenus();
     createToolBars();
 
@@ -536,12 +537,7 @@ MainWindow::MainWindow( WindowSession session )
     signalMux_.connect( SIGNAL( filteredViewChanged() ), this,
                         SLOT( handleFilteredViewChanged() ) );
 
-    // Configure the main tabbed widget
-    mainTabWidget_.setDocumentMode( true );
-    mainTabWidget_.setMovable( true );
-    // mainTabWidget_.setTabShape( QTabWidget::Triangular );
-    mainTabWidget_.setTabsClosable( true );
-
+    // Each pane configures its own tab widget (document mode, movable and closable tabs).
     scratchPad_.setWindowIcon( mainIcon_ );
     scratchPad_.setWindowTitle( tr( "CILogg - scratchpad" ) );
 
@@ -579,17 +575,17 @@ MainWindow::MainWindow( WindowSession session )
                               tr( "Loading action/response definitions" ) );
     ActionsManager::instance().loadFromRepository();
 
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::tabCloseRequested, this,
+    connect( paneArea_, &LogPaneArea::tabCloseRequested, this,
              [ this ]( int index ) { this->closeTab( index, ActionInitiator::User ); } );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::startNewStreamFileRequested, this,
+    connect( paneArea_, &LogPaneArea::startNewStreamFileRequested, this,
              &MainWindow::startNewStreamFileForTab );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::closeStreamConnectionRequested, this,
+    connect( paneArea_, &LogPaneArea::closeStreamConnectionRequested, this,
              &MainWindow::closeStreamConnectionForTab );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::pauseStreamConnectionRequested, this,
+    connect( paneArea_, &LogPaneArea::pauseStreamConnectionRequested, this,
              &MainWindow::pauseStreamConnectionForTab );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::resumeStreamConnectionRequested, this,
+    connect( paneArea_, &LogPaneArea::resumeStreamConnectionRequested, this,
              &MainWindow::resumeStreamConnectionForTab );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::actionsEnabledChangeRequested, this,
+    connect( paneArea_, &LogPaneArea::actionsEnabledChangeRequested, this,
              [ this ]( const QString& tabId, bool enabled ) {
                  CommanderRequest request;
                  request.tabId = tabId;
@@ -600,7 +596,7 @@ MainWindow::MainWindow( WindowSession session )
                                << " reason=" << result.message;
                  }
              } );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::autoResponsesEnabledChangeRequested, this,
+    connect( paneArea_, &LogPaneArea::autoResponsesEnabledChangeRequested, this,
              [ this ]( const QString& tabId, bool enabled ) {
                  CommanderRequest request;
                  request.tabId = tabId;
@@ -609,8 +605,14 @@ MainWindow::MainWindow( WindowSession session )
                  LOG_DEBUG << "Tab automatic responses toggle: tab_id=" << tabId
                            << " enabled=" << enabled << " success=" << result.ok();
              } );
-    connect( &mainTabWidget_, &TabbedCrawlerWidget::currentChanged, this,
+    connect( paneArea_, &LogPaneArea::currentChanged, this,
              &MainWindow::currentTabChanged );
+    connect( paneArea_, &LogPaneArea::layoutChanged, this, &MainWindow::updatePaneActions );
+    connect( paneArea_, &LogPaneArea::activePaneChanged, this, &MainWindow::updatePaneActions );
+    paneArea_->setTabContextMenuExtension(
+        [ this ]( QMenu& menu, LogPane* pane, int index ) {
+            extendTabContextMenu( menu, pane, index );
+        } );
 
     // Establish the QuickFindWidget and mux ( to send requests from the
     // QFWidget to the right window )
@@ -639,7 +641,7 @@ MainWindow::MainWindow( WindowSession session )
     QWidget* central_widget = new QWidget();
     auto* main_layout = new QVBoxLayout();
     main_layout->setContentsMargins( 0, 0, 0, 0 );
-    main_layout->addWidget( &mainTabWidget_ );
+    main_layout->addWidget( paneArea_ );
     main_layout->addWidget( &quickFindWidget_ );
     central_widget->setLayout( main_layout );
 
@@ -654,6 +656,15 @@ MainWindow::MainWindow( WindowSession session )
         const bool restored = restoreState( dockState, 1 );
         LOG_DEBUG << "Regex Lab restored layout=" << restored;
     }
+    updatePaneActions();
+}
+
+MainWindow::~MainWindow()
+{
+    // Close the tabs while the window's members still exist: tab removal reports current-tab
+    // changes, which must not reach a half-destroyed window.
+    QObject::disconnect( paneArea_, nullptr, this, nullptr );
+    delete paneArea_;
 }
 
 void MainWindow::reloadGeometry()
@@ -670,6 +681,11 @@ void MainWindow::reloadSession( int preferredFileIndex )
     const auto& config = Configuration::get();
     const auto followFileOnLoad = config.followFileOnLoad() && config.anyFileWatchEnabled();
 
+    // The pane layout refers to the saved file list, so it is read before skipped files drop out.
+    PaneLayout paneLayout;
+    std::map<int, LogPane*> paneBySavedIndex;
+    const auto layoutApplied = applySavedPaneLayout( paneLayout, paneBySavedIndex );
+
     int current_file_index = -1;
     const auto openedFiles = session_.restore( [] { return new CrawlerWidget(); },
                                                &current_file_index, preferredFileIndex );
@@ -680,7 +696,11 @@ void MainWindow::reloadSession( int preferredFileIndex )
         auto* crawler_widget = static_cast<CrawlerWidget*>( open_file.view );
 
         if ( crawler_widget ) {
-            mainTabWidget_.addCrawler( crawler_widget, file_name );
+            // Files the layout does not place open in the active pane.
+            const auto pane = paneBySavedIndex.find( open_file.savedIndex );
+            paneArea_->addCrawlerToPane(
+                pane != paneBySavedIndex.end() ? pane->second : paneArea_->activePane(),
+                crawler_widget, file_name );
             publishScriptLifecycleEvent( file_name, QStringLiteral( "tab_open" ) );
 
             if ( !open_file.streamContext.trimmed().isEmpty() ) {
@@ -706,7 +726,7 @@ void MainWindow::reloadSession( int preferredFileIndex )
             }
 
             if ( !open_file.scriptContext.trimmed().isEmpty() ) {
-                restoreScriptContextForTab( mainTabWidget_.indexOf( crawler_widget ),
+                restoreScriptContextForTab( paneArea_->indexOf( crawler_widget ),
                                             open_file.scriptContext );
             }
 
@@ -716,15 +736,23 @@ void MainWindow::reloadSession( int preferredFileIndex )
 
     restoreGlobalScriptContext();
 
-    if ( current_file_index >= 0 ) {
-        mainTabWidget_.setCurrentIndex( current_file_index );
+    if ( layoutApplied ) {
+        restorePaneSelection( paneLayout, openedFiles );
+    }
 
-        if ( followFileOnLoad ) {
-            followAction->setChecked( true );
-        }
+    // Without a layout, or for an explicitly preferred entry (a project's active tab), select the
+    // restored tab as before panes existed.
+    if ( current_file_index >= 0 && ( !layoutApplied || preferredFileIndex >= 0 ) ) {
+        paneArea_->setCurrentWidget( static_cast<CrawlerWidget*>(
+            openedFiles.at( static_cast<size_t>( current_file_index ) ).view ) );
+    }
+
+    if ( paneArea_->currentIndex() >= 0 && followFileOnLoad ) {
+        followAction->setChecked( true );
     }
 
     updateOpenedFilesMenu();
+    updatePaneActions();
     StartupProgress::advance( tr( "Session restored" ), tr( "Finishing startup" ) );
 }
 
@@ -734,8 +762,8 @@ bool MainWindow::isStartupReadyForDisplay() const
         return false;
     }
 
-    for ( auto i = 0; i < mainTabWidget_.count(); ++i ) {
-        auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( i ) );
+    for ( auto i = 0; i < paneArea_->count(); ++i ) {
+        auto* crawler = qobject_cast<CrawlerWidget*>( paneArea_->widget( i ) );
         if ( crawler != nullptr && crawler->isStartupPreparationPending() ) {
             return false;
         }
@@ -809,7 +837,7 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         }
 
         if ( !loadFile( settings.filePath, true ) ) {
-            if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
+            if ( auto* session = paneArea_->streamSessionForPath( settings.filePath ) ) {
                 session->closeConnection();
             }
             return commanderFailure(
@@ -919,8 +947,8 @@ QVariantMap MainWindow::commanderWindowInfo() const
 {
     QVariantList tabs;
 
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         if ( widget == nullptr ) {
             continue;
         }
@@ -931,13 +959,13 @@ QVariantMap MainWindow::commanderWindowInfo() const
         }
 
         QVariantMap tabInfo;
-        const auto tabId = mainTabWidget_.tabIdAt( index );
+        const auto tabId = paneArea_->tabIdAt( index );
         tabInfo.insert( QStringLiteral( "tabId" ), tabId );
         tabInfo.insert( QStringLiteral( "tabIndex" ), index );
         tabInfo.insert( QStringLiteral( "filePath" ), filePath );
-        tabInfo.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
+        tabInfo.insert( QStringLiteral( "displayName" ), paneArea_->tabDisplayNameAt( index ) );
 
-        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+        if ( auto* streamSession = paneArea_->streamSessionForPath( filePath ) ) {
             tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "com" ) );
             QVariantMap comInfo;
             const auto settings = streamSession->captureSettings();
@@ -986,13 +1014,13 @@ QVariantMap MainWindow::commanderWindowInfo() const
     }
 
     QVariantMap windowInfo;
-    const auto currentTabIndex = mainTabWidget_.currentIndex();
+    const auto currentTabIndex = paneArea_->currentIndex();
     windowInfo.insert( QStringLiteral( "windowId" ), session_.windowId() );
     windowInfo.insert( QStringLiteral( "windowIndex" ),
                        static_cast<int>( session_.windowIndex() ) );
     windowInfo.insert( QStringLiteral( "currentTabIndex" ), currentTabIndex );
     windowInfo.insert( QStringLiteral( "currentTabId" ),
-                       currentTabIndex >= 0 ? mainTabWidget_.tabIdAt( currentTabIndex )
+                       currentTabIndex >= 0 ? paneArea_->tabIdAt( currentTabIndex )
                                             : QString{} );
     windowInfo.insert( QStringLiteral( "tabs" ), tabs );
     return windowInfo;
@@ -1031,7 +1059,7 @@ QVariantMap MainWindow::automationState() const
 {
     const auto windowInfo = commanderWindowInfo();
     const auto tabs = windowInfo.value( QStringLiteral( "tabs" ) ).toList();
-    const auto activeTabIndex = mainTabWidget_.currentIndex();
+    const auto activeTabIndex = paneArea_->currentIndex();
     const auto* crawler = currentCrawlerWidget();
 
     QVariantMap scratchPad;
@@ -1045,7 +1073,7 @@ QVariantMap MainWindow::automationState() const
                   windowInfo.value( QStringLiteral( "windowIndex" ) ) );
     state.insert( QStringLiteral( "activeTabIndex" ), activeTabIndex );
     state.insert( QStringLiteral( "activeTabTitle" ),
-                  activeTabIndex >= 0 ? mainTabWidget_.tabDisplayNameAt( activeTabIndex )
+                  activeTabIndex >= 0 ? paneArea_->tabDisplayNameAt( activeTabIndex )
                                       : QString{} );
     state.insert( QStringLiteral( "activeFile" ),
                   crawler != nullptr ? session_.getFilename( crawler ) : QString{} );
@@ -1143,21 +1171,21 @@ QVariantMap MainWindow::scriptEventContextForFile( const QString& filePath ) con
         return {};
     }
 
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         if ( widget == nullptr || session_.getFilename( widget ) != filePath ) {
             continue;
         }
 
         QVariantMap context;
-        context.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+        context.insert( QStringLiteral( "tabId" ), paneArea_->tabIdAt( index ) );
         context.insert( QStringLiteral( "tabIndex" ), index );
         context.insert( QStringLiteral( "windowId" ), session_.windowId() );
         context.insert( QStringLiteral( "windowIndex" ),
                         static_cast<int>( session_.windowIndex() ) );
         context.insert( QStringLiteral( "filePath" ), filePath );
-        context.insert( QStringLiteral( "displayName" ), mainTabWidget_.tabDisplayNameAt( index ) );
-        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+        context.insert( QStringLiteral( "displayName" ), paneArea_->tabDisplayNameAt( index ) );
+        if ( auto* streamSession = paneArea_->streamSessionForPath( filePath ) ) {
             context.insert( QStringLiteral( "portName" ),
                             streamSession->captureSettings().portName );
         }
@@ -1279,25 +1307,25 @@ void MainWindow::publishScriptActionSendEvent( const QString& filePath, int acti
 
 void MainWindow::refreshScriptStatusIndicators()
 {
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        const auto tabId = mainTabWidget_.tabIdAt( index );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        const auto tabId = paneArea_->tabIdAt( index );
         bool active = false;
         if ( applicationHasMethod( "hasActiveScriptForTab(QString)" ) ) {
             QMetaObject::invokeMethod( qApp, "hasActiveScriptForTab", Qt::DirectConnection,
                                        Q_RETURN_ARG( bool, active ), Q_ARG( QString, tabId ) );
         }
-        mainTabWidget_.setTabScriptActive( tabId, active );
+        paneArea_->setTabScriptActive( tabId, active );
     }
 }
 
 QString MainWindow::scriptContextForTab( int index ) const
 {
-    if ( index < 0 || index >= mainTabWidget_.count() ) {
+    if ( index < 0 || index >= paneArea_->count() ) {
         return {};
     }
 
     QVariantMap scriptBinding;
-    const auto tabId = mainTabWidget_.tabIdAt( index );
+    const auto tabId = paneArea_->tabIdAt( index );
     if ( !applicationHasMethod( "scriptBindingForTab(QString)" )
          || !QMetaObject::invokeMethod( qApp, "scriptBindingForTab", Qt::DirectConnection,
                                         Q_RETURN_ARG( QVariantMap, scriptBinding ),
@@ -1326,7 +1354,7 @@ QString MainWindow::globalScriptContext() const
 
 void MainWindow::restoreScriptContextForTab( int index, const QString& scriptContext )
 {
-    if ( index < 0 || index >= mainTabWidget_.count() || scriptContext.trimmed().isEmpty() ) {
+    if ( index < 0 || index >= paneArea_->count() || scriptContext.trimmed().isEmpty() ) {
         return;
     }
 
@@ -1338,16 +1366,16 @@ void MainWindow::restoreScriptContextForTab( int index, const QString& scriptCon
     }
 
     auto scriptBinding = document.object().toVariantMap();
-    scriptBinding.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( index ) );
+    scriptBinding.insert( QStringLiteral( "tabId" ), paneArea_->tabIdAt( index ) );
     scriptBinding.insert( QStringLiteral( "tabIndex" ), index );
     scriptBinding.insert( QStringLiteral( "windowId" ), session_.windowId() );
     scriptBinding.insert( QStringLiteral( "windowIndex" ),
                           static_cast<int>( session_.windowIndex() ) );
     scriptBinding.insert( QStringLiteral( "displayName" ),
-                          mainTabWidget_.tabDisplayNameAt( index ) );
-    const auto filePath = mainTabWidget_.tabPathAt( index );
+                          paneArea_->tabDisplayNameAt( index ) );
+    const auto filePath = paneArea_->tabPathAt( index );
     scriptBinding.insert( QStringLiteral( "filePath" ), filePath );
-    if ( auto* streamSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+    if ( auto* streamSession = paneArea_->streamSessionForPath( filePath ) ) {
         scriptBinding.insert( QStringLiteral( "portName" ),
                               streamSession->captureSettings().portName );
     }
@@ -1520,6 +1548,8 @@ void MainWindow::reTranslateUI()
     importPreviewsAction->setStatusTip( transAction( action::importPreviewsDialogStatusTip ) );
     importActionsAction->setText( transAction( action::importActionsDialogText ) );
     importActionsAction->setStatusTip( transAction( action::importActionsDialogStatusTip ) );
+
+    retranslatePaneActions();
 
     // trayIcon
     trayIcon_->setToolTip( QApplication::translate( "klogg::mainwindow::trayicon",
@@ -1733,8 +1763,8 @@ void MainWindow::createActions()
     showTabsBarAction->setEnabled( true );
     showTabsBarAction->setChecked( config.showTabsBarByDefault() );
     connect( showTabsBarAction, &QAction::toggled, this,
-             [ this ]( bool checked ) { mainTabWidget_.setAlwaysShowTabBar( checked ); } );
-    mainTabWidget_.setAlwaysShowTabBar( showTabsBarAction->isChecked() );
+             [ this ]( bool checked ) { paneArea_->setAlwaysShowTabBar( checked ); } );
+    paneArea_->setAlwaysShowTabBar( showTabsBarAction->isChecked() );
 
     reloadAction = new QAction( tr( action::reloadText ), this );
     signalMux_.connect( reloadAction, SIGNAL( triggered() ), SLOT( reload() ) );
@@ -2050,6 +2080,8 @@ void MainWindow::createMenus()
     viewMenu->addAction( textWrapAction );
     viewMenu->addAction( showTabsBarAction );
     viewMenu->addSeparator();
+    addPaneMenuEntries();
+    viewMenu->addSeparator();
     viewMenu->addAction( followAction );
     viewMenu->addSeparator();
     viewMenu->addAction( reloadAction );
@@ -2118,8 +2150,8 @@ void MainWindow::rebuildComPortsMenu()
     std::vector<const StreamSession*> includedSessions;
     int menuEntryCount = 0;
     int skippedTabCount = 0;
-    for ( int tab = 0; tab < mainTabWidget_.count(); ++tab ) {
-        auto* streamSession = mainTabWidget_.streamSessionForTab( tab );
+    for ( int tab = 0; tab < paneArea_->count(); ++tab ) {
+        auto* streamSession = paneArea_->streamSessionForTab( tab );
         if ( streamSession == nullptr ) {
             ++skippedTabCount;
             continue;
@@ -2138,7 +2170,7 @@ void MainWindow::rebuildComPortsMenu()
             continue;
         }
 
-        const auto tabId = mainTabWidget_.tabIdAt( tab );
+        const auto tabId = paneArea_->tabIdAt( tab );
         if ( tabId.isEmpty() ) {
             LOG_WARNING << "Skipping COM menu tab " << tab << ": tab id is empty";
             continue;
@@ -2189,9 +2221,9 @@ void MainWindow::rebuildComPortsMenu()
         QPointer<StreamSession> safeActionsSession = streamSession;
         connect( actionsEnabledAction, &QAction::triggered, this,
                  [ this, tabId, safeActionsSession ]( bool enabled ) {
-                     const auto index = mainTabWidget_.findTabById( tabId );
+                     const auto index = paneArea_->findTabById( tabId );
                      if ( index < 0 || !safeActionsSession
-                          || mainTabWidget_.streamSessionForTab( index ) != safeActionsSession ) {
+                          || paneArea_->streamSessionForTab( index ) != safeActionsSession ) {
                          LOG_DEBUG << "Ignoring stale COM-menu Actions toggle: tab_id=" << tabId;
                          return;
                      }
@@ -2215,9 +2247,9 @@ void MainWindow::rebuildComPortsMenu()
                   << " enabled=" << autoResponsesAction->isChecked();
         connect( autoResponsesAction, &QAction::triggered, this,
                  [ this, tabId, safeActionsSession ]( bool enabled ) {
-                     const auto index = mainTabWidget_.findTabById( tabId );
+                     const auto index = paneArea_->findTabById( tabId );
                      if ( index < 0 || !safeActionsSession
-                          || mainTabWidget_.streamSessionForTab( index ) != safeActionsSession ) {
+                          || paneArea_->streamSessionForTab( index ) != safeActionsSession ) {
                          LOG_DEBUG << "Ignoring stale COM-menu automatic responses toggle: tab_id="
                                    << tabId;
                          return;
@@ -2231,7 +2263,7 @@ void MainWindow::rebuildComPortsMenu()
                  } );
 
         const auto resolveCurrentTab = [ this, tabId, portName ]( const char* actionName ) -> int {
-            const auto currentTab = mainTabWidget_.findTabById( tabId );
+            const auto currentTab = paneArea_->findTabById( tabId );
             if ( currentTab < 0 ) {
                 LOG_WARNING << "Ignoring COM menu action " << actionName << " for "
                             << portName.toStdString() << ": tab " << tabId.toStdString()
@@ -2239,7 +2271,7 @@ void MainWindow::rebuildComPortsMenu()
                 return -1;
             }
 
-            const auto* currentSession = mainTabWidget_.streamSessionForTab( currentTab );
+            const auto* currentSession = paneArea_->streamSessionForTab( currentTab );
             if ( currentSession == nullptr ) {
                 LOG_WARNING << "Ignoring COM menu action " << actionName << " for "
                             << portName.toStdString() << ": tab " << tabId.toStdString()
@@ -2292,7 +2324,7 @@ void MainWindow::rebuildComPortsMenu()
 
     const bool menuVisible = menuEntryCount > 0;
     comPortsMenu->menuAction()->setVisible( menuVisible );
-    LOG_DEBUG << "File > COM port menu refreshed: tabs=" << mainTabWidget_.count()
+    LOG_DEBUG << "File > COM port menu refreshed: tabs=" << paneArea_->count()
               << ", entries=" << menuEntryCount << ", skipped=" << skippedTabCount
               << ", visible=" << menuVisible;
 }
@@ -2461,7 +2493,7 @@ void MainWindow::openComPort()
     }
 
     if ( !loadFile( settings.filePath, true ) ) {
-        if ( auto* session = mainTabWidget_.streamSessionForPath( settings.filePath ) ) {
+        if ( auto* session = paneArea_->streamSessionForPath( settings.filePath ) ) {
             session->closeConnection();
         }
         QMessageBox::warning( this, tr( "Open COM Port" ),
@@ -2543,7 +2575,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
     }
 
     const auto filePath = settings.filePath;
-    if ( auto existingSession = mainTabWidget_.streamSessionForPath( filePath ) ) {
+    if ( auto existingSession = paneArea_->streamSessionForPath( filePath ) ) {
         if ( existingSession->isConnectionOpen() || existingSession->hasActiveWorker() ) {
             existingSession->closeConnection();
             showInformation(
@@ -2553,7 +2585,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
         if ( actionsStreamSession_ == existingSession ) {
             setActionsDestination( nullptr );
         }
-        mainTabWidget_.clearStreamSessionForPath( filePath );
+        paneArea_->clearStreamSessionForPath( filePath );
     }
 
     auto session = std::make_shared<StreamSession>( settings );
@@ -2562,15 +2594,15 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
              [ this ]( bool ) { updateActionsSendState(); } );
     connect( session.get(), &StreamSession::connectionOpened, this, [ this, session ] {
         const auto currentFilePath = session->filePath();
-        mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
+        paneArea_->setStreamSessionForPath( currentFilePath, session );
         publishScriptLifecycleEvent( currentFilePath, QStringLiteral( "comm_start" ) );
         updateActionsSendState();
     } );
     connect( session.get(), &StreamSession::connectionClosed, this, [ this, session, safeSession ] {
         const auto currentFilePath = session->filePath();
         bool tabStillOpen = false;
-        for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-            auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        for ( int index = 0; index < paneArea_->count(); ++index ) {
+            auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
             if ( widget != nullptr && session_.getFilename( widget ) == currentFilePath ) {
                 tabStillOpen = true;
                 break;
@@ -2578,10 +2610,10 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
         }
 
         if ( tabStillOpen && session->isPaused() ) {
-            mainTabWidget_.setStreamSessionForPath( currentFilePath, session );
+            paneArea_->setStreamSessionForPath( currentFilePath, session );
         }
         else {
-            mainTabWidget_.clearStreamSessionForPath( currentFilePath );
+            paneArea_->clearStreamSessionForPath( currentFilePath );
         }
         if ( actionsStreamSession_ == safeSession && !session->isPaused() ) {
             setActionsDestination( nullptr );
@@ -2636,7 +2668,7 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  }
              } );
     session->start();
-    mainTabWidget_.setStreamSessionForPath( settings.filePath, session );
+    paneArea_->setStreamSessionForPath( settings.filePath, session );
 
     LOG_DEBUG << "Attached independent Actions tab: port=" << settings.portName
               << " enabled=" << session->actionsEnabled();
@@ -2751,10 +2783,14 @@ void MainWindow::openFileFromFavorites( QAction* action )
 // Close current tab
 void MainWindow::closeTab( ActionInitiator initiator )
 {
-    int currentIndex = mainTabWidget_.currentIndex();
+    int currentIndex = paneArea_->currentIndex();
 
     if ( currentIndex >= 0 ) {
         closeTab( currentIndex, initiator );
+    }
+    else if ( paneArea_->paneCount() > 1 ) {
+        // The active pane is empty: close it instead of the window.
+        closePane( paneArea_->activePane(), PaneTabsOnClose::Close );
     }
     else {
         this->close();
@@ -2764,7 +2800,7 @@ void MainWindow::closeTab( ActionInitiator initiator )
 // Close all tabs
 void MainWindow::closeAll( ActionInitiator initiator )
 {
-    while ( mainTabWidget_.count() ) {
+    while ( paneArea_->count() ) {
         closeTab( 0, initiator );
     }
 }
@@ -3314,7 +3350,9 @@ void MainWindow::handleLoadingFinished( LoadingStatus status )
         lineNumberHandler( 0_lnum, LinesCount( 0 ), LineColumn( 0 ), LineLength( 0 ) );
 
         // Now everything is ready, we can finally show the file!
-        currentCrawlerWidget()->show();
+        if ( auto* crawler = currentCrawlerWidget() ) {
+            crawler->show();
+        }
     }
     else {
         if ( status == LoadingStatus::NoMemory ) {
@@ -3327,33 +3365,35 @@ void MainWindow::handleLoadingFinished( LoadingStatus status )
             alertBox.exec();
         }
 
-        closeTab( mainTabWidget_.currentIndex(), ActionInitiator::App );
+        if ( paneArea_->currentIndex() >= 0 ) {
+            closeTab( paneArea_->currentIndex(), ActionInitiator::App );
+        }
     }
 
-    // mainTabWidget_.setEnabled( true );
+    // paneArea_->setEnabled( true );
 }
 
 void MainWindow::handleFilteredViewChanged()
 {
-    int currentIndex = mainTabWidget_.currentIndex();
+    int currentIndex = paneArea_->currentIndex();
     if ( currentIndex >= 0 ) {
-        auto* crawler_widget = static_cast<CrawlerWidget*>( mainTabWidget_.widget( currentIndex ) );
+        auto* crawler_widget = static_cast<CrawlerWidget*>( paneArea_->widget( currentIndex ) );
         quickFindMux_.registerSelector( crawler_widget );
     }
 }
 
 void MainWindow::closeTab( int index, ActionInitiator initiator )
 {
-    auto widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    auto widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
 
     assert( widget );
 
     const auto fileName = session_.getFilename( widget );
     publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_close" ) );
     if ( pluginController_ ) { pluginController_->closeFile( fileName ); }
-    const auto tabId = mainTabWidget_.tabIdAt( index );
+    const auto tabId = paneArea_->tabIdAt( index );
     remoteFileSources_.erase( fileName );
-    if ( auto session = mainTabWidget_.streamSessionForPath( fileName ) ) {
+    if ( auto session = paneArea_->streamSessionForPath( fileName ) ) {
         if ( session->isConnectionOpen() ) {
             session->closeConnection();
         }
@@ -3361,7 +3401,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
             if ( actionsStreamSession_ == session ) {
                 setActionsDestination( nullptr );
             }
-            mainTabWidget_.clearStreamSessionForPath( fileName );
+            paneArea_->clearStreamSessionForPath( fileName );
         }
     }
 
@@ -3372,7 +3412,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
                                        Q_ARG( QString, tabId ) );
         }
     }
-    mainTabWidget_.removeCrawler( index );
+    paneArea_->removeCrawler( index );
 
     if ( initiator == ActionInitiator::User ) {
         addRecentFile( session_.getFilename( widget ) );
@@ -3389,7 +3429,7 @@ void MainWindow::closeTab( int index, ActionInitiator initiator )
 
 void MainWindow::startNewStreamFileForTab( int tab )
 {
-    auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( paneArea_->widget( tab ) );
     const auto result = startNewStreamFileForCrawler( crawler );
     if ( result.ok() ) {
         return;
@@ -3410,7 +3450,7 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
     }
 
     const auto oldFilePath = session_.getFilename( crawler );
-    auto* streamSession = mainTabWidget_.streamSessionForPath( oldFilePath );
+    auto* streamSession = paneArea_->streamSessionForPath( oldFilePath );
     if ( streamSession == nullptr || !streamSession->isConnectionOpen() ) {
         LOG_DEBUG << "Start new COM stream file failed: no active stream for "
                   << oldFilePath.toStdString();
@@ -3432,6 +3472,8 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
             tr( "Failed to open new capture file: %1" ).arg( captureFileError ) );
     }
 
+    // The new capture file opens in the pane of the COM tab it continues.
+    paneArea_->setActivePane( paneArea_->paneForWidget( crawler ) );
     if ( !loadFile( newFilePath, true ) ) {
         LOG_DEBUG << "Start new COM stream file failed: CILogg could not load "
                   << newFilePath.toStdString();
@@ -3449,7 +3491,7 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
 
     QString switchError;
     if ( !streamSession->startNewCaptureFile( newFilePath, &switchError ) ) {
-        const auto newTab = mainTabWidget_.indexOf( newCrawler );
+        const auto newTab = paneArea_->indexOf( newCrawler );
         if ( newTab >= 0 ) {
             LOG_DEBUG << "Closing newly opened capture tab after stream switch failure";
             closeTab( newTab, ActionInitiator::App );
@@ -3460,7 +3502,7 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
                                  tr( "Failed to switch capture file: %1" ).arg( switchError ) );
     }
 
-    mainTabWidget_.remapStreamSessionPath( oldFilePath, newFilePath );
+    paneArea_->remapStreamSessionPath( oldFilePath, newFilePath );
     publishScriptLifecycleEvent( oldFilePath, QStringLiteral( "comm_stop" ) );
     publishScriptLifecycleEvent( newFilePath, QStringLiteral( "comm_start" ) );
     updateActionsSendState();
@@ -3480,14 +3522,14 @@ CommanderResult MainWindow::startNewStreamFileForCrawler( CrawlerWidget* crawler
 
 void MainWindow::closeStreamConnectionForTab( int tab )
 {
-    auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( paneArea_->widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Close COM stream ignored for tab " << tab << ": crawler not found";
         return;
     }
 
     const auto filePath = session_.getFilename( crawler );
-    auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
+    auto* streamSession = paneArea_->streamSessionForPath( filePath );
     if ( streamSession == nullptr ) {
         LOG_WARNING << "Close COM stream ignored for tab " << tab
                     << ": stream session not found for " << filePath.toStdString();
@@ -3501,7 +3543,7 @@ void MainWindow::closeStreamConnectionForTab( int tab )
         if ( actionsStreamSession_ == streamSession ) {
             setActionsDestination( nullptr );
         }
-        mainTabWidget_.clearStreamSessionForPath( filePath );
+        paneArea_->clearStreamSessionForPath( filePath );
         updateActionsSendState();
         updateComPortStatus();
         refreshComTabIndicators();
@@ -3511,14 +3553,14 @@ void MainWindow::closeStreamConnectionForTab( int tab )
 
 void MainWindow::pauseStreamConnectionForTab( int tab )
 {
-    auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( paneArea_->widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Pause COM stream ignored for tab " << tab << ": crawler not found";
         return;
     }
 
     const auto filePath = session_.getFilename( crawler );
-    auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
+    auto* streamSession = paneArea_->streamSessionForPath( filePath );
     if ( streamSession == nullptr ) {
         LOG_WARNING << "Pause COM stream ignored for tab " << tab
                     << ": stream session not found for " << filePath.toStdString();
@@ -3541,14 +3583,14 @@ void MainWindow::pauseStreamConnectionForTab( int tab )
 
 void MainWindow::resumeStreamConnectionForTab( int tab )
 {
-    auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tab ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( paneArea_->widget( tab ) );
     if ( crawler == nullptr ) {
         LOG_WARNING << "Play COM stream ignored for tab " << tab << ": crawler not found";
         return;
     }
 
     const auto filePath = session_.getFilename( crawler );
-    auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
+    auto* streamSession = paneArea_->streamSessionForPath( filePath );
     if ( streamSession == nullptr ) {
         LOG_WARNING << "Play COM stream ignored for tab " << tab
                     << ": stream session not found for " << filePath.toStdString();
@@ -3574,7 +3616,7 @@ void MainWindow::resumeStreamConnectionForTab( int tab )
 
 CommanderResult MainWindow::closeTabById( const QString& tabId )
 {
-    const auto index = mainTabWidget_.findTabById( tabId );
+    const auto index = paneArea_->findTabById( tabId );
     if ( index < 0 ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Open tab %1 was not found." ).arg( tabId ) );
@@ -3585,17 +3627,17 @@ CommanderResult MainWindow::closeTabById( const QString& tabId )
 
 CrawlerWidget* MainWindow::crawlerWidgetByTabId( const QString& tabId ) const
 {
-    const auto index = mainTabWidget_.findTabById( tabId );
+    const auto index = paneArea_->findTabById( tabId );
     return crawlerWidgetByIndex( index );
 }
 
 CrawlerWidget* MainWindow::crawlerWidgetByIndex( int tabIndex ) const
 {
-    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+    if ( tabIndex < 0 || tabIndex >= paneArea_->count() ) {
         return nullptr;
     }
 
-    return qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( tabIndex ) );
+    return qobject_cast<CrawlerWidget*>( paneArea_->widget( tabIndex ) );
 }
 
 CommanderResult MainWindow::commanderAnalysis( const CommanderRequest& request )
@@ -3614,7 +3656,7 @@ CommanderResult MainWindow::commanderAnalysis( const CommanderRequest& request )
         source->sourceDescription[ "filePath" ] = session_.getFilename( crawler );
         source->sourceDescription[ "windowId" ] = session_.windowId();
         source->sourceDescription[ "windowIndex" ] = static_cast<int>( session_.windowIndex() );
-        source->sourceDescription[ "tabId" ] = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+        source->sourceDescription[ "tabId" ] = paneArea_->tabIdAt( paneArea_->indexOf( crawler ) );
     }
     auto result = executeAnalysisOperation( *service, commanderActionToString( request.action ), request.analysisArguments, std::move( source ) );
     return { result.ok ? CommanderResultCode::Success : CommanderResultCode::InvalidRequest,
@@ -3643,7 +3685,7 @@ StreamSession* MainWindow::streamSessionForCrawler( const CrawlerWidget* crawler
         return nullptr;
     }
 
-    return mainTabWidget_.streamSessionForPath( filePath );
+    return paneArea_->streamSessionForPath( filePath );
 }
 
 StreamSession* MainWindow::commanderTargetStreamSession( const CommanderRequest& request,
@@ -3706,7 +3748,7 @@ QVariantList MainWindow::commanderResponseCounters( StreamSession* streamSession
 
 CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 {
-    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+    if ( tabIndex < 0 || tabIndex >= paneArea_->count() ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
     }
@@ -3717,7 +3759,7 @@ CommanderResult MainWindow::closeTabByIndex( int tabIndex )
 
 CommanderResult MainWindow::focusTabById( const QString& tabId )
 {
-    const auto index = mainTabWidget_.findTabById( tabId );
+    const auto index = paneArea_->findTabById( tabId );
     if ( index < 0 ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Open tab %1 was not found." ).arg( tabId ) );
@@ -3728,12 +3770,16 @@ CommanderResult MainWindow::focusTabById( const QString& tabId )
 
 CommanderResult MainWindow::focusTabByIndex( int tabIndex )
 {
-    if ( tabIndex < 0 || tabIndex >= mainTabWidget_.count() ) {
+    if ( tabIndex < 0 || tabIndex >= paneArea_->count() ) {
         return commanderFailure( CommanderResultCode::NotFound,
                                  tr( "Open tab at index %1 was not found." ).arg( tabIndex ) );
     }
 
-    mainTabWidget_.setCurrentIndex( tabIndex );
+    paneArea_->setCurrentIndex( tabIndex );
+    // The tab's pane becomes active; keyboard focus follows it.
+    if ( auto* current = paneArea_->currentWidget() ) {
+        current->setFocus();
+    }
     setWindowState( windowState() & ~Qt::WindowMinimized );
     show();
     raise();
@@ -4072,13 +4118,13 @@ CommanderResult MainWindow::commanderGetCommStatus( const CommanderRequest& requ
 
     QVariantMap payload;
     payload.insert( QStringLiteral( "tabId" ),
-                    mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) ) );
-    payload.insert( QStringLiteral( "tabIndex" ), mainTabWidget_.indexOf( crawler ) );
+                    paneArea_->tabIdAt( paneArea_->indexOf( crawler ) ) );
+    payload.insert( QStringLiteral( "tabIndex" ), paneArea_->indexOf( crawler ) );
     payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
     payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
     payload.insert( QStringLiteral( "filePath" ), session_.getFilename( crawler ) );
     payload.insert( QStringLiteral( "displayName" ),
-                    mainTabWidget_.tabDisplayNameAt( mainTabWidget_.indexOf( crawler ) ) );
+                    paneArea_->tabDisplayNameAt( paneArea_->indexOf( crawler ) ) );
 
     const auto& settings = streamSession->captureSettings();
     QVariantMap comInfo;
@@ -4199,7 +4245,7 @@ CommanderResult MainWindow::commanderClearComm( const CommanderRequest& request 
                                  tr( "Requested live communication tab was not found." ) );
     }
 
-    mainTabWidget_.setCurrentWidget( crawler );
+    paneArea_->setCurrentWidget( crawler );
     crawler->reload();
     return commanderSuccess( tr( "Live communication view reloaded. Non-destructive clear is not "
                                  "yet separate from reload." ) );
@@ -4213,12 +4259,12 @@ CommanderResult MainWindow::commanderFilters( const CommanderRequest& request ) 
                                  tr( "Requested tab was not found." ) );
     }
 
-    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    const auto targetTabIndex = paneArea_->indexOf( crawler );
     QVariantMap payload;
     payload.insert( QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) );
     payload.insert( QStringLiteral( "windowId" ), session_.windowId() );
     payload.insert( QStringLiteral( "tabIndex" ), targetTabIndex );
-    payload.insert( QStringLiteral( "tabId" ), mainTabWidget_.tabIdAt( targetTabIndex ) );
+    payload.insert( QStringLiteral( "tabId" ), paneArea_->tabIdAt( targetTabIndex ) );
 
     auto filters = request.predefinedFilters ? crawler->commanderPredefinedFilters()
                                              : crawler->commanderFilters();
@@ -4315,9 +4361,9 @@ CommanderResult MainWindow::commanderSearch( const CommanderRequest& request )
                                  tr( "search requires a search expression." ) );
     }
 
-    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    const auto targetTabIndex = paneArea_->indexOf( crawler );
     if ( targetTabIndex >= 0 ) {
-        mainTabWidget_.setCurrentIndex( targetTabIndex );
+        paneArea_->setCurrentIndex( targetTabIndex );
     }
 
     crawler->applyCommanderAutomationSearch( request );
@@ -4336,9 +4382,9 @@ CommanderResult MainWindow::commanderSetFollowMode( const CommanderRequest& requ
                                  tr( "set_follow_mode requires an explicit state." ) );
     }
 
-    const auto targetTabIndex = mainTabWidget_.indexOf( crawler );
+    const auto targetTabIndex = paneArea_->indexOf( crawler );
     if ( targetTabIndex >= 0 ) {
-        mainTabWidget_.setCurrentIndex( targetTabIndex );
+        paneArea_->setCurrentIndex( targetTabIndex );
     }
 
     followAction->setChecked( *request.enabled );
@@ -4372,8 +4418,8 @@ CommanderResult MainWindow::commanderInvokeAction( const CommanderRequest& reque
 
 CommanderResult MainWindow::closeFileByPath( const QString& filePath )
 {
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         if ( widget == nullptr ) {
             continue;
         }
@@ -4403,14 +4449,14 @@ CommanderResult MainWindow::closeUrlBySource( const QString& url )
 
 CommanderResult MainWindow::closeComPortByName( const QString& portName )
 {
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         if ( widget == nullptr ) {
             continue;
         }
 
         const auto fileName = session_.getFilename( widget );
-        auto* streamSession = mainTabWidget_.streamSessionForPath( fileName );
+        auto* streamSession = paneArea_->streamSessionForPath( fileName );
         if ( streamSession != nullptr
              && streamSession->captureSettings().portName.compare( portName, Qt::CaseInsensitive )
                     == 0 ) {
@@ -4438,7 +4484,7 @@ void MainWindow::currentTabChanged( int index )
     LOG_DEBUG << "currentTabChanged";
 
     if ( index >= 0 ) {
-        auto* crawler_widget = static_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+        auto* crawler_widget = static_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         signalMux_.setCurrentDocument( crawler_widget );
         quickFindMux_.registerSelector( crawler_widget );
 
@@ -4728,7 +4774,7 @@ bool MainWindow::loadFile( const QString& fileName, bool followFile )
 
     if ( existing_crawler ) {
         auto* crawlerWindow = qobject_cast<MainWindow*>( existing_crawler->window() );
-        crawlerWindow->mainTabWidget_.setCurrentWidget( existing_crawler );
+        crawlerWindow->paneArea_->setCurrentWidget( existing_crawler );
         crawlerWindow->activateWindow();
         return true;
     }
@@ -4775,14 +4821,14 @@ bool MainWindow::loadFile( const QString& fileName, bool followFile )
 
             // We disable the tab widget to avoid having someone switch
             // tab during loading. (maybe FIXME)
-            // mainTabWidget_.setEnabled( false );
+            // paneArea_->setEnabled( false );
 
-            int index = mainTabWidget_.addCrawler( crawler_widget, fileName );
+            int index = paneArea_->addCrawler( crawler_widget, fileName );
             publishScriptLifecycleEvent( fileName, QStringLiteral( "tab_open" ) );
 
             // Setting the new tab, the user will see a blank page for the duration
             // of the loading, with no way to switch to another tab
-            mainTabWidget_.setCurrentIndex( index );
+            paneArea_->setCurrentIndex( index );
 
             addRecentFile( fileName );
             updateOpenedFilesMenu();
@@ -4814,7 +4860,7 @@ QString MainWindow::strippedName( const QString& fullFileName ) const
 // Return the currently active CrawlerWidget, or NULL if none
 CrawlerWidget* MainWindow::currentCrawlerWidget() const
 {
-    auto current = qobject_cast<CrawlerWidget*>( mainTabWidget_.currentWidget() );
+    auto current = qobject_cast<CrawlerWidget*>( paneArea_->currentWidget() );
 
     return current;
 }
@@ -4829,7 +4875,7 @@ StreamSession* MainWindow::currentStreamSession() const
     if ( fileName.isEmpty() ) {
         return nullptr;
     }
-    return mainTabWidget_.streamSessionForPath( fileName );
+    return paneArea_->streamSessionForPath( fileName );
 }
 
 void MainWindow::updateActionsSendState()
@@ -4844,13 +4890,13 @@ void MainWindow::updateActionsSendState()
 
     QVariantList tabs;
     std::vector<StreamSession*> eligible;
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* candidate = mainTabWidget_.streamSessionForTab( index );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* candidate = paneArea_->streamSessionForTab( index );
         if ( !isOpenActionsStreamSession( candidate )
              || std::find( eligible.cbegin(), eligible.cend(), candidate ) != eligible.cend() ) {
             continue;
         }
-        const auto tabId = mainTabWidget_.tabIdAt( index );
+        const auto tabId = paneArea_->tabIdAt( index );
         if ( tabId.isEmpty() ) {
             LOG_DEBUG << "Skipping Actions destination with no stable tab id: index=" << index;
             continue;
@@ -4859,7 +4905,7 @@ void MainWindow::updateActionsSendState()
         tabs.push_back( QVariantMap{
             { QStringLiteral( "tabId" ), tabId },
             { QStringLiteral( "label" ), tr( "%1 (%2)" )
-                                             .arg( mainTabWidget_.tabDisplayNameAt( index ),
+                                             .arg( paneArea_->tabDisplayNameAt( index ),
                                                    candidate->sourceDisplayName() ) } } );
     }
 
@@ -4904,9 +4950,9 @@ void MainWindow::setActionsDestination( StreamSession* streamSession )
 QString MainWindow::actionsTabIdForSession( const StreamSession* streamSession ) const
 {
     if ( streamSession != nullptr ) {
-        for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-            if ( mainTabWidget_.streamSessionForTab( index ) == streamSession ) {
-                return mainTabWidget_.tabIdAt( index );
+        for ( int index = 0; index < paneArea_->count(); ++index ) {
+            if ( paneArea_->streamSessionForTab( index ) == streamSession ) {
+                return paneArea_->tabIdAt( index );
             }
         }
     }
@@ -4960,8 +5006,8 @@ void MainWindow::updateComPortStatus()
 
 void MainWindow::refreshComTabIndicators()
 {
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
-        auto* widget = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( index ) );
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
+        auto* widget = qobject_cast<CrawlerWidget*>( paneArea_->widget( index ) );
         if ( widget == nullptr ) {
             continue;
         }
@@ -4971,8 +5017,8 @@ void MainWindow::refreshComTabIndicators()
             continue;
         }
 
-        const auto* streamSession = mainTabWidget_.streamSessionForPath( filePath );
-        mainTabWidget_.setTabActionsPort( filePath, isActionsStreamSession( streamSession ) );
+        const auto* streamSession = paneArea_->streamSessionForPath( filePath );
+        paneArea_->setTabActionsPort( filePath, isActionsStreamSession( streamSession ) );
     }
 }
 
@@ -5360,8 +5406,9 @@ void MainWindow::writeSettings()
     // Save the session
     // Generate the ordered list of widgets and their topLine
     std::vector<SaveFileInfo> widget_list;
-    for ( int i = 0; i < mainTabWidget_.count(); ++i ) {
-        auto view = qobject_cast<const CrawlerWidget*>( mainTabWidget_.widget( i ) );
+    std::map<const QWidget*, int> savedIndexByWidget;
+    for ( int i = 0; i < paneArea_->count(); ++i ) {
+        auto view = qobject_cast<const CrawlerWidget*>( paneArea_->widget( i ) );
         if ( view == nullptr ) {
             LOG_WARNING << "Skipping non-crawler tab while saving session at index " << i;
             continue;
@@ -5376,7 +5423,7 @@ void MainWindow::writeSettings()
         QString streamContext;
         QString scriptContext;
         const auto fileName = session_.getFilename( view );
-        if ( auto* streamSession = mainTabWidget_.streamSessionForPath( fileName ) ) {
+        if ( auto* streamSession = paneArea_->streamSessionForPath( fileName ) ) {
             if ( streamSession->isConnectionOpen() || streamSession->isPaused() ) {
                 streamContext = serializeSerialCaptureSettings( streamSession->captureSettings() );
                 LOG_DEBUG << "Saving COM session for " << fileName.toStdString()
@@ -5385,11 +5432,13 @@ void MainWindow::writeSettings()
         }
         scriptContext = scriptContextForTab( i );
 
+        savedIndexByWidget.emplace( view, static_cast<int>( widget_list.size() ) );
         widget_list.emplace_back( view, 0UL, std::move( context ), streamContext, scriptContext );
     }
     auto& sessionInfo = SessionInfo::getSynced();
     sessionInfo.setGlobalScriptContext( globalScriptContext() );
     sessionInfo.setDockState( session_.windowId(), saveState( 1 ) );
+    sessionInfo.setPaneLayout( session_.windowId(), capturePaneLayout( savedIndexByWidget ) );
     // WindowSession::save() reloads SessionInfo; publish these fields first.
     sessionInfo.save();
     session_.save( widget_list, saveGeometry() );

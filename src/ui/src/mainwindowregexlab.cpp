@@ -31,12 +31,12 @@ void MainWindow::createRegexLab()
         },
         [ this ] {
             QVariantList sources;
-            for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+            for ( int index = 0; index < paneArea_->count(); ++index ) {
                 auto* crawler = crawlerWidgetByIndex( index );
                 if ( !crawler )
                     continue;
                 sources.push_back(
-                    QVariantMap{ { "tabId", mainTabWidget_.tabIdAt( index ) },
+                    QVariantMap{ { "tabId", paneArea_->tabIdAt( index ) },
                                  { "label", QString::number( index + 1 ) + ": "
                                                 + session_.getFilename( crawler ) } } );
             }
@@ -55,7 +55,7 @@ void MainWindow::createRegexLab()
             if ( !position || !crawler )
                 return labFailure( "stale_location",
                                    tr( "This source location has changed or closed." ) );
-            mainTabWidget_.setCurrentWidget( crawler );
+            paneArea_->setCurrentWidget( crawler );
             if ( !crawler || !crawler->navigateToAnalysisResult( *position ) )
                 return labFailure( "stale_location",
                                    tr( "This source location has changed or closed." ) );
@@ -96,12 +96,12 @@ CommanderResult MainWindow::commanderRegexLab( const CommanderRequest& request )
               || definition.contains( "limits" ) || definition.value( "operation" ) == "run";
         if ( target && configuresDraft && !definition.contains( "sourceTabId" ) )
             definition[ "sourceTabId" ]
-                = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) );
+                = paneArea_->tabIdAt( paneArea_->indexOf( target ) );
         return regexLabDock_->setDefinition( definition );
     }
     case CommanderAction::ApplyRegexLabPattern:
         if ( target )
-            mainTabWidget_.setCurrentWidget( target );
+            paneArea_->setCurrentWidget( target );
         return regexLabDock_->apply();
     default:
         return labFailure( "unsupported_operation", tr( "Unsupported Regex Lab operation." ) );
@@ -114,5 +114,5 @@ void MainWindow::showRegexLabForSelection()
     auto* crawler = currentCrawlerWidget();
     if ( !crawler )
         return;
-    regexLabDock_->prepareSelection( mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) ) );
+    regexLabDock_->prepareSelection( paneArea_->tabIdAt( paneArea_->indexOf( crawler ) ) );
 }

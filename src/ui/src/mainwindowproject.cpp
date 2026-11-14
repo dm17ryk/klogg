@@ -160,13 +160,14 @@ bool MainWindow::saveProject( const QString& path, QString* errorMessage )
         snapshot.add( id );
         snapshot.setOpenFiles( id, session.openFiles( id ) );
         snapshot.setGeometry( id, session.geometry( id ) );
-        activeTabs.insert( id, window->mainTabWidget_.currentIndex() );
+        snapshot.setPaneLayout( id, session.paneLayout( id ) );
+        activeTabs.insert( id, window->paneArea_->currentIndex() );
         for ( auto it = window->registeredExports_.cbegin();
               it != window->registeredExports_.cend(); ++it ) {
             exports.insert( it.key(), it.value() );
         }
         LOG_DEBUG << "Project session captured: window=" << id
-                  << " tabs=" << window->mainTabWidget_.count();
+                  << " tabs=" << window->paneArea_->count();
     }
     snapshot.setGlobalScriptContext( SessionInfo::getSynced().globalScriptContext() );
     if ( !ConfigurationExport::saveProject( path, snapshot, activeTabs, exports, errorMessage ) ) {
@@ -259,6 +260,8 @@ bool MainWindow::loadProject( const QString& path, QString* errorMessage )
         }
         stored.setOpenFiles( targetId, files );
         stored.setGeometry( targetId, project.session.geometry( ids.at( i ) ) );
+        // Projects saved before split panes have no layout and open in one pane.
+        stored.setPaneLayout( targetId, project.session.paneLayout( ids.at( i ) ) );
     }
     stored.save();
     SessionInfo::getSynced();
@@ -275,20 +278,20 @@ bool MainWindow::loadProject( const QString& path, QString* errorMessage )
         window->newWindowAction->setVisible( Configuration::get().allowMultipleWindows() );
         window->followAction->setEnabled( Configuration::get().anyFileWatchEnabled() );
         window->showTabsBarAction->setChecked( Configuration::get().showTabsBarByDefault() );
-        window->mainTabWidget_.setAlwaysShowTabBar( Configuration::get().showTabsBarByDefault() );
+        window->paneArea_->setAlwaysShowTabBar( Configuration::get().showTabsBarByDefault() );
         window->overviewVisibleAction->setChecked( Configuration::get().isOverviewVisible() );
         window->lineNumbersVisibleInMainAction->setChecked(
             Configuration::get().mainLineNumbersVisible() );
         window->lineNumbersVisibleInFilteredAction->setChecked(
             Configuration::get().filteredLineNumbersVisible() );
-        for ( int tab = 0; tab < window->mainTabWidget_.count(); ++tab ) {
+        for ( int tab = 0; tab < window->paneArea_->count(); ++tab ) {
             if ( auto* crawler
-                 = qobject_cast<CrawlerWidget*>( window->mainTabWidget_.widget( tab ) ) ) {
+                 = qobject_cast<CrawlerWidget*>( window->paneArea_->widget( tab ) ) ) {
                 crawler->applyConfiguration();
             }
         }
         LOG_INFO << "Project window restored: " << ids.at( i )
-                 << " tabs=" << window->mainTabWidget_.count();
+                 << " tabs=" << window->paneArea_->count();
     }
     if ( qApp->metaObject()->indexOfMethod( "restoreGlobalScriptBindingVariant(QVariant)" ) >= 0 ) {
         QVariantMap binding;
