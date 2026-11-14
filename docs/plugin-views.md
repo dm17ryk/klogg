@@ -192,8 +192,10 @@ by the host feature `view_edit`.
   `multichoice` list with Enter or a click outside commits its ticks; Esc restores the ticks from
   before it opened and ends the edit unchanged. For text and number editors, Enter or leaving the
   cell commits and Esc cancels. Opening and leaving a cell without changing it sends nothing.
-  Whether a commit is a change is judged by value, not by the text the cell shows, so choices may
-  share a label. A cell whose edit the plugin has not confirmed yet reopens on that edit's value.
+  Whether a commit is a change is judged by value, not by the text the cell shows. A cell whose
+  edit the plugin has not confirmed yet reopens on that edit's value. Otherwise the editor starts
+  from its `value`, or from the item whose label matches the cell text; if several choices share
+  that label, give the editor a `value` so that the right one is selected.
 - **Pending state.** On a real change the cell shows the new text at once, in italic (a `choice` or
   `boolean` cell shows the choice label), and the host sends a `view/event` of type `edited` with
   `element_id` (the table), `row_id`, `column_id`, `value`, `previous` and `inputs`. If the host
