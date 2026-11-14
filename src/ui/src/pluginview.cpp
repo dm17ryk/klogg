@@ -10,6 +10,7 @@
 #include <QEvent>
 #include <QFileDialog>
 #include <QFont>
+#include <QGuiApplication>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -660,6 +661,52 @@ private:
     QHash<QString, int> index_;
 };
 
+// Runs `done` (queued, with the parent as its context) once no mouse button is held, then deletes
+// itself. A double-click opens a cell editor on its second press: a list opened at that moment would
+// get the release that follows and pick the item under the mouse, so cell lists wait for it.
+class MouseReleaseWaiter final : public QObject {
+public:
+    static constexpr int MaxWaitMs = 2000; // the release can happen outside every window
+    MouseReleaseWaiter( QObject* parent, std::function<void()> done )
+        : QObject( parent )
+        , done_( std::move( done ) )
+    {
+        QCoreApplication::instance()->installEventFilter( this );
+        QTimer::singleShot( MaxWaitMs, this, [ this ] { finish(); } );
+    }
+    ~MouseReleaseWaiter() override
+    {
+        if ( auto* app = QCoreApplication::instance() ) {
+            app->removeEventFilter( this );
+        }
+    }
+
+protected:
+    bool eventFilter( QObject* watched, QEvent* event ) override
+    {
+        // The application updates its button state before it delivers the release.
+        if ( event->type() == QEvent::MouseButtonRelease
+             && QGuiApplication::mouseButtons() == Qt::NoButton ) {
+            finish();
+        }
+        return QObject::eventFilter( watched, event );
+    }
+
+private:
+    void finish()
+    {
+        if ( finished_ ) {
+            return;
+        }
+        finished_ = true;
+        QCoreApplication::instance()->removeEventFilter( this );
+        QTimer::singleShot( 0, parent(), done_ );
+        deleteLater();
+    }
+    std::function<void()> done_;
+    bool finished_ = false;
+};
+
 // Cell editors from the row's `editors` spec (docs/plugin-views.md, editable cells).
 // Enter or leaving commits, Esc cancels; an editor closed without a change commits nothing.
 // Choice editors open their list at once: choosing an item (or closing a multichoice list with
@@ -888,14 +935,21 @@ private:
         }
         return line;
     }
-    // One double-click (or F2) shows the list: open it once the view has shown the editor.
+    // One double-click (or F2) shows the list. It opens once the view has shown the editor and no
+    // mouse button is held (see MouseReleaseWaiter), so a double-click never picks the item under
+    // the mouse. F2 and other keys open it at once.
     static void openPopupWhenShown( QComboBox* combo )
     {
-        QTimer::singleShot( 0, combo, [ combo ] {
+        auto open = [ combo ] {
             if ( combo->isVisible() && !combo->view()->isVisible() ) {
                 combo->showPopup();
             }
-        } );
+        };
+        if ( QGuiApplication::mouseButtons() == Qt::NoButton ) {
+            QTimer::singleShot( 0, combo, open );
+            return;
+        }
+        new MouseReleaseWaiter( combo, open );
     }
     // The item whose value, or else label, reads as `text` (Qt 6 QVariant equality does not
     // match a number with its text).

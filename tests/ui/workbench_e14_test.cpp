@@ -787,6 +787,45 @@ TEST_CASE( "E14 Esc in a choice cell's list ends the edit without an event", "[u
     CHECK_FALSE( italic( v.cell( "r1", 1 ) ) );
 }
 
+TEST_CASE( "E14 a double-click opens a choice cell's list only after the release", "[ui][workbench][E14]" )
+{
+    // A double-click opens the editor on its second press. If the list opened while the button was
+    // still down, the release would land on the list and pick the item under the mouse (the current
+    // one), so the edit ended at once and the cell could not be changed with the mouse.
+    EditableView v;
+    v.view.show();
+    QSignalSpy events( &v.view, &PluginView::eventRaised );
+    // The press also selects the row (a "selected" event); only edits matter here.
+    const auto edits = [ &events ] {
+        QList<QJsonObject> found;
+        for ( const auto& args : events ) {
+            const auto event = args.front().toJsonObject();
+            if ( event.value( "type" ) == "edited" ) {
+                found.append( event );
+            }
+        }
+        return found;
+    };
+    const auto index = v.cell( "r1", 1 );
+    const auto pos = v.table->visualRect( index ).center();
+    QTest::mousePress( v.table->viewport(), Qt::LeftButton, {}, pos );   // the second press, held
+    REQUIRE( QGuiApplication::mouseButtons() == Qt::LeftButton );
+    v.table->edit( index );                                            // as the double-click trigger
+    auto* combo = v.table->viewport()->findChild<QComboBox*>();
+    REQUIRE( combo );
+    QApplication::processEvents();
+    CHECK_FALSE( combo->view()->isVisible() );                         // waits for the release
+    QTest::mouseRelease( v.table->viewport(), Qt::LeftButton, {}, pos );
+    QApplication::processEvents();
+    CHECK( combo->view()->isVisible() );                               // open now, nothing picked
+    CHECK( editing( v.table ) );
+    CHECK( edits().isEmpty() );
+    combo->view()->setCurrentIndex( combo->model()->index( 0, 0 ) );
+    QTest::keyClick( combo->view(), Qt::Key_Return );                  // a real pick still commits
+    REQUIRE( edits().size() == 1 );
+    CHECK( edits().front().value( "value" ) == "0" );
+}
+
 TEST_CASE( "E14 a text cell commits through the view on Enter", "[ui][workbench][E14]" )
 {
     KindsView v;
