@@ -110,7 +110,8 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
             { "max_message_bytes", MaxMessageBytes }, { "max_pending_bytes", MaxPendingBytes } };
     // Optional host features, announced as notifications-only protocol v1 extensions.
     // Plugins ignore unknown names; E01 may later fold this into negotiated capabilities.
-    initializeParams_.insert( "host_features", QJsonArray{ QStringLiteral( "views" ) } );
+    initializeParams_.insert( "host_features",
+                              QJsonArray{ QStringLiteral( "views" ), QStringLiteral( "view_edit" ) } );
     const auto executable
         = manifest_.executable == "python"
               ? pythonExecutable

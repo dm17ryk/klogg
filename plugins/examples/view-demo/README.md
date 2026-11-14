@@ -14,6 +14,18 @@ in **Plugins → Manage Plugins…**.
   seconds unless you interact with it.
 - **Open editor** and **Open dialog** show the window and dialog views with `view/show`.
 
+## Editable cells
+
+The small **Setting / Value** table shows editable table cells (host feature `view_edit`, check
+`plugin.supports_view_edit`). The Value column is declared with `table_column(..., editable=True)`
+and each row carries its own `editor(...)` for that cell: a choice, a multichoice (checked values
+are a list), a number (1 to 100) and a boolean.
+
+When the user edits a cell the host sends a `view/event` of type `edited` with `row_id`,
+`column_id`, the new `value` and the `previous` text. The cell stays pending until the plugin
+patches the row back with `update_rows`: an accepted edit comes back with tone `accent` and a
+`was <previous>` tooltip, a rejected one with the old text, tone `error` and the reason as tooltip.
+
 The same actions run from the CLI and MCP, for example:
 
 ```text

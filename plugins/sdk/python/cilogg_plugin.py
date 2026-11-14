@@ -76,18 +76,39 @@ def progress(id: str, value: Optional[float] = None, busy: Optional[bool] = None
     return _element("progress", id, value=value, busy=busy, text=text, **props)
 
 
-def table_column(id: str, title: Optional[str] = None, width: Optional[int] = None) -> JsonObject:
+def table_column(id: str, title: Optional[str] = None, width: Optional[int] = None,
+                 editable: Optional[bool] = None) -> JsonObject:
     column_object: JsonObject = {"id": id, "title": title if title is not None else id}
     if width is not None:
         column_object["width"] = width
+    if editable is not None:
+        column_object["editable"] = editable
     return column_object
 
 
-def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None) -> JsonObject:
+def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
+              tooltip: Optional[str] = None, editors: Optional[JsonObject] = None) -> JsonObject:
     row_object: JsonObject = {"id": id, "cells": [str(cell) for cell in cells]}
-    if tone is not None:
-        row_object["tone"] = tone
+    for key, value in (("tone", tone), ("tooltip", tooltip), ("editors", editors)):
+        if value is not None:
+            row_object[key] = value
     return row_object
+
+
+def editor(kind: str, choices: Optional[Sequence[Any]] = None, min: Optional[float] = None,
+           max: Optional[float] = None, max_length: Optional[int] = None,
+           placeholder: Optional[str] = None, value: Any = None) -> JsonObject:
+    """A table cell editor: kind text, number, choice, multichoice or boolean (host feature view_edit).
+
+    Pass it in table_row(editors={column_id: editor(...)}). value is the optional starting value
+    (a list of checked values for multichoice)."""
+    spec: JsonObject = {"kind": kind}
+    for key, item in (("choices", list(choices) if choices is not None else None), ("min", min),
+                      ("max", max), ("max_length", max_length), ("placeholder", placeholder),
+                      ("value", value)):
+        if item is not None:
+            spec[key] = item
+    return spec
 
 
 def table(id: str, columns: Sequence[JsonObject], rows: Optional[Sequence[JsonObject]] = None,
@@ -319,6 +340,10 @@ class Plugin:
     @property
     def supports_views(self) -> bool:
         return "views" in self.host_features
+
+    @property
+    def supports_view_edit(self) -> bool:
+        return "view_edit" in self.host_features
 
     def on_view_opened(self, callback: ViewCallback) -> ViewCallback:
         """Register callback(params) for view/opened {view_id, window_id, context}."""

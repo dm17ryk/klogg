@@ -5,7 +5,7 @@ import threading
 import time
 
 from cilogg_plugin import (
-    Job, JsonObject, Plugin, badge, button, column, field, group, label, progress,
+    Job, JsonObject, Plugin, badge, button, column, editor, field, group, label, progress,
     replace_rows, row, set_props, table, table_column, table_row, update_rows,
 )
 
@@ -23,10 +23,60 @@ def initial_rows() -> list:
 
 rows = initial_rows()
 
+# The editable settings table: one row per editor kind. Cells are strings; `settings` holds the
+# typed values the plugin accepted.
+LEVELS = ["Low", "Medium", "High"]
+DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+settings: dict = {"level": "Medium", "days": ["Mon", "Fri"], "count": 10, "enabled": True}
+SETTING_NAMES = {"level": "Level (choice)", "days": "Days (multichoice)",
+                 "count": "Count 1-100 (number)", "enabled": "Enabled (boolean)"}
+SETTING_EDITORS = {
+    "level": editor("choice", choices=[{"value": item, "label": item} for item in LEVELS]),
+    "days": editor("multichoice", choices=[{"value": item, "label": item} for item in DAYS]),
+    "count": editor("number", min=1, max=100),
+    "enabled": editor("boolean"),
+}
+
+
+def setting_text(row_id: str, value) -> str:
+    if row_id == "days":
+        return ", ".join(value)
+    if row_id == "enabled":
+        return "on" if value else "off"
+    return str(value)
+
+
+def settings_row(row_id: str, tone=None, tooltip=None) -> JsonObject:
+    return table_row(row_id, [SETTING_NAMES[row_id], setting_text(row_id, settings[row_id])],
+                     tone=tone, tooltip=tooltip, editors={"value": SETTING_EDITORS[row_id]})
+
+
+def parse_setting(row_id: str, value):
+    """Return the typed value, or raise ValueError with the reason the edit is rejected."""
+    if row_id == "level":
+        if value not in LEVELS:
+            raise ValueError(f"'{value}' is not one of {', '.join(LEVELS)}")
+        return value
+    if row_id == "days":
+        picked = [item for item in DAYS if item in (value or [])]
+        if not picked:
+            raise ValueError("Pick at least one day")
+        return picked
+    if row_id == "count":
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{value}' is not a whole number") from None
+        if not 1 <= number <= 100:
+            raise ValueError("Count must be between 1 and 100")
+        return number
+    return bool(value)
+
 
 def main_tree() -> JsonObject:
     with state_lock:
         snapshot = list(rows)
+        settings_rows = [settings_row(row_id) for row_id in settings]
     return column(
         group(
             "Input",
@@ -55,6 +105,9 @@ def main_tree() -> JsonObject:
         ),
         row(badge("state", "idle", tone="muted"), label("status", "Ready."), id="status_row"),
         progress("progress", value=0.0, text="Idle"),
+        label("settings_hint", "Editable cells: double-click a value (needs host feature view_edit)."),
+        table("settings", [table_column("name", "Setting", 180),
+                           table_column("value", "Value", 180, editable=True)], settings_rows),
         table("rows", [table_column("name", "Name", 140), table_column("state", "State", 80),
                        table_column("count", "Count", 70)],
               snapshot, sortable=True, filter_box=True, selection="multi"),
@@ -78,6 +131,24 @@ def dialog_tree() -> JsonObject:
             id="answers"),
         id="dialog_body",
     )
+
+
+def on_edited(params: JsonObject) -> None:
+    """Confirm or reject a cell edit by patching the row back; the host keeps the cell pending
+    until it sees that patch."""
+    row_id = params.get("row_id")
+    if row_id not in settings:
+        return
+    with state_lock:
+        try:
+            settings[row_id] = parse_setting(row_id, params.get("value"))
+            changed = settings_row(row_id, tone="accent", tooltip=f"was {params.get('previous')}")
+            message = f"{SETTING_NAMES[row_id]} set to {setting_text(row_id, settings[row_id])}"
+        except ValueError as error:
+            changed = settings_row(row_id, tone="error", tooltip=str(error))
+            message = f"Rejected: {error}"
+    plugin.patch("main", [update_rows("settings", [changed])])
+    status(message)
 
 
 def status(text: str, tone: str = "normal") -> None:
@@ -128,7 +199,9 @@ def closed(params: JsonObject) -> None:
 def event(params: JsonObject) -> None:
     element, kind = params.get("element_id"), params.get("type")
     inputs = params.get("inputs", {})
-    if kind == "changed" and element == "name":
+    if kind == "edited" and element == "settings":
+        on_edited(params)
+    elif kind == "changed" and element == "name":
         status(f"Name: {params.get('value')}")
     elif kind == "selected":
         status(f"{len(params.get('value') or [])} row(s) selected")

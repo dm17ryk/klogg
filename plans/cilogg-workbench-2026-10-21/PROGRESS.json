@@ -2181,6 +2181,25 @@
       ],
       "slices": []
     },
+    "E14": {
+      "status": "in_progress",
+      "commit": "6ba2edbf",
+      "pullRequest": null,
+      "evidence": [
+        "2026-11-13 final review fix wave (ruling A14) d434d8f..6ba2edb: [workbench][E14],[workbench][E13] 59 cases / 710 assertions, 3 runs after the last build (4 more runs of the 58-case build before two tests were added); [ui][plugins] 3 cases / 55 assertions; plan validator valid. The 9 cases written first failed before the fixes (RED); the unknown-kind case was added after. Full ctest left to the controller. Status stays in_progress until the PR merges.",
+        "2026-11-13 clean run at 83eb8edf (no concurrent build): cmake --build build_root --config RelWithDebInfo exit 0; ctest --build-config RelWithDebInfo --output-on-failure: 100% of 10 tests passed (227.6 s). [workbench][E14],[workbench][E13]: 49 cases / 622 assertions, 3 runs; [ui][plugins]: 3 cases / 53 assertions.",
+        "Earlier run at 69aaf3ae: 8 of 10 ctest suites passed; the 11 failing cases (Value Counts, Regex Lab, shared worker memory: the analysis job never completed) ran while another build relinked cilogg.exe in the same build_root; the clean run at 83eb8edf above passed all 10.",
+        "python -m unittest discover -s tests/plugins -v: 204 tests OK (48 skipped, pre-existing).",
+        "Plan validator (plans/cilogg-workbench-2026-10-21): valid true, 121 tasks, 589 links, no issues.",
+        "../../docs/plugin-views.md (section 2.5 Editable cells)"
+      ],
+      "limitations": [
+        ".svg icons need Qt's SVG image plugin in the deployment; otherwise the generic icon is used.",
+        "Manual desktop checks pending: double-click release on list items, a click outside a multichoice list, italic/accent look on Windows 11.",
+        "No push or PR yet (needs the owner's OK)."
+      ],
+      "slices": []
+    },
     "I02": {
       "status": "planned",
       "commit": null,
