@@ -87,3 +87,10 @@ UT00 depends on MD06, and UT02 explicitly retains implemented F01/D01 contracts.
 V01/V02 gain no terminal/decoder DAG dependency. R04 adds UT13 as its final
 terminal-completion gate; all previous hard edges and feature ownership remain.
 All terminal tasks are planned; importing the task does not implement it.
+
+## User requests — 2026-11-11 and 2026-11-13
+
+E13 (interactive plugin views, decision D11) and R05, U14, U15, U16 (decisions D12/D13)
+bring the package to 124 tasks and 205 requirements (UX19–UX21, QUAL11). The four D12
+tasks depend only on the completed G01; U03 gains U16 and R04 gains all four as hard
+edges. Every earlier task, requirement owner and evidence record is unchanged.

@@ -121,7 +121,8 @@ QJsonObject PendingUpdate::toJson() const
              { QStringLiteral( "backupPath" ), backupPath },
              { QStringLiteral( "acknowledgementPath" ), acknowledgementPath },
              { QStringLiteral( "helperLogPath" ), helperLogPath },
-             { QStringLiteral( "installOnExit" ), installOnExit } };
+             { QStringLiteral( "installOnExit" ), installOnExit },
+             { QStringLiteral( "launchedAt" ), launchedAt } };
 }
 
 PendingUpdate PendingUpdate::fromJson( const QJsonObject& json, QString* errorMessage )
@@ -149,6 +150,7 @@ PendingUpdate PendingUpdate::fromJson( const QJsonObject& json, QString* errorMe
     pending.acknowledgementPath = json.value( QStringLiteral( "acknowledgementPath" ) ).toString();
     pending.helperLogPath = json.value( QStringLiteral( "helperLogPath" ) ).toString();
     pending.installOnExit = json.value( QStringLiteral( "installOnExit" ) ).toBool();
+    pending.launchedAt = json.value( QStringLiteral( "launchedAt" ) ).toVariant().toLongLong();
     if ( !pending.isValid() && errorMessage ) {
         *errorMessage = QStringLiteral( "Pending-update data is incomplete or unverified" );
     }

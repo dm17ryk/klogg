@@ -4,6 +4,8 @@ target_link_libraries(preview_decoder_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Cor
 
 add_executable(cilogg_tests
     actionsconfig_test.cpp
+    analysissource_test.cpp
+    analysisruns_test.cpp
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
@@ -18,6 +20,7 @@ add_executable(cilogg_tests
     encodingdetector_test.cpp
     importpreviewsdialog_test.cpp
     linepositionarray_test.cpp
+    matchlabeler_test.cpp
     patternmatcher_test.cpp
     previewdecodeutils_test.cpp
     previewmatchstage_test.cpp

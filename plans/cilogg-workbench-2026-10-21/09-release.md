@@ -79,10 +79,10 @@ Cross-feature source lifetime; altered byte/field meaning; restored settings and
 
 ### R04 — Publish developer documentation, examples and completion ledger
 
-**Integrated hard dependencies:** U01, U02, U03, U04, U05, U06, U07, U08, U09, U10, U11, U12, U13, I01, I02, I03, I04, I05, A01, A02, A03, A04, A05, A06, A07, A08, E01, E02, E03, E04, E05, E06, E07, E08, E09, E10, E11, E12, G01, G02, G03, F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, V01, V02, V03, V04, V05, V06, V07, V08, V09, V10, V11, V12, V13, V14, V15, V16, V17, V18, R01, R02, R03, D01, D02, D03, D04, D05, D06, D07, D08, D09, D10, D11, D12, D13, D14, D15, D16, D17, D18, MD08, UT13. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
+**Integrated hard dependencies:** U01, U02, U03, U04, U05, U06, U07, U08, U09, U10, U11, U12, U13, I01, I02, I03, I04, I05, A01, A02, A03, A04, A05, A06, A07, A08, E01, E02, E03, E04, E05, E06, E07, E08, E09, E10, E11, E12, E13, G01, G02, G03, F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, V01, V02, V03, V04, V05, V06, V07, V08, V09, V10, V11, V12, V13, V14, V15, V16, V17, V18, R01, R02, R03, D01, D02, D03, D04, D05, D06, D07, D08, D09, D10, D11, D12, D13, D14, D15, D16, D17, D18, MD08, UT13, R05, U14, U15, U16. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
 
 
-**Depends on:** R01–R03, MD08 and UT13 for the release wave; ALL task owners must be accounted for before the full-program completion claim.
+**Depends on:** R01–R03, MD08 and UT13 for the release wave; E13 (decision D11) and R05, U14, U15, U16 (decision D12) are also hard edges; ALL task owners must be accounted for before the full-program completion claim.
 
 **Files:** Proposed `docs/workbench/`, bundled example packs, public command reference, plugin SDK additions, migration notes, screenshots, this plan's `PROGRESS.json` and `FEATURE_COVERAGE.md`.
 
@@ -96,3 +96,12 @@ Cross-feature source lifetime; altered byte/field meaning; restored settings and
 **Acceptance:** The shipped product and its documentation agree; users can reproduce examples and understand limitations. A plan checkbox is never substituted for runtime evidence.
 
 **Rollback:** Correct/retract inaccurate documentation or capability claims and keep prior validated example versions available.
+
+
+### R05 — Make the in-app update hand-off and scheduled checks robust
+
+**Integrated hard dependencies:** G01. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md); R04 depends on R05.
+
+**Outcome:** An update downloaded for install on exit is installed once, by the installation that downloaded it; a failed or abandoned install is explained once and no claimed transaction is left stranded; a scheduled check that cannot reach GitHub never shows a dialog and is retried.
+
+The full card, with the root cause, is [tasks/R05.md](tasks/R05.md).

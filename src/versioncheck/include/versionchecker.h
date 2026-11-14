@@ -14,6 +14,7 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 class QSaveFile;
+class QTimer;
 
 class VersionCheckerConfig final : public Persistable<VersionCheckerConfig, session_settings> {
 public:
@@ -59,13 +60,36 @@ class VersionChecker : public QObject {
     Q_OBJECT
 
 public:
+    // What a persisted update transaction means for the running installation.
+    enum class PendingDisposition {
+        Invalid,             // incomplete or unverifiable data
+        ForeignInstallation, // downloaded by another CILogg installation; never touched
+        Completed,           // this installation already runs that version or a newer one
+        Applicable           // still to be installed by this installation
+    };
+
+    // Construction is passive: it neither reads nor locks the persisted update state, so
+    // CLI and secondary processes (one per MCP tool call) never interfere with an update.
     explicit VersionChecker( QObject* parent = nullptr );
     // Test-only transport endpoint. Production code uses the default constructor,
     // which accepts only trusted HTTPS GitHub hosts.
     explicit VersionChecker( const QUrl& testReleasesUrl, QObject* parent = nullptr );
     ~VersionChecker() override;
 
+    // Binds this checker to the running installation: reconciles the persisted update
+    // transactions and arms the exit-time install. Call once, from the primary GUI process.
+    // Automation and headless processes (CILOGG_AUTOMATION, an offscreen or minimal Qt
+    // platform) stay passive. The startup acknowledgement is separate: acknowledgeStartup().
+    void activate();
+    bool isActive() const
+    {
+        return active_;
+    }
+
     void startCheck();
+    // The scheduled check without the configuration and automation gates of startCheck().
+    // Failures are logged and retried, never reported through errorOccurred().
+    void startBackgroundCheck( UpdateChannel channel );
     UpdateState state() const
     {
         return state_;
@@ -74,6 +98,38 @@ public:
     {
         return pendingUpdate_;
     }
+
+    // Test-only (with the test transport constructor): a private update directory and
+    // short background retry delays.
+    void setUpdateRootForTesting( const QString& updateRoot );
+    void setBackgroundRetryDelaysForTesting( const QList<int>& delaysMs );
+    void setCurrentVersionForTesting( const QString& version );
+
+    static PendingDisposition classifyPendingUpdate( const PendingUpdate& pending,
+                                                     const QString& currentVersion,
+                                                     const QString& installationPath );
+    // The path an update of `kind` replaces for this process.
+    static QString installationPath( InstallKind kind );
+    // Moves the scheduled transaction `token` out of the way of every other process and stamps
+    // its claim time. Exactly one caller can claim a transaction, and a claim never replaces a
+    // launch record that is still running or not yet reconciled ("busy").
+    static bool claimScheduledUpdate( const QString& updateRoot, const QString& token,
+                                      QString* errorMessage = nullptr );
+    // `phase` is the helper's "launch" (the installer could not be started), "installer" (it
+    // ran and returned `code`), "replace" (self-contained replacement) or "relaunch" (installed,
+    // then the updated CILogg could not be started); empty for results without a phase.
+    static QString describeInstallResult( int code, const QString& phase = {} );
+    // The package and staging paths of `pending` must lie inside `updateRoot`; a system
+    // installer (setup, deb, rpm) must run exactly the verified package.
+    static bool validateLaunchPaths( const PendingUpdate& pending, const QString& updateRoot,
+                                     QString* errorMessage = nullptr );
+    // Whether a new pending update of `installationPath` may replace `existing` in the update
+    // directory shared by every installation: never while it belongs to another installation
+    // that still exists.
+    static bool mayReplacePendingUpdate( const PendingUpdate& existing,
+                                         const QString& installationPath );
+    // Qt platform plugins without a real display ("offscreen", "minimal").
+    static bool isHeadlessPlatform( const QString& platformName );
 
     static bool isVersionNewer( const QString& currentVersion, const QString& candidateVersion );
     static std::optional<ReleaseInfo> selectRelease( const QByteArray& releasesJson,
@@ -94,6 +150,8 @@ public Q_SLOTS:
     void downloadUpdate( const ReleaseInfo& release, bool installOnExit );
     void cancelDownload();
     void launchPendingUpdate();
+    // Confirms to the updater helper that an updated build started. Call early in startup, in
+    // every process that carries the acknowledgement arguments; it touches no transaction.
     void acknowledgeStartup();
 
 Q_SIGNALS:
@@ -104,7 +162,12 @@ Q_SIGNALS:
     void downloadProgress( qint64 received, qint64 total );
     void updateReady( const PendingUpdate& pending );
     void stateChanged( UpdateState state );
+    // User-initiated operations only (manual checks, downloads, installs).
     void errorOccurred( const QString& message );
+    // A scheduled check failed; it is retried while the failure looks transient.
+    void backgroundCheckFailed( const QString& message, bool willRetry );
+    // The install handed to the helper at the previous exit did not complete.
+    void installFailed( const QString& message );
 
 private:
     enum class RequestPurpose { Releases, Manifest, Package };
@@ -116,13 +179,25 @@ private:
     void handleReleasesReply( QNetworkReply& reply, const QByteArray& data );
     void handleManifestReply( QNetworkReply& reply, const QByteArray& data );
     void handlePackageReply( QNetworkReply& reply );
-    void fail( const QString& message );
+    void fail( const QString& message, bool transient = false );
     void setState( UpdateState state, const QString& decision );
     void finishScheduledCheck();
     bool preparePendingUpdate( QString* errorMessage );
     bool persistPendingUpdate( QString* errorMessage = nullptr ) const;
-    void loadPendingUpdate();
+    bool writePendingUpdate( const PendingUpdate& pending, QString* errorMessage = nullptr ) const;
+    void recoverInterruptedReconciliation();
+    void reconcileLaunchedUpdate();
+    void restoreReadyUpdate( const PendingUpdate& failed );
+    void reconcileScheduledUpdate();
+    void removeExpiredDownloads();
+    void retryBackgroundCheck();
+    bool isUpdaterRunning() const;
     QString updateRoot() const;
+    QString currentVersion() const;
+    QString pendingFilePath() const;
+    QString launchedFilePath() const;
+    QString reconcilingFilePath() const;
+    QString updaterLockPath() const;
     void initialize();
 
     QNetworkAccessManager* manager_ = nullptr;
@@ -133,10 +208,17 @@ private:
     UpdateState state_ = UpdateState::Idle;
     UpdateChannel requestedChannel_ = UpdateChannel::Stable;
     bool forced_ = false;
+    bool backgroundCheck_ = false;
+    int backgroundRetries_ = 0;
+    QList<int> backgroundRetryDelaysMs_{ 30 * 1000, 2 * 60 * 1000, 10 * 60 * 1000 };
+    QTimer* backgroundRetryTimer_ = nullptr;
     bool installOnExit_ = false;
+    bool active_ = false;
     ReleaseInfo resolvingRelease_;
     QList<ReleaseAsset> githubAssets_;
     PendingUpdate pendingUpdate_;
     QUrl releasesUrl_;
+    QString testUpdateRoot_;
+    QString testCurrentVersion_;
     bool testTransport_ = false;
 };

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CILOGG_REGEXLABDOCK_H
 #define CILOGG_REGEXLABDOCK_H
+#include "analysisruns.h"
 #include "commander.h"
 #include <QDockWidget>
 #include <QVariantMap>
@@ -27,7 +28,8 @@ public:
     ~RegexLabDock() override;
     QVariantMap state();
     CommanderResult setDefinition( const QVariantMap& definition );
-    CommanderResult apply();
+    // Applies the pattern to `tabId`, or to the tab of the shown results when it is empty.
+    CommanderResult apply( const QString& tabId = {} );
     void prepareSelection( const QString& tabId );
 
 private:
@@ -38,14 +40,26 @@ private:
     CommanderResult run();
     CommanderResult page( const QString& cursor );
     CommanderResult activate( int index );
-    CommanderResult command( CommanderAction action, QVariantMap arguments = {} );
+    CommanderResult command( CommanderAction action, QVariantMap arguments = {},
+                             const QString& tabId = {} );
     void showFailure( const CommanderResult& result );
     void showDetails( int index );
+    QString sourceSelection() const;
+    void showRun( int index );
+    void releaseRuns();
+    // Starts waiting sources, polls running ones and follows the shown source's job.
+    void advanceRuns();
     Executor execute_;
     Sources sources_;
     Navigate navigate_;
     QLineEdit* pattern_;
     QComboBox* source_;
+    QComboBox* resultSource_;
+    // One job per source of the last Run ("all open files" runs every open tab).
+    AnalysisRuns runs_;
+    // The request of the last Run, for the sources that start later.
+    QVariantMap runRequest_;
+    QString previousSource_;
     QComboBox* scope_;
     QComboBox* matchMode_;
     QCheckBox* case_;

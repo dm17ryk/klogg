@@ -1045,10 +1045,20 @@ class KloggApp : public QApplication {
         startupCommanderReady_ = ready;
     }
 
+    // An updated build confirms its start to the updater helper as early as possible: the helper
+    // rolls a self-contained update back when no acknowledgement arrives within its timeout,
+    // however long session restore or opening files later takes.
+    void acknowledgeUpdatedStartup()
+    {
+        versionChecker_.acknowledgeStartup();
+    }
+
     void startBackgroundTasks()
     {
         LOG_DEBUG << "startBackgroundTasks";
-        versionChecker_.acknowledgeStartup();
+        // Only the primary GUI process binds the updater to this installation. CLI and
+        // secondary processes leave the persisted update transaction alone.
+        versionChecker_.activate();
         versionChecker_.startCheck();
     }
 
@@ -1109,6 +1119,10 @@ class KloggApp : public QApplication {
         window->setPluginManager( pluginManager_, [ this ]( const CommanderRequest& request ) {
             return executeCommanderRequest( request );
         } );
+        window->setApplicationSources(
+            [ this ] { return applicationAnalysisSources(); },
+            [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); },
+            [ this ]( const QString& tabId ) { return windowForTab( tabId ); } );
         if ( automationModeEnabled_ ) {
             applyAutomationGeometry( window );
         }
@@ -1246,6 +1260,44 @@ class KloggApp : public QApplication {
         }
 
         return activeWindows_.top().data();
+    }
+
+    // Every window's tabs, for the analysis docks' source pickers. With several windows, labels
+    // name the window.
+    QVariantList applicationAnalysisSources()
+    {
+        auto* active = activeWindowIfAny();
+        const auto openWindows = std::count_if(
+            mainWindows_.cbegin(), mainWindows_.cend(),
+            []( const auto& entry ) { return entry.second != nullptr; } );
+        QVariantList sources;
+        for ( const auto& [ session, window ] : mainWindows_ ) {
+            if ( window == nullptr ) {
+                continue;
+            }
+            const auto index = static_cast<int>( session.windowIndex() );
+            for ( const auto& value : window->analysisSources( index, window == active ) ) {
+                auto source = value.toMap();
+                if ( openWindows > 1 ) {
+                    source[ "label" ] = tr( "Window %1 · %2" )
+                                            .arg( index + 1 )
+                                            .arg( source.value( "label" ).toString() );
+                }
+                sources.push_back( source );
+            }
+        }
+        return sources;
+    }
+
+    MainWindow* windowForTab( const QString& tabId ) const
+    {
+        for ( const auto& [ session, window ] : mainWindows_ ) {
+            Q_UNUSED( session );
+            if ( window != nullptr && window->hasTab( tabId ) ) {
+                return window;
+            }
+        }
+        return nullptr;
     }
 
     MainWindow* windowByIndex( int windowIndex ) const

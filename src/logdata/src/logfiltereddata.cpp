@@ -152,6 +152,7 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp,
     searchCompletionHandled_ = false;
     limitReached_ = false;
     activeSearchInitialLine_ = startLine;
+    activeSearchEndLine_ = endLine;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting full search gen " << searchGeneration_ << " range [" << startLine << ", "
@@ -247,6 +248,7 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
     searchRunning_ = true;
     searchCompletionHandled_ = false;
     activeSearchInitialLine_ = initialLine;
+    activeSearchEndLine_ = endLine;
     ++searchGeneration_;
 
     LOG_DEBUG << "Starting incremental search gen " << searchGeneration_ << " range ["
@@ -270,9 +272,60 @@ void LogFilteredData::interruptSearch()
     workerThread_.interrupt();
 }
 
+void LogFilteredData::forgetResults()
+{
+    if ( currentRegExp_.pattern.isEmpty() ) {
+        LOG_DEBUG << "forgetResults ignored: no active search";
+        return;
+    }
+    // Only scanned lines are forgotten. Lines past the scan position (the rest of a running
+    // search, or appended lines whose refresh is still queued) are scanned later and still show
+    // their matches: the user has not seen them.
+    const auto cutoff = LineNumber( nbLinesProcessed_.get() );
+    const bool resumeScan = searchRunning_;
+    const auto resumeStart = activeSearchInitialLine_;
+    auto resumeEnd = activeSearchEndLine_;
+    if ( pendingUpdateSearch_ ) {
+        resumeEnd = qMax( resumeEnd, pendingUpdateEnd_ );
+    }
+    LOG_INFO << "Forgetting search results before line " << cutoff << " for generation "
+             << searchGeneration_ << ", search running=" << resumeScan;
+    if ( resumeScan ) {
+        // Late results of the interrupted run carry the old generation and are ignored; its
+        // final progress still detaches the reader it attached.
+        interruptSearch();
+        ++searchGeneration_;
+        searchRunning_ = false;
+        pendingUpdateSearch_ = false;
+    }
+    searchCompletionHandled_ = true;
+    resultsStartLine_ = cutoff;
+    matching_lines_ = {};
+    displayed_lines_ = {};
+    // Marks are the user's own lines, not search results: they stay visible.
+    marks_and_matches_ = marks_;
+    maxLength_ = 0_length;
+    lastSearchStart_ = cutoff;
+    lastSearchEnd_ = cutoff;
+    lastSearchIncremental_ = false;
+    fullScanCompleted_ = true;
+    limitReached_ = false;
+    // Partial results must never be cached as the complete result of the full range.
+    currentSearchKey_ = makeCacheKey( currentRegExp_, cutoff, cutoff );
+    // The worker goes on from the cut point; the forgotten matches no longer count against a
+    // maximum match count.
+    workerThread_.restartFrom( cutoff );
+
+    if ( resumeScan && resumeEnd > cutoff ) {
+        LOG_INFO << "Resuming the interrupted search from line " << cutoff << " to " << resumeEnd;
+        updateSearch( resumeStart, resumeEnd );
+    }
+}
+
 void LogFilteredData::clearSearch( bool dropCache )
 {
     interruptSearch();
+    resultsStartLine_ = 0_lnum;
 
     currentRegExp_ = {};
     currentSearchOptions_ = {};
@@ -663,8 +716,21 @@ void LogFilteredData::applySearchResults( const char* source )
               << searchResults.processedLines << ", max length " << searchResults.maxLength
               << ", limit reached=" << searchResults.limitReached;
 
-    matching_lines_ |= searchResults.newMatches;
-    addDisplayedLines( searchResults.newMatches );
+    if ( resultsStartLine_ > 0_lnum ) {
+        // An incremental scan re-reads the last processed line; keep forgotten matches out.
+        auto newMatches = searchResults.newMatches;
+        SearchResultArray forgotten;
+        forgotten.addRange( 0, resultsStartLine_.get() );
+        newMatches -= forgotten;
+        matching_lines_ |= newMatches;
+        addDisplayedLines( newMatches );
+        // Context rows of a new match stop at the cleared point too.
+        displayed_lines_ -= forgotten;
+    }
+    else {
+        matching_lines_ |= searchResults.newMatches;
+        addDisplayedLines( searchResults.newMatches );
+    }
     marks_and_matches_ = displayed_lines_ | marks_;
 
     maxLength_ = qMax( maxLength_, searchResults.maxLength );
