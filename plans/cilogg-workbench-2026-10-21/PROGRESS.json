@@ -24,7 +24,7 @@
   "activeTask": "G02",
   "nextTask": "MD01",
   "executionPolicy": {
-    "updatedDate": "2026-11-09",
+    "updatedDate": "2026-11-13",
     "authority": "User requested decoders after W0 and then chose decoder core first, explicitly deferring MD07-MD08 integration to later waves. User requested the unified terminal task after finishing TShark decoding on 2026-11-04. User2026-11-06 explicitly authorized TShark Preview and terminal work in parallel.",
     "phaseOrder": [
       "W0",
@@ -412,6 +412,43 @@
         }
       ],
       "policy": "Independent reviewed branches; serialize native timing qualification. Preserve formal dependency DAG, historical evidence and GUI/CLI/native-MCP parity gates."
+    },
+    "userRequestTasks": {
+      "decisions": [
+        "D12",
+        "D13"
+      ],
+      "date": "2026-11-13",
+      "authority": "User 2026-11-13: two updater bug reports and four workspace requests; R05, U14 and U15 authorized ahead of G02/G03 and the current terminal workstream; U16 design approved the same day.",
+      "tasks": [
+        "R05",
+        "U14",
+        "U15",
+        "U16"
+      ],
+      "hardDependencies": [
+        "G01"
+      ],
+      "addedHardEdges": [
+        "U03 -> U16",
+        "R04 -> R05",
+        "R04 -> U14",
+        "R04 -> U15",
+        "R04 -> U16"
+      ],
+      "requirements": [
+        "UX19",
+        "UX20",
+        "UX21",
+        "QUAL11"
+      ],
+      "pullRequests": {
+        "plan": "https://github.com/dm17ryk/klogg/pull/104",
+        "R05": "https://github.com/dm17ryk/klogg/pull/105",
+        "U14": "https://github.com/dm17ryk/klogg/pull/106",
+        "U15a": "https://github.com/dm17ryk/klogg/pull/107"
+      },
+      "policy": "Selectable now; each task or slice is its own branch and PR with green hosted CI. G02/G03 formal gates, the terminal workstream and every other hard edge are unchanged."
     }
   },
   "tasks": {
@@ -2245,6 +2282,56 @@
       "limitations": [],
       "slices": []
     },
+    "U14": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/106",
+      "evidence": [
+        "Local qualification 2026-11-13: cilogg_tests [U14] 5 cases / 24 assertions; cilogg_itests [U14],[logdata],[ui][automation] 88 cases / 3449 assertions passed.",
+        "Independent C++ review: no critical/high findings; medium findings fixed in the PR.",
+        "Codex/Sourcery review fixes, commits d3f6244e + 1afc338f, local qualification 2026-11-13: cilogg_tests [U14] 8 cases / 47 assertions; cilogg_itests [U14],[logdata],[ui][automation],[ui][context],[ui][filter-options],[ui][wrap],[ui][analysiscommands] 108 cases / 3675 assertions passed."
+      ],
+      "limitations": [
+        "Interpretation confirmed by the user 2026-11-13 (decision D13). Labels are computed off the GUI thread (one shared worker thread, blank until ready); Clear cuts at the scanned position and restarts the worker's match cap; queued progress of a cleared search is ignored; marked rows stay after a clear; each kept tab remembers its predefined filters.",
+        "No manual visual check; dark theme not checked."
+      ],
+      "slices": []
+    },
+    "U15": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/107",
+      "evidence": [
+        "U15a local qualification 2026-11-13: cilogg_tests [U15] 3 cases / 24 assertions; cilogg_itests [U15],[regexlab],[valuecounts],[analysiscommands] 34 cases / 551 assertions passed.",
+        "Independent C++ review: high finding (empty sourceTabId) and medium findings fixed in the PR.",
+        "Staged 'all' and the Codex review fixes, commit 487a3f42 local qualification 2026-11-13: cilogg_tests [U15] 7 cases / 77 assertions; cilogg_itests [regexlab],[valuecounts],[analysiscommands] 37 cases / 596 assertions passed."
+      ],
+      "limitations": [
+        "User 2026-11-13 (decision D13): 'all opened' means every open tab. PR #107 replaces the source-count limit (too_many_sources) with staged runs (AnalysisRuns: at most 8 of a Run's jobs unfinished under AnalysisJobService's 10 admitted / 26 retained; 16 finished jobs kept per dock; a released or evicted source re-runs when selected); the focused tab resolves to its id; an explicit Commander tab selector wins for Apply; Apply/Open are refused with source_closed once the result's tab is closed. Results are shown one source at a time, as the user approved; merged totals are not part of U15a. The public Python route (klogg.app.command, set_regex_lab, set_value_counts) and its parity case moved to U15b.",
+        "U15b (plugin actions/views, Script Runner, Preview, search all open tabs) not started.",
+        "Cross-window routing has no automated test."
+      ],
+      "slices": [
+        "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107",
+        "U15b: remaining tab-bound tools, planned"
+      ]
+    },
+    "U16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)"
+      ],
+      "limitations": [
+        "Implementation not started."
+      ],
+      "slices": [
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, planned",
+        "U16b: Commander/CLI/MCP/Python pane operations, planned",
+        "U16c: drag and drop between panes, planned"
+      ]
+    },
     "V16": {
       "status": "planned",
       "commit": null,
@@ -2355,6 +2442,23 @@
       "pullRequest": null,
       "evidence": [],
       "limitations": [],
+      "slices": []
+    },
+    "R05": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/105",
+      "evidence": [
+        "Root cause from the user update cache (2026-11-13): 1203 helper run ended with 1223 after 78 s (shell error box), another transaction installed 1203 at 12:07:34, pending-update.json for 1203 never cleared; every cilogg.exe process (incl. one per MCP tool call) loaded and locked it and armed the exit-time install.",
+        "Local qualification 2026-11-13 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022): cilogg_tests [updater] 22 cases / 165 assertions; full cilogg_tests 305 cases / 13794 assertions passed.",
+        "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run.",
+        "Codex/Sourcery review redesign, commits 72eea42f + b7eb06d3, local qualification 2026-11-13: cilogg_tests [updater] 32 cases passed; the concurrent-claim case passed 30/30 runs after the claim lock; full cilogg_tests 315 cases, 314 passed (the failure, preview decoder 'Overdue successful delivery times out', passes 5/5 alone and is unrelated)."
+      ],
+      "limitations": [
+        "PR #105 implements (2026-11-13): claim lock + non-replacing claim with token re-check, launchedAt, exclusive updater.lock, next-start recovery of a launched record (running / report once / young kept / abandoned reported once and restored as ready, not re-armed), reconciliation consumes the record atomically, cleanup keeps every referenced package, foreign pending records never overwritten, distinct relaunch phase, stagedPath == packagePath with a hash of the launched file, startup acknowledgement before session restore. POSIX branches compile only in hosted CI; the deny-write verification is Windows-only and cannot stop a same-user attacker who controls the record.",
+        "No real elevated (UAC) install was exercised locally.",
+        "Hosted CI pending at registration time."
+      ],
       "slices": []
     },
     "MD01": {
@@ -2745,7 +2849,9 @@
     "D08: see ../../docs/workbench/decisions.md",
     "D09: see ../../docs/workbench/decisions.md",
     "D10: see ../../docs/workbench/decisions.md",
-    "D11: see ../../docs/workbench/decisions.md"
+    "D11: see ../../docs/workbench/decisions.md",
+    "D12: see ../../docs/workbench/decisions.md",
+    "D13: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
@@ -2754,7 +2860,11 @@
     "Third-party hardware/project compatibility requires D-task conformance; source inspection is not a hardware pass."
   ],
   "runnableTasks": [
-    "G02"
+    "G02",
+    "R05",
+    "U14",
+    "U15",
+    "U16"
   ],
   "addenda": {
     "messageDecoders": {

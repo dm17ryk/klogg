@@ -98,12 +98,12 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 
 ### U03 — Add the investigation workspace shell
 
-**Integrated hard dependencies:** G01, G02, G03, U01, F01. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
+**Integrated hard dependencies:** G01, G02, G03, U01, F01, U16. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
 
 
 **Outcome:** Sources, events, fields, details, analysis and automation share a coherent workspace.
 
-**Depends on:** U01, F01. G01–G03 are common prerequisites for public feature tasks.
+**Depends on:** U01, F01, U16. G01–G03 are common prerequisites for public feature tasks. U16 (decision D12) delivers the pane layout first; the workspace snapshot embeds it instead of defining a second layout.
 
 **Files and ownership:**
 - Modify existing `src/ui/src/mainwindow.cpp`, `src/ui/src/tabbedcrawlerwidget.cpp`, `src/ui/src/mainwindowproject.cpp`, `src/ui/include/sessioninfo.h`.
@@ -504,3 +504,28 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 **References:**
 - https://doc.qt.io/qt-6.10/qaccessiblewidget.html
 - https://www.elastic.co/docs/explore-analyze/visualize/lens
+
+
+### U14 — Show which filter matched each filtered line, and clear the results
+
+**Integrated hard dependencies:** G01. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md); the interpretation was confirmed by the user under decision D13.
+
+**Outcome:** The filtered view names the predefined filter, alternative or matched text that selected each line, and "Clear results" removes the search matches found so far (marks stay) while the search keeps running on new lines.
+
+The full card is [tasks/U14.md](tasks/U14.md).
+
+### U15 — One source picker for every tool that takes a tab
+
+**Integrated hard dependencies:** G01. Authorized ahead of G02/G03 by [decision D12](../../docs/workbench/decisions.md); "all opened files" means every open tab (decision D13).
+
+**Outcome:** Value Counts, Regex Lab and the other tab-bound tools choose a tab, a file, the focused tab or all opened files, through GUI, CLI, native MCP and Python. Slice U15a covers the analysis tools; U15b the remaining tools. Search, filters, follow, Quick Find, encoding, save and file operations stay on the current tab by design.
+
+The full card, with the tool inventory, is [tasks/U15.md](tasks/U15.md).
+
+### U16 — Split the main window into panes
+
+**Integrated hard dependencies:** G01. Registered by [decision D12](../../docs/workbench/decisions.md); the user approved the [split-pane design](../../docs/split-panes.md) under decision D13 on 2026-11-13, and implementation follows in slices U16a–U16c.
+
+**Outcome:** One window shows up to 8 panes, each with its own file tabs and filtered views. It is the first slice of U03's pane layout, so U03 depends on U16.
+
+The full card is [tasks/U16.md](tasks/U16.md).
