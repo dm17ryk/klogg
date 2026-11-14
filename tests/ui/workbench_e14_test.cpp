@@ -1101,3 +1101,91 @@ TEST_CASE( "E14 an edited event the host could not deliver puts that cell back",
     CHECK( v.cell( "n1" ).data().toString() == "45" );
     CHECK( italic( v.cell( "n1" ) ) );
 }
+
+// PR #109 review: whether an edit changed anything is judged by value, not by the text a cell shows.
+
+namespace {
+// Two choices that share a label.
+QJsonObject twinChoices()
+{
+    return QJsonObject{ { "kind", "choice" },
+                        { "choices", QJsonArray{ QJsonObject{ { "value", "a" }, { "label", "Same" } },
+                                                 QJsonObject{ { "value", "b" }, { "label", "Same" } } } } };
+}
+} // namespace
+
+TEST_CASE( "E14 picking a choice that shares the cell's label is an edit", "[ui][workbench][E14]" )
+{
+    KindsView v;
+    v.patch( QJsonObject{ { "id", "c1" },
+                          { "cells", QJsonArray{ "c1", "Same" } },
+                          { "editors", QJsonObject{ { "v", twinChoices() } } } } );
+    SECTION( "through the cell's list" )
+    {
+        v.view.show();
+        v.table->edit( v.cell( "c1" ) );
+        auto* combo = v.table->viewport()->findChild<QComboBox*>();
+        REQUIRE( combo );
+        CHECK( combo->currentData() == QVariant( "a" ) );             // the first item with that label
+        QApplication::processEvents();
+        REQUIRE( combo->view()->isVisible() );
+        combo->view()->setCurrentIndex( combo->model()->index( 1, 0 ) );
+        QTest::keyClick( combo->view(), Qt::Key_Return );             // picks "b", also labelled "Same"
+        QApplication::processEvents();
+        REQUIRE( v.events.count() == 1 );
+        CHECK( v.lastValue() == "b" );
+        CHECK( v.events.last().front().toJsonObject().value( "previous" ) == "Same" );
+        CHECK( v.cell( "c1" ).data().toString() == "Same" );
+        CHECK( italic( v.cell( "c1" ) ) );
+        CHECK( !editing( v.table ) );
+    }
+    SECTION( "a pending cell reopens on its value: the same value again is no edit, the other one is" )
+    {
+        auto editor = v.open( "c1" );
+        auto* combo = qobject_cast<QComboBox*>( editor.get() );
+        REQUIRE( combo );
+        combo->setCurrentIndex( 1 );
+        v.commit( combo, "c1" );
+        REQUIRE( v.events.count() == 1 );
+        v.commit( combo, "c1" );                                      // the focus leaving after the commit
+        CHECK_FALSE( v.table->model()->setData( v.cell( "c1" ), QVariant( QJsonValue( "b" ) ), Qt::EditRole ) );
+        CHECK( v.events.count() == 1 );
+        auto reopened = v.open( "c1" );
+        auto* again = qobject_cast<QComboBox*>( reopened.get() );
+        REQUIRE( again );
+        CHECK( again->currentData() == QVariant( "b" ) );             // the pending value, not the first "Same"
+        again->setCurrentIndex( 0 );
+        v.commit( again, "c1" );
+        REQUIRE( v.events.count() == 2 );
+        CHECK( v.lastValue() == "a" );
+    }
+}
+
+TEST_CASE( "E14 a cell already showing the picked label is edited when its editor started elsewhere",
+           "[ui][workbench][E14]" )
+{
+    KindsView v;
+    // The plugin's editor starts at "0" (Off) while the cell already reads "On (1)".
+    const QJsonObject choice{ { "kind", "choice" },
+                              { "choices", QJsonArray{ QJsonObject{ { "value", "0" }, { "label", "Off (0)" } },
+                                                       QJsonObject{ { "value", "1" }, { "label", "On (1)" } } } },
+                              { "value", "0" } };
+    v.patch( QJsonObject{ { "id", "c1" },
+                          { "cells", QJsonArray{ "c1", "On (1)" } },
+                          { "editors", QJsonObject{ { "v", choice } } } } );
+    auto editor = v.open( "c1" );
+    auto* combo = qobject_cast<QComboBox*>( editor.get() );
+    REQUIRE( combo );
+    CHECK( combo->currentData() == QVariant( "0" ) );
+    combo->setCurrentIndex( combo->findData( "1" ) );
+    v.commit( combo, "c1" );
+    REQUIRE( v.events.count() == 1 );
+    CHECK( v.lastValue() == "1" );
+    CHECK( v.events.last().front().toJsonObject().value( "previous" ) == "On (1)" );
+    CHECK( v.cell( "c1" ).data().toString() == "On (1)" );
+    CHECK( italic( v.cell( "c1" ) ) );
+
+    // A text cell's value is its text: committing the text it shows is no edit.
+    CHECK_FALSE( v.table->model()->setData( v.cell( "t1" ), QVariant( QJsonValue( "hello" ) ), Qt::EditRole ) );
+    CHECK( v.events.count() == 1 );
+}

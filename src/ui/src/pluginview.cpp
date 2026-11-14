@@ -47,8 +47,9 @@ const QStringList CommonKeys{ "id", "type", "enabled", "visible", "tooltip" };
 const QStringList KeptWhenAbsent{ "value", "rows", "columns", "kind", "children" };
 constexpr int ForcedResetRows = 512;
 // Table model roles next to Qt::UserRole (sort key) and Qt::UserRole + 1 (row id).
-constexpr int EditorRole = Qt::UserRole + 2;  // the cell's editor spec; empty when read-only
-constexpr int PendingRole = Qt::UserRole + 3; // true while an edit waits for the plugin
+constexpr int EditorRole = Qt::UserRole + 2; // the cell's editor spec; empty when read-only
+// The value (a QJsonValue) of an edit that waits for the plugin; invalid otherwise.
+constexpr int PendingValueRole = Qt::UserRole + 3;
 // Marks the widgets PluginCellDelegate creates (direct children of a table's viewport).
 constexpr char CellEditorProperty[] = "pluginCellEditor";
 // On a cell editor: the value it started with (a QJsonValue), and for a choice editor whether an
@@ -266,8 +267,9 @@ public:
         if ( role == EditorRole ) {
             return QVariant::fromValue( editorFor( index ) );
         }
-        if ( role == PendingRole ) {
-            return row.pending.contains( index.column() );
+        if ( role == PendingValueRole ) {
+            const auto pending = row.pending.constFind( index.column() );
+            return pending != row.pending.cend() ? QVariant::fromValue( pending->value ) : QVariant{};
         }
         if ( role == Qt::UserRole ) { // sort key: numbers sort numerically
             bool numeric = false;
@@ -325,9 +327,10 @@ public:
         auto& row = rows_[ index.row() ];
         const auto previous = column < row.cells.size() ? row.cells.at( column ) : QString{};
         const auto display = displayFor( editor, json );
-        // An editor closed without a change commits nothing (PluginCellDelegate::setModelData);
-        // this guard catches the same text committed twice.
-        if ( display == previous ) {
+        // An editor closed without a change commits nothing (PluginCellDelegate::setModelData
+        // compares with the value the editor started with); this guard catches the same value
+        // committed twice.
+        if ( holds( row, column, editor, json, previous ) ) {
             return false; // nothing changed: no event
         }
         while ( row.cells.size() <= column ) {
@@ -352,6 +355,20 @@ public:
             return false;
         }
         return true;
+    }
+    // Whether a cell already holds `value`, judged by value, not by the text it shows (choices may
+    // share a label). Known for an edit the plugin has not confirmed yet (its value) and for text
+    // and number cells (their text). For choice, boolean and multichoice cells the delegate decides,
+    // from the value its editor started with.
+    static bool holds( const Row& row, int column, const QJsonObject& editor,
+                       const QJsonValue& value, const QString& text )
+    {
+        if ( const auto pending = row.pending.constFind( column ); pending != row.pending.cend() ) {
+            return sameValue( pending->value, value );
+        }
+        const auto kind = editor.value( "kind" ).toString( "text" );
+        return kind != "choice" && kind != "boolean" && kind != "multichoice"
+               && cellText( value ) == text;
     }
     // The text a committed value shows: the chosen items' labels for choice editors.
     static QString displayFor( const QJsonObject& editor, const QJsonValue& value )
@@ -672,15 +689,16 @@ public:
     {
         // Every patch to a row re-reads the open editors in it (dataChanged). Once the user has
         // changed an editor's value, keep it and the start it is compared with on commit; the model
-        // still drops a second commit of the same text.
+        // still drops a second commit of the same value.
         if ( const auto recorded = widget->property( CellStartProperty );
              recorded.isValid() && !sameValue( editorValue( widget ), recorded.value<QJsonValue>() ) ) {
             return;
         }
         const auto editor = index.data( EditorRole ).value<QJsonObject>();
-        // The plugin's starting value, unless the cell shows an edit the plugin has not confirmed.
-        const auto start = index.data( PendingRole ).toBool() ? QJsonValue( QJsonValue::Undefined )
-                                                              : editor.value( "value" );
+        // The value of an edit the plugin has not confirmed yet (its text cannot tell choices that
+        // share a label apart), else the plugin's starting value.
+        const auto pending = index.data( PendingValueRole );
+        const auto start = pending.isValid() ? pending.value<QJsonValue>() : editor.value( "value" );
         const bool single = !start.isUndefined() && !start.isArray() && !start.isObject();
         const auto text = single ? cellText( start ) : index.data( Qt::EditRole ).toString();
         if ( auto* box = qobject_cast<CheckComboBox*>( widget ) ) {
