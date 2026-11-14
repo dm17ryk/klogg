@@ -1,8 +1,16 @@
 # Split panes in the main window (U16) — approved design
 
 **Status:** approved by the user on 2026-11-13 with the decisions below (decision D13 in
-[docs/workbench/decisions.md](workbench/decisions.md)). Implementation is next, in slices U16a, U16b
-and U16c; nothing is implemented yet.
+[docs/workbench/decisions.md](workbench/decisions.md)). Slice U16a (pane tree, split / close / merge /
+move through menus, the tab transfer API, active pane, session and project restore with migration) is
+implemented in [PR #108](https://github.com/dm17ryk/klogg/pull/108); U16b (Commander / CLI / MCP /
+Python pane operations) and U16c (drag and drop) are next. The user guide is in
+[DOCUMENTATION.md](../DOCUMENTATION.md#split-panes).
+
+**As built in U16a:** the pane layout is a JSON string per window (`paneLayout`) in the session, so the
+session format version is unchanged; a single pane stores no layout. A pane becomes active only on user
+input (a click into it, or Tab / shortcut focus), because a restored tab focuses its own view when its
+first load finishes. The pane operations live in `src/ui/src/mainwindowpanes.cpp`.
 
 **Request (2026-11-13):** "can we make main window splittable, like we run 2 and more ciloggs in
 parallel. so every splitted part will have log files tabs and filtered part".

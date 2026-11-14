@@ -2317,17 +2317,22 @@
       ]
     },
     "U16": {
-      "status": "planned",
+      "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/108",
       "evidence": [
-        "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)"
+        "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)",
+        "U16a local qualification 2026-11-14 (MSVC /WX, Qt 6.10.1, offscreen) after merging master c8aeab16: cilogg_itests [U16] 10 cases / 339 assertions; cilogg_tests [U16] 3 cases / 45 assertions; cilogg_itests [ui]~[workbench-native] 123 cases / 23550 assertions; cilogg_itests [logdata] 88 cases / 3373 assertions; cilogg_tests 333 cases / 14201 assertions passed.",
+        "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769."
       ],
       "limitations": [
-        "Implementation not started."
+        "No manual visual or dark-theme check; the GUI was exercised only through offscreen tests.",
+        "The pane layout is a JSON string per window (paneLayout) in the session; the session format version is unchanged, so older CILogg versions open all tabs in one pane. A single pane stores no layout.",
+        "A pane becomes active only on user input (mouse press, Tab/Backtab/shortcut focus) because a restored tab focuses its view after its first load.",
+        "pane_operations_parity and the get_info pane fields belong to U16b; drag and drop to U16c."
       ],
       "slices": [
-        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, planned",
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108",
         "U16b: Commander/CLI/MCP/Python pane operations, planned",
         "U16c: drag and drop between panes, planned"
       ]
