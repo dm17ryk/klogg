@@ -93,6 +93,9 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
         QByteArray geometry;
         QByteArray dockState;
         std::vector<OpenFile> openFiles;
+        // Versioned split-pane layout (JSON, see logpane.h); empty for a single pane. Older
+        // CILogg versions ignore the entry and open all files in one pane.
+        QString paneLayout;
     };
 
     void add( const QString& windowId )
@@ -165,6 +168,19 @@ class SessionInfo : public Persistable<SessionInfo, session_settings> {
         auto window = findWindow( windowId );
         if ( window ) {
             window->openFiles = loaded_files;
+        }
+    }
+
+    QString paneLayout( const QString& windowId ) const
+    {
+        const auto* window = findWindow( windowId );
+        return window ? window->paneLayout : QString{};
+    }
+
+    void setPaneLayout( const QString& windowId, const QString& layout )
+    {
+        if ( auto* window = findWindow( windowId ) ) {
+            window->paneLayout = layout;
         }
     }
 

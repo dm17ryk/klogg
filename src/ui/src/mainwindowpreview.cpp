@@ -90,7 +90,7 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
         source = selected->source;
         prepared = preparePreviewSource( selected->source, *line - 1, reassemble );
         prepared.source[ "windowId" ] = session_.windowId();
-        prepared.source[ "tabId" ] = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+        prepared.source[ "tabId" ] = paneArea_->tabIdAt( paneArea_->indexOf( crawler ) );
     }
     if ( !prepared.error.isEmpty() )
         return invalid( prepared.error );

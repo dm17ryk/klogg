@@ -46,7 +46,7 @@ CommanderResult MainWindow::commanderValueCounts( const CommanderRequest& reques
                            || definition.contains( "options" ) || definition.contains( "limits" )
                            || definition.value( "operation" ) == "run";
         const auto targetTabId
-            = target ? mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) ) : QString{};
+            = target ? paneArea_->tabIdAt( paneArea_->indexOf( target ) ) : QString{};
         if ( target && draft && !definition.contains( "sourceTabId" ) )
             definition[ "sourceTabId" ] = targetTabId;
         // An explicit --tab-id / --tab-index receives "apply" instead of the shown source.
@@ -78,7 +78,7 @@ CommanderResult MainWindow::commanderValueCountResult( const CommanderRequest& r
             return countFailure( "source_not_found", CommanderResultCode::NotFound );
         CommanderRequest search;
         search.action = CommanderAction::Search;
-        search.tabId = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) );
+        search.tabId = paneArea_->tabIdAt( paneArea_->indexOf( crawler ) );
         search.searchText = row.value( "filterPattern" ).toString();
         search.searchUseRegex = true;
         search.searchUseBoolean = false;
@@ -100,7 +100,7 @@ CommanderResult MainWindow::commanderValueCountResult( const CommanderRequest& r
         return countFailure( "source_not_found", CommanderResultCode::NotFound );
     if ( !position || !crawler )
         return countFailure( "stale_location" );
-    mainTabWidget_.setCurrentWidget( crawler );
+    paneArea_->setCurrentWidget( crawler );
     if ( !crawler || !crawler->navigateToAnalysisResult( *position ) )
         return countFailure( "stale_location" );
     LOG_DEBUG << "Value count source activated id=" << id << " source=" << position->sourceId()

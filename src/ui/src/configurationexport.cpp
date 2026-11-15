@@ -15,6 +15,7 @@
 #include "actionsrepository.h"
 #include "configuration.h"
 #include "log.h"
+#include "logpane.h"
 #include "persistentinfo.h"
 #include "previewmanager.h"
 #include "previewrepository.h"
@@ -75,6 +76,27 @@ bool settingsBytes( Writer writer, QByteArray* bytes, QString* error )
         }
     }
     return readFile( path, bytes, error );
+}
+
+// A project window's pane layout must match its saved files. A missing layout opens the window in
+// one pane; a layout version newer than this build is ignored the same way.
+bool validPaneLayouts( const SessionInfo& session, QString* error )
+{
+    for ( const auto& windowId : session.windows() ) {
+        const auto fileCount = static_cast<int>( session.openFiles( windowId ).size() );
+        const auto layout = PaneLayoutFormat::parse( session.paneLayout( windowId ), fileCount );
+        if ( layout.status == PaneLayoutFormat::Status::Invalid ) {
+            return fail( QObject::tr( "Invalid pane layout in project window %1: %2" )
+                             .arg( windowId, layout.error ),
+                         error );
+        }
+        if ( layout.status == PaneLayoutFormat::Status::Unsupported ) {
+            LOG_WARNING << "Project window " << windowId
+                        << " has an unsupported pane layout; it opens in one pane: "
+                        << layout.error;
+        }
+    }
+    return true;
 }
 
 bool isDefinitionKey( const QString& key )
@@ -403,6 +425,9 @@ bool saveProject( const QString& path, const SessionInfo& session,
     if ( session.windows().isEmpty() || session.windows().size() > 64 ) {
         return fail( QObject::tr( "A project must contain between 1 and 64 windows." ), error );
     }
+    if ( !validPaneLayouts( session, error ) ) {
+        return false;
+    }
     ConfigurationProject snapshot;
     if ( !captureConfiguration( &snapshot, error ) ) {
         return false;
@@ -581,6 +606,9 @@ bool readProject( const QString& path, ConfigurationProject* project, QString* e
     candidate.session.retrieveFromStorage( session );
     if ( candidate.session.windows().isEmpty() ) {
         return fail( QObject::tr( "The project has no saved window session." ), error );
+    }
+    if ( !validPaneLayouts( candidate.session, error ) ) {
+        return false;
     }
     for ( const auto& key : preferences.allKeys() ) {
         if ( !key.startsWith( "ConfigurationExport/" ) && !isDefinitionKey( key ) ) {

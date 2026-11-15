@@ -24,7 +24,9 @@
 #include <QTabWidget>
 #include <QColor>
 #include <QIcon>
+#include <QPointer>
 #include <QVariant>
+#include <functional>
 #include <map>
 #include <memory>
 #include <qobjectdefs.h>
@@ -33,8 +35,23 @@
 
 #include "loadingstatus.h"
 
+class QMenu;
 class StreamSession;
 struct SerialCaptureSettings;
+
+// A tab taken out of one TabbedCrawlerWidget to be attached to another one without
+// closing it: the page widget, the complete tab-bar data (tab id, path, data status,
+// COM / Actions-port / script metadata) and the tab's stream session.
+struct DetachedTab {
+    QPointer<QWidget> widget;
+    QVariantMap tabData;
+    std::shared_ptr<StreamSession> streamSession;
+
+    bool isValid() const
+    {
+        return !widget.isNull();
+    }
+};
 
 // This class represents glogg's main widget, a tabbed
 // group of CrawlerWidgets.
@@ -62,15 +79,7 @@ class TabbedCrawlerWidget : public QTabWidget {
     {
         const auto index = QTabWidget::addTab( crawler, QString{} );
 
-        connect( crawler, &T::dataStatusChanged, this, [ this, fileName ]( DataStatus status ) {
-            const auto tabsCount = count();
-            for ( int i = 0; i < tabsCount; ++i ) {
-                if ( tabPathAt( i ) == fileName ) {
-                    setTabDataStatus( i, status );
-                    return;
-                }
-            }
-        } );
+        connectCrawlerSignals( crawler, fileName );
 
         addTabBarItem( index, fileName );
 
@@ -92,11 +101,28 @@ class TabbedCrawlerWidget : public QTabWidget {
     int findTabById( const QString& tabId ) const;
     void setTabActionsPort( const QString& fileName, bool isActionsPort );
     void setTabScriptActive( const QString& tabId, bool isActive );
+    // The tab-bar data of a tab (tab id, path, status and COM / Actions / script metadata).
+    QVariantMap tabData( int index ) const;
+    // Removes the stream session registered for a path and returns it (nullptr if none).
+    std::shared_ptr<StreamSession> takeStreamSessionForPath( const QString& fileName );
+
+    // Moving a tab to another pane keeps everything it owns. detachTab removes the tab without
+    // closing it and disconnects its signals from this widget; attachTab inserts it with the same
+    // tab id, metadata and stream session and connects its signals here. addCrawler and
+    // removeCrawler open and close tabs and must not be used to move one.
+    DetachedTab detachTab( int index );
+    int attachTab( DetachedTab tab, int index = -1 );
+
+    // Extra entries for the tab context menu (for example the pane commands).
+    using ContextMenuExtension = std::function<void( QMenu& menu, int tab )>;
+    void setContextMenuExtension( ContextMenuExtension extension );
 
   protected:
     void keyPressEvent( QKeyEvent* event ) override;
     void mouseReleaseEvent( QMouseEvent* event ) override;
     void changeEvent( QEvent* event ) override;
+    void tabInserted( int index ) override;
+    void tabRemoved( int index ) override;
 
   private:
     void updateTabBarVisibility();
@@ -117,9 +143,12 @@ class TabbedCrawlerWidget : public QTabWidget {
     void resumeStreamConnectionRequested( int tab );
     void actionsEnabledChangeRequested( const QString& tabId, bool enabled );
     void autoResponsesEnabledChangeRequested( const QString& tabId, bool enabled );
+    // Emitted after a tab was inserted or removed (including a transfer).
+    void tabCountChanged();
 
 private:
     void addTabBarItem( int index, const QString& fileName );
+    void connectCrawlerSignals( QWidget* crawler, const QString& fileName );
     void setTabMetadataValue( int index, const QString& key, const QVariant& value );
     QVariant tabMetadataValue( int index, const QString& key ) const;
     void updateTabPresentation( int index );
@@ -139,6 +168,7 @@ private:
     QIcon newfiltered_icon_;
 
     CrawlerTabBar myTabBar_;
+    ContextMenuExtension contextMenuExtension_;
     std::map<QString, std::shared_ptr<StreamSession>> streamSessions_;
     bool alwaysShowTabBar_ = false;
     QColor defaultTabTextColor_;

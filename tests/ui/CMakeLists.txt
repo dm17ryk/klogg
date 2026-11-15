@@ -25,7 +25,8 @@ set(UI_TEST_SOURCES
 if(NOT APPLE)
     LIST(APPEND UI_TEST_SOURCES  ${CMAKE_CURRENT_SOURCE_DIR}/mainwindow_test.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/regexlabwindow_test.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/valuecountswindow_test.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/valuecountswindow_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/workbench_u16_test.cpp)
 endif()
 
 add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}

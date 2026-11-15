@@ -306,7 +306,8 @@ OpenedFilesList WindowSession::restore( const std::function<ViewInterface*()>& v
                 LOG_ERROR << "Failed to create view for " << fileName;
                 continue;
             }
-            result.emplace_back( OpenedFileData{ fileName, view, streamContext, file.scriptContext } );
+            result.emplace_back( OpenedFileData{ fileName, view, streamContext, file.scriptContext,
+                                                 static_cast<int>( savedIndex ) } );
             openedFiles_.emplace_back( fileName );
             if ( preferred_file_index >= 0
                  && savedIndex == static_cast<size_t>( preferred_file_index ) ) {

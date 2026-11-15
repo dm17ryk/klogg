@@ -143,6 +143,8 @@ struct OpenedFileData {
     ViewInterface* view = nullptr;
     QString streamContext;
     QString scriptContext;
+    // Position of the entry in the saved file list (the pane layout refers to it).
+    int savedIndex = -1;
 };
 
 using OpenedFilesList = std::vector<OpenedFileData>;

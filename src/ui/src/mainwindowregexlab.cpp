@@ -28,11 +28,11 @@ QVariantList MainWindow::analysisSources( int windowIndex, bool activeWindow ) c
 {
     QVariantList sources;
     const auto* current = currentCrawlerWidget();
-    for ( int index = 0; index < mainTabWidget_.count(); ++index ) {
+    for ( int index = 0; index < paneArea_->count(); ++index ) {
         auto* crawler = crawlerWidgetByIndex( index );
         if ( !crawler )
             continue;
-        sources.push_back( QVariantMap{ { "tabId", mainTabWidget_.tabIdAt( index ) },
+        sources.push_back( QVariantMap{ { "tabId", paneArea_->tabIdAt( index ) },
                                         { "filePath", session_.getFilename( crawler ) },
                                         { "label", QString::number( index + 1 ) + ": "
                                                        + session_.getFilename( crawler ) },
@@ -56,9 +56,9 @@ QVariantList MainWindow::dockAnalysisSources() const
     // was activated last.
     QString currentTabId;
     const auto* current = currentCrawlerWidget();
-    for ( int index = 0; current && index < mainTabWidget_.count(); ++index ) {
+    for ( int index = 0; current && index < paneArea_->count(); ++index ) {
         if ( crawlerWidgetByIndex( index ) == current )
-            currentTabId = mainTabWidget_.tabIdAt( index );
+            currentTabId = paneArea_->tabIdAt( index );
     }
     auto sources = applicationSources_();
     for ( auto& value : sources ) {
@@ -113,7 +113,7 @@ CommanderResult MainWindow::navigateToAnalysisResult( const QString& id, quint64
     const auto position = service->location( id, physicalLine );
     if ( !position || !crawler )
         return labFailure( "stale_location", tr( "This source location has changed or closed." ) );
-    mainTabWidget_.setCurrentWidget( crawler );
+    paneArea_->setCurrentWidget( crawler );
     if ( !crawler || !crawler->navigateToAnalysisResult( *position ) )
         return labFailure( "stale_location", tr( "This source location has changed or closed." ) );
     LOG_DEBUG << "Analysis result activated id=" << id << " source=" << position->sourceId()
@@ -180,15 +180,15 @@ CommanderResult MainWindow::commanderRegexLab( const CommanderRequest& request )
               || definition.contains( "limits" ) || definition.value( "operation" ) == "run";
         if ( target && configuresDraft && !definition.contains( "sourceTabId" ) )
             definition[ "sourceTabId" ]
-                = mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) );
+                = paneArea_->tabIdAt( paneArea_->indexOf( target ) );
         return regexLabDock_->setDefinition( definition );
     }
     case CommanderAction::ApplyRegexLabPattern:
         // An explicit --tab-id / --tab-index wins over the tab of the shown results.
         if ( !target )
             return regexLabDock_->apply();
-        mainTabWidget_.setCurrentWidget( target );
-        return regexLabDock_->apply( mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( target ) ) );
+        paneArea_->setCurrentWidget( target );
+        return regexLabDock_->apply( paneArea_->tabIdAt( paneArea_->indexOf( target ) ) );
     default:
         return labFailure( "unsupported_operation", tr( "Unsupported Regex Lab operation." ) );
     }
@@ -200,5 +200,5 @@ void MainWindow::showRegexLabForSelection()
     auto* crawler = currentCrawlerWidget();
     if ( !crawler )
         return;
-    regexLabDock_->prepareSelection( mainTabWidget_.tabIdAt( mainTabWidget_.indexOf( crawler ) ) );
+    regexLabDock_->prepareSelection( paneArea_->tabIdAt( paneArea_->indexOf( crawler ) ) );
 }
