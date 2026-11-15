@@ -71,14 +71,21 @@ class Logger {
         const auto formattedMessage = qFormatLogMessage( type, context, msg );
 
         ScopedLock lock( mutex_ );
-        if ( lastTailRepeats_ > 0 ) {
-            appendRecent( QStringLiteral( "    (previous message repeated %1 more times)" )
-                              .arg( lastTailRepeats_ ) );
-            lastTailRepeats_ = 0;
+        // The tail folds repeats whether or not the console or file log is on; those outputs
+        // still get every message.
+        if ( type == lastTailType_ && msg == lastTailMessage_ ) {
+            ++lastTailRepeats_;
         }
-        lastTailType_ = type;
-        lastTailMessage_ = msg;
-        appendRecent( formattedMessage );
+        else {
+            if ( lastTailRepeats_ > 0 ) {
+                appendRecent( QStringLiteral( "    (previous message repeated %1 more times)" )
+                                  .arg( lastTailRepeats_ ) );
+                lastTailRepeats_ = 0;
+            }
+            lastTailType_ = type;
+            lastTailMessage_ = msg;
+            appendRecent( formattedMessage );
+        }
 
         if ( !toOutput ) {
             return;

@@ -43,8 +43,6 @@
 #include <mach/mach.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
-#else
-#include <QTextStream>
 #endif
 
 namespace cilogg::diagnostics {
@@ -144,12 +142,13 @@ QMap<QString, quint64> readKibFields( const QString& path )
 {
     QMap<QString, quint64> fields;
     QFile file( path );
-    if ( !file.open( QIODevice::ReadOnly | QIODevice::Text ) ) {
+    if ( !file.open( QIODevice::ReadOnly ) ) {
         return fields;
     }
-    QTextStream stream( &file );
-    while ( !stream.atEnd() ) {
-        const auto line = stream.readLine();
+    // /proc files report size 0, so QTextStream::atEnd() is true at once; readAll() reads them
+    // incrementally until the end.
+    const auto content = QString::fromLatin1( file.readAll() );
+    for ( const auto& line : content.split( QLatin1Char( '\n' ) ) ) {
         const auto colon = line.indexOf( ':' );
         if ( colon <= 0 ) {
             continue;
@@ -769,6 +768,7 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
     result.directory = QDir( reportRoot ).filePath( result.id );
     if ( !QDir().mkpath( result.directory ) ) {
         result.error = QStringLiteral( "Cannot create %1." ).arg( result.directory );
+        result.directory.clear(); // callers treat a non-empty directory as a saved report
         return result;
     }
 
@@ -892,9 +892,14 @@ ReportResult DiagnosticReports::create( const ReportRequest& request )
         QFile::remove( archive );
     }
 
-    pruneReports( reportRoot, keepCount );
+    // An incomplete report (for example a full disk) never pushes a complete one out: prune only
+    // after a report was written completely. The partial folder stays as evidence.
+    if ( written ) {
+        pruneReports( reportRoot, keepCount );
+    }
     result.ok = written;
-    LOG_WARNING << "Diagnostic report " << result.id << " written to " << result.directory;
+    LOG_WARNING << "Diagnostic report " << result.id << ( written ? " written to " : " incomplete in " )
+                << result.directory;
     return result;
 }
 

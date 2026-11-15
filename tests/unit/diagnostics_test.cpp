@@ -166,6 +166,33 @@ TEST_CASE( "Recent log lines keep warnings and errors with logging off", "[diagn
     logging::enableLogging( true, logging::LogLevel::Info );
     LOG_INFO << "diagnostics-info-enabled-marker";
     CHECK( logging::recentLogLines().join( '\n' ).contains( "diagnostics-info-enabled-marker" ) );
+
+    // With console logging on, the console still gets every line but the tail folds the burst.
+    logging::clearRecentLogLines();
+    for ( int index = 0; index < 20; ++index ) {
+        LOG_INFO << "diagnostics-burst-with-logging";
+    }
+    LOG_INFO << "diagnostics-after-burst-with-logging";
+    const auto folded = logging::recentLogLines();
+    CHECK( folded.filter( "diagnostics-burst-with-logging" ).size() == 1 );
+    CHECK( folded.join( '\n' ).contains( "repeated 19 more times" ) );
+}
+
+TEST_CASE( "A report folder that cannot be created is not reported as saved", "[diagnostics]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto blocker = root.filePath( "blocker" );
+    {
+        QFile file( blocker );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+    }
+    DiagnosticReports::setRoot( QDir( blocker ).filePath( "reports" ) ); // below a plain file
+    const auto result = DiagnosticReports::create( ReportRequest{ "manual", "Test", {}, {}, {} } );
+    CHECK_FALSE( result.ok );
+    CHECK( result.directory.isEmpty() );
+    CHECK_FALSE( result.error.isEmpty() );
+    DiagnosticReports::setRoot( {} );
 }
 
 TEST_CASE( "Memory status describes process and system memory", "[diagnostics]" )
@@ -192,11 +219,11 @@ TEST_CASE( "A report bundle records what happened and the steps before it", "[di
     DiagnosticReports::setContextProvider( [] {
         return QVariantMap{ { "windows", QVariantList{ QVariantMap{
                                              { "tabs", QVariantList{ QVariantMap{
-                                                           { "displayName", "com4.log" } } } } } } } };
+                                                           { "displayName", "panel_com4.log" } } } } } } } };
     } );
 
     QDir().mkpath( root.filePath( "captures" ) );
-    const auto capture = root.filePath( "captures/com4.log" );
+    const auto capture = root.filePath( "captures/panel_com4.log" );
     {
         QFile file( capture );
         REQUIRE( file.open( QIODevice::WriteOnly ) );
@@ -225,7 +252,7 @@ TEST_CASE( "A report bundle records what happened and the steps before it", "[di
     }
     CHECK( QFileInfo::exists( result.archive ) );
     CHECK( result.summary.contains( "checking a file for changes" ) );
-    CHECK( result.summary.contains( "com4.log" ) );
+    CHECK( result.summary.contains( "panel_com4.log" ) );
     CHECK( result.summary.contains( "bad allocation" ) );
 
     const auto markdown = readAll( QDir( result.directory ).filePath( "report.md" ) );
@@ -238,7 +265,7 @@ TEST_CASE( "A report bundle records what happened and the steps before it", "[di
 
     const auto report = readJson( QDir( result.directory ).filePath( "report.json" ) );
     CHECK( report.value( "kind" ).toString() == "exception" );
-    CHECK( report.value( "file" ).toObject().value( "name" ).toString() == "com4.log" );
+    CHECK( report.value( "file" ).toObject().value( "name" ).toString() == "panel_com4.log" );
     CHECK( report.value( "file" ).toObject().value( "size" ).toInt() == 4096 );
     CHECK( report.value( "details" ).toObject().value( "indexedBytes" ).toInt() == 123 );
     CHECK( report.value( "steps" ).toArray().size() >= 3 );
@@ -258,7 +285,7 @@ TEST_CASE( "A report bundle records what happened and the steps before it", "[di
 
     // The public issue text carries the file name, never its folder, the journal or log lines.
     const auto body = DiagnosticReports::issueBody( result, request );
-    CHECK( body.contains( "com4.log" ) );
+    CHECK( body.contains( "panel_com4.log" ) );
     CHECK( body.contains( result.id ) );
     CHECK( body.contains( "bad allocation" ) );
     CHECK_FALSE( body.contains( QDir::toNativeSeparators( root.path() ) ) );
