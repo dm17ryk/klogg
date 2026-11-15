@@ -29,6 +29,7 @@ add_executable(cilogg_tests
     previewdecoder_test.cpp
     previewsource_test.cpp
     previewcommands_test.cpp
+    pythonruntime_test.cpp
     serialcapturesettings_test.cpp
     streamsession_actions_test.cpp
     streamsession_owner_test.cpp
@@ -48,6 +49,7 @@ target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
 target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"
+    CILOGG_APP_DIR="$<TARGET_FILE_DIR:klogg>"
     PREVIEW_PUBLIC_LUA_PATH="${CMAKE_SOURCE_DIR}/test_data/message_decoders/pdu_probe.lua"
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
