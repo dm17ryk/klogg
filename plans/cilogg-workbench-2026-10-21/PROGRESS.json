@@ -2360,7 +2360,7 @@
         "Drag and drop between panes belongs to U16c."
       ],
       "slices": [
-        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108",
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108, merged as c252b175 on 2026-11-15",
         "U16b: Commander/CLI/MCP/Python pane operations and the get_info pane fields, PR https://github.com/dm17ryk/klogg/pull/111",
         "U16c: drag and drop between panes, planned"
       ]
