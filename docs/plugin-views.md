@@ -1,7 +1,9 @@
 # Plugin views: design
 
 Status: **implemented** (2026-11-11), protocol version 1 notifications. Plan task:
-[E13](../plans/cilogg-workbench-2026-10-21/tasks/E13.md). Section 8 lists the details that the
+[E13](../plans/cilogg-workbench-2026-10-21/tasks/E13.md). Editable cells, the `multichoice` field and the
+`toolbar` and `icon` keys were added by [E14](../plans/cilogg-workbench-2026-10-21/tasks/E14.md); the
+protocol version stays 1. Section 8 lists the details that the
 implementation fixed or changed relative to the original draft.
 
 A plugin view is an interactive window that a process plugin builds and drives: input fields,
@@ -67,13 +69,25 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 | `width`, `height` | pixels | the content's own size | Starting size for windows, dialogs and floating docks. The host remembers the user's size. |
 | `modal` | bool | false | Dialogs only: modal to the CILogg window. |
 | `menu` | bool | true | Adds the **Plugins → <title>** entry. |
+| `toolbar` | bool | false | Adds a button for the view to the main toolbar. |
+| `icon` | relative path | the generic icon | Icon of the menu entry and the toolbar button. See below. |
 
 - A **window** is a top-level window owned by its CILogg window, with its own title, like Script
   Runner.
 - A **dialog** gets the standard dialog frame. Closing it sends `view/closed`.
 - All kinds use the same elements, patches and events.
-- The host announces support in `initialize` with `"host_features": ["views"]`. On an older host,
-  a plugin falls back to actions and panels.
+- **Actions** accept the same presentation keys: `toolbar` (default true), `menu` (default true) and
+  `icon`. An action with neither `toolbar` nor `menu` gets no button, but it stays callable from
+  Commander, the CLI and MCP.
+- `icon` is a safe relative path to a `.png`, `.ico` or `.svg` file inside the plugin folder, at most
+  256 characters; anything else is a manifest error. A missing or unreadable file falls back to the
+  generic icon and is logged once per plugin and path. `.svg` icons need Qt's SVG image plugin in
+  the deployment; without it the generic icon is used. A plugin update that replaces an icon file
+  shows the new icon.
+- The host announces support in `initialize` with `"host_features": ["views", "view_edit"]`.
+  `views` covers the views described above; `view_edit` covers editable cells (section 2.5) and the
+  `multichoice` field (section 2.3). On an older host, a plugin falls back to actions and panels, or
+  to read-only tables.
 
 ### 2.2 Messages
 
@@ -81,7 +95,7 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 | --- | --- | --- |
 | host → plugin | `view/opened` | `view_id`, `window_id`, `context` (as in `invoke`) |
 | host → plugin | `view/closed` | `view_id`, `window_id` |
-| host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`), `value`, `inputs` (all field values of the view) |
+| host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`, `edited`), `value`, `inputs` (all field values of the view). An `edited` event also carries `row_id`, `column_id` and `previous` (section 2.5). |
 | plugin → host | `view/update` | `view_id`, `window_id` (optional), and either `root` (a full element tree) or `patch` (a list of `{id, set: {...}}`, plus table row operations) |
 | plugin → host | `view/show` | `view_id`, `window_id` (optional; default is the most recently active CILogg window), and optional overrides `area`, `floating`, `title`, `focus` |
 | plugin → host | `view/hide` | `view_id`, `window_id` (optional; default is every window) |
@@ -103,15 +117,31 @@ Common properties: `id` (unique within the view), `enabled`, `visible`, `tooltip
 | `group` | `title`, `collapsible`, `collapsed`, `children` | — |
 | `label` | `text`, `tone` (`normal`, `ok`, `warn`, `error`, `muted`), `bold` | — |
 | `badge` | `text`, `tone` | — |
-| `field` | `kind` (`text`, `number`, `choice`, `boolean`, `file_open`, `file_save`, `directory`), `label`, `value`, `choices`, `filter` (for example `CPF files (*.cpf)`), `placeholder` | `changed` (text is debounced by 300 ms). File kinds get a built-in **Browse…** button. |
+| `field` | `kind` (`text`, `number`, `choice`, `multichoice`, `boolean`, `file_open`, `file_save`, `directory`), `label`, `value`, `choices`, `filter` (for example `CPF files (*.cpf)`), `placeholder` | `changed` (text is debounced by 300 ms). File kinds get a built-in **Browse…** button. `multichoice` is a check-dropdown whose `value` is a list of the checked choice values. |
 | `button` | `label`, `tone` (`normal`, `primary`, `danger`), `action` + `arguments`, `event` (true = send `clicked` instead of starting an action), `confirm` (`title`, `text`, `ok_label`), `save_dialog` (`filter`, `suggested_name`) | `clicked`, or an action invocation. The invocation's arguments carry `inputs` (all field values) and `save_path` when a save dialog ran. |
 | `progress` | `value` (0..1) or `busy`, `text` | — |
-| `table` | `columns` (`id`, `title`, `width`), `rows` (`id`, `cells`, `tone`), `sortable`, `filter_box`, `selection` (`none`, `single`, `multi`) | `selected` (row ids) |
+| `table` | `columns` (`id`, `title`, `width`, `editable`), `rows` (`id`, `cells`, `tone`, `tooltip`, `editors`), `sortable`, `filter_box`, `selection` (`none`, `single`, `multi`) | `selected` (row ids) |
 
 - Tables are model-based (`QAbstractTableModel`), with up to 50,000 cells.
 - Table patches can replace all rows, or update, insert and remove rows by id. A large table is
   therefore sent once and then changed row by row.
-- Text is always plain text, never HTML.
+- Row `tone` is one of `normal`, `ok`, `warn`, `error`, `muted` or `accent` (blue, `#1565c0`).
+- Text is always plain text, never HTML. This includes tooltips.
+
+#### `multichoice` fields
+
+A `multichoice` field is a check-dropdown built from the same `choices` as a `choice` field. Its
+`value` is a list of the checked choice values, in `inputs` and in `changed` events. Plugin patches
+that set the value never echo back, as for other fields.
+
+- Closed, it shows the labels of the checked items, `None` when nothing is checked, or `All` when
+  every item is.
+- Clicking an item toggles it and keeps the list open. Space toggles the current item.
+- Esc closes the list and restores the ticks the list had when it was opened, or the value a
+  plugin patch set while it was open. Any other way of closing it keeps the ticks.
+- The field sends `changed` on each toggle while the list is open, and again when Esc restores
+  different ticks. Opening and closing the list without a toggle sends nothing.
+- List values count toward the bound on `inputs` (section 8).
 
 ### 2.4 Message boxes
 
@@ -124,11 +154,76 @@ Common properties: `id` (unique within the view), `enabled`, `visible`, `tooltip
 - Boxes still open when the plugin stops are closed without a result.
 - Text is plain text, at most 4,096 characters.
 
+### 2.5 Editable cells
+
+A plugin can make table cells editable. The host never changes data on its own: it reports the
+edit, shows it as pending, and waits for the plugin to confirm or reject it. The feature is announced
+by the host feature `view_edit`.
+
+- **Declaring.** Mark a column with `"editable": true`. Each row that should be editable in that
+  column carries `editors`, a map from column id to an editor:
+  `{"kind", "choices", "min", "max", "max_length", "placeholder", "value"}`. A cell is editable only
+  when its column is `editable` and its row has an editor for that column, so rows may use
+  different editors in one column.
+
+  ```json
+  {"id": "r1", "cells": ["Mode", "Fast"],
+   "editors": {"value": {"kind": "choice", "choices": ["Fast", "Slow"], "value": "Fast"}}}
+  ```
+
+- **Editor kinds and value types.**
+
+  | `kind` | Editor | `value` |
+  | --- | --- | --- |
+  | `text` | line edit (`max_length`, `placeholder`) | string |
+  | `number` | number edit (`min`, `max`) | string |
+  | `choice` | drop-down list | the choice's own value as given in `choices` (a string in practice, as for form fields) |
+  | `multichoice` | check-dropdown | list of the checked choice values |
+  | `boolean` | Yes/No drop-down list | `true` or `false` |
+
+  `previous` is always the cell's text before the edit, a string, for every kind.
+  A number editor accepts standard notation only, without group separators, within `min` and `max`.
+  The `value` key of an editor is its starting value (a list for `multichoice`).
+- **Opening and closing.** Double-click or F2 opens the editor. `choice`, `boolean` and `multichoice`
+  editors open their list at once. Picking an item in a `choice` or `boolean` list commits it;
+  closing that list without picking (Esc or a click outside) ends the edit unchanged. If the cell
+  text matches none of a `choice` editor's choices (for example an out-of-range value) and the editor
+  has no `value`, the list opens with nothing selected, and any pick commits. Closing a
+  `multichoice` list with Enter or a click outside commits its ticks; Esc restores the ticks from
+  before it opened and ends the edit unchanged. For text and number editors, Enter or leaving the
+  cell commits and Esc cancels. Opening and leaving a cell without changing it sends nothing.
+  Whether a commit is a change is judged by value, not by the text the cell shows. A cell whose
+  edit the plugin has not confirmed yet reopens on that edit's value. Otherwise the editor starts
+  from its `value`, or from the item whose label matches the cell text; if several choices share
+  that label, give the editor a `value` so that the right one is selected.
+- **Pending state.** On a real change the cell shows the new text at once, in italic (a `choice` or
+  `boolean` cell shows the choice label), and the host sends a `view/event` of type `edited` with
+  `element_id` (the table), `row_id`, `column_id`, `value`, `previous` and `inputs`. If the host
+  cannot deliver the event (the plugin is stopping or not reading its input), the cell shows what it
+  showed before that edit again. An event over the size limit is still delivered, shortened as
+  section 8 describes (`inputs` first, then `value`, with `truncated: true`).
+- **The plugin answers with a patch.** To confirm, patch the row with the accepted cell text. To
+  reject, patch it with the previous text, or whatever it should show. Any patch to the row ends its
+  pending state. A patch to a row whose editor is open leaves the editor alone once the user has
+  changed its value.
+- **Editors in a patch.** A row patch with `editors` replaces the row's whole `editors` map, so it
+  must carry the editor of every column that should stay editable, not only the changed one.
+- **Editor value after a confirm.** If the confirming patch carries no `editors` and its cell text
+  equals the pending text, the host updates that editor's `value` to the committed value itself.
+  Otherwise a plugin whose editor carries `value` should send the row's `editors` again (all of
+  them), with the new `value`, in its confirming patch.
+- **Refused edits.** Edits are refused while the view is disabled or applying a plugin update.
+- **Plugin stops.** If the plugin stops while an edit is pending, the host sets the cell back to its
+  previous text.
+- **Limits.** A cell editor has at most 512 choices (`PluginView::MaxElements`). Text and number
+  editors take at most 4,096 characters, as many as a cell shows; a larger `max_length` is clamped.
+  Tooltips are at most 4,096 characters.
+
 ## 3. Limits
 
 - The host logs ids and sizes, not element contents, to keep logs small.
 - Limits: 8 views per plugin, 512 elements per view, 8 open message boxes per plugin, 1 MiB per
-  message, and patches coalesced to at most 10 renders per second. Unknown element types and
+  message, 512 choices per cell editor, and patches coalesced to at most 10 renders per second. Unknown element types and
   properties are ignored and logged once.
 - A button with `confirm` always shows the host's modal dialog before anything is sent to the
   plugin.
@@ -208,7 +303,7 @@ and message boxes of one CILogg window) and `src/ui/src/pluginuicontroller.cpp` 
   Any other tree is rebuilt.
 - **Patches.** `{"id": "x", "set": {...}}` changes properties; `children` and a field's `kind`
   cannot be patched. Table entries are `{"id": "t", "replace_rows": [...]}`,
-  `{"id": "t", "update_rows": [{"id", "cells"?, "tone"?}]}`,
+  `{"id": "t", "update_rows": [{"id", "cells"?, "tone"?, "tooltip"?, "editors"?}]}`,
   `{"id": "t", "insert_rows": [...], "before": "<row id>"}` (default: append) and
   `{"id": "t", "remove_rows": ["<row id>", ...]}`. Row ids are unique: the first row with an id
   wins, also within one `replace_rows` or `insert_rows` batch. Removals use contiguous ranges;
@@ -220,7 +315,8 @@ and message boxes of one CILogg window) and `src/ui/src/pluginuicontroller.cpp` 
   save dialog, an event button's `value` is the chosen path.
 - **Bounded input.** User input can never push a host message over the transport limit. A field
   value is at most 65,536 characters, and `inputs` stay below 256 KiB (later values are
-  shortened). `selected` carries at most the first 1,000 row ids plus `selected_count`. A
+  shortened; a list value counts by its serialized size, and when the budget is spent its trailing
+  elements are dropped and the truncated flag is set). `selected` carries at most the first 1,000 row ids plus `selected_count`. A
   shortened event or action carries `truncated: true` (`inputs_truncated: true` in action
   arguments). The host also truncates any `view/event` over 512 KiB (dropping `inputs`, then
   `value`) and drops events while the plugin is not reading its input. Job arguments over the
@@ -231,8 +327,9 @@ and message boxes of one CILogg window) and `src/ui/src/pluginuicontroller.cpp` 
 - **Values.** `number` fields send a number or `null`; `choice` sends the selected choice value
   (choices may be strings, numbers or `{value, label}`); `boolean` sends `true`/`false`.
 - **Tables.** At most 64 columns and 50,000 cells; an operation that would exceed the limit is
-  rejected and logged once. A `sortable` table keeps the plugin's row order until the user
-  clicks a column header; sorting uses numeric order for cells that parse as numbers.
+  rejected and logged once, and leaves the table and an open cell editor as they were. A
+  `sortable` table keeps the plugin's row order until the user clicks a column header; sorting
+  uses numeric order for cells that parse as numbers.
 - **Coalescing.** Updates for one CILogg window are applied together at most every 100 ms; a root
   replaces queued patches. When more than 4,096 patch entries are queued for a view, only that
   view renders early, at most once per interval (and always beyond 65,536 entries).

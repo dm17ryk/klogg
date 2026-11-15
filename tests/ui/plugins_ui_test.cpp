@@ -6,8 +6,11 @@
 #include <QDialog>
 #include <QDockWidget>
 #include <QElapsedTimer>
+#include <QFileInfo>
+#include <QImage>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -181,4 +184,106 @@ TEST_CASE( "Plugin UI routes panels to captured windows and cleans them up", "[u
     manager.panelUpdated( "fixture", { { "id", "late" }, { "elements", QJsonArray{} } }, context );
     QTest::qWait( 150 );
     REQUIRE_FALSE( second.findChild<QDockWidget*>( "pluginPanel_fixture_late" ) );
+}
+
+TEST_CASE( "Plugin actions and views honour toolbar, menu and icon manifest keys",
+           "[ui][plugins][E14]" )
+{
+    QTemporaryDir temp;
+    const QString pluginId = "org.test.e14";
+    const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+    const auto folder = QDir( shipped ).filePath( pluginId );
+    REQUIRE( QDir().mkpath( folder ) );
+    const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
+    REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
+                          QDir( folder ).filePath( executable ) ) );
+    QImage image( 16, 16, QImage::Format_ARGB32 );
+    image.fill( Qt::red );
+    REQUIRE( image.save( QDir( folder ).filePath( "icon.png" ) ) );
+    QFile broken( QDir( folder ).filePath( "broken.png" ) );
+    REQUIRE( broken.open( QIODevice::WriteOnly ) );
+    broken.write( "not a png" );
+    broken.close();
+    const QJsonObject description{
+        { "id", pluginId },
+        { "name", "E14 fixture" },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "executable", executable },
+        { "capabilities", QJsonArray{ "tool" } },
+        { "actions",
+          QJsonArray{ QJsonObject{ { "id", "a1" },
+                                   { "capability", "tool" },
+                                   { "toolbar", false },
+                                   { "menu", false } },
+                      QJsonObject{ { "id", "a2" }, { "capability", "tool" } } } },
+        { "views",
+          QJsonArray{ QJsonObject{ { "id", "main" },
+                                   { "title", "Main" },
+                                   { "toolbar", true },
+                                   { "icon", "icon.png" } },
+                      QJsonObject{ { "id", "other" },
+                                   { "title", "Other" },
+                                   { "icon", "broken.png" } } } }
+    };
+    QFile manifest( QDir( folder ).filePath( "plugin.json" ) );
+    REQUIRE( manifest.open( QIODevice::WriteOnly ) );
+    REQUIRE( manifest.write( QJsonDocument( description ).toJson() ) > 0 );
+    manifest.close();
+    cilogg::plugins::PluginManager manager( QDir( temp.path() ).filePath( "data" ), shipped );
+    REQUIRE( manager.manage( "enable", pluginId, {} ).ok() );
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession{ session, "PluginE14", 0 } );
+    window.setPluginManager( manager, []( const CommanderRequest& ) { return CommanderResult{}; } );
+    window.show();
+
+    auto* toolbar = window.findChild<QToolBar*>( "mainToolBar" );
+    auto* menu = window.findChild<QMenu*>( "pluginsMenu" );
+    REQUIRE( toolbar );
+    REQUIRE( menu );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return window.findChild<QAction*>( "pluginViewAction_org.test.e14_main" ); },
+        5000 ) );
+    auto* a1 = window.findChild<QAction*>( "pluginAction_org.test.e14_a1" );
+    auto* a2 = window.findChild<QAction*>( "pluginAction_org.test.e14_a2" );
+    auto* main = window.findChild<QAction*>( "pluginViewAction_org.test.e14_main" );
+    auto* other = window.findChild<QAction*>( "pluginViewAction_org.test.e14_other" );
+    CHECK( a1 == nullptr ); // neither toolbar nor menu: no QAction at all
+    REQUIRE( a2 );
+    CHECK( toolbar->actions().contains( a2 ) );
+    CHECK( menu->actions().contains( a2 ) );
+    // QStyle::standardIcon() builds a new QIcon (a new cacheKey) on every call: compare pixels.
+    const auto generic
+        = window.style()->standardIcon( QStyle::SP_TitleBarNormalButton ).pixmap( 16, 16 ).toImage();
+    REQUIRE_FALSE( generic.isNull() );
+    REQUIRE( main );
+    CHECK( toolbar->actions().contains( main ) );
+    CHECK( menu->actions().contains( main ) );
+    CHECK_FALSE( main->icon().pixmap( 16, 16 ).isNull() );
+    CHECK( main->icon().pixmap( 16, 16 ).toImage() != generic );   // the plugin's icon.png
+    REQUIRE( other );
+    CHECK_FALSE( toolbar->actions().contains( other ) ); // views default to toolbar:false
+    CHECK_FALSE( other->icon().isNull() );               // broken file: generic icon, not empty
+    CHECK( other->icon().pixmap( 16, 16 ).toImage() == generic );  // the fallback is the generic icon
+
+    // A plugin update that only replaces icon files (the manifest unchanged) shows the new icons,
+    // also where the old file was unusable.
+    const auto iconPath = QDir( folder ).filePath( "icon.png" );
+    const auto oldSize = QFileInfo( iconPath ).size();
+    QImage green( 24, 24, QImage::Format_ARGB32 );
+    green.fill( Qt::green );
+    REQUIRE( QFile::remove( iconPath ) );
+    REQUIRE( green.save( iconPath ) );
+    REQUIRE( QFileInfo( iconPath ).size() != oldSize );
+    REQUIRE( QFile::remove( QDir( folder ).filePath( "broken.png" ) ) );
+    REQUIRE( green.save( QDir( folder ).filePath( "broken.png" ) ) );
+    Q_EMIT manager.changed();                                     // what the update ends with
+    const auto showsGreen = [ &window ]( const char* name ) {
+        // Rebuilt actions replace the old ones (deleted later) under the same name.
+        const auto* action = window.findChild<QAction*>( name );
+        return action
+               && action->icon().pixmap( 16, 16 ).toImage().pixelColor( 8, 8 ) == QColor( Qt::green );
+    };
+    CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_main" ); }, 5000 ) );
+    CHECK( QTest::qWaitFor( [ & ] { return showsGreen( "pluginViewAction_org.test.e14_other" ); }, 5000 ) );
 }

@@ -116,6 +116,30 @@ QString validateValues( const QJsonArray& fields, QJsonObject* values )
     return {};
 }
 
+// Optional `toolbar` / `menu` booleans and an `icon` path inside the plugin folder (E14).
+QString validatePresentation( const QJsonObject& item, const QString& id, bool allowMenu )
+{
+    for ( const auto key : { "toolbar", "menu" } ) {
+        if ( !allowMenu && QLatin1String( key ) == QLatin1String( "menu" ) ) {
+            continue; // views validate `menu` with their other flags
+        }
+        if ( item.contains( QLatin1String( key ) ) && !item.value( QLatin1String( key ) ).isBool() ) {
+            return QStringLiteral( "Invalid %1 flag: %2" ).arg( QLatin1String( key ), id );
+        }
+    }
+    if ( item.contains( "icon" ) ) {
+        const auto icon = item.value( "icon" ).toString();
+        static const QRegularExpression imageSuffix( "\\.(png|ico|svg)$",
+                                                     QRegularExpression::CaseInsensitiveOption );
+        if ( !item.value( "icon" ).isString() || icon.size() > 256 || !safeRelativePath( icon )
+             || !imageSuffix.match( icon ).hasMatch() ) {
+            return QStringLiteral( "Invalid icon (a .png, .ico or .svg path inside the plugin): %1" )
+                .arg( id );
+        }
+    }
+    return {};
+}
+
 QString validateActions( const QJsonArray& actions, const QJsonArray& capabilities )
 {
     if ( actions.size() > 128 ) {
@@ -133,6 +157,10 @@ QString validateActions( const QJsonArray& actions, const QJsonArray& capabiliti
         const auto error = validateFields( a.value( "fields" ).toArray() );
         if ( !error.isEmpty() ) {
             return error;
+        }
+        const auto presentation = validatePresentation( a, id, true );
+        if ( !presentation.isEmpty() ) {
+            return presentation;
         }
         ids.insert( id );
     }
@@ -176,6 +204,10 @@ QString validateViews( const QJsonArray& views )
              || !optionalBool( view, "modal" ) || !optionalSize( view, "width" )
              || !optionalSize( view, "height" ) ) {
             return QStringLiteral( "Invalid view flag or size: %1" ).arg( id );
+        }
+        const auto presentation = validatePresentation( view, id, false );
+        if ( !presentation.isEmpty() ) {
+            return presentation;
         }
         ids.insert( id );
     }

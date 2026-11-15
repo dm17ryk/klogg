@@ -142,3 +142,9 @@ On 2026-11-13 the user answered the open points of the D12 tasks:
 - **U16:** the [split-pane design](../split-panes.md) is approved. Closing a pane with tabs asks whether to close all its tabs or move them to the neighbouring pane (or cancel); "focused tab" is the current tab of the active pane; up to 8 panes per window with `Ctrl+Alt+Right` / `Ctrl+Alt+Down`; tabs and files per pane are not limited. Implementation proceeds in slices U16a–U16c.
 
 The task cards [U14](../../plans/cilogg-workbench-2026-10-21/tasks/U14.md), [U15](../../plans/cilogg-workbench-2026-10-21/tasks/U15.md) and [U16](../../plans/cilogg-workbench-2026-10-21/tasks/U16.md) record these answers. They change no hard edge beyond those recorded in D12.
+
+## D14 — Editable plugin table cells and toolbar keys
+
+On 2026-11-13 the user approved extending the plugin views SDK (E13) so that a plugin can make table cells editable, offer a `multichoice` check-dropdown field, and choose toolbar/menu presence and an icon for its actions and views. This is recorded as task [E14](../../plans/cilogg-workbench-2026-10-21/tasks/E14.md) and is the host-side groundwork for editing CPF files in a CILogg plugin.
+
+Edits are never applied by the host on its own: a cell edit is sent to the plugin as an `edited` view event (`element_id`, `row_id`, `column_id`, `value`, `previous`, `inputs`) and is confirmed only when the plugin answers with a patch; until then the cell shows a pending state, and it reverts if the plugin stops. The defaults keep existing plugins unchanged: columns are read-only unless `editable` is set, and the new manifest keys default to the E13 behaviour (action `toolbar` and `menu` true, view `toolbar` false, view `menu` true, no `icon`). The protocol version stays 1. The host feature `view_edit`, announced in `initialize`, gates the whole feature, so a plugin can detect hosts without it and fall back to read-only tables. See the [plugin views design](../plugin-views.md).

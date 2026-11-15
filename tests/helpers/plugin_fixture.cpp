@@ -142,10 +142,16 @@ int main( int argc, char** argv )
                   QJsonObject{
                       { "type", "table" },
                       { "id", "rows" },
-                      { "columns", QJsonArray{ QJsonObject{ { "id", "c" }, { "title", "C" } } } },
+                      { "columns",
+                        QJsonArray{ QJsonObject{
+                            { "id", "c" }, { "title", "C" }, { "editable", true } } } },
                       { "rows",
                         QJsonArray{
-                            QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "1" } } },
+                            QJsonObject{
+                                { "id", "r1" },
+                                { "cells", QJsonArray{ "1" } },
+                                { "editors",
+                                  QJsonObject{ { "c", QJsonObject{ { "kind", "text" } } } } } },
                             QJsonObject{ { "id", "r2" }, { "cells", QJsonArray{ "2" } } } } } } } }
         };
     };
@@ -178,6 +184,9 @@ int main( int argc, char** argv )
         }
         else if ( method == "view/event" ) {
             const auto element = params.value( "element_id" ).toString();
+            if ( params.value( "type" ).toString() == "edited" ) {
+                return; // never patched: the edit stays pending
+            }
             const QJsonObject box{ { "title", "Fixture" },
                                    { "text", "Proceed?" },
                                    { "icon", "question" },

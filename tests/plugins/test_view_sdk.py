@@ -56,6 +56,28 @@ class ViewSdk(unittest.TestCase):
         self.assertEqual(table["rows"], [{"id": "r1", "cells": ["1", "x"], "tone": "warn"}])
         self.assertEqual(sdk.group("G", sdk.badge("b", "B"))["children"][0]["type"], "badge")
 
+    def test_editable_cells_helpers(self):
+        sdk = self.sdk
+        col = sdk.table_column("file", "File", 150, editable=True)
+        self.assertEqual(col, {"id": "file", "title": "File", "width": 150, "editable": True})
+        ed = sdk.editor("choice", choices=[{"value": "1", "label": "On"}])
+        row = sdk.table_row("r1", ["a", 1], tone="accent", tooltip="was 0", editors={"file": ed})
+        self.assertEqual(row, {"id": "r1", "cells": ["a", "1"], "tone": "accent", "tooltip": "was 0",
+                               "editors": {"file": {"kind": "choice",
+                                                    "choices": [{"value": "1", "label": "On"}]}}})
+        self.assertEqual(sdk.editor("number", min=1, max=9), {"kind": "number", "min": 1, "max": 9})
+        self.assertEqual(sdk.editor("multichoice", choices=[{"value": "1", "label": "A"}], value=["1"]),
+                         {"kind": "multichoice", "choices": [{"value": "1", "label": "A"}], "value": ["1"]})
+        self.assertEqual(sdk.editor("text", max_length=5, placeholder="p"),
+                         {"kind": "text", "max_length": 5, "placeholder": "p"})
+
+    def test_supports_view_edit(self):
+        plugin = self.sdk.Plugin.__new__(self.sdk.Plugin)
+        plugin.host_features = ["views", "view_edit"]
+        self.assertTrue(plugin.supports_view_edit)
+        plugin.host_features = ["views"]
+        self.assertFalse(plugin.supports_view_edit)
+
     def test_patch_entries(self):
         sdk = self.sdk
         self.assertEqual(sdk.set_props("x", text="t"), {"id": "x", "set": {"text": "t"}})
@@ -190,12 +212,31 @@ class ViewDemoExample(unittest.TestCase):
                 collect(child)
 
         collect(update["root"])
-        self.assertEqual(len(tables[0]["rows"]), 10000)
-        self.assertLessEqual(len(tables[0]["rows"]) * len(tables[0]["columns"]), 50000)
+        big = next(item for item in tables if item["id"] == "rows")
+        self.assertEqual(len(big["rows"]), 10000)
+        self.assertLessEqual(len(big["rows"]) * len(big["columns"]), 50000)
+        settings = next(item for item in tables if item["id"] == "settings")
+        self.assertEqual([r["id"] for r in settings["rows"]], ["level", "days", "count", "enabled"])
+        self.assertTrue(settings["columns"][1]["editable"])
         # The table is then patched one row at a time.
         patch = self.next_frame("view/update", lambda params: any(
             "update_rows" in entry for entry in params.get("patch", [])))
         self.assertEqual(len(patch["patch"][0]["update_rows"]), 1)
+        def edit(row_id, value, previous="x"):
+            host.send("view/event", {"view_id": "main", "window_id": "w1", "element_id": "settings",
+                                     "type": "edited", "row_id": row_id, "column_id": "value",
+                                     "value": value, "previous": previous, "inputs": {}})
+            return self.next_frame("view/update", lambda params: any(
+                entry.get("id") == "settings" for entry in params.get("patch", [])))["patch"][0]["update_rows"][0]
+
+        accepted = edit("count", "42", "10")
+        self.assertEqual((accepted["cells"][1], accepted["tone"], accepted["tooltip"]), ("42", "accent", "was 10"))
+        rejected = edit("count", "500", "42")
+        self.assertEqual((rejected["cells"][1], rejected["tone"]), ("42", "error"))
+        self.assertIn("between 1 and 100", rejected["tooltip"])
+        self.assertEqual(edit("days", ["Fri", "Mon"])["cells"][1], "Mon, Fri")
+        self.assertEqual(edit("level", "Nope")["tone"], "error")
+        self.assertEqual(edit("enabled", False)["cells"][1], "off")
         host.send("view/event", {"view_id": "main", "window_id": "w1", "element_id": "ask",
                                  "type": "clicked", "value": None, "inputs": {}})
         message = self.next_frame("ui/message")
