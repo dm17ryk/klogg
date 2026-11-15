@@ -9,6 +9,7 @@ add_executable(cilogg_tests
     actionparametersdialog_test.cpp
     actionparameterseditorwidget_test.cpp
     commander_test.cpp
+    diagnostics_test.cpp
     fieldvalue_test.cpp
     datasetcontracts_test.cpp
     valuecounts_commands_test.cpp

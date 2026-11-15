@@ -95,6 +95,8 @@ enum class CommanderAction {
     GetPreviewDecoder,
     SetPreviewDecoder,
     ShowPreviewDecoderSettings,
+    ListReports,
+    CreateReport,
 };
 
 enum class CommanderResultCode {

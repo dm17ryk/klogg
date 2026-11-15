@@ -11,6 +11,7 @@
 
 #include "actionexpression.h"
 #include "actionsmanager.h"
+#include "diagnostics.h"
 #include "log.h"
 #include "previewdecodeutils.h"
 #include "streamsession.h"
@@ -349,6 +350,17 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     const auto repeatCount = effectiveRepeatCount( action );
     const auto firstDelay = qMax( 0, action.parameters.delay );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
+    // Journal the send without its bytes: payloads may hold credentials.
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "action" ),
+        QStringLiteral( "%1 action %2 \"%3\" to %4 (%5 bytes, %6 time(s), first after %7 ms)" )
+            .arg( automatic ? QStringLiteral( "Automatic" ) : QStringLiteral( "Manual" ),
+                  QString::number( action.id ), action.name, session->sourceDisplayName(),
+                  QString::number( encoded.bytes.size() ), QString::number( repeatCount ),
+                  QString::number( firstDelay ) ),
+        { { QStringLiteral( "actionId" ), action.id },
+          { QStringLiteral( "automatic" ), automatic },
+          { QStringLiteral( "parameterNames" ), QStringList( parameters.keys() ) } } );
     LOG_DEBUG << "Scheduling action id=" << action.id << ", repeats=" << repeatCount
               << ", encoded_bytes=" << encoded.bytes.size() << ", automatic=" << automatic
               << ", generation=" << generation << ( sensitive ? ", sensitive payload" : "" );
@@ -435,6 +447,13 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         setError( errorMessage, QObject::tr( "No eligible COM session for automatic responses." ) );
         return false;
     }
+
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "response" ),
+        QStringLiteral( "Response %1 \"%2\" fired on %3" )
+            .arg( QString::number( response.id ), response.name, session->sourceDisplayName() ),
+        { { QStringLiteral( "responseId" ), response.id },
+          { QStringLiteral( "captureNames" ), QStringList( captures.keys() ) } } );
 
     if ( response.response.hasInlineAction ) {
         ActionDefinition inlineAction;

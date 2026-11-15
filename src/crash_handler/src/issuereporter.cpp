@@ -17,15 +17,24 @@
  * along with cilogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <QCoreApplication>
 #include <QDesktopServices>
+#include <QDir>
+#include <QGuiApplication>
 #include <QMessageBox>
+#include <QPointer>
+#include <QPushButton>
+#include <QThread>
 #include <QUrl>
+#include <deque>
 #include <qglobal.h>
 #include <qthreadpool.h>
+#include <atomic>
 #include <string>
 #include <tbb/version.h>
 
 #include "klogg_version.h"
+#include "log.h"
 
 #include "issuereporter.h"
 
@@ -72,7 +81,151 @@ QString encodeQueryValue( const QString& value )
 {
     return QString::fromLatin1( QUrl::toPercentEncoding( value ) );
 }
+
+std::atomic_bool interactiveReports{ true };
+
+bool canShowDialogs()
+{
+    return interactiveReports.load()
+           && QGuiApplication::platformName() != QLatin1String( "offscreen" )
+           && QGuiApplication::platformName() != QLatin1String( "minimal" );
+}
+
+void openIssue( const QString& title, const QString& body )
+{
+    QStringList queryItems;
+    queryItems << "template=bug_report.md" << "title=" + encodeQueryValue( title )
+               << "body=" + encodeQueryValue( body );
+    QDesktopServices::openUrl( QUrl( QStringLiteral( "https://github.com/dm17ryk/klogg/issues/new?%1" )
+                                         .arg( queryItems.join( '&' ) ) ) );
+}
+
+void openFolder( const QString& directory )
+{
+    if ( !directory.isEmpty() ) {
+        QDesktopServices::openUrl( QUrl::fromLocalFile( directory ) );
+    }
+}
+
+void showReportNotice( const cilogg::diagnostics::ReportResult& result,
+                       const cilogg::diagnostics::ReportRequest& request, int repeatsBefore )
+{
+    using cilogg::diagnostics::DiagnosticReports;
+
+    auto text = result.summary;
+    if ( repeatsBefore > 0 ) {
+        text += QStringLiteral( "\n\nThe same problem happened %1 more time(s) since the previous "
+                                "report." )
+                    .arg( repeatsBefore );
+    }
+    text += result.ok || !result.directory.isEmpty()
+                ? QStringLiteral( "\n\nA report with the steps that led here was saved:\n%1" )
+                      .arg( QDir::toNativeSeparators( result.archive.isEmpty() ? result.directory
+                                                                               : result.archive ) )
+                : QStringLiteral( "\n\nThe report could not be saved: %1" ).arg( result.error );
+
+    // One notice at a time: further problems are still journaled and reported, not shown again.
+    static QPointer<QMessageBox> openNotice;
+    if ( openNotice ) {
+        return;
+    }
+
+    auto* box = new QMessageBox( QMessageBox::Warning, QStringLiteral( "CILogg" ), text,
+                                 QMessageBox::NoButton, nullptr );
+    openNotice = box;
+    box->setAttribute( Qt::WA_DeleteOnClose );
+    box->setAttribute( Qt::WA_QuitOnClose, false ); // an open notice never keeps CILogg running
+    box->setWindowModality( Qt::NonModal );
+    auto* issueButton
+        = box->addButton( QObject::tr( "Create GitHub issue" ), QMessageBox::ActionRole );
+    auto* folderButton
+        = box->addButton( QObject::tr( "Open report folder" ), QMessageBox::ActionRole );
+    box->addButton( QMessageBox::Close );
+    folderButton->setEnabled( !result.directory.isEmpty() );
+
+    const auto directory = result.directory;
+    const auto title = DiagnosticReports::issueTitle( result, request );
+    const auto body = DiagnosticReports::issueBody( result, request );
+    QObject::connect( box, &QMessageBox::buttonClicked, box,
+                      [ issueButton, folderButton, directory, title, body ]( QAbstractButton* button ) {
+                          if ( button == issueButton ) {
+                              openFolder( directory );
+                              openIssue( title, body );
+                          }
+                          else if ( button == folderButton ) {
+                              openFolder( directory );
+                          }
+                      } );
+    box->show();
+}
 } // namespace
+
+void IssueReporter::setInteractive( bool interactive )
+{
+    interactiveReports = interactive;
+}
+
+void IssueReporter::reportException( const cilogg::diagnostics::ReportRequest& request )
+{
+    using namespace cilogg::diagnostics;
+    Q_ASSERT( QCoreApplication::instance() == nullptr
+              || QThread::currentThread() == QCoreApplication::instance()->thread() );
+
+    static ReportThrottle throttle;
+    ActivityJournal::record( QStringLiteral( "error" ),
+                             request.operation.isEmpty()
+                                 ? request.error
+                                 : QStringLiteral( "%1: %2" ).arg( request.operation, request.error ),
+                             request.details );
+
+    const auto key = request.operation + QLatin1Char( '|' ) + request.error;
+    int repeatsBefore = 0;
+    if ( !throttle.shouldReport( key, QDateTime::currentDateTimeUtc(), &repeatsBefore ) ) {
+        LOG_WARNING << "Problem repeated (" << throttle.suppressed( key )
+                    << " times since the last report): " << request.error;
+        return;
+    }
+
+    // Many different problems at once (for example every open tab failing): at most 10 reports in
+    // 10 minutes in all, so the report folder and the GUI thread are not flooded.
+    static std::deque<QDateTime> recentReports;
+    const auto now = QDateTime::currentDateTimeUtc();
+    while ( !recentReports.empty() && recentReports.front().msecsTo( now ) > 10 * 60 * 1000 ) {
+        recentReports.pop_front();
+    }
+    if ( recentReports.size() >= 10 ) {
+        LOG_WARNING << "Too many problem reports in 10 minutes; not writing one for: "
+                    << request.error;
+        return;
+    }
+    recentReports.push_back( now );
+
+    auto reportRequest = request;
+    if ( repeatsBefore > 0 ) {
+        reportRequest.details.insert( QStringLiteral( "repeatsSincePreviousReport" ), repeatsBefore );
+    }
+    const auto result = DiagnosticReports::create( reportRequest );
+    if ( canShowDialogs() ) {
+        showReportNotice( result, reportRequest, repeatsBefore );
+    }
+}
+
+void IssueReporter::reportProblem()
+{
+    using namespace cilogg::diagnostics;
+
+    ReportRequest request;
+    request.kind = QStringLiteral( "bug" );
+    request.operation = QStringLiteral( "Report a problem (Help menu)" );
+    const auto result = DiagnosticReports::create( request );
+    if ( !result.directory.isEmpty() ) {
+        openFolder( result.directory );
+        openIssue( DiagnosticReports::issueTitle( result, request ),
+                   DiagnosticReports::issueBody( result, request ) );
+        return;
+    }
+    reportIssue( IssueTemplate::Bug );
+}
 
 void IssueReporter::askUserAndReportIssue( IssueTemplate issueTemplate, const QString& information,
                                            const QString& localReportPath )

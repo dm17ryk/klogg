@@ -327,6 +327,8 @@ private:
             "<arguments.json>] [tab selector]\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
+            "  list_reports [--pretty]  (diagnostic report bundles, newest first)\n"
+            "  create_report [--text <note>]  (write a diagnostic report bundle now)\n"
             "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
             "selector]\n"
             "  preview_message [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
@@ -2279,6 +2281,16 @@ private:
             break;
         case CommanderAction::DumpState:
         case CommanderAction::GetInfo:
+            break;
+        case CommanderAction::ListReports:
+        case CommanderAction::CreateReport:
+            if ( hasTabId || hasWindowIndex || hasTabIndex || parser.isSet( allOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "%1 does not accept tab selectors or --all." )
+                                .arg( commanderActionToString( *action ) ) );
+                return result;
+            }
+            request.commentText = request.commentText.trimmed();
             break;
         case CommanderAction::None:
             break;

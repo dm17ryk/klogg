@@ -200,6 +200,8 @@ QString commanderActionToString( CommanderAction action )
     case CommanderAction::GetRegexLab: return QStringLiteral( "get_regex_lab" );
     case CommanderAction::SetRegexLab: return QStringLiteral( "set_regex_lab" );
     case CommanderAction::ApplyRegexLabPattern: return QStringLiteral( "apply_regex_lab_pattern" );
+    case CommanderAction::ListReports: return QStringLiteral( "list_reports" );
+    case CommanderAction::CreateReport: return QStringLiteral( "create_report" );
     case CommanderAction::None:
     default:
         return {};
@@ -236,6 +238,8 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == "invoke_plugin" ) { return CommanderAction::InvokePlugin; }
     if ( normalized == "get_plugin_job" ) { return CommanderAction::GetPluginJob; }
     if ( normalized == "cancel_plugin_job" ) { return CommanderAction::CancelPluginJob; }
+    if ( normalized == "list_reports" ) { return CommanderAction::ListReports; }
+    if ( normalized == "create_report" ) { return CommanderAction::CreateReport; }
     if ( normalized == QStringLiteral( "open_file" ) ) {
         return CommanderAction::OpenFile;
     }

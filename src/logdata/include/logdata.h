@@ -95,6 +95,11 @@ class LogData : public AbstractLogData {
     std::unique_ptr<LogFilteredData> getNewFilteredData() const;
     // Returns the size if the file in bytes
     qint64 getFileSize() const;
+    // The attached file (empty before attachFile()); used by diagnostic reports.
+    QString getFileName() const
+    {
+        return indexingFileName_;
+    }
     // Returns the last modification date for the file.
     // Null if the file is not on disk.
     QDateTime getLastModifiedDate() const;
