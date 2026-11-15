@@ -1,10 +1,10 @@
 {
   "valid": true,
-  "taskCount": 124,
+  "taskCount": 125,
   "requirementCount": 205,
-  "markdownFiles": 155,
-  "validatedLocalLinks": 620,
-  "topologicalTaskCount": 124,
+  "markdownFiles": 156,
+  "validatedLocalLinks": 625,
+  "topologicalTaskCount": 125,
   "issues": [],
   "integrationChecks": {
     "originalTasksAndHardEdgesPreserved": 97,
@@ -273,6 +273,28 @@
       "tasks/U16.md"
     ],
     "u16DesignApproved": true,
+    "productCodeChanged": false,
+    "productBuildRun": false
+  },
+  "e14Checks": {
+    "date": "2026-11-15",
+    "decision": "D14",
+    "taskAdded": "E14",
+    "taskCompleted": "E14",
+    "mergedPullRequest": "https://github.com/dm17ryk/klogg/pull/109",
+    "mergeCommit": "f76317b841b4e3a2fc7dc8649f300a13dfa2a074",
+    "hardDependency": "E13 (slice E13a, PR #102, merged); E13 stays in_progress for its remaining slices",
+    "otherTaskRecordsPreserved": true,
+    "hashManifestFiles": 162,
+    "filesAddedToHashManifest": [
+      "tasks/E14.md"
+    ],
+    "hashesRefreshed": [
+      "08-ecosystem.md",
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "TASK_INDEX.json"
+    ],
     "productCodeChanged": false,
     "productBuildRun": false
   }
