@@ -722,3 +722,360 @@ TEST_CASE( "Keyboard focus follows the active pane and pane commands follow the 
     QApplication::sendEvent( &window, &languageChange );
     REQUIRE( placeholder->text().startsWith( QStringLiteral( "translated: " ) ) );
 }
+
+// U16b: pane state and pane operations for Commander, CLI, native MCP and Python.
+
+namespace {
+CommanderRequest paneRequest( CommanderAction action )
+{
+    CommanderRequest request;
+    request.action = action;
+    return request;
+}
+
+QVariantMap paneEntry( const QVariantMap& windowInfo, const QString& paneId )
+{
+    for ( const auto& value : windowInfo.value( "panes" ).toList() ) {
+        const auto pane = value.toMap();
+        if ( pane.value( "paneId" ).toString() == paneId ) {
+            return pane;
+        }
+    }
+    return {};
+}
+
+QVariantList orientationPath( std::initializer_list<std::pair<const char*, int>> steps )
+{
+    QVariantList path;
+    for ( const auto& [ orientation, position ] : steps ) {
+        path.append( QVariantMap{ { "orientation", QString::fromLatin1( orientation ) },
+                                  { "position", position } } );
+    }
+    return path;
+}
+
+// Records (and closes) any modal dialog a request opens, so the test fails instead of
+// blocking.
+class NoModalDialogGuard {
+  public:
+    NoModalDialogGuard()
+    {
+        timer_.setInterval( 20 );
+        QObject::connect( &timer_, &QTimer::timeout, &timer_, [ this ] {
+            if ( auto* modal = QApplication::activeModalWidget() ) {
+                seen_ = true;
+                modal->close();
+            }
+        } );
+        timer_.start();
+    }
+
+    bool seen() const
+    {
+        return seen_;
+    }
+
+  private:
+    QTimer timer_;
+    bool seen_ = false;
+};
+} // namespace
+
+TEST_CASE( "pane_fields_in_get_info: get_info and state dumps report panes and each tab's pane",
+           "[ui][workbench][U16]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    PaneFixture fixture( "U16PaneInfo" );
+    auto& window = fixture.window();
+    const auto a = fixture.open( writeLog( directory, "a.log" ) );
+
+    // One pane: the layout is reported without splits.
+    auto info = window.commanderWindowInfo();
+    auto panes = info.value( "panes" ).toList();
+    REQUIRE( panes.size() == 1 );
+    const auto firstId = window.panes().front()->paneId();
+    REQUIRE( info.value( "activePaneId" ).toString() == firstId );
+    auto entry = panes.front().toMap();
+    REQUIRE( entry.value( "paneId" ).toString() == firstId );
+    REQUIRE( entry.value( "paneIndex" ).toInt() == 0 );
+    REQUIRE( entry.value( "orientationPath" ).toList().isEmpty() );
+    REQUIRE( entry.value( "tabIds" ).toStringList() == QStringList{ a } );
+    REQUIRE( entry.value( "currentTabId" ).toString() == a );
+    REQUIRE( entry.value( "isActive" ).toBool() );
+
+    const auto b = fixture.open( writeLog( directory, "b.log" ) );
+    const auto c = fixture.open( writeLog( directory, "c.log" ) );
+    // H[ pane 0 (a, c), V[ pane 1 (b), pane 2 (empty, active) ] ]
+    auto* second = window.moveTabToNewPane( b, Qt::Horizontal );
+    REQUIRE( second != nullptr );
+    auto* third = window.splitPane( second, Qt::Vertical );
+    REQUIRE( third != nullptr );
+    auto* first = window.panes().front();
+
+    info = window.commanderWindowInfo();
+    panes = info.value( "panes" ).toList();
+    REQUIRE( panes.size() == 3 );
+    REQUIRE( info.value( "activePaneId" ).toString() == third->paneId() );
+    REQUIRE( info.value( "currentTabId" ).toString().isEmpty() );
+
+    const auto p0 = paneEntry( info, first->paneId() );
+    const auto p1 = paneEntry( info, second->paneId() );
+    const auto p2 = paneEntry( info, third->paneId() );
+    REQUIRE( p0.value( "paneIndex" ).toInt() == 0 );
+    REQUIRE( p1.value( "paneIndex" ).toInt() == 1 );
+    REQUIRE( p2.value( "paneIndex" ).toInt() == 2 );
+    REQUIRE( p0.value( "tabIds" ).toStringList() == QStringList{ a, c } );
+    REQUIRE( p1.value( "tabIds" ).toStringList() == QStringList{ b } );
+    REQUIRE( p2.value( "tabIds" ).toStringList().isEmpty() );
+    REQUIRE( p1.value( "currentTabId" ).toString() == b );
+    REQUIRE( p2.value( "currentTabId" ).toString().isEmpty() );
+    REQUIRE_FALSE( p0.value( "isActive" ).toBool() );
+    REQUIRE( p2.value( "isActive" ).toBool() );
+    REQUIRE( p0.value( "orientationPath" ).toList() == orientationPath( { { "horizontal", 0 } } ) );
+    REQUIRE( p1.value( "orientationPath" ).toList()
+             == orientationPath( { { "horizontal", 1 }, { "vertical", 0 } } ) );
+    REQUIRE( p2.value( "orientationPath" ).toList()
+             == orientationPath( { { "horizontal", 1 }, { "vertical", 1 } } ) );
+
+    // Every tab names its pane; tabIndex stays window-wide in layout order.
+    const auto expectTab = [ & ]( const QString& tabId, int tabIndex, const LogPane* pane,
+                                  int paneIndex, int paneTabIndex ) {
+        const auto tab = fixture.tabInfo( tabId );
+        INFO( tabId.toStdString() );
+        REQUIRE( tab.value( "tabIndex" ).toInt() == tabIndex );
+        REQUIRE( tab.value( "paneId" ).toString() == pane->paneId() );
+        REQUIRE( tab.value( "paneIndex" ).toInt() == paneIndex );
+        REQUIRE( tab.value( "paneTabIndex" ).toInt() == paneTabIndex );
+    };
+    expectTab( a, 0, first, 0, 0 );
+    expectTab( c, 1, first, 0, 1 );
+    expectTab( b, 2, second, 1, 0 );
+
+    // State dumps carry the same pane fields.
+    const auto state = window.automationState();
+    REQUIRE( state.value( "activePaneId" ).toString() == third->paneId() );
+    REQUIRE( state.value( "activePaneIndex" ).toInt() == 2 );
+    REQUIRE( state.value( "paneCount" ).toInt() == 3 );
+    const auto snapshot = window.automationSnapshot();
+    REQUIRE( snapshot.value( "windowInfo" ).toMap().value( "panes" ).toList().size() == 3 );
+    REQUIRE( snapshot.value( "ciloggState" ).toMap().value( "activePaneId" ).toString()
+             == third->paneId() );
+}
+
+TEST_CASE( "pane_operations: Commander splits, focuses, moves, closes and merges panes",
+           "[ui][workbench][U16]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    PaneFixture fixture( "U16PaneCommander" );
+    auto& window = fixture.window();
+    const auto a = fixture.open( writeLog( directory, "a.log" ) );
+    const auto b = fixture.open( writeLog( directory, "b.log" ) );
+    const auto c = fixture.open( writeLog( directory, "c.log" ) );
+    NoModalDialogGuard noDialogs;
+    auto* first = window.panes().front();
+
+    // split_pane without a selector splits the active pane to the right.
+    auto result = window.executeCommanderRequest( paneRequest( CommanderAction::SplitPane ) );
+    INFO( result.message.toStdString() );
+    REQUIRE( result.ok() );
+    REQUIRE( window.panes().size() == 2 );
+    auto* right = window.panes().at( 1 );
+    REQUIRE( result.payload.value( "paneId" ).toString() == right->paneId() );
+    REQUIRE( result.payload.value( "paneIndex" ).toInt() == 1 );
+    REQUIRE( result.payload.value( "activePaneId" ).toString() == right->paneId() );
+    REQUIRE( result.payload.value( "panes" ).toList().size() == 2 );
+    REQUIRE( window.activePane() == right );
+    REQUIRE( paneEntry( window.commanderWindowInfo(), right->paneId() )
+                 .value( "orientationPath" )
+                 .toList()
+             == orientationPath( { { "horizontal", 1 } } ) );
+
+    // A tab selector splits the tab's pane; "down" stacks the new pane below it.
+    auto split = paneRequest( CommanderAction::SplitPane );
+    split.tabId = a;
+    split.paneDirection = "down";
+    result = window.executeCommanderRequest( split );
+    REQUIRE( result.ok() );
+    REQUIRE( window.panes().size() == 3 );
+    auto* below = window.panes().at( 1 );
+    REQUIRE( result.payload.value( "paneId" ).toString() == below->paneId() );
+    REQUIRE( paneEntry( window.commanderWindowInfo(), below->paneId() )
+                 .value( "orientationPath" )
+                 .toList()
+             == orientationPath( { { "horizontal", 0 }, { "vertical", 1 } } ) );
+
+    split.tabId.clear();
+    split.paneDirection = "left";
+    REQUIRE( window.executeCommanderRequest( split ).code == CommanderResultCode::InvalidRequest );
+    split.paneDirection.clear();
+    split.paneId = "no-such-pane";
+    REQUIRE( window.executeCommanderRequest( split ).code == CommanderResultCode::NotFound );
+    split.paneId.clear();
+    split.paneIndex = 7;
+    REQUIRE( window.executeCommanderRequest( split ).code == CommanderResultCode::NotFound );
+    // One selector kind at a time, also for requests that do not come through the CLI.
+    split.paneIndex.reset();
+    split.paneId = first->paneId();
+    split.tabId = a;
+    REQUIRE( window.executeCommanderRequest( split ).code == CommanderResultCode::InvalidRequest );
+    REQUIRE( window.panes().size() == 3 );
+
+    // focus_pane activates a pane and makes its current tab the focused tab.
+    auto focus = paneRequest( CommanderAction::FocusPane );
+    focus.paneIndex = 0;
+    result = window.executeCommanderRequest( focus );
+    REQUIRE( result.ok() );
+    REQUIRE( window.activePane() == first );
+    REQUIRE( fixture.currentTabId() == c );
+    REQUIRE( result.payload.value( "paneId" ).toString() == first->paneId() );
+    REQUIRE( result.payload.value( "currentTabId" ).toString() == c );
+    focus.paneIndex.reset();
+    focus.paneId = right->paneId();
+    REQUIRE( window.executeCommanderRequest( focus ).ok() );
+    REQUIRE( window.activePane() == right );
+    REQUIRE( fixture.currentTabId().isEmpty() );
+    focus.paneId = "no-such-pane";
+    REQUIRE( window.executeCommanderRequest( focus ).code == CommanderResultCode::NotFound );
+    REQUIRE( window.executeCommanderRequest( paneRequest( CommanderAction::FocusPane ) ).code
+             == CommanderResultCode::InvalidRequest );
+    focus.paneId = first->paneId();
+    focus.tabId = a;
+    REQUIRE( window.executeCommanderRequest( focus ).code == CommanderResultCode::InvalidRequest );
+    REQUIRE( window.activePane() == right );
+
+    // move_tab keeps the tab id; the destination is a pane id, a pane index or a new pane.
+    auto move = paneRequest( CommanderAction::MoveTab );
+    move.tabId = b;
+    move.paneId = right->paneId();
+    result = window.executeCommanderRequest( move );
+    REQUIRE( result.ok() );
+    REQUIRE( paneTabIds( right ) == QStringList{ b } );
+    REQUIRE( result.payload.value( "tabId" ).toString() == b );
+    REQUIRE( result.payload.value( "paneId" ).toString() == right->paneId() );
+    REQUIRE( result.payload.value( "paneIndex" ).toInt() == 2 );
+    REQUIRE( result.payload.value( "paneTabIndex" ).toInt() == 0 );
+    REQUIRE( result.payload.value( "tabIndex" ).toInt() == 2 );
+    REQUIRE( fixture.currentTabId() == b );
+    REQUIRE( window.activePane() == right );
+
+    move.tabId = c;
+    move.paneId.clear();
+    move.paneIndex = 1;
+    REQUIRE( window.executeCommanderRequest( move ).ok() );
+    REQUIRE( paneTabIds( below ) == QStringList{ c } );
+    REQUIRE( fixture.tabOrder() == QStringList{ a, c, b } );
+
+    // Moving a tab into its own pane changes nothing.
+    REQUIRE( window.executeCommanderRequest( move ).ok() );
+    REQUIRE( paneTabIds( below ) == QStringList{ c } );
+
+    move.paneIndex.reset();
+    move.paneDirection = "down";
+    move.tabId = b;
+    result = window.executeCommanderRequest( move );
+    REQUIRE( result.ok() );
+    REQUIRE( window.panes().size() == 4 );
+    auto* created = window.paneForTabId( b );
+    REQUIRE( created != right );
+    REQUIRE( right->tabs()->count() == 0 );
+    REQUIRE( result.payload.value( "paneId" ).toString() == created->paneId() );
+    REQUIRE( paneEntry( window.commanderWindowInfo(), created->paneId() )
+                 .value( "orientationPath" )
+                 .toList()
+             == orientationPath( { { "horizontal", 1 }, { "vertical", 1 } } ) );
+
+    move.paneDirection.clear();
+    REQUIRE( window.executeCommanderRequest( move ).code == CommanderResultCode::InvalidRequest );
+    move.paneId = first->paneId();
+    move.paneDirection = "down";
+    REQUIRE( window.executeCommanderRequest( move ).code == CommanderResultCode::InvalidRequest );
+    move.paneDirection.clear();
+    move.tabId = "no-such-tab";
+    REQUIRE( window.executeCommanderRequest( move ).code == CommanderResultCode::NotFound );
+    // The tab is in this window, so a missing destination pane is a wrong request: routing
+    // stops here instead of asking other windows.
+    move.tabId = b;
+    move.paneId = "no-such-pane";
+    result = window.executeCommanderRequest( move );
+    REQUIRE( result.code == CommanderResultCode::InvalidRequest );
+    REQUIRE( result.message.contains( "no-such-pane" ) );
+
+    // --tab-index keeps counting tabs pane by pane in layout order.
+    REQUIRE( fixture.focusTab( {}, 2 ).ok() );
+    REQUIRE( fixture.currentTabId() == b );
+    REQUIRE( window.activePane() == created );
+
+    // close_pane never asks: a pane with tabs needs tabs=close or tabs=move.
+    auto close = paneRequest( CommanderAction::ClosePane );
+    close.paneId = below->paneId();
+    result = window.executeCommanderRequest( close );
+    REQUIRE( result.code == CommanderResultCode::InvalidRequest );
+    REQUIRE( result.message.contains( "tabs" ) );
+    REQUIRE( window.panes().size() == 4 );
+    close.paneTabs = "keep";
+    REQUIRE( window.executeCommanderRequest( close ).code == CommanderResultCode::InvalidRequest );
+
+    close.paneTabs = "move";
+    result = window.executeCommanderRequest( close );
+    REQUIRE( result.ok() );
+    REQUIRE( window.panes().size() == 3 );
+    REQUIRE( result.payload.value( "closedPaneId" ).toString() == below->paneId() );
+    REQUIRE( result.payload.value( "movedTabIds" ).toStringList() == QStringList{ c } );
+    REQUIRE( paneTabIds( first ) == QStringList{ a, c } );
+
+    // An empty pane closes without tabs=...
+    close.paneTabs.clear();
+    close.paneId = right->paneId();
+    REQUIRE( window.executeCommanderRequest( close ).ok() );
+    REQUIRE( window.panes().size() == 2 );
+
+    close.paneId = created->paneId();
+    close.paneTabs = "close";
+    result = window.executeCommanderRequest( close );
+    REQUIRE( result.ok() );
+    REQUIRE( result.payload.value( "closedTabIds" ).toStringList() == QStringList{ b } );
+    REQUIRE( window.panes().size() == 1 );
+    REQUIRE( fixture.tabInfo( b ).isEmpty() );
+
+    close.paneId = first->paneId();
+    close.paneTabs = "move";
+    result = window.executeCommanderRequest( close );
+    REQUIRE( result.code == CommanderResultCode::InvalidRequest );
+    REQUIRE( window.panes().size() == 1 );
+
+    // merge_panes moves every tab back into one pane and keeps the focused tab.
+    REQUIRE( window.executeCommanderRequest( paneRequest( CommanderAction::SplitPane ) ).ok() );
+    move = paneRequest( CommanderAction::MoveTab );
+    move.tabId = a;
+    move.paneIndex = 1;
+    REQUIRE( window.executeCommanderRequest( move ).ok() );
+    REQUIRE( fixture.tabOrder() == QStringList{ c, a } );
+    // merge_panes acts on a whole window and refuses pane or tab selectors.
+    auto merge = paneRequest( CommanderAction::MergePanes );
+    merge.tabId = a;
+    REQUIRE( window.executeCommanderRequest( merge ).code == CommanderResultCode::InvalidRequest );
+    REQUIRE( window.panes().size() == 2 );
+    result = window.executeCommanderRequest( paneRequest( CommanderAction::MergePanes ) );
+    REQUIRE( result.ok() );
+    REQUIRE( window.panes().size() == 1 );
+    REQUIRE( fixture.tabOrder() == QStringList{ c, a } );
+    REQUIRE( fixture.currentTabId() == a );
+    REQUIRE( result.payload.value( "panes" ).toList().size() == 1 );
+    REQUIRE( window.executeCommanderRequest( paneRequest( CommanderAction::MergePanes ) ).ok() );
+
+    // A ninth pane is refused with the reason.
+    for ( int panes = 1; panes < LogPaneArea::MaxPanes; ++panes ) {
+        REQUIRE( window.executeCommanderRequest( paneRequest( CommanderAction::SplitPane ) ).ok() );
+    }
+    result = window.executeCommanderRequest( paneRequest( CommanderAction::SplitPane ) );
+    REQUIRE( result.code == CommanderResultCode::ExecutionFailed );
+    REQUIRE( result.message.contains( "at most 8 panes" ) );
+    REQUIRE( window.panes().size() == 8 );
+    move.paneIndex.reset();
+    move.paneDirection = "right";
+    REQUIRE( window.executeCommanderRequest( move ).code == CommanderResultCode::ExecutionFailed );
+
+    REQUIRE_FALSE( noDialogs.seen() );
+}

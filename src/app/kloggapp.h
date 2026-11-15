@@ -779,7 +779,7 @@ class KloggApp : public QApplication {
         }
 
         const auto targetSpecificWindow
-            = isCommanderAnalysisAction( request.action )
+            = isCommanderAnalysisAction( request.action ) || isCommanderPaneAction( request.action )
               || request.action == CommanderAction::CloseTab
               || request.action == CommanderAction::FocusTab
               || request.action == CommanderAction::GetFilters
@@ -819,8 +819,11 @@ class KloggApp : public QApplication {
             return window->executeCommanderRequest( request );
         }
 
+        // Pane commands without a pane id or tab id act in the active window; with one, every
+        // window is asked until the one that holds the pane or tab answers.
         const auto preferActiveWindow
             = ( isCommanderAnalysisAction( request.action )
+                || ( isCommanderPaneAction( request.action ) && request.paneId.isEmpty() )
                 || request.action == CommanderAction::GetFilters
                 || request.action == CommanderAction::SetFilter
                 || request.action == CommanderAction::Search

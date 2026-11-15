@@ -29,7 +29,8 @@ class PayloadTests(unittest.TestCase):
     def test_flat_runtime_contains_grep_shared_libraries_and_sqlite(self):
         executable = self.put(self.source / "cilogg.exe")
         for name in ("cilogg_grep.exe", "Qt6Core.dll", "libtbb.so.12", "libpython.dylib",
-                     "sqldrivers/qsqlite.dll", "platforms/qoffscreen.dll"):
+                     "sqldrivers/qsqlite.dll", "platforms/qoffscreen.dll",
+                     "python_runtime/klogg/__init__.py"):
             self.put(self.source / name)
         self.put(self.source / "cilogg.conf", b"user-settings")
         self.put(self.source / "cilogg_session.conf", b"user-captures")
@@ -37,7 +38,8 @@ class PayloadTests(unittest.TestCase):
         self.assertNotEqual(private.name, executable.name)
         self.assertEqual(private.parent, payload)
         for name in ("cilogg_grep.exe", "Qt6Core.dll", "libtbb.so.12", "libpython.dylib",
-                     "sqldrivers/qsqlite.dll", "platforms/qoffscreen.dll"):
+                     "sqldrivers/qsqlite.dll", "platforms/qoffscreen.dll",
+                     "python_runtime/klogg/__init__.py"):
             self.assertTrue((payload / name).is_file(), name)
         self.assertFalse((payload / "cilogg_session.conf").exists())
         self.assertEqual((self.source / "cilogg.conf").read_bytes(), b"user-settings")

@@ -14,6 +14,8 @@ LOG = logging.getLogger("workbench.payload")
 RUNTIME_DIRECTORIES = (
     "platforms", "styles", "imageformats", "iconengines", "tls",
     "networkinformation", "translations", "resources", "sqldrivers",
+    # The klogg Python package: scripts started inside the private host use it.
+    "python_runtime",
 )
 
 

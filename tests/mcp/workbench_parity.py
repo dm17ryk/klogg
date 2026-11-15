@@ -95,6 +95,14 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "pane-operations":
+            from workbench_panes import exercise_panes
+
+            results.append(exercise_panes(cli, command, catalog, artifacts))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         jobs = []
         try:
             request = case["request"]
@@ -195,13 +203,15 @@ def main(arguments=None):
 
         cases = select_cases(args.task)
         setup_payload = None
-        if any(case.get("kind") == "plugin-views" for case in cases):
+        if any(case.get("kind") in ("plugin-views", "pane-operations") for case in cases):
             import os
 
+            # Plugin views and the pane case's Python API script run in this interpreter.
+            os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
+        if any(case.get("kind") == "plugin-views" for case in cases):
             from workbench_plugin_views import install_view_demo
 
             setup_payload = install_view_demo
-            os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         run(
             args.executable.resolve(),
             args.artifacts.resolve(),

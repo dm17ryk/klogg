@@ -17,8 +17,8 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Split panes of the main window (U16a): pane menus, split / move / close / merge, and the
-// layout saved with the session.
+// Split panes of the main window: pane menus, split / move / close / merge and the layout saved
+// with the session (U16a), and the pane state and pane commands for automation (U16b).
 
 #include "mainwindow.h"
 
@@ -27,7 +27,9 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSplitter>
 #include <QStatusBar>
+#include <optional>
 
 #include "crawlerwidget.h"
 #include "log.h"
@@ -233,9 +235,7 @@ LogPane* MainWindow::splitPane( LogPane* pane, Qt::Orientation orientation )
         pane = activePane();
     }
     if ( paneArea_->paneCount() >= LogPaneArea::MaxPanes ) {
-        const auto message
-            = tr( "A window holds at most %1 panes; close or merge a pane first." )
-                  .arg( LogPaneArea::MaxPanes );
+        const auto message = paneLimitMessage();
         statusBar()->showMessage( message, PaneStatusTimeoutMs );
         LOG_INFO << "Split refused: " << message;
         return nullptr;
@@ -289,11 +289,27 @@ LogPane* MainWindow::moveTabToNewPane( const QString& tabId, Qt::Orientation ori
     if ( created == nullptr ) {
         return nullptr;
     }
-    moveTabToPane( tabId, created );
+    if ( !moveTabToPane( tabId, created ) ) {
+        // Do not leave an empty pane behind for a move that did not happen.
+        paneArea_->removePane( created );
+        updatePaneActions();
+        return nullptr;
+    }
     return created;
 }
 
+QString MainWindow::paneLimitMessage() const
+{
+    return tr( "A window holds at most %1 panes; close or merge a pane first." )
+        .arg( LogPaneArea::MaxPanes );
+}
+
 bool MainWindow::closePane( LogPane* pane, PaneTabsOnClose tabs )
+{
+    return closePane( pane, tabs, ActionInitiator::User );
+}
+
+bool MainWindow::closePane( LogPane* pane, PaneTabsOnClose tabs, ActionInitiator initiator )
 {
     if ( pane == nullptr || paneArea_->paneIndexOf( pane ) < 0 ) {
         return false;
@@ -364,7 +380,7 @@ bool MainWindow::closePane( LogPane* pane, PaneTabsOnClose tabs )
         else {
             while ( safePane && safePane->tabs()->count() > 0 ) {
                 const auto before = safePane->tabs()->count();
-                closeTab( paneArea_->globalIndex( safePane, 0 ), ActionInitiator::User );
+                closeTab( paneArea_->globalIndex( safePane, 0 ), initiator );
                 if ( safePane && safePane->tabs()->count() >= before ) {
                     LOG_WARNING << "Close pane stopped: a tab could not be closed";
                     return false;
@@ -501,4 +517,346 @@ void MainWindow::restorePaneSelection( const PaneLayout& layout,
     }
     paneArea_->setActivePane( paneArea_->paneById( layout.activePaneId ) );
     currentTabChanged( paneArea_->currentIndex() );
+}
+
+// Pane state and pane commands for Commander, CLI, native MCP and Python (U16b).
+
+namespace {
+QString paneOrientationName( Qt::Orientation orientation )
+{
+    return orientation == Qt::Horizontal ? QStringLiteral( "horizontal" )
+                                         : QStringLiteral( "vertical" );
+}
+
+// "right" (the default) opens the new pane right of the pane, "down" below it.
+std::optional<Qt::Orientation> paneSplitOrientation( const QString& direction )
+{
+    const auto side = direction.trimmed().toLower();
+    if ( side.isEmpty() || side == QStringLiteral( "right" ) ) {
+        return Qt::Horizontal;
+    }
+    if ( side == QStringLiteral( "down" ) ) {
+        return Qt::Vertical;
+    }
+    return std::nullopt;
+}
+
+QStringList paneTabIdList( const LogPane& pane )
+{
+    QStringList ids;
+    const auto* tabs = pane.tabs();
+    for ( int index = 0; index < tabs->count(); ++index ) {
+        ids.append( tabs->tabIdAt( index ) );
+    }
+    return ids;
+}
+
+QString paneCurrentTabId( const LogPane& pane )
+{
+    const auto* tabs = pane.tabs();
+    const auto current = tabs->currentIndex();
+    return current >= 0 ? tabs->tabIdAt( current ) : QString{};
+}
+} // namespace
+
+QVariantList MainWindow::paneOrientationPath( LogPane* pane ) const
+{
+    // From the outermost splitter down to the pane: each splitter's orientation and the position
+    // of the branch that holds the pane. A window with one pane has an empty path.
+    QVariantList path;
+    QWidget* child = pane;
+    for ( auto* parent = pane->parentWidget(); parent != nullptr && parent != paneArea_;
+          parent = parent->parentWidget() ) {
+        if ( const auto* splitter = qobject_cast<QSplitter*>( parent ) ) {
+            path.prepend( QVariantMap{
+                { QStringLiteral( "orientation" ), paneOrientationName( splitter->orientation() ) },
+                { QStringLiteral( "position" ), splitter->indexOf( child ) } } );
+        }
+        child = parent;
+    }
+    return path;
+}
+
+QVariantList MainWindow::commanderPaneList() const
+{
+    QVariantList result;
+    const auto* active = paneArea_->activePane();
+    const auto all = paneArea_->panes();
+    for ( size_t position = 0; position < all.size(); ++position ) {
+        auto* pane = all.at( position );
+        result.append( QVariantMap{
+            { QStringLiteral( "paneId" ), pane->paneId() },
+            { QStringLiteral( "paneIndex" ), static_cast<int>( position ) },
+            { QStringLiteral( "orientationPath" ), paneOrientationPath( pane ) },
+            { QStringLiteral( "tabIds" ), paneTabIdList( *pane ) },
+            { QStringLiteral( "currentTabId" ), paneCurrentTabId( *pane ) },
+            { QStringLiteral( "isActive" ), pane == active } } );
+    }
+    return result;
+}
+
+QVariantMap MainWindow::commanderPaneLayout() const
+{
+    const auto* active = paneArea_->activePane();
+    return { { QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) },
+             { QStringLiteral( "activePaneId" ),
+               active != nullptr ? active->paneId() : QString{} },
+             { QStringLiteral( "panes" ), commanderPaneList() } };
+}
+
+QVariantMap MainWindow::commanderPanePayload( LogPane* pane ) const
+{
+    auto payload = commanderPaneLayout();
+    payload.insert( QStringLiteral( "paneId" ), pane->paneId() );
+    payload.insert( QStringLiteral( "paneIndex" ), paneArea_->paneIndexOf( pane ) );
+    payload.insert( QStringLiteral( "currentTabId" ), paneCurrentTabId( *pane ) );
+    return payload;
+}
+
+LogPane* MainWindow::commanderTargetPane( const CommanderRequest& request, bool allowTab,
+                                          bool allowActive, CommanderResult* failure ) const
+{
+    // One selector kind only: the CLI enforces this, scripts and the IPC transport rely on it.
+    const auto hasPane = !request.paneId.isEmpty() || request.paneIndex.has_value();
+    const auto hasTab = !request.tabId.isEmpty() || request.tabIndex.has_value();
+    if ( !request.paneId.isEmpty() && request.paneIndex ) {
+        *failure = commanderFailure( CommanderResultCode::InvalidRequest,
+                                     tr( "Use either a pane id or a pane index." ) );
+        return nullptr;
+    }
+    if ( allowTab && hasPane && hasTab ) {
+        *failure = commanderFailure( CommanderResultCode::InvalidRequest,
+                                     tr( "Use either a pane selector or a tab selector." ) );
+        return nullptr;
+    }
+
+    if ( !request.paneId.isEmpty() ) {
+        if ( auto* pane = paneArea_->paneById( request.paneId ) ) {
+            return pane;
+        }
+        *failure = commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Pane %1 was not found." ).arg( request.paneId ) );
+        return nullptr;
+    }
+    if ( request.paneIndex ) {
+        const auto all = paneArea_->panes();
+        const auto index = *request.paneIndex;
+        if ( index >= 0 && static_cast<size_t>( index ) < all.size() ) {
+            return all.at( static_cast<size_t>( index ) );
+        }
+        *failure = commanderFailure( CommanderResultCode::NotFound,
+                                     tr( "Pane at index %1 was not found." ).arg( index ) );
+        return nullptr;
+    }
+    if ( allowTab && ( !request.tabId.isEmpty() || request.tabIndex ) ) {
+        const auto index = request.tabId.isEmpty() ? *request.tabIndex
+                                                   : paneArea_->findTabById( request.tabId );
+        const auto ref = paneArea_->tabRef( index );
+        if ( ref.isValid() ) {
+            return ref.pane;
+        }
+        *failure = commanderFailure(
+            CommanderResultCode::NotFound,
+            tr( "Open tab %1 was not found." )
+                .arg( request.tabId.isEmpty() ? QString::number( index ) : request.tabId ) );
+        return nullptr;
+    }
+    if ( allowActive && paneArea_->activePane() != nullptr ) {
+        return paneArea_->activePane();
+    }
+    *failure = commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "%1 requires a pane id or a pane index." )
+                                     .arg( commanderActionToString( request.action ) ) );
+    return nullptr;
+}
+
+std::optional<CommanderResult> MainWindow::commanderRejectTabSelector(
+    const CommanderRequest& request ) const
+{
+    if ( request.tabId.isEmpty() && !request.tabIndex ) {
+        return std::nullopt;
+    }
+    return commanderFailure( CommanderResultCode::InvalidRequest,
+                             tr( "%1 does not take a tab selector." )
+                                 .arg( commanderActionToString( request.action ) ) );
+}
+
+CommanderResult MainWindow::commanderSplitPane( const CommanderRequest& request )
+{
+    const auto orientation = paneSplitOrientation( request.paneDirection );
+    if ( !orientation ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "The pane direction must be right or down." ) );
+    }
+    CommanderResult failure;
+    auto* pane = commanderTargetPane( request, true, true, &failure );
+    if ( pane == nullptr ) {
+        return failure;
+    }
+    if ( paneArea_->paneCount() >= LogPaneArea::MaxPanes ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed, paneLimitMessage() );
+    }
+
+    auto* created = splitPane( pane, *orientation );
+    if ( created == nullptr ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "The pane could not be split." ) );
+    }
+    LOG_INFO << "Commander split pane " << pane->paneId()
+             << ( *orientation == Qt::Horizontal ? " right" : " down" ) << ": new pane "
+             << created->paneId();
+    return commanderSuccess( {}, commanderPanePayload( created ) );
+}
+
+CommanderResult MainWindow::commanderFocusPane( const CommanderRequest& request )
+{
+    if ( auto rejected = commanderRejectTabSelector( request ) ) {
+        return *rejected;
+    }
+    CommanderResult failure;
+    auto* pane = commanderTargetPane( request, false, false, &failure );
+    if ( pane == nullptr ) {
+        return failure;
+    }
+
+    paneArea_->setActivePane( pane );
+    // Keyboard focus follows the active pane, as after a click into it.
+    if ( auto* current = pane->tabs()->currentWidget() ) {
+        current->setFocus();
+    }
+    else {
+        pane->setFocus();
+    }
+    setWindowState( windowState() & ~Qt::WindowMinimized );
+    show();
+    raise();
+    activateWindow();
+    LOG_INFO << "Commander focused pane " << pane->paneId();
+    return commanderSuccess( {}, commanderPanePayload( pane ) );
+}
+
+CommanderResult MainWindow::commanderClosePane( const CommanderRequest& request )
+{
+    // Request errors are answered before the pane lookup; a pane id that this window does not
+    // hold is NotFound, so KloggApp offers the request to the next window.
+    const auto mode = request.paneTabs.trimmed().toLower();
+    if ( !mode.isEmpty() && mode != QStringLiteral( "close" ) && mode != QStringLiteral( "move" ) ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "tabs must be close or move." ) );
+    }
+    if ( auto rejected = commanderRejectTabSelector( request ) ) {
+        return *rejected;
+    }
+    CommanderResult failure;
+    auto* pane = commanderTargetPane( request, false, false, &failure );
+    if ( pane == nullptr ) {
+        return failure;
+    }
+    if ( paneArea_->paneCount() <= 1 ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "The last pane cannot be closed." ) );
+    }
+
+    // Automation never sees the close-pane confirmation: a pane with tabs needs an answer.
+    const auto tabIds = paneTabIdList( *pane );
+    if ( !tabIds.isEmpty() && mode.isEmpty() ) {
+        return commanderFailure(
+            CommanderResultCode::InvalidRequest,
+            tr( "Pane %1 has %n tab(s): set tabs to close (close them) or move (move them to the "
+                "neighbouring pane).",
+                nullptr, static_cast<int>( tabIds.size() ) )
+                .arg( paneArea_->paneIndexOf( pane ) + 1 ) );
+    }
+
+    const auto closedPaneId = pane->paneId();
+    const auto choice
+        = mode == QStringLiteral( "move" ) ? PaneTabsOnClose::Move : PaneTabsOnClose::Close;
+    if ( !closePane( pane, choice, ActionInitiator::App ) ) {
+        // Some tabs may have moved or closed already: report where everything is now.
+        return { CommanderResultCode::ExecutionFailed,
+                 tr( "Pane %1 could not be closed." ).arg( closedPaneId ), commanderPaneLayout() };
+    }
+
+    auto payload = commanderPaneLayout();
+    payload.insert( QStringLiteral( "closedPaneId" ), closedPaneId );
+    payload.insert( QStringLiteral( "movedTabIds" ),
+                    choice == PaneTabsOnClose::Move ? tabIds : QStringList{} );
+    payload.insert( QStringLiteral( "closedTabIds" ),
+                    choice == PaneTabsOnClose::Close ? tabIds : QStringList{} );
+    LOG_INFO << "Commander closed pane " << closedPaneId << " tabs=" << tabIds.size()
+             << " mode=" << ( mode.isEmpty() ? QStringLiteral( "none" ) : mode );
+    return commanderSuccess( {}, payload );
+}
+
+CommanderResult MainWindow::commanderMergePanes( const CommanderRequest& request )
+{
+    // merge_panes acts on a whole window: a pane or tab selector would only pick a window by
+    // accident (KloggApp offers such requests to every window), so it is refused.
+    if ( !request.paneId.isEmpty() || request.paneIndex || !request.tabId.isEmpty()
+         || request.tabIndex ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "merge_panes takes only a window index." ) );
+    }
+    mergeAllPanes();
+    if ( paneArea_->paneCount() != 1 ) {
+        return { CommanderResultCode::ExecutionFailed, tr( "Not every pane could be merged." ),
+                 commanderPaneLayout() };
+    }
+    return commanderSuccess( {}, commanderPanePayload( paneArea_->activePane() ) );
+}
+
+CommanderResult MainWindow::commanderMoveTab( const CommanderRequest& request )
+{
+    if ( request.tabId.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "move_tab requires a tab id." ) );
+    }
+    const auto destinations = ( request.paneId.isEmpty() ? 0 : 1 )
+                              + ( request.paneIndex ? 1 : 0 )
+                              + ( request.paneDirection.isEmpty() ? 0 : 1 );
+    if ( destinations != 1 ) {
+        return commanderFailure(
+            CommanderResultCode::InvalidRequest,
+            tr( "move_tab requires exactly one of a pane id, a pane index or a direction." ) );
+    }
+    if ( paneArea_->paneForTabId( request.tabId ) == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "Open tab %1 was not found." ).arg( request.tabId ) );
+    }
+
+    LogPane* target = nullptr;
+    if ( !request.paneDirection.isEmpty() ) {
+        const auto orientation = paneSplitOrientation( request.paneDirection );
+        if ( !orientation ) {
+            return commanderFailure( CommanderResultCode::InvalidRequest,
+                                     tr( "The pane direction must be right or down." ) );
+        }
+        if ( paneArea_->paneCount() >= LogPaneArea::MaxPanes ) {
+            return commanderFailure( CommanderResultCode::ExecutionFailed, paneLimitMessage() );
+        }
+        target = moveTabToNewPane( request.tabId, *orientation );
+    }
+    else {
+        CommanderResult failure;
+        target = commanderTargetPane( request, false, false, &failure );
+        if ( target == nullptr ) {
+            // The tab is in this window, so another window cannot answer: stop here.
+            return commanderFailure( CommanderResultCode::InvalidRequest, failure.message );
+        }
+        if ( !moveTabToPane( request.tabId, target ) ) {
+            target = nullptr;
+        }
+    }
+    if ( target == nullptr ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "Tab %1 could not be moved." ).arg( request.tabId ) );
+    }
+
+    const auto index = paneArea_->findTabById( request.tabId );
+    auto payload = commanderPanePayload( target );
+    payload.insert( QStringLiteral( "tabId" ), request.tabId );
+    payload.insert( QStringLiteral( "tabIndex" ), index );
+    payload.insert( QStringLiteral( "paneTabIndex" ), paneArea_->tabRef( index ).index );
+    LOG_INFO << "Commander moved tab " << request.tabId << " to pane " << target->paneId();
+    return commanderSuccess( {}, payload );
 }
