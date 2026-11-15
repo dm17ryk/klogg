@@ -4,7 +4,7 @@
 [docs/workbench/decisions.md](workbench/decisions.md)). Slice U16a (pane tree, split / close / merge /
 move through menus, the tab transfer API, active pane, session and project restore with migration) is
 implemented in [PR #108](https://github.com/dm17ryk/klogg/pull/108); U16b (Commander / CLI / MCP /
-Python pane operations and the `get_info` pane fields) in [PR #U16B_PR](https://github.com/dm17ryk/klogg/pull/U16B_PR);
+Python pane operations and the `get_info` pane fields) in [PR #111](https://github.com/dm17ryk/klogg/pull/111);
 U16c (drag and drop) is next. The user guide is in
 [DOCUMENTATION.md](../DOCUMENTATION.md#split-panes).
 
