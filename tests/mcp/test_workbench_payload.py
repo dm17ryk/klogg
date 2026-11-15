@@ -73,6 +73,18 @@ class PayloadTests(unittest.TestCase):
         self.assertFalse((payload.parent / "PlugIns/cilogg").exists())
         self.assertTrue((payload.parent / "PlugIns/platforms/libqoffscreen.dylib").is_file())
         self.assertTrue(executable.is_file())
+        # Builds without a deployed python_runtime get the checkout's package, so
+        # scripts can run in the private host; it is in place before re-signing.
+        self.assertTrue((payload / "python_runtime/klogg/__init__.py").is_file())
+        self.assertTrue((payload / "python_runtime/worker_bootstrap.py").is_file())
+        self.assertFalse(list((payload / "python_runtime").rglob("__pycache__")))
+
+    def test_deployed_python_runtime_wins_over_the_source_tree(self):
+        executable = self.put(self.source / "cilogg")
+        self.put(self.source / "python_runtime/klogg/__init__.py", b"deployed")
+        payload, _ = self.module.prepare_payload(executable, self.artifacts)
+        self.assertEqual((payload / "python_runtime/klogg/__init__.py").read_bytes(), b"deployed")
+        self.assertFalse((payload / "python_runtime/worker_bootstrap.py").exists())
 
     def test_missing_executable_does_not_create_a_payload(self):
         with self.assertRaises(FileNotFoundError):
