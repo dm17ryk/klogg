@@ -43,6 +43,7 @@
 #include <QMessageBox>
 #include <QNetworkProxyFactory>
 #include <QElapsedTimer>
+#include <QThread>
 #include <QEventLoop>
 #include <QPoint>
 #include <QPointer>
@@ -255,13 +256,24 @@ class KloggApp : public QApplication {
         data.insert( QLatin1String( "type" ), QStringLiteral( "command" ) );
         data.insert( QLatin1String( "resultPath" ), resultPath );
         data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
+        // On Windows the single-instance transport can report a failed send although the
+        // primary read the whole message (it closes the pipe as soon as it has read it, which
+        // races the sender's own write/disconnect bookkeeping; about 1 send in 75 under test).
+        // The primary writes this receipt on arrival, so the sender can tell the cases apart
+        // without re-sending (a re-send could run a command twice).
+        const auto receiptPath = createUniqueTempPath( QStringLiteral( "klogg_command_receipt_" ),
+                                                       QStringLiteral( ".tmp" ) );
+        if ( !receiptPath.isEmpty() ) {
+            data.insert( QLatin1String( "receiptPath" ), receiptPath );
+        }
 
-        // The sender's deadline covers connecting, writing and the primary closing the pipe,
-        // which happens only when the primary's GUI thread next runs its event loop. Cold
-        // dialogs can spend several seconds populating fonts and controls, and a file still
-        // loading or an analysis run on a loaded machine can keep that thread busy for more
-        // than 5 s, so every command gets the same deadline as the response.
-        constexpr int CommanderConnectTimeoutMs = 30000;
+        // Cold dialogs can spend several seconds populating fonts and controls before
+        // their modal event loop starts accepting the next automation command.
+        const bool waitsForUi = request.action == CommanderAction::GetUi
+                                || request.action == CommanderAction::SetUi
+                                || request.action == CommanderAction::ActivateUi
+                                || request.action == CommanderAction::InvokeAction;
+        const int commanderConnectTimeoutMs = waitsForUi ? 30000 : 5000;
         constexpr int CommanderResponseTimeoutMs = 30000;
 
         const QCborValue cbor( data );
@@ -269,15 +281,25 @@ class KloggApp : public QApplication {
         connectionTimer.start();
         LOG_DEBUG << "Commander connection: action="
                   << commanderActionToString( request.action ).toStdString()
-                  << " timeoutMs=" << CommanderConnectTimeoutMs;
-        if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(),
-                                                         CommanderConnectTimeoutMs ) ) {
+                  << " waitingForUi=" << waitsForUi << " timeoutMs=" << commanderConnectTimeoutMs;
+        const bool sent
+            = singleApplication_.sendMessageWithTimeout( cbor.toCbor(), commanderConnectTimeoutMs );
+        const bool delivered = sent
+                               || ( !receiptPath.isEmpty()
+                                    && waitForFile( receiptPath, commanderConnectTimeoutMs ) );
+        QFile::remove( receiptPath );
+        if ( !delivered ) {
             LOG_WARNING << "Commander connection failed after " << connectionTimer.elapsed()
-                        << " ms";
+                        << " ms; waitingForUi=" << waitsForUi;
             QFile::remove( resultPath );
             return commanderFailure(
                 CommanderResultCode::TransportError,
                 QStringLiteral( "Failed to contact the primary CILogg instance." ) );
+        }
+        if ( !sent ) {
+            LOG_WARNING << "Commander transport reported a failed send, but the primary "
+                           "confirmed receipt after "
+                        << connectionTimer.elapsed() << " ms";
         }
 
         LOG_DEBUG << "Commander connection acknowledged after " << connectionTimer.elapsed()
@@ -1409,6 +1431,21 @@ class KloggApp : public QApplication {
         }
 
         return nullptr;
+    }
+
+    // Polls for a file another process creates; true once it exists, false after timeoutMs.
+    static bool waitForFile( const QString& path, int timeoutMs )
+    {
+        constexpr int PollMs = 20;
+        QElapsedTimer timer;
+        timer.start();
+        while ( !QFileInfo::exists( path ) ) {
+            if ( timer.elapsed() >= timeoutMs ) {
+                return false;
+            }
+            QThread::msleep( PollMs );
+        }
+        return true;
     }
 
     static QString createUniqueTempPath( const QString& prefix, const QString& suffix )

@@ -86,19 +86,32 @@ def require_control(command, name):
     return {"objectName": name, "accessibleName": found["accessibleName"]}
 
 
-def run_python(cli, artifacts, fixture, arguments):
-    output = artifacts / (fixture + ".result.json")
-    args = artifacts / (fixture + ".args.json")
-    args.write_text(json.dumps(dict(arguments, output=str(output))), encoding="utf-8")
-    cli("run_global_script", "--script-file", str(PYTHON_FIXTURES / (fixture + ".py")),
+# A host keeps its global script binding once a script has run, and run_global_script refuses a
+# second script, so the U15 cases share one global script (u15_chain.py). The docks case queues
+# its fixture and the check of its result here; the tools case, which runs last, runs them all.
+PENDING_PYTHON = []
+
+
+def run_fixtures(cli, artifacts, fixtures):
+    """Runs [(fixture, arguments)] in one global script; returns their results in order."""
+    outputs, steps = [], []
+    for fixture, arguments in fixtures:
+        output = artifacts / (fixture + ".result.json")
+        outputs.append(output)
+        steps.append({"fixture": str(PYTHON_FIXTURES / (fixture + ".py")),
+                      "args": dict(arguments, output=str(output))})
+    args = artifacts / "u15_chain.args.json"
+    args.write_text(json.dumps({"steps": steps}), encoding="utf-8")
+    cli("run_global_script", "--script-file", str(PYTHON_FIXTURES / "u15_chain.py"),
         "--args-json-file", str(args))
     try:
-        wait_until(output.exists, 120, f"python_fixture_timeout: {fixture}")
+        wait_until(lambda: all(output.exists() for output in outputs), 180,
+                   "python_fixture_timeout: " + ", ".join(name for name, _ in fixtures))
         time.sleep(0.2)
-        return json.loads(output.read_text(encoding="utf-8"))
+        return [json.loads(output.read_text(encoding="utf-8")) for output in outputs]
     finally:
         status = cli("get_global_script_status", success=None)
-        (artifacts / (fixture + ".status.json")).write_text(json.dumps(status, indent=2), encoding="utf-8")
+        (artifacts / "u15_chain.status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")
         cli("stop_global_script", success=None)
         wait_until(lambda: cli("get_global_script_status", success=None).get("state")
                    not in ("starting", "running", "stopping"), 20, "global_script_not_stopped")
@@ -152,13 +165,17 @@ def exercise_docks(cli, command, catalog, artifacts):
                 cli, command, through_mcp, "set_regex_lab", "get_regex_lab", REGEX, source)
             surfaces[name]["valueCounts"][source] = dock_rows(
                 cli, command, through_mcp, "set_value_counts", "get_value_counts", COUNTS, source)
-    python = run_python(cli, artifacts, "u15_sources",
-                        {"sources": sources, "regex": REGEX, "counts": COUNTS})
-    if python.get("errors"):
-        raise ParityError(f"python_fixture_failed: {python['errors']}")
     compare_json(rounded(surfaces["cli"]), rounded(surfaces["mcp"]), "$.mcp")
-    compare_json(rounded(surfaces["cli"]),
-                 rounded({key: python[key] for key in ("regexLab", "valueCounts")}), "$.python")
+
+    def check_python(python):
+        if python.get("errors"):
+            raise ParityError(f"python_fixture_failed: {python['errors']}")
+        compare_json(rounded(surfaces["cli"]),
+                     rounded({key: python[key] for key in ("regexLab", "valueCounts")}),
+                     "$.docks.python")
+
+    PENDING_PYTHON.append(("u15_sources", {"sources": sources, "regex": REGEX, "counts": COUNTS},
+                           check_python))
     expected_tabs = {
         sources[0]: [tabs["two.log"]], sources[1]: [tabs["none.log"]],
         "focused": [tabs["one.log"]], "all": sorted(tabs.values()),
@@ -208,6 +225,8 @@ def exercise_tools(cli, command, catalog, artifacts):
     compare_json("invalid_source", refused.get("reason"), "$.preview.all")
     refused = command("preview_message", {"analysis_json": {"line": 2}, "source": "all"}, success=None)
     compare_json("invalid_source", refused.get("reason"), "$.preview.all.mcp")
+    # preview_message decodes without showing the window; get_ui sees only visible windows.
+    command("invoke_action", {"object_name": "showPreviewerAction", "window_index": 0})
     report["gui"].append(require_control(command, "previewOpenLine"))
 
     # Plugin actions: one tab, and every open tab (staged).
@@ -248,8 +267,16 @@ def exercise_tools(cli, command, catalog, artifacts):
         pass  # failures without a payload object are still reported as tool errors
 
     # Python: klogg.app.command reaches the same operations.
-    python = run_python(cli, artifacts, "u15b_sources", {
-        "tabs": [first, second, empty], "plugin": PLUGIN, "search": "ERROR", "script": str(script)})
+    pending = list(PENDING_PYTHON)
+    PENDING_PYTHON.clear()
+    # The docks fixture's "focused" source is the tab the docks case focused (one.log).
+    cli("focus_tab", "--tab-id", second)
+    results = run_fixtures(cli, artifacts, [(name, arguments) for name, arguments, _ in pending] + [
+        ("u15b_sources", {"tabs": [first, second, empty], "plugin": PLUGIN, "search": "ERROR",
+                          "script": str(script)})])
+    for (_, _, check), result in zip(pending, results):
+        check(result)
+    python = results[-1]
     compare_json(expected, python["search"], "$.python.search")
     compare_json(first, python["preview"]["tabId"], "$.python.preview")
     compare_json("invalid_source", python["previewAll"], "$.python.previewAll")

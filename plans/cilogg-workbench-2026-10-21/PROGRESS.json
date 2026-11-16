@@ -2328,16 +2328,18 @@
       "evidence": [
         "U15a local qualification 2026-11-13: cilogg_tests [U15] 3 cases / 24 assertions; cilogg_itests [U15],[regexlab],[valuecounts],[analysiscommands] 34 cases / 551 assertions passed.",
         "Independent C++ review: high finding (empty sourceTabId) and medium findings fixed in the PR.",
-        "Staged 'all' and the Codex review fixes, commit 487a3f42 local qualification 2026-11-13: cilogg_tests [U15] 7 cases / 77 assertions; cilogg_itests [regexlab],[valuecounts],[analysiscommands] 37 cases / 596 assertions passed."
+        "Staged 'all' and the Codex review fixes, commit 487a3f42 local qualification 2026-11-13: cilogg_tests [U15] 7 cases / 77 assertions; cilogg_itests [regexlab],[valuecounts],[analysiscommands] 37 cases / 596 assertions passed.",
+        "U15b local qualification 2026-11-16 (MSVC /WX RelWithDebInfo, Qt 6.10.1, offscreen) after merging master d15f1509: cilogg_tests [U15] 9 cases / 138 assertions; cilogg_itests [U15] 12 cases / 306 assertions; cilogg_tests 348 cases / 14089 assertions; cilogg_itests [ui]~[workbench-native] 181 cases / 24420 assertions; cilogg_itests [logdata] 88 cases / 3380 assertions; ctest passed; workbench_parity.py --task U15 (u15_python_source_parity and u15b_sources through CLI, native MCP and the Python SDK) passed 3 runs in a row; --task U16 passed; tests/mcp test_workbench_sources.py OK.",
+        "Commander transport race found by the U15 parity: on Windows the KDSingleApplication sender sometimes reports a failed send although the primary read the whole message (an isolated host failed 2 of 150 get_info sends, each in about 0.4 s, on an idle host). Fixed with a receipt file the primary writes on arrival (receiptPath; the sender waits for it only after a reported failure and never re-sends); the same probe then gave 0 failures in 400 sends."
       ],
       "limitations": [
         "User 2026-11-13 (decision D13): 'all opened' means every open tab. PR #107 replaces the source-count limit (too_many_sources) with staged runs (AnalysisRuns: at most 8 of a Run's jobs unfinished under AnalysisJobService's 10 admitted / 26 retained; 16 finished jobs kept per dock; a released or evicted source re-runs when selected); the focused tab resolves to its id; an explicit Commander tab selector wins for Apply; Apply/Open are refused with source_closed once the result's tab is closed. Results are shown one source at a time, as the user approved; merged totals are not part of U15a. The public Python route (klogg.app.command, set_regex_lab, set_value_counts) and its parity case moved to U15b.",
-        "U15b (plugin actions/views, Script Runner, Preview, search all open tabs) not started.",
-        "Cross-window routing has no automated test."
+        "Cross-window routing has no automated test.",
+        "U15b: search 'all' shows the total on the search line and per-tab counts in its tooltip, not a merged result list. Script Runner can run only on live COM tabs, so the parity host (no COM tab) checks its refusals (not_com_tab, no_open_sources) and the Catch2 case covers the runs. A finished global script keeps its binding and run_global_script refuses another one (existing behaviour), so the U15 parity runs its Python fixtures in one global script (test_data/workbench/python/u15_chain.py). No manual visual check; the GUI was exercised only through offscreen tests."
       ],
       "slices": [
         "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107",
-        "U15b: remaining tab-bound tools, planned"
+        "U15b: plugin actions and views, Script Runner, Preview, search in all open tabs; one shared picker and selector through Commander, CLI, native MCP and Python (branch claude/u15b-source-picker)"
       ]
     },
     "U16": {
