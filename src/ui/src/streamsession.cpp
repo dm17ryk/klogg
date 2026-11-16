@@ -501,15 +501,17 @@ void StreamSession::setupWorker()
     connect( worker_, &SerialCaptureWorker::dataReceived, this,
              &StreamSession::handleDataReceived );
     connect( worker_, &SerialCaptureWorker::dataTransmitted, this,
-             [ this ]( const QByteArray& data ) {
-                 // The worker logs the transmitted bytes to the capture file before this signal.
-                 const QPointer<StreamSession> guard( this );
-                 Q_EMIT dataTransmitted( data );
-                 if ( guard ) {
-                     Q_EMIT captureFileUpdated( settings_.filePath );
-                 }
-             } );
+             [ this ]( const QByteArray& data ) { Q_EMIT dataTransmitted( data ); } );
+    connectCaptureFileWritten();
 #endif
+}
+
+void StreamSession::connectCaptureFileWritten()
+{
+    // The worker names the file it wrote: a notice queued before a capture file switch still
+    // names the old file, whose tab must reload, not the new one.
+    connect( worker_, &SerialCaptureWorker::captureFileWritten, this,
+             &StreamSession::captureFileUpdated );
 }
 
 void StreamSession::setConnectionClosed()
@@ -595,11 +597,6 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     }
 
     const QPointer<StreamSession> safeSession = this;
-    // The worker wrote these bytes to the capture file before reporting them.
-    Q_EMIT captureFileUpdated( settings_.filePath );
-    if ( !safeSession ) {
-        return;
-    }
     const auto generation = connectionOpen_ && settings_.useForActions
                                     && settings_.autoResponsesEnabled
                                     && ActionsManager::instance().autoResponsesEnabled()

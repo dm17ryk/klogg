@@ -36,6 +36,11 @@ public:
     explicit SerialCaptureWorker( SerialCaptureSettings settings, QObject* parent = nullptr );
     bool switchCaptureFile( const QString& filePath, QString* errorMessage = nullptr );
 
+    // The part of a transmission that may be logged and reported as sent: the bytes the port
+    // accepted, and nothing when the write was not confirmed (failed or timed out).
+    static QByteArray confirmedTransmission( const QByteArray& data, qint64 written,
+                                             bool confirmed );
+
 public Q_SLOTS:
     void start();
     void stop();
@@ -52,12 +57,16 @@ Q_SIGNALS:
     void finished();
     void dataReceived( const QByteArray& data );
     void dataTransmitted( const QByteArray& data );
+    // Bytes were written and flushed to the capture file `filePath` (the file active when they
+    // were written).
+    void captureFileWritten( const QString& filePath );
 
 private Q_SLOTS:
     void onReadyRead();
     void onError( QSerialPort::SerialPortError error );
 
 private:
+    void reportFileWritten();
 #ifndef KLOGG_SHARED_SERIAL_WRITER
     // Appends a [TX] line for `data` to the capture file when transmits are logged.
     void logTransmission( const QByteArray& data, bool sensitive );

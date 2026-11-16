@@ -301,22 +301,39 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
                                   .arg( data.size() ) );
     }
 
-    const bool transmitted = port_->waitForBytesWritten( 1000 );
-    if ( !transmitted ) {
+    const bool confirmed = port_->waitForBytesWritten( 1000 );
+    if ( !confirmed ) {
         Q_EMIT errorOccurred(
             tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
 
-    // Log the transmission before reporting it: the session then tells the log view to reload,
-    // and the view must find the [TX] line already in the file.
-    logTransmission( data, sensitive );
-
-    if ( transmitted ) {
-        const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" )
-                                              : data.left( qMax<qint64>( 0, written ) );
-        Q_EMIT dataTransmitted( observableData );
+    // Only bytes the port confirmed are a transmission: a timed-out request is not logged.
+    const auto sent = confirmedTransmission( data, written, confirmed );
+    if ( sent.isEmpty() ) {
+        LOG_WARNING << "COM write to " << settings_.portName.toStdString()
+                    << " not confirmed; nothing logged as transmitted";
+        return;
     }
+
+    // Log the transmission before reporting it: the log view reloads on the file notice and
+    // must find the [TX] line already in the file.
+    logTransmission( sent, sensitive );
+    Q_EMIT dataTransmitted( sensitive ? QByteArrayLiteral( "<redacted>" ) : sent );
 #endif
+}
+
+QByteArray SerialCaptureWorker::confirmedTransmission( const QByteArray& data, qint64 written,
+                                                       bool confirmed )
+{
+    if ( !confirmed || written <= 0 ) {
+        return {};
+    }
+    return data.left( written );
+}
+
+void SerialCaptureWorker::reportFileWritten()
+{
+    Q_EMIT captureFileWritten( settings_.filePath );
 }
 
 #ifndef KLOGG_SHARED_SERIAL_WRITER
@@ -342,6 +359,7 @@ void SerialCaptureWorker::logTransmission( const QByteArray& data, bool sensitiv
         }
         else {
             file_.flush();
+            reportFileWritten();
         }
     }
 }
@@ -372,6 +390,7 @@ void SerialCaptureWorker::appendToFile( QByteArray data )
         return;
     }
     file_.flush();
+    reportFileWritten();
 }
 
 void SerialCaptureWorker::setLoggingEnabled( bool enabled )
@@ -450,6 +469,7 @@ void SerialCaptureWorker::onReadyRead()
         if ( hasNewline || ++flushCounter_ >= 8 ) {
             file_.flush();
             flushCounter_ = 0;
+            reportFileWritten();
         }
     }
 

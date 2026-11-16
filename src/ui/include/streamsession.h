@@ -77,9 +77,10 @@ Q_SIGNALS:
     void autoResponsesEnabledChanged( bool enabled );
     void dataObserved( const QByteArray& dataBytes );
     void dataTransmitted( const QByteArray& dataBytes );
-    // The capture file grew (received or transmitted bytes were written to it). The view of the
-    // file reloads on this instead of waiting for the file system to report the change, which on
-    // Windows can take seconds for a file that stays open for writing.
+    // The capture file `filePath` grew (received or transmitted bytes were written to it). The
+    // view of that file reloads on this instead of waiting for the file system to report the
+    // change, which on Windows can take seconds for a file that stays open for writing. The path
+    // is the file the bytes went to, even when the capture has moved to a new file since.
     void captureFileUpdated( const QString& filePath );
     void lineObserved( const QByteArray& lineBytes );
     void actionSent( int actionId, const QString& actionName, int stepIndex,
@@ -92,6 +93,7 @@ private:
     void updateActionState( bool actionsEnabled, bool autoResponsesEnabled, const char* operation );
     void startInternal( bool resetResponseCounters );
     void setupWorker();
+    void connectCaptureFileWritten();
     void setConnectionClosed();
     bool canOpenConfiguredCapture( QString* errorMessage ) const;
     void handleIncomingLine( const QByteArray& lineBytes, std::optional<quint64> generation );

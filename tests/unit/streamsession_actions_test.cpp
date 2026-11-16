@@ -4,6 +4,7 @@
 
 #include <QPointer>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 
@@ -11,6 +12,7 @@
 #include "actionruntime.h"
 #include "actionsmanager.h"
 #include "diagnostics.h"
+#include "serialcaptureworker.h"
 
 namespace {
 class ScopedActionsState {
@@ -749,20 +751,47 @@ TEST_CASE( "An observation handler may destroy its session safely",
     CHECK( guard.isNull() );
 }
 
-TEST_CASE( "Received serial data tells the view its capture file grew",
+TEST_CASE( "Only confirmed serial writes count as transmitted", "[serial][session][actions]" )
+{
+    const auto request = QByteArrayLiteral( "GET VERSION:00;\r\n" );
+    // A write the port confirmed is logged and reported in full.
+    CHECK( SerialCaptureWorker::confirmedTransmission( request, request.size(), true ) == request );
+    // A partial write: only the bytes the port accepted.
+    CHECK( SerialCaptureWorker::confirmedTransmission( request, 4, true ) == "GET " );
+    // A timed-out or failed write is not a transmission: nothing goes into the [TX] record.
+    CHECK( SerialCaptureWorker::confirmedTransmission( request, request.size(), false ).isEmpty() );
+    CHECK( SerialCaptureWorker::confirmedTransmission( request, -1, true ).isEmpty() );
+    CHECK( SerialCaptureWorker::confirmedTransmission( request, 0, true ).isEmpty() );
+}
+
+TEST_CASE( "Capture file notices name the file the bytes were written to",
            "[serial][session][actions]" )
 {
-    // The log view of a COM tab reloads on this signal; without it a sent command and its echo
-    // appeared seconds late, whenever the file system reported the open capture file's growth.
-    StreamSession session( settingsFor( QStringLiteral( "TEST_CAPTURE_UPDATE" ) ) );
-    StreamSessionTestAccess::openConnection( session );
-    QSignalSpy updates( &session, &StreamSession::captureFileUpdated );
+    // The COM tab reloads on these notices instead of waiting for the native watcher. A notice
+    // still queued when the capture moves to a new file must name the old file.
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto oldFile = directory.filePath( QStringLiteral( "capture-old.log" ) );
+    const auto newFile = directory.filePath( QStringLiteral( "capture-new.log" ) );
 
-    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "GET VERSION:00;\r\n" ) );
-    REQUIRE( updates.size() == 1 );
-    CHECK( updates.front().front().toString() == QStringLiteral( "logical-actions-test.log" ) );
+    SerialCaptureSettings settings;
+    settings.portName = QStringLiteral( "TEST_CAPTURE_NOTICE" );
+    settings.filePath = oldFile;
+    SerialCaptureWorker worker( settings );
+    REQUIRE( worker.switchCaptureFile( oldFile ) );
 
-    // A partial line is already in the file too.
-    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "8_11_2" ) );
-    CHECK( updates.size() == 2 );
+    QObject receiver;
+    QStringList delivered;
+    QObject::connect(
+        &worker, &SerialCaptureWorker::captureFileWritten, &receiver,
+        [ &delivered ]( const QString& path ) { delivered.append( path ); }, Qt::QueuedConnection );
+
+    worker.appendToFile( QByteArrayLiteral( "RX into the old file\n" ) );
+    // The capture moves on before the queued notice is delivered.
+    REQUIRE( worker.switchCaptureFile( newFile ) );
+    worker.appendToFile( QByteArrayLiteral( "RX into the new file\n" ) );
+
+    REQUIRE( QTest::qWaitFor( [ &delivered ] { return delivered.size() == 2; }, 5000 ) );
+    CHECK( delivered.at( 0 ) == oldFile );
+    CHECK( delivered.at( 1 ) == newFile );
 }

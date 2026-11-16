@@ -158,6 +158,7 @@ void StreamSession::setupCheckedWorker()
              [ this, generation ]( const QByteArray& data ) {
                  acceptBackendData( generation, data, true );
              } );
+    connectCaptureFileWritten();
     connect( worker_, &SerialCaptureWorker::errorOccurred, this,
              [ this, generation ]( const QString& message ) {
                  if ( generation != workerGeneration_ || stopping_ || closePublished_ ) {
@@ -598,9 +599,6 @@ void StreamSession::acceptWriteSnapshot( BackendWriteSnapshotPtr snapshot )
     }
     if ( !observable.isEmpty() && connectionOpen_ && !stopping_ ) {
         Q_EMIT dataTransmitted( observable );
-        if ( !guard || !matches( epoch, writerEndpointId_, workerGeneration_ ) || backendRetired_ )
-            return;
-        Q_EMIT captureFileUpdated( settings_.filePath );
         if ( !guard || !matches( epoch, writerEndpointId_, workerGeneration_ ) || backendRetired_ )
             return;
     }
