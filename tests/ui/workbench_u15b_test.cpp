@@ -4,8 +4,11 @@
 
 #include <catch2/catch.hpp>
 
+#include <functional>
+
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -13,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSignalSpy>
