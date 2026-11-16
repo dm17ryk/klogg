@@ -2343,21 +2343,25 @@
     "U16": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/108",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/111",
       "evidence": [
         "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)",
         "U16a local qualification 2026-11-14 (MSVC /WX, Qt 6.10.1, offscreen) after merging master c8aeab16: cilogg_itests [U16] 10 cases / 339 assertions; cilogg_tests [U16] 3 cases / 45 assertions; cilogg_itests [ui]~[workbench-native] 123 cases / 23550 assertions; cilogg_itests [logdata] 88 cases / 3373 assertions; cilogg_tests 333 cases / 14201 assertions passed.",
-        "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769."
+        "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769.",
+        "U16b local qualification 2026-11-15 (MSVC /WX RelWithDebInfo, Qt 6.10.1, offscreen) on origin/master f76317b8: cilogg_tests [U16] 4 cases / 148 assertions; cilogg_itests [workbench][U16] 12 cases / 511 assertions; cilogg_tests 335 cases / 14315 assertions; cilogg_itests [ui]~[workbench-native] 174 cases / 24196 assertions; cilogg_itests [logdata] 88 cases / 3403 assertions; workbench_parity.py --task U16 (pane_operations_parity through CLI, native MCP and a Python global script) and --task G03 (five cases) passed; tests/mcp 111 OK; tests/plugins 204 OK.",
+        "U16b independent C++ review: no high findings; medium findings (failed move into a new pane reported success and left an empty pane, partial merge reported success, merge_panes with a stray pane/tab selector could merge the wrong window, mixed pane and tab selectors resolved silently) fixed with regression checks before the PR. The new end-to-end Python leg found that klogg.client compared the Commander result code with 'Success' while Commander reports 'success', so every klogg.app Commander call raised KloggError; fixed in the PR."
       ],
       "limitations": [
         "No manual visual or dark-theme check; the GUI was exercised only through offscreen tests.",
         "The pane layout is a JSON string per window (paneLayout) in the session; the session format version is unchanged, so older CILogg versions open all tabs in one pane. A single pane stores no layout.",
         "A pane becomes active only on user input (mouse press, Tab/Backtab/shortcut focus) because a restored tab focuses its view after its first load.",
-        "pane_operations_parity and the get_info pane fields belong to U16b; drag and drop to U16c."
+        "U16b implements split_pane, focus_pane, close_pane, merge_panes and move_tab plus the get_info / dump_state pane fields. Not implemented from the design: get_layout / set_layout, --pane-index on open_file / open_com / open_url (focus_pane first: files open in the active pane), and --pane-index combined with --tab-index (tab indices stay window-wide; panes[].tabIds lists a pane's tabs).",
+        "U16b: routing a pane id or tab id to a second window is not covered by an automated test; the parity host and the Catch2 cases use one window.",
+        "Drag and drop between panes belongs to U16c."
       ],
       "slices": [
-        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108",
-        "U16b: Commander/CLI/MCP/Python pane operations, planned",
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108, merged as c252b175 on 2026-11-15",
+        "U16b: Commander/CLI/MCP/Python pane operations and the get_info pane fields, PR https://github.com/dm17ryk/klogg/pull/111",
         "U16c: drag and drop between panes, planned"
       ]
     },

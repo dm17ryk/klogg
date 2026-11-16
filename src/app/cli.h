@@ -241,7 +241,16 @@ private:
             "--filter-index <n> | --filter-string <expr>) [--predefined] [--search] "
             "[--auto-refresh]\n"
             "  cilogg command --action close_tab (--tab-id <id> | --window-index <n> --tab-index "
-            "<n>)\n\n"
+            "<n>)\n"
+            "  cilogg command --action split_pane [pane selector | tab selector] [--direction "
+            "right|down]\n"
+            "  cilogg command --action focus_pane (--pane-id <id> | [--window-index <n>] "
+            "--pane-index <n>)\n"
+            "  cilogg command --action close_pane (--pane-id <id> | [--window-index <n>] "
+            "--pane-index <n>) [--tabs close|move]\n"
+            "  cilogg command --action merge_panes [--window-index <n>]\n"
+            "  cilogg command --action move_tab --tab-id <id> (--pane-id <id> | --pane-index <n> "
+            "| --direction right|down)\n\n"
             "Automation:\n"
             "  cilogg --dump-ui-tree [--window-width <n> --window-height <n>]\n\n"
             "  cilogg --dump-state-json <path> [--window-width <n> --window-height <n>]\n\n"
@@ -410,6 +419,17 @@ private:
             "--filter-index <n> | --filter-string <expr>) [--predefined] [--search] "
             "[--auto-refresh]\n"
             "  close_tab  (--tab-id <id> | --window-index <n> --tab-index <n>)\n"
+            "  split_pane [--pane-id <id> | --window-index <n> [--pane-index <n>] | --tab-id <id> "
+            "| --window-index <n> --tab-index <n>] [--direction right|down]\n"
+            "    Splits the active pane by default; the new pane opens right of or below it.\n"
+            "  focus_pane (--pane-id <id> | [--window-index <n>] --pane-index <n>)\n"
+            "  close_pane (--pane-id <id> | [--window-index <n>] --pane-index <n>) [--tabs "
+            "close|move]\n"
+            "    A pane with tabs closes only with --tabs; the last pane is never closed.\n"
+            "  merge_panes [--window-index <n>]\n"
+            "  move_tab --tab-id <id> (--pane-id <id> | --pane-index <n> | --direction right|down)\n"
+            "    Pane indices count panes in layout order; without --window-index the active window "
+            "(move_tab: the tab's window).\n"
             "  search     [--tab-id <id> | --window-index <n> --tab-index <n>] --text <expr> "
             "[--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] "
             "[--keep-results]\n"
@@ -1510,6 +1530,22 @@ private:
             QStringLiteral( "tab-index" ),
             QStringLiteral( "Target tab index for tab-focused actions." ),
             QStringLiteral( "index" ) );
+        const QCommandLineOption paneIdOption(
+            QStringLiteral( "pane-id" ), QStringLiteral( "Target pane id for pane commands." ),
+            QStringLiteral( "id" ) );
+        const QCommandLineOption paneIndexOption(
+            QStringLiteral( "pane-index" ),
+            QStringLiteral( "Target pane index (layout order) for pane commands." ),
+            QStringLiteral( "index" ) );
+        const QCommandLineOption directionOption(
+            QStringLiteral( "direction" ),
+            QStringLiteral( "Side of the new pane for split_pane and move_tab: right or down." ),
+            QStringLiteral( "side" ) );
+        const QCommandLineOption paneTabsOption(
+            QStringLiteral( "tabs" ),
+            QStringLiteral( "close_pane: close the pane's tabs or move them to the neighbouring "
+                            "pane (close or move)." ),
+            QStringLiteral( "close|move" ) );
         const QCommandLineOption followOption( QStringLiteral( "follow" ),
                                                QStringLiteral( "Follow the opened file." ) );
         const QCommandLineOption prettyOption(
@@ -1624,6 +1660,10 @@ private:
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
+        parser.addOption( paneIdOption );
+        parser.addOption( paneIndexOption );
+        parser.addOption( directionOption );
+        parser.addOption( paneTabsOption );
         parser.addOption( followOption );
         parser.addOption( prettyOption );
         parser.addOption( searchOption );
@@ -1831,7 +1871,140 @@ private:
             return true;
         };
 
+        // Pane selectors and options (U16b) belong to the pane commands only.
+        const auto paneId = parser.value( paneIdOption ).trimmed();
+        const bool hasPaneId = parser.isSet( paneIdOption );
+        const bool hasPaneIndex = parser.isSet( paneIndexOption );
+        const bool hasDirection = parser.isSet( directionOption );
+        const bool hasPaneTabs = parser.isSet( paneTabsOption );
+        const auto actionName = commanderActionToString( *action );
+        const auto paneFailure = [ & ]( const QString& message ) {
+            result.output_message = formatParserError( parser, message.arg( actionName ) );
+            return false;
+        };
+        if ( !isCommanderPaneAction( *action )
+             && ( hasPaneId || hasPaneIndex || hasDirection || hasPaneTabs ) ) {
+            paneFailure( QStringLiteral(
+                "--pane-id, --pane-index, --direction and --tabs are only valid for pane "
+                "commands, not for %1." ) );
+            return result;
+        }
+        if ( hasPaneId && paneId.isEmpty() ) {
+            paneFailure( QStringLiteral( "Invalid --pane-id value for %1." ) );
+            return result;
+        }
+        if ( hasPaneIndex ) {
+            bool ok = false;
+            const auto parsed = parser.value( paneIndexOption ).toInt( &ok );
+            if ( !ok || parsed < 0 ) {
+                paneFailure( QStringLiteral( "Invalid --pane-index value for %1." ) );
+                return result;
+            }
+            request.paneIndex = parsed;
+        }
+        if ( hasDirection ) {
+            request.paneDirection = parser.value( directionOption ).trimmed().toLower();
+            if ( request.paneDirection != QStringLiteral( "right" )
+                 && request.paneDirection != QStringLiteral( "down" ) ) {
+                paneFailure( QStringLiteral( "--direction must be right or down for %1." ) );
+                return result;
+            }
+        }
+        if ( hasPaneTabs ) {
+            request.paneTabs = parser.value( paneTabsOption ).trimmed().toLower();
+            if ( request.paneTabs != QStringLiteral( "close" )
+                 && request.paneTabs != QStringLiteral( "move" ) ) {
+                paneFailure( QStringLiteral( "--tabs must be close or move for %1." ) );
+                return result;
+            }
+        }
+        request.paneId = paneId;
+        // A pane: --pane-id (any window), or --pane-index in --window-index or the active window.
+        const auto validatePaneSelector = [ & ]( bool required ) -> bool {
+            if ( hasPaneId && hasPaneIndex ) {
+                return paneFailure( QStringLiteral( "Use either --pane-id or --pane-index for %1." ) );
+            }
+            if ( hasPaneId && hasWindowIndex ) {
+                return paneFailure(
+                    QStringLiteral( "Use either --pane-id or --window-index for %1." ) );
+            }
+            if ( required && !hasPaneId && !hasPaneIndex ) {
+                return paneFailure( QStringLiteral( "%1 requires --pane-id or --pane-index." ) );
+            }
+            if ( hasWindowIndex ) {
+                bool ok = false;
+                const auto parsed = parser.value( windowIndexOption ).toInt( &ok );
+                if ( !ok || parsed < 0 ) {
+                    return paneFailure( QStringLiteral( "Invalid --window-index value for %1." ) );
+                }
+                request.windowIndex = parsed;
+            }
+            return true;
+        };
+        const auto rejectPaneOptions = [ & ]( bool direction, bool tabs ) -> bool {
+            if ( direction && hasDirection ) {
+                return paneFailure( QStringLiteral( "%1 does not accept --direction." ) );
+            }
+            if ( tabs && hasPaneTabs ) {
+                return paneFailure( QStringLiteral( "%1 does not accept --tabs." ) );
+            }
+            return true;
+        };
+        const auto rejectTabSelector = [ & ]() -> bool {
+            if ( hasTabId || hasTabIndex ) {
+                return paneFailure( QStringLiteral( "%1 does not accept a tab selector." ) );
+            }
+            return true;
+        };
+
         switch ( *action ) {
+        case CommanderAction::SplitPane:
+            if ( !rejectPaneOptions( false, true ) ) {
+                return result;
+            }
+            if ( hasPaneId || hasPaneIndex ) {
+                if ( !rejectTabSelector() || !validatePaneSelector( false ) ) {
+                    return result;
+                }
+            }
+            else if ( !validateTabSelector( actionName, false, true ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::FocusPane:
+        case CommanderAction::ClosePane:
+            if ( !rejectPaneOptions( true, *action == CommanderAction::FocusPane )
+                 || !rejectTabSelector() || !validatePaneSelector( true ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::MergePanes:
+            if ( !rejectPaneOptions( true, true ) || !rejectTabSelector() ) {
+                return result;
+            }
+            if ( hasPaneId || hasPaneIndex ) {
+                paneFailure( QStringLiteral( "%1 accepts only --window-index." ) );
+                return result;
+            }
+            if ( !validatePaneSelector( false ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::MoveTab:
+            if ( !rejectPaneOptions( false, true ) ) {
+                return result;
+            }
+            if ( !hasTabId || hasWindowIndex || hasTabIndex ) {
+                paneFailure( QStringLiteral( "%1 requires --tab-id and no window or tab index." ) );
+                return result;
+            }
+            if ( ( hasPaneId ? 1 : 0 ) + ( hasPaneIndex ? 1 : 0 ) + ( hasDirection ? 1 : 0 ) != 1 ) {
+                paneFailure( QStringLiteral(
+                    "%1 requires exactly one of --pane-id, --pane-index or --direction." ) );
+                return result;
+            }
+            request.tabId = tabId;
+            break;
         case CommanderAction::PreviewMessage:
         case CommanderAction::SetPreviewDecoder:
         case CommanderAction::RegexEvaluate:

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "tasks": {
-    "G03": ["analysis", "regex-lab", "value-counts", "file-navigation"],
+    "G03": ["analysis", "regex-lab", "value-counts", "file-navigation", "pane_operations_parity"],
     "G03d": ["file-navigation"],
     "P03": ["analysis"],
     "P03b": ["analysis"],
@@ -9,9 +9,16 @@
     "P03d": ["analysis"],
     "P04": ["regex-lab"],
     "P05": ["value-counts"],
-    "E13": ["plugin-views"]
+    "E13": ["plugin-views"],
+    "U16": ["pane_operations_parity"]
   },
   "cases": [
+    {
+      "id": "pane_operations_parity",
+      "kind": "pane-operations",
+      "action": "split_pane",
+      "operations": ["get_info", "dump_state", "open_file", "close_tab", "focus_tab", "split_pane", "focus_pane", "close_pane", "merge_panes", "move_tab", "run_global_script", "get_global_script_status"]
+    },
     {
       "id": "plugin-views",
       "kind": "plugin-views",

@@ -311,6 +311,11 @@ Tab-targeted actions accept one of these selectors:
 --window-index <n> --tab-index <n>
 ```
 
+`--tab-index` counts a window's tabs pane by pane in layout order. Pane commands
+(`split_pane`, `focus_pane`, `close_pane`, `merge_panes`, `move_tab`) name a pane with
+`--pane-id <id>` or `[--window-index <n>] --pane-index <n>`; see
+[Split panes](DOCUMENTATION.md#split-panes).
+
 Use `get_info --pretty` to discover window and tab identifiers:
 
 ```powershell
@@ -351,9 +356,14 @@ Commander actions:
 | `close_com` | `--port <name>` | Close the COM stream for the named port. |
 | `close_cilogg` | no extra options | Close the CILogg application. The legacy alias `close_klogg` is also accepted. |
 | `close_all` | no extra options | Close all open tabs. |
-| `get_info` | `[--pretty]` | Print JSON describing windows, tabs, active tab ids, source types, COM status, and script status. |
-| `focus_tab` | `--tab-id <id>` or `--window-index <n> --tab-index <n>` | Activate a tab. |
+| `get_info` | `[--pretty]` | Print JSON describing windows, panes, tabs, active pane and tab ids, source types, COM status, and script status. |
+| `focus_tab` | `--tab-id <id>` or `--window-index <n> --tab-index <n>` | Activate a tab and its pane. |
 | `close_tab` | `--tab-id <id>` or `--window-index <n> --tab-index <n>` | Close a tab by id or window/tab index. |
+| `split_pane` | `[--pane-id <id> \| --window-index <n> [--pane-index <n>] \| tab selector] [--direction right\|down]` | Open a new pane right of or below a pane (the active pane by default); prints the new pane. A window holds up to 8 panes. |
+| `focus_pane` | `--pane-id <id>` or `[--window-index <n>] --pane-index <n>` | Make a pane active; its current tab becomes the focused tab. |
+| `close_pane` | `(--pane-id <id> \| [--window-index <n>] --pane-index <n>) [--tabs close\|move]` | Close a pane. A pane with tabs is refused unless `--tabs` closes them or moves them to the neighbouring pane; the last pane is never closed. |
+| `merge_panes` | `[--window-index <n>]` | Move every tab back into one pane, keeping the tab order. |
+| `move_tab` | `--tab-id <id> (--pane-id <id> \| --pane-index <n> \| --direction right\|down)` | Move a tab to another pane of its window or to a new pane; it keeps its id, connection, Actions and script. |
 | `set_follow_mode` | `[tab selector] (--enabled \| --disabled)` | Enable or disable follow mode for a tab. |
 | `search` | `[tab selector] --text <expr> [--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] [--keep-results]` | Run a search/filter expression on a tab. |
 | `get_filters` | `[tab selector] [--filter-id <id> \| --filter-index <n>] [--predefined] [--pretty]` | Print search-history or predefined filters as JSON. |
@@ -434,10 +444,24 @@ For example, `get_info --pretty` prints a JSON object similar to:
       "currentTabIndex": 0,
       "currentTabId": "tab-uuid",
       "isActiveWindow": true,
+      "activePaneId": "pane-uuid",
+      "panes": [
+        {
+          "paneId": "pane-uuid",
+          "paneIndex": 0,
+          "orientationPath": [],
+          "tabIds": ["tab-uuid"],
+          "currentTabId": "tab-uuid",
+          "isActive": true
+        }
+      ],
       "tabs": [
         {
           "tabId": "tab-uuid",
           "tabIndex": 0,
+          "paneId": "pane-uuid",
+          "paneIndex": 0,
+          "paneTabIndex": 0,
           "filePath": "D:/logs/com7.log",
           "displayName": "com7.log",
           "sourceType": "com",
