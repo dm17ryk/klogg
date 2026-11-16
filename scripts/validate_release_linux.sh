@@ -19,6 +19,15 @@ resolve_package_executable() {
   printf '%s\n' "$executable"
 }
 
+# Script Runner and scenarios load this package from <executable dir>/python_runtime.
+validate_python_runtime() {
+  local runtime="$1"
+  local file
+  for file in worker_bootstrap.py scenario_bootstrap.py klogg/__init__.py; do
+    [[ -f "$runtime/$file" ]] || fail "Package is missing python_runtime/$file next to the executable: $runtime"
+  done
+}
+
 validate_deb() (
   local pkg="$1"
   local contents
@@ -39,6 +48,7 @@ validate_deb() (
   [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "DEB executable escapes package or is not executable: $pkg"
   echo "DEB executable resolved within package: ${executable#"$workdir/"}"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"
+  validate_python_runtime "$(dirname "$executable")/python_runtime"
 )
 
 validate_rpm() (
@@ -59,6 +69,7 @@ validate_rpm() (
   [[ "$executable" == "$workdir/"* && -x "$executable" ]] || fail "RPM executable escapes package or is not executable: $pkg"
   echo "RPM executable resolved within package: ${executable#"$workdir/"}"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$(dirname "$executable")/plugins"
+  validate_python_runtime "$(dirname "$executable")/python_runtime"
 )
 
 validate_appimage() (
@@ -81,6 +92,7 @@ validate_appimage() (
   find "$workdir/squashfs-root" -name 'libQt6Sql*.so*' | grep -q . || fail "AppImage missing Qt SQL runtime: $pkg"
   find "$workdir/squashfs-root" -path '*/sqldrivers/*qsqlite*' | grep -q . || fail "AppImage missing qsqlite plugin: $pkg"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$workdir/squashfs-root/usr/bin/plugins"
+  validate_python_runtime "$workdir/squashfs-root/usr/bin/python_runtime"
 )
 
 shopt -s nullglob

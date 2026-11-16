@@ -3,7 +3,8 @@ add_library(klogg_plugins STATIC
   include/pluginprocess.h src/pluginprocess.cpp
   include/pluginrepository.h src/pluginrepository.cpp
   include/pluginstorage.h src/pluginstorage.cpp
-  include/pluginmanager.h src/pluginmanager.cpp)
+  include/pluginmanager.h src/pluginmanager.cpp
+  include/pythonruntime.h src/pythonruntime.cpp)
 set_target_properties(klogg_plugins PROPERTIES AUTOMOC ON)
 target_include_directories(klogg_plugins PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(klogg_plugins PUBLIC project_options project_warnings

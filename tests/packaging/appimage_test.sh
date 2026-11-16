@@ -155,6 +155,10 @@ touch squashfs-root/usr/plugins/platforms/libqoffscreen.so
 if [[ "${TEST_FAILURE:-}" != sqlite ]]; then
   touch squashfs-root/usr/lib/sqldrivers/libqsqlite.so
 fi
+cp -a "$TEST_PYTHON_RUNTIME" squashfs-root/usr/bin/python_runtime
+if [[ "${TEST_FAILURE:-}" == python-runtime ]]; then
+  rm squashfs-root/usr/bin/python_runtime/worker_bootstrap.py
+fi
 EOF
 chmod +x "$test_root/image-fixture"
 
@@ -165,6 +169,7 @@ validate_case() {
   cp "$test_root/image-fixture" "$dir/cilogg-test.AppImage"
   (
     export TEST_ARCH=aarch64 TEST_FAILURE="$failure" TEST_LOG="$dir/startup.log" TMPDIR="$dir"
+    export TEST_PYTHON_RUNTIME="$repo_root/src/app/python_runtime"
     bash "$repo_root/packaging/linux/appimage/validate_appimage.sh" "$dir/cilogg-test.AppImage"
   ) > "$dir/output.log" 2>&1 || status=$?
   if [[ "$expected" == success && "$status" != 0 ]] || [[ "$expected" == failure && "$status" == 0 ]]; then
@@ -183,4 +188,5 @@ validate_case validate-machine bad-output failure
 validate_case validate-extraction extract failure
 validate_case validate-sqlite sqlite failure
 validate_case validate-plugins plugins failure
+validate_case validate-python-runtime python-runtime failure
 validate_case validate-startup startup failure

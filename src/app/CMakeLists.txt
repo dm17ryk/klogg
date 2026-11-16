@@ -315,20 +315,36 @@ if(WIN32)
     )
   endif()
 
-  add_custom_command(
-    TARGET klogg
-    POST_BUILD
-    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg>/python_runtime
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Copy Python runtime files"
-  )
+endif()
 
+# Script Runner, run_script / run_global_script and scenarios need the Python
+# runtime package. The location must match cilogg::pythonruntime::rootCandidates()
+# (src/plugins/src/pythonruntime.cpp):
+#  - macOS: <bundle>/Contents/Resources/python_runtime (no scripts in Contents/MacOS,
+#    which `codesign --deep` treats as code);
+#  - Windows and Linux: <executable dir>/python_runtime, next to the shipped plugins.
+foreach(app_target klogg klogg_portable)
+  if(APPLE)
+    set(python_runtime_output "$<TARGET_BUNDLE_CONTENT_DIR:${app_target}>/Resources/python_runtime")
+  else()
+    set(python_runtime_output "$<TARGET_FILE_DIR:${app_target}>/python_runtime")
+  endif()
   add_custom_command(
-    TARGET klogg_portable
+    TARGET ${app_target}
     POST_BUILD
-    COMMAND cmake -E copy_directory ${KLOGG_PYTHON_RUNTIME_DIR} $<TARGET_FILE_DIR:klogg_portable>/python_runtime
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${KLOGG_PYTHON_RUNTIME_DIR}" "${python_runtime_output}"
     COMMENT "Copy Python runtime files"
+    VERBATIM
+  )
+endforeach()
+# The macOS bundle is installed as a whole (install(TARGETS ... BUNDLE) above) and
+# already carries Contents/Resources/python_runtime.
+if(NOT APPLE)
+  install(
+    DIRECTORY "${KLOGG_PYTHON_RUNTIME_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/python_runtime"
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
   )
 endif()
 
