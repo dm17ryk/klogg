@@ -74,7 +74,8 @@ TEST_CASE( "labels_single_term_shows_match", "[workbench][U14]" )
     REQUIRE( plain.label( "xacby" ).isEmpty() );
 
     const auto longMatch = MatchLabeler::fromSearch( regexSearch( "x+" ) );
-    const auto label = longMatch.label( "<" + QString( 200, 'x' ) + ">" );
+    const auto label
+        = longMatch.label( "<" + QString( MatchLabeler::MaxLabelLength + 50, 'x' ) + ">" );
     REQUIRE( label.size() == MatchLabeler::MaxLabelLength );
 }
 
@@ -155,4 +156,46 @@ TEST_CASE( "labels_inverse_and_empty", "[workbench][U14]" )
     REQUIRE( MatchLabeler::fromSearch( RegularExpressionPattern( "x", true, true, false, false ) )
                  .isEmpty() );
     REQUIRE( MatchLabeler::fromSearch( RegularExpressionPattern() ).isEmpty() );
+}
+
+TEST_CASE( "labels_filter_alternative_that_matched", "[workbench][U14]" )
+{
+    // A predefined filter whose pattern is several alternatives names the one that matched,
+    // not the whole pattern (Dmitry's "(C_PROC:)|(EHCP)|(EHCI)|(WiFi)|(\[TX\])" filter).
+    const QString pattern = R"((C_PROC:)|(EHCP)|(EHCI)|(WiFi)|(\[TX\]))";
+    const auto unnamed
+        = MatchLabeler::fromSearch( regexSearch( pattern ), { filter( "", pattern, true ) } );
+    REQUIRE_FALSE( unnamed.isEmpty() );
+    CHECK( unnamed.label( "Par(48)EHCP0290000" ) == "EHCP" );
+    CHECK( unnamed.label( "08:36:41.893 [TX] - GET VERSION:00;" ) == R"(\[TX\])" );
+    CHECK( unnamed.label( "(C_PROC:) WiFi up" ) == "C_PROC:, WiFi" );
+    CHECK( unnamed.label( "nothing" ).isEmpty() );
+
+    // A filter with a name of its own keeps the name in front.
+    const auto named
+        = MatchLabeler::fromSearch( regexSearch( pattern ), { filter( "Panel", pattern, true ) } );
+    CHECK( named.label( "Par(48)EHCP0290000" ) == "Panel: EHCP" );
+    CHECK( named.preferredColumnChars() >= QString( "Panel: C_PROC:" ).size() );
+
+    // Inline options before an alternative still apply to the alternatives after it.
+    const auto options = MatchLabeler::fromSearch( regexSearch( "(?i)warn|error" ),
+                                                   { filter( "", "(?i)warn|error", true ) } );
+    CHECK( options.label( "ERROR: disk" ) == "error" );
+
+    // A filter of one alternative still names the filter.
+    const auto single
+        = MatchLabeler::fromSearch( regexSearch( "(EHCP)" ), { filter( "Ehcp", "(EHCP)", true ) } );
+    CHECK( single.label( "x EHCP y" ) == "Ehcp" );
+}
+
+TEST_CASE( "labels_typed_alternatives_without_group_parentheses", "[workbench][U14]" )
+{
+    const auto labeler = MatchLabeler::fromSearch( regexSearch( R"((EHCP)|(WiFi)|(a)(b))" ) );
+    CHECK( labeler.label( "x EHCP" ) == "EHCP" );
+    CHECK( labeler.label( "ab" ) == "(a)(b)" );
+    CHECK( MatchLabeler::alternativeDisplayName( "(x|y)" ) == "x|y" );
+    CHECK( MatchLabeler::alternativeDisplayName( "(?:x)" ) == "(?:x)" );
+    CHECK( MatchLabeler::alternativeDisplayName( R"((a\)))" ) == R"(a\))" );
+    CHECK( MatchLabeler::alternativeDisplayName( "([)])" ) == "[)]" );
+    CHECK( MatchLabeler::alternativeDisplayName( "(a" ) == "(a" );
 }

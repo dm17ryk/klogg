@@ -58,6 +58,10 @@ private Q_SLOTS:
     void onError( QSerialPort::SerialPortError error );
 
 private:
+#ifndef KLOGG_SHARED_SERIAL_WRITER
+    // Appends a [TX] line for `data` to the capture file when transmits are logged.
+    void logTransmission( const QByteArray& data, bool sensitive );
+#endif
 #ifdef KLOGG_SHARED_SERIAL_WRITER
     friend struct SerialCaptureWorkerTestAccess;
     friend class StreamSession;

@@ -20,11 +20,13 @@
 #include "logpane.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QFocusEvent>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScopeGuard>
@@ -359,7 +361,8 @@ void LogPane::setPaneId( const QString& paneId )
 void LogPane::retranslate()
 {
     placeholder_->setText(
-        tr( "Empty pane.\nOpen a file here, or move a tab here with its menu Move to Pane." ) );
+        tr( "Empty pane.\nOpen a file here, or move a tab here with its menu Move to Pane.\n"
+            "Right-click here for more pane commands." ) );
 }
 
 void LogPane::changeEvent( QEvent* event )
@@ -409,6 +412,17 @@ void LogPane::focusInEvent( QFocusEvent* event )
     if ( auto* current = tabs_->currentWidget(); current != nullptr && tabs_->isVisible() ) {
         current->setFocus();
     }
+}
+
+void LogPane::contextMenuEvent( QContextMenuEvent* event )
+{
+    if ( placeholder_->isVisible() ) {
+        Q_EMIT activated( this );
+        Q_EMIT emptyContextMenuRequested( this, event->globalPos() );
+        event->accept();
+        return;
+    }
+    QWidget::contextMenuEvent( event );
 }
 
 void LogPane::mousePressEvent( QMouseEvent* event )
@@ -572,6 +586,18 @@ void LogPaneArea::connectPane( LogPane* pane )
             contextMenuExtension_( menu, pane, localIndex );
         }
     } );
+    connect( pane, &LogPane::emptyContextMenuRequested, this,
+             [ this ]( LogPane* emptyPane, const QPoint& globalPosition ) {
+                 if ( !emptyPaneMenuExtension_ ) {
+                     return;
+                 }
+                 QMenu menu( emptyPane );
+                 menu.setObjectName( QStringLiteral( "emptyPaneContextMenu" ) );
+                 emptyPaneMenuExtension_( menu, emptyPane );
+                 if ( !menu.isEmpty() ) {
+                     menu.exec( globalPosition );
+                 }
+             } );
 }
 
 void LogPaneArea::releasePane( LogPane* pane )
@@ -1028,6 +1054,11 @@ bool LogPaneArea::resetToSinglePane()
 void LogPaneArea::setTabContextMenuExtension( TabContextMenuExtension extension )
 {
     contextMenuExtension_ = std::move( extension );
+}
+
+void LogPaneArea::setEmptyPaneContextMenuExtension( EmptyPaneContextMenuExtension extension )
+{
+    emptyPaneMenuExtension_ = std::move( extension );
 }
 
 void LogPaneArea::setAlwaysShowTabBar( bool alwaysShow )

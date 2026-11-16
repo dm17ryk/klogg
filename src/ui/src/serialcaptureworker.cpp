@@ -301,16 +301,27 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
                                   .arg( data.size() ) );
     }
 
-    if ( !port_->waitForBytesWritten( 1000 ) ) {
+    const bool transmitted = port_->waitForBytesWritten( 1000 );
+    if ( !transmitted ) {
         Q_EMIT errorOccurred(
             tr( "Timed out writing to %1: %2" ).arg( settings_.portName, port_->errorString() ) );
     }
-    else {
+
+    // Log the transmission before reporting it: the session then tells the log view to reload,
+    // and the view must find the [TX] line already in the file.
+    logTransmission( data, sensitive );
+
+    if ( transmitted ) {
         const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" )
                                               : data.left( qMax<qint64>( 0, written ) );
         Q_EMIT dataTransmitted( observableData );
     }
+#endif
+}
 
+#ifndef KLOGG_SHARED_SERIAL_WRITER
+void SerialCaptureWorker::logTransmission( const QByteArray& data, bool sensitive )
+{
     if ( loggingEnabled_ && settings_.logTransmits && file_.isOpen() ) {
         QByteArray toWrite;
         const auto observableData = sensitive ? QByteArrayLiteral( "<redacted>" ) : data;
@@ -333,8 +344,8 @@ void SerialCaptureWorker::sendData( QByteArray data, bool sensitive )
             file_.flush();
         }
     }
-#endif
 }
+#endif
 
 void SerialCaptureWorker::appendToFile( QByteArray data )
 {

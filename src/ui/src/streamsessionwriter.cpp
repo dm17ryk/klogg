@@ -600,6 +600,9 @@ void StreamSession::acceptWriteSnapshot( BackendWriteSnapshotPtr snapshot )
         Q_EMIT dataTransmitted( observable );
         if ( !guard || !matches( epoch, writerEndpointId_, workerGeneration_ ) || backendRetired_ )
             return;
+        Q_EMIT captureFileUpdated( settings_.filePath );
+        if ( !guard || !matches( epoch, writerEndpointId_, workerGeneration_ ) || backendRetired_ )
+            return;
     }
     if ( !publishWriteFailures() )
         return;

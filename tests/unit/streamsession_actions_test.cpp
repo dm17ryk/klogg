@@ -748,3 +748,21 @@ TEST_CASE( "An observation handler may destroy its session safely",
     }
     CHECK( guard.isNull() );
 }
+
+TEST_CASE( "Received serial data tells the view its capture file grew",
+           "[serial][session][actions]" )
+{
+    // The log view of a COM tab reloads on this signal; without it a sent command and its echo
+    // appeared seconds late, whenever the file system reported the open capture file's growth.
+    StreamSession session( settingsFor( QStringLiteral( "TEST_CAPTURE_UPDATE" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy updates( &session, &StreamSession::captureFileUpdated );
+
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "GET VERSION:00;\r\n" ) );
+    REQUIRE( updates.size() == 1 );
+    CHECK( updates.front().front().toString() == QStringLiteral( "logical-actions-test.log" ) );
+
+    // A partial line is already in the file too.
+    StreamSessionTestAccess::feedData( session, QByteArrayLiteral( "8_11_2" ) );
+    CHECK( updates.size() == 2 );
+}

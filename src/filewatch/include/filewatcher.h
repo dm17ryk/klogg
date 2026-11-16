@@ -54,6 +54,11 @@ struct EfswFileWatcherDeleter {
     void operator()( EfswFileWatcher* p ) const;
 };
 
+// Whether two spellings of a path name the same file: relative or absolute, '/' or '\', and
+// (on Windows) any letter case. Change notifications come both from the native watcher and
+// from writers inside CILogg, which spell the same path differently.
+bool isSameWatchedPath( const QString& left, const QString& right );
+
 class FileWatcher : public QObject {
     Q_OBJECT
   public:

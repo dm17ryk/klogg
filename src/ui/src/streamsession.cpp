@@ -501,7 +501,14 @@ void StreamSession::setupWorker()
     connect( worker_, &SerialCaptureWorker::dataReceived, this,
              &StreamSession::handleDataReceived );
     connect( worker_, &SerialCaptureWorker::dataTransmitted, this,
-             [ this ]( const QByteArray& data ) { Q_EMIT dataTransmitted( data ); } );
+             [ this ]( const QByteArray& data ) {
+                 // The worker logs the transmitted bytes to the capture file before this signal.
+                 const QPointer<StreamSession> guard( this );
+                 Q_EMIT dataTransmitted( data );
+                 if ( guard ) {
+                     Q_EMIT captureFileUpdated( settings_.filePath );
+                 }
+             } );
 #endif
 }
 
@@ -588,6 +595,11 @@ void StreamSession::handleDataReceived( const QByteArray& data )
     }
 
     const QPointer<StreamSession> safeSession = this;
+    // The worker wrote these bytes to the capture file before reporting them.
+    Q_EMIT captureFileUpdated( settings_.filePath );
+    if ( !safeSession ) {
+        return;
+    }
     const auto generation = connectionOpen_ && settings_.useForActions
                                     && settings_.autoResponsesEnabled
                                     && ActionsManager::instance().autoResponsesEnabled()

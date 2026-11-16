@@ -53,6 +53,7 @@
 #include <utility>
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCompleter>
 #include <QCoreApplication>
@@ -62,6 +63,7 @@
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
@@ -86,12 +88,20 @@
 #include "infoline.h"
 #include "quickfindpattern.h"
 #include "savedsearches.h"
+#include "searchbarlayout.h"
 #include "shortcuts.h"
 #include "startupprogress.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
 
 namespace {
+// Characters the search pattern box keeps room for in a narrow pane.
+constexpr int SearchPatternMinimumChars = 16;
+// Characters the visibility and predefined-filter combo boxes shrink to.
+constexpr int ShrunkComboBoxChars = 2;
+// A pane can be this many times narrower than the unfolded search bar needed.
+constexpr int PaneWidthReduction = 2;
+
 MatchMode matchModeFromString( const QString& value )
 {
     const auto normalized = value.trimmed().toLower();
@@ -1682,7 +1692,8 @@ void CrawlerWidget::setup()
     visibilityView->setMovement( QListView::Static );
     // visibilityView->setMinimumWidth( 170 ); // Only needed with custom style-sheet
 
-    visibilityBox_ = new QComboBox();
+    auto* visibilityCombo = new WidePopupComboBox();
+    visibilityBox_ = visibilityCombo;
     visibilityBox_->setObjectName( QStringLiteral( "visibilityComboBox" ) );
     visibilityBox_->setAccessibleName( tr( "Filtered view visibility" ) );
     visibilityBox_->setModel( visibilityModel_ );
@@ -1832,7 +1843,8 @@ void CrawlerWidget::setup()
 
     // Construct the Search line
     searchLineCompleter_ = new QCompleter( savedSearches_->recentSearches(), this );
-    searchLineEdit_ = new QComboBox;
+    auto* searchCombo = new WidePopupComboBox;
+    searchLineEdit_ = searchCombo;
     searchLineEdit_->setObjectName( QStringLiteral( "searchLineEdit" ) );
     searchLineEdit_->setAccessibleName( tr( "Search pattern history" ) );
     searchLineEdit_->setEditable( true );
@@ -1907,7 +1919,11 @@ void CrawlerWidget::setup()
     predefinedFilters_->setObjectName( QStringLiteral( "predefinedFiltersComboBox" ) );
     predefinedFilters_->setAccessibleName( tr( "Predefined filters" ) );
 
-    auto* searchLineLayout = new QHBoxLayout;
+    // The search bar is a widget of its own, so a narrow pane can fold its least important
+    // buttons into an overflow menu and keep the search pattern box usable.
+    auto* searchBar = new QWidget;
+    searchBar->setObjectName( QStringLiteral( "searchBar" ) );
+    auto* searchLineLayout = new QHBoxLayout( searchBar );
     searchLineLayout->setContentsMargins( 2, 2, 2, 2 );
 
     searchLineLayout->addWidget( visibilityBox_ );
@@ -1926,6 +1942,71 @@ void CrawlerWidget::setup()
     searchLineLayout->addWidget( clearResultsButton_ );
     searchLineLayout->addWidget( searchInfoLine_ );
 
+    // The pattern box keeps room for a typical pattern; the info line ("301 matches found")
+    // and the two other combo boxes give way first.
+    searchLineEdit_->setMinimumWidth( searchLineEdit_->fontMetrics().averageCharWidth()
+                                      * SearchPatternMinimumChars );
+    searchCombo->setPopupWidthReference( searchBar );
+    // Shrunk to a few characters, the visibility list still opens readable.
+    visibilityCombo->setPopupWidthReference( visibilityCombo );
+    for ( auto* comboBox : { visibilityBox_, static_cast<QComboBox*>( predefinedFilters_ ) } ) {
+        comboBox->setSizeAdjustPolicy( QComboBox::AdjustToMinimumContentsLengthWithIcon );
+        comboBox->setMinimumContentsLength( ShrunkComboBoxChars );
+        comboBox->setSizePolicy( QSizePolicy::Preferred, QSizePolicy::Fixed );
+    }
+    searchInfoLine_->setSizePolicy( QSizePolicy::Ignored, QSizePolicy::Minimum );
+    searchInfoLine_->setMinimumWidth( 0 );
+
+    auto* overflowButton = new QToolButton;
+    overflowButton->setObjectName( QStringLiteral( "searchBarOverflowButton" ) );
+    overflowButton->setAccessibleName( tr( "More search options" ) );
+    overflowButton->setToolTip( tr( "More search options" ) );
+    overflowButton->setText( QStringLiteral( "»" ) );
+    overflowButton->setAutoRaise( true );
+    overflowButton->setFocusPolicy( Qt::NoFocus );
+    searchLineLayout->addWidget( overflowButton );
+
+    auto* collapser = new SearchBarCollapser( searchBar, overflowButton );
+    // In collapse order: the first folds first.
+    const auto mirror = [ collapser ]( QToolButton* button ) {
+        collapser->addCollapsible( button, SearchBarCollapser::mirrorAction( button, collapser ) );
+    };
+    mirror( keepSearchResultsButton_ );
+    mirror( clearResultsButton_ );
+    {
+        auto* advanced = new QAction( tr( "Advanced filter options..." ), collapser );
+        connect( advanced, &QAction::triggered, this, [ this, overflowButton ] {
+            if ( auto* menu = advancedFilterButton_->menu() ) {
+                menu->popup( overflowButton->mapToGlobal( QPoint{ 0, overflowButton->height() } ) );
+            }
+        } );
+        collapser->addCollapsible( advancedFilterButton_, advanced );
+    }
+    mirror( searchRefreshButton_ );
+    mirror( booleanButton_ );
+    mirror( inverseButton_ );
+    mirror( useRegexpButton_ );
+    mirror( matchCaseButton_ );
+    {
+        // Last of all, the visibility combo folds into a submenu of the same choices.
+        auto* visibilityMenu = new QMenu( tr( "Show" ), overflowButton );
+        visibilityMenu->setObjectName( QStringLiteral( "searchBarVisibilityMenu" ) );
+        connect( visibilityMenu, &QMenu::aboutToShow, this, [ this, visibilityMenu ] {
+            visibilityMenu->clear();
+            auto* group = new QActionGroup( visibilityMenu );
+            for ( int index = 0; index < visibilityBox_->count(); ++index ) {
+                auto* choice = visibilityMenu->addAction( visibilityBox_->itemText( index ) );
+                choice->setCheckable( true );
+                choice->setChecked( index == visibilityBox_->currentIndex() );
+                choice->setActionGroup( group );
+                connect( choice, &QAction::triggered, this,
+                         [ this, index ] { visibilityBox_->setCurrentIndex( index ); } );
+            }
+        } );
+        collapser->addCollapsible( visibilityBox_, visibilityMenu->menuAction() );
+    }
+    collapser->setMinimumWidthReduction( PaneWidthReduction );
+
     // Construct the bottom window
     tabbedFilteredView_ = new QTabWidget;
     tabbedFilteredView_->setObjectName( QStringLiteral( "filteredViewsTabWidget" ) );
@@ -1938,7 +2019,7 @@ void CrawlerWidget::setup()
     tabbedFilteredView_->setTabBarAutoHide( true );
 
     auto* bottomMainLayout = new QVBoxLayout;
-    bottomMainLayout->addLayout( searchLineLayout );
+    bottomMainLayout->addWidget( searchBar );
     bottomMainLayout->addWidget( tabbedFilteredView_ );
     bottomMainLayout->setContentsMargins( 2, 2, 2, 2 );
     bottomWindow->setLayout( bottomMainLayout );

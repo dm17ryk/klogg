@@ -30,6 +30,7 @@ add_executable(cilogg_tests
     previewdecoder_test.cpp
     previewsource_test.cpp
     previewcommands_test.cpp
+    searchbarlayout_test.cpp
     serialcapturesettings_test.cpp
     streamsession_actions_test.cpp
     streamsession_owner_test.cpp

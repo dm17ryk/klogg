@@ -90,6 +90,7 @@
 #include "highlightersmenu.h"
 #include "log.h"
 #include "overview.h"
+#include "panemenuhost.h"
 #include "previewmanager.h"
 #include "quickfind.h"
 #include "quickfindpattern.h"
@@ -666,6 +667,7 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
             connect( clearAllAction, &QAction::triggered, this,
                      &AbstractLogView::clearColorLabels );
         }
+        updatePaneMenu();
         // Display the popup (blocking)
         popupMenu_->exec( QCursor::pos( activeScreen( this ) ) );
 
@@ -1983,7 +1985,39 @@ LinesCount AbstractLogView::getNbVisibleLines() const
 LineLength AbstractLogView::getNbVisibleCols() const
 {
     const auto scrollBarWidth = verticalScrollBar()->isVisible() ? verticalScrollBar()->width() : 0;
-    return LineLength{ ( viewport()->width() - leftMarginPx_ - scrollBarWidth ) / charWidth_ + 1 };
+    return LineLength{ ( textAreaWidthPx() - scrollBarWidth ) / charWidth_ + 1 };
+}
+
+int AbstractLogView::annotationAreaWidthPx() const
+{
+    // Same padding as the line numbers on each side of the text.
+    constexpr int AnnotationPaddingPx = 3;
+    const auto chars = annotationColumnChars();
+    return chars > 0 ? 2 * AnnotationPaddingPx + charWidth_ * chars : 0;
+}
+
+int AbstractLogView::textAreaWidthPx() const
+{
+    return viewport()->width() - leftMarginPx_ - annotationAreaWidthPx();
+}
+
+QString AbstractLogView::elidedAnnotationAt( const QPoint& position ) const
+{
+    if ( rightMarginPx_ <= 0 || annotationTextWidthPx_ <= 0 || charHeight_ <= 0
+         || position.x() < viewport()->width() - rightMarginPx_ ) {
+        return {};
+    }
+    const auto row = convertCoordToLine( position.y() );
+    if ( !row || *row >= logData_->getNbLine() ) {
+        return {};
+    }
+    const auto annotation = lineAnnotation( *row, logData_->getLineString( *row ) );
+    const QFontMetrics metrics( font() );
+    if ( annotation.isEmpty()
+         || metrics.horizontalAdvance( annotation ) <= annotationTextWidthPx_ ) {
+        return {};
+    }
+    return annotation;
 }
 
 // Converts the mouse x, y coordinates to the line number in the file
@@ -2400,6 +2434,22 @@ void AbstractLogView::createMenu()
     popupMenu_->addAction( saveDefaultSplitterSizesAction_ );
     popupMenu_->addAction( saveToFileAction_ );
     popupMenu_->addAction( saveSelectedToFileAction_ );
+    popupMenu_->addSeparator();
+    // Split, move, close and merge panes, as in the View menu; filled when the menu opens.
+    paneMenu_ = popupMenu_->addMenu( tr( "Panes" ) );
+    paneMenu_->setObjectName( QStringLiteral( "logViewPaneMenu" ) );
+}
+
+void AbstractLogView::updatePaneMenu()
+{
+    if ( paneMenu_ == nullptr ) {
+        return;
+    }
+    paneMenu_->clear();
+    if ( auto* host = dynamic_cast<PaneMenuHost*>( window() ) ) {
+        host->populatePaneMenu( *paneMenu_, this );
+    }
+    paneMenu_->menuAction()->setVisible( !paneMenu_->isEmpty() );
 }
 
 void AbstractLogView::updatePreviewMenu()
@@ -2593,21 +2643,25 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         // contentStartPosX += SEPARATOR_WIDTH;
     }
 
-    // Draw the optional annotation column (for example, the filter that selected a line)
-    int annotationAreaStartX = 0;
-    int annotationTextWidth = 0;
-    if ( const auto annotationChars = annotationColumnChars(); annotationChars > 0 ) {
-        annotationTextWidth = charWidth_ * annotationChars;
-        const auto annotationAreaWidth = 2 * LineNumberPadding + annotationTextWidth;
-        annotationAreaStartX = contentStartPosX;
-        painter->fillRect( contentStartPosX, 0, annotationAreaWidth, paintDeviceHeight,
+    // The optional annotation column (for example, the filter that selected a line) sits at the
+    // right edge; it is painted over the end of each line once the line is drawn.
+    const auto annotationAreaWidth = annotationAreaWidthPx();
+    const auto annotationAreaStartX = paintDeviceWidth - annotationAreaWidth;
+    const auto annotationTextWidth
+        = annotationAreaWidth > 0 ? annotationAreaWidth - 2 * LineNumberPadding : 0;
+    const auto drawAnnotationBackground = [ & ]( int top, int height ) {
+        painter->fillRect( annotationAreaStartX, top, annotationAreaWidth, height,
                            palette.color( QPalette::AlternateBase ) );
         painter->setPen( palette.color( QPalette::Mid ) );
-        painter->drawLine( contentStartPosX + annotationAreaWidth - SeparatorWidth, 0,
-                           contentStartPosX + annotationAreaWidth - SeparatorWidth,
-                           paintDeviceHeight );
-        contentStartPosX += annotationAreaWidth;
+        painter->drawLine( annotationAreaStartX, top, annotationAreaStartX, top + height - 1 );
+    };
+    if ( annotationAreaWidth > 0 ) {
+        drawAnnotationBackground( 0, paintDeviceHeight );
     }
+    const auto previousRightMarginPx = rightMarginPx_;
+    rightMarginPx_ = annotationAreaWidth;
+    annotationTextStartPx_ = annotationAreaStartX + LineNumberPadding;
+    annotationTextWidthPx_ = annotationTextWidth;
 
     painter->setPen( palette.color( QPalette::Text ) );
     painter->drawLine( BulletAreaWidth, 0, BulletAreaWidth, paintDeviceHeight - 1 );
@@ -2617,12 +2671,13 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
     const auto previousLeftMarginPx = leftMarginPx_;
     leftMarginPx_ = contentStartPosX + SeparatorWidth;
 
-    if ( useTextWrap_
-         && wrappedLayoutWidth_ != std::max( 1, viewport()->width() - leftMarginPx_ - 1 ) ) {
+    if ( useTextWrap_ && wrappedLayoutWidth_ != std::max( 1, textAreaWidthPx() - 1 ) ) {
         invalidateWrappedLayouts();
         updateScrollBars();
     }
-    else if ( !useTextWrap_ && leftMarginPx_ != previousLeftMarginPx ) {
+    else if ( !useTextWrap_
+              && ( leftMarginPx_ != previousLeftMarginPx
+                   || rightMarginPx_ != previousRightMarginPx ) ) {
         // The margin grew or shrank (line numbers, annotation column): fewer or more columns
         // fit, so the horizontal range must still reach the end of the longest line. It is
         // recomputed after this paint, as a scroll bar change can resize the viewport.
@@ -2929,11 +2984,15 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
             painter->drawText( lineNumberAreaStartX + LineNumberPadding, yPos + fontAscent,
                                lineNumberStr );
         }
-        if ( !annotation.isEmpty() ) {
-            painter->setPen( palette.color( QPalette::Text ) );
-            painter->drawText(
-                annotationAreaStartX + LineNumberPadding, yPos + fontAscent,
-                painter->fontMetrics().elidedText( annotation, Qt::ElideRight, annotationTextWidth ) );
+        if ( annotationAreaWidth > 0 ) {
+            // Over the end of the line just drawn; the full label is in the column's tooltip.
+            drawAnnotationBackground( yPos, finalLineHeight );
+            if ( !annotation.isEmpty() ) {
+                painter->setPen( palette.color( QPalette::Text ) );
+                painter->drawText( annotationTextStartPx_, yPos + fontAscent,
+                                   painter->fontMetrics().elidedText( annotation, Qt::ElideRight,
+                                                                      annotationTextWidth ) );
+            }
         }
         for ( size_t i = 0u; i < wrappedLineView.wrappedLinesCount(); ++i ) {
             wrappedLinesInfo_.emplace_back(
@@ -3131,7 +3190,7 @@ void AbstractLogView::invalidateWrappedLayouts()
     wrappedLayouts_.clear();
     wrappedScrollRows_.clear();
     firstWrappedRow_ = 0;
-    wrappedLayoutWidth_ = std::max( 1, viewport()->width() - leftMarginPx_ - 1 );
+    wrappedLayoutWidth_ = std::max( 1, textAreaWidthPx() - 1 );
     LOG_DEBUG << "Invalidated wrapped layouts: line=" << firstLine_
               << " preserveColumn=" << ( pendingWrapAnchor_ ? pendingWrapAnchor_->get() : -1 )
               << " width=" << wrappedLayoutWidth_;
@@ -3139,7 +3198,7 @@ void AbstractLogView::invalidateWrappedLayouts()
 
 WrappedString& AbstractLogView::wrappedLayoutForLine( LineNumber line ) const
 {
-    const auto width = std::max( 1, viewport()->width() - leftMarginPx_ - 1 );
+    const auto width = std::max( 1, textAreaWidthPx() - 1 );
     if ( width != wrappedLayoutWidth_ ) {
         // Margins and scrollbar visibility can change while preparing a paint.
         const_cast<AbstractLogView*>( this )->invalidateWrappedLayouts();

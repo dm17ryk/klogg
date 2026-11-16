@@ -200,33 +200,126 @@ void MainWindow::populateMoveToPaneMenu( QMenu* menu, const QString& tabId )
 
 void MainWindow::extendTabContextMenu( QMenu& menu, LogPane* pane, int index )
 {
-    const auto tabId = pane->tabs()->tabIdAt( index );
-    QPointer<LogPane> safePane = pane;
-
     menu.addSeparator();
-    auto* moveMenu = menu.addMenu( tr( "Move to Pane" ) );
-    moveMenu->setObjectName( QStringLiteral( "tabMoveToPaneMenu" ) );
-    populateMoveToPaneMenu( moveMenu, tabId );
+    addPaneCommands( menu, pane, pane->tabs()->tabIdAt( index ),
+                     QStringLiteral( "tabMoveToPaneMenu" ) );
+}
+
+void MainWindow::addPaneCommands( QMenu& menu, LogPane* pane, const QString& tabId,
+                                  const QString& moveMenuObjectName )
+{
+    QPointer<LogPane> safePane = pane;
+    const auto severalPanes = paneArea_->paneCount() > 1;
+
+    if ( !tabId.isEmpty() ) {
+        auto* moveMenu = menu.addMenu( tr( "Move to Pane" ) );
+        moveMenu->setObjectName( moveMenuObjectName );
+        populateMoveToPaneMenu( moveMenu, tabId );
+    }
 
     auto* right = menu.addAction( tr( "Split Right" ) );
+    right->setObjectName( QStringLiteral( "paneMenuSplitRightAction" ) );
+    right->setShortcut( splitPaneRightAction->shortcut() );
     connect( right, &QAction::triggered, this, [ this, safePane ] {
         if ( safePane ) {
             splitPane( safePane, Qt::Horizontal );
         }
     } );
     auto* down = menu.addAction( tr( "Split Down" ) );
+    down->setObjectName( QStringLiteral( "paneMenuSplitDownAction" ) );
+    down->setShortcut( splitPaneDownAction->shortcut() );
     connect( down, &QAction::triggered, this, [ this, safePane ] {
         if ( safePane ) {
             splitPane( safePane, Qt::Vertical );
         }
     } );
+
+    menu.addSeparator();
     auto* closeEntry = menu.addAction( tr( "Close Pane" ) );
-    closeEntry->setEnabled( paneArea_->paneCount() > 1 );
+    closeEntry->setObjectName( QStringLiteral( "paneMenuCloseAction" ) );
+    closeEntry->setEnabled( severalPanes );
     connect( closeEntry, &QAction::triggered, this, [ this, safePane ] {
         if ( safePane ) {
             closePane( safePane, PaneTabsOnClose::Ask );
         }
     } );
+    auto* equalize = menu.addAction( tr( "Equalize Panes" ) );
+    equalize->setObjectName( QStringLiteral( "paneMenuEqualizeAction" ) );
+    equalize->setEnabled( severalPanes );
+    connect( equalize, &QAction::triggered, this, [ this ] { paneArea_->equalize(); } );
+    auto* merge = menu.addAction( tr( "Merge All Panes" ) );
+    merge->setObjectName( QStringLiteral( "paneMenuMergeAction" ) );
+    merge->setEnabled( severalPanes );
+    connect( merge, &QAction::triggered, this, [ this ] { mergeAllPanes(); } );
+}
+
+void MainWindow::populatePaneMenu( QMenu& menu, QWidget* origin )
+{
+    // The origin is a view deep inside a tab, so the pane is found by ancestry.
+    LogPane* pane = nullptr;
+    for ( auto* candidate : paneArea_->panes() ) {
+        if ( origin != nullptr && ( candidate == origin || candidate->isAncestorOf( origin ) ) ) {
+            pane = candidate;
+            break;
+        }
+    }
+    if ( pane == nullptr ) {
+        return;
+    }
+    QString tabId;
+    const auto* tabs = pane->tabs();
+    for ( int index = 0; index < tabs->count(); ++index ) {
+        const auto* tab = tabs->widget( index );
+        if ( tab == origin || ( tab != nullptr && tab->isAncestorOf( origin ) ) ) {
+            tabId = tabs->tabIdAt( index );
+            break;
+        }
+    }
+    addPaneCommands( menu, pane, tabId, QStringLiteral( "logViewMoveToPaneMenu" ) );
+}
+
+void MainWindow::populateEmptyPaneMenu( QMenu& menu, LogPane* pane )
+{
+    QPointer<LogPane> safePane = pane;
+    // Files opened now open in the active pane: make it this one first.
+    const auto openHere = [ this, safePane ]( QAction* command ) {
+        if ( safePane && command != nullptr ) {
+            paneArea_->setActivePane( safePane );
+            command->trigger();
+        }
+    };
+    auto* openFile = menu.addAction( tr( "Open File Here..." ) );
+    openFile->setObjectName( QStringLiteral( "emptyPaneOpenFileAction" ) );
+    connect( openFile, &QAction::triggered, this, [ openHere, this ] { openHere( openAction ); } );
+    auto* openCom = menu.addAction( tr( "Open COM Port Here..." ) );
+    openCom->setObjectName( QStringLiteral( "emptyPaneOpenComPortAction" ) );
+    connect( openCom, &QAction::triggered, this,
+             [ openHere, this ] { openHere( openComPortAction ); } );
+
+    // Any tab of another pane can move here.
+    auto* moveHere = menu.addMenu( tr( "Move Tab Here" ) );
+    moveHere->setObjectName( QStringLiteral( "emptyPaneMoveTabHereMenu" ) );
+    for ( auto* source : paneArea_->panes() ) {
+        if ( source == pane ) {
+            continue;
+        }
+        const auto* tabs = source->tabs();
+        for ( int index = 0; index < tabs->count(); ++index ) {
+            const auto tabId = tabs->tabIdAt( index );
+            auto* action = moveHere->addAction( tr( "%1 (pane %2)" )
+                                                    .arg( tabs->tabDisplayNameAt( index ) )
+                                                    .arg( paneArea_->paneIndexOf( source ) + 1 ) );
+            connect( action, &QAction::triggered, this, [ this, tabId, safePane ] {
+                if ( safePane ) {
+                    moveTabToPane( tabId, safePane );
+                }
+            } );
+        }
+    }
+    moveHere->setEnabled( !moveHere->isEmpty() );
+
+    menu.addSeparator();
+    addPaneCommands( menu, pane, {}, {} );
 }
 
 LogPane* MainWindow::splitPane( LogPane* pane, Qt::Orientation orientation )
