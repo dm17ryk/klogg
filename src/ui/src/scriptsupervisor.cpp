@@ -15,6 +15,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+#include "analysissource.h"
 #include "log.h"
 
 namespace {
@@ -166,6 +167,43 @@ CommanderResult ScriptSupervisor::runScript( const CommanderRequest& request )
         }
     }
 
+    if ( !request.source.isEmpty() && !hasCommanderTabSelector( request ) ) {
+        QString sourceError;
+        const auto source = AnalysisSource::parse( request.source, &sourceError );
+        if ( !source ) {
+            return { CommanderResultCode::InvalidRequest,
+                     sourceError,
+                     { { QStringLiteral( "reason" ), QStringLiteral( "invalid_source" ) } } };
+        }
+        if ( source->kind != AnalysisSource::Kind::Focused ) {
+            const auto resolution = resolveAnalysisSource(
+                *source, OpenSource::fromVariantList( toolSources() ), SourceRules::liveComTabs() );
+            if ( !resolution.ok() ) {
+                LOG_DEBUG << "run_script source rejected reason=" << resolution.reason;
+                return { CommanderResultCode::InvalidRequest,
+                         resolution.message,
+                         { { QStringLiteral( "reason" ), resolution.reason } } };
+            }
+            QVariantList runs;
+            for ( const auto& tabId : resolution.tabIds ) {
+                auto one = request;
+                one.source.clear();
+                one.windowIndex.reset();
+                one.tabId = tabId;
+                const auto started = runScript( one );
+                if ( !started.ok() ) {
+                    return started;
+                }
+                if ( const auto* run = findRun( tabId ) ) {
+                    runs.push_back( statusPayload( run ) );
+                }
+            }
+            LOG_DEBUG << "run_script on source=" << request.source << " runs=" << runs.size();
+            return commanderSuccess( {}, { { QStringLiteral( "source" ), request.source },
+                                           { QStringLiteral( "runs" ), runs } } );
+        }
+    }
+
     QString errorMessage;
     const auto target = resolveTargetInfo( request, false, &errorMessage );
     if ( target.isEmpty() ) {
@@ -195,6 +233,19 @@ CommanderResult ScriptSupervisor::runScript( const CommanderRequest& request )
     auto* createdRun = findRun( tabId );
     startRunProcess( createdRun );
     return commanderSuccess();
+}
+
+QVariantList ScriptSupervisor::toolSources() const
+{
+    if ( !commanderExecutor_ ) {
+        return {};
+    }
+    CommanderRequest info;
+    info.action = CommanderAction::GetInfo;
+    const auto result = commanderExecutor_( info );
+    return result.ok() ? analysisSourcesFromWindowInfo(
+                             result.payload.value( QStringLiteral( "windows" ) ).toList() )
+                       : QVariantList{};
 }
 
 CommanderResult ScriptSupervisor::runGlobalScript( const CommanderRequest& request )

@@ -39,6 +39,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysissource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisruns.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/analysisruns.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginsourceruns.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginsourceruns.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysistextedit.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/analysisstatus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/valuecountdock.h

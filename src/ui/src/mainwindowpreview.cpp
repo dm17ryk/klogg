@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "analysissource.h"
 #include "crawlerwidget.h"
 #include "log.h"
 #include "logdata.h"
@@ -80,7 +81,23 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
     else {
         if ( !line )
             return invalid( "line_required" );
-        crawler = commanderTargetCrawler( request );
+        auto target = request;
+        if ( !request.source.isEmpty() && !hasCommanderTabSelector( request ) ) {
+            // U15b: a line names one source (focused tab, a tab or a file).
+            QString tabId;
+            if ( auto settled = resolvePreviewSource( request.source, &tabId ) )
+                return *settled;
+            target.source.clear();
+            target.windowIndex.reset();
+            target.tabId = tabId;
+            if ( !tabId.isEmpty() && !crawlerWidgetByTabId( tabId ) && windowForTab_ ) {
+                if ( auto* owner = windowForTab_( tabId ); owner && owner != this ) {
+                    LOG_DEBUG << "Routing preview_message to the window of tab " << tabId;
+                    return owner->executeCommanderRequest( target );
+                }
+            }
+        }
+        crawler = commanderTargetCrawler( target );
         if ( !crawler )
             return invalid( "source_not_found" );
         QString error;
@@ -149,6 +166,78 @@ CommanderResult MainWindow::commanderPreview( const CommanderRequest& request )
     const bool failed = result.value( "state" ) == "failed";
     return { failed ? CommanderResultCode::ExecutionFailed : CommanderResultCode::Success,
              failed ? result.value( "reason" ).toString() : QString(), result };
+}
+
+std::optional<CommanderResult> MainWindow::resolvePreviewSource( const QString& source,
+                                                                 QString* tabId )
+{
+    const auto refused = []( const QString& reason, const QString& message ) {
+        LOG_DEBUG << "Preview source rejected reason=" << reason;
+        return CommanderResult{ CommanderResultCode::InvalidRequest,
+                                message,
+                                { { "reason", reason } } };
+    };
+    QString message;
+    const auto parsed = AnalysisSource::parse( source, &message );
+    if ( !parsed )
+        return refused( "invalid_source", message );
+    auto resolution = resolveAnalysisSource( *parsed, OpenSource::fromVariantList( toolSources() ),
+                                             SourceRules::oneSource() );
+    if ( parsed->kind == AnalysisSource::Kind::Focused && !resolution.ok() ) {
+        // Without a listed focused tab, the window's current tab (if any) is used.
+        tabId->clear();
+        return std::nullopt;
+    }
+    if ( !resolution.ok() )
+        return refused( resolution.reason, resolution.message );
+    if ( !resolution.fileToOpen.isEmpty() ) {
+        // The line can be read once the file has loaded, as in the analysis docks.
+        if ( !loadFile( resolution.fileToOpen, false ) )
+            return refused( "source_not_found",
+                            tr( "Failed to open %1." ).arg( resolution.fileToOpen ) );
+        return commanderSuccess( tr( "Opened %1. Preview the line again once it has loaded." )
+                                     .arg( resolution.fileToOpen ),
+                                 { { "opened", resolution.fileToOpen },
+                                   { "state", "opening" },
+                                   { "complete", false } } );
+    }
+    *tabId = resolution.tabIds.front();
+    return std::nullopt;
+}
+
+CommanderResult MainWindow::previewSourceLine( const QString& source, quint64 line )
+{
+    QString tabId;
+    if ( auto settled = resolvePreviewSource( source, &tabId ) )
+        return *settled;
+    QPointer<CrawlerWidget> crawler
+        = tabId.isEmpty() ? currentCrawlerWidget() : crawlerWidgetByTabId( tabId );
+    auto* owner = this;
+    if ( !crawler && windowForTab_ ) {
+        if ( auto* window = windowForTab_( tabId ); window && window != this ) {
+            owner = window;
+            crawler = window->crawlerWidgetByTabId( tabId );
+        }
+    }
+    if ( !crawler )
+        return { CommanderResultCode::NotFound,
+                 tr( "The selected tab is closed." ),
+                 { { "reason", "source_not_found" } } };
+    QString error;
+    auto selected = crawler->analysisRequest( "sample", &error );
+    if ( !selected )
+        return { CommanderResultCode::InvalidRequest, error, { { "reason", error } } };
+    auto prepared = preparePreviewSource( selected->source, line - 1, true );
+    if ( !prepared.error.isEmpty() )
+        return { CommanderResultCode::InvalidRequest,
+                 prepared.error,
+                 { { "reason", prepared.error } } };
+    prepared.source[ "windowId" ] = owner->session_.windowId();
+    prepared.source[ "tabId" ] = owner->paneArea_->tabIdAt( owner->paneArea_->indexOf( crawler ) );
+    LOG_DEBUG << "Preview window line source=" << source.toStdString() << " line=" << line
+              << " tab=" << prepared.source.value( "tabId" ).toString().toStdString();
+    sendPreparedToPreview( prepared, QStringLiteral( "auto" ) );
+    return commanderSuccess( {}, { { "source", prepared.source }, { "line", line } } );
 }
 
 CommanderResult MainWindow::commanderPreviewDecoder( const CommanderRequest& request )

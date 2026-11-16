@@ -91,6 +91,75 @@ TEST_CASE( "Regex Lab commands support window selectors and round trip definitio
     CHECK_FALSE( CliParameters( { "cilogg", "command", "--action", "get_analysis_job", "--job-id", "id", "--window-index", "0" } ).parse_error );
 }
 
+TEST_CASE( "source_selector_through_cli_ipc_and_mcp: tab-bound tools take one source option",
+           "[commander][workbench][U15]" )
+{
+    const auto parse = []( QStringList arguments ) {
+        arguments.prepend( "command" );
+        arguments.prepend( "cilogg" );
+        return CliParameters( arguments );
+    };
+    // Every U15b consumer accepts --source; the value survives the IPC round trip.
+    const QList<QStringList> accepted{
+        { "--action", "invoke_plugin", "--plugin-id", "p", "--plugin-action", "a", "--source",
+          "all" },
+        { "--action", "open_plugin_view", "--plugin-id", "p", "--view-id", "main", "--source",
+          "tab:t-2" },
+        { "--action", "run_script", "--script-file", "s.py", "--source", "all" },
+        { "--action", "preview_message", "--analysis-json", R"({"line":3})", "--source",
+          "tab:t-1" },
+        { "--action", "search", "--text", "ERROR", "--source", "all", "--wait", "--timeout-ms",
+          "500" },
+    };
+    for ( const auto& arguments : accepted ) {
+        INFO( arguments.join( ' ' ).toStdString() );
+        const auto cli = parse( arguments );
+        REQUIRE_FALSE( cli.parse_error );
+        REQUIRE( cli.commander_request );
+        const auto restored = commanderRequestFromVariantMap(
+            commanderRequestToVariantMap( *cli.commander_request ) );
+        REQUIRE( restored );
+        CHECK( restored->source == arguments.at( arguments.indexOf( "--source" ) + 1 ) );
+        CHECK( restored->viewId == cli.commander_request->viewId );
+    }
+    const auto view = parse( { "--action", "open_plugin_view", "--plugin-id", "p", "--view-id",
+                               "main", "--window-index", "1" } );
+    REQUIRE_FALSE( view.parse_error );
+    CHECK( view.commander_request->viewId == "main" );
+    CHECK( view.commander_request->windowIndex == 1 );
+
+    // A file source is made absolute on the caller's side.
+    const auto file = parse( { "--action", "search", "--text", "x", "--source", "file:rel.log" } );
+    REQUIRE_FALSE( file.parse_error );
+    CHECK( file.commander_request->source
+           == "file:" + QFileInfo( QStringLiteral( "rel.log" ) ).absoluteFilePath() );
+
+    // A script needs either a tab selector or a source.
+    CHECK( parse( { "--action", "run_script", "--script-file", "s.py" } ).parse_error );
+    // Unsupported actions, bad selections and misplaced view ids are refused before IPC.
+    CHECK( parse( { "--action", "set_filter", "--filter-string", "x", "--source", "all" } )
+               .parse_error );
+    CHECK( parse( { "--action", "search", "--text", "x", "--source", "window" } ).parse_error );
+    CHECK( parse( { "--action", "search", "--text", "x", "--source", "tab:" } ).parse_error );
+    CHECK( parse( { "--action", "invoke_plugin", "--plugin-id", "p", "--view-id", "v" } )
+               .parse_error );
+    CHECK( parse( { "--action", "open_plugin_view", "--plugin-id", "p" } ).parse_error );
+    CHECK( parse( { "--action", "get_info", "--wait" } ).parse_error );
+    // IPC refuses a non-string source.
+    auto map
+        = commanderRequestToVariantMap( *parse( { "--action", "get_info" } ).commander_request );
+    map.insert( "source", 5 );
+    CHECK_FALSE( commanderRequestFromVariantMap( map ) );
+
+    // Native MCP discovers the same options (it builds its schema from this help text).
+    const CliParameters help( { "cilogg", "command", "--help" } );
+    const auto catalog = cilogg::mcp::parseCommandHelp( help.exit_message );
+    const auto options = catalog.value( "options" ).toObject();
+    CHECK( options.value( "source" ).toObject().value( "flag" ).toString() == "--source" );
+    CHECK( options.value( "view_id" ).toObject().value( "flag" ).toString() == "--view-id" );
+    CHECK( catalog.value( "commands" ).toObject().contains( "open_plugin_view" ) );
+}
+
 TEST_CASE( "Commander waits for readable responses without resending", "[commander][transport]" )
 {
     QTemporaryDir directory;

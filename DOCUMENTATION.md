@@ -147,6 +147,11 @@ and remote lab controller/agent/operator modes are listed in the
 The Script Runner view above shows its configuration and status controls before a
 script is selected. Choose a script and optional JSON arguments to begin.
 
+Tools that work on a tab (Regex Lab, Value Counts, plugin actions and views, Script
+Runner, Preview and search) choose their source the same way: the focused tab, a tab
+of any window, a file, or all open tabs. See
+[choosing what a tool works on](docs/source-picker.md).
+
 ### More investigation tools
 
 - [Discontiguous row selections](docs/discontiguous-selection.md)

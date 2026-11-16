@@ -705,6 +705,33 @@ void CrawlerWidget::applyCommanderAutomationSearch( const CommanderRequest& requ
     startNewSearch();
 }
 
+CommanderRequest CrawlerWidget::currentSearchRequest() const
+{
+    CommanderRequest request;
+    request.action = CommanderAction::Search;
+    request.searchText = searchLineEdit_->currentText();
+    request.searchCaseSensitive = matchCaseButton_->isChecked();
+    request.searchUseRegex = useRegexpButton_->isChecked();
+    request.searchInverseMatch = inverseButton_->isChecked();
+    request.searchUseBoolean = booleanButton_->isChecked();
+    request.searchAutoRefresh = searchRefreshButton_->isChecked();
+    request.searchKeepResults = keepSearchResultsButton_->isChecked();
+    const auto options = currentSearchOptions();
+    request.beforeContext = options.contextBefore;
+    request.afterContext = options.contextAfter;
+    request.maxMatches = options.maxMatches;
+    request.matchMode = QString::fromLatin1( matchModeName( currentMatchMode() ) );
+    return request;
+}
+
+void CrawlerWidget::showSearchSummary( const QString& text, const QString& details )
+{
+    searchInfoLine_->setPalette( searchInfoLineDefaultPalette_ );
+    searchInfoLine_->setText( text );
+    searchInfoLine_->setToolTip( details );
+    searchInfoLine_->show();
+}
+
 void CrawlerWidget::applyCommanderSearchOptions( const CommanderRequest& request )
 {
     const auto clampForGui = []( uint64_t value ) {
@@ -882,6 +909,19 @@ std::shared_ptr<const ViewContextInterface> CrawlerWidget::doGetViewContext() co
 //
 // Q_SLOTS:
 //
+
+void CrawlerWidget::startSearchFromSearchLine()
+{
+    // Only searches the user starts from the search line follow its "All Tabs" option;
+    // Commander and filter requests search their own tab.
+    if ( searchAllTabsButton_ != nullptr && searchAllTabsButton_->isChecked() ) {
+        // The window runs it in every open tab, this one included (U15b).
+        LOG_DEBUG << "Search in all open tabs requested from the search line";
+        Q_EMIT searchAllTabsRequested( currentSearchRequest() );
+        return;
+    }
+    startNewSearch();
+}
 
 void CrawlerWidget::startNewSearch()
 {
@@ -1561,7 +1601,7 @@ void CrawlerWidget::setSearchPattern( const QString& searchPattern, bool allowAu
     searchLineEdit_->lineEdit()->setFocus();
 
     if ( allowAutoRun && Configuration::get().autoRunSearchOnPatternChange() ) {
-        dispatchToObject( [ this ] { startNewSearch(); }, this );
+        dispatchToObject( [ this ] { startSearchFromSearchLine(); }, this );
     }
 }
 
@@ -1884,6 +1924,15 @@ void CrawlerWidget::setup()
     keepSearchResultsButton_->setCheckable( true );
     keepSearchResultsButton_->setContentsMargins( 2, 2, 2, 2 );
 
+    searchAllTabsButton_ = new QToolButton();
+    searchAllTabsButton_->setObjectName( QStringLiteral( "searchAllTabsButton" ) );
+    searchAllTabsButton_->setAccessibleName( tr( "In all open tabs" ) );
+    searchAllTabsButton_->setText( tr( "All Tabs" ) );
+    searchAllTabsButton_->setToolTip(
+        tr( "In all open tabs: every open tab's filtered view runs this search" ) );
+    searchAllTabsButton_->setCheckable( true );
+    searchAllTabsButton_->setContentsMargins( 2, 2, 2, 2 );
+
     clearResultsButton_ = new QToolButton();
     clearResultsButton_->setObjectName( QStringLiteral( "clearFilteredResultsButton" ) );
     clearResultsButton_->setAccessibleName( tr( "Clear results" ) );
@@ -1922,6 +1971,7 @@ void CrawlerWidget::setup()
     searchLineLayout->addWidget( clearButton_ );
     searchLineLayout->addWidget( searchButton_ );
     searchLineLayout->addWidget( keepSearchResultsButton_ );
+    searchLineLayout->addWidget( searchAllTabsButton_ );
     searchLineLayout->addWidget( stopButton_ );
     searchLineLayout->addWidget( clearResultsButton_ );
     searchLineLayout->addWidget( searchInfoLine_ );
@@ -2013,7 +2063,8 @@ void CrawlerWidget::setup()
              &CrawlerWidget::clearSearchHistory );
     connect( editSearchHistoryAction, &QAction::triggered, this,
              &CrawlerWidget::editSearchHistory );
-    connect( searchButton_, &QToolButton::clicked, this, &CrawlerWidget::startNewSearch );
+    connect( searchButton_, &QToolButton::clicked, this,
+             &CrawlerWidget::startSearchFromSearchLine );
     connect( stopButton_, &QToolButton::clicked, this, &CrawlerWidget::stopSearch );
     connect( clearButton_, &QToolButton::clicked, searchLineEdit_, &QComboBox::clearEditText );
     connect( clearResultsButton_, &QToolButton::clicked, this,

@@ -70,10 +70,11 @@
 
 #include <kdsingleapplication.h>
 
-#include "mainwindow.h"
-#include "pluginmanager.h"
-#include "messagereceiver.h"
 #include "labqueuewindow.h"
+#include "mainwindow.h"
+#include "messagereceiver.h"
+#include "pluginmanager.h"
+#include "pluginsourceruns.h"
 #include "scenariorunner.h"
 #include "scenariorunnerwindow.h"
 #include "scriptrunnerwindow.h"
@@ -246,13 +247,12 @@ class KloggApp : public QApplication {
         data.insert( QLatin1String( "resultPath" ), resultPath );
         data.insert( QLatin1String( "command" ), QCborValue::fromVariant( commanderRequestToVariantMap( request ) ) );
 
-        // Cold dialogs can spend several seconds populating fonts and controls before
-        // their modal event loop starts accepting the next automation command.
-        const bool waitsForUi = request.action == CommanderAction::GetUi
-                                || request.action == CommanderAction::SetUi
-                                || request.action == CommanderAction::ActivateUi
-                                || request.action == CommanderAction::InvokeAction;
-        const int commanderConnectTimeoutMs = waitsForUi ? 30000 : 5000;
+        // The sender's deadline covers connecting, writing and the primary closing the pipe,
+        // which happens only when the primary's GUI thread next runs its event loop. Cold
+        // dialogs can spend several seconds populating fonts and controls, and a file still
+        // loading or an analysis run on a loaded machine can keep that thread busy for more
+        // than 5 s, so every command gets the same deadline as the response.
+        constexpr int CommanderConnectTimeoutMs = 30000;
         constexpr int CommanderResponseTimeoutMs = 30000;
 
         const QCborValue cbor( data );
@@ -260,11 +260,11 @@ class KloggApp : public QApplication {
         connectionTimer.start();
         LOG_DEBUG << "Commander connection: action="
                   << commanderActionToString( request.action ).toStdString()
-                  << " waitingForUi=" << waitsForUi << " timeoutMs=" << commanderConnectTimeoutMs;
+                  << " timeoutMs=" << CommanderConnectTimeoutMs;
         if ( !singleApplication_.sendMessageWithTimeout( cbor.toCbor(),
-                                                         commanderConnectTimeoutMs ) ) {
+                                                         CommanderConnectTimeoutMs ) ) {
             LOG_WARNING << "Commander connection failed after " << connectionTimer.elapsed()
-                        << " ms; waitingForUi=" << waitsForUi;
+                        << " ms";
             QFile::remove( resultPath );
             return commanderFailure(
                 CommanderResultCode::TransportError,
@@ -560,19 +560,17 @@ class KloggApp : public QApplication {
         if ( request.action == CommanderAction::GetPluginJob ) { return pluginResult( pluginManager_.job( request.pluginJobId ) ); }
         if ( request.action == CommanderAction::CancelPluginJob ) { return pluginResult( pluginManager_.cancel( request.pluginJobId ) ); }
         if ( request.action == CommanderAction::InvokePlugin ) {
-            QVariantMap context;
-            if ( !request.tabId.isEmpty() ) {
-                for ( const auto& [ session, window ] : mainWindows_ ) {
-                    Q_UNUSED( session );
-                    if ( window ) { context = window->pluginContext( request ); if ( !context.isEmpty() ) { break; } }
-                }
-            } else {
-                auto* window = request.windowIndex ? windowByIndex( *request.windowIndex ) : activeWindowOrCreate();
-                if ( window ) { context = window->pluginContext( request ); }
+            // U15b: a source picks the tab(s); "all" invokes once per open tab, staged.
+            return pluginSourceRuns_.invoke( request );
+        }
+        if ( request.action == CommanderAction::OpenPluginView ) {
+            auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
+                                               : activeWindowOrCreate();
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "Requested window was not found." ) );
             }
-            if ( context.isEmpty() ) { return commanderFailure( CommanderResultCode::NotFound, "Plugin target window/tab not found." ); }
-            return pluginResult( pluginManager_.invoke( request.pluginId, request.pluginAction,
-                                                        request.pluginArguments, context ) );
+            return window->executeCommanderRequest( request );
         }
         if ( request.action == CommanderAction::GetInfo ) {
             auto* activeWindow = activeWindowIfAny();
@@ -1289,6 +1287,67 @@ class KloggApp : public QApplication {
         return sources;
     }
 
+    // invoke_plugin on one tab (tabId), or on the current tab of a window (windowIndex, else the
+    // active window).
+    CommanderResult invokePluginOnTab( const CommanderRequest& request )
+    {
+        QVariantMap context;
+        if ( !request.tabId.isEmpty() ) {
+            for ( const auto& [ session, window ] : mainWindows_ ) {
+                Q_UNUSED( session );
+                if ( window ) {
+                    context = window->pluginContext( request );
+                    if ( !context.isEmpty() ) {
+                        break;
+                    }
+                }
+            }
+        }
+        else {
+            auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
+                                               : activeWindowOrCreate();
+            if ( window ) {
+                context = window->pluginContext( request );
+            }
+        }
+        if ( context.isEmpty() ) {
+            return commanderFailure( CommanderResultCode::NotFound,
+                                     "Plugin target window/tab not found." );
+        }
+        const auto result = pluginManager_.invoke( request.pluginId, request.pluginAction,
+                                                   request.pluginArguments, context );
+        if ( result.ok() ) {
+            return commanderSuccess( {}, result.payload );
+        }
+        // A full plugin manager admits the job later; staged "all" Runs wait for it.
+        const bool full = result.error == QLatin1String( "Too many active plugin jobs." );
+        return { CommanderResultCode::ExecutionFailed, result.error,
+                 full ? QVariantMap{ { "reason", "queue_limit" } } : QVariantMap{} };
+    }
+
+    CommanderResult pluginJobStatus( const QString& jobId ) const
+    {
+        const auto job = pluginManager_.job( jobId );
+        if ( job.ok() ) {
+            return commanderSuccess( {}, job.payload );
+        }
+        return { CommanderResultCode::NotFound, job.error, { { "reason", "job_expired" } } };
+    }
+
+    // A file source that is not open yet opens in the active window.
+    CommanderResult openFileForSource( const QString& path )
+    {
+        auto* window = activeWindowOrCreate();
+        if ( window == nullptr ) {
+            return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                     QStringLiteral( "Failed to create a CILogg window." ) );
+        }
+        CommanderRequest open;
+        open.action = CommanderAction::OpenFile;
+        open.filePath = path;
+        return window->executeCommanderRequest( open );
+    }
+
     MainWindow* windowForTab( const QString& tabId ) const
     {
         for ( const auto& [ session, window ] : mainWindows_ ) {
@@ -1330,6 +1389,12 @@ class KloggApp : public QApplication {
 
     MessageReceiver messageReceiver_;
     cilogg::plugins::PluginManager pluginManager_;
+    PluginSourceRuns pluginSourceRuns_{
+        [ this ] { return applicationAnalysisSources(); },
+        [ this ]( const CommanderRequest& request ) { return invokePluginOnTab( request ); },
+        [ this ]( const QString& jobId ) { return pluginJobStatus( jobId ); },
+        [ this ]( const QString& path ) { return openFileForSource( path ); }
+    };
     ScriptSupervisor scriptSupervisor_;
     ScriptRunnerWindow scriptRunnerWindow_{ &scriptSupervisor_ };
     ScenarioRunner scenarioRunner_;

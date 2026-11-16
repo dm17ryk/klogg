@@ -104,8 +104,9 @@
 #include <QUrlQuery>
 #include <QWindow>
 
-#include "mainwindow.h"
 #include "analysiscommands.h"
+#include "analysissource.h"
+#include "mainwindow.h"
 #include "pluginuicontroller.h"
 #include "uiautomation.h"
 
@@ -527,6 +528,10 @@ MainWindow::MainWindow( WindowSession session )
                         SLOT( sendPreparedToPreview( PreparedPreview, QString ) ) );
     signalMux_.connect( SIGNAL( openRegexLabRequested() ), this,
                        SLOT( showRegexLabForSelection() ) );
+    signalMux_.connect( SIGNAL( searchAllTabsRequested( CommanderRequest ) ), this,
+                        SLOT( searchAllOpenTabs( CommanderRequest ) ) );
+    allTabsSearchTimer_.setInterval( 200 );
+    connect( &allTabsSearchTimer_, &QTimer::timeout, this, &MainWindow::reportAllTabsSearch );
 
     // Register for progress status bar
     signalMux_.connect( SIGNAL( loadingProgressed( int ) ), this,
@@ -543,6 +548,10 @@ MainWindow::MainWindow( WindowSession session )
 
     previewWindow_.setWindowIcon( mainIcon_ );
     previewWindow_.setWindowTitle( tr( "CILogg - previewer" ) );
+    previewWindow_.setLineSource( [ this ] { return toolSources(); },
+                                  [ this ]( const QString& source, quint64 line ) {
+                                      return previewSourceLine( source, line );
+                                  } );
     if ( const auto scratchSize = scratchPad_.sizeHint(); scratchSize.isValid() ) {
         previewWindow_.resize( scratchSize.width() * 2, scratchSize.height() * 3 / 2 );
     }
@@ -915,6 +924,8 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
                                  tr( "close_tab requires a tab selector." ) );
     case CommanderAction::Search:
         return commanderSearch( request );
+    case CommanderAction::OpenPluginView:
+        return commanderOpenPluginView( request );
     case CommanderAction::SetFollowMode:
         return commanderSetFollowMode( request );
     case CommanderAction::InvokeAction:
@@ -4350,6 +4361,9 @@ CommanderResult MainWindow::commanderSetFilter( const CommanderRequest& request 
 
 CommanderResult MainWindow::commanderSearch( const CommanderRequest& request )
 {
+    if ( !request.source.isEmpty() && !hasCommanderTabSelector( request ) ) {
+        return commanderSearchSource( request );
+    }
     auto* crawler = commanderTargetCrawler( request );
     if ( crawler == nullptr ) {
         return commanderFailure( CommanderResultCode::NotFound,
@@ -4368,6 +4382,237 @@ CommanderResult MainWindow::commanderSearch( const CommanderRequest& request )
 
     crawler->applyCommanderAutomationSearch( request );
     return commanderSuccess( {}, automationState() );
+}
+
+QVariantMap MainWindow::tabSearchStatus( const QString& tabId ) const
+{
+    auto* crawler = crawlerWidgetByTabId( tabId );
+    if ( crawler == nullptr ) {
+        return {};
+    }
+    QVariantMap status{
+        { QStringLiteral( "tabId" ), tabId },
+        { QStringLiteral( "filePath" ), session_.getFilename( crawler ) },
+        { QStringLiteral( "windowIndex" ), static_cast<int>( session_.windowIndex() ) },
+        { QStringLiteral( "tabIndex" ), paneArea_->indexOf( crawler ) },
+        { QStringLiteral( "matches" ), crawler->matchCount() },
+        { QStringLiteral( "complete" ),
+          !crawler->isLoadingInProgress() && !crawler->isSearchInProgress() },
+    };
+    if ( !crawler->lastErrorText().isEmpty() ) {
+        status.insert( QStringLiteral( "error" ), crawler->lastErrorText() );
+    }
+    return status;
+}
+
+MainWindow* MainWindow::windowOwningTab( const QString& tabId )
+{
+    if ( crawlerWidgetByTabId( tabId ) != nullptr ) {
+        return this;
+    }
+    return windowForTab_ ? windowForTab_( tabId ) : nullptr;
+}
+
+QStringList MainWindow::searchAllTabs( const QStringList& tabIds, const CommanderRequest& request )
+{
+    // Each tab's filtered view runs the search; no tab is brought to the front.
+    QStringList searched;
+    for ( const auto& tabId : tabIds ) {
+        auto* owner = windowOwningTab( tabId );
+        auto* crawler = owner ? owner->crawlerWidgetByTabId( tabId ) : nullptr;
+        if ( crawler == nullptr ) {
+            continue;
+        }
+        crawler->applyCommanderAutomationSearch( request );
+        searched.append( tabId );
+    }
+    LOG_DEBUG << "Search in all open tabs started tabs=" << searched.size()
+              << " text=" << request.searchText.toStdString();
+    return searched;
+}
+
+QVariantMap MainWindow::allTabsSearchStatus( const QStringList& tabIds )
+{
+    QVariantList tabs;
+    qint64 matches = 0;
+    bool complete = true;
+    for ( const auto& tabId : tabIds ) {
+        auto* owner = windowOwningTab( tabId );
+        auto status = owner ? owner->tabSearchStatus( tabId ) : QVariantMap{};
+        if ( status.isEmpty() ) {
+            status = { { QStringLiteral( "tabId" ), tabId },
+                       { QStringLiteral( "closed" ), true },
+                       { QStringLiteral( "matches" ), 0 },
+                       { QStringLiteral( "complete" ), true } };
+        }
+        matches += status.value( QStringLiteral( "matches" ) ).toLongLong();
+        complete = complete && status.value( QStringLiteral( "complete" ) ).toBool();
+        tabs.push_back( status );
+    }
+    return { { QStringLiteral( "source" ), QStringLiteral( "all" ) },
+             { QStringLiteral( "tabs" ), tabs },
+             { QStringLiteral( "matches" ), matches },
+             { QStringLiteral( "complete" ), complete } };
+}
+
+bool MainWindow::waitForAllTabsSearch( const QStringList& tabIds, qint64 timeoutMs )
+{
+    // The nested loop delivers other events: this window may close meanwhile.
+    QPointer<MainWindow> self( this );
+    QElapsedTimer elapsed;
+    elapsed.start();
+    QEventLoop loop;
+    QTimer poll;
+    poll.setInterval( 50 );
+    bool complete = false;
+    const auto check = [ & ] {
+        if ( !self ) {
+            loop.quit();
+            return;
+        }
+        complete
+            = self->allTabsSearchStatus( tabIds ).value( QStringLiteral( "complete" ) ).toBool();
+        if ( complete || elapsed.elapsed() >= timeoutMs ) {
+            loop.quit();
+        }
+    };
+    QObject::connect( &poll, &QTimer::timeout, &loop, check );
+    poll.start();
+    check();
+    if ( !complete && elapsed.elapsed() < timeoutMs ) {
+        loop.exec( QEventLoop::ExcludeUserInputEvents );
+    }
+    return complete;
+}
+
+void MainWindow::searchAllOpenTabs( CommanderRequest request )
+{
+    AnalysisSource all;
+    all.kind = AnalysisSource::Kind::AllOpen;
+    const auto resolution
+        = resolveAnalysisSource( all, OpenSource::fromVariantList( toolSources() ) );
+    if ( !resolution.ok() ) {
+        // Nothing else to search: the tab whose search line was used searches itself.
+        if ( auto* crawler = currentCrawlerWidget() ) {
+            crawler->applyCommanderAutomationSearch( request );
+        }
+        return;
+    }
+    allTabsSearchOrigin_ = currentCrawlerWidget();
+    allTabsSearchTabs_ = searchAllTabs( resolution.tabIds, request );
+    allTabsSearchStarted_.restart();
+    allTabsSearchTimer_.start();
+}
+
+void MainWindow::reportAllTabsSearch()
+{
+    constexpr qint64 SummaryDeadlineMs = 60000;
+    const auto status = allTabsSearchStatus( allTabsSearchTabs_ );
+    const bool complete = status.value( QStringLiteral( "complete" ) ).toBool();
+    if ( !complete && allTabsSearchStarted_.elapsed() < SummaryDeadlineMs ) {
+        return;
+    }
+    allTabsSearchTimer_.stop();
+    if ( !allTabsSearchOrigin_ ) {
+        return;
+    }
+    const auto tabs = status.value( QStringLiteral( "tabs" ) ).toList();
+    int withMatches = 0;
+    QStringList details;
+    for ( const auto& value : tabs ) {
+        const auto tab = value.toMap();
+        const auto matches = tab.value( QStringLiteral( "matches" ) ).toLongLong();
+        withMatches += matches > 0 ? 1 : 0;
+        details << tr( "%1: %2" )
+                       .arg( QFileInfo( tab.value( QStringLiteral( "filePath" ) ).toString() )
+                                 .fileName() )
+                       .arg( matches );
+    }
+    const auto total = status.value( QStringLiteral( "matches" ) ).toLongLong();
+    allTabsSearchOrigin_->showSearchSummary(
+        complete
+            ? tr( "All open tabs: %1 matches in %2 of %3 tabs" )
+                  .arg( total )
+                  .arg( withMatches )
+                  .arg( tabs.size() )
+            : tr( "All open tabs: %1 matches so far; some tabs are still searching" ).arg( total ),
+        details.join( QLatin1Char( '\n' ) ) );
+}
+
+CommanderResult MainWindow::commanderSearchSource( const CommanderRequest& request )
+{
+    const auto refused = []( const QString& reason, const QString& message ) {
+        LOG_DEBUG << "search --source rejected reason=" << reason.toStdString();
+        return CommanderResult{ CommanderResultCode::InvalidRequest,
+                                message,
+                                { { QStringLiteral( "reason" ), reason } } };
+    };
+    if ( request.searchText.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "search requires a search expression." ) );
+    }
+    QString message;
+    const auto source = AnalysisSource::parse( request.source, &message );
+    if ( !source ) {
+        return refused( QStringLiteral( "invalid_source" ), message );
+    }
+    auto single = request;
+    single.source.clear();
+    if ( source->kind == AnalysisSource::Kind::Focused ) {
+        return commanderSearch( single );
+    }
+    const auto resolution
+        = resolveAnalysisSource( *source, OpenSource::fromVariantList( toolSources() ) );
+    if ( !resolution.ok() ) {
+        return refused( resolution.reason, resolution.message );
+    }
+    if ( !resolution.fileToOpen.isEmpty() ) {
+        if ( !loadFile( resolution.fileToOpen, false ) ) {
+            return refused( QStringLiteral( "source_not_found" ),
+                            tr( "Failed to open %1." ).arg( resolution.fileToOpen ) );
+        }
+        return commanderSuccess(
+            tr( "Opened %1. Search again once it has loaded." ).arg( resolution.fileToOpen ),
+            { { QStringLiteral( "opened" ), resolution.fileToOpen } } );
+    }
+    if ( source->kind != AnalysisSource::Kind::AllOpen ) {
+        // One tab: searched and shown like --tab-id, in the window that holds it.
+        single.windowIndex.reset();
+        single.tabId = resolution.tabIds.front();
+        auto* owner = windowOwningTab( single.tabId );
+        if ( owner == nullptr ) {
+            return refused( QStringLiteral( "source_not_found" ),
+                            tr( "The selected tab is closed." ) );
+        }
+        return owner == this ? commanderSearch( single ) : owner->executeCommanderRequest( single );
+    }
+    QPointer<MainWindow> self( this );
+    QElapsedTimer waited;
+    waited.start();
+    const qint64 timeoutMs = request.timeoutMs.value_or( 30000 );
+    if ( request.waitForCompletion ) {
+        // Tabs still loading (or still running an earlier search) finish first, so the
+        // counts cover whole files.
+        waitForAllTabsSearch( resolution.tabIds, timeoutMs );
+        if ( !self ) {
+            return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                     tr( "The window closed during the search." ) );
+        }
+    }
+    const auto searched = searchAllTabs( resolution.tabIds, single );
+    if ( request.waitForCompletion ) {
+        waitForAllTabsSearch( searched, qMax<qint64>( 0, timeoutMs - waited.elapsed() ) );
+        if ( !self ) {
+            return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                     tr( "The window closed during the search." ) );
+        }
+    }
+    auto payload = allTabsSearchStatus( searched );
+    payload.insert( QStringLiteral( "text" ), request.searchText );
+    LOG_DEBUG << "Search in all open tabs reported tabs=" << searched.size()
+              << " matches=" << payload.value( QStringLiteral( "matches" ) ).toLongLong()
+              << " complete=" << payload.value( QStringLiteral( "complete" ) ).toBool();
+    return commanderSuccess( {}, payload );
 }
 
 CommanderResult MainWindow::commanderSetFollowMode( const CommanderRequest& request )

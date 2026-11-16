@@ -477,6 +477,14 @@ void writeCliPayload( const QVariantMap& payload, bool pretty = false )
     writeCliBytes( bytes, false, true );
 }
 
+// A failed analysis command prints its payload; so does a refused U15 source (its reason).
+bool printsFailurePayload( const CommanderRequest& request, const CommanderResult& result )
+{
+    return isCommanderAnalysisAction( request.action )
+           || ( commanderActionAcceptsSource( request.action )
+                && result.payload.contains( QStringLiteral( "reason" ) ) );
+}
+
 bool writeCliPayloadToFile( const QString& path, const QVariantMap& payload, bool pretty = false )
 {
     if ( path.isEmpty() ) {
@@ -727,7 +735,7 @@ int main( int argc, char* argv[] )
             }
 
             writeCliMessage( result.message, true );
-            if ( isCommanderAnalysisAction( parameters.commander_request->action ) ) {
+            if ( printsFailurePayload( *parameters.commander_request, result ) ) {
                 writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
             }
             return EXIT_FAILURE;
@@ -821,7 +829,7 @@ int main( int argc, char* argv[] )
         const auto result = app.executeCommanderRequest( *parameters.commander_request );
         if ( !result.ok() ) {
             writeCliMessage( result.message, true );
-            if ( isCommanderAnalysisAction( parameters.commander_request->action ) ) {
+            if ( printsFailurePayload( *parameters.commander_request, result ) ) {
                 writeCliPayload( result.payload, parameters.commander_request->prettyOutput );
             }
             return EXIT_FAILURE;

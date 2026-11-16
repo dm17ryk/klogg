@@ -95,6 +95,16 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") in ("u15-docks", "u15b-sources"):
+            from workbench_sources import exercise_docks, exercise_tools
+
+            handler = exercise_docks if case["kind"] == "u15-docks" else exercise_tools
+            result = handler(cli, command, catalog, artifacts)
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         jobs = []
         try:
             request = case["request"]
@@ -195,12 +205,24 @@ def main(arguments=None):
 
         cases = select_cases(args.task)
         setup_payload = None
-        if any(case.get("kind") == "plugin-views" for case in cases):
-            import os
-
+        kinds = {case.get("kind") for case in cases}
+        steps = []
+        if kinds & {"plugin-views", "u15b-sources"}:
             from workbench_plugin_views import install_view_demo
 
-            setup_payload = install_view_demo
+            steps.append(install_view_demo)
+        if kinds & {"u15-docks", "u15b-sources"}:
+            from workbench_sources import install_python_runtime
+
+            steps.append(install_python_runtime)
+        if steps:
+            import os
+
+            def setup_payload(payload):
+                for step in steps:
+                    step(payload)
+
+            # Python plugins and scripts of the private host use this interpreter.
             os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         run(
             args.executable.resolve(),

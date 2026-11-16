@@ -32,13 +32,17 @@ QVariantList MainWindow::analysisSources( int windowIndex, bool activeWindow ) c
         auto* crawler = crawlerWidgetByIndex( index );
         if ( !crawler )
             continue;
+        const auto filePath = session_.getFilename( crawler );
+        const auto sourceType = paneArea_->streamSessionForPath( filePath ) ? "com"
+                                : remoteFileSources_.count( filePath )      ? "url"
+                                                                            : "file";
         sources.push_back( QVariantMap{ { "tabId", paneArea_->tabIdAt( index ) },
-                                        { "filePath", session_.getFilename( crawler ) },
-                                        { "label", QString::number( index + 1 ) + ": "
-                                                       + session_.getFilename( crawler ) },
+                                        { "filePath", filePath },
+                                        { "label", QString::number( index + 1 ) + ": " + filePath },
                                         { "windowIndex", windowIndex },
                                         { "tabIndex", index },
-                                        { "focused", activeWindow && crawler == current } } );
+                                        { "focused", activeWindow && crawler == current },
+                                        { "sourceType", QString::fromLatin1( sourceType ) } } );
     }
     return sources;
 }
@@ -68,6 +72,11 @@ QVariantList MainWindow::dockAnalysisSources() const
         value = source;
     }
     return sources;
+}
+
+QVariantList MainWindow::toolSources() const
+{
+    return dockAnalysisSources();
 }
 
 CommanderResult MainWindow::executeDockRequest( const CommanderRequest& request )
