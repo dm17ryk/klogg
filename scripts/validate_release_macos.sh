@@ -18,6 +18,12 @@ validate_app_bundle() {
   assert_path "$app/Contents/Frameworks/QtSerialPort.framework" "Missing QtSerialPort.framework in $app"
   assert_path "$app/Contents/PlugIns/platforms/libqcocoa.dylib" "Missing qcocoa plugin in $app"
   python3 "$SCRIPT_DIR/plugins/validate_preinstalled.py" "$app/Contents/PlugIns/cilogg"
+  # Script Runner and scenarios load the Python runtime from Contents/Resources.
+  local runtime_file
+  for runtime_file in worker_bootstrap.py scenario_bootstrap.py klogg/__init__.py; do
+    assert_path "$app/Contents/Resources/python_runtime/$runtime_file" \
+      "Missing python_runtime/$runtime_file in $app/Contents/Resources"
+  done
 }
 
 validate_dmg() (

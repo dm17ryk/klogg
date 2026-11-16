@@ -2,6 +2,7 @@
 #include "tsharkpreviewclient.h"
 #include "log.h"
 #include "previewdecodersettings.h"
+#include "pythonruntime.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -82,15 +83,11 @@ QVariantMap nativeFailure( const QString& reason )
 }
 QString pythonExecutable()
 {
-    const auto app = QCoreApplication::applicationDirPath();
     QStringList candidates;
     // An explicit native-host environment override matches PluginManager's runtime selection.
     candidates << qEnvironmentVariable( "CILOGG_SCRIPT_PYTHON" );
-    for ( const auto* relative : { "python_runtime/python.exe", "python_runtime/python/python.exe",
-                                   "python_runtime/bin/python3", "python_runtime/bin/python",
-                                   "python_runtime/python/bin/python3", "python/python.exe",
-                                   "bin/python3", "bin/python", "python/bin/python3" } )
-        candidates << QDir( app ).filePath( relative );
+    candidates << cilogg::pythonruntime::bundledInterpreterCandidates(
+        QCoreApplication::applicationDirPath() );
     int candidateIndex = 0;
     for ( const auto& candidate : candidates ) {
         const QFileInfo info( candidate );

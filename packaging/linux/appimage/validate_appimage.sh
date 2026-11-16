@@ -27,6 +27,9 @@ find "$appdir" -name 'libQt6Sql*.so*' -print | grep .
 find "$appdir" -path '*/sqldrivers/*qsqlite*' -print | grep .
 find "$appdir" -path '*/platforms/*qoffscreen*' -print | grep .
 python3 "$repo_root/scripts/plugins/validate_preinstalled.py" "$appdir/usr/bin/plugins"
+for runtime_file in worker_bootstrap.py scenario_bootstrap.py klogg/__init__.py; do
+  test -f "$appdir/usr/bin/python_runtime/$runtime_file"
+done
 echo 'Checking packaged application version and native MCP discovery'
 timeout 60 "$appdir/AppRun" --version
 timeout 60 "$appdir/AppRun" mcp --help

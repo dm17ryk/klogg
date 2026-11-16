@@ -69,7 +69,7 @@ export PATH="$test_root/bin:$PATH"
 export TEST_FIXTURE="$test_root/fixture"
 
 for kind in deb rpm; do
-  for layout in legacy private launcher launcher-escape escape missing-plugin; do
+  for layout in legacy private launcher launcher-escape escape missing-plugin missing-python-runtime; do
     export TEST_LAYOUT="$layout"
     rm -rf -- "$TEST_FIXTURE"
     mkdir -p "$TEST_FIXTURE/usr/bin"
@@ -86,6 +86,7 @@ for kind in deb rpm; do
       cp -a "$repo_root/plugins/examples/$plugin" "$bindir/plugins/$plugin"
       cp "$repo_root/plugins/sdk/python/cilogg_plugin.py" "$bindir/plugins/$plugin/"
     done
+    cp -a "$repo_root/src/app/python_runtime" "$bindir/python_runtime"
     if [[ "$layout" == escape ]]; then
       rm "$TEST_FIXTURE/usr/bin/cilogg"
       ln -s "$test_root/outside" "$TEST_FIXTURE/usr/bin/cilogg"
@@ -101,13 +102,16 @@ for kind in deb rpm; do
       chmod +x "$TEST_FIXTURE/usr/bin/cilogg"
     elif [[ "$layout" == missing-plugin ]]; then
       rm "$bindir/plugins/adb-logcat/cilogg_plugin.py"
+    elif [[ "$layout" == missing-python-runtime ]]; then
+      rm "$bindir/python_runtime/worker_bootstrap.py"
     fi
     package="$test_root/packages-fixture/cilogg.$kind"
     touch "$package"
     if (cd "$test_root"; bash "$repo_root/scripts/validate_release_linux.sh") > "$test_root/$kind-$layout.log" 2>&1; then
       [[ "$layout" == legacy || "$layout" == private || "$layout" == launcher ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
     else
-      [[ "$layout" == escape || "$layout" == launcher-escape || "$layout" == missing-plugin ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
+      [[ "$layout" == escape || "$layout" == launcher-escape || "$layout" == missing-plugin \
+        || "$layout" == missing-python-runtime ]] || { cat "$test_root/$kind-$layout.log"; exit 1; }
     fi
     rm "$package"
     echo "PASS: $kind $layout"
