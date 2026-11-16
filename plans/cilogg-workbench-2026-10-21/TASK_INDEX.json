@@ -1609,7 +1609,7 @@
       "dependencies": [
         "E13"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "requirements": [],
       "task_body_chars": 1947,
       "taskFile": "tasks/E14.md"
@@ -1837,7 +1837,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "UX21"
       ],
@@ -2285,7 +2285,8 @@
         "R05",
         "U14",
         "U15",
-        "U16"
+        "U16",
+        "R06"
       ],
       "status": "planned",
       "requirements": [
@@ -2309,6 +2310,21 @@
       ],
       "task_body_chars": 7755,
       "taskFile": "tasks/R05.md"
+    },
+    {
+      "id": "R06",
+      "title": "Make problem reports debuggable",
+      "plan": "09-release.md",
+      "anchor": "r06--make-problem-reports-debuggable",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "in_progress",
+      "requirements": [
+        "QUAL12"
+      ],
+      "task_body_chars": 5453,
+      "taskFile": "tasks/R06.md"
     },
     {
       "id": "MD01",
@@ -2744,6 +2760,7 @@
   "suggestedTopologicalOrder": [
     "G01",
     "R05",
+    "R06",
     "U14",
     "U15",
     "U16",
@@ -2872,7 +2889,8 @@
     "P03/P04 and P05 state is refreshed and credited in G01; no new tasks repeat that implemented work.",
     "R04 is the full-program completion gate.",
     "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13.",
-    "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests. They depend only on the completed G01 and are selectable ahead of G02/G03; U03 depends on U16 (its workspace snapshot embeds the pane layout) and R04 on all four. Decision D13 records the user's answers (U14 confirmed, U15 'all' means every open tab, U16 design approved)."
+    "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests. They depend only on the completed G01 and are selectable ahead of G02/G03; U03 depends on U16 (its workspace snapshot embeds the pane layout) and R04 on all four. Decision D13 records the user's answers (U14 confirmed, U15 'all' means every open tab, U16 design approved).",
+    "2026-11-15: decision D15 adds R06 (debuggable problem reports: activity journal, memory status, local report bundle, crash dumps) for the user's exception report. It depends only on the completed G01 and is selectable ahead of G02/G03; R04 depends on R06."
   ],
   "reconciledDate": "2026-11-04"
 }

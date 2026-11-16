@@ -10,6 +10,7 @@
 #include "../streamsession_testaccess.h"
 #include "actionruntime.h"
 #include "actionsmanager.h"
+#include "diagnostics.h"
 
 namespace {
 class ScopedActionsState {
@@ -519,6 +520,51 @@ TEST_CASE( "Delayed actions validate the tab generation and automatic eligibilit
     // An actionSent signal proves logical dispatch only; there is no transport worker.
     CHECK( transmitted.isEmpty() );
     CHECK( session.isConnectionOpen() );
+}
+
+TEST_CASE( "The diagnostic journal records action sends when they happen and cancellations",
+           "[serial][session][actions][actionruntime][diagnostics]" )
+{
+    using cilogg::diagnostics::ActivityJournal;
+    ScopedActionsState restore;
+    ActionsManager::instance().setAutoResponsesEnabled( true );
+    StreamSession session( settingsFor( QStringLiteral( "TEST_JOURNAL_ACTIONS" ) ) );
+    StreamSessionTestAccess::openConnection( session );
+    QSignalSpy dispatched( &session, &StreamSession::actionSent );
+
+    const auto outcomes = []( int actionId ) {
+        QMap<QString, int> counts;
+        for ( const auto& entry : ActivityJournal::entries() ) {
+            if ( entry.category == "action" && entry.data.value( "actionId" ).toInt() == actionId ) {
+                counts[ entry.data.value( "outcome" ).toString() ] += entry.repeats;
+            }
+        }
+        return counts;
+    };
+
+    ActivityJournal::clear();
+    auto sent = testAction( 7110 );
+    sent.parameters.delay = 10;
+    sent.parameters.repeatCount = 2;
+    sent.parameters.repeatInterval = 10;
+    REQUIRE( sendActionDefinition( &session, sent, {}, -1, nullptr, false ) );
+    CHECK( outcomes( 7110 ).isEmpty() ); // scheduled is not sent
+    REQUIRE( QTest::qWaitFor( [&dispatched] { return dispatched.size() >= 2; }, 5000 ) );
+    const auto delivered = outcomes( 7110 );
+    // The checked serial owner may reject a write on this logical test session; either way the
+    // journal says what happened to each of the two sends.
+    CHECK( delivered.value( "sent" ) + delivered.value( "rejected" ) == 2 );
+    CHECK( delivered.value( "cancelled" ) == 0 );
+
+    auto cancelled = testAction( 7111 );
+    cancelled.parameters.delay = 10;
+    REQUIRE( sendActionDefinition( &session, cancelled, {}, -1, nullptr, false ) );
+    session.setActionsEnabled( false );
+    session.setActionsEnabled( true );
+    REQUIRE( waitForActionTimers() );
+    const auto dropped = outcomes( 7111 );
+    CHECK( dropped.value( "cancelled" ) == 1 );
+    CHECK( dropped.value( "sent" ) == 0 );
 }
 
 TEST_CASE( "Explicit manual sends remain available on an unmarked tab",

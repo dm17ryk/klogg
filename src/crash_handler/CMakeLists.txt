@@ -1,8 +1,10 @@
 add_library(
   klogg_crash_handler STATIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crashhandler.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/diagnostics.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/issuereporter.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/memory_info.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostics.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/issuereporter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/memory_info.cpp
 )
@@ -16,6 +18,8 @@ target_link_libraries(
          project_warnings
          klogg_version
          klogg_utils
+         klogg_logging
+         klogg_karchive
          tbb
          Qt${QT_VERSION_MAJOR}::Gui
          Qt${QT_VERSION_MAJOR}::Widgets

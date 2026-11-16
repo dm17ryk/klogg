@@ -328,6 +328,41 @@ own log view, search line and filtered view.
 - Commander keeps its tab selectors: `--tab-id` is unchanged, and `--tab-index` counts tabs
   pane by pane in layout order, so the indices of a window with one pane are as before.
 
+Panes can also be driven from the command line, the built-in MCP server and Python scripts,
+with the same command names everywhere:
+
+| Command | What it does |
+|---|---|
+| `split_pane` | Opens a new pane right of (`--direction right`, the default) or below (`--direction down`) the active pane, or the pane named by `--pane-id`, `--pane-index` or a tab selector |
+| `focus_pane` | Makes a pane active (`--pane-id` or `--pane-index`); its current tab becomes the focused tab |
+| `move_tab` | Moves `--tab-id` to another pane (`--pane-id` / `--pane-index`) or to a new pane (`--direction right` / `down`); the tab keeps its id and everything it owns |
+| `close_pane` | Closes a pane. A pane with tabs closes only with `--tabs close` or `--tabs move` (to the neighbouring pane), so automation never sees the confirmation |
+| `merge_panes` | Moves every tab of a window back into one pane |
+
+`get_info` lists each window's `panes` (id, index, tab ids, current tab, and an
+`orientationPath`: the orientation and position of every split from the outermost one down to
+the pane, empty for a single pane) and its `activePaneId`, and every tab names its pane
+(`paneId`, `paneIndex`, `paneTabIndex`); `dump_state` adds `activePaneId`, `activePaneIndex`
+and `paneCount`. Pane indices count panes in layout order; without `--window-index` the
+active window is used. To open a file in a particular pane, focus the pane first: files open
+in the active pane. For example:
+
+```powershell
+$pane = (cilogg command --action split_pane --direction down | ConvertFrom-Json).paneId
+cilogg command --action open_file --file D:\logs\device.log   # opens in the new, active pane
+cilogg command --action move_tab --tab-id $tabId --pane-id $pane
+cilogg command --action close_pane --pane-id $pane --tabs move
+```
+
+```python
+from klogg import app
+
+pane = app.split_pane("down")["paneId"]
+app.move_tab(tab_id, pane_id=pane)
+app.focus_pane(pane_index=0)
+app.close_pane(pane_id=pane, tabs="move")
+```
+
 ### Encodings
 
 *CILogg* tries to guess the encoding of an opened file. If that guess happens to

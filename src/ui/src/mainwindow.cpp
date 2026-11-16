@@ -902,6 +902,16 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderResetResponseCounter( request );
     case CommanderAction::ClearComm:
         return commanderClearComm( request );
+    case CommanderAction::SplitPane:
+        return commanderSplitPane( request );
+    case CommanderAction::FocusPane:
+        return commanderFocusPane( request );
+    case CommanderAction::ClosePane:
+        return commanderClosePane( request );
+    case CommanderAction::MergePanes:
+        return commanderMergePanes( request );
+    case CommanderAction::MoveTab:
+        return commanderMoveTab( request );
     case CommanderAction::FocusTab:
         if ( !request.tabId.isEmpty() ) {
             return focusTabById( request.tabId );
@@ -975,6 +985,13 @@ QVariantMap MainWindow::commanderWindowInfo() const
         tabInfo.insert( QStringLiteral( "tabIndex" ), index );
         tabInfo.insert( QStringLiteral( "filePath" ), filePath );
         tabInfo.insert( QStringLiteral( "displayName" ), paneArea_->tabDisplayNameAt( index ) );
+        // tabIndex counts window-wide in layout order; the pane fields locate the tab's pane.
+        const auto paneRef = paneArea_->tabRef( index );
+        if ( paneRef.isValid() ) {
+            tabInfo.insert( QStringLiteral( "paneId" ), paneRef.pane->paneId() );
+            tabInfo.insert( QStringLiteral( "paneIndex" ), paneArea_->paneIndexOf( paneRef.pane ) );
+            tabInfo.insert( QStringLiteral( "paneTabIndex" ), paneRef.index );
+        }
 
         if ( auto* streamSession = paneArea_->streamSessionForPath( filePath ) ) {
             tabInfo.insert( QStringLiteral( "sourceType" ), QStringLiteral( "com" ) );
@@ -1034,6 +1051,10 @@ QVariantMap MainWindow::commanderWindowInfo() const
                        currentTabIndex >= 0 ? paneArea_->tabIdAt( currentTabIndex )
                                             : QString{} );
     windowInfo.insert( QStringLiteral( "tabs" ), tabs );
+    const auto* active = paneArea_->activePane();
+    windowInfo.insert( QStringLiteral( "activePaneId" ),
+                       active != nullptr ? active->paneId() : QString{} );
+    windowInfo.insert( QStringLiteral( "panes" ), commanderPaneList() );
     return windowInfo;
 }
 
@@ -1083,6 +1104,11 @@ QVariantMap MainWindow::automationState() const
     state.insert( QStringLiteral( "windowIndex" ),
                   windowInfo.value( QStringLiteral( "windowIndex" ) ) );
     state.insert( QStringLiteral( "activeTabIndex" ), activeTabIndex );
+    const auto* activePaneWidget = paneArea_->activePane();
+    state.insert( QStringLiteral( "activePaneId" ),
+                  activePaneWidget != nullptr ? activePaneWidget->paneId() : QString{} );
+    state.insert( QStringLiteral( "activePaneIndex" ), paneArea_->paneIndexOf( activePaneWidget ) );
+    state.insert( QStringLiteral( "paneCount" ), paneArea_->paneCount() );
     state.insert( QStringLiteral( "activeTabTitle" ),
                   activeTabIndex >= 0 ? paneArea_->tabDisplayNameAt( activeTabIndex )
                                       : QString{} );
@@ -1820,7 +1846,7 @@ void MainWindow::createActions()
     reportIssueAction = new QAction( tr( action::reportIssueText ), this );
     reportIssueAction->setStatusTip( tr( action::reportIssueStatusTip ) );
     connect( reportIssueAction, &QAction::triggered, this,
-             []( auto ) { IssueReporter::reportIssue( IssueTemplate::Bug ); } );
+             []( auto ) { IssueReporter::reportProblem(); } );
 
     joinDiscordAction = new QAction( tr( action::joinDiscordText ), this );
     joinDiscordAction->setStatusTip( tr( action::joinDiscordStatusTip ) );

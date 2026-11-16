@@ -15,6 +15,7 @@
 
 #include "actionruntime.h"
 #include "actionsmanager.h"
+#include "diagnostics.h"
 #include "previewdecodeutils.h"
 #include "streamsourceregistry.h"
 
@@ -30,6 +31,19 @@ StreamSession::StreamSession( SerialCaptureSettings settings )
               << " actions=" << settings_.useForActions
               << " automatic=" << settings_.autoResponsesEnabled
               << " normalized=" << ( requestedResponses != settings_.autoResponsesEnabled );
+
+    // Connection state changes go to the activity journal of diagnostic reports (task R06).
+    const auto journal = [ this ]( const QString& text ) {
+        cilogg::diagnostics::ActivityJournal::record(
+            QStringLiteral( "com" ), QStringLiteral( "%1: %2" ).arg( sourceDisplayName(), text ) );
+    };
+    connect( this, &StreamSession::connectionOpened, this,
+             [ journal ] { journal( QStringLiteral( "connection opened" ) ); } );
+    connect( this, &StreamSession::connectionClosed, this,
+             [ journal ] { journal( QStringLiteral( "connection closed" ) ); } );
+    connect( this, &StreamSession::errorOccurred, this, [ journal ]( const QString& message ) {
+        journal( QStringLiteral( "error: " ) + message );
+    } );
 #ifdef KLOGG_SHARED_SERIAL_WRITER
     qRegisterMetaType<cilogg::communication::BackendWriteSnapshotPtr>();
     qRegisterMetaType<cilogg::communication::SerialWriteEnvelopePtr>();
@@ -168,6 +182,8 @@ bool StreamSession::pauseConnection( QString* errorMessage )
 
     paused_ = true;
     lineBuffer_.clear();
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "com" ), QStringLiteral( "%1: paused" ).arg( sourceDisplayName() ) );
     QPointer<StreamSession> guard( this );
     stop( false );
     if ( !guard )
@@ -197,6 +213,8 @@ bool StreamSession::resumeConnection( QString* errorMessage )
         return false;
     }
 
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "com" ), QStringLiteral( "%1: resumed" ).arg( sourceDisplayName() ) );
     startInternal( false );
     return true;
 }

@@ -44,6 +44,7 @@
 #include <utility>
 
 #include <QPointer>
+#include <QThread>
 
 #include <robin_hood.h>
 #include <tbb/flow_graph.h>
@@ -450,6 +451,21 @@ SearchOperation::SearchOperation( const LogData& sourceLogData,
 {
 }
 
+void SearchOperation::reportSearchFailure( const QString& operation, const QString& error ) const
+{
+    LOG_ERROR << error;
+    QVariantMap details{ { QStringLiteral( "pattern" ), regexp_.pattern },
+                         { QStringLiteral( "fileBytes" ), sourceLogData_.getFileSize() },
+                         { QStringLiteral( "startLine" ), static_cast<qint64>( startLine_.get() ) },
+                         { QStringLiteral( "endLine" ), static_cast<qint64>( endLine_.get() ) },
+                         { QStringLiteral( "thread" ), QThread::currentThread()->objectName() } };
+    const auto fileName = sourceLogData_.getFileName();
+    dispatchToMainThread( [ operation, error, fileName, details ]() {
+        IssueReporter::reportException( cilogg::diagnostics::ReportRequest{
+            QStringLiteral( "exception" ), operation, error, fileName, details } );
+    } );
+}
+
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 {
     const bool isCappedSearch = options_.maxMatches.has_value();
@@ -781,10 +797,7 @@ void FullSearchOperation::run( SearchData& searchData )
         doSearch( searchData, 0_lnum );
     } catch ( const std::exception& err ) {
         const auto errorString = QString( "FullSearchOperation failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
+        reportSearchFailure( QStringLiteral( "Searching a file" ), errorString );
         searchData.clear();
     }
 }
@@ -806,10 +819,7 @@ void UpdateSearchOperation::run( SearchData& searchData )
         doSearch( searchData, initialLine );
     } catch ( const std::exception& err ) {
         const auto errorString = QString( "UpdateSearchOpertaion failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
+        reportSearchFailure( QStringLiteral( "Searching new lines of a file" ), errorString );
         searchData.clear();
     }
 }

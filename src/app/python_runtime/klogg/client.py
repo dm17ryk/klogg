@@ -242,7 +242,7 @@ class _RpcClient:
 
     def command(self, action: str, **request: Any) -> Dict[str, Any]:
         result = self.request("command", {"action": action, **request})
-        # The host reports commanderResultCodeToString(): "success", "invalid_request", ...
+        # CILogg reports result codes in snake case ("success", "not_found", ...).
         code = str(result.get("code", "execution_failed"))
         if code.lower() != "success":
             raise KloggError(code, result.get("message", ""), result.get("payload", {}))
@@ -631,6 +631,29 @@ def _get_client() -> _RpcClient:
     return _CLIENT
 
 
+_PANE_DIRECTIONS = ("right", "down")
+_PANE_TABS = ("close", "move")
+
+
+def _pane_selector(pane_id: Optional[str], window_index: Optional[int],
+                   pane_index: Optional[int]) -> Dict[str, Any]:
+    """A pane by id (any window) or by layout-order index in a window (the active one by default)."""
+    selector: Dict[str, Any] = {}
+    if pane_id:
+        selector["paneId"] = pane_id
+    if window_index is not None:
+        selector["windowIndex"] = int(window_index)
+    if pane_index is not None:
+        selector["paneIndex"] = int(pane_index)
+    return selector
+
+
+def _check_direction(direction: str) -> str:
+    if direction not in _PANE_DIRECTIONS:
+        raise ValueError("direction must be 'right' or 'down'")
+    return direction
+
+
 class TabRef:
     def __init__(self, tab_id: Optional[str] = None, window_index: Optional[int] = None,
                  tab_index: Optional[int] = None) -> None:
@@ -778,6 +801,15 @@ class TabRef:
 
     def clear_comm(self) -> Dict[str, Any]:
         return self._command("clear_comm")
+
+    def move_to_pane(self, *, pane_id: Optional[str] = None, pane_index: Optional[int] = None,
+                     direction: Optional[str] = None) -> Dict[str, Any]:
+        """Move this tab to another pane of its window, or to a new pane ("right" or "down").
+
+        The tab keeps its id, connection, actions and scripts; see Application.move_tab.
+        """
+        return app.move_tab(self._ensure_tab_id(), pane_id=pane_id, pane_index=pane_index,
+                            direction=direction)
 
     def on_receive(self, handler: Callable[[ReceiveEvent], Any]) -> None:
         resolved = _get_client().subscribe_event(self._selector, "receive")
@@ -980,6 +1012,76 @@ class Application:
     def tab(self, *, tab_id: Optional[str] = None,
             window_index: Optional[int] = None, tab_index: Optional[int] = None) -> TabRef:
         return TabRef(tab_id=tab_id, window_index=window_index, tab_index=tab_index)
+
+    # Split panes. Pane indices count panes in layout order within a window; without a
+    # window_index the active window is used. Each call returns the window's panes after it.
+
+    def panes(self, window_index: Optional[int] = None) -> List[Dict[str, Any]]:
+        """The panes of a window (the active window by default), as get_info reports them."""
+        for window in self.get_info().get("windows", []):
+            if window_index is None:
+                selected = bool(window.get("isActiveWindow", False))
+            else:
+                selected = window.get("windowIndex") == int(window_index)
+            if selected:
+                return list(window.get("panes", []))
+        raise KloggError("not_found", "Window was not found", {})
+
+    def split_pane(self, direction: str = "right", *, pane_id: Optional[str] = None,
+                   window_index: Optional[int] = None, pane_index: Optional[int] = None,
+                   tab_id: Optional[str] = None) -> Dict[str, Any]:
+        """Open a new pane right of or below a pane (the active pane by default).
+
+        The pane is named by pane_id, by window_index/pane_index, or by a tab_id it holds.
+        """
+        request = _pane_selector(pane_id, window_index, pane_index)
+        if tab_id:
+            request["tabId"] = tab_id
+        request["paneDirection"] = _check_direction(direction)
+        return _get_client().command("split_pane", **request)
+
+    def focus_pane(self, *, pane_id: Optional[str] = None, window_index: Optional[int] = None,
+                   pane_index: Optional[int] = None) -> Dict[str, Any]:
+        """Make a pane active; its current tab becomes the focused tab."""
+        return _get_client().command(
+            "focus_pane", **_pane_selector(pane_id, window_index, pane_index)
+        )
+
+    def close_pane(self, *, pane_id: Optional[str] = None, window_index: Optional[int] = None,
+                   pane_index: Optional[int] = None, tabs: Optional[str] = None) -> Dict[str, Any]:
+        """Close a pane. A pane with tabs needs tabs="close" or tabs="move" (to the neighbour)."""
+        request = _pane_selector(pane_id, window_index, pane_index)
+        if tabs is not None:
+            if tabs not in _PANE_TABS:
+                raise ValueError("tabs must be 'close' or 'move'")
+            request["paneTabs"] = tabs
+        return _get_client().command("close_pane", **request)
+
+    def merge_panes(self, *, window_index: Optional[int] = None) -> Dict[str, Any]:
+        """Move every tab of a window back into one pane, keeping their order."""
+        request: Dict[str, Any] = {}
+        if window_index is not None:
+            request["windowIndex"] = int(window_index)
+        return _get_client().command("merge_panes", **request)
+
+    def move_tab(self, tab_id: str, *, pane_id: Optional[str] = None,
+                 pane_index: Optional[int] = None,
+                 direction: Optional[str] = None) -> Dict[str, Any]:
+        """Move a tab to a pane of its window (pane_id or pane_index) or to a new pane (direction).
+
+        The tab keeps its id, connection, actions and scripts.
+        """
+        destinations = sum(value is not None for value in (pane_id, pane_index, direction))
+        if not tab_id or destinations != 1:
+            raise ValueError("move_tab needs a tab_id and exactly one of pane_id, pane_index or direction")
+        request: Dict[str, Any] = {"tabId": tab_id}
+        if pane_id is not None:
+            request["paneId"] = pane_id
+        if pane_index is not None:
+            request["paneIndex"] = int(pane_index)
+        if direction is not None:
+            request["paneDirection"] = _check_direction(direction)
+        return _get_client().command("move_tab", **request)
 
     def create_action(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         return _get_client().command("create_action", definitionPayload=definition)

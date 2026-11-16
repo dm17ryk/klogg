@@ -105,6 +105,14 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "pane-operations":
+            from workbench_panes import exercise_panes
+
+            results.append(exercise_panes(cli, command, catalog, artifacts))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         jobs = []
         try:
             request = case["request"]
@@ -206,6 +214,12 @@ def main(arguments=None):
         cases = select_cases(args.task)
         setup_payload = None
         kinds = {case.get("kind") for case in cases}
+        if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources"}:
+            import os
+
+            # Plugin views, the pane case's Python API script and the U15 Python fixtures run
+            # in this interpreter.
+            os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         steps = []
         if kinds & {"plugin-views", "u15b-sources"}:
             from workbench_plugin_views import install_view_demo
@@ -216,14 +230,11 @@ def main(arguments=None):
 
             steps.append(install_python_runtime)
         if steps:
-            import os
 
             def setup_payload(payload):
                 for step in steps:
                     step(payload)
 
-            # Python plugins and scripts of the private host use this interpreter.
-            os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         run(
             args.executable.resolve(),
             args.artifacts.resolve(),

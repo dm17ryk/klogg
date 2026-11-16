@@ -308,6 +308,22 @@ class MainWindow : public QMainWindow {
     void populateMoveToPaneMenu( QMenu* menu, const QString& tabId );
     void extendTabContextMenu( QMenu& menu, LogPane* pane, int index );
     QString paneTitle( const LogPane* pane ) const;
+    QString paneLimitMessage() const;
+    // Closing tabs on behalf of automation (ActionInitiator::App) leaves the recent files alone.
+    bool closePane( LogPane* pane, PaneTabsOnClose tabs, ActionInitiator initiator );
+    // Pane state for get_info / dump_state and the pane commands (U16b).
+    QVariantList commanderPaneList() const;
+    QVariantList paneOrientationPath( LogPane* pane ) const;
+    QVariantMap commanderPaneLayout() const;
+    QVariantMap commanderPanePayload( LogPane* pane ) const;
+    LogPane* commanderTargetPane( const CommanderRequest& request, bool allowTab, bool allowActive,
+                                  CommanderResult* failure ) const;
+    std::optional<CommanderResult> commanderRejectTabSelector( const CommanderRequest& request ) const;
+    CommanderResult commanderSplitPane( const CommanderRequest& request );
+    CommanderResult commanderFocusPane( const CommanderRequest& request );
+    CommanderResult commanderClosePane( const CommanderRequest& request );
+    CommanderResult commanderMergePanes( const CommanderRequest& request );
+    CommanderResult commanderMoveTab( const CommanderRequest& request );
     QString capturePaneLayout( const std::map<const QWidget*, int>& savedIndexByWidget ) const;
     bool applySavedPaneLayout( PaneLayout& layout, std::map<int, LogPane*>& paneBySavedIndex );
     void restorePaneSelection( const PaneLayout& layout, const OpenedFilesList& openedFiles );

@@ -2219,10 +2219,15 @@
       "slices": []
     },
     "E14": {
-      "status": "in_progress",
-      "commit": "6ba2edbf",
-      "pullRequest": null,
+      "status": "completed",
+      "commit": "f76317b841b4e3a2fc7dc8649f300a13dfa2a074",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/109",
       "evidence": [
+        "Merged 2026-11-15 as squash commit f76317b8 (PR #109). Hosted CI on the PR head 51dd69cd: 30 checks passed, 1 skipped.",
+        "2026-11-14 user desktop report fixed in 51dd69cd: a double-click on a choice cell picked its current item, because the list opened while the second press was held and the release landed on it. Lists now open once no mouse button is held. [workbench][E14],[workbench][E13] 65 cases / 781 assertions, 3 runs; [ui][plugins] 3 cases / 62 assertions.",
+        "Windows 11 desktop check 2026-11-14, isolated copy with the C8000 CPF tool: a double-click on a choice cell keeps its list open, and picking an item commits it.",
+        "Hosted CI on Linux arm64 (Qt 6.12.0) found a crash in the cell delegate's event filter while a combo box was being destroyed; fixed in 6237d762 (the list window is recorded when the editor is created).",
+        "Codex review: four findings fixed before the merge (53f23efc, 7db8e4bd, 970d4d76, 1bc6037e).",
         "2026-11-13 final review fix wave (ruling A14) d434d8f..6ba2edb: [workbench][E14],[workbench][E13] 59 cases / 710 assertions, 3 runs after the last build (4 more runs of the 58-case build before two tests were added); [ui][plugins] 3 cases / 55 assertions; plan validator valid. The 9 cases written first failed before the fixes (RED); the unknown-kind case was added after. Full ctest left to the controller. Status stays in_progress until the PR merges.",
         "2026-11-13 clean run at 83eb8edf (no concurrent build): cmake --build build_root --config RelWithDebInfo exit 0; ctest --build-config RelWithDebInfo --output-on-failure: 100% of 10 tests passed (227.6 s). [workbench][E14],[workbench][E13]: 49 cases / 622 assertions, 3 runs; [ui][plugins]: 3 cases / 53 assertions.",
         "Earlier run at 69aaf3ae: 8 of 10 ctest suites passed; the 11 failing cases (Value Counts, Regex Lab, shared worker memory: the analysis job never completed) ran while another build relinked cilogg.exe in the same build_root; the clean run at 83eb8edf above passed all 10.",
@@ -2232,8 +2237,8 @@
       ],
       "limitations": [
         ".svg icons need Qt's SVG image plugin in the deployment; otherwise the generic icon is used.",
-        "Manual desktop checks pending: double-click release on list items, a click outside a multichoice list, italic/accent look on Windows 11.",
-        "No push or PR yet (needs the owner's OK)."
+        "Manual desktop checks still pending on Windows 11: a click outside an open multichoice list, the italic and accent look, typing in a cell while its row is patched, removing a row while another row's editor is open, and a double-click on a multichoice cell. Offscreen tests cover these paths.",
+        "If a plugin changes a cell's editor kind or choices while the user is editing that cell, the commit is checked only for shape against the new spec."
       ],
       "slices": []
     },
@@ -2338,21 +2343,25 @@
     "U16": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/108",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/111",
       "evidence": [
         "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)",
         "U16a local qualification 2026-11-14 (MSVC /WX, Qt 6.10.1, offscreen) after merging master c8aeab16: cilogg_itests [U16] 10 cases / 339 assertions; cilogg_tests [U16] 3 cases / 45 assertions; cilogg_itests [ui]~[workbench-native] 123 cases / 23550 assertions; cilogg_itests [logdata] 88 cases / 3373 assertions; cilogg_tests 333 cases / 14201 assertions passed.",
-        "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769."
+        "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769.",
+        "U16b local qualification 2026-11-15 (MSVC /WX RelWithDebInfo, Qt 6.10.1, offscreen) on origin/master f76317b8: cilogg_tests [U16] 4 cases / 148 assertions; cilogg_itests [workbench][U16] 12 cases / 511 assertions; cilogg_tests 335 cases / 14315 assertions; cilogg_itests [ui]~[workbench-native] 174 cases / 24196 assertions; cilogg_itests [logdata] 88 cases / 3403 assertions; workbench_parity.py --task U16 (pane_operations_parity through CLI, native MCP and a Python global script) and --task G03 (five cases) passed; tests/mcp 111 OK; tests/plugins 204 OK.",
+        "U16b independent C++ review: no high findings; medium findings (failed move into a new pane reported success and left an empty pane, partial merge reported success, merge_panes with a stray pane/tab selector could merge the wrong window, mixed pane and tab selectors resolved silently) fixed with regression checks before the PR. The new end-to-end Python leg found that klogg.client compared the Commander result code with 'Success' while Commander reports 'success', so every klogg.app Commander call raised KloggError; fixed in the PR."
       ],
       "limitations": [
         "No manual visual or dark-theme check; the GUI was exercised only through offscreen tests.",
         "The pane layout is a JSON string per window (paneLayout) in the session; the session format version is unchanged, so older CILogg versions open all tabs in one pane. A single pane stores no layout.",
         "A pane becomes active only on user input (mouse press, Tab/Backtab/shortcut focus) because a restored tab focuses its view after its first load.",
-        "pane_operations_parity and the get_info pane fields belong to U16b; drag and drop to U16c."
+        "U16b implements split_pane, focus_pane, close_pane, merge_panes and move_tab plus the get_info / dump_state pane fields. Not implemented from the design: get_layout / set_layout, --pane-index on open_file / open_com / open_url (focus_pane first: files open in the active pane), and --pane-index combined with --tab-index (tab indices stay window-wide; panes[].tabIds lists a pane's tabs).",
+        "U16b: routing a pane id or tab id to a second window is not covered by an automated test; the parity host and the Catch2 cases use one window.",
+        "Drag and drop between panes belongs to U16c."
       ],
       "slices": [
-        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108",
-        "U16b: Commander/CLI/MCP/Python pane operations, planned",
+        "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108, merged as c252b175 on 2026-11-15",
+        "U16b: Commander/CLI/MCP/Python pane operations and the get_info pane fields, PR https://github.com/dm17ryk/klogg/pull/111",
         "U16c: drag and drop between panes, planned"
       ]
     },
@@ -2860,6 +2869,27 @@
         "Planning registration only; implementation and acceptance remain unrun."
       ],
       "slices": []
+    },
+    "R06": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "Reported 2026-11-15: the exception issue for 'CheckFileChangesOperation failed: bad allocation' (release 1203, during automatic actions) held only the message and versions. Measured at the time: system commit 84/85.9 GB used (1.9 GB free), RAM 2/31.8 GB free, CILogg main process 0.83 GB private; most memory was held by other processes, so the 5 MB change-check buffer failed because the computer was out of memory.",
+        "R06a local qualification 2026-11-15 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022, build-windows.ps1 exit 0): cilogg_tests [diagnostics] 9 cases / 113 assertions passed; full cilogg_tests 343 cases / 14325 assertions passed; ctest 10/10 passed; plan validator valid.",
+        "R06a end-to-end check in an isolated portable copy (offscreen, CLI): create_report wrote report.md/json, journal.log, repro.json, cilogg.log, memory.csv, context.json and the zip; the journal held startup, open_file, the indexing, set_regex_lab with its payload reduced to key names, and create_report; context.json listed the open tab; list_reports returned the report.",
+        "Independent C++ review (cpp-reviewer): no critical findings; the high finding (pruning foreign folders) and the medium findings (paths in the public issue text, denylist journal, report id order, report/notice storms, warning floods in the log tail, test state) were fixed with tests before the PR."
+      ],
+      "limitations": [
+        "R06a (journal, memory status, report bundle, notice, list_reports/create_report) is the first slice; R06b (crash minidumps, throw-site stacks, published Windows symbols) is planned.",
+        "Release builds still have crash dumps disabled until R06b.",
+        "The notice and the Help > Report a problem flow were not exercised on a real desktop (offscreen tests only).",
+        "A folder with spaces in a path other than the report's own file can leave a folder fragment in the public issue text."
+      ],
+      "slices": [
+        "R06a: activity journal, memory status, report bundle, notice, commands, in progress",
+        "R06b: crash minidumps, throw-site stacks, published debug symbols, planned"
+      ]
     }
   },
   "decisions": [
@@ -2876,7 +2906,8 @@
     "D11: see ../../docs/workbench/decisions.md",
     "D12: see ../../docs/workbench/decisions.md",
     "D13: see ../../docs/workbench/decisions.md",
-    "D14: see ../../docs/workbench/decisions.md"
+    "D14: see ../../docs/workbench/decisions.md",
+    "D15: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
@@ -2889,7 +2920,8 @@
     "R05",
     "U14",
     "U15",
-    "U16"
+    "U16",
+    "R06"
   ],
   "addenda": {
     "messageDecoders": {

@@ -52,6 +52,7 @@
 
 #include "configuration.h"
 #include "containers.h"
+#include "diagnostics.h"
 #include "dispatch_to.h"
 #include "encodingdetector.h"
 #include "issuereporter.h"
@@ -67,6 +68,32 @@
 #include "logdataworker.h"
 
 constexpr int IndexingBlockSize = 5 * 1024 * 1024;
+
+namespace {
+// A failed background operation becomes a diagnostic report on the GUI thread (task R06), with
+// the operation, the file and the worker's own facts, instead of a bare exception string.
+void reportOperationFailure( const QString& operation, const QString& error,
+                             const QString& fileName, QVariantMap details )
+{
+    LOG_ERROR << error;
+    details.insert( QStringLiteral( "thread" ), QThread::currentThread()->objectName() );
+    dispatchToMainThread( [ operation, error, fileName, details ]() {
+        IssueReporter::reportException( cilogg::diagnostics::ReportRequest{
+            QStringLiteral( "exception" ), operation, error, fileName, details } );
+    } );
+}
+
+QVariantMap indexedSizeDetails( const std::shared_ptr<IndexingData>& indexingData )
+{
+    try {
+        return { { QStringLiteral( "indexedBytes" ),
+                   static_cast<qint64>(
+                       IndexingData::ConstAccessor{ indexingData.get() }.getIndexedSize() ) } };
+    } catch ( const std::exception& ) {
+        return {};
+    }
+}
+} // namespace
 
 SourceSnapshot IndexingData::sourceSnapshot() const
 {
@@ -334,6 +361,7 @@ void LogDataWorker::checkFileChanges()
 
     QSemaphore operationStarted;
     operationsPool_.start( createRunnable( [ this, &operationStarted, fileName = fileName_ ] {
+        QThread::currentThread()->setObjectName( "CheckFileChanges" );
         operationStarted.release();
         auto operationRequested = std::make_unique<CheckFileChangesOperation>(
             fileName, indexing_data_, interruptRequest_ );
@@ -885,6 +913,10 @@ OperationResult FullIndexOperation::run()
 {
     try {
         LOG_INFO << "FullIndexOperation::run(), file " << fileName_.toStdString();
+        cilogg::diagnostics::ActivityJournal::record(
+            QStringLiteral( "file" ),
+            QStringLiteral( "Indexing %1 (%2 bytes)" )
+                .arg( fileName_, QString::number( QFileInfo( fileName_ ).size() ) ) );
 
         Q_EMIT indexingProgressed( 0 );
 
@@ -903,10 +935,8 @@ OperationResult FullIndexOperation::run()
         return result;
     } catch ( const std::exception& err ) {
         const auto errorString = QString( "FullIndexOperation failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
+        reportOperationFailure( QStringLiteral( "Indexing a file" ), errorString, fileName_,
+                                indexedSizeDetails( indexing_data_ ) );
 
         {
             IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
@@ -938,10 +968,8 @@ OperationResult PartialIndexOperation::run()
         return result;
     } catch ( const std::exception& err ) {
         const auto errorString = QString( "PartialIndexOperation failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
+        reportOperationFailure( QStringLiteral( "Indexing new lines of a file" ), errorString,
+                                fileName_, indexedSizeDetails( indexing_data_ ) );
 
         {
             IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
@@ -958,15 +986,19 @@ OperationResult CheckFileChangesOperation::run()
     try {
         LOG_INFO << "CheckFileChangesOperation::run(), file " << fileName_.toStdString();
         const auto result = doCheckFileChanges();
+        if ( result == MonitoredFileStatus::Truncated ) {
+            cilogg::diagnostics::ActivityJournal::record(
+                QStringLiteral( "file" ),
+                QStringLiteral( "%1 was truncated or changed in its indexed part; reloading" )
+                    .arg( fileName_ ) );
+        }
         Q_EMIT fileCheckFinished( result );
         return result;
     } catch ( const std::exception& err ) {
         const auto errorString
             = QString( "CheckFileChangesOperation failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
+        reportOperationFailure( QStringLiteral( "Checking a file for changes" ), errorString,
+                                fileName_, indexedSizeDetails( indexing_data_ ) );
         Q_EMIT fileCheckFinished( MonitoredFileStatus::Truncated );
         return MonitoredFileStatus::Truncated;
     }

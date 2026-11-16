@@ -204,6 +204,9 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
         )
         if success is not None:
             assert (result.returncode == 0) == success, (result.returncode, result.stderr, result.stdout)
+        if result.returncode != 0 and not result.stdout.strip():
+            # Failures without a payload print their message on stderr only.
+            return {"error": result.stderr.strip()}
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
     def send(method: str, params: dict, notification=False) -> dict:
@@ -227,7 +230,9 @@ def run(executable: Path, artifacts: Path, auto_responses: bool = False,
             "action": action, "arguments": arguments or {},
         }})
         assert bool(result.get("isError")) != success, result
-        return result["structuredContent"]["payload"]
+        content = result["structuredContent"]
+        # Failures without a payload carry only the error text.
+        return content["payload"] if "payload" in content else content
 
     def finish(job: str, through_mcp: bool) -> dict:
         deadline = time.monotonic() + 30

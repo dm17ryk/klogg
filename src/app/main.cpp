@@ -568,6 +568,8 @@ int main( int argc, char* argv[] )
     }
 
     if ( parameters.lab_request ) {
+        // Unattended: a background error writes a diagnostic report but never opens a dialog.
+        IssueReporter::setInteractive( false );
         StyleManager::applyStyle( config.style() );
 
         if ( parameters.lab_request->mode == LabCliMode::ControllerServe ) {
@@ -675,6 +677,7 @@ int main( int argc, char* argv[] )
     app.initCrashHandler();
 
     if ( parameters.scenario_batch_request ) {
+        IssueReporter::setInteractive( false ); // unattended batch: reports, no dialogs
         LOG_INFO << "Initializing persisted highlighter collection for scenario-batch window creation";
         HighlighterSetCollection::getSynced();
         LOG_INFO << "Persisted highlighter collection initialized for scenario-batch";

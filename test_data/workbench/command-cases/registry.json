@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "tasks": {
-    "G03": ["analysis", "regex-lab", "value-counts", "file-navigation"],
+    "G03": ["analysis", "regex-lab", "value-counts", "file-navigation", "pane_operations_parity"],
     "G03d": ["file-navigation"],
     "P03": ["analysis"],
     "P03b": ["analysis"],
@@ -10,7 +10,8 @@
     "P04": ["regex-lab"],
     "P05": ["value-counts"],
     "E13": ["plugin-views"],
-    "U15": ["u15_python_source_parity", "u15b_sources"]
+    "U15": ["u15_python_source_parity", "u15b_sources"],
+    "U16": ["pane_operations_parity"]
   },
   "cases": [
     {
@@ -24,6 +25,12 @@
       "kind": "u15b-sources",
       "action": "search",
       "operations": ["open_file", "get_info", "search", "preview_message", "plugin_manage", "invoke_plugin", "get_plugin_job", "get_plugins", "open_plugin_view", "run_script", "run_global_script", "get_global_script_status", "stop_global_script", "get_ui"]
+    },
+    {
+      "id": "pane_operations_parity",
+      "kind": "pane-operations",
+      "action": "split_pane",
+      "operations": ["get_info", "dump_state", "open_file", "close_tab", "focus_tab", "split_pane", "focus_pane", "close_pane", "merge_panes", "move_tab", "run_global_script", "get_global_script_status"]
     },
     {
       "id": "plugin-views",

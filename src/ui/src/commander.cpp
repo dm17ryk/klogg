@@ -203,6 +203,18 @@ QString commanderActionToString( CommanderAction action )
     case CommanderAction::GetRegexLab: return QStringLiteral( "get_regex_lab" );
     case CommanderAction::SetRegexLab: return QStringLiteral( "set_regex_lab" );
     case CommanderAction::ApplyRegexLabPattern: return QStringLiteral( "apply_regex_lab_pattern" );
+    case CommanderAction::ListReports: return QStringLiteral( "list_reports" );
+    case CommanderAction::CreateReport: return QStringLiteral( "create_report" );
+    case CommanderAction::SplitPane:
+        return QStringLiteral( "split_pane" );
+    case CommanderAction::FocusPane:
+        return QStringLiteral( "focus_pane" );
+    case CommanderAction::ClosePane:
+        return QStringLiteral( "close_pane" );
+    case CommanderAction::MergePanes:
+        return QStringLiteral( "merge_panes" );
+    case CommanderAction::MoveTab:
+        return QStringLiteral( "move_tab" );
     case CommanderAction::None:
     default:
         return {};
@@ -242,6 +254,8 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == "open_plugin_view" ) {
         return CommanderAction::OpenPluginView;
     }
+    if ( normalized == "list_reports" ) { return CommanderAction::ListReports; }
+    if ( normalized == "create_report" ) { return CommanderAction::CreateReport; }
     if ( normalized == QStringLiteral( "open_file" ) ) {
         return CommanderAction::OpenFile;
     }
@@ -423,6 +437,21 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == QStringLiteral( "dump_state" ) ) {
         return CommanderAction::DumpState;
     }
+    if ( normalized == QStringLiteral( "split_pane" ) ) {
+        return CommanderAction::SplitPane;
+    }
+    if ( normalized == QStringLiteral( "focus_pane" ) ) {
+        return CommanderAction::FocusPane;
+    }
+    if ( normalized == QStringLiteral( "close_pane" ) ) {
+        return CommanderAction::ClosePane;
+    }
+    if ( normalized == QStringLiteral( "merge_panes" ) ) {
+        return CommanderAction::MergePanes;
+    }
+    if ( normalized == QStringLiteral( "move_tab" ) ) {
+        return CommanderAction::MoveTab;
+    }
 
     return std::nullopt;
 }
@@ -549,6 +578,13 @@ bool hasCommanderTabSelector( const CommanderRequest& request )
     return !request.tabId.isEmpty() || request.tabIndex.has_value();
 }
 
+bool isCommanderPaneAction( CommanderAction action )
+{
+    return action == CommanderAction::SplitPane || action == CommanderAction::FocusPane
+           || action == CommanderAction::ClosePane || action == CommanderAction::MergePanes
+           || action == CommanderAction::MoveTab;
+}
+
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
 {
     QVariantMap map;
@@ -611,6 +647,18 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     }
     if ( request.tabIndex ) {
         map.insert( QStringLiteral( "tabIndex" ), *request.tabIndex );
+    }
+    if ( !request.paneId.isEmpty() ) {
+        map.insert( QStringLiteral( "paneId" ), request.paneId );
+    }
+    if ( request.paneIndex ) {
+        map.insert( QStringLiteral( "paneIndex" ), *request.paneIndex );
+    }
+    if ( !request.paneDirection.isEmpty() ) {
+        map.insert( QStringLiteral( "paneDirection" ), request.paneDirection );
+    }
+    if ( !request.paneTabs.isEmpty() ) {
+        map.insert( QStringLiteral( "paneTabs" ), request.paneTabs );
     }
     if ( request.filterIndex ) {
         map.insert( QStringLiteral( "filterIndex" ), *request.filterIndex );
@@ -860,6 +908,21 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
             return std::nullopt;
         }
         request.tabIndex = value;
+    }
+
+    request.paneId = map.value( QStringLiteral( "paneId" ) ).toString().trimmed();
+    request.paneDirection
+        = map.value( QStringLiteral( "paneDirection" ) ).toString().trimmed().toLower();
+    request.paneTabs = map.value( QStringLiteral( "paneTabs" ) ).toString().trimmed().toLower();
+    const auto paneIndexIt = map.find( QStringLiteral( "paneIndex" ) );
+    if ( paneIndexIt != map.end() ) {
+        bool ok = false;
+        const auto value = paneIndexIt->toInt( &ok );
+        if ( !ok ) {
+            setError( errorMessage, QStringLiteral( "Invalid commander pane index." ) );
+            return std::nullopt;
+        }
+        request.paneIndex = value;
     }
 
     const auto filterIndexIt = map.find( QStringLiteral( "filterIndex" ) );
