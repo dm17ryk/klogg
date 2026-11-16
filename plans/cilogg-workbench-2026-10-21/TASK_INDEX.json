@@ -1609,7 +1609,7 @@
       "dependencies": [
         "E13"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "requirements": [],
       "task_body_chars": 1947,
       "taskFile": "tasks/E14.md"
@@ -1837,7 +1837,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "UX21"
       ],

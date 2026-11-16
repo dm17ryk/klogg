@@ -1421,3 +1421,143 @@ TEST_CASE( "Actions tab commands are advertised in application and Commander hel
     REQUIRE( commanderActionFromString( " SELECT_ACTIONS_TAB " )
              == CommanderAction::SelectActionsTab );
 }
+
+TEST_CASE( "pane_operations_cli: pane commands parse, round trip and are discoverable",
+           "[commander][workbench][U16]" )
+{
+    const CliParameters help( { "cilogg", "command", "--help" } );
+    const auto catalog = cilogg::mcp::parseCommandHelp( help.exit_message );
+    const auto commands = catalog.value( "commands" ).toObject();
+    const auto options = catalog.value( "options" ).toObject();
+    for ( const auto* action : { "split_pane", "focus_pane", "close_pane", "merge_panes", "move_tab" } ) {
+        INFO( action );
+        CHECK( commands.contains( action ) );
+    }
+    for ( const auto* option : { "pane_id", "pane_index", "direction", "tabs" } ) {
+        INFO( option );
+        REQUIRE( options.contains( option ) );
+        CHECK( options.value( option ).toObject().value( "type" ).toString() == "value" );
+    }
+
+    const auto parse = []( QStringList arguments ) {
+        arguments.prepend( "command" );
+        arguments.prepend( "cilogg" );
+        return CliParameters( arguments );
+    };
+    const auto roundTrip = []( const CliParameters& cli ) {
+        REQUIRE( cli.commander_request );
+        const auto restored = commanderRequestFromVariantMap(
+            commanderRequestToVariantMap( *cli.commander_request ) );
+        REQUIRE( restored );
+        return *restored;
+    };
+
+    // split_pane: the active pane by default, or a pane, a window or a tab; right by default.
+    auto split = parse( { "--action", "split_pane" } );
+    REQUIRE_FALSE( split.parse_error );
+    auto request = roundTrip( split );
+    CHECK( request.action == CommanderAction::SplitPane );
+    CHECK( request.paneDirection.isEmpty() );
+    CHECK_FALSE( request.paneIndex );
+
+    split = parse( { "--action", "split_pane", "--window-index", "1", "--pane-index", "2",
+                     "--direction", "down" } );
+    REQUIRE_FALSE( split.parse_error );
+    request = roundTrip( split );
+    CHECK( request.windowIndex == 1 );
+    CHECK( request.paneIndex == 2 );
+    CHECK( request.paneDirection == "down" );
+
+    split = parse( { "--action", "split_pane", "--tab-id", "tab", "--direction", "RIGHT" } );
+    REQUIRE_FALSE( split.parse_error );
+    request = roundTrip( split );
+    CHECK( request.tabId == "tab" );
+    CHECK( request.paneDirection == "right" );
+
+    // focus_pane and close_pane need a pane.
+    auto focus = parse( { "--action", "focus_pane", "--pane-id", "pane-1" } );
+    REQUIRE_FALSE( focus.parse_error );
+    request = roundTrip( focus );
+    CHECK( request.action == CommanderAction::FocusPane );
+    CHECK( request.paneId == "pane-1" );
+    focus = parse( { "--action", "focus_pane", "--pane-index", "0" } );
+    REQUIRE_FALSE( focus.parse_error );
+    CHECK( roundTrip( focus ).paneIndex == 0 );
+
+    auto close = parse( { "--action", "close_pane", "--window-index", "0", "--pane-index", "1",
+                          "--tabs", "Move" } );
+    REQUIRE_FALSE( close.parse_error );
+    request = roundTrip( close );
+    CHECK( request.action == CommanderAction::ClosePane );
+    CHECK( request.paneTabs == "move" );
+    CHECK( request.windowIndex == 0 );
+    CHECK( request.paneIndex == 1 );
+
+    auto merge = parse( { "--action", "merge_panes", "--window-index", "0" } );
+    REQUIRE_FALSE( merge.parse_error );
+    request = roundTrip( merge );
+    CHECK( request.action == CommanderAction::MergePanes );
+    CHECK( request.windowIndex == 0 );
+
+    // move_tab: a tab id to a pane of its window or to a new pane.
+    auto move = parse( { "--action", "move_tab", "--tab-id", "tab", "--pane-id", "pane-2" } );
+    REQUIRE_FALSE( move.parse_error );
+    request = roundTrip( move );
+    CHECK( request.action == CommanderAction::MoveTab );
+    CHECK( request.tabId == "tab" );
+    CHECK( request.paneId == "pane-2" );
+    move = parse( { "--action", "move_tab", "--tab-id", "tab", "--pane-index", "3" } );
+    REQUIRE_FALSE( move.parse_error );
+    CHECK( roundTrip( move ).paneIndex == 3 );
+    move = parse( { "--action", "move_tab", "--tab-id", "tab", "--direction", "down" } );
+    REQUIRE_FALSE( move.parse_error );
+    CHECK( roundTrip( move ).paneDirection == "down" );
+
+    const std::vector<QStringList> invalid{
+        { "--action", "split_pane", "--direction", "left" },
+        { "--action", "split_pane", "--pane-id", "pane", "--tab-id", "tab" },
+        { "--action", "split_pane", "--pane-index", "-1" },
+        { "--action", "split_pane", "--pane-index", "x" },
+        { "--action", "split_pane", "--tabs", "close" },
+        { "--action", "focus_pane" },
+        { "--action", "focus_pane", "--window-index", "0" },
+        { "--action", "focus_pane", "--pane-id", "pane", "--pane-index", "0" },
+        { "--action", "focus_pane", "--pane-id", "pane", "--direction", "down" },
+        { "--action", "close_pane" },
+        { "--action", "close_pane", "--pane-id", "pane", "--tabs", "keep" },
+        { "--action", "close_pane", "--tab-id", "tab" },
+        { "--action", "merge_panes", "--pane-id", "pane" },
+        { "--action", "merge_panes", "--tab-id", "tab" },
+        { "--action", "move_tab", "--pane-id", "pane" },
+        { "--action", "move_tab", "--tab-id", "tab" },
+        { "--action", "move_tab", "--tab-id", "tab", "--pane-id", "pane", "--direction", "down" },
+        { "--action", "move_tab", "--tab-id", "tab", "--pane-id", "pane", "--pane-index", "1" },
+        { "--action", "move_tab", "--window-index", "0", "--tab-index", "0", "--pane-index", "1" },
+        { "--action", "move_tab", "--tab-id", "tab", "--direction", "up" },
+        { "--action", "move_tab", "--tab-id", "tab", "--pane-id", "pane", "--tabs", "move" },
+        // Pane options belong to the pane commands only.
+        { "--action", "focus_tab", "--tab-id", "tab", "--pane-id", "pane" },
+        { "--action", "get_info", "--direction", "right" },
+        { "--action", "close_tab", "--tab-id", "tab", "--tabs", "close" },
+        { "--action", "open_file", "--file", "a.log", "--pane-index", "0" },
+    };
+    for ( const auto& arguments : invalid ) {
+        INFO( arguments.join( ' ' ).toStdString() );
+        CHECK( parse( arguments ).parse_error );
+    }
+
+    // Requests from scripts and the IPC transport are validated too.
+    QString error;
+    CHECK_FALSE( commanderRequestFromVariantMap(
+        { { "action", "focus_pane" }, { "paneIndex", "x" } }, &error ) );
+    CHECK_FALSE( error.isEmpty() );
+    CHECK( commanderRequestFromVariantMap(
+               { { "action", "split_pane" }, { "paneDirection", "down" } } )
+               ->paneDirection
+           == "down" );
+    for ( const auto* action : { "split_pane", "focus_pane", "close_pane", "merge_panes", "move_tab" } ) {
+        const auto parsed = commanderActionFromString( action );
+        REQUIRE( parsed );
+        CHECK( commanderActionToString( *parsed ) == action );
+    }
+}

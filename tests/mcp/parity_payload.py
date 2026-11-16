@@ -14,7 +14,12 @@ LOG = logging.getLogger("workbench.payload")
 RUNTIME_DIRECTORIES = (
     "platforms", "styles", "imageformats", "iconengines", "tls",
     "networkinformation", "translations", "resources", "sqldrivers",
+    # The klogg Python package: scripts started inside the private host use it.
+    "python_runtime",
 )
+# Only Windows builds deploy python_runtime beside the executable; elsewhere the
+# private host takes the package from this checkout (the build's own source).
+SOURCE_PYTHON_RUNTIME = Path(__file__).resolve().parents[2] / "src" / "app" / "python_runtime"
 
 
 @contextmanager
@@ -43,6 +48,12 @@ def copy_runtime(source, destination):
         path = source / name
         if path.is_dir():
             shutil.copytree(path, destination / name, symlinks=True)
+    target = destination / "python_runtime"
+    if not target.exists() and SOURCE_PYTHON_RUNTIME.is_dir():
+        shutil.copytree(
+            SOURCE_PYTHON_RUNTIME, target, ignore=shutil.ignore_patterns("__pycache__")
+        )
+        LOG.info("python_runtime_from_source path=%s", SOURCE_PYTHON_RUNTIME)
 
 
 def prepare_payload(executable: Path, artifacts: Path):

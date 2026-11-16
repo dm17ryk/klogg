@@ -97,6 +97,12 @@ enum class CommanderAction {
     ShowPreviewDecoderSettings,
     ListReports,
     CreateReport,
+    // Split panes (U16b).
+    SplitPane,
+    FocusPane,
+    ClosePane,
+    MergePanes,
+    MoveTab,
 };
 
 enum class CommanderResultCode {
@@ -145,6 +151,13 @@ struct CommanderRequest {
     QVariantMap analysisArguments;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;
+    // Pane commands: the pane (by id, or by index in the window's layout order), the side of a
+    // new pane ("right" | "down", empty means right) and what close_pane does with the pane's
+    // tabs ("close" | "move", empty refuses a pane that has tabs).
+    QString paneId;
+    std::optional<int> paneIndex;
+    QString paneDirection;
+    QString paneTabs;
     std::optional<int> filterIndex;
     std::optional<int> entityId;
     std::optional<int> timeoutMs;
@@ -196,6 +209,7 @@ QString normalizeCommanderFilePath( const QString& path );
 QString normalizeCommanderUrl( const QString& url );
 bool isCommanderOpenAction( CommanderAction action );
 bool isCommanderAnalysisAction( CommanderAction action );
+bool isCommanderPaneAction( CommanderAction action );
 
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request );
 std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMap& map,
