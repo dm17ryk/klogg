@@ -1,5 +1,6 @@
 #include "pluginmanager.h"
 #include "log.h"
+#include "pythonruntime.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -666,13 +667,10 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
     if ( python.isEmpty() ) {
         python = qEnvironmentVariable( "CILOGG_SCRIPT_PYTHON" );
     }
-    const auto appDir = QCoreApplication::applicationDirPath();
-    for ( const auto& relative : { "python_runtime/python.exe", "python_runtime/python/python.exe",
-                                   "python_runtime/bin/python3", "python_runtime/bin/python",
-                                   "python_runtime/python/bin/python3", "python/python.exe",
-                                   "bin/python3", "bin/python", "python/bin/python3" } ) {
-        if ( python.isEmpty() && QFileInfo( QDir( appDir ).filePath( relative ) ).isFile() ) {
-            python = QDir( appDir ).filePath( relative );
+    for ( const auto& candidate : cilogg::pythonruntime::bundledInterpreterCandidates(
+              QCoreApplication::applicationDirPath() ) ) {
+        if ( python.isEmpty() && QFileInfo( candidate ).isFile() ) {
+            python = candidate;
         }
     }
     if ( python.isEmpty() ) {

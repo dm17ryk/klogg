@@ -17,6 +17,7 @@
 
 #include "analysissource.h"
 #include "log.h"
+#include "pythonruntime.h"
 
 namespace {
 
@@ -631,9 +632,7 @@ QString ScriptSupervisor::resolvePythonExecutable() const
 
 QString ScriptSupervisor::runtimeRoot() const
 {
-    const auto root = QDir( QCoreApplication::applicationDirPath() )
-                          .filePath( QStringLiteral( "python_runtime" ) );
-    return QFileInfo::exists( root ) ? root : QString{};
+    return cilogg::pythonruntime::root();
 }
 
 QString ScriptSupervisor::workerBootstrapPath() const

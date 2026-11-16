@@ -1,4 +1,5 @@
 #include "scenariorunner.h"
+#include "pythonruntime.h"
 
 #include <algorithm>
 
@@ -354,9 +355,7 @@ QString ScenarioRunner::resolvePythonExecutable() const
 
 QString ScenarioRunner::runtimeRoot() const
 {
-    const auto root = QDir( QCoreApplication::applicationDirPath() )
-                          .filePath( QStringLiteral( "python_runtime" ) );
-    return QFileInfo::exists( root ) ? root : QString{};
+    return cilogg::pythonruntime::root();
 }
 
 QString ScenarioRunner::scenarioBootstrapPath() const
