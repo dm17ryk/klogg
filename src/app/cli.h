@@ -444,6 +444,8 @@ private:
             "  search     [--source <selection> | --tab-id <id> | --window-index <n> --tab-index "
             "<n>] --text <expr> [--regex] [--case-sensitive] [--inverse] [--boolean] "
             "[--auto-refresh] [--keep-results] [--wait [--timeout-ms <ms>]]\n"
+            "    --source all --wait waits up to --timeout-ms (default 20000, at most 25000) and "
+            "fails with reason timeout if a tab is still searching.\n"
             "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | "
             "--disabled)\n"
             "  invoke_action --object-name <name> [--window-index <n>]\n"

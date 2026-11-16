@@ -196,6 +196,7 @@ TEST_CASE( "plugin_action_on_each_source: a plugin action runs on the chosen sou
     QList<CommanderRequest> invoked;
     QMap<QString, QString> states;
     bool full = false;
+    QString refusal; // a failure that is not queue_limit, e.g. an unknown action
     QStringList opened;
     PluginSourceRuns runs(
         [ &sources ] { return sources; },
@@ -204,6 +205,11 @@ TEST_CASE( "plugin_action_on_each_source: a plugin action runs on the chosen sou
                 return CommanderResult{ CommanderResultCode::ExecutionFailed,
                                         "Too many active plugin jobs.",
                                         { { "reason", "queue_limit" } } };
+            }
+            if ( !refusal.isEmpty() ) {
+                return CommanderResult{ CommanderResultCode::InvalidRequest,
+                                        "The plugin action was refused.",
+                                        { { "reason", refusal } } };
             }
             invoked.append( request );
             const auto id = QString( "job-%1" ).arg( invoked.size() );
@@ -263,6 +269,25 @@ TEST_CASE( "plugin_action_on_each_source: a plugin action runs on the chosen sou
         REQUIRE( runs.invoke( request ).payload.value( "reason" ) == "invalid_source" );
         request.source = "tab:closed";
         REQUIRE( runs.invoke( request ).payload.value( "reason" ) == "source_not_found" );
+        REQUIRE( invoked.isEmpty() );
+    }
+    SECTION( "all fails like one tab when no tab can start" )
+    {
+        // An unknown action or a disabled plugin: the failure is returned, no Run is kept.
+        request.source = "all";
+        refusal = "unknown_action";
+        const auto failed = runs.invoke( request );
+        REQUIRE_FALSE( failed.ok() );
+        REQUIRE( failed.payload.value( "reason" ) == "unknown_action" );
+        REQUIRE_FALSE( failed.payload.contains( "runId" ) );
+        REQUIRE( runs.runs().isEmpty() );
+        // A full plugin manager is not a failure: the Run waits for it.
+        refusal.clear();
+        full = true;
+        const auto waiting = runs.invoke( request );
+        REQUIRE( waiting.ok() );
+        REQUIRE( waiting.payload.contains( "runId" ) );
+        REQUIRE( runs.runs().size() == 1 );
         REQUIRE( invoked.isEmpty() );
     }
     SECTION( "all runs once per tab, staged" )
@@ -660,6 +685,24 @@ TEST_CASE( "search_all_open_tabs: one search runs in every open tab", "[ui][work
     REQUIRE(
         waitUiState( [ & ] { return crawler->searchStatusText().contains( "All open tabs" ); } ) );
     REQUIRE( crawler->searchStatusText().contains( "4" ) );
+
+    // --wait that runs out is a timeout failure, not a success with partial counts; the
+    // counts so far stay in the payload. (The search runs on a worker and reports through
+    // events, so a 1 ms budget cannot see it finish.)
+    QByteArray big;
+    for ( int index = 0; index < 200000; ++index )
+        big += QByteArray( "line " ) + QByteArray::number( index )
+               + " ERROR filler text to make the search take a while\n";
+    fixture.open( writeLog( directory, "big.log", big ) );
+    request.source = "all";
+    request.searchText = "ERROR";
+    request.timeoutMs = 1;
+    const auto timedOut = window.executeCommanderRequest( request );
+    INFO( timedOut.message.toStdString() );
+    REQUIRE_FALSE( timedOut.ok() );
+    REQUIRE( timedOut.payload.value( "reason" ) == "timeout" );
+    REQUIRE_FALSE( timedOut.payload.value( "complete" ).toBool() );
+    REQUIRE( timedOut.payload.value( "tabs" ).toList().size() == 4 );
 }
 
 TEST_CASE( "com_tools_list_only_com_tabs: COM tools offer only live COM tabs",

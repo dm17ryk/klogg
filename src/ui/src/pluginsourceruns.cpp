@@ -77,6 +77,14 @@ CommanderResult PluginSourceRuns::invoke( const CommanderRequest& request )
     run.sources.reset( resolution.tabIds, sources_() );
     LOG_DEBUG << "Plugin action on all open tabs run=" << id << " plugin=" << single.pluginId
               << " action=" << single.pluginAction << " sources=" << resolution.tabIds.size();
+    // A failure that is not queue_limit (an unknown action, a disabled plugin) fails the
+    // request when no source could start, as it does for one tab.
+    const auto first = startSources( run );
+    if ( !first.ok() && run.sources.started() == 0 ) {
+        LOG_DEBUG << "Plugin action on all open tabs failed to start run=" << id;
+        runs_.erase( id );
+        return first;
+    }
     advance();
     const auto& started = runs_.at( id );
     return commanderSuccess( {},
@@ -94,12 +102,8 @@ void PluginSourceRuns::advance()
         if ( !run.sources.active() )
             continue;
         run.sources.update( status_, keep, -1 );
-        const auto request = run.request;
-        run.sources.startWaiting( [ this, request ]( const QString& tabId ) {
-            auto one = request;
-            one.tabId = tabId;
-            return invoke_( one );
-        } );
+        // Later failures are recorded as the state of their source.
+        startSources( run );
         if ( run.sources.active() )
             active = true;
         else
@@ -117,6 +121,16 @@ void PluginSourceRuns::advance()
         timer_.start();
     else if ( !active )
         timer_.stop();
+}
+
+CommanderResult PluginSourceRuns::startSources( Run& run )
+{
+    const auto request = run.request;
+    return run.sources.startWaiting( [ this, request ]( const QString& tabId ) {
+        auto one = request;
+        one.tabId = tabId;
+        return invoke_( one );
+    } );
 }
 
 QVariantList PluginSourceRuns::runs() const

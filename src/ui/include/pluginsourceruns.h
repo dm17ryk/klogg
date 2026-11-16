@@ -46,6 +46,9 @@ private:
         AnalysisRuns sources;
     };
 
+    // Starts the waiting tabs of a Run; returns the first failure that is not queue_limit.
+    CommanderResult startSources( Run& run );
+
     Sources sources_;
     Invoke invoke_;
     JobStatus status_;

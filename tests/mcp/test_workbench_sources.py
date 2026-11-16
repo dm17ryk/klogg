@@ -1,5 +1,6 @@
 """U15: the public Python command route and the U15 parity case registration."""
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -28,7 +29,7 @@ class PythonCommandRouteTests(unittest.TestCase):
         self.assertEqual(
             _commander_request("preview_message", {"analysis_json": '{"line": 2}',
                                                    "source": "file:/a.log"}),
-            {"analysisArguments": {"line": 2}, "source": "file:/a.log"})
+            {"analysisArguments": {"line": 2}, "source": "file:" + os.path.abspath("/a.log")})
         self.assertEqual(
             _commander_request("search", {"text": "ERROR", "source": "all", "wait": True,
                                           "timeout_ms": 500, "regex": True,
@@ -41,7 +42,7 @@ class PythonCommandRouteTests(unittest.TestCase):
             {"analysisArguments": {"jobId": "j", "pageSize": 5, "cursor": ""}})
         self.assertEqual(
             _commander_request("run_script", {"script_file": "s.py", "source": "tab:t2"}),
-            {"scriptFilePath": "s.py", "source": "tab:t2"})
+            {"scriptFilePath": os.path.abspath("s.py"), "source": "tab:t2"})
         self.assertEqual(_commander_request("add_comment", {"text": "note"}),
                          {"commentText": "note"})
         # Commander field names pass through unchanged.
@@ -49,6 +50,26 @@ class PythonCommandRouteTests(unittest.TestCase):
                          {"viewId": "main"})
         with self.assertRaises(ValueError):
             _commander_request("set_value_counts", {"definition": [1]})
+
+    def test_relative_paths_are_made_absolute_in_the_caller(self):
+        # The GUI would resolve a relative path in its own working directory (as the CLI avoids).
+        absolute = os.path.abspath("logs/rel.log")
+        self.assertEqual(_commander_request("open_file", {"file": "logs/rel.log"}),
+                         {"filePath": absolute})
+        self.assertEqual(_commander_request("search", {"text": "x", "source": "file:logs/rel.log"}),
+                         {"searchText": "x", "source": "file:" + absolute})
+        self.assertEqual(
+            _commander_request("run_global_script", {"script_file": "a.py",
+                                                     "args_json_file": "a.json"}),
+            {"scriptFilePath": os.path.abspath("a.py"),
+             "argsJsonFilePath": os.path.abspath("a.json")})
+        # Commander field names are normalized too; other sources and absolute paths are kept.
+        self.assertEqual(_commander_request("open_file", {"filePath": absolute}),
+                         {"filePath": absolute})
+        self.assertEqual(_commander_request("search", {"text": "x", "source": "tab:t1"}),
+                         {"searchText": "x", "source": "tab:t1"})
+        self.assertEqual(_commander_request("search", {"text": "x", "source": "all"}),
+                         {"searchText": "x", "source": "all"})
 
     def test_public_calls_exist(self):
         for name in ("command", "set_regex_lab", "set_value_counts"):

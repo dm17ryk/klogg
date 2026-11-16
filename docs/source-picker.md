@@ -37,7 +37,16 @@ over `--source`.
   without switching tabs. The search line then shows the total, and its tooltip
   the matches of each tab. `search --source all` returns `tabs` (each tab's
   `matches` and `complete`), `matches` and `complete`; with `--wait` it returns
-  once every tab has finished (`--timeout-ms`, default 30000).
+  once every tab has finished (`--timeout-ms`, default 20000, at most 25000 so
+  the reply arrives within the client's 30 s deadline). If a tab is still
+  searching when the wait runs out, the command fails with reason `timeout`; its
+  payload keeps the counts so far, and the search goes on in the window.
+- **Plugin actions on all open tabs**: if no tab can start (an unknown action,
+  a disabled plugin), the command fails with that reason, as it does for one
+  tab. A full plugin manager is not a failure: the tabs wait their turn.
+- From **Python** (`klogg.app.command`), relative paths (`file`, `script_file`,
+  `args_json_file`, ..., and the path of a `file:` source) are made absolute in
+  the script's working directory, as the CLI does in its own.
 - **Preview** reads one line, so it needs one source: `--source all` is refused
   with `invalid_source`.
 - **Script Runner** needs a live session: tabs that are not COM captures are

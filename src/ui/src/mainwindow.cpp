@@ -4615,7 +4615,13 @@ CommanderResult MainWindow::commanderSearchSource( const CommanderRequest& reque
     QPointer<MainWindow> self( this );
     QElapsedTimer waited;
     waited.start();
-    const qint64 timeoutMs = request.timeoutMs.value_or( 30000 );
+    // --wait is bounded below the client's 30 s response deadline (as pause_comm --wait is), so
+    // the reply always reaches the sender.
+    constexpr qint64 DefaultSearchWaitMs = 20000;
+    constexpr qint64 MaxSearchWaitMs = 25000;
+    const qint64 requestedMs
+        = request.timeoutMs ? static_cast<qint64>( *request.timeoutMs ) : DefaultSearchWaitMs;
+    const qint64 timeoutMs = qBound<qint64>( 1, requestedMs, MaxSearchWaitMs );
     if ( request.waitForCompletion ) {
         // Tabs still loading (or still running an earlier search) finish first, so the
         // counts cover whole files.
@@ -4626,8 +4632,10 @@ CommanderResult MainWindow::commanderSearchSource( const CommanderRequest& reque
         }
     }
     const auto searched = searchAllTabs( resolution.tabIds, single );
+    bool finished = true;
     if ( request.waitForCompletion ) {
-        waitForAllTabsSearch( searched, qMax<qint64>( 0, timeoutMs - waited.elapsed() ) );
+        finished
+            = waitForAllTabsSearch( searched, qMax<qint64>( 0, timeoutMs - waited.elapsed() ) );
         if ( !self ) {
             return commanderFailure( CommanderResultCode::ExecutionFailed,
                                      tr( "The window closed during the search." ) );
@@ -4638,6 +4646,16 @@ CommanderResult MainWindow::commanderSearchSource( const CommanderRequest& reque
     LOG_DEBUG << "Search in all open tabs reported tabs=" << searched.size()
               << " matches=" << payload.value( QStringLiteral( "matches" ) ).toLongLong()
               << " complete=" << payload.value( QStringLiteral( "complete" ) ).toBool();
+    if ( request.waitForCompletion
+         && ( !finished || !payload.value( QStringLiteral( "complete" ) ).toBool() ) ) {
+        // The partial counts stay in the payload; the search keeps running in the GUI.
+        payload.insert( QStringLiteral( "reason" ), QStringLiteral( "timeout" ) );
+        return {
+            CommanderResultCode::ExecutionFailed,
+            tr( "Timed out after %1 ms waiting for the search in all open tabs." ).arg( timeoutMs ),
+            payload
+        };
+    }
     return commanderSuccess( {}, payload );
 }
 

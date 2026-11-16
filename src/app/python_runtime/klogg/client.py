@@ -879,6 +879,28 @@ _COMMANDER_ALIASES = {
 }
 # Keys the Commander request reads in snake_case.
 _SNAKE_CASE_FIELDS = frozenset({"before_context", "after_context", "max_matches", "match_mode"})
+# Commander fields that hold a file or folder path. Like the CLI, a relative path is made
+# absolute in the caller's working directory: the GUI would resolve it in its own.
+_PATH_FIELDS = frozenset({
+    "filePath", "scriptFilePath", "argsJsonFilePath", "scenarioFilePath", "suiteFilePath",
+    "deviceMapFilePath", "reportDirPath", "outputDirPath",
+})
+
+
+def _absolute_path(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    return os.path.abspath(trimmed) if trimmed else ""
+
+
+def _absolute_source(value: Any) -> Any:
+    """The path of a ``file:<path>`` source is made absolute, as the CLI does."""
+    if isinstance(value, str) and value.strip().startswith("file:"):
+        path = value.strip()[len("file:"):]
+        if path.strip():
+            return "file:" + os.path.abspath(path.strip())
+    return value
 
 
 def _camel_case(name: str) -> str:
@@ -926,6 +948,10 @@ def _commander_request(action: str, request: Mapping[str, Any]) -> Dict[str, Any
             result[key] = value
         else:
             result[_camel_case(key)] = value
+    for field in _PATH_FIELDS & result.keys():
+        result[field] = _absolute_path(result[field])
+    if "source" in result:
+        result["source"] = _absolute_source(result["source"])
     return result
 
 
