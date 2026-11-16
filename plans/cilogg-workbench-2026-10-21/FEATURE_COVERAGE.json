@@ -1505,6 +1505,14 @@
     ]
   },
   {
+    "id": "QUAL12",
+    "group": "Quality, compatibility and delivery",
+    "description": "A background error, crash or problem report leaves a local bundle with the operation, file, memory state, preceding steps and replayable requests; the public issue gets only a summary",
+    "tasks": [
+      "R06"
+    ]
+  },
+  {
     "id": "DEC01",
     "group": "Message decoding and protocol inspection",
     "description": "Eleven EHCP reference frame/checksum outcomes and exhaustive split provenance",

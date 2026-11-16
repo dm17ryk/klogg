@@ -11,6 +11,7 @@
 
 #include "actionexpression.h"
 #include "actionsmanager.h"
+#include "diagnostics.h"
 #include "log.h"
 #include "previewdecodeutils.h"
 #include "streamsession.h"
@@ -26,6 +27,28 @@ void setError( QString* errorMessage, const QString& message )
     if ( errorMessage != nullptr ) {
         *errorMessage = message;
     }
+}
+
+// The activity journal of diagnostic reports (task R06) records each send as it happens, or why
+// it did not happen, never the bytes: payloads may hold credentials. Repeats fold into one entry.
+void journalActionSend( const QString& sessionName, int actionId, const QString& actionName,
+                        bool automatic, qsizetype byteCount, const QString& outcome,
+                        const QStringList& parameterNames )
+{
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "action" ),
+        QStringLiteral( "%1 action %2 \"%3\" %4 %5 (%6 bytes)" )
+            .arg( automatic ? QStringLiteral( "Automatic" ) : QStringLiteral( "Manual" ),
+                  QString::number( actionId ), actionName,
+                  outcome == QLatin1String( "sent" ) ? QStringLiteral( "sent to" )
+                  : outcome == QLatin1String( "rejected" )
+                      ? QStringLiteral( "rejected by the serial writer on" )
+                      : QStringLiteral( "cancelled (its session changed) on" ),
+                  sessionName, QString::number( byteCount ) ),
+        { { QStringLiteral( "actionId" ), actionId },
+          { QStringLiteral( "automatic" ), automatic },
+          { QStringLiteral( "outcome" ), outcome },
+          { QStringLiteral( "parameterNames" ), parameterNames } } );
 }
 
 QVariantMap capturesToParameters( const QMap<QString, QString>& captures )
@@ -349,6 +372,8 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     const auto repeatCount = effectiveRepeatCount( action );
     const auto firstDelay = qMax( 0, action.parameters.delay );
     const auto repeatInterval = qMax( 0, action.parameters.repeatInterval );
+    const auto sessionName = session->sourceDisplayName();
+    const auto parameterNames = QStringList( parameters.keys() );
     LOG_DEBUG << "Scheduling action id=" << action.id << ", repeats=" << repeatCount
               << ", encoded_bytes=" << encoded.bytes.size() << ", automatic=" << automatic
               << ", generation=" << generation << ( sensitive ? ", sensitive payload" : "" );
@@ -356,6 +381,8 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
     for ( int index = 0; index < repeatCount; ++index ) {
         const auto delayMs = firstDelay + ( index * repeatInterval );
         if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+            journalActionSend( sessionName, action.id, action.name, automatic,
+                               encoded.bytes.size(), QStringLiteral( "cancelled" ), parameterNames );
             setError( errorMessage, QObject::tr( "Action cancelled after its session changed." ) );
             return false;
         }
@@ -364,6 +391,9 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
                       << " immediately; repeat_index=" << index;
             safeSession->notifyActionSend( action.id, action.name, stepIndex, observableBytes );
             if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                journalActionSend( sessionName, action.id, action.name, automatic,
+                                   encoded.bytes.size(), QStringLiteral( "cancelled" ),
+                                   parameterNames );
                 setError( errorMessage, QObject::tr( "Action cancelled by its send observer." ) );
                 return false;
             }
@@ -371,6 +401,9 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
             const auto admitted
                 = safeSession->submitActionWrite( encoded.bytes, sensitive, writeStamp );
             if ( !admitted.value ) {
+                journalActionSend( sessionName, action.id, action.name, automatic,
+                                   encoded.bytes.size(), QStringLiteral( "rejected" ),
+                                   parameterNames );
                 setError( errorMessage,
                           QObject::tr( "Serial write rejected: %1" ).arg( admitted.error.code ) );
                 return false;
@@ -378,6 +411,8 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
 #else
             safeSession->sendBytes( encoded.bytes, sensitive );
 #endif
+            journalActionSend( sessionName, action.id, action.name, automatic, encoded.bytes.size(),
+                               QStringLiteral( "sent" ), parameterNames );
             continue;
         }
 
@@ -385,34 +420,40 @@ bool sendActionDefinition( StreamSession* session, const ActionDefinition& reque
             delayMs, safeSession.data(),
             [ safeSession, actionId = action.id, actionName = action.name, stepIndex,
               bytes = encoded.bytes, observableBytes, sensitive, repeatIndex = index, generation,
-              automatic
+              automatic, sessionName, parameterNames
 #ifdef KLOGG_SHARED_SERIAL_WRITER
               ,
               writeStamp
 #endif
         ]() {
-                if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
-                    LOG_DEBUG << "Sending delayed action id=" << actionId
-                              << "; repeat_index=" << repeatIndex;
-                    safeSession->notifyActionSend( actionId, actionName, stepIndex,
-                                                   observableBytes );
-                    if ( actionContextIsCurrent( safeSession, generation, automatic ) ) {
-#ifdef KLOGG_SHARED_SERIAL_WRITER
-                        const auto admitted
-                            = safeSession->submitActionWrite( bytes, sensitive, writeStamp );
-                        if ( !admitted.value ) {
-                            LOG_WARNING << "Delayed serial Action rejected reason="
-                                        << admitted.error.code;
-                        }
-#else
-                        safeSession->sendBytes( bytes, sensitive );
-#endif
-                    }
-                }
-                else {
+                const auto journal = [ & ]( const QString& outcome ) {
+                    journalActionSend( sessionName, actionId, actionName, automatic, bytes.size(),
+                                       outcome, parameterNames );
+                };
+                if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
                     LOG_WARNING << "Skipping delayed action id=" << actionId
                                 << " because its execution context changed";
+                    journal( QStringLiteral( "cancelled" ) );
+                    return;
                 }
+                LOG_DEBUG << "Sending delayed action id=" << actionId
+                          << "; repeat_index=" << repeatIndex;
+                safeSession->notifyActionSend( actionId, actionName, stepIndex, observableBytes );
+                if ( !actionContextIsCurrent( safeSession, generation, automatic ) ) {
+                    journal( QStringLiteral( "cancelled" ) );
+                    return;
+                }
+#ifdef KLOGG_SHARED_SERIAL_WRITER
+                const auto admitted = safeSession->submitActionWrite( bytes, sensitive, writeStamp );
+                if ( !admitted.value ) {
+                    LOG_WARNING << "Delayed serial Action rejected reason=" << admitted.error.code;
+                    journal( QStringLiteral( "rejected" ) );
+                    return;
+                }
+#else
+                safeSession->sendBytes( bytes, sensitive );
+#endif
+                journal( QStringLiteral( "sent" ) );
             } );
     }
 
@@ -435,6 +476,13 @@ bool executeResponseDefinition( StreamSession* session, const ResponseDefinition
         setError( errorMessage, QObject::tr( "No eligible COM session for automatic responses." ) );
         return false;
     }
+
+    cilogg::diagnostics::ActivityJournal::record(
+        QStringLiteral( "response" ),
+        QStringLiteral( "Response %1 \"%2\" fired on %3" )
+            .arg( QString::number( response.id ), response.name, session->sourceDisplayName() ),
+        { { QStringLiteral( "responseId" ), response.id },
+          { QStringLiteral( "captureNames" ), QStringList( captures.keys() ) } } );
 
     if ( response.response.hasInlineAction ) {
         ActionDefinition inlineAction;

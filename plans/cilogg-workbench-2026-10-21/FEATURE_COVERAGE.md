@@ -218,6 +218,7 @@
 | QUAL09 | Useful diagnostics, capability errors and truthful partial results | A08, R01, R02 |
 | QUAL10 | Documentation, examples, screenshots and traceable completion | R04 |
 | QUAL11 | In-app updates install exactly once, report a failed or abandoned install once and retry scheduled checks silently | R05 |
+| QUAL12 | A background error, crash or problem report leaves a local bundle with the operation, file, memory state, preceding steps and replayable requests; the public issue gets only a summary | R06 |
 
 ## Message decoding and protocol inspection
 

@@ -22,6 +22,8 @@
 
 #include <cstdint>
 
+#include <QStringList>
+
 #include "log.h"
 
 namespace logging {
@@ -30,6 +32,13 @@ enum class LogLevel { None, Fatal, Error, Warning, Info, Debug };
 
 void enableLogging( bool enableLogging = true, LogLevel logLevel = LogLevel::Info);
 void enableFileLogging( bool enableLogging = true, LogLevel logLevel = LogLevel::Info);
+
+// The most recent formatted log lines, oldest first. Warnings and errors are always kept, even
+// with console and file logging off; lower levels only while console or file logging records
+// them. Diagnostic reports include these lines.
+QStringList recentLogLines();
+void setRecentLogCapacity( int lines );
+void clearRecentLogLines();
 } // namespace logging
 
 #endif

@@ -1835,7 +1835,7 @@ void MainWindow::createActions()
     reportIssueAction = new QAction( tr( action::reportIssueText ), this );
     reportIssueAction->setStatusTip( tr( action::reportIssueStatusTip ) );
     connect( reportIssueAction, &QAction::triggered, this,
-             []( auto ) { IssueReporter::reportIssue( IssueTemplate::Bug ); } );
+             []( auto ) { IssueReporter::reportProblem(); } );
 
     joinDiscordAction = new QAction( tr( action::joinDiscordText ), this );
     joinDiscordAction->setStatusTip( tr( action::joinDiscordStatusTip ) );

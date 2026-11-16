@@ -192,6 +192,9 @@ protected:
     // the shared results and the line to begin the search from.
     void doSearch( SearchData& result, LineNumber initialLine );
 
+    // A failed search becomes a diagnostic report on the GUI thread (task R06).
+    void reportSearchFailure( const QString& operation, const QString& error ) const;
+
     std::shared_ptr<AtomicFlag> interruptRequested_;
     const RegularExpressionPattern regexp_;
     std::shared_ptr<RegularExpression> compiledRegexp_;

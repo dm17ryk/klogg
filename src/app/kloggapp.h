@@ -62,6 +62,8 @@
 #include "actionsmanager.h"
 #include "commander.h"
 #include "crashhandler.h"
+#include "diagnostics.h"
+#include "issuereporter.h"
 #include "klogg_version.h"
 #include "log.h"
 #include "session.h"
@@ -143,8 +145,15 @@ class KloggApp : public QApplication {
                               &KloggApp::activatePrimaryWindow );
             QObject::connect( &messageReceiver_, &MessageReceiver::executeCommand, this,
                               &KloggApp::handleCommanderRequest );
-
         }
+        // Also for --multi instances, which run their own GUI as a secondary instance.
+        setupDiagnostics();
+    }
+
+    ~KloggApp() override
+    {
+        cilogg::diagnostics::MemoryMonitor::stop();
+        cilogg::diagnostics::DiagnosticReports::setContextProvider( {} );
     }
 
     bool isSecondary() const {
@@ -498,6 +507,8 @@ class KloggApp : public QApplication {
     void setAutomationMode( bool enabled, const QPoint& topLeft = {}, const QSize& size = {} )
     {
         automationModeEnabled_ = enabled;
+        // Automated runs still write diagnostic reports, but never open a dialog.
+        IssueReporter::setInteractive( !enabled );
         if ( topLeft != QPoint() ) {
             automationTopLeft_ = topLeft;
         }
@@ -548,6 +559,33 @@ class KloggApp : public QApplication {
             return result.ok() ? commanderSuccess( {}, result.payload )
                                : commanderFailure( CommanderResultCode::ExecutionFailed, result.error );
         };
+        journalCommanderRequest( request );
+        if ( request.action == CommanderAction::ListReports ) {
+            return commanderSuccess(
+                {}, { { QStringLiteral( "root" ), QDir::toNativeSeparators(
+                                                      cilogg::diagnostics::DiagnosticReports::root() ) },
+                      { QStringLiteral( "reports" ),
+                        cilogg::diagnostics::DiagnosticReports::list() } } );
+        }
+        if ( request.action == CommanderAction::CreateReport ) {
+            cilogg::diagnostics::ReportRequest reportRequest;
+            reportRequest.kind = QStringLiteral( "manual" );
+            reportRequest.operation = QStringLiteral( "Report requested through Commander" );
+            if ( !request.commentText.isEmpty() ) {
+                reportRequest.details.insert( QStringLiteral( "note" ), request.commentText );
+            }
+            const auto report = cilogg::diagnostics::DiagnosticReports::create( reportRequest );
+            if ( report.directory.isEmpty() ) {
+                return commanderFailure( CommanderResultCode::ExecutionFailed, report.error );
+            }
+            return commanderSuccess(
+                {}, { { QStringLiteral( "id" ), report.id },
+                      { QStringLiteral( "directory" ), QDir::toNativeSeparators( report.directory ) },
+                      { QStringLiteral( "archive" ), QDir::toNativeSeparators( report.archive ) },
+                      { QStringLiteral( "summary" ), report.summary },
+                      { QStringLiteral( "complete" ), report.ok },
+                      { QStringLiteral( "error" ), report.error } } );
+        }
         if ( request.action == CommanderAction::GetPlugins ) {
             return commanderSuccess( {}, { { "plugins", pluginManager_.plugins() },
                                            { "storage", pluginManager_.storageStatus() },
@@ -1328,6 +1366,123 @@ class KloggApp : public QApplication {
     }
 
   private:
+    // Diagnostic reports (task R06): reports live next to plugin-data (the portable folder or the
+    // application data folder); memory is sampled from startup.
+    void setupDiagnostics()
+    {
+        using namespace cilogg::diagnostics;
+        const QFileInfo pluginData( cilogg::plugins::PluginRepository::defaultDataRoot() );
+        DiagnosticReports::setRoot( QDir( pluginData.absolutePath() ).filePath( "reports" ) );
+        DiagnosticReports::setContextProvider( [ this ]() { return diagnosticContext(); } );
+        MemoryMonitor::start();
+        ActivityJournal::record( QStringLiteral( "app" ),
+                                 QStringLiteral( "CILogg %1 started (pid %2)" )
+                                     .arg( QString( kloggVersion() ),
+                                           QString::number( applicationPid() ) ) );
+    }
+
+    // Every Commander request (GUI scripts, CLI, MCP, Python, scenarios) except read-only
+    // queries. Only listed fields are kept: targets, files, search text and switches; payload
+    // values (plugin and analysis arguments, definitions, action parameters) become their key
+    // names and URLs lose their user info, because they may hold credentials.
+    static void journalCommanderRequest( const CommanderRequest& request )
+    {
+        const auto name = commanderActionToString( request.action );
+        if ( name.isEmpty() || name.startsWith( QLatin1String( "get_" ) )
+             || name == QLatin1String( "dump_state" ) || name == QLatin1String( "list_reports" )
+             || name == QLatin1String( "wait_response" ) ) {
+            return;
+        }
+        const auto full = commanderRequestToVariantMap( request );
+        QVariantMap data;
+        for ( const auto* key :
+              { "action", "tabId", "windowIndex", "tabIndex", "portName", "filePath", "url",
+                "pluginId", "pluginAction", "pluginOperation", "pluginJobId", "entityId",
+                "entityName", "objectName", "scenarioFilePath", "scriptFilePath", "suiteFilePath",
+                "argsJsonFilePath", "filterId", "filterIndex", "filterString", "searchText",
+                "match_mode", "followFile", "predefinedFilters", "runSearch", "enabled",
+                "timeoutMs", "wait", "allEntities", "comSettings", "searchUseRegex",
+                "searchCaseSensitive", "searchInverseMatch", "searchUseBoolean",
+                "searchAutoRefresh", "searchKeepResults" } ) {
+            const auto field = QString::fromLatin1( key );
+            auto value = full.value( field );
+            if ( !value.isValid()
+                 || ( value.userType() == QMetaType::QString && value.toString().isEmpty() ) ) {
+                continue;
+            }
+            if ( field == QLatin1String( "url" ) ) {
+                value = QUrl( value.toString() ).adjusted( QUrl::RemoveUserInfo ).toString();
+            }
+            data.insert( field, value );
+        }
+        for ( const auto* key : { "pluginArguments", "analysisArguments", "definitionPayload",
+                                  "actionParameters" } ) {
+            const auto field = QString::fromLatin1( key );
+            const auto keys = full.value( field ).toMap().keys();
+            if ( !keys.isEmpty() ) {
+                data.insert( field, QStringList( keys ) );
+            }
+        }
+
+        QStringList summary{ name };
+        for ( const auto* key : { "tabId", "windowIndex", "tabIndex", "portName", "filePath", "url",
+                                  "pluginId", "pluginAction", "pluginOperation", "entityId",
+                                  "entityName", "objectName", "scenarioFilePath",
+                                  "scriptFilePath" } ) {
+            const auto value = data.value( QString::fromLatin1( key ) );
+            if ( value.isValid() && !value.toString().isEmpty() ) {
+                summary.push_back( QStringLiteral( "%1=%2" ).arg( QString::fromLatin1( key ),
+                                                                 value.toString() ) );
+            }
+        }
+        cilogg::diagnostics::ActivityJournal::record( QStringLiteral( "command" ),
+                                                      summary.join( QLatin1Char( ' ' ) ), data );
+    }
+
+    // What a report records about the running application: windows and tabs (with file sizes),
+    // running automation and plugin jobs.
+    QVariantMap diagnosticContext()
+    {
+        QVariantList windows;
+        for ( const auto& [ windowSession, window ] : mainWindows_ ) {
+            Q_UNUSED( windowSession );
+            if ( window == nullptr ) {
+                continue;
+            }
+            auto info = window->commanderWindowInfo();
+            auto tabs = info.value( QStringLiteral( "tabs" ) ).toList();
+            for ( auto& tab : tabs ) {
+                auto map = tab.toMap();
+                const auto path = map.value( QStringLiteral( "filePath" ) ).toString();
+                if ( !path.isEmpty() ) {
+                    const QFileInfo file( path );
+                    map.insert( QStringLiteral( "fileBytes" ), file.exists() ? file.size() : -1 );
+                }
+                tab = map;
+            }
+            info.insert( QStringLiteral( "tabs" ), tabs );
+            windows.push_back( info );
+        }
+
+        QVariantList activeJobs;
+        for ( const auto& job : pluginManager_.jobs() ) {
+            const auto map = job.toMap();
+            const auto state = map.value( QStringLiteral( "state" ) ).toString();
+            if ( state != QLatin1String( "completed" ) && state != QLatin1String( "failed" )
+                 && state != QLatin1String( "cancelled" ) ) {
+                activeJobs.push_back( map );
+            }
+        }
+
+        return { { QStringLiteral( "windows" ), windows },
+                 { QStringLiteral( "scenario" ), scenarioRunner_.status().payload },
+                 { QStringLiteral( "globalScript" ), scriptSupervisor_.globalScriptStatusPayload() },
+                 { QStringLiteral( "activePluginJobs" ), activeJobs },
+                 { QStringLiteral( "autoResponsesEnabled" ),
+                   ActionsManager::instance().autoResponsesEnabled() },
+                 { QStringLiteral( "automationMode" ), automationModeEnabled_ } };
+    }
+
     KDSingleApplication singleApplication_;
     std::unique_ptr<CrashHandler> crashHandler_;
 

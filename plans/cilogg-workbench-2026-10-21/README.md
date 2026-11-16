@@ -5,9 +5,11 @@
 
 Complete implementation package for a general developer logger, visualizer and automation workbench, including Docklight communication testing.
 
-**Scope:** 124 implementation tasks and 205 mapped requirements. Imported and reconciled on 2026-10-22; terminal planning integrated on 2026-11-04; E13 added on 2026-11-11 (decision D11); R05, U14, U15 and U16 with requirements UX19–UX21 and QUAL11 added on 2026-11-13 (decisions D12 and D13). G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
+**Scope:** 126 implementation tasks and 206 mapped requirements. Imported and reconciled on 2026-10-22; terminal planning integrated on 2026-11-04; E13 added on 2026-11-11 (decision D11); R05, U14, U15 and U16 with requirements UX19–UX21 and QUAL11 added on 2026-11-13 (decisions D12 and D13); E14 added on 2026-11-13 (decision D14); R06 with requirement QUAL12 added on 2026-11-15 (decision D15). G01 is complete as documentation/source reconciliation. Product features are not implemented by importing this package.
 
 **User requests of 2026-11-13:** R05 (updater hand-off), U14 (filtered view "Matched by" and clear results), U15 (one source picker) and U16 (split panes, design approved) depend only on the completed G01 and are runnable now, each as its own PR; U03 depends on U16 and R04 on all four. See [decisions D12 and D13](../../docs/workbench/decisions.md).
+
+**User request of 2026-11-15:** R06 (debuggable problem reports: activity journal, memory status, local report bundle, crash dumps) depends only on G01 and is runnable now, in slices R06a and R06b; R04 depends on it. See [decision D15](../../docs/workbench/decisions.md).
 
 **Execution status:** P05 is merged through PR #45; the formal runnable gate owner is G02. See [merged roadmap coverage](MERGE_MAP.md), [current execution baseline](../../docs/workbench/baseline.md), [integration decisions](../../docs/workbench/decisions.md), and `PROGRESS.json`. This directory is the canonical execution package; the original P00-P24 roadmap remains a linked specification.
 

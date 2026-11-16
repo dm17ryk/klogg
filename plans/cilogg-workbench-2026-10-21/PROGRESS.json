@@ -2869,6 +2869,27 @@
         "Planning registration only; implementation and acceptance remain unrun."
       ],
       "slices": []
+    },
+    "R06": {
+      "status": "in_progress",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "Reported 2026-11-15: the exception issue for 'CheckFileChangesOperation failed: bad allocation' (release 1203, during automatic actions) held only the message and versions. Measured at the time: system commit 84/85.9 GB used (1.9 GB free), RAM 2/31.8 GB free, CILogg main process 0.83 GB private; most memory was held by other processes, so the 5 MB change-check buffer failed because the computer was out of memory.",
+        "R06a local qualification 2026-11-15 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022, build-windows.ps1 exit 0): cilogg_tests [diagnostics] 9 cases / 113 assertions passed; full cilogg_tests 343 cases / 14325 assertions passed; ctest 10/10 passed; plan validator valid.",
+        "R06a end-to-end check in an isolated portable copy (offscreen, CLI): create_report wrote report.md/json, journal.log, repro.json, cilogg.log, memory.csv, context.json and the zip; the journal held startup, open_file, the indexing, set_regex_lab with its payload reduced to key names, and create_report; context.json listed the open tab; list_reports returned the report.",
+        "Independent C++ review (cpp-reviewer): no critical findings; the high finding (pruning foreign folders) and the medium findings (paths in the public issue text, denylist journal, report id order, report/notice storms, warning floods in the log tail, test state) were fixed with tests before the PR."
+      ],
+      "limitations": [
+        "R06a (journal, memory status, report bundle, notice, list_reports/create_report) is the first slice; R06b (crash minidumps, throw-site stacks, published Windows symbols) is planned.",
+        "Release builds still have crash dumps disabled until R06b.",
+        "The notice and the Help > Report a problem flow were not exercised on a real desktop (offscreen tests only).",
+        "A folder with spaces in a path other than the report's own file can leave a folder fragment in the public issue text."
+      ],
+      "slices": [
+        "R06a: activity journal, memory status, report bundle, notice, commands, in progress",
+        "R06b: crash minidumps, throw-site stacks, published debug symbols, planned"
+      ]
     }
   },
   "decisions": [
@@ -2885,7 +2906,8 @@
     "D11: see ../../docs/workbench/decisions.md",
     "D12: see ../../docs/workbench/decisions.md",
     "D13: see ../../docs/workbench/decisions.md",
-    "D14: see ../../docs/workbench/decisions.md"
+    "D14: see ../../docs/workbench/decisions.md",
+    "D15: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",
@@ -2898,7 +2920,8 @@
     "R05",
     "U14",
     "U15",
-    "U16"
+    "U16",
+    "R06"
   ],
   "addenda": {
     "messageDecoders": {
