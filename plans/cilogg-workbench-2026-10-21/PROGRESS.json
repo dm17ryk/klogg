@@ -2339,7 +2339,7 @@
       ],
       "slices": [
         "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107",
-        "U15b: plugin actions and views, Script Runner, Preview, search in all open tabs; one shared picker and selector through Commander, CLI, native MCP and Python (branch claude/u15b-source-picker)"
+        "U15b: plugin actions and views, Script Runner, Preview, search in all open tabs; one shared picker and selector through Commander, CLI, native MCP and Python PR https://github.com/dm17ryk/klogg/pull/114"
       ]
     },
     "U16": {
