@@ -220,7 +220,15 @@ jobs:
         RELEASE_CHANNEL: ${{ github.event.inputs.channel }}
       shell: bash
       run: |
-        python3 - <<'PY'
+        [[ "$GITHUB_REF" == refs/heads/* ]] || { echo "Release ref is not a branch"; exit 1; }
+        git worktree add --detach "$RUNNER_TEMP/release-metadata" HEAD
+        cd "$RUNNER_TEMP/release-metadata" || exit 1
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        for attempt in 1 2 3; do
+          git fetch origin "$GITHUB_REF"
+          git checkout --detach FETCH_HEAD
+          python3 - <<'PY'
         import json, os
         from pathlib import Path
         path = Path("latest.json")
@@ -232,11 +240,18 @@ jobs:
         data[channel + "_url"] = f"https://github.com/dm17ryk/klogg/releases/tag/{tag}"
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         PY
-        git config user.name github-actions
-        git config user.email github-actions@github.com
-        git add latest.json
-        git diff --cached --quiet || git commit -m "chore: update legacy release metadata [skip ci]"
-        git push
+          git add latest.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update legacy release metadata [skip ci]"
+          if git push origin "HEAD:$GITHUB_REF"; then
+            exit 0
+          fi
+          echo "Push attempt $attempt failed"
+        done
+        echo "Failed to update legacy release metadata after 3 attempts"
+        exit 1
 
     - name: Discord notification
       if: ${{ env.DISCORD_NEW_VERSIONS_WEBHOOK != '' }}
