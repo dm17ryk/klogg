@@ -29,7 +29,13 @@ can also be shared online with public and private repos", "and filters", and: "t
 opposite to code plugins like CPF/ADB/SysLog, text json/lua/python/klogg format files like in
 highlighters and filters we can have conflicts - when user changed it locally and want to update -
 we need to be able to merge it somehow". Sections 3.3 (one window for plugins and packs), 4.6 (local
-edits and merge on update), 4.7 (Export as Pack) and open decision 8 cover this.
+edits and merge on update) and 4.7 (Export as Pack) cover this.
+
+**Decisions and requirements (Dmitry, 2026-11-17, later):** the pack editing model is "edit in
+place with merge", and the proposed merge UI is approved ("ok, go with your recommendation"). He
+added: "we can also internally use git for automatic merging, and so also think how user can post
+his additions/changes to this files". Section 4.6 (the local pack store), section 4.8 (sharing
+changes back) and open decisions 8 to 10 cover this; section 10 lists what is decided.
 
 ## 1. Summary
 
@@ -57,7 +63,8 @@ edits and merge on update), 4.7 (Export as Pack) and open decision 8 cover this.
   installed version stays as the merge base, and an update merges the local edits (three-way, with a
   dialog for conflicts). A pack's automatic responses start switched off, TShark gets the pack's Lua
   folder as a trusted path, because installing from a repository the user added is the trust
-  decision, and **Export as Pack** turns the user's own items into a pack to share.
+  decision. **Export as Pack** turns the user's own items into a pack to share, and **Propose
+  Changes** sends edits of an installed pack back to its source repository as a pull request.
 - Everything in this repository stays generic. A company keeps its private plugins, packs and the
   pipeline that builds its catalog in its own repository (section 7).
 
@@ -165,6 +172,8 @@ act on them:
 - `contents`: for packs, the content types they carry (`previews`, `actions`, `highlights`,
   `filters`, `lua`, `python_decoders`), so the Kind filter works before anything is downloaded.
   `build_catalog.py` fills it from the pack's `plugin.json`.
+- `source_repository`: for packs, where the pack is authored (Git repository address, path and
+  branch), used by Propose Changes (section 4.8).
 
 The host-generated `entry_id` also covers the repository ID, so the same package listed by two
 repositories gives two distinct entries.
@@ -380,8 +389,11 @@ use the same Commander implementation:
 | `repository_sign_out` | `repository` | Deletes a stored PAT. It does not touch the Git credential manager, which Git also uses. |
 | `catalog` | optional `repository` | One job; `plugins` in repository order (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count; `empty: true` for "No plugins in this repository"). The old `url` option still works: it adds that address as a repository with sign-in `none` if no repository has it, and fetches it. |
 | `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source; for packs with local edits `strategy` (`fail` by default, `keep_mine`, `take_theirs`) | A job. A pack update with conflicts and `strategy: fail` refuses and lists the conflicts (pack, kind, item, field). |
-| `pack_edits` | `plugin` | The pack's local edits (kind, item, edited or deleted, base version). |
-| `pack_reset` | `plugin`, optional `item` (kind and identity) | Drops the local edits of the item or of the whole pack. |
+| `pack_edits` | `plugin` | The pack's local changes (kind, item, edited, added or deleted). |
+| `pack_history` | `plugin`, optional `item` | The pack's versions and local commits (or, with the overlay model, its versions only). |
+| `pack_reset` | `plugin`, optional `item` (kind and identity) | Restores the pack version of the item or of the whole pack, as a change that can itself be undone. |
+| `pack_export_changes` | `plugin`, `output` | Writes a patch of the local changes in the pack's file formats. |
+| `pack_propose` | `plugin`, `confirm: true`, optional `title` and `description` | Proposes the local changes as a pull request (section 4.8). Refused without `confirm: true`. Returns the pull request address, or why it could not be created. |
 | `pack_export` | item selectors by kind and name or ID, `id`, `name`, `version`, `description`, `output` (folder or `.zip`) | Writes the pack; returns its path and contents. |
 | `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id`. |
 
@@ -396,7 +408,7 @@ it ships in every build through the existing `documentation.html` resource and n
 The Repositories dialog's **How to...** button and a new **Help > Plugin Repositories Guide** entry
 open the documentation window at that section (`QTextBrowser::scrollToAnchor`); Help >
 Documentation shows it with the rest. Its examples are generic (no organization names) and follow
-the design as built. It has four parts:
+the design as built. It has five parts:
 
 1. **Pack a plugin.** The package layout (`plugin.json` at the root, the program or the content
    files beside it, no links or `..` paths), the `plugin.json` fields for process plugins (with a
@@ -419,7 +431,10 @@ the design as built. It has four parts:
    notice and Update button, editing pack items and updating a pack you edited (the merge dialog,
    Reset to Pack Version, section 4.6), auto-update, switching a plugin's source, removing a repository, and the same steps through the CLI
    (`cilogg command --action plugin_manage --plugin-operation repository_add --json-file ...`).
-4. **Troubleshooting.** "Sign-in needed", "Not found", "No plugins in this repository",
+4. **Share your changes.** View Changes, Export Changes and Propose Changes (section 4.8), what
+   the maintainer does with them (review, raise the version, let the pipeline publish), and how the
+   next update then clears the local changes.
+5. **Troubleshooting.** "Sign-in needed", "Not found", "No plugins in this repository",
    "SHA-256 mismatch", "Package identity differs from catalog", and entries hidden because the
    host is too old or the kind is not supported.
 
@@ -586,47 +601,99 @@ The rules of section 4.2 apply to the other content of a pack:
 
 ### 4.6 Local edits and merge on update
 
-Process plugins (for example a CPF tool, ADB or Syslog) are replaced whole on update. Pack content
-is text the user edits (preview JSON, Lua, Python, actions and responses, highlighter and filter
-collections), so an update merges instead of overwriting the edits or silently ignoring the new
-version.
+**Decided (Dmitry, 2026-11-17): edit in place with merge.** Process plugins (for example a CPF tool,
+ADB or Syslog) are replaced whole on update. Pack content is text the user edits (preview JSON, Lua,
+Python, actions and responses, highlighter and filter collections), so pack items are edited in
+place, the installed version stays the merge base, and an update is a three-way merge that never
+overwrites the edits or silently ignores the new version.
 
-- **The installed version stays pristine.** The installed pack folder is never changed; it is the
-  merge base. Edits are an overlay in the user's plugin data (`pack-edits/<pack-id>/`): per item,
-  the pack ID, the item's identity (section 4.5), the SHA-256 of the canonical base item it was
-  edited from, and the edited item; per text file, the edited copy and the base file's SHA-256.
-  Deleting a pack item locally stores a tombstone. CILogg uses the edited item where one exists and
-  the pack's otherwise; lists mark edited items, and **Reset to Pack Version** (per item, or for the
-  whole pack) drops the overlay.
-- **Update is a three-way merge** per item, with base = the installed version, theirs = the new
-  version and mine = the local edit:
-  - not edited locally: take theirs;
-  - edited locally, unchanged in the new version: keep mine;
-  - changed on both sides in different fields: merge the fields automatically; the same new value
-    on both sides is not a conflict;
-  - the same field changed differently on both sides, or deleted on one side and changed on the
-    other: a conflict;
-  - new in the new version: added; removed from the new version and not edited locally: removed.
-  Fields are the JSON members of an item (nested objects recursively). Arrays whose elements have
-  an identity (preview `fields` by `name`) merge per element; other arrays are single values.
-  Ordered lists without identities, such as the rules of a highlighter set, merge like text with
-  one canonical line per rule. Lua and Python files merge as text (diff3).
-- **The merge dialog** lists every conflict by pack, kind, item and field, with **Keep Mine**,
-  **Take Theirs**, **Edit** (start from either side) and **Keep Both** (the new version stays the
-  pack item, and mine becomes the user's own item, renamed "<name> (mine)"). It also offers
-  **Keep Mine for All** and **Take Theirs for All**, and a side-by-side three-way view (base, theirs,
-  mine and the result) for text files and long fields. Nothing is applied until **Apply**.
-- **Never silent.** Cancelling the merge leaves the old version installed and the edits untouched.
-  Apply installs the new version and writes the rebased overlay in one step (the new folder and the
-  new overlay are staged first; a failure restores both). Items whose merged result equals the new
-  version leave the overlay. An item removed from the new version but kept with Keep Mine becomes
-  the user's own item.
-- **Automation.** Commander, the CLI, native MCP, Python and scenarios never open the dialog.
-  `update` of a pack with conflicts reports them and refuses unless given a `strategy`: `fail` (the
-  default), `keep_mine` or `take_theirs`; merges without conflicts apply as in the GUI.
-- **Silent checks and auto-update** apply an update with local edits only when it merges without
-  conflicts. Otherwise the pack shows "Update needs a merge" and a notice offers to open the merge.
-- **Export as Pack** of an edited pack item exports its current content (section 4.7).
+**The local pack store (proposed; open decisions 8 and 9).** Each installed pack has a local Git
+repository in the user's plugin data (`pack-store/<pack-id>/`). Users never see Git: the store is
+internal, and CILogg reads a pack's effective content from it.
+
+- Branch `upstream` gets one commit per installed version, exactly as shipped, with a message such
+  as "Install 1.2.0 from Team packs". Branch `local` carries the user's edits as commits on top:
+  CILogg commits when the user saves a pack item, with a readable message ("Edit filter 'Software
+  or Reset'", "Delete highlighter set 'Radio'").
+- **Canonical form.** Structured content is stored one item per file (`filters/<id>.json`,
+  `highlights/<set-id>.json`, `actions/<id>.json`, `responses/<id>.json`, `previews/<name>.json`,
+  `blocks/<name>.json`; unsafe characters of a name are encoded), as JSON with sorted keys and one
+  member per line, and the rules of a highlighter set one per line. Unrelated edits then never touch
+  the same lines. Lua and Python files are stored as they are. The canonical form converts to and
+  from the pack's file formats without loss (round-trip tested), so a pack is still built from and
+  exported to the normal files.
+- **Update** commits the new version on `upstream` and merges `upstream` into `local`; Git finds
+  the merge base. `.gitattributes` gives the structured item files a CILogg merge driver, run in
+  process (libgit2 custom merge driver) or as `cilogg --pack-merge-driver %O %A %B %P` with the
+  `git` executable. It merges item by item and field by field with the rules below. Lua and Python
+  files use Git's text merge. What stays unresolved opens the merge window in the GUI; from
+  automation the strategy applies.
+- **History for free.** View History (per pack or item), Revert to an earlier version, and
+  **Reset to Pack Version** (per item or the whole pack, as a new `local` commit that restores the
+  `upstream` content, so it can be undone).
+- **Engine (open decision 9).** libgit2 bundled and built for local use only (no HTTPS or SSH
+  transport, so it stays small; GPLv2 with the linking exception; supports custom merge drivers and
+  `git_merge_file`), so packs work on computers without Git. The alternative is the `git`
+  executable, which adds no dependency but is missing on many computers. E15 sign-in keeps using
+  `git credential fill` when Git is present, as designed.
+- **Rebuild.** A damaged store is rebuilt from the installed version: CILogg first exports the
+  local edits it can still read (as a patch and as a pack), then creates a new store and re-applies
+  them as one commit.
+- **Overlay alternative (open decision 8).** Without Git, the same behaviour comes from an overlay
+  in `pack-edits/<pack-id>/`: per item the identity, the SHA-256 of the canonical base item and the
+  edited item (tombstones for deletions), per text file the edited copy and the base file's SHA-256,
+  and a three-way merge implemented in CILogg. It gives no history and needs its own base
+  bookkeeping, so the Git store is recommended.
+
+**Merge rules** (the merge driver, or the overlay merge) per item, with base = the installed version,
+theirs = the new version and mine = the local edit:
+
+- not edited locally: take theirs;
+- edited locally, unchanged in the new version: keep mine;
+- changed on both sides in different fields: merge the fields automatically; the same new value on
+  both sides is not a conflict;
+- the same field changed differently on both sides, or deleted on one side and changed on the other:
+  a conflict;
+- new in the new version: added; removed from the new version and not edited locally: removed.
+
+Fields are the JSON members of an item (nested objects recursively). Arrays whose elements have an
+identity (preview `fields` by `name`) merge per element; other arrays are single values. Ordered
+lists without identities, such as the rules of a highlighter set, merge like text with one canonical
+line per rule.
+
+**Merge UI. Decided (Dmitry, 2026-11-17):**
+
+- **Item merge window** for structured items (highlighters, filters, actions, responses, previews).
+  No off-the-shelf tool understands these items, and a text merge of INI or JSON gives confusing
+  conflicts (order, quoting, regex escapes). The window shows a tree, pack > item > field, each row
+  marked added, removed, changed or conflict, with Base, Mine and Theirs columns and an editable
+  Result. Per row: **Keep Mine**, **Take Theirs**, **Edit** and **Keep Both** (the new version stays
+  the pack item, and mine becomes the user's own item, renamed "<name> (mine)"); for all rows:
+  **Keep Mine for All** and **Take Theirs for All**. The decision itself is per field.
+- **Three-pane text merge** for Lua and Python: Base, Mine and Theirs side by side, an editable
+  Result below, and per-hunk buttons to take a side. The three-way text merge is libgit2's
+  `git_merge_file` (the same xdiff code as `git merge-file`) with the Git store, otherwise the
+  header-only BSD library dtl (its Diff3) or a small port of diff3; tests check it against
+  `git merge-file` results.
+- **Open in external merge tool** (optional) for text files, configured like git mergetool: a
+  command template with `$BASE`, `$LOCAL`, `$REMOTE` and `$MERGED`, and presets for Beyond Compare,
+  KDiff3, WinMerge, Meld and P4Merge. CILogg reads `$MERGED` back and checks it (UTF-8, size limit,
+  no conflict markers) before saving.
+- Not used: embedding KDiff3 (needs KDE Frameworks), Meld (GTK and Python) or Qt Creator's diff
+  editor (two-way only and tied to Creator).
+- Nothing is applied until **Apply**. **Cancel** leaves the old version installed and the edits
+  untouched. Apply installs the new version and the merge result in one step (staged first; a
+  failure restores both). An item removed from the new version but kept with Keep Mine becomes the
+  user's own item.
+
+**Automation.** Commander, the CLI, native MCP, Python and scenarios never open a merge window.
+`update` of a pack with conflicts reports them and refuses unless given a `strategy`: `fail` (the
+default), `keep_mine` or `take_theirs`; merges without conflicts apply as in the GUI.
+
+**Silent checks and auto-update** apply an update with local edits only when it merges without
+conflicts. Otherwise the pack shows "Update needs a merge" and a notice offers to open the merge.
+
+**Export as Pack** of an edited pack item exports its current content (section 4.7).
 
 ### 4.7 Export as Pack
 
@@ -640,11 +707,52 @@ windows) shares a user's own items:
   object, and the content files in the formats CILogg imports and exports. Responses are exported
   with their content; on another computer they arrive switched off. Nothing from the user's
   preferences or session is included, and no path outside the pack is written.
+- **Export Changes** (section 4.8) exports only what changed in an installed pack, as a patch.
 - The output is ready for `scripts/plugins/build_catalog.py` (section 7) and can also be installed
   directly as a local zip. The guide (section 3.9) covers export, publishing to a public or private
   repository and installing elsewhere.
 - Commander, the CLI, native MCP and Python get `pack_export` with the same choices (item
   selectors by kind and name or ID, the pack identity and the output path).
+
+### 4.8 Sharing changes back (Contribute)
+
+Users can send their edits and additions of an installed pack back to the people who maintain it
+(open decision 10).
+
+- **Where a pack is authored.** A catalog entry of a pack may carry an optional `source_repository`
+  object: the address of the Git repository where the pack is authored, the path of the pack in it
+  and the branch, for example `packs/<pack>` on `main` in the section 7 layout. `build_catalog.py`
+  writes it from `sources.json`. (The name differs from the `source` field of `get_plugins`, which
+  is the repository a package was installed from.) Without it, a pack's changes can only be
+  exported.
+- **Seeing changes.** The Installed tab shows "Local changes" for a pack whose `local` branch has
+  commits, and offers **View Changes** (what differs from the installed version, per item and field,
+  and per line for text), **Export Changes** and **Propose Changes…**.
+- **Export Changes** writes a patch of the `local` commits in the pack's file formats, or Export as
+  Pack writes the pack with a raised version. It works for every repository, also plain HTTPS ones,
+  and the user sends the result to the maintainer.
+- **Propose Changes…** works when the pack's `source_repository` is on GitHub or Azure DevOps and the
+  user is signed in there:
+  - CILogg reads the pack folder at the tip of the source branch through the host's REST API. If the
+    source moved past the installed version, the user's changes are merged onto it with the same
+    rules and windows as an update.
+  - It writes the changed files in the pack's formats as one commit on a new branch
+    `cilogg/<user>/<pack>-<date>` and opens a pull request, both through the host's REST API (GitHub:
+    the Git data and pull request APIs; Azure DevOps: the pushes and pull request APIs). No Git
+    transport is needed, so libgit2 stays local-only.
+  - Sign-in, credential scope and redirect rules are those of E15. A GitHub sign-in uses
+    `git credential fill` for `github.com` (the Git Credential Manager supports GitHub) with a
+    fine-grained token as the fallback, stored like a PAT.
+  - It shows the link to the pull request.
+  - Without write access (403) it says so and offers Export Changes. Forks are out of scope for the
+    first slice.
+- **Nothing is pushed without confirmation.** The confirmation shows the target repository, the
+  branch name and the changed items. From Commander, the CLI, native MCP and Python, `pack_propose`
+  is refused unless `confirm: true` is given.
+- **After the merge.** When the pull request is merged and the pipeline publishes the new version,
+  the next update sees the same change on both sides, and the pack's `local` branch has nothing
+  left, so the pack shows no local changes.
+- **Your own repository** works the same way, with the user as the maintainer.
 
 ## 5. Security
 
@@ -664,6 +772,9 @@ windows) shares a user's own items:
   (section 4.5).
 - Crash dumps can contain tokens that were in memory (section 3.6); they are not shared unless the
   user adds them.
+- Propose Changes writes to a remote repository only after a confirmation that names the
+  repository, the branch and the changed items (or `confirm: true` from automation), and only with
+  the user's own sign-in under the E15 credential rules.
 
 ## 6. Compatibility
 
@@ -793,14 +904,23 @@ the Git Credential Manager they already use for that organization.
   without TShark; `python_decoders` listed and inactive; pack actions, highlighters and filters
   listed with the pack's name, Copy to My..., user precedence, collisions between packs refused, store limits,
   exports without pack items; pack automatic responses off after install and their on or off choice
-  kept across an update. Local edits and merge: the installed folder unchanged by edits; the overlay
-  with base hashes and tombstones; Reset to Pack Version; every three-way case per item (not edited,
+  kept across an update. Local edits and merge: the installed version unchanged by edits; (with the
+  overlay model) base hashes and tombstones; Reset to Pack Version; every three-way case per item (not edited,
   edited only locally, different fields, the same field, deleted against changed, added, removed)
   with the same new value on both sides not a conflict; per-element merge of identified arrays;
   highlighter rules and Lua and Python files by diff3 with and without conflicts; Keep Mine, Take
   Theirs, Edit, Keep Both and the for-all choices; Cancel and a failed apply leaving the old
   version and the edits; automation strategies `fail`, `keep_mine` and `take_theirs` and no dialog
-  outside the GUI; auto-update skipping a conflicting pack and applying a clean merge. Export as Pack:
+  outside the GUI; auto-update skipping a conflicting pack and applying a clean merge. Local Git
+  store: `upstream` and `local` commits for install, edit and update; the merge driver on every
+  item-level case; canonical form round-trips for every kind; text merges matching
+  `git merge-file`; View History, Revert and Reset to Pack Version; the store rebuilt from the
+  installed version with the local edits re-applied; the external merge tool's result read back and
+  refused with conflict markers. Contribute: a patch from Export Changes applied to a fresh store
+  gives the same content; Propose Changes against a local fake GitHub and Azure DevOps host that
+  records the branch, the commit and the pull request request, a source that moved past the
+  installed version, the no-write-access path offering Export Changes, and `pack_propose` refused
+  without `confirm: true`. Export as Pack:
   the selected items with the blocks they need, edited pack items exported with their current
   content, no preferences or session, responses arriving switched off, the output accepted by
   `build_catalog.py` and installable as a local zip, `pack_export` matching the dialog.
@@ -818,15 +938,30 @@ the Git Credential Manager they already use for that organization.
 - **E15b:** Azure DevOps sign-in (credential manager, PAT store), credential scope and redirect
   rules.
 - **E15c:** update check, notices, auto-update.
-- **E16a:** configuration pack kind with JSON previews and Lua for TShark; local edits as an
-  overlay, the three-way merge engine (structured items and diff3 text), the merge dialog, Reset to
-  Pack Version and the automation strategies, for previews, blocks and Lua or Python files.
+- **E16a:** configuration pack kind with JSON previews and Lua for TShark; the local pack store
+  (libgit2, canonical form, merge driver, history, rebuild), the item merge window, the three-pane
+  text merge, the optional external merge tool, Reset to Pack Version and the automation
+  strategies, for previews, blocks and Lua or Python files.
 - **E16b:** Python decoders, activated with MD03.
 - **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
-  filters in packs, with their local edits and merge, and the Packs… buttons in their windows.
-- **E16d:** Export as Pack (dialog and `pack_export`) and its part of the guide.
+  filters in packs, with their canonical forms, local edits and merge, and the Packs… buttons in
+  their windows.
+- **E16d:** Export as Pack (dialog and `pack_export`), View Changes and Export Changes
+  (`pack_export_changes`), and their part of the guide.
+- **E16e:** Propose Changes (`source_repository`, the GitHub and Azure DevOps REST flows, the GitHub
+  sign-in, `pack_propose`) after E15b, and the guide's "Share your changes".
 
-## 10. Open decisions
+## 10. Decisions
+
+### Decided
+
+- **Local edits to pack items (Dmitry, 2026-11-17):** edit in place with the installed version kept
+  as the merge base and a three-way merge on update (section 4.6). Read-only pack items with only
+  Copy to My... were not chosen.
+- **Merge UI (Dmitry, 2026-11-17):** our own item merge window for structured items, a three-pane
+  text merge for Lua and Python, and an optional external merge tool (section 4.6).
+
+### Open
 
 1. **Sign-in:** Git Credential Manager first, PAT as the fallback (recommended), or PAT only.
 2. **Azure layout:** a Git repository with a pipeline that writes a `catalog` branch (recommended),
@@ -843,8 +978,15 @@ the Git Credential Manager they already use for that organization.
    install of a plugin offered by several repositories takes the higher one, while installed plugins
    stay pinned to their source. The alternative is display order only, with CILogg asking which
    repository to use whenever two offer the same plugin.
-8. **Local edits to pack items:** edit in place with the installed version kept as the merge base
-   and a three-way merge on update (recommended), or read-only pack items with Copy to My... only
-   (simpler, but a copy never receives updates).
-9. **Approval and order of work:** whether E15 (and then E16) may start ahead of G02/G03, as E13a
-   and R06 did.
+8. **Where local edits live:** a local Git store per pack with `upstream` and `local` branches, the
+   canonical one-item-per-file form and a CILogg merge driver (recommended: history, revert and
+   Git's merge base for free), or an overlay with base hashes and a merge implemented in CILogg
+   (section 4.6).
+9. **Git engine for the store:** libgit2 bundled and built local-only (recommended: works without
+   Git installed, supports custom merge drivers and `git_merge_file`), or the `git` executable (no
+   new dependency, but missing on many computers).
+10. **Sharing changes back:** Export Changes for every pack plus Propose Changes as a pull request
+    through the GitHub and Azure DevOps REST APIs (recommended), or Export Changes and Export as Pack
+    only.
+11. **Approval and order of work:** whether E15 (and then E16) may start ahead of G02/G03, as E13a
+    and R06 did.
