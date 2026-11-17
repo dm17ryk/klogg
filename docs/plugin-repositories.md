@@ -16,19 +16,29 @@ highlighters, predefined filters) from the public repository and asked to delive
 TShark Lua, as a plugin from the private Azure DevOps repository. Packs therefore carry actions,
 highlighters and filters as well as previews and decoders.
 
+**Requirements (Dmitry, 2026-11-17):** "now we have one
+`https://raw.githubusercontent.com/dm17ryk/klogg/master/plugins.json`, and it is in edit box, we
+need table of repos add/remove button and ordering buttons, so we can load plugins from different
+repos download and install them. also add description/procedure in cilogg how to pack plugins, how
+to create your own plugin repo and use it." Sections 3.3 (the ordered table), 3.9 (the in-app guide)
+and open decision 7 cover this.
+
 ## 1. Summary
 
-- The Plugins window manages a list of **plugin repositories**. Each one is a `plugins.json`
-  catalog (schema 1, unchanged) at an HTTPS address. Users add, remove and turn repositories on or
-  off; the same operations work through Commander, the CLI, native MCP and Python.
+- The Plugins window manages an ordered table of **plugin repositories**. Each one is a
+  `plugins.json` catalog (schema 1, unchanged) at an HTTPS address. Users add, remove, reorder and
+  turn repositories on or off; the order is a priority. The same operations work through Commander,
+  the CLI, native MCP and Python.
 - A repository signs in with **none** (public HTTPS) or **Azure DevOps**. Azure DevOps reuses the
   Git Credential Manager that Git already uses (`git credential fill`), so a user who can clone the
   repository needs no extra setup. A personal access token (PAT) is the fallback, kept in the
   operating system's credential store. Credentials are never written to settings, exports, logs,
   the activity journal or problem reports, are sent only to the repository's own host and
   organization, and are never forwarded across redirects.
-- **Browse Plugins** shows one list merged from all enabled repositories, with a Source column. A
-  plugin always updates from the repository it was installed from.
+- **Browse Plugins** shows one list merged from all enabled repositories, grouped in repository
+  order, with a Source column. A plugin always updates from the repository it was installed from.
+- An **in-app guide** (in Help > Documentation, and from the Repositories dialog) explains how to
+  pack a plugin, how to create a repository of your own (public or private) and how to use it.
 - CILogg checks for updates **silently at startup and once a day**, like the application updater.
   Installing stays a user action unless **auto-update** is turned on for that repository.
 - A new plugin kind, the **configuration pack**, carries preview definitions (the JSON of
@@ -56,7 +66,11 @@ highlighters and filters as well as previews and decoders.
 - `Manifest::parse()` requires `protocol_version: 1`, at least one capability (`datasource`,
   `converter`, `tool`) and a package-relative executable or `python`.
 - **Browse Plugins** (`PluginUiController::browseDialog`) has one URL field, a Fetch button, a
-  table (Plugin, Version, Description) and Install / Update Selected.
+  table (Plugin, Version, Description) and Install / Update Selected. The default catalog on master
+  is empty (`{"schema_version": 1, "plugins": []}`), so Fetch shows an empty table and the status
+  line, which prints `state + ": " + error`, reads only "completed:".
+- Help > Documentation shows `DOCUMENTATION.md`, compiled at build time into the
+  `documentation.html` resource, in a text browser window (`MainWindow::documentation()`).
 - Plugin `secret` configuration fields are kept in settings with current-user file permissions; the
   [plugin SDK](plugin-sdk.md) states that this is not encrypted credential storage. Repository
   credentials therefore do not reuse them.
@@ -101,6 +115,9 @@ keeps its own list:
 
 Rules:
 
+- **Order.** The repositories form an ordered list, stored as the list of their IDs
+  (`repositories/order`). A new repository is added at the end; the migrated `default` repository
+  starts first. The order is a priority (section 3.3).
 - At most 16 repositories. Addresses must use HTTPS and must not contain user information
   (`https://user:secret@host/...` is rejected, so a credential cannot be stored as part of a URL).
 - **The address is part of the identity.** `url`, `branch` and `path` (normalized: for Azure DevOps
@@ -146,15 +163,29 @@ whole repository, and only that repository.
 
 ### 3.3 The merged catalog in the Plugins window
 
-- **Manage Plugins** gains a **Repositories…** button. Its dialog lists the repositories with their
-  state (signed in, sign-in needed, last check, last error) and offers Add, Edit, Remove, Enable,
-  Disable, Sign In, Sign Out and Auto-update. Adding an Azure DevOps repository tests the address
-  and the sign-in before saving.
+- **Manage Plugins** gains a **Repositories…** button. Its dialog is a table with one row per
+  repository, in order: position, Enabled (check box), Name, Address, Sign-in, State (signed in,
+  sign-in needed, number of plugins, "No plugins in this repository"), Last check and Auto-update
+  (check box). The buttons are **Add**, **Edit**, **Remove**, **Move Up**, **Move Down**, **Sign In**,
+  **Sign Out** and **How to...** (section 3.9). Adding an Azure DevOps repository tests the address
+  and the sign-in before saving. The single URL field of today's Browse dialog is gone; its address
+  is the first row after migration.
+- **The order is a priority.** Browse Plugins groups its list by repository in this order. When two
+  repositories offer the same plugin ID, both rows are shown with their source, and a new install
+  of that plugin takes the entry from the higher repository unless the user picks the other row.
+  Installed plugins stay pinned to the repository they came from (section 3.4): moving a repository
+  up or down never changes an installed plugin's source, never offers it as an update from another
+  repository and never installs anything.
 - **Browse Plugins** replaces its URL field with the merged list from all enabled repositories:
   columns Plugin, Version, Kind, Source (repository name), Description, plus an Installed column
   with the installed version. Fetch refreshes every enabled repository in parallel (at most 4 at a
   time) in one job. A repository that fails does not hide the others: its row in the status area
   says "Sign-in needed", "Not found" or the network error, with a Sign In button where it helps.
+- **Status texts are words, never a bare job state.** A repository whose catalog has no entry for
+  this platform shows "No plugins in this repository" (in its group of the list, in the status area
+  and in the Repositories table). An empty merged list says "No plugins in the enabled repositories"
+  with a link to the guide. A finished fetch says, for example, "12 plugins from 2 repositories";
+  a running one "Loading 2 repositories…".
 - Install and Update use the selected entry (`catalog_entry_id`), as today.
 - Manage Plugins shows each installed plugin's source: a repository name, "Local file" or "Shipped
   with CILogg", and an Update button when the source offers a newer version.
@@ -163,6 +194,8 @@ whole repository, and only that repository.
 
 - Installing from a repository records, per plugin: the repository ID, the installed version and
   the package address. The record lives in the plugin settings, not in the plugin folder.
+- A new install of a plugin that several repositories offer takes the higher repository's entry by
+  default (section 3.3); the user can pick another row.
 - Updates come only from that repository. If another repository lists a plugin with the same ID,
   the list shows "Also offered by <repository>", and installing it from there is an explicit
   **Switch source** with a confirmation that names both repositories. This stops a second
@@ -302,18 +335,53 @@ use the same Commander implementation:
 
 | Operation | Options | Result |
 |---|---|---|
-| `repositories` | none | Repositories with `id`, `name`, `url`, `signIn`, `credentialSource`, `signedIn`, `enabled`, `autoUpdate`, `lastCheck`, `lastError`. |
+| `repositories` | none | Repositories in order, with `position`, `id`, `name`, `url`, `signIn`, `credentialSource`, `signedIn`, `enabled`, `autoUpdate`, `lastCheck`, `lastError`, `pluginCount`. |
 | `repository_add` | `name`, `url`, `sign_in`, optional `branch`, `path`, `enabled`, `auto_update` | The new record. Rejects user information in the address and duplicate addresses. |
 | `repository_update` | `repository` plus `name`, `enabled`, `auto_update`, `credential_source` | The changed record. The address, branch and path cannot be changed (section 3.1). |
 | `repository_remove` | `repository` | Deletes the record and its stored PAT. Installed plugins keep running; their source becomes unavailable. |
+| `repository_move` | `repository` and either `position` (1-based) or `direction` (`up`, `down`) | The repositories in their new order. Changes no installed plugin. |
 | `repository_sign_in` | `repository`, `method` (`git-credential-manager` or `personal-access-token`); a PAT only from the GUI or the CLI (`--token-file` / `--token-stdin`) | A job; the result says whether the sign-in works. Outside the GUI it is a silent test (section 3.6). |
 | `repository_sign_out` | `repository` | Deletes a stored PAT. It does not touch the Git credential manager, which Git also uses. |
-| `catalog` | optional `repository` | One job; `plugins` (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count). The old `url` option still works: it adds that address as a repository with sign-in `none` if no repository has it, and fetches it. |
+| `catalog` | optional `repository` | One job; `plugins` in repository order (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count; `empty: true` for "No plugins in this repository"). The old `url` option still works: it adds that address as a repository with sign-in `none` if no repository has it, and fetches it. |
 | `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source | A job. |
 | `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id`. |
 
 `get_plugins` adds `kind`, `source` (`repository`, `local` or `shipped`, the repository ID and the
 installed version) and `update` (the newest version from the source, if any).
+
+### 3.9 In-app guide: pack a plugin, create a repository, use it
+
+The guide is a new section of `DOCUMENTATION.md`, "Plugins: packing, repositories and updates", so
+it ships in every build through the existing `documentation.html` resource and needs no network.
+The Repositories dialog's **How to...** button and a new **Help > Plugin Repositories Guide** entry
+open the documentation window at that section (`QTextBrowser::scrollToAnchor`); Help >
+Documentation shows it with the rest. Its examples are generic (no organization names) and follow
+the design as built. It has four parts:
+
+1. **Pack a plugin.** The package layout (`plugin.json` at the root, the program or the content
+   files beside it, no links or `..` paths), the `plugin.json` fields for process plugins (with a
+   link to the [plugin SDK](plugin-sdk.md)) and for configuration packs (export the previews,
+   actions, highlighters and filters from CILogg, add the Lua, write `kind: config-pack`), version
+   numbers (raise the version for every change; a published version never changes), and building
+   the zips, SHA-256 values and `plugins.json` with `python scripts/plugins/build_catalog.py`.
+2. **Create your own repository.**
+   - Public: any HTTPS static host serves `plugins.json` and the zips, for example a GitHub
+     repository (the `raw.githubusercontent.com` address of `plugins.json`, zips as files or release
+     assets), GitHub Pages, or a company web server. Publish the zips first, then the catalog that
+     names them.
+   - Private: the Azure DevOps recipe of section 7 (a repository, or a folder of an existing private
+     repository, with a pipeline that writes the catalog to its own branch), and what readers need
+     (Read access, Git for Windows with its credential manager, or a PAT with Code (Read)).
+3. **Use it in CILogg.** Repositories > Add (name, address, sign-in), the order and what it means,
+   Fetch and Install in Browse Plugins, the update notice and Update button, auto-update, switching a
+   plugin's source, removing a repository, and the same steps through the CLI
+   (`cilogg command --action plugin_manage --plugin-operation repository_add --json-file ...`).
+4. **Troubleshooting.** "Sign-in needed", "Not found", "No plugins in this repository",
+   "SHA-256 mismatch", "Package identity differs from catalog", and entries hidden because the
+   host is too old or the kind is not supported.
+
+The developer-facing parts of `docs/plugin-sdk.md` ("Packages and catalog publication") are updated
+to match and link to the guide.
 
 ## 4. Configuration packs (E16)
 
@@ -597,8 +665,12 @@ the Git Credential Manager they already use for that organization.
   credential outside the scope, for paths with `..` or encoded slashes, or after a redirect that
   leaves the scope; 203 and HTML replies treated as sign-in needed; the request `origin` set by each
   transport and not settable from the payload; the CLI refusing a token argument; MCP and Python
-  refusing a PAT and never prompting. A local HTTPS test server answers catalog and package
-  requests and records the headers.
+  refusing a PAT and never prompting; repository order (Move Up / Move Down and
+  `repository_move` persist it, Browse groups by it, a new install of a plugin offered twice takes
+  the higher repository, reordering changes no installed plugin and offers no update); an empty
+  catalog shown as "No plugins in this repository", never as a bare job state; How to... and Help >
+  Plugin Repositories Guide open the documentation at the guide's anchor. A local HTTPS test server
+  answers catalog and package requests and records the headers.
 - **E16:** pack manifest validation (`kind` read first, no process keys including `configuration`,
   `protocol_version: 1`, every Lua file listed, count and size limits, preview routes naming only
   pack previews); read-only pack previews; Copy to My Previews with the block closure and renamed
@@ -617,8 +689,10 @@ the Git Credential Manager they already use for that organization.
 
 ## 9. Slices
 
-- **E15a:** repository list, migration, merged catalog with sources, install-source pinning,
-  `build_catalog.py`, Commander/CLI/MCP/Python operations for public repositories.
+- **E15a:** the ordered repository table (Add, Edit, Remove, Move Up, Move Down, Enable),
+  migration, merged catalog grouped by repository order with sources, install-source pinning,
+  status texts including "No plugins in this repository", `build_catalog.py`, the in-app guide
+  (section 3.9), and Commander/CLI/MCP/Python operations for public repositories.
 - **E15b:** Azure DevOps sign-in (credential manager, PAT store), credential scope and redirect
   rules.
 - **E15c:** update check, notices, auto-update.
@@ -640,5 +714,9 @@ the Git Credential Manager they already use for that organization.
    process plugins until then.
 6. **Package signing:** not in E15 (recommended); SHA-256 from an authenticated repository is the
    integrity check. Signing could be added later as a catalog key.
-7. **Approval and order:** whether E15 (and then E16) may start ahead of G02/G03, as E13a and R06
-   did.
+7. **Meaning of the repository order:** a priority (recommended): Browse groups by it, and a new
+   install of a plugin offered by several repositories takes the higher one, while installed plugins
+   stay pinned to their source. The alternative is display order only, with CILogg asking which
+   repository to use whenever two offer the same plugin.
+8. **Approval and order of work:** whether E15 (and then E16) may start ahead of G02/G03, as E13a
+   and R06 did.
