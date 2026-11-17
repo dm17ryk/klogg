@@ -1401,21 +1401,29 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         } );
         return;
     }
-    auto error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+    const auto error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+    QVariantMap result{ { "pluginId", staged.manifest.id },
+                        { "version", staged.manifest.version },
+                        { "repository", source.repository } };
     if ( error.isEmpty() ) {
-        // The install source lives in the plugin settings, not in the plugin folder.
+        // The install source lives in the plugin settings, not in the plugin folder. The plugin
+        // is installed at this point, so a settings write failure is a warning, not a failure:
+        // retrying would only install the same package again.
         repositories_.setSource( staged.manifest.id, source );
-        error = persistSettings();
+        if ( !persistSettings().isEmpty() ) {
+            LOG_WARNING << "Plugin installed but its source record could not be saved id="
+                        << staged.manifest.id.toStdString();
+            result[ "warning" ]
+                = QStringLiteral( "The plugin was installed, but its source repository could not "
+                                  "be saved in the plugin settings." );
+        }
         entries_.erase( staged.manifest.id );
         discover();
     }
     else {
         QDir( staged.directory ).removeRecursively();
     }
-    finishJob( jobId, error,
-               { { "pluginId", staged.manifest.id },
-                 { "version", staged.manifest.version },
-                 { "repository", source.repository } } );
+    finishJob( jobId, error, result );
 }
 
 // Plugin views and message boxes (docs/plugin-views.md).

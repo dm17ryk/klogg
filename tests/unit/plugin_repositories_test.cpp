@@ -856,3 +856,69 @@ TEST_CASE( "A disabled repository offers nothing from its last fetch",
     REQUIRE( manager.catalogEntries().size() == 1 );
 #endif
 }
+
+TEST_CASE( "A failed refresh keeps the last successful catalog, and a saved install is never "
+           "reported as failed",
+           "[plugins][workbench][E15][review]" )
+{
+#ifndef CILOGG_TEST_HTTPS_SERVER
+    WARN( "This Qt build has no TLS server" );
+    return;
+#else
+    testhttps::CatalogServer server;
+    if ( !server.listening() ) {
+        WARN( "No TLS backend is available" );
+        return;
+    }
+    QTemporaryDir temp;
+    const auto v100 = fixturePackage( temp.path(), "org.test.fixture", "1.0.0" );
+    const auto v110 = fixturePackage( temp.path(), "org.test.fixture", "1.1.0" );
+    server.route( "/1.0.0.zip", { 200, v100, "application/zip", 0 } );
+    server.route( "/1.1.0.zip", { 200, v110, "application/zip", 0 } );
+    server.route( "/plugins.json",
+                  { 200,
+                    catalogBytes( { entryFor( "org.test.fixture", "1.0.0",
+                                              server.url( "/1.0.0.zip" ), v100 ) } ),
+                    "application/json", 0 } );
+    testhttps::TrustingNetwork network;
+    const auto data = QDir( temp.path() ).filePath( "data" );
+    PluginManager manager( data, QDir( temp.path() ).filePath( "none" ), nullptr, &network );
+    REQUIRE( manager.manage( "repository_remove", {}, { { "repository", "default" } } ).ok() );
+    REQUIRE( manager
+                 .manage( "repository_add", {},
+                          { { "name", "Team" }, { "url", server.url( "/plugins.json" ) } } )
+                 .ok() );
+    REQUIRE( finishedJob( manager, manager.manage( "catalog", {}, {} ) )[ "state" ]
+             == "completed" );
+    // The catalog address fails now: its entries stay offered.
+    server.route( "/plugins.json", { 404, "gone", "text/plain", 0 } );
+    const auto failed = finishedJob( manager, manager.manage( "catalog", {}, {} ) );
+    REQUIRE( failed[ "state" ] == "failed" );
+    const auto summary = failed[ "result" ].toMap()[ "repositories" ].toList()[ 0 ].toMap();
+    REQUIRE( summary[ "state" ] == "failed" );
+    REQUIRE( summary[ "cachedEntries" ] == 1 );
+    REQUIRE( manager.repositories()[ 0 ].toMap()[ "state" ] == "failed" );
+    REQUIRE( manager.catalogEntries().size() == 1 );
+    REQUIRE( finishedJob( manager, manager.manage( "install", "org.test.fixture", {} ) )[ "state" ]
+             == "completed" );
+    // An update whose source record cannot be written still reports the installed version.
+    server.route( "/plugins.json",
+                  { 200,
+                    catalogBytes( { entryFor( "org.test.fixture", "1.1.0",
+                                              server.url( "/1.1.0.zip" ), v110 ) } ),
+                    "application/json", 0 } );
+    REQUIRE( finishedJob( manager, manager.manage( "catalog", {}, {} ) )[ "state" ]
+             == "completed" );
+    const auto settingsFile = QDir( data ).filePath( "settings.ini" );
+    const auto permissions = QFile::permissions( settingsFile );
+    REQUIRE( QFile::setPermissions( settingsFile, QFile::ReadOwner | QFile::ReadUser ) );
+    const auto updated = finishedJob( manager, manager.manage( "update", "org.test.fixture", {} ) );
+    QFile::setPermissions( settingsFile, permissions );
+    REQUIRE( updated[ "state" ] == "completed" );
+    REQUIRE( updated[ "error" ].toString().isEmpty() );
+    REQUIRE( pluginInfo( manager, "org.test.fixture" )[ "version" ] == "1.1.0" );
+    const auto warning = updated[ "result" ].toMap()[ "warning" ].toString();
+    INFO( "warning: " << warning.toStdString() );
+    REQUIRE( ( warning.isEmpty() || warning.contains( "was installed" ) ) );
+#endif
+}

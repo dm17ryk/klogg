@@ -317,8 +317,8 @@ cilogg command --action plugin_manage --plugin-operation configure --json-file s
 Catalog results include a host-generated `entry_id` identifying the exact
 version, platform, URL, checksum and repository, and each entry's `repository`
 and `kind`; the job result also lists every fetched repository with its `state`
-(`loaded`, `empty` or `failed`), `error`, `entries`, `warnings` and `hidden`
-entries. Pass `entry_id` as `catalog_entry_id` in install or update options to
+(`loaded`, `empty` or `failed`), `error`, `entries`, `cachedEntries` (a failed
+refresh keeps the last successful catalog), `warnings` and `hidden` entries. Pass `entry_id` as `catalog_entry_id` in install or update options to
 install that exact entry, also an older version; the Available tab does this
 automatically. With only a plugin ID, `install` takes the newest version from the
 highest repository that offers the plugin, and `update` the newest version from the

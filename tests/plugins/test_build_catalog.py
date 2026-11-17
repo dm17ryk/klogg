@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import re
 import tempfile
@@ -187,9 +188,54 @@ class BuildCatalogTests(unittest.TestCase):
     def test_semantic_version_pattern_matches_the_host(self):
         for version in ("1.0.0", "0.0.1", "1.0.0-alpha.2", "1.0.0-alpha.10", "1.0.0+build.5",
                         "1.0.0-rc.1+build", "10.20.30"):
-            self.assertRegex(version, build_catalog.SEMVER_PATTERN)
-        for version in ("1.0", "01.0.0", "1.0.0-", "1.0.0-01", "1.0.0+", "v1.0.0", "1.0.0.0"):
-            self.assertNotRegex(version, build_catalog.SEMVER_PATTERN)
+            self.assertTrue(build_catalog.SEMVER_PATTERN.fullmatch(version), version)
+        for version in ("1.0", "01.0.0", "1.0.0-", "1.0.0-01", "1.0.0+", "v1.0.0", "1.0.0.0",
+                        "1.0.0\n"):
+            self.assertIsNone(build_catalog.SEMVER_PATTERN.fullmatch(version), version)
+
+    def test_manifest_fields_must_have_their_json_types(self):
+        for extra in ({"id": 123}, {"name": {"en": "Tool"}}, {"version": 1},
+                      {"protocol_version": True}, {"protocol_version": "1"}, {"kind": 5},
+                      {"license": ["MIT"]}):
+            folder = plugin(self.root / f"bad{len(list(self.root.iterdir()))}", extra=extra)
+            with self.subTest(extra=extra):
+                self.assertEqual(self.run_script("--package", folder, "--catalog", self.root / "out",
+                                                 "--base-url", "https://example.com"), 1)
+        self.assertFalse((self.root / "out/plugins.json").exists())
+
+    def test_repositories_stay_below_the_checkouts_folder(self):
+        plugin(self.root / "outside")
+        repository = self.root / "checkouts/CatalogRepo"
+        repository.mkdir(parents=True)
+        for name in ("..", "../outside", str(self.root / "outside"), "a/b", "", 7):
+            sources = repository / "sources.json"
+            write(sources, json.dumps({"packages": [{"repository": name, "path": "."}]}))
+            with self.subTest(repository=name):
+                self.assertEqual(self.run_script("--sources", sources,
+                                                 "--checkouts", self.root / "checkouts",
+                                                 "--catalog", self.root / "out",
+                                                 "--base-url", "https://example.com"), 1)
+        self.assertFalse((self.root / "out/plugins.json").exists())
+
+    def test_the_declared_executable_keeps_its_execute_permission(self):
+        folder = plugin(self.root / "native", extra={"executable": "bin/tool", "arguments": []})
+        write(folder / "bin/tool", "#!/bin/sh\necho tool\n")
+        write(folder / "bin/tool.exe", "MZ")
+        self.assertEqual(self.run_script("--package", folder, "--exclude", "tests/**",
+                                         "--catalog", self.root / "out",
+                                         "--base-url", "https://example.com"), 0)
+        with zipfile.ZipFile(self.root / "out/packages/org.example.tool-1.0.0.zip") as package:
+            modes = {info.filename: info.external_attr >> 16 for info in package.infolist()}
+        self.assertEqual(modes["bin/tool"], 0o100755)
+        self.assertEqual(modes["bin/tool.exe"], 0o100755)
+        self.assertEqual(modes["plugin.json"], 0o100644)
+        if os.name != "nt":
+            os.chmod(folder / "main.py", 0o755)
+            self.assertEqual(self.run_script("--package", folder, "--exclude", "tests/**",
+                                             "--catalog", self.root / "posix",
+                                             "--base-url", "https://example.com"), 0)
+            with zipfile.ZipFile(self.root / "posix/packages/org.example.tool-1.0.0.zip") as package:
+                self.assertEqual(package.getinfo("main.py").external_attr >> 16, 0o100755)
 
 
 if __name__ == "__main__":

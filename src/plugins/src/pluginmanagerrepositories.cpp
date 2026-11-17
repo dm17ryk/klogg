@@ -480,18 +480,22 @@ void PluginManager::finishCatalog( const std::shared_ptr<CatalogRun>& run )
             }
         }
         else {
-            catalogs_.erase( record.id );
+            // A failed refresh keeps the last successful catalog: its packages stay offered
+            // (and their SHA-256 is still checked) until a fetch succeeds again.
             errors.append( record.name + ": " + read.error );
         }
-        summaries.append( QVariantMap{ { "repository", record.id },
-                                       { "name", record.name },
-                                       { "position", position },
-                                       { "state", state },
-                                       { "empty", state == QLatin1String( "empty" ) },
-                                       { "error", read.error },
-                                       { "entries", read.entries.size() },
-                                       { "warnings", read.warnings },
-                                       { "hidden", read.hidden.toVariantList() } } );
+        const auto cached = catalogs_.find( record.id );
+        summaries.append(
+            QVariantMap{ { "repository", record.id },
+                         { "name", record.name },
+                         { "position", position },
+                         { "state", state },
+                         { "empty", state == QLatin1String( "empty" ) },
+                         { "error", read.error },
+                         { "entries", read.entries.size() },
+                         { "cachedEntries", cached == catalogs_.end() ? 0 : cached->second.size() },
+                         { "warnings", read.warnings },
+                         { "hidden", read.hidden.toVariantList() } } );
     }
     const auto persisted = persistSettings();
     if ( !persisted.isEmpty() ) {

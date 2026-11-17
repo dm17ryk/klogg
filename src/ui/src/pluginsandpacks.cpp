@@ -431,10 +431,13 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
                        true );
         }
         else if ( failed == repositories ) {
+            // A failed refresh keeps the last catalog that loaded; say so when one is listed.
             setStatus(
-                failed == 1
-                    ? tr( "The enabled repository could not be loaded." )
-                    : tr( "None of the %1 enabled repositories could be loaded." ).arg( failed ),
+                ( failed == 1
+                      ? tr( "The enabled repository could not be loaded." )
+                      : tr( "None of the %1 enabled repositories could be loaded." ).arg( failed ) )
+                    + ( offered > 0 ? tr( " The list shows the last catalogs that loaded." )
+                                    : QString{} ),
                 true );
         }
         else if ( offered == 0 ) {
@@ -544,8 +547,11 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
             followJob( tab, plugins, result.payload.value( "jobId" ).toString(),
                        [ setStatus, render, name, version ]( const QVariantMap& job ) {
                            render( false );
+                           const auto warning
+                               = job.value( "result" ).toMap().value( "warning" ).toString();
                            setStatus( job.value( "state" ) == "completed"
                                           ? tr( "Installed %1 %2." ).arg( name, version )
+                                                + ( warning.isEmpty() ? QString{} : ' ' + warning )
                                           : tr( "Could not install %1: %2" )
                                                 .arg( name, job.value( "error" ).toString() ) );
                        } );

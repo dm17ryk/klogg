@@ -197,7 +197,9 @@ python scripts/plugins/build_catalog.py --package my-plugin --os windows --arch 
 
 It writes `site/packages/<id>-<version>.zip` and `site/plugins.json` with each package's
 SHA-256 and address. The ZIPs are reproducible (fixed timestamps, stored entries, LF line
-endings in text files). Use `--os any --arch any` (the default) for a plugin that runs
+endings in text files). The `executable` named in `plugin.json` keeps its execute permission;
+on Linux and macOS so does every file with an execute bit, so build packages of native
+programs there. Use `--os any --arch any` (the default) for a plugin that runs
 everywhere, such as a pure-Python plugin; list each platform for native programs. Rebuilding
 an unchanged plugin changes nothing, and a changed plugin with the same version is refused.
 For several packages, list them in a `sources.json` file and pass `--sources sources.json`.
@@ -232,7 +234,8 @@ Packs** window at its Installed and Available tabs.
   the other row. Moving a repository never changes or updates an installed plugin.
 - **Available** tab: **Fetch** loads every enabled repository at once. Each repository is a
   group with its state: the number of packages, "No plugins in this repository", or the error
-  ("Not found (HTTP 404).", a network error). A failing repository does not hide the others.
+  ("Not found (HTTP 404).", a network error). A failing repository does not hide the others,
+  and its packages from the last fetch that worked stay listed.
   The columns are Name, Kind, Version, Source, Installed and Description; the **Kind** filter
   and the search box narrow the list. **Install / Update** installs the selected row.
 - **Updates come from the install source.** CILogg remembers the repository each plugin was

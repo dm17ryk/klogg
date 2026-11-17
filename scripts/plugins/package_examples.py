@@ -39,7 +39,8 @@ def package_examples(output: pathlib.Path) -> list[tuple[dict[str, Any], pathlib
             package = pathlib.Path(temporary) / "package"
             shutil.copytree(source, package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             shutil.copy2(ROOT / "plugins/sdk/python/cilogg_plugin.py", package)
-            builder.write_zip(builder.package_files(package, ()), archive_path)
+            files = builder.package_files(package, ())
+            builder.write_zip(files, archive_path, builder.executable_entries(manifest, files))
         packages.append((manifest, archive_path))
     return packages
 

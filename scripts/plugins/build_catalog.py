@@ -21,13 +21,14 @@ import argparse
 import fnmatch
 import hashlib
 import json
+import os
 import pathlib
 import re
 import sys
 import tempfile
 import urllib.parse
 import zipfile
-from typing import Any, Dict, Iterable, NamedTuple, Tuple
+from typing import Any, Dict, Iterable, List, NamedTuple, Set, Tuple
 
 SCHEMA_VERSION = 1
 PROTOCOL_VERSION = 1
@@ -36,13 +37,14 @@ MAX_ENTRIES = 1000
 TEXT_SUFFIXES = {".py", ".json", ".md", ".txt", ".lua", ".conf", ".yml", ".yaml"}
 ALWAYS_EXCLUDED = ("__pycache__", "__pycache__/**", "**/__pycache__", "**/__pycache__/**",
                    "*.pyc", "**/*.pyc", ".git", ".git/**")
-ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}")
+REPOSITORY_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,128}")
 # Semantic Versioning 2.0.0, as CILogg validates it.
 SEMVER_PATTERN = re.compile(
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)"
     r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
-    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?")
 PLATFORMS = {"windows", "linux", "macos", "any"}
 # Keys of a configuration pack's `content` that the catalog's `contents` lists.
 CONTENT_TYPES = ("previews", "actions", "highlights", "filters", "lua", "python_decoders")
@@ -84,16 +86,25 @@ def read_manifest(folder: pathlib.Path) -> dict[str, Any]:
         raise CatalogError(f"{path}: {error}") from error
     if not isinstance(manifest, dict):
         raise CatalogError(f"{path}: plugin.json must be an object")
-    if not ID_PATTERN.match(str(manifest.get("id", ""))):
+    # The JSON types are checked as CILogg reads them: a number where text belongs would pass a
+    # str() conversion here but make CILogg leave the entry out.
+    identifier = manifest.get("id")
+    if not isinstance(identifier, str) or not ID_PATTERN.fullmatch(identifier):
         raise CatalogError(f"{path}: id must use lowercase letters, digits, '.', '_' and '-'")
-    if not str(manifest.get("name", "")).strip():
-        raise CatalogError(f"{path}: name is required")
-    if not SEMVER_PATTERN.match(str(manifest.get("version", ""))):
+    name = manifest.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise CatalogError(f"{path}: name is required (text)")
+    version = manifest.get("version")
+    if not isinstance(version, str) or not SEMVER_PATTERN.fullmatch(version):
         raise CatalogError(f"{path}: version must be a Semantic Versioning 2.0.0 version")
-    if manifest.get("protocol_version") != PROTOCOL_VERSION:
+    protocol = manifest.get("protocol_version")
+    if type(protocol) is not int or protocol != PROTOCOL_VERSION:  # True is not 1 here
         raise CatalogError(f"{path}: protocol_version must be {PROTOCOL_VERSION}")
+    for key in ("description",) + COPIED_KEYS:
+        if key in manifest and not isinstance(manifest[key], str):
+            raise CatalogError(f"{path}: {key} must be text")
     kind = manifest.get("kind", "process")
-    if kind not in ("process", "config-pack"):
+    if not isinstance(kind, str) or kind not in ("process", "config-pack"):
         raise CatalogError(f"{path}: unknown kind {kind!r}")
     if kind == "config-pack" and not isinstance(manifest.get("content"), dict):
         raise CatalogError(f"{path}: a configuration pack lists its files under content")
@@ -121,14 +132,31 @@ def package_files(folder: pathlib.Path, exclude: Iterable[str]) -> list[tuple[st
     return files
 
 
-def write_zip(files: list[tuple[str, pathlib.Path]], archive: pathlib.Path) -> None:
-    """Deterministic ZIP: sorted stored entries, fixed timestamps and modes, LF text."""
+def executable_entries(manifest: Dict[str, Any],
+                       files: List[Tuple[str, pathlib.Path]]) -> Set[str]:
+    """ZIP names that get mode 0755: the declared executable and, on POSIX, files with an
+    execute bit (a helper the executable starts). CILogg restores the execute permission only
+    from these bits, so a native program packaged without them could not start."""
+    names = set()
+    declared = manifest.get("executable")
+    if isinstance(declared, str) and declared and declared != "python":
+        names.update({declared, declared + ".exe"})
+    if os.name != "nt":  # Windows reports execute bits from file extensions only
+        names.update(name for name, path in files if path.stat().st_mode & 0o111)
+    return {name for name, _ in files if name in names}
+
+
+def write_zip(files: List[Tuple[str, pathlib.Path]], archive: pathlib.Path,
+              executables: Iterable[str] = ()) -> None:
+    """Deterministic ZIP: sorted stored entries, fixed timestamps, mode 0644 or (for
+    `executables`) 0755, LF line endings in text files."""
     total = 0
+    executable = set(executables)
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as output:
         for name, path in sorted(files):
             info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             info.create_system = 3
-            info.external_attr = 0o100644 << 16
+            info.external_attr = (0o100755 if name in executable else 0o100644) << 16
             data = path.read_bytes()
             if path.suffix.lower() in TEXT_SUFFIXES:
                 data = data.replace(b"\r\n", b"\n")
@@ -146,7 +174,8 @@ def build_package(source: PackageSource, packages_dir: pathlib.Path) -> BuiltPac
     packages_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=packages_dir) as temporary:
         staged = pathlib.Path(temporary) / name
-        write_zip(package_files(source.folder, source.exclude), staged)
+        files = package_files(source.folder, source.exclude)
+        write_zip(files, staged, executable_entries(manifest, files))
         data = staged.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
         created = False
@@ -248,9 +277,16 @@ def read_sources(path: pathlib.Path, checkouts: pathlib.Path | None) -> list[Pac
         if repository == "self":
             base = path.resolve().parent
         else:
+            # A repository is one folder name below --checkouts, never a path out of it.
+            if (not isinstance(repository, str) or not REPOSITORY_PATTERN.fullmatch(repository)
+                    or repository in (".", "..")):
+                raise CatalogError(f"{where}: repository must be a folder name below --checkouts")
             if checkouts is None:
                 raise CatalogError(f"{where}: --checkouts is required for repository {repository}")
-            base = checkouts / repository
+            root = checkouts.resolve()
+            base = (checkouts / repository).resolve()
+            if base.parent != root:
+                raise CatalogError(f"{where}: repository {repository} is not below --checkouts")
         folder = (base / item["path"]).resolve()
         if base.resolve() not in folder.parents and folder != base.resolve():
             raise CatalogError(f"{where}: path leaves the repository")
