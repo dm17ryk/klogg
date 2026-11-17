@@ -172133,48 +172133,6 @@ XXH3_128bits_withSecret	build_root/_deps/xxhash-src/xxh_x86dispatch.h	79;"	d
 XXH3_128bits_withSecret	build_root/_deps/xxhash-src/xxh_x86dispatch.h	80;"	d
 XXH3_128bits_update	build_root/_deps/xxhash-src/xxh_x86dispatch.h	81;"	d
 XXH3_128bits_update	build_root/_deps/xxhash-src/xxh_x86dispatch.h	82;"	d
-json	codex_tasks/fix_preview_ehcp.py	/^import json$/;"	i
-sys	codex_tasks/fix_preview_ehcp.py	/^import sys$/;"	i
-re	codex_tasks/fix_preview_ehcp.py	/^import re$/;"	i
-deepcopy	codex_tasks/fix_preview_ehcp.py	/^from copy import deepcopy$/;"	i
-TIME_ENUM_NAMES	codex_tasks/fix_preview_ehcp.py	/^TIME_ENUM_NAMES = {$/;"	v
-MULTIBYTE_HEX_NAME_TOKENS	codex_tasks/fix_preview_ehcp.py	/^MULTIBYTE_HEX_NAME_TOKENS = [$/;"	v
-normalize_time_enummap	codex_tasks/fix_preview_ehcp.py	/^def normalize_time_enummap(enum_map):$/;"	f
-field_name_matches_time	codex_tasks/fix_preview_ehcp.py	/^def field_name_matches_time(name):$/;"	f
-should_add_endianness	codex_tasks/fix_preview_ehcp.py	/^def should_add_endianness(field):$/;"	f
-walk_fields	codex_tasks/fix_preview_ehcp.py	/^def walk_fields(obj):$/;"	f
-main	codex_tasks/fix_preview_ehcp.py	/^def main():$/;"	f
-json	codex_tasks/fix_preview_ehcp_v2.py	/^import json, sys, re$/;"	i
-sys	codex_tasks/fix_preview_ehcp_v2.py	/^import json, sys, re$/;"	i
-re	codex_tasks/fix_preview_ehcp_v2.py	/^import json, sys, re$/;"	i
-deepcopy	codex_tasks/fix_preview_ehcp_v2.py	/^from copy import deepcopy$/;"	i
-RANGE_RE	codex_tasks/fix_preview_ehcp_v2.py	/^RANGE_RE = re.compile(r'^\\s*(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s*$')  # "4-9" or "4–9"$/;"	v
-TIME_MAX	codex_tasks/fix_preview_ehcp_v2.py	/^TIME_MAX = 96$/;"	v
-MULTIBYTE_TOKENS	codex_tasks/fix_preview_ehcp_v2.py	/^MULTIBYTE_TOKENS = [$/;"	v
-zero_pad	codex_tasks/fix_preview_ehcp_v2.py	/^def zero_pad(n):$/;"	f
-normalize_key_by_width	codex_tasks/fix_preview_ehcp_v2.py	/^def normalize_key_by_width(k, width):$/;"	f
-expand_range_key	codex_tasks/fix_preview_ehcp_v2.py	/^def expand_range_key(key, value, width):$/;"	f
-process_enum_map	codex_tasks/fix_preview_ehcp_v2.py	/^def process_enum_map(enumMap, width):$/;"	f
-should_add_endianness	codex_tasks/fix_preview_ehcp_v2.py	/^def should_add_endianness(field):$/;"	f
-visit_field	codex_tasks/fix_preview_ehcp_v2.py	/^def visit_field(field):$/;"	f
-walk	codex_tasks/fix_preview_ehcp_v2.py	/^def walk(obj):$/;"	f
-main	codex_tasks/fix_preview_ehcp_v2.py	/^def main():$/;"	f
-json	codex_tasks/fix_preview_ehcp_v3.py	/^import json, sys, re$/;"	i
-sys	codex_tasks/fix_preview_ehcp_v3.py	/^import json, sys, re$/;"	i
-re	codex_tasks/fix_preview_ehcp_v3.py	/^import json, sys, re$/;"	i
-deepcopy	codex_tasks/fix_preview_ehcp_v3.py	/^from copy import deepcopy$/;"	i
-RANGE_KEY_RE	codex_tasks/fix_preview_ehcp_v3.py	/^RANGE_KEY_RE = re.compile(r'^\\s*(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s*$')   # key == "4-9"$/;"	v
-RANGE_IN_VALUE_RE	codex_tasks/fix_preview_ehcp_v3.py	/^RANGE_IN_VALUE_RE = re.compile(r'^\\s*(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s*(?:[–\\-]\\s*)?(.*)$')  # value starts with "5-20 – text"$/;"	v
-TIME_MAX	codex_tasks/fix_preview_ehcp_v3.py	/^TIME_MAX = 96$/;"	v
-MULTIBYTE_TOKENS	codex_tasks/fix_preview_ehcp_v3.py	/^MULTIBYTE_TOKENS = [$/;"	v
-zero_pad	codex_tasks/fix_preview_ehcp_v3.py	/^def zero_pad(n):$/;"	f
-normalize_numeric_key	codex_tasks/fix_preview_ehcp_v3.py	/^def normalize_numeric_key(k, width):$/;"	f
-expand_range	codex_tasks/fix_preview_ehcp_v3.py	/^def expand_range(a, b, width):$/;"	f
-process_enum_map	codex_tasks/fix_preview_ehcp_v3.py	/^def process_enum_map(enumMap, width):$/;"	f
-should_add_endianness	codex_tasks/fix_preview_ehcp_v3.py	/^def should_add_endianness(field):$/;"	f
-visit_field	codex_tasks/fix_preview_ehcp_v3.py	/^def visit_field(field):$/;"	f
-walk	codex_tasks/fix_preview_ehcp_v3.py	/^def walk(obj):$/;"	f
-main	codex_tasks/fix_preview_ehcp_v3.py	/^def main():$/;"	f
 run_linuxdeployqt	packaging/linux/appimage/generate_appimage.sh	/^run_linuxdeployqt() {$/;"	f
 os	scripts/gen_changelog.py	/^import os$/;"	i
 subprocess	scripts/gen_changelog.py	/^import subprocess$/;"	i
