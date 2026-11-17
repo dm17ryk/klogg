@@ -1,8 +1,10 @@
 # CILogg in pictures
 
-**Explore ten views of the normal installed Windows application.** These screenshots
-come from CILogg **26.04.2.1078**, captured on 28 October 2026. Click an image to
-open it at full resolution.
+**Explore ten views of the Windows application.** Six screenshots come from the
+normal installed CILogg **26.04.2.1078**, captured on 28 October 2026. The Actions,
+Responses, response editor, and Highlighters views were captured again on
+17 November 2026 from a local 26.04.2 build, using an invented demo-device
+configuration. Click an image to open it at full resolution.
 
 [Project overview](../README.md) · [User guide](../DOCUMENTATION.md) ·
 [Sample investigation](../DOCUMENTATION.md#your-first-investigation)
@@ -34,25 +36,29 @@ occurrence, or export CSV. [Value Counts guide →](value-counts.md)
 
 ### Actions: keep commands ready to use
 
-[![Actions window showing a COM destination, reusable device commands, and transmit sequences](images/actions-showcase.jpg)](images/actions-showcase.jpg)
+[![Actions window showing the action-tab selector, reusable device commands, and transmit sequences](images/actions-showcase.jpg)](images/actions-showcase.jpg)
 
-Select an action destination and browse reusable command definitions.
+Browse reusable command definitions and the bytes each one sends. Connected tabs
+with Actions enabled appear in the **Action tabs** selector; no device is connected
+in this capture, so the selector is empty.
 [Actions and routing guide →](multiple-action-tabs.md)
 
 ### Responses: react to the log
 
-[![Responses window with enabled match rules and an automatic-response switch](images/responses-showcase.jpg)](images/responses-showcase.jpg)
+[![Responses window with text, hex, and regex match rules and an automatic-response switch](images/responses-showcase.jpg)](images/responses-showcase.jpg)
 
-Configure which incoming patterns should trigger a response.
+Configure which incoming patterns should trigger a response: plain text, hex
+bytes, or a regular expression.
 [Automatic responses guide →](automatic-responses.md)
 
 ### Response editor: connect a trigger to a sequence
 
-[![Response editor with the Panel Ready match, linked actions, delays, and snapshot option](images/response-editor-showcase.jpg)](images/response-editor-showcase.jpg)
+[![Response editor with the Gateway ready match, linked actions, delays, and snapshot option](images/response-editor-showcase.jpg)](images/response-editor-showcase.jpg)
 
-This configured response matches `Panel Ready`, then runs linked actions with
-delays. The editor also exposes comments, timestamps, snapshots, and communication
-controls. It was opened for inspection and cancelled without saving changes.
+This configured response matches `Gateway ready` as hex bytes, then runs four
+linked actions 100 ms apart and requests a snapshot. The editor also exposes
+comments, timestamps, and communication controls. It was opened for inspection
+and cancelled without saving changes.
 
 ## Sources and automation
 
@@ -83,7 +89,7 @@ active tab. This screenshot shows the controls before a script is selected.
 
 ### Highlighters: make important events stand out
 
-[![Highlighter editor showing reusable sets, colored patterns, and color controls](images/highlighters-showcase.jpg)](images/highlighters-showcase.jpg)
+[![Highlighter editor showing reusable demo sets, colored patterns, and color controls](images/highlighters-showcase.jpg)](images/highlighters-showcase.jpg)
 
 Organize patterns into sets and choose whole-line or match-only colors.
 [Highlighter guide →](../DOCUMENTATION.md#using-highlighters)
