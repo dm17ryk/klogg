@@ -21,10 +21,13 @@ sets `menu` or `toolbar` to false; views get a toolbar button only with
 `toolbar: true`. A failed plugin needs an explicit restart. Captured logs survive
 stream stop or plugin failure.
 
-**Browse Plugins…** fetches a configurable HTTPS catalog and installs or updates
-a selected entry. All catalog packages require SHA-256. Updates preserve enabled
-state and configuration. The default repository catalog starts empty; it only
-advertises assets after release publication and verification.
+**Browse Plugins…** opens the Available tab of the same **Plugins and Packs**
+window: one list merged from every enabled plugin repository (an ordered table on
+the Repositories tab), with each entry's source. A plugin updates only from the
+repository it was installed from. All catalog packages require SHA-256. Updates
+preserve enabled state and configuration. The default repository catalog starts
+empty; it only advertises assets after release publication and verification. See
+[Plugins: packing, repositories and updates](../DOCUMENTATION.md#plugins-packing-repositories-and-updates).
 
 Python plugins require Python 3.9 or newer. CILogg checks its existing bundled
 Python runtime, `CILOGG_SCRIPT_PYTHON`, then Python on PATH. Each shipped package
@@ -222,10 +225,17 @@ option.
 
 Management options and action arguments use `--json-file <file>`. Management
 operations: `install`, `remove`, `enable`, `disable`, `configure`, `restart`,
-`catalog`, `update`. Local install options: `{"path":"/path/to/package.zip"}`;
-configuration: `{"configuration":{"prefix":"DEMO"}}`; catalog: `{"url":"https://…"}`.
-Invocation accepts the existing tab/window selectors. Native MCP discovers these
-commands through executable help and calls the same Commander implementation.
+`catalog`, `update`, and for plugin repositories `repositories`, `repository_add`,
+`repository_update`, `repository_remove` and `repository_move`. Local install options:
+`{"path":"/path/to/package.zip"}`; configuration: `{"configuration":{"prefix":"DEMO"}}`;
+catalog: `{}` (every enabled repository), `{"repository":"team"}` or the older
+`{"url":"https://…"}`, which adds that address as a repository unless one already has it.
+Repository options: `repository_add` `{"name","url"}` (optional `enabled`); `repository_update`
+`{"repository","name"|"enabled"}` (the address cannot change); `repository_remove`
+`{"repository"}`; `repository_move` `{"repository","position":1}` or
+`{"repository","direction":"up"|"down"}`. Invocation accepts the existing tab/window
+selectors. Native MCP discovers these commands through executable help and calls the same
+Commander implementation.
 
 ## Packages and catalog publication
 
@@ -243,9 +253,23 @@ checksums match. Publish the generated `plugins.json` to the repository root, or
 host it at a configured HTTPS URL. Do not list missing assets or blank checksums.
 The cross-platform examples workflow publishes ZIPs as CI artifacts for review.
 
+For a plugin repository of your own, `python scripts/plugins/build_catalog.py`
+builds the same deterministic ZIPs from package folders (`--package`, or a
+`sources.json` with `--sources`), computes their SHA-256 and writes `plugins.json`
+with absolute addresses below `--base-url`, or Azure DevOps Items API addresses
+(`--organization`, `--project`, `--repository`, `--branch`). It refuses to replace a
+published `<id>-<version>.zip` with different bytes. The user guide section
+[Plugins: packing, repositories and updates](../DOCUMENTATION.md#plugins-packing-repositories-and-updates)
+walks through packing, publishing and installing.
+
 Catalog format: `schema_version: 1`, `plugins` array; entries contain `id`, `name`,
-`version`, `protocol_version`, `os` (`windows`/`linux`/`macos`), `arch` (Qt build
-architecture such as `x86_64`/`arm64`), `url`, and `sha256`.
+`version` (Semantic Versioning 2.0.0), `protocol_version`, `os` (`windows`/`linux`/`macos`,
+or `any`), `arch` (Qt build architecture such as `x86_64`/`arm64`, or `any`), `url`, and
+`sha256`. Optional keys: `description`, `kind` (`process`, the default; hosts hide kinds
+they do not support), `min_host_version` (entries for a newer CILogg are hidden),
+`released`, `homepage`, `license` and, for configuration packs, `contents`. An invalid
+entry is left out on its own and counted in its repository's warnings; an unreadable
+catalog fails only its repository.
 
 Run `python -m unittest discover -s tests/plugins -v` for portable example tests.
 Native runtime/package/Commander tests are in the `[plugins]` Catch2 group.
@@ -291,11 +315,19 @@ cilogg command --action plugin_manage --plugin-operation configure --json-file s
 ```
 
 Catalog results include a host-generated `entry_id` identifying the exact
-version, platform, URL, and checksum. Pass it as `catalog_entry_id` in install or
-update options. The Browse dialog does this automatically. Selecting only a
-plugin ID is rejected when multiple different entries match. A newer catalog
-request supersedes the previous request; obsolete selections are rejected after
-refresh. Packages reject traversal, links, Windows device names, and path
+version, platform, URL, checksum and repository, and each entry's `repository`
+and `kind`; the job result also lists every fetched repository with its `state`
+(`loaded`, `empty` or `failed`), `error`, `entries`, `warnings` and `hidden`
+entries. Pass `entry_id` as `catalog_entry_id` in install or update options to
+install that exact entry, also an older version; the Available tab does this
+automatically. With only a plugin ID, `install` takes the newest version from the
+highest repository that offers the plugin, and `update` the newest version from the
+repository the plugin was installed from; an update to the installed version, or to an
+older one, needs its `catalog_entry_id`. Installing from another repository requires
+`switch_source: true`. Disabled repositories offer nothing. `get_plugins` reports each plugin's `kind` and
+`source` (`type` `repository`, `local` or `shipped`, the repository and the
+installed version). A newer catalog request supersedes the previous request;
+obsolete selections are rejected after refresh. Packages reject traversal, links, Windows device names, and path
 components ending in dots or spaces on every platform.
 Plugin IDs use lowercase ASCII letters, digits, dots, underscores, and hyphens
 to prevent case aliases from replacing another plugin on Windows.

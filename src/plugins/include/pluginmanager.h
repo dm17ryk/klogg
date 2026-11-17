@@ -1,5 +1,7 @@
 #pragma once
+#include "plugincatalog.h"
 #include "pluginprocess.h"
+#include "pluginrepositories.h"
 #include "pluginrepository.h"
 #include "pluginstorage.h"
 #include <QElapsedTimer>
@@ -8,6 +10,7 @@
 #include <QSettings>
 #include <QVariantMap>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
@@ -39,7 +42,19 @@ public:
     void closeFile( const QString& path, const QString& windowId = {} );
     void closeWindow( const QString& windowId );
     void shutdown();
+    // The pre-E15 single catalog address; kept readable for older copies that share the folder.
     QString catalogUrl() const;
+    // Plugin repositories in order (docs/plugin-repositories.md 3.1, 3.8).
+    QVariantList repositories() const;
+    // The entries of each repository's last successful fetch, in repository order, with the
+    // installed version of each plugin.
+    QVariantList catalogEntries() const;
+    // The CILogg version that catalog `min_host_version` keys are compared with.
+    void setHostVersion( const QString& version );
+    QString hostVersion() const
+    {
+        return hostVersion_;
+    }
     QVariantMap storageStatus() const;
     QString dataRoot() const
     {
@@ -127,6 +142,15 @@ private:
         QString messageId;
         QString windowId;
     };
+    // One `catalog` job: every repository it fetches, at most MaxParallelCatalogs at a time.
+    struct CatalogRun {
+        QString jobId;
+        QStringList pending;
+        int active = 0;
+        bool finished = false;
+        std::map<QString, CatalogRead> results;
+    };
+    using DownloadHandler = std::function<void( const QByteArray& bytes, const QString& error )>;
     void handleUiMessage( const QString& pluginId, const QString& method,
                           const QJsonObject& params );
     Result cancelJob( const QString& id, bool grace );
@@ -148,10 +172,23 @@ private:
     void stopStream( const QString& id, bool notify );
     void install( const QString& source, const QString& jobId, const QString& expectedId = {},
                   const QString& expectedVersion = {} );
-    void commitWhenStopped( const StagedPlugin& stage, const QString& jobId );
-    void fetch( const QString& url, const QString& jobId, const QString& sha256 = {},
-                const QString& expectedVersion = {} );
-    void loadCatalog( const QByteArray& bytes, const QString& jobId );
+    void commitWhenStopped( const StagedPlugin& stage, const QString& jobId,
+                            const InstallSource& source );
+    // HTTPS GET within `limit` bytes and 30 s. The handler runs later on this thread, and not
+    // at all once the job is cancelled or CILogg shuts down.
+    void download( const QString& url, qint64 limit, const QString& jobId,
+                   DownloadHandler handler );
+    void fetchPackage( const QJsonObject& entry, const QString& jobId );
+    Result manageRepositories( const QString& operation, const QVariantMap& options );
+    Result startCatalog( const QVariantMap& options );
+    void fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run );
+    void finishCatalog( const std::shared_ptr<CatalogRun>& run );
+    Result selectPackage( const QString& operation, const QString& id, const QVariantMap& options,
+                          QJsonObject* selected ) const;
+    QString installedSource( const QString& id ) const;
+    QVariantMap sourceInfo( const QString& id, const Entry& entry ) const;
+    QVariantList annotated( const QJsonArray& entries ) const;
+    QString persistSettings();
     QString configurationKey( const QString& id ) const;
     void rememberSecretFields( const QString& id, const QJsonArray& fields );
     qint64 reservedCaptureBytes() const;
@@ -163,6 +200,7 @@ private:
     QString dataRoot_;
     QString shippedRoot_;
     QSettings settings_;
+    PluginRepositories repositories_;
     CaptureStorage storage_;
     QNetworkAccessManager network_;
     QNetworkAccessManager* networkAccess_;
@@ -178,8 +216,11 @@ private:
     QElapsedTimer clock_;
     int messageRateCount_ = 10;
     int messageRateWindowMs_ = 5000;
-    QJsonArray catalog_;
+    // Usable entries of each repository's last successful fetch, by repository ID.
+    std::map<QString, QJsonArray> catalogs_;
     QString catalogJobId_;
+    std::shared_ptr<CatalogRun> catalogRun_;
+    QString hostVersion_;
     bool storageScanActive_ = false;
     int storageTicks_ = 0;
     quint64 storageScanGeneration_ = 0;

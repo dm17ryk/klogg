@@ -1,0 +1,210 @@
+"""E15a parity: plugin repositories through the GUI, the CLI, native MCP and Python.
+
+The private host starts with the migrated `default` repository. Each surface adds, moves,
+updates and fetches repositories through `plugin_manage`; every surface must then report the
+same ordered list and the same per-repository catalog results. The catalog addresses point at a
+closed local port, so no case depends on the network and every fetch fails the same way
+(docs/plugin-repositories.md sections 3.3 and 3.8).
+"""
+
+import json
+import logging
+import time
+from pathlib import Path
+
+from workbench_contracts import ParityError, compare_json
+
+LOG = logging.getLogger("workbench.repositories")
+TERMINAL = ("completed", "failed", "cancelled")
+# A closed port: HTTPS requests fail at once with "connection refused".
+CLOSED = "https://127.0.0.1:9"
+FIELDS = ("position", "id", "name", "url", "signIn", "enabled", "autoUpdate")
+GUI_CONTROLS = ("pluginsAndPacksTabs", "pluginRepositoriesTable", "pluginRepositoryAdd",
+                "pluginRepositoryEdit", "pluginRepositoryRemove", "pluginRepositoryUp",
+                "pluginRepositoryDown", "pluginRepositoriesHowTo")
+
+
+def wait_until(predicate, timeout, reason):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.05)
+    raise ParityError(reason)
+
+
+def ui_object(command, name):
+    return next((item for item in command("get_ui", {"window_index": 0})["objects"]
+                 if item.get("objectName") == name), None)
+
+
+def listed(repositories):
+    """The fields every surface must agree on (lastCheck and lastError hold times and texts)."""
+    return [{key: repository.get(key) for key in FIELDS} for repository in repositories]
+
+
+def catalog_states(job):
+    return [{"repository": item["repository"], "state": item["state"], "entries": item["entries"]}
+            for item in job.get("result", {}).get("repositories", [])]
+
+
+class Surfaces:
+    def __init__(self, cli, command, artifacts):
+        self.cli = cli
+        self.command = command
+        self.artifacts = artifacts
+        self.files = 0
+
+    def manage_cli(self, operation, options=None):
+        arguments = ["plugin_manage", "--plugin-operation", operation]
+        if options is not None:
+            self.files += 1
+            path = self.artifacts / f"e15a-{self.files}-{operation}.json"
+            path.write_text(json.dumps(options), encoding="utf-8")
+            arguments += ["--json-file", str(path)]
+        return self.cli(*arguments)
+
+    def manage_mcp(self, operation, options=None):
+        request = {"plugin_operation": operation}
+        if options is not None:
+            request["definition"] = options
+        return self.command("plugin_manage", request)
+
+    def repositories(self):
+        cli = self.manage_cli("repositories")["repositories"]
+        mcp = self.manage_mcp("repositories")["repositories"]
+        compare_json(listed(cli), listed(mcp), "$.repositories.mcp")
+        return cli
+
+    def finished(self, job_id, through_mcp):
+        def done():
+            job = (self.command("get_plugin_job", {"plugin_job_id": job_id}) if through_mcp
+                   else self.cli("get_plugin_job", "--plugin-job-id", job_id))
+            return job if job["state"] in TERMINAL else None
+        return wait_until(done, 60, f"catalog_job_timeout: {job_id}")
+
+
+def gui_rows(command):
+    table = wait_until(lambda: ui_object(command, "pluginRepositoriesTable"), 20,
+                       "gui_repositories_table_missing")
+    return [{"position": int(row[0]), "name": row[2], "url": row[3],
+             "enabled": checks[1] == 2}
+            for row, checks in zip(table["items"], table["checkStates"])]
+
+
+def expect_gui(command, repositories, where):
+    expected = [{"position": item["position"], "name": item["name"], "url": item["url"],
+                 "enabled": item["enabled"]} for item in repositories]
+    wait_until(lambda: gui_rows(command) == expected, 20, f"gui_table_differs: {where}")
+
+
+def row_of(command, name):
+    for index, row in enumerate(gui_rows(command)):
+        if row["name"] == name:
+            return index
+    raise ParityError(f"gui_row_missing: {name}")
+
+
+def exercise_repositories(cli, command, catalog, artifacts, run_python):
+    """e15a_repositories: one repository list and one catalog result on every surface."""
+    if "plugin_manage" not in catalog.get("commander", {}).get("commands", {}):
+        raise ParityError("plugin_manage_missing")
+    surfaces = Surfaces(cli, command, artifacts)
+    start = surfaces.repositories()
+    compare_json(["default"], [item["id"] for item in start], "$.start")
+    # The default repository is on the internet: switch it off for the whole case.
+    surfaces.manage_cli("repository_update", {"repository": "default", "enabled": False})
+    added = surfaces.manage_cli("repository_add", {"name": "Parity CLI",
+                                                   "url": f"{CLOSED}/cli/plugins.json"})
+    compare_json("parity-cli", added["repository"]["id"], "$.add.cli")
+    added = surfaces.manage_mcp("repository_add", {"name": "Parity MCP",
+                                                   "url": f"{CLOSED}/mcp/plugins.json"})
+    compare_json("parity-mcp", added["repository"]["id"], "$.add.mcp")
+    refused = cli("plugin_manage", "--plugin-operation", "repository_update", success=False)
+    LOG.info("repository_update_without_options refused=%s", bool(refused))
+    moved = surfaces.manage_mcp("repository_move", {"repository": "parity-mcp", "position": 1})
+    compare_json(["parity-mcp", "default", "parity-cli"],
+                 [item["id"] for item in moved["repositories"]], "$.move.mcp")
+    moved = surfaces.manage_cli("repository_move", {"repository": "parity-cli", "direction": "up"})
+    compare_json(["parity-mcp", "parity-cli", "default"],
+                 [item["id"] for item in moved["repositories"]], "$.move.cli")
+
+    # GUI: the Repositories tab shows the same list; Move Up and Enabled change it.
+    report = {"gui": []}
+    command("activate_ui", {"window_index": 0, "object_name": "managePluginsAction"})
+    command("set_ui", {"window_index": 0, "object_name": "pluginsAndPacksTabs",
+                       "definition": {"currentIndex": 2}})
+    for name in GUI_CONTROLS:
+        found = wait_until(lambda name=name: ui_object(command, name), 20,
+                           f"gui_control_missing: {name}")
+        if not found.get("accessibleName"):
+            raise ParityError(f"gui_control_unnamed: {name}")
+        report["gui"].append({"objectName": name, "accessibleName": found["accessibleName"]})
+    expect_gui(command, surfaces.repositories(), "after cli and mcp")
+    command("set_ui", {"window_index": 0, "object_name": "pluginRepositoriesTable",
+                       "definition": {"indexPath": [row_of(command, "Parity CLI")]}})
+    command("activate_ui", {"window_index": 0, "object_name": "pluginRepositoryUp"})
+    wait_until(lambda: [item["id"] for item in surfaces.repositories()]
+               == ["parity-cli", "parity-mcp", "default"], 20, "gui_move_up_not_applied")
+    command("set_ui", {"window_index": 0, "object_name": "pluginRepositoriesTable",
+                       "definition": {"indexPath": [row_of(command, "Parity MCP")], "column": 1,
+                                      "checkState": 0}})
+    wait_until(lambda: not next(item for item in surfaces.repositories()
+                                if item["id"] == "parity-mcp")["enabled"], 20,
+               "gui_enabled_not_applied")
+    expect_gui(command, surfaces.repositories(), "after gui")
+    surfaces.manage_mcp("repository_update", {"repository": "parity-mcp", "enabled": True})
+
+    # The merged catalog: every enabled repository fails the same way on every surface.
+    jobs = {}
+    jobs["cli"] = surfaces.finished(surfaces.manage_cli("catalog")["jobId"], False)
+    jobs["mcp"] = surfaces.finished(surfaces.manage_mcp("catalog")["jobId"], True)
+    expected_states = [{"repository": "parity-cli", "state": "failed", "entries": 0},
+                       {"repository": "parity-mcp", "state": "failed", "entries": 0}]
+    for name, job in jobs.items():
+        compare_json("failed", job["state"], f"$.catalog.{name}.state")
+        compare_json(expected_states, catalog_states(job), f"$.catalog.{name}.repositories")
+    # One repository by its ID.
+    single = surfaces.finished(surfaces.manage_cli("catalog", {"repository": "parity-mcp"})["jobId"],
+                               False)
+    compare_json([expected_states[1]], catalog_states(single), "$.catalog.single")
+    # The GUI fetch reports the same repositories and says so in words.
+    command("set_ui", {"window_index": 0, "object_name": "pluginsAndPacksTabs",
+                       "definition": {"currentIndex": 1}})
+    command("activate_ui", {"window_index": 0, "object_name": "fetchPluginCatalog"})
+    status = wait_until(lambda: (lambda item: item if item and "could be loaded"
+                                 in str(item.get("properties", {}).get("text", "")) else None)(
+        ui_object(command, "pluginCatalogStatus")), 60, "gui_fetch_status_missing")
+    if "completed" in str(status.get("properties", {}).get("text", "")):
+        raise ParityError("gui_status_shows_job_state")
+    available = wait_until(lambda: ui_object(command, "pluginCatalogTable"), 20,
+                           "gui_available_table_missing")
+    headers = [row[0] for row in available["items"]]
+    if len(headers) != 2 or not all("Failed:" in header for header in headers):
+        raise ParityError(f"gui_available_groups: {headers}")
+    report["gui"].append({"objectName": "pluginCatalogTable", "groups": headers})
+
+    # Python: klogg.app.command reaches the same operations.
+    python = run_python([("e15a_repositories", {"closed": CLOSED})])[0]
+    if python.get("errors"):
+        raise ParityError(f"python_fixture_failed: {python['errors']}")
+    final = surfaces.repositories()
+    compare_json(listed(final), listed(python["repositories"]), "$.python.repositories")
+    compare_json(["parity-python", "parity-cli", "parity-mcp", "default"],
+                 [item["id"] for item in final], "$.python.order")
+    compare_json([{"repository": "parity-python", "state": "failed", "entries": 0}],
+                 python["catalog"], "$.python.catalog")
+    compare_json("failed", python["catalogState"], "$.python.catalogState")
+    compare_json(True, python["refusedHttp"], "$.python.refusedHttp")
+    # Clean up through the CLI; removed IDs are never given again.
+    for repository in ("parity-python", "parity-cli", "parity-mcp"):
+        surfaces.manage_cli("repository_remove", {"repository": repository})
+    again = surfaces.manage_mcp("repository_add", {"name": "Parity CLI",
+                                                   "url": f"{CLOSED}/again/plugins.json"})
+    compare_json("parity-cli-2", again["repository"]["id"], "$.reused")
+    surfaces.manage_cli("repository_remove", {"repository": "parity-cli-2"})
+    surfaces.manage_cli("repository_update", {"repository": "default", "enabled": True})
+    compare_json(listed(start), listed(surfaces.repositories()), "$.restored")
+    LOG.info("e15a_repositories_completed gui=%d", len(report["gui"]))
+    return {"id": "e15a_repositories", "passed": True, "guiControls": report["gui"]}

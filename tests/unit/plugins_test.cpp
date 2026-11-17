@@ -626,15 +626,27 @@ TEST_CASE( "Catalog selects platform, verifies checksums and preserves old insta
                  .ok() );
     auto invalid = entry;
     invalid[ "sha256" ] = QString( 64, '0' );
-    REQUIRE( catalog( { invalid } ).payload[ "state" ] == "completed" );
-    const auto failed = jobId( manager.manage( "update", "org.test.fixture", {} ) );
+    const auto mismatch = catalog( { invalid } ).payload;
+    REQUIRE( mismatch[ "state" ] == "completed" );
+    // The same version again is installed only when its entry is named (E15a).
+    REQUIRE( manager.manage( "update", "org.test.fixture", {} ).error.contains( "already" ) );
+    const auto failed = jobId( manager.manage(
+        "update", "org.test.fixture",
+        { { "catalog_entry_id",
+            mismatch[ "result" ].toMap()[ "plugins" ].toList()[ 0 ].toMap()[ "entry_id" ] } } ) );
     REQUIRE( waitFor( [ & ] { return finished( manager, failed ); } ) );
     REQUIRE( manager.job( failed ).payload[ "error" ].toString().contains( "SHA-256" ) );
     REQUIRE( manager.plugins()[ 0 ].toMap()[ "enabled" ].toBool() );
     REQUIRE(
         manager.plugins()[ 0 ].toMap()[ "configurationValues" ].toMap()[ "retained" ].toBool() );
+    // E15a: an invalid entry fails only itself; it is named in its repository's warnings.
     invalid.remove( "sha256" );
-    REQUIRE( catalog( { invalid } ).payload[ "state" ] == "failed" );
+    const auto withoutSha = catalog( { invalid } ).payload;
+    REQUIRE( withoutSha[ "state" ] == "completed" );
+    REQUIRE( withoutSha[ "result" ].toMap()[ "plugins" ].toList().isEmpty() );
+    const auto repository = withoutSha[ "result" ].toMap()[ "repositories" ].toList()[ 0 ].toMap();
+    REQUIRE( repository[ "state" ] == "empty" );
+    REQUIRE( repository[ "warnings" ].toStringList().join( ' ' ).contains( "sha256" ) );
 }
 
 TEST_CASE( "User overrides remain visible and failed commits roll back", "[plugins]" )
@@ -1000,11 +1012,16 @@ TEST_CASE( "Catalog requests supersede older results and select exact package ve
     REQUIRE( manager.job( old ).payload[ "state" ] == "cancelled" );
     REQUIRE( manager.job( current ).payload[ "state" ] == "completed" );
     QTest::qWait( 200 );
-    REQUIRE_FALSE( manager.manage( "install", "org.test.fixture", {} ).ok() );
-    const auto selected
-        = manager.job( current ).payload[ "result" ].toMap()[ "plugins" ].toList()[ 1 ].toMap();
-    const auto installed = jobId( manager.manage(
-        "install", "org.test.fixture", { { "catalog_entry_id", selected[ "entry_id" ] } } ) );
+    // An exact entry installs that version, also an older one.
+    const auto plugins = manager.job( current ).payload[ "result" ].toMap()[ "plugins" ].toList();
+    const auto older = plugins[ 0 ].toMap();
+    const auto selected = plugins[ 1 ].toMap();
+    const auto exact = jobId( manager.manage( "install", "org.test.fixture",
+                                              { { "catalog_entry_id", older[ "entry_id" ] } } ) );
+    REQUIRE( waitFor( [ & ] { return finished( manager, exact ); } ) );
+    REQUIRE( manager.plugins()[ 0 ].toMap()[ "version" ] == "1.0.0" );
+    // Without an entry, the newest version by Semantic Versioning is chosen (E15a).
+    const auto installed = jobId( manager.manage( "install", "org.test.fixture", {} ) );
     REQUIRE( waitFor( [ & ] { return finished( manager, installed ); } ) );
     REQUIRE( manager.job( installed ).payload[ "state" ] == "completed" );
     REQUIRE( manager.plugins()[ 0 ].toMap()[ "version" ] == "2.0.0" );

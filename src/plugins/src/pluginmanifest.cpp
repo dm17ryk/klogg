@@ -1,6 +1,8 @@
 #include "pluginmanifest.h"
 
 #include "log.h"
+#include "plugincatalog.h"
+#include "semanticversion.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -243,12 +245,12 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
         m.executable += ".exe";
     }
 #endif
-    static const QRegularExpression idPattern( "^[a-z0-9][a-z0-9._-]{0,127}$" );
-    static const QRegularExpression versionPattern(
-        "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$" );
+    static const QRegularExpression idPattern(
+        QRegularExpression::anchoredPattern( "[a-z0-9][a-z0-9._-]{0,127}" ) );
+    // One Semantic Versioning 2.0.0 implementation for manifests, catalogs and updates.
     if ( bytes.size() > MaxMessageBytes || parseError.error != QJsonParseError::NoError
          || !doc.isObject() || !idPattern.match( m.id ).hasMatch() || !safeRelativePath( m.id )
-         || m.name.isEmpty() || !versionPattern.match( m.version ).hasMatch()
+         || m.name.isEmpty() || !isSemanticVersion( m.version )
          || m.json.value( "protocol_version" ) != QJsonValue( ProtocolVersion )
          || ( m.json.contains( "arguments" ) && !m.json.value( "arguments" ).isArray() )
          || ( m.json.contains( "actions" ) && !m.json.value( "actions" ).isArray() )
@@ -287,6 +289,13 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
     }
     if ( !fieldError.isEmpty() ) {
         m.error = fieldError;
+    }
+    // `kind` is read before anything else matters: a kind this host does not support is never
+    // run, whatever else the manifest says (configuration packs come with E16).
+    if ( m.json.contains( "kind" )
+         && ( !m.json.value( "kind" ).isString() || !supportedKind( packageKind( m.json ) ) ) ) {
+        m.error = QStringLiteral( "Unsupported plugin kind: %1." )
+                      .arg( m.json.value( "kind" ).toVariant().toString().left( 64 ) );
     }
     LOG_DEBUG << "Plugin manifest id=" << m.id.toStdString()
               << " directory=" << directory.toStdString() << " valid=" << m.valid()

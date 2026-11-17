@@ -1,6 +1,7 @@
 #pragma once
 #include "commander.h"
 #include "pluginmanager.h"
+#include <QDialog>
 #include <QDockWidget>
 #include <QMenu>
 #include <QPointer>
@@ -27,11 +28,15 @@ public:
     QString actionSource() const;
 
 private:
+    // The tabs of the Plugins and Packs window (docs/plugin-repositories.md 3.3).
+    enum class PluginsTab { Installed = 0, Available = 1, Repositories = 2 };
     void refreshActions();
     QIcon iconFor( const QVariantMap& plugin, const QJsonObject& item,
                    QStyle::StandardPixmap fallback );
-    void manageDialog();
-    void browseDialog();
+    // Opens (or raises) the one Plugins and Packs window at `tab`.
+    void openPluginsWindow( PluginsTab tab );
+    QWidget* createInstalledTab( QWidget* parent );
+    void openGuide();
     void invoke( const QString& pluginId, const QJsonObject& action );
     void panel( const QString& pluginId, const QJsonObject& panel, const QVariantMap& context );
     void queuePanel( const QString& pluginId, const QJsonObject& panel,
@@ -49,4 +54,5 @@ private:
     QSet<QString> iconWarnings_;
     PluginViewHost* viewHost_ = nullptr;
     AnalysisSourcePicker* sourcePicker_ = nullptr;
+    QPointer<QDialog> pluginsWindow_;
 };

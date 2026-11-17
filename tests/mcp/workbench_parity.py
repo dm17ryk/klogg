@@ -105,6 +105,19 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "e15a-repositories":
+            from workbench_repositories import exercise_repositories
+            from workbench_sources import run_fixtures
+
+            result = exercise_repositories(
+                cli, command, catalog, artifacts,
+                lambda fixtures: run_fixtures(cli, artifacts, fixtures),
+            )
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         if case.get("kind") == "pane-operations":
             from workbench_panes import exercise_panes
 
@@ -214,18 +227,19 @@ def main(arguments=None):
         cases = select_cases(args.task)
         setup_payload = None
         kinds = {case.get("kind") for case in cases}
-        if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources"}:
+        if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources",
+                    "e15a-repositories"}:
             import os
 
-            # Plugin views, the pane case's Python API script and the U15 Python fixtures run
-            # in this interpreter.
+            # Plugin views, the pane case's Python API script and the U15 and E15 Python
+            # fixtures run in this interpreter.
             os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
         steps = []
         if kinds & {"plugin-views", "u15b-sources"}:
             from workbench_plugin_views import install_view_demo
 
             steps.append(install_view_demo)
-        if kinds & {"u15-docks", "u15b-sources"}:
+        if kinds & {"u15-docks", "u15b-sources", "e15a-repositories"}:
             from workbench_sources import install_python_runtime
 
             steps.append(install_python_runtime)

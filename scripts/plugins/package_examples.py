@@ -1,20 +1,33 @@
-"""Package portable examples and optionally catalog already-published release assets."""
+"""Package portable examples and optionally catalog already-published release assets.
+
+The ZIP format is shared with build_catalog.py, which builds the catalog of any plugin
+repository (see "Plugins: packing, repositories and updates" in DOCUMENTATION.md).
+"""
 from __future__ import annotations
 import argparse
 import hashlib
+import importlib.util
 import json
 import pathlib
 import shutil
 import tempfile
 import urllib.parse
 import urllib.request
-import zipfile
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
+def _build_catalog_module():
+    spec = importlib.util.spec_from_file_location(
+        "cilogg_build_catalog", pathlib.Path(__file__).resolve().parent / "build_catalog.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def package_examples(output: pathlib.Path) -> list[tuple[dict[str, Any], pathlib.Path]]:
+    builder = _build_catalog_module()
     output.mkdir(parents=True, exist_ok=True)
     packages = []
     for source in sorted((ROOT / "plugins/examples").iterdir()):
@@ -26,17 +39,7 @@ def package_examples(output: pathlib.Path) -> list[tuple[dict[str, Any], pathlib
             package = pathlib.Path(temporary) / "package"
             shutil.copytree(source, package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             shutil.copy2(ROOT / "plugins/sdk/python/cilogg_plugin.py", package)
-            with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
-                for file in sorted(package.rglob("*")):
-                    if file.is_file():
-                        info = zipfile.ZipInfo(file.relative_to(package).as_posix(), (1980, 1, 1, 0, 0, 0))
-                        info.create_system = 3
-                        info.external_attr = 0o100644 << 16
-                        data = file.read_bytes()
-                        if file.suffix.lower() in {".py", ".json", ".md", ".txt"}:
-                            data = data.replace(b"\r\n", b"\n")
-                        # Stored entries have deterministic bytes across zlib/Python versions.
-                        archive.writestr(info, data, compress_type=zipfile.ZIP_STORED)
+            builder.write_zip(builder.package_files(package, ()), archive_path)
         packages.append((manifest, archive_path))
     return packages
 
