@@ -1628,7 +1628,7 @@
         "ECO20",
         "ECO21"
       ],
-      "task_body_chars": 6853,
+      "task_body_chars": 7461,
       "taskFile": "tasks/E15.md"
     },
     {
@@ -1643,7 +1643,7 @@
       "requirements": [
         "ECO22"
       ],
-      "task_body_chars": 4938,
+      "task_body_chars": 5788,
       "taskFile": "tasks/E16.md"
     },
     {
@@ -2357,7 +2357,7 @@
       "requirements": [
         "QUAL12"
       ],
-      "task_body_chars": 5453,
+      "task_body_chars": 5704,
       "taskFile": "tasks/R06.md"
     },
     {

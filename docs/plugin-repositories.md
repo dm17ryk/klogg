@@ -83,7 +83,7 @@ keeps its own list:
 
 | Key | Meaning |
 |---|---|
-| `id` | Stable lowercase identifier, made from the name when the repository is added. |
+| `id` | Lowercase identifier made from the name when the repository is added, with a numeric suffix if it is taken (`team`, `team-2`). It never changes, and the IDs of removed repositories are kept in a list and never given to a new repository, so a new repository cannot inherit old source records or a stored PAT. |
 | `name` | Display name. |
 | `url` | For sign-in `none`: the `plugins.json` address. For Azure DevOps: the repository address, a file link copied from the web portal, or an Items API address (section 3.5). |
 | `branch`, `path` | Azure DevOps only. Default branch `catalog`, default path `/plugins.json`. A file link sets both. |
@@ -97,6 +97,14 @@ Rules:
 
 - At most 16 repositories. Addresses must use HTTPS and must not contain user information
   (`https://user:secret@host/...` is rejected, so a credential cannot be stored as part of a URL).
+- **The address is part of the identity.** `url`, `branch` and `path` (normalized: for Azure DevOps
+  the organization, project, repository, branch and path) cannot be edited. Pointing at another
+  catalog means adding a new repository, which gets a new ID; the old one can then be removed. So a
+  PAT stored for one organization is never sent to another, and plugins installed from the old
+  address never update from the new one without the explicit source switch (section 3.4). Name,
+  `enabled`, `autoUpdate` and `credentialSource` can be edited.
+- **Removing a repository** also deletes its stored PAT, so no token is left orphaned in the
+  credential store.
 - **Migration:** the first start with E15 turns the existing `catalogUrl` into the repository
   `default` (name "CILogg examples (GitHub)", sign-in `none`, enabled). An address the user had
   changed is kept. `catalogUrl` stays readable so an older CILogg copy that shares the folder keeps
@@ -158,8 +166,17 @@ whole repository, and only that repository.
   (user installs already take precedence over shipped copies).
 - Removing or disabling a repository keeps the plugins installed from it. They show "Source
   unavailable" and get no updates until the repository is back or the user switches the source.
-- Versions are compared as semantic versions. An older version is never installed automatically;
-  installing one is an explicit action.
+- The staged `plugin.json` must have the selected entry's `kind` as well as its ID and version;
+  a mismatch rejects the package. An update cannot change a plugin's kind: an installed process
+  plugin is never replaced by a preview pack with the same ID, or the other way round.
+- Versions are ordered by one Semantic Versioning 2.0.0 implementation, shared by manifest
+  validation, catalog validation and update selection: major, minor and patch compare as numbers;
+  a pre-release is lower than its release (`1.0.0-alpha < 1.0.0`); pre-release identifiers compare
+  as numbers when numeric and as text otherwise, numeric before text (`1.0.0-alpha.2 <
+  1.0.0-alpha.10 < 1.0.0-beta`); build metadata is ignored. Two entries for the same ID and
+  platform whose versions are equal in that order but whose packages differ are both left out with
+  a warning. An older version is never installed automatically; installing one is an explicit
+  action.
 
 ### 3.5 Sign-in
 
@@ -225,6 +242,10 @@ checks.
   other command. Messages from `git credential` on standard error are not logged; only its exit
   code is. Redirect addresses are not logged either, because signed download addresses carry
   tokens in their query.
+- **Crash dumps.** A crash dump (R06b) is an image of process memory and can hold a token that a
+  job was using at the time. The guarantee above covers what CILogg writes, not memory images: R06b
+  keeps dumps out of the shareable report zip unless the user adds them, and its notice says that a
+  dump can contain secrets and must be shared only privately. Full-memory dumps stay opt-in.
 - **Scope.** The repository's scope is its scheme, host and port, and on `dev.azure.com` also the
   path prefix `/<organization>/`. A request is in scope only if its address matches after
   normalization: the path is percent-decoded, the organization is compared without regard to
@@ -277,11 +298,11 @@ use the same Commander implementation:
 |---|---|---|
 | `repositories` | none | Repositories with `id`, `name`, `url`, `signIn`, `credentialSource`, `signedIn`, `enabled`, `autoUpdate`, `lastCheck`, `lastError`. |
 | `repository_add` | `name`, `url`, `sign_in`, optional `branch`, `path`, `enabled`, `auto_update` | The new record. Rejects user information in the address and duplicate addresses. |
-| `repository_update` | `repository` plus any of the add options | The changed record. |
-| `repository_remove` | `repository` | Installed plugins keep running; their source becomes unavailable. |
+| `repository_update` | `repository` plus `name`, `enabled`, `auto_update`, `credential_source` | The changed record. The address, branch and path cannot be changed (section 3.1). |
+| `repository_remove` | `repository` | Deletes the record and its stored PAT. Installed plugins keep running; their source becomes unavailable. |
 | `repository_sign_in` | `repository`, `method` (`git-credential-manager` or `personal-access-token`); a PAT only from the GUI or the CLI (`--token-file` / `--token-stdin`) | A job; the result says whether the sign-in works. Outside the GUI it is a silent test (section 3.6). |
 | `repository_sign_out` | `repository` | Deletes a stored PAT. It does not touch the Git credential manager, which Git also uses. |
-| `catalog` | optional `repository` | One job; `plugins` (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count). The old `url` option still works: it sets the `default` repository's address and fetches it. |
+| `catalog` | optional `repository` | One job; `plugins` (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count). The old `url` option still works: it adds that address as a repository with sign-in `none` if no repository has it, and fetches it. |
 | `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source | A job. |
 | `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id`. |
 
@@ -313,9 +334,10 @@ executable and never starts a process:
 }
 ```
 
-- `Manifest::parse()` reads `kind` first. For `preview-pack` the process rules (`capabilities`,
-  `executable`, `arguments`, actions, views) do not apply, and a pack that declares any of them is
-  invalid. `id`, `name`, `version` and `protocol_version: 1` are checked as for every plugin, so the
+- `Manifest::parse()` reads `kind` first. For `preview-pack` the process rules do not apply, and a
+  pack that declares any process key (`capabilities`, `executable`, `arguments`, `actions`,
+  `views`, `configuration`, `enabled_by_default`) is invalid: a pack has no process to use them and
+  no settings of its own. `id`, `name`, `version` and `protocol_version: 1` are checked as for every plugin, so the
   identity check of downloads is unchanged.
 - `previews` is a file with the same format as the user's `previews.json` (`version: 1`,
   `previews`, `blocks`).
@@ -333,11 +355,28 @@ packs. Packs are platform independent, so their catalog entries use `os: any` an
 ### 4.2 Read-only previews
 
 - Previews of enabled packs appear in the preview list with a lock and the pack name. They cannot
-  be edited or deleted. **Copy to My Previews** makes an editable copy in `previews.json`.
+  be edited or deleted.
+- **Blocks stay inside their pack.** A pack preview resolves `source: block` references only from
+  its own pack's `blocks`, and a user preview only from the user's. When previews are merged, a
+  pack's blocks are renamed internally to `<pack-id>/<block>` and the pack's references are
+  rewritten, so pack blocks never collide with the user's or another pack's.
+- **Copy to My Previews** makes an editable copy in `previews.json` together with every block the
+  preview needs, directly or through other blocks. A copied block whose name is already used in
+  the user's blocks gets a free name (`<block> (<pack name>)`, then a number), and the copy's
+  references are rewritten to it. The copy then depends on nothing in the pack: updating,
+  disabling or removing the pack does not change it.
 - A user preview with the same name as a pack preview takes precedence, the way a user-installed
   plugin takes precedence over a shipped one. The pack preview then shows "Replaced by your copy".
-- Exporting previews exports only the user's previews. A pack update never changes the user's
-  copies.
+- **Between packs** there is no precedence: enabling a pack (or applying an update) that has a
+  preview name already used by another enabled pack is refused, with a message naming both packs.
+- **Quotas.** The JSON preview service gives up entirely above 128 previews or 4,096 blocks
+  (`PreviewService::definitions()` returns nothing), and it also limits fields, depth and text.
+  Enabling or updating a pack is refused if the user's previews and all enabled packs together
+  would exceed any of these limits, so a pack can never switch previews off.
+- **Exports.** Configuration exports read `PreviewManager::all()` and `blocks()` today, both for the
+  live export and for the project snapshot (`configurationexport.cpp`). E16 makes both select only
+  the user's previews and blocks, so exports and project snapshots never contain pack definitions.
+  A pack update never changes the user's previews or copies.
 
 ### 4.3 Lua for TShark
 
@@ -350,17 +389,29 @@ packs. Packs are platform independent, so their catalog entries use `os: any` an
   folder, loads it with `-X lua_script:` in the listed order and records its SHA-256 in
   `scriptSha256`. Packs load in ID order, then the user's own scripts. Because the worker removes
   `LUA_*` variables and runs only the copies, a pack cannot `require` its own modules in
-  `pack_format` 1: a script needed by another is listed before it, and shared code uses globals.
-  A later `pack_format` could copy the whole bounded `lua` folder into the isolated folder and set
-  the search path to that copy.
+  `pack_format` 1: a script needed by another is listed before it. A later `pack_format` could copy
+  the whole bounded `lua` folder into the isolated folder and set the search path to that copy.
+- **One Lua environment per pack.** TShark runs all scripts in one Lua state, so two packs that use
+  the same global name would overwrite each other. The worker therefore loads a pack's files
+  through a small generated loader that runs them with `load(source, name, "t", env)` in one
+  environment table per pack, whose reads fall back to the global table. A pack's files share their
+  globals with each other and with nothing else; the Wireshark API (`Proto`, `DissectorTable`, and so
+  on) stays reachable through the fallback. The user's own scripts keep running in the global
+  environment, as today. E16 checks this loader on the supported Wireshark versions.
 - Two scripts that register the same protocol fail visibly, as TShark reports them.
 - The profile limit grows from 8 Lua files to 32 in total, the user's own 8 included, with at most
   8 per pack and 1 MiB per file. The limit of 8 is enforced today in four places
   (`previewdecodersettings.cpp` for the saved configuration, and `tsharkpreviewclient.cpp`,
   `message_decoder_preview_worker.py` and `message_decoder_pdu.py` for the profile); E16 raises it
   to 32 in the last three. Enabling a pack that would exceed 32 is refused with a message.
-- The `tshark` and `text2pcap` executables remain user settings. A pack cannot set or change an
-  executable path, and preview requests and imported JSON still cannot name Lua or executables.
+- The `tshark` and `text2pcap` executables remain user settings. A pack cannot set or change those
+  paths, and preview requests and imported JSON still cannot name Lua or executables.
+- **Pack Lua is unrestricted local code.** The isolated folder and the removed variables only make
+  loading predictable; they are not a sandbox. Wireshark's Lua can use `os.execute`, `io.popen` and
+  the file functions, so a pack's Lua can start programs and read or write files with the user's
+  permissions, exactly like a process plugin. The install, enable and update confirmations of a pack
+  with Lua say so ("This pack contains Lua code that runs on this computer"), and auto-update of
+  such a pack is the same trust decision as auto-update of a process plugin.
 - Enabling, disabling or updating a pack discards the warm TShark sessions, so the next preview
   loads the current scripts.
 - `decoder_routes` are merged below the user's routes when the profile is built: a user route with
@@ -390,8 +441,10 @@ or `tool`).
 - Update-source pinning (section 3.4) prevents a second repository from taking over a plugin ID.
 - Credentials stay inside their scope (section 3.6). An unauthenticated catalog may list packages
   anywhere, but the credential of another repository is never attached to them.
-- A pack's Lua cannot reach executables, and pack previews follow the same validation and limits
-  as user previews.
+- A pack's Lua is code with the user's permissions (section 4.3); nothing in this design sandboxes
+  it. Pack previews follow the same validation and limits as user previews.
+- Crash dumps can contain tokens that were in memory (section 3.6); they are not shared unless the
+  user adds them.
 
 ## 6. Compatibility
 
@@ -489,8 +542,11 @@ the Git Credential Manager they already use for that organization.
 - **E15:** catalog merge with one repository failing; one invalid entry left out while the rest of
   its repository loads; entries of an unsupported `kind` hidden; migration of a changed
   `catalogUrl`; entry IDs that differ per repository; update only from the install source and the
-  explicit source switch; update check deadline, automation skip and auto-update within the major
-  version; a fake `git credential` helper (Bearer, JWT password, Basic, failure, timeout, the
+  explicit source switch; repository IDs unique and never reused; the address not editable; removal
+  deleting the stored PAT; a staged package whose `kind` differs from its entry rejected; Semantic
+  Versioning order with pre-release and build-metadata boundary cases (`1.0.0-alpha.2`,
+  `1.0.0-alpha.10`, `1.0.0+build`); update check deadline, automation skip and auto-update within
+  the major version; a fake `git credential` helper (Bearer, JWT password, Basic, failure, timeout, the
   environment it receives: no askpass variables, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`
   outside the GUI; approve and reject calls with the complete `fill` output, no reject from silent
   checks); `visualstudio.com` addresses converted to `dev.azure.com`; PAT through a fake credential
@@ -500,12 +556,16 @@ the Git Credential Manager they already use for that organization.
   transport and not settable from the payload; the CLI refusing a token argument; MCP and Python
   refusing a PAT and never prompting. A local HTTPS test server answers catalog and package
   requests and records the headers.
-- **E16:** pack manifest validation (`kind` read first, no process keys, `protocol_version: 1`, every
-  Lua file listed, count and size limits, preview routes naming only pack previews); read-only pack
-  previews and Copy to My Previews; user preview precedence; pack Lua in the profile snapshot only
-  while enabled, copied, hashed and loaded in order, never written into the saved configuration;
-  the 32-file and route limits; warm sessions discarded on update; JSON fallback without TShark;
-  `python_decoders` listed and inactive.
+- **E16:** pack manifest validation (`kind` read first, no process keys including `configuration`,
+  `protocol_version: 1`, every Lua file listed, count and size limits, preview routes naming only
+  pack previews); read-only pack previews; Copy to My Previews with the block closure and renamed
+  colliding blocks, unchanged after the pack is updated or removed; pack blocks resolved only inside
+  their pack; user preview precedence; a preview-name collision between two packs refused; the
+  aggregate preview quotas; exports and project snapshots without pack definitions; pack Lua in the
+  profile snapshot only while enabled, copied, hashed and loaded in order, never written into the
+  saved configuration, in a per-pack environment where two packs with the same global keep their
+  own values; the 32-file and route limits; warm sessions discarded on update; JSON fallback
+  without TShark; `python_decoders` listed and inactive.
 - Both: GUI, CLI, native MCP and Python give the same results; `[plugins]` and new `[workbench][E15]`
   / `[workbench][E16]` Catch2 cases; `tests/plugins` for the catalog script.
 
