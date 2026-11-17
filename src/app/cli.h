@@ -333,35 +333,44 @@ private:
             "<install|remove|enable|disable|configure|restart|catalog|update> [--plugin-id <id>] "
             "[--json-file <options.json>]\n"
             "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file "
-            "<arguments.json>] [tab selector]\n"
+            "<arguments.json>] [--source <selection> | tab selector]\n"
+            "  open_plugin_view --plugin-id <id> --view-id <view> [--source <selection> | "
+            "--tab-id <id>] [--window-index <n>]\n"
+            "    Source selections: focused, all, tab:<id>, file:<path>. An explicit tab "
+            "selector wins over --source.\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
             "  list_reports [--pretty]  (diagnostic report bundles, newest first)\n"
             "  create_report [--text <note>]  (write a diagnostic report bundle now)\n"
             "  regex_evaluate [--analysis-json <json> | --json-file <request.json>] [tab "
             "selector]\n"
-            "  preview_message [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
-            "    Preview options: decoder (auto/json/tshark), dissector, inputEncoding (utf8/hex/base64), timeoutMs (100..10000).\n"
+            "  preview_message [--analysis-json <json> | --json-file <request.json>] [--source "
+            "<focused|tab:<id>|file:<path>> | tab selector]\n"
+            "    Preview options: decoder (auto/json/tshark), dissector, inputEncoding "
+            "(utf8/hex/base64), timeoutMs (100..10000).\n"
             "  get_preview_decoder [window selector]\n"
-            "  set_preview_decoder [--analysis-json <config> | --json-file <config.json>] [window selector]\n"
+            "  set_preview_decoder [--analysis-json <config> | --json-file <config.json>] [window "
+            "selector]\n"
             "  show_preview_decoder_settings [window selector]\n"
             "  get_analysis_job --job-id <id> [tab selector]\n"
             "  value_counts [--analysis-json <json> | --json-file <request.json>] [tab selector]\n"
             "  get_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
-            "  export_value_counts [--analysis-json <json> | --json-file <export.json>] [tab selector]\n"
+            "  export_value_counts [--analysis-json <json> | --json-file <export.json>] [tab "
+            "selector]\n"
             "  apply_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
             "  open_value_count [--analysis-json <json> | --json-file <row.json>] [tab selector]\n"
             "  show_value_counts [--window-index <index> | tab selector]\n"
             "  get_value_counts [--window-index <index> | tab selector]\n"
-            "  set_value_counts [--analysis-json <json> | --json-file <draft.json>] [tab selector]\n"
+            "  set_value_counts [--analysis-json <json> | --json-file <draft.json>] [tab "
+            "selector]\n"
             "  get_analysis_results --job-id <id> [--cursor <cursor>] [--page-size <count>] [tab "
             "selector]\n"
             "  cancel_analysis_job --job-id <id> [tab selector]\n"
             "  release_analysis_job --job-id <id> [tab selector]\n"
-        "  show_regex_lab [--window-index <index> | tab selector]\n"
-        "  get_regex_lab [--window-index <index> | tab selector]\n"
-        "  set_regex_lab [--analysis-json <json> | --json-file <draft.json>] [tab selector]\n"
-        "  apply_regex_lab_pattern [--window-index <index> | tab selector]\n"
+            "  show_regex_lab [--window-index <index> | tab selector]\n"
+            "  get_regex_lab [--window-index <index> | tab selector]\n"
+            "  set_regex_lab [--analysis-json <json> | --json-file <draft.json>] [tab selector]\n"
+            "  apply_regex_lab_pattern [--window-index <index> | tab selector]\n"
             "  start_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  play_comm  [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
             "  pause_comm [--tab-id <id> | --window-index <n> --tab-index <n>] [--wait "
@@ -379,8 +388,8 @@ private:
             "  reset_response_counter (--id <id> | --name <name> | --all) [--tab-id <id> | "
             "--window-index <n> --tab-index <n>]\n"
             "  clear_comm [--tab-id <id> | --window-index <n> --tab-index <n>]\n"
-            "  run_script --script-file <path> [--args-json-file <path>] (--tab-id <id> | "
-            "--window-index <n> --tab-index <n>)\n"
+            "  run_script --script-file <path> [--args-json-file <path>] (--source "
+            "<focused|all|tab:<id>> | --tab-id <id> | --window-index <n> --tab-index <n>)\n"
             "  run_global_script --script-file <path> [--args-json-file <path>]\n"
             "  run_scenario --scenario-file <path> [--args-json-file <path>]\n"
             "  run_suite --suite-file <path>\n"
@@ -432,9 +441,11 @@ private:
             "  move_tab --tab-id <id> (--pane-id <id> | --pane-index <n> | --direction right|down)\n"
             "    Pane indices count panes in layout order; without --window-index the active window "
             "(move_tab: the tab's window).\n"
-            "  search     [--tab-id <id> | --window-index <n> --tab-index <n>] --text <expr> "
-            "[--regex] [--case-sensitive] [--inverse] [--boolean] [--auto-refresh] "
-            "[--keep-results]\n"
+            "  search     [--source <selection> | --tab-id <id> | --window-index <n> --tab-index "
+            "<n>] --text <expr> [--regex] [--case-sensitive] [--inverse] [--boolean] "
+            "[--auto-refresh] [--keep-results] [--wait [--timeout-ms <ms>]]\n"
+            "    --source all --wait waits up to --timeout-ms (default 20000, at most 25000) and "
+            "fails with reason timeout if a tab is still searching.\n"
             "  set_follow_mode [--tab-id <id> | --window-index <n> --tab-index <n>] (--enabled | "
             "--disabled)\n"
             "  invoke_action --object-name <name> [--window-index <n>]\n"
@@ -1520,7 +1531,17 @@ private:
         const QCommandLineOption waitOption(
             QStringLiteral( "wait" ),
             QStringLiteral( "pause_comm: return after the port is closed (--timeout-ms, default "
-                            "5000)." ) );
+                            "5000). search: return once every searched tab finished "
+                            "(--timeout-ms, default 30000)." ) );
+        const QCommandLineOption sourceOption(
+            QStringLiteral( "source" ),
+            QStringLiteral( "Source of a tab-bound tool: focused, all, tab:<id> or file:<path> "
+                            "(invoke_plugin, open_plugin_view, run_script, preview_message, "
+                            "search). An explicit tab selector wins." ),
+            QStringLiteral( "selection" ) );
+        const QCommandLineOption viewIdOption( QStringLiteral( "view-id" ),
+                                               QStringLiteral( "Plugin view identifier." ),
+                                               QStringLiteral( "id" ) );
         const QCommandLineOption predefinedOption(
             QStringLiteral( "predefined" ),
             QStringLiteral( "Use predefined filters instead of search-history filters." ) );
@@ -1659,6 +1680,8 @@ private:
         parser.addOption( paramsJsonFileOption );
         parser.addOption( timeoutMsOption );
         parser.addOption( waitOption );
+        parser.addOption( sourceOption );
+        parser.addOption( viewIdOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
@@ -1751,9 +1774,35 @@ private:
         if ( request.rearmAutoRefresh ) {
             request.runSearch = true;
         }
-        if ( request.waitForCompletion && request.action != CommanderAction::PauseComm ) {
+        if ( request.waitForCompletion && request.action != CommanderAction::PauseComm
+             && request.action != CommanderAction::Search ) {
             result.output_message = formatParserError(
-                parser, QStringLiteral( "--wait is only supported by pause_comm." ) );
+                parser, QStringLiteral( "--wait is only supported by pause_comm and search." ) );
+            return result;
+        }
+        const bool hasSource = parser.isSet( sourceOption );
+        if ( hasSource ) {
+            if ( !commanderActionAcceptsSource( request.action ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--source is not supported by %1." )
+                                .arg( commanderActionToString( request.action ) ) );
+                return result;
+            }
+            QString sourceError;
+            auto source = AnalysisSource::parse( parser.value( sourceOption ), &sourceError );
+            if ( !source ) {
+                result.output_message = formatParserError( parser, sourceError );
+                return result;
+            }
+            if ( source->kind == AnalysisSource::Kind::File ) {
+                // Relative paths are relative to the caller, not to the running GUI.
+                source->filePath = normalizeCommanderFilePath( source->filePath );
+            }
+            request.source = source->toString();
+        }
+        if ( parser.isSet( viewIdOption ) && request.action != CommanderAction::OpenPluginView ) {
+            result.output_message = formatParserError(
+                parser, QStringLiteral( "--view-id is only supported by open_plugin_view." ) );
             return result;
         }
 
@@ -2118,6 +2167,19 @@ private:
                  && !validateTabSelector( "invoke_plugin", false ) ) { return result; }
             break;
         }
+        case CommanderAction::OpenPluginView:
+            request.pluginId = parser.value( "plugin-id" ).trimmed();
+            request.viewId = parser.value( viewIdOption ).trimmed();
+            if ( request.pluginId.isEmpty() || request.viewId.isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "open_plugin_view requires --plugin-id and --view-id." ) );
+                return result;
+            }
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) {
+                return result;
+            }
+            break;
         case CommanderAction::OpenFile:
         case CommanderAction::CloseFile:
             request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );
@@ -2280,7 +2342,8 @@ private:
             }
             break;
         case CommanderAction::RunScript:
-            if ( !validateTabSelector( commanderActionToString( *action ), true ) ) {
+            // --source chooses the COM tab(s) when no tab selector is given.
+            if ( !validateTabSelector( commanderActionToString( *action ), !hasSource ) ) {
                 return result;
             }
             if ( request.scriptFilePath.isEmpty() ) {

@@ -37,7 +37,11 @@ class ScriptSupervisor : public QObject {
 
     void setCommanderExecutor( std::function<CommanderResult( const CommanderRequest& )> executor );
 
+    // run_script on a tab selector, or on a U15b source: focused, tab:<id> or all (one run per
+    // live COM tab); a file is refused, a script needs a live session.
     CommanderResult runScript( const CommanderRequest& request );
+    // Every window's tabs (from get_info) for the Script Runner's source picker.
+    QVariantList toolSources() const;
     CommanderResult runGlobalScript( const CommanderRequest& request );
     CommanderResult stopScript( const CommanderRequest& request );
     CommanderResult stopGlobalScript();

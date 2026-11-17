@@ -95,6 +95,7 @@ enum class CommanderAction {
     GetPreviewDecoder,
     SetPreviewDecoder,
     ShowPreviewDecoderSettings,
+    OpenPluginView,
     ListReports,
     CreateReport,
     // Split panes (U16b).
@@ -111,6 +112,26 @@ enum class CommanderResultCode {
     NotFound,
     ExecutionFailed,
     TransportError,
+};
+
+// What a tab-bound tool runs on (U15): the focused tab, one tab, a file, or all opened files.
+// Text form (CLI, MCP, saved definitions): "focused", "all", "tab:<tab id>", "file:<path>".
+// Resolution against the open tabs and the shared picker are in analysissource.h.
+struct AnalysisSource {
+    enum class Kind { Focused, Tab, File, AllOpen };
+
+    Kind kind = Kind::Focused;
+    QString tabId;
+    QString filePath;
+
+    static std::optional<AnalysisSource> parse( const QString& text,
+                                                QString* errorMessage = nullptr );
+    QString toString() const;
+
+    bool operator==( const AnalysisSource& other ) const
+    {
+        return kind == other.kind && tabId == other.tabId && filePath == other.filePath;
+    }
 };
 
 struct CommanderComSettings {
@@ -147,6 +168,10 @@ struct CommanderRequest {
     QString pluginOperation;
     QString pluginAction;
     QString pluginJobId;
+    QString viewId;
+    // U15 source selection (focused, all, tab:<id>, file:<path>) of a tab-bound tool. An explicit
+    // tab selector (tabId, or windowIndex with tabIndex) wins over it.
+    QString source;
     QVariantMap pluginArguments;
     QVariantMap analysisArguments;
     std::optional<int> windowIndex;
@@ -180,6 +205,7 @@ struct CommanderRequest {
     bool searchAutoRefresh = false;
     bool searchKeepResults = false;
     // pause_comm --wait: return only after the port is closed (bounded by timeoutMs).
+    // search --wait: return once every searched tab finished (bounded by timeoutMs).
     bool waitForCompletion = false;
     CommanderComSettings comSettings;
     QVariantMap definitionPayload;
@@ -209,6 +235,11 @@ QString normalizeCommanderFilePath( const QString& path );
 QString normalizeCommanderUrl( const QString& url );
 bool isCommanderOpenAction( CommanderAction action );
 bool isCommanderAnalysisAction( CommanderAction action );
+// The actions that accept a U15 `source` selection.
+bool commanderActionAcceptsSource( CommanderAction action );
+// True if the request names a tab explicitly (tabId, or a tab index); such a selector wins over
+// `source`.
+bool hasCommanderTabSelector( const CommanderRequest& request );
 bool isCommanderPaneAction( CommanderAction action );
 
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request );

@@ -103,6 +103,10 @@ shorthand for `tab:<tab id>`.
   rows open in their own tab, in whichever window holds it.
 - Cancel stops every source of the last Run, including those still waiting.
 
+The other tab-bound tools offer the same choices; see
+[choosing what a tool works on](source-picker.md). Python scripts set the dock with
+`klogg.app.set_regex_lab(definition, window_index=0)`.
+
 Use `get_analysis_results` with the returned job ID for exact machine-readable
 captures and opaque-cursor paging. The dock state exposes only a 4,096 UTF-16
 unit text preview and labels truncated previews explicitly.

@@ -39,12 +39,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QMap>
 #include <QMenu>
+#include <QPointer>
 #include <QSystemTrayIcon>
 #include <QTemporaryDir>
-#include <QPointer>
+#include <QTimer>
 
 #include <QTranslator>
 #include <array>
@@ -151,6 +153,18 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     // window that holds it, keeping that viewer's search options.
     CommanderResult applyAnalysisSearch( const CommanderRequest& request );
     bool hasTab( const QString& tabId ) const;
+    // U15b: every window's tabs for the source pickers of this window's tools; "focused" is this
+    // window's current tab (the active pane's).
+    QVariantList toolSources() const;
+    // The plugin context of a source (focused, tab:<id>, file:<path>) for a plugin view of this
+    // window: the chosen tab's context with this window's id. A file that is not open is opened
+    // here first. Empty, with *error, when the source cannot be used.
+    QVariantMap pluginContextForSource( const QString& source, QString* error );
+    // Search state of one of this window's tabs: tabId, filePath, windowIndex, tabIndex,
+    // matches, complete. Empty if the tab is not here.
+    QVariantMap tabSearchStatus( const QString& tabId ) const;
+    // Opens a line of a source in the Preview window (U15b Preview picker).
+    CommanderResult previewSourceLine( const QString& source, quint64 line );
 
     void reTranslateUI();
 
@@ -211,6 +225,8 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
     void sendPreparedToPreview( PreparedPreview prepared, QString previewNameOrAuto );
+    // The search line's "In all open tabs" option (U15b).
+    void searchAllOpenTabs( CommanderRequest request );
     void showPreviewDecoderSettings();
     void sendActionById( int actionId );
     void sendActionByIdWithParameters( int actionId, const QVariantMap& parameters );
@@ -348,6 +364,22 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     CommanderResult commanderFilters( const CommanderRequest& request ) const;
     CommanderResult commanderSetFilter( const CommanderRequest& request );
     CommanderResult commanderSearch( const CommanderRequest& request );
+    // search --source (U15b): one chosen tab, a file, or every open tab of every window.
+    CommanderResult commanderSearchSource( const CommanderRequest& request );
+    CommanderResult commanderOpenPluginView( const CommanderRequest& request );
+    // This window, or the window holding the tab.
+    MainWindow* windowOwningTab( const QString& tabId );
+    // Runs the search in each tab (any window) without bringing a tab to the front; returns the
+    // tabs searched.
+    QStringList searchAllTabs( const QStringList& tabIds, const CommanderRequest& request );
+    // Per-tab match counts and completion, plus the total.
+    QVariantMap allTabsSearchStatus( const QStringList& tabIds );
+    bool waitForAllTabsSearch( const QStringList& tabIds, qint64 timeoutMs );
+    void reportAllTabsSearch();
+    QTimer allTabsSearchTimer_;
+    QElapsedTimer allTabsSearchStarted_;
+    QStringList allTabsSearchTabs_;
+    QPointer<CrawlerWidget> allTabsSearchOrigin_;
     CommanderResult commanderSetFollowMode( const CommanderRequest& request );
     CommanderResult commanderInvokeAction( const CommanderRequest& request );
     CommanderResult commanderSendAction( const CommanderRequest& request );
@@ -410,6 +442,9 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     CrawlerWidget* commanderTargetCrawler( const CommanderRequest& request ) const;
     CommanderResult commanderAnalysis( const CommanderRequest& request );
     CommanderResult commanderPreview( const CommanderRequest& request );
+    // The tab of a Preview source (focused, tab:<id>, file:<path>; "all" is refused). Returns a
+    // result instead when the source fails or a file had to be opened first.
+    std::optional<CommanderResult> resolvePreviewSource( const QString& source, QString* tabId );
     CommanderResult commanderPreviewDecoder( const CommanderRequest& request );
     CommanderResult startNewStreamFileForCrawler( CrawlerWidget* crawler );
     StreamSession* streamSessionForCrawler( const CrawlerWidget* crawler ) const;

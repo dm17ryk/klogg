@@ -1,6 +1,7 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pluginviewhost.h"
+#include "analysissource.h"
 #include "log.h"
 #include "pluginmanager.h"
 #include <QAbstractButton>
@@ -8,6 +9,7 @@
 #include <QDockWidget>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -68,6 +70,9 @@ struct PluginViewHost::Open {
     QPointer<QWidget> container;
     QPointer<PluginView> view;
     QPointer<QLabel> note;
+    // U15b: the source the view follows (focused, tab:<id> or file:<path>) and its picker.
+    QString source = QStringLiteral( "focused" );
+    QPointer<AnalysisSourcePicker> picker;
     std::optional<QJsonObject> pendingRoot;
     QJsonArray pendingPatch;
     QElapsedTimer lastRender;
@@ -219,7 +224,17 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
 {
     const auto key = keyOf( pluginId, viewId );
     const bool focus = overrides.value( "focus" ).toBool( true );
+    if ( overrides.contains( "source" ) && !overrides.value( "source" ).isString() ) {
+        if ( error ) {
+            *error = tr( "The view source must be text: focused, tab:<id> or file:<path>." );
+        }
+        return false;
+    }
+    const auto source = overrides.value( "source" ).toString( QStringLiteral( "focused" ) );
     if ( const auto existing = open_.find( key ); existing != open_.end() ) {
+        if ( overrides.contains( "source" ) && !setViewSource( pluginId, viewId, source, error ) ) {
+            return false;
+        }
         auto& open = *existing->second;
         if ( overrides.contains( "title" ) ) {
             open.container->setWindowTitle(
@@ -247,8 +262,23 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
         }
         return false;
     }
-    const auto result
-        = manager_->openView( pluginId, viewId, context_ ? context_() : QVariantMap{} );
+    QString sourceError;
+    if ( const auto parsed = AnalysisSource::parse( source, &sourceError );
+         !parsed || parsed->kind == AnalysisSource::Kind::AllOpen ) {
+        if ( error ) {
+            *error = parsed ? tr( "A view follows one source: the focused tab, a tab or a file." )
+                            : sourceError;
+        }
+        return false;
+    }
+    const auto context = contextFor( source, &sourceError );
+    if ( context.isEmpty() ) {
+        if ( error ) {
+            *error = sourceError;
+        }
+        return false;
+    }
+    const auto result = manager_->openView( pluginId, viewId, context );
     if ( !result.ok() ) {
         if ( error ) {
             *error = result.error;
@@ -275,6 +305,43 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     note->setStyleSheet( "QLabel { background: palette(alternate-base); padding: 4px; }" );
     note->hide();
     layout->addWidget( note );
+    open->source = source;
+    if ( sources_ ) {
+        // U15b: the view's header row chooses the tab it follows.
+        auto* row = new QWidget( body );
+        row->setObjectName( QString( name ).replace( 0, 10, "pluginViewSourceRow" ) );
+        auto* rowLayout = new QHBoxLayout( row );
+        rowLayout->setContentsMargins( 4, 2, 4, 2 );
+        auto* label = new QLabel( tr( "Source" ), row );
+        auto* picker = new AnalysisSourcePicker( sources_, SourceRules::oneSource(), row );
+        picker->setObjectName( QString( name ).replace( 0, 10, "pluginViewSource" ) );
+        picker->setAccessibleName( tr( "View source" ) );
+        picker->setToolTip( tr( "The tab or file this view works on" ) );
+        label->setBuddy( picker );
+        rowLayout->addWidget( label );
+        rowLayout->addWidget( picker, 1 );
+        layout->insertWidget( 0, row );
+        picker->setSelection( source );
+        open->picker = picker;
+        connect( picker, &AnalysisSourcePicker::selectionChanged, this,
+                 [ this, pluginId, viewId, key ]( const QString& chosen ) {
+                     QString failure;
+                     if ( setViewSource( pluginId, viewId, chosen, &failure ) ) {
+                         return;
+                     }
+                     const auto it = open_.find( key );
+                     if ( it == open_.end() ) {
+                         return;
+                     }
+                     if ( it->second->picker ) {
+                         it->second->picker->setSelection( it->second->source );
+                     }
+                     if ( it->second->note ) {
+                         it->second->note->setText( failure );
+                         it->second->note->show();
+                     }
+                 } );
+    }
     auto* view = new PluginView( pluginId, viewId, dialogs_, body );
     // Dialogs outlive a view that is deleted while one of them is open.
     view->setDialogParent( window_ );
@@ -358,6 +425,70 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     LOG_DEBUG << "Plugin view container opened plugin=" << pluginId.toStdString()
               << " view=" << viewId.toStdString() << " kind=" << raw->kind.toStdString()
               << " window=" << windowId_.toStdString();
+    return true;
+}
+
+void PluginViewHost::setSourceProviders( SourcesProvider sources, SourceContext context )
+{
+    sources_ = std::move( sources );
+    sourceContext_ = std::move( context );
+}
+
+QVariantMap PluginViewHost::contextFor( const QString& source, QString* error ) const
+{
+    if ( source.isEmpty() || source == QLatin1String( "focused" ) || !sourceContext_ ) {
+        return context_ ? context_() : QVariantMap{};
+    }
+    return sourceContext_( source, error );
+}
+
+QString PluginViewHost::viewSource( const QString& pluginId, const QString& viewId ) const
+{
+    const auto it = open_.find( keyOf( pluginId, viewId ) );
+    return it == open_.end() ? QString{} : it->second->source;
+}
+
+bool PluginViewHost::setViewSource( const QString& pluginId, const QString& viewId,
+                                    const QString& source, QString* error )
+{
+    const auto fail = [ error, &pluginId, &viewId ]( const QString& message ) {
+        LOG_DEBUG << "Plugin view source refused plugin=" << pluginId.toStdString()
+                  << " view=" << viewId.toStdString() << " reason=" << message.toStdString();
+        if ( error ) {
+            *error = message;
+        }
+        return false;
+    };
+    const auto it = open_.find( keyOf( pluginId, viewId ) );
+    if ( it == open_.end() || !manager_ ) {
+        return fail( tr( "The view is not open." ) );
+    }
+    const auto text = source.isEmpty() ? QStringLiteral( "focused" ) : source;
+    QString message;
+    const auto parsed = AnalysisSource::parse( text, &message );
+    if ( !parsed ) {
+        return fail( message );
+    }
+    if ( parsed->kind == AnalysisSource::Kind::AllOpen ) {
+        return fail( tr( "A view follows one source: the focused tab, a tab or a file." ) );
+    }
+    const auto context = contextFor( text, &message );
+    if ( context.isEmpty() ) {
+        return fail( message.isEmpty() ? tr( "The source is not open." ) : message );
+    }
+    // view/opened again, now with the chosen tab's context.
+    const auto result = manager_->openView( pluginId, viewId, context );
+    if ( !result.ok() ) {
+        return fail( result.error );
+    }
+    auto& open = *it->second;
+    open.source = text;
+    if ( open.picker ) {
+        open.picker->setSelection( text );
+    }
+    LOG_DEBUG << "Plugin view follows plugin=" << pluginId.toStdString()
+              << " view=" << viewId.toStdString() << " source=" << text.toStdString()
+              << " tab=" << context.value( "tabId" ).toString().toStdString();
     return true;
 }
 
@@ -611,8 +742,23 @@ void PluginViewHost::invokeAction( const QString& pluginId, const QString& viewI
     request.pluginId = pluginId;
     request.pluginAction = action;
     request.pluginArguments = arguments;
-    const auto context = context_ ? context_() : QVariantMap{};
-    if ( context.contains( "windowIndex" ) ) {
+    // The view's source: its tab when one was chosen, else the window's current tab.
+    const auto source = viewSource( pluginId, viewId );
+    QString sourceError;
+    const auto context = contextFor( source, &sourceError );
+    if ( context.isEmpty() && !source.isEmpty() && source != QLatin1String( "focused" ) ) {
+        const auto it = open_.find( keyOf( pluginId, viewId ) );
+        if ( it != open_.end() && it->second->note ) {
+            it->second->note->setText( sourceError );
+            it->second->note->show();
+        }
+        LOG_WARNING << "Plugin view action ignored: its source is gone plugin="
+                    << pluginId.toStdString() << " source=" << source.toStdString();
+        return;
+    }
+    const bool focused = source.isEmpty() || source == QLatin1String( "focused" );
+    // A chosen tab may belong to another window: its id alone finds it.
+    if ( focused && context.contains( "windowIndex" ) ) {
         request.windowIndex = context.value( "windowIndex" ).toInt();
     }
     request.tabId = context.value( "tabId" ).toString();

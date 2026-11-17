@@ -208,6 +208,11 @@ cilogg command --action cancel_plugin_job --plugin-job-id <job-id>
 
 `get_plugin_job` reports `cancelling` during the cancellation grace period; callers that wait
 for a job must treat it as still active.
+`invoke_plugin --source focused|all|tab:<id>|file:<path>` chooses the tab the action runs on
+(the job's `context`); `all` runs it once per open tab, at most eight jobs at a time, and
+returns the tabs and their job ids so far. In the GUI, **Plugins → Run actions on** and the
+**Run on** row of an action's form make the same choice. A tab selector (`--tab-id`) wins over
+`--source`. See [choosing what a tool works on](source-picker.md).
 `cilogg command --action pause_comm --wait [--timeout-ms <ms>] [tab selector]` returns only
 after the serial port is actually closed (default timeout 5000 ms, at most 25000 ms) and fails
 cleanly when the timeout expires. While it waits, `start_comm`, `play_comm`, `pause_comm`,
