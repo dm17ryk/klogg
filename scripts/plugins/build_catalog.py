@@ -315,7 +315,9 @@ def build_catalog(sources: list[PackageSource], catalog: pathlib.Path, url_for) 
     text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     target = catalog / "plugins.json"
     if not target.exists() or target.read_text(encoding="utf-8") != text:
-        target.write_text(text, encoding="utf-8", newline="\n")
+        # Path.write_text(newline=...) needs Python 3.10; the script supports 3.9.
+        with target.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(text)
     return document
 
 
