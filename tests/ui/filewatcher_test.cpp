@@ -14,6 +14,9 @@
 #include "configuration.h"
 #include "filewatcher.h"
 #include "log.h"
+#include "logdata.h"
+
+#include <QFileInfo>
 
 #ifdef Q_OS_WIN
 
@@ -278,4 +281,69 @@ TEST_CASE( "File watching stays disabled until polling is explicitly enabled",
     LOG_DEBUG << "Enabled watcher regression: target=" << fileName
               << ", observed signals=" << notifications.size();
     REQUIRE( hasNotificationFor( fileName ) );
+}
+
+TEST_CASE( "A direct change notice reloads an open capture file at once", "[logdata][filewatch]" )
+{
+    // Serial capture writes through a handle that stays open. On Windows the native watcher
+    // reports such appends late (seconds) or not at all, so the capture session tells the
+    // watcher itself; the notice must reload the file even when it spells the path differently.
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto fileName = directory.filePath( QStringLiteral( "capture-nudge.log" ) );
+    QFile capture( fileName );
+    REQUIRE( capture.open( QIODevice::WriteOnly ) );
+    REQUIRE( capture.write( "first line\n" ) == 11 );
+    REQUIRE( capture.flush() );
+
+    struct RestoreWatching {
+        bool native = Configuration::get().nativeFileWatchEnabled();
+        bool polling = Configuration::get().pollingEnabled();
+        ~RestoreWatching()
+        {
+            auto& config = Configuration::get();
+            config.setNativeFileWatchEnabled( native );
+            config.setPollingEnabled( polling );
+            FileWatcher::getFileWatcher().updateConfiguration();
+        }
+    } restore;
+    auto& config = Configuration::get();
+    config.setNativeFileWatchEnabled( false );
+    config.setPollingEnabled( false );
+    FileWatcher::getFileWatcher().updateConfiguration();
+
+    LogData logData;
+    QSignalSpy finished( &logData, SIGNAL( loadingFinished( LoadingStatus ) ) );
+    logData.attachFile( QFileInfo( fileName ).absoluteFilePath() );
+    REQUIRE( QTest::qWaitFor( [ &finished ] { return !finished.isEmpty(); }, 10000 ) );
+    REQUIRE( logData.getNbLine() == 1_lcount );
+
+    // The [TX] line of a sent command, written while the capture file stays open.
+    REQUIRE( capture.write( "[TX] - GET VERSION:00;\n" ) == 23 );
+    REQUIRE( capture.flush() );
+    QTest::qWait( 300 );
+    REQUIRE( logData.getNbLine() == 1_lcount ); // nothing else reports this append
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    FileWatcher::getFileWatcher().fileChangedOnDisk( QDir::toNativeSeparators( fileName ) );
+    REQUIRE( QTest::qWaitFor( [ &logData ] { return logData.getNbLine() == 2_lcount; }, 5000 ) );
+    LOG_DEBUG << "Capture nudge reload took " << elapsed.elapsed() << " ms";
+    CHECK( elapsed.elapsed() < 2000 );
+    capture.close();
+}
+
+TEST_CASE( "Watched path spellings of one file compare equal", "[logdata][filewatch]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto path = directory.filePath( QStringLiteral( "spelled.log" ) );
+    CHECK( isSameWatchedPath( path, path ) );
+    CHECK( isSameWatchedPath( path, QDir::toNativeSeparators( path ) ) );
+    CHECK( isSameWatchedPath( path, directory.path() + QStringLiteral( "/./spelled.log" ) ) );
+#ifdef Q_OS_WIN
+    CHECK( isSameWatchedPath( path, path.toUpper() ) );
+#endif
+    CHECK_FALSE( isSameWatchedPath( path, directory.filePath( QStringLiteral( "other.log" ) ) ) );
+    CHECK_FALSE( isSameWatchedPath( path, QString{} ) );
 }

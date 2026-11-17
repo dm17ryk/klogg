@@ -31,6 +31,7 @@ add_executable(cilogg_tests
     previewsource_test.cpp
     previewcommands_test.cpp
     pythonruntime_test.cpp
+    searchbarlayout_test.cpp
     serialcapturesettings_test.cpp
     streamsession_actions_test.cpp
     streamsession_owner_test.cpp

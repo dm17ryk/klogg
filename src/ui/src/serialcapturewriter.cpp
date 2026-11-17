@@ -185,6 +185,8 @@ void SerialCaptureWorker::finishTxSegment()
             return;
         }
         file_.flush();
+        if ( newline )
+            reportFileWritten();
     }
 }
 void SerialCaptureWorker::finalizeWritePresentation( const WriteEpoch& epoch, const QString& id )
@@ -235,6 +237,7 @@ void SerialCaptureWorker::captureWrittenPrefix( const QByteArray& bytes, const Q
     if ( txSensitive_ )
         txRedactionLogged_ = true;
     file_.flush();
+    reportFileWritten();
     qCDebug( serialCaptureWriterLog, "Captured acknowledged TX prefix bytes=%lld redacted=%d",
              static_cast<long long>( bytes.size() ), txSensitive_ );
 }

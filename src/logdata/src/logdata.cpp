@@ -348,7 +348,7 @@ void LogData::fileChangedOnDisk( const QString& filename )
 
     const bool isFileIdChanged = attachedFileId != currentFileId;
 
-    if ( !isFileIdChanged && filename != indexingFileName_ ) {
+    if ( !isFileIdChanged && !isSameWatchedPath( filename, indexingFileName_ ) ) {
         LOG_INFO << "ignore other file update";
         return;
     }

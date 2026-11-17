@@ -203,8 +203,9 @@ protected:
     virtual LineNumber lineIndex( LineNumber lineNumber ) const;
     virtual LineNumber maxDisplayLineNumber() const;
 
-    // An optional column between the line numbers and the text, for example the filter that
-    // selected a filtered line. A width of zero characters hides it. Called for visible lines only.
+    // An optional column at the right edge of the view, for example the filter that selected a
+    // filtered line. A width of zero characters hides it. Called for visible lines only. A label
+    // cut short by the column is shown whole in a tooltip.
     virtual int annotationColumnChars() const
     {
         return 0;
@@ -370,6 +371,19 @@ private:
 
     // Total size of all margins and decorations in pixels
     int leftMarginPx_ = 0;
+    // Width of the annotation column at the right edge, as last painted
+    int rightMarginPx_ = 0;
+    // Where the annotation column's text was last painted (for its tooltips)
+    int annotationTextStartPx_ = 0;
+    int annotationTextWidthPx_ = 0;
+    // Width of the annotation column in pixels, 0 when it is hidden
+    int annotationAreaWidthPx() const;
+    // Width left for the text between the margins
+    int textAreaWidthPx() const;
+    // The full annotation of the line under `position` when its column cuts it short
+    QString elidedAnnotationAt( const QPoint& position ) const;
+    // Pane commands of the window, filled when the context menu opens
+    QMenu* paneMenu_ = nullptr;
 
     // Digits buffer (for numeric keyboard entry)
     DigitsBuffer digitsBuffer_;
@@ -549,6 +563,8 @@ private:
 
     void createMenu();
     void updatePreviewMenu();
+    // Fills the Panes submenu from the window, or hides it outside a window with panes.
+    void updatePaneMenu();
 
     void considerMouseHovering( int xPos, int yPos );
 

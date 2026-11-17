@@ -53,13 +53,14 @@
 #include <mutex>
 #include <vector>
 
+#include "actionsresponseswindow.h"
 #include "commander.h"
 #include "configuration.h"
 #include "crawlerwidget.h"
 #include "downloader.h"
 #include "iconloader.h"
-#include "actionsresponseswindow.h"
 #include "logpane.h"
+#include "panemenuhost.h"
 #include "pathline.h"
 #include "previewwindow.h"
 #include "quickfindmux.h"
@@ -87,12 +88,15 @@ struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow, public PaneMenuHost {
     Q_OBJECT
 
   public:
     explicit MainWindow( WindowSession session );
     ~MainWindow() override;
+
+    // The pane commands in the context menu of a log view.
+    void populatePaneMenu( QMenu& menu, QWidget* origin ) override;
 
     // Split panes. The current tab of the active pane is the window's focused tab; tab indices
     // count tabs pane by pane in layout order.
@@ -291,6 +295,11 @@ class MainWindow : public QMainWindow {
     void updatePaneActions();
     void populateMoveToPaneMenu( QMenu* menu, const QString& tabId );
     void extendTabContextMenu( QMenu& menu, LogPane* pane, int index );
+    // Split, move this tab (when `tabId` is set), close, equalize and merge, for `pane`.
+    void addPaneCommands( QMenu& menu, LogPane* pane, const QString& tabId,
+                          const QString& moveMenuObjectName );
+    // The context menu of a pane without tabs.
+    void populateEmptyPaneMenu( QMenu& menu, LogPane* pane );
     QString paneTitle( const LogPane* pane ) const;
     QString paneLimitMessage() const;
     // Closing tabs on behalf of automation (ActionInitiator::App) leaves the recent files alone.

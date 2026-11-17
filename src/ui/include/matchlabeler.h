@@ -41,19 +41,48 @@ class MatchLabeler {
     }
 
     // The names of the terms that match `line`, joined with ", ". A typed search with a single
-    // term reports the matched text instead. Empty when nothing matches.
+    // term reports the matched text instead. A predefined filter made of several top-level
+    // alternatives reports the alternatives that matched, after the filter name when the filter
+    // has one of its own. Empty when nothing matches.
     QString label( const QString& line ) const;
+
+    // How an alternative is shown in a label: a lone capturing group "(x)" is shown as "x".
+    static QString alternativeDisplayName( const QString& alternative );
 
     // A column width, in characters, that fits typical labels.
     int preferredColumnChars() const;
 
-    static constexpr int MaxLabelLength = 64;
+    // Labels are cut here; the view elides them further to its column and shows the label in a
+    // tooltip.
+    static constexpr int MaxLabelLength = 256;
 
-  private:
-    struct Term {
+private:
+    // A top-level alternative of a predefined filter, compiled on its own.
+    struct Part {
         QString name;
         QRegularExpression expression;
     };
+
+    struct Term {
+        QString name;
+        QRegularExpression expression;
+        // Alternatives of a predefined filter with several of them; empty otherwise.
+        std::vector<Part> parts;
+        // The label starts with `name` before the matched parts (a filter with a name of its
+        // own, not just its pattern).
+        bool namePrefix = false;
+    };
+
+    // What a term is built from, before its expressions are compiled.
+    struct TermSpec {
+        QString name;
+        RegularExpressionPattern pattern;
+        QList<RegularExpressionPattern> partPatterns;
+        QStringList partNames;
+        bool namePrefix = false;
+    };
+
+    QString termLabel( const Term& term, const QString& line ) const;
 
     struct Alternative {
         QString text;
@@ -64,6 +93,7 @@ class MatchLabeler {
     static std::vector<Alternative> scanTopLevelAlternatives( const QString& regex );
     static MatchLabeler fromTerms( const QList<RegularExpressionPattern>& patterns,
                                    const QStringList& names );
+    static MatchLabeler fromSpecs( const std::vector<TermSpec>& specs );
 
     std::vector<Term> terms_;
     // The terms are predefined filters: lines are labelled with their names.

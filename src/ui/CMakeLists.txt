@@ -19,6 +19,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/crawlerwidget.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/filteredview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/matchlabeler.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/panemenuhost.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/searchbarlayout.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersdialog.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlighteredit.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/highlightersetedit.h
@@ -142,6 +144,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/crawlerwidgetpreview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/filteredview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/matchlabeler.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/searchbarlayout.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersdialog.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlighteredit.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/highlightersmenu.cpp

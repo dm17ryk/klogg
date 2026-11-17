@@ -35,6 +35,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QTimer>
+#include <algorithm>
 
 namespace {
 
@@ -373,9 +374,30 @@ void FileWatcher::removeFile( const QString& fileName )
     updateConfiguration();
 }
 
+bool isSameWatchedPath( const QString& left, const QString& right )
+{
+    if ( left == right ) {
+        return true;
+    }
+    if ( left.isEmpty() || right.isEmpty() ) {
+        return false;
+    }
+    const auto normalized = []( const QString& path ) {
+        return QDir::cleanPath( QFileInfo( path ).absoluteFilePath() );
+    };
+#ifdef Q_OS_WIN
+    constexpr auto Sensitivity = Qt::CaseInsensitive;
+#else
+    constexpr auto Sensitivity = Qt::CaseSensitive;
+#endif
+    return normalized( left ).compare( normalized( right ), Sensitivity ) == 0;
+}
+
 void FileWatcher::fileChangedOnDisk( const QString& fileName )
 {
-    if ( std::find( changes_.begin(), changes_.end(), fileName ) == changes_.end() ) {
+    if ( std::none_of( changes_.begin(), changes_.end(), [ &fileName ]( const QString& queued ) {
+             return isSameWatchedPath( queued, fileName );
+         } ) ) {
         changes_.push_back( fileName );
     }
 

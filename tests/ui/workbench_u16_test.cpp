@@ -22,9 +22,13 @@
 #include <catch2/catch.hpp>
 
 #include <QAction>
+#include <QApplication>
+#include <QComboBox>
+#include <QContextMenuEvent>
 #include <QLabel>
 #include <QMenu>
-#include <QApplication>
+#include <QToolButton>
+
 #include <QFile>
 #include <QMessageBox>
 #include <QPushButton>
@@ -36,9 +40,12 @@
 #include <QTest>
 #include <QTimer>
 #include <QTranslator>
+#include <functional>
 
 #include "test_utils.h"
 
+#include "../streamsession_testaccess.h"
+#include "abstractlogview.h"
 #include "crawlerwidget.h"
 #include "logpane.h"
 #include "mainwindow.h"
@@ -46,7 +53,6 @@
 #include "session.h"
 #include "sessioninfo.h"
 #include "streamsession.h"
-#include "../streamsession_testaccess.h"
 
 namespace {
 struct SessionRestoreGuard {
@@ -1078,4 +1084,157 @@ TEST_CASE( "pane_operations: Commander splits, focuses, moves, closes and merges
     REQUIRE( window.executeCommanderRequest( move ).code == CommanderResultCode::ExecutionFailed );
 
     REQUIRE_FALSE( noDialogs.seen() );
+}
+
+// Dmitry's 2026-11-16 report: pane commands in every context menu, a menu for an empty pane,
+// a usable search bar in a narrow pane and narrower panes.
+
+namespace {
+// Runs `inspect` on the next popup menu that opens, then closes it.
+class PopupMenuDriver {
+public:
+    explicit PopupMenuDriver( std::function<void( QMenu& )> inspect )
+        : inspect_( std::move( inspect ) )
+    {
+        timer_.setInterval( 20 );
+        QObject::connect( &timer_, &QTimer::timeout, &timer_, [ this ] {
+            auto* menu = qobject_cast<QMenu*>( QApplication::activePopupWidget() );
+            if ( menu == nullptr ) {
+                return;
+            }
+            timer_.stop();
+            seen_ = menu->objectName();
+            inspect_( *menu );
+            menu->close();
+        } );
+        timer_.start();
+    }
+
+    QString seen() const
+    {
+        return seen_;
+    }
+
+private:
+    std::function<void( QMenu& )> inspect_;
+    QTimer timer_;
+    QString seen_;
+};
+
+QStringList actionNames( const QMenu& menu )
+{
+    QStringList names;
+    for ( const auto* action : menu.actions() ) {
+        if ( action->menu() != nullptr ) {
+            names.append( action->menu()->objectName() );
+        }
+        else if ( !action->isSeparator() ) {
+            names.append( action->objectName() );
+        }
+    }
+    return names;
+}
+} // namespace
+
+TEST_CASE( "pane_context_menus: log views and empty panes offer the pane commands",
+           "[ui][workbench][U16]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    PaneFixture fixture( "U16PaneMenus" );
+    auto& window = fixture.window();
+    const auto a = fixture.open( writeLog( directory, "a.log" ) );
+
+    // The log view's context menu has a Panes submenu with the commands of the View menu.
+    auto* crawler = qobject_cast<CrawlerWidget*>( window.panes().front()->tabs()->widget( 0 ) );
+    REQUIRE( crawler != nullptr );
+    auto* view = crawler->findChild<AbstractLogView*>();
+    REQUIRE( view != nullptr );
+    REQUIRE( view->findChild<QMenu*>( "logViewPaneMenu" ) != nullptr );
+    QMenu viewMenu;
+    window.populatePaneMenu( viewMenu, view );
+    const auto viewEntries = actionNames( viewMenu );
+    INFO( viewEntries.join( ", " ).toStdString() );
+    CHECK( viewEntries.contains( "logViewMoveToPaneMenu" ) );
+    CHECK( viewEntries.contains( "paneMenuSplitRightAction" ) );
+    CHECK( viewEntries.contains( "paneMenuSplitDownAction" ) );
+    CHECK( viewEntries.contains( "paneMenuCloseAction" ) );
+    CHECK( viewEntries.contains( "paneMenuMergeAction" ) );
+    auto* splitRight = viewMenu.findChild<QAction*>( "paneMenuSplitRightAction" );
+    REQUIRE( splitRight != nullptr );
+    splitRight->trigger();
+    REQUIRE( window.panes().size() == 2 );
+    auto* empty = window.panes().back();
+    REQUIRE( empty->tabs()->count() == 0 );
+
+    // An empty pane opens its own menu; its Move Tab Here entry brings a tab over.
+    QStringList emptyEntries;
+    PopupMenuDriver driver( [ &emptyEntries ]( QMenu& menu ) {
+        emptyEntries = actionNames( menu );
+        auto* moveHere = menu.findChild<QMenu*>( "emptyPaneMoveTabHereMenu" );
+        if ( moveHere != nullptr && !moveHere->actions().isEmpty() ) {
+            moveHere->actions().front()->trigger();
+        }
+    } );
+    auto* placeholder = empty->findChild<QLabel*>( "logPanePlaceholder" );
+    REQUIRE( placeholder != nullptr );
+    REQUIRE( placeholder->isVisible() );
+    QContextMenuEvent request( QContextMenuEvent::Mouse, placeholder->rect().center(),
+                               placeholder->mapToGlobal( placeholder->rect().center() ) );
+    QApplication::sendEvent( placeholder, &request );
+    REQUIRE( driver.seen() == QStringLiteral( "emptyPaneContextMenu" ) );
+    INFO( emptyEntries.join( ", " ).toStdString() );
+    CHECK( emptyEntries.contains( "emptyPaneOpenFileAction" ) );
+    CHECK( emptyEntries.contains( "emptyPaneOpenComPortAction" ) );
+    CHECK( emptyEntries.contains( "emptyPaneMoveTabHereMenu" ) );
+    CHECK( emptyEntries.contains( "paneMenuCloseAction" ) );
+    CHECK( emptyEntries.contains( "paneMenuMergeAction" ) );
+    REQUIRE( waitUiState( [ empty, a ] { return paneTabIds( empty ) == QStringList{ a }; } ) );
+}
+
+TEST_CASE( "narrow_pane_search_bar: a narrow pane folds buttons, keeps the pattern box usable",
+           "[ui][workbench][U16]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    PaneFixture fixture( "U16NarrowSearch" );
+    auto& window = fixture.window();
+    fixture.open( writeLog( directory, "a.log" ) );
+    auto* crawler = qobject_cast<CrawlerWidget*>( window.panes().front()->tabs()->widget( 0 ) );
+    REQUIRE( crawler != nullptr );
+    auto* bar = crawler->findChild<QWidget*>( "searchBar" );
+    auto* pattern = crawler->findChild<QComboBox*>( "searchLineEdit" );
+    auto* overflow = crawler->findChild<QToolButton*>( "searchBarOverflowButton" );
+    auto* keep = crawler->findChild<QToolButton*>( "keepSearchResultsButton" );
+    REQUIRE( bar != nullptr );
+    REQUIRE( pattern != nullptr );
+    REQUIRE( overflow != nullptr );
+    REQUIRE( keep != nullptr );
+
+    // The unfolded bar: every control at its full size, nothing in the overflow menu.
+    window.resize( 4000, 700 );
+    REQUIRE( waitUiState( [ overflow ] { return overflow->isHidden(); } ) );
+    // As the layout lays it out: controls, the spacing between them and the margins.
+    const auto margins = bar->layout()->contentsMargins();
+    int unfolded = margins.left() + margins.right();
+    for ( const auto* child :
+          bar->findChildren<QWidget*>( QString{}, Qt::FindDirectChildrenOnly ) ) {
+        if ( child != overflow && !child->isHidden() ) {
+            unfolded += std::max( child->sizeHint().width(), child->minimumWidth() )
+                        + bar->layout()->spacing();
+        }
+    }
+
+    // A pane may now get half as narrow as the unfolded search bar.
+    const auto paneMinimum = window.panes().front()->minimumSizeHint().width();
+    INFO( "pane minimum " << paneMinimum << " px, unfolded search bar " << unfolded << " px" );
+    CHECK( paneMinimum <= unfolded / 2 + 30 );
+
+    // At the minimum, buttons fold into the overflow menu and the pattern box keeps its room.
+    window.resize( 100, 700 );
+    REQUIRE( waitUiState( [ bar ] { return bar->width() <= bar->minimumWidth() + 40; } ) );
+    REQUIRE( waitUiState( [ overflow ] { return !overflow->isHidden(); } ) );
+    CHECK( keep->isHidden() );
+    CHECK( pattern->width() >= pattern->minimumWidth() );
+    CHECK( pattern->minimumWidth() >= pattern->fontMetrics().averageCharWidth() * 15 );
 }

@@ -120,6 +120,7 @@
 #include "downloader.h"
 #include "encodings.h"
 #include "favoritefiles.h"
+#include "filewatcher.h"
 #include "highlightersdialog.h"
 #include "highlightersmenu.h"
 #include "importactionsdialog.h"
@@ -133,9 +134,9 @@
 #include "optionsdialog.h"
 #include "predefinedfilters.h"
 #include "predefinedfiltersdialog.h"
-#include "previewmanager.h"
 #include "previewdecodersettings.h"
 #include "previewdecodersettingsdialog.h"
+#include "previewmanager.h"
 #include "progress.h"
 #include "readablesize.h"
 #include "recentfiles.h"
@@ -613,6 +614,8 @@ MainWindow::MainWindow( WindowSession session )
         [ this ]( QMenu& menu, LogPane* pane, int index ) {
             extendTabContextMenu( menu, pane, index );
         } );
+    paneArea_->setEmptyPaneContextMenuExtension(
+        [ this ]( QMenu& menu, LogPane* pane ) { populateEmptyPaneMenu( menu, pane ); } );
 
     // Establish the QuickFindWidget and mux ( to send requests from the
     // QFWidget to the right window )
@@ -2670,6 +2673,12 @@ bool MainWindow::startComCaptureSession( SerialCaptureSettings& settings,
                  if ( safeSession ) {
                      publishScriptReceiveEvent( safeSession->filePath(), payloadBytes );
                  }
+             } );
+    // Reload the tab as soon as the capture file grows: a native change notification for a file
+    // that stays open for writing can arrive seconds later (or with the next write) on Windows.
+    connect( session.get(), &StreamSession::captureFileUpdated, this,
+             []( const QString& capturePath ) {
+                 FileWatcher::getFileWatcher().fileChangedOnDisk( capturePath );
              } );
     connect( session.get(), &StreamSession::dataTransmitted, this,
              [ this, safeSession ]( const QByteArray& payloadBytes ) {

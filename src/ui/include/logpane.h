@@ -105,15 +105,18 @@ class LogPane : public QWidget {
   Q_SIGNALS:
     // The user clicked into the pane.
     void activated( LogPane* pane );
+    // The user asked for the context menu of the pane while it has no tabs.
+    void emptyContextMenuRequested( LogPane* pane, const QPoint& globalPosition );
 
-  protected:
+protected:
     bool eventFilter( QObject* watched, QEvent* event ) override;
     void mousePressEvent( QMouseEvent* event ) override;
     void paintEvent( QPaintEvent* event ) override;
     void changeEvent( QEvent* event ) override;
     void focusInEvent( QFocusEvent* event ) override;
+    void contextMenuEvent( QContextMenuEvent* event ) override;
 
-  private:
+private:
     friend class LogPaneArea;
     void setPaneId( const QString& paneId );
     void retranslate();
@@ -185,6 +188,10 @@ class LogPaneArea : public QWidget {
 
     using TabContextMenuExtension = std::function<void( QMenu& menu, LogPane* pane, int index )>;
     void setTabContextMenuExtension( TabContextMenuExtension extension );
+    // Fills the context menu of a pane without tabs (open a file, move a tab here, pane
+    // commands).
+    using EmptyPaneContextMenuExtension = std::function<void( QMenu& menu, LogPane* pane )>;
+    void setEmptyPaneContextMenuExtension( EmptyPaneContextMenuExtension extension );
     void setAlwaysShowTabBar( bool alwaysShow );
 
     // Window-wide tabs, counted pane by pane in layout order.
@@ -256,6 +263,7 @@ class LogPaneArea : public QWidget {
     QPointer<QWidget> root_;
     QPointer<LogPane> active_;
     TabContextMenuExtension contextMenuExtension_;
+    EmptyPaneContextMenuExtension emptyPaneMenuExtension_;
     bool alwaysShowTabBar_ = false;
     int focusGuard_ = 0;
     // While a tab moves it is briefly in neither pane; current-tab changes are reported once

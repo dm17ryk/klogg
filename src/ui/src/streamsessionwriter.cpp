@@ -158,6 +158,7 @@ void StreamSession::setupCheckedWorker()
              [ this, generation ]( const QByteArray& data ) {
                  acceptBackendData( generation, data, true );
              } );
+    connectCaptureFileWritten();
     connect( worker_, &SerialCaptureWorker::errorOccurred, this,
              [ this, generation ]( const QString& message ) {
                  if ( generation != workerGeneration_ || stopping_ || closePublished_ ) {
