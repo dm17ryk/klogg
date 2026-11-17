@@ -110,6 +110,10 @@ PreviewDecoderSettingsDialog::PreviewDecoderSettingsDialog( QWidget* parent )
     identity( encoding_, "decoderInputEncoding", tr( "Default input encoding" ) );
     encoding_->addItems( { "utf8", "hex", "base64" } );
     form->addRow( tr( "Direct input encoding:" ), encoding_ );
+    assemblyHosts_ = new QLineEdit( this );
+    identity( assemblyHosts_, "decoderAssemblyHttpHosts", tr( "HTTP hosts for message assembly" ) );
+    assemblyHosts_->setPlaceholderText( tr( "Empty: any Host header; comma-separated list" ) );
+    form->addRow( tr( "Assembly HTTP hosts:" ), assemblyHosts_ );
     layout->addLayout( form );
     scripts_ = new QListWidget( this );
     identity( scripts_, "decoderLuaScripts", tr( "Approved Lua files" ) );
@@ -194,6 +198,7 @@ void PreviewDecoderSettingsDialog::reload()
     text2pcap_->setText( config.value( "text2pcap" ).toString() );
     dissector_->setText( config.value( "defaultDissector" ).toString() );
     encoding_->setCurrentText( config.value( "inputEncoding" ).toString() );
+    assemblyHosts_->setText( config.value( "assemblyHttpHosts" ).toStringList().join( ", " ) );
     scripts_->clear();
     for ( const auto& value : config.value( "lua" ).toList() )
         scripts_->addItem( value.toString() );
@@ -208,6 +213,11 @@ bool PreviewDecoderSettingsDialog::apply()
     QVariantList scripts;
     for ( int i = 0; i < scripts_->count(); ++i )
         scripts << scripts_->item( i )->text();
+    QVariantList hosts;
+    for ( const auto& host : assemblyHosts_->text().split( ',', Qt::SkipEmptyParts ) ) {
+        if ( !host.trimmed().isEmpty() )
+            hosts << host.trimmed();
+    }
     const QVariantMap config{ { "enabled", enabled_->isChecked() },
                               { "allowExternalLua", approval_->isChecked() },
                               { "tshark", tshark_->text() },
@@ -216,7 +226,8 @@ bool PreviewDecoderSettingsDialog::apply()
                               { "defaultDissector", dissector_->text() },
                               { "inputEncoding", encoding_->currentText() },
                               { "previewRoutes", preview },
-                              { "protocolRoutes", protocol } };
+                              { "protocolRoutes", protocol },
+                              { "assemblyHttpHosts", hosts } };
     const bool ok
         = error.isEmpty() && PreviewDecoderSettings::instance().setConfiguration( config, &error );
     error_->setText( ok ? tr( "Settings applied." )

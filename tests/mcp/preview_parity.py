@@ -17,10 +17,34 @@ def setup_preview(payload):
     (payload / "previews.json").write_text(json.dumps(definition), encoding="utf-8")
 
 
+def check_assembly_hosts(cli, command, request, body, artifacts):
+    """A configured host list restricts HTTP carriers; an empty list accepts any host."""
+    for index, (hosts, assembled) in enumerate(((["ASSEMBLY.EXAMPLE"], True),
+                                                 (["other.example"], False), ([], True))):
+        config = {"assemblyHttpHosts": hosts}
+        path = artifacts / f"preview-decoder-hosts-{index}.json"
+        path.write_text(json.dumps(config), encoding="utf-8")
+        first = cli("set_preview_decoder", "--json-file", str(path))
+        second = command("set_preview_decoder", {"analysis_json": config})
+        assert first["configuration"]["assemblyHttpHosts"] == hosts, first
+        assert second["configuration"]["assemblyHttpHosts"] == hosts, second
+        path = artifacts / f"preview-hosts-request-{index}.json"
+        path.write_text(json.dumps(request), encoding="utf-8")
+        result = cli("preview_message", "--json-file", str(path))
+        same = command("preview_message", {"analysis_json": request})
+        assert result["assembly"] == same["assembly"], (result, same)
+        complete = result["assembly"]["state"] == "complete"
+        assert complete == assembled and (result["inputText"] == body) == assembled, (hosts, result)
+    invalid = artifacts / "preview-decoder-hosts-invalid.json"
+    invalid.write_text(json.dumps({"assemblyHttpHosts": ["two words"]}), encoding="utf-8")
+    assert cli("set_preview_decoder", "--json-file", str(invalid), success=False)["reason"] == \
+        "invalid_assembly_host"
+
+
 def exercise_preview(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     assert "preview_message" in catalog["commander"]["commands"]
     body = "EHCI001INF00000004TESTCRC0000"
-    payload = ["PUT fixture.dat HTTP/1.1", "Host: CARE-PANELINFO",
+    payload = ["PUT fixture.dat HTTP/1.1", "Host: assembly.example",
                f"Content-Length: {len(body)}", "Content-Type: application/octet-stream", ""]
     header_bytes = len("\r\n".join(payload).encode()) + 2
 
@@ -57,6 +81,7 @@ def exercise_preview(cli, command, _finish, _rows, _normalized, catalog, artifac
         if index == 2:
             assert first["state"] == "incomplete" and not first["complete"], first
         observations.append({"state": first["state"], "assembly": first["assembly"]})
+    check_assembly_hosts(cli, command, samples[1], body, artifacts)
     fixture = artifacts / "preview-source.log"
     fixture.write_text("unrelated\n" + "\n".join(logs) + "\n", encoding="utf-8")
     cli("open_file", "--file", str(fixture))

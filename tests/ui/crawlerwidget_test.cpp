@@ -441,9 +441,11 @@ TEST_CASE( "Real Lua hover and Send to Preview retain selected EHCI assembly",
                   QVariantMap{ { "EHCI", QVariantMap{ { "dissector", "cilogg_md01_probe" },
                                                       { "inputEncoding", "utf8" } } } } } };
     }
+    // The fixture's synthetic carrier host replaces any host list of an external pack.
+    configuration[ "assemblyHttpHosts" ] = QVariantList{ "assembly.example" };
     REQUIRE( settings.setConfiguration( configuration ) );
     const QString message = "EHCI001INF00000004TESTCRC0000";
-    const QStringList headers{ "PUT sample.dat HTTP/1.1", "Host: CARE-PANELINFO",
+    const QStringList headers{ "PUT sample.dat HTTP/1.1", "Host: assembly.example",
                                QString( "Content-Length: %1" ).arg( message.size() ),
                                "Content-Type: application/octet-stream", "" };
     const auto bytes = headers.join( "\r\n" ).toUtf8().size() + 2 + message.toUtf8().size();

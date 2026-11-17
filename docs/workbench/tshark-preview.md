@@ -18,6 +18,13 @@ catchall is wanted; otherwise configure selective routes. Existing JSON
 definitions can extract carrier text for Lua, and can also provide a fallback.
 TShark and the selected Lua own protocol semantics.
 
+**Assembly HTTP hosts** (`assemblyHttpHosts`) lists the `Host` header values
+that mark an HTTP request as a message carrier for
+[reassembly](../preview-message-tooltips.md). It holds up to 16 names of
+printable ASCII without spaces or commas (a port may follow a colon), and the
+comparison ignores case. The empty default accepts any host. Message assembly
+uses the list even while the decoder is disabled.
+
 The preview pane offers **Automatic (TShark first)**, **TShark/Lua**, and
 **JSON**. Auto first tries an assembly protocol route, then mapped matching
 carriers even when an earlier JSON-only definition matches. It next tries the
