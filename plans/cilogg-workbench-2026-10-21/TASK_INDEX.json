@@ -1628,7 +1628,7 @@
         "ECO20",
         "ECO21"
       ],
-      "task_body_chars": 9134,
+      "task_body_chars": 9085,
       "taskFile": "tasks/E15.md"
     },
     {
@@ -1643,7 +1643,7 @@
       "requirements": [
         "ECO22"
       ],
-      "task_body_chars": 12399,
+      "task_body_chars": 12364,
       "taskFile": "tasks/E16.md"
     },
     {
@@ -2931,7 +2931,8 @@
     "2026-11-17: decision D16 proposes E15 (plugin repositories with private Azure DevOps sign-in and update checks) and E16 (configuration packs) for the user's request to install and update internal plugins and previews from a private repository. Design only: implementation starts after the user approves it, so neither task is in PROGRESS.json.runnableTasks yet. E15 depends only on the completed G01 and E16 on E15; E09 depends on E16 and R04 on both. E14, missing from the stored order since decision D14, now follows E13.",
     "2026-11-17 (later): the user removed the private working configuration from the public repository and asked to deliver it, with the TShark Lua, as a plugin from the private Azure DevOps repository. E16 therefore covers configuration packs (previews, Lua and Python decoders, actions with automatic responses, highlighters, predefined filters) in slices E16a-E16c. Dependencies are unchanged.",
     "2026-11-17 (later): the user asked for repository handling of highlighters, actions, responses, previewers and filters like plugins, and for merging local edits on update. E15a gains one Plugins and Packs window (Installed, Available with a Kind filter, Repositories); E16a and E16c gain local edits as an overlay with a three-way merge; the new slice E16d brings Export as Pack. Dependencies are unchanged.",
-    "2026-11-17 (later): the user decided the pack editing model (edit in place with merge) and the merge UI (item merge window, three-pane text merge, optional external merge tool), and asked to use Git internally and to let users send changes back. E16a and E16c gain a local Git store per pack, E16d View Changes and Export Changes, and the new slice E16e Propose Changes. Dependencies are unchanged."
+    "2026-11-17 (later): the user decided the pack editing model (edit in place with merge) and the merge UI (item merge window, three-pane text merge, optional external merge tool), and asked to use Git internally and to let users send changes back. E16a and E16c gain a local Git store per pack, E16d View Changes and Export Changes, and the new slice E16e Propose Changes. Dependencies are unchanged.",
+    "2026-11-17 (later): the user accepted the D16 design and approved all eleven recommended decisions. E15 is authorized ahead of G02/G03 and listed in PROGRESS.json.runnableTasks; E16 follows E15. Both stay planned and not started. Dependencies are unchanged."
   ],
   "reconciledDate": "2026-11-04"
 }

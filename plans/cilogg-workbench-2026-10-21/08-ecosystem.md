@@ -499,7 +499,7 @@ The full card, with files, interfaces and acceptance, is [tasks/E14.md](tasks/E1
 
 ### E15 — Plugin repositories with private Azure DevOps sign-in and update checks
 
-**Integrated hard dependencies:** G01. Proposed under [decision D16](../../docs/workbench/decisions.md); implementation starts after the user approves the design.
+**Integrated hard dependencies:** G01. Accepted under [decision D16](../../docs/workbench/decisions.md) on 2026-11-17 and authorized ahead of G02/G03; planned, not started.
 
 **Outcome:** several plugin catalogs managed in the Plugins window and through Commander/CLI/MCP/Python; sign-in none or Azure DevOps (Git Credential Manager, personal access token as the fallback); one merged list with each entry's source; updates only from the install source; a silent update check at startup and once a day, with auto-update only where a repository enables it. Credentials stay out of settings, logs and reports and inside their repository's scope.
 
@@ -507,7 +507,7 @@ The full card is [tasks/E15.md](tasks/E15.md). The design is [docs/plugin-reposi
 
 ### E16 — Configuration packs: previews, decoders, actions, highlighters and filters as plugins
 
-**Integrated hard dependencies:** E15. Proposed under [decision D16](../../docs/workbench/decisions.md). E09 depends on E16.
+**Integrated hard dependencies:** E15. Accepted under [decision D16](../../docs/workbench/decisions.md) on 2026-11-17; follows E15. E09 depends on E16.
 
 **Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Packs share the Plugins and Packs window with plugins; pack items can be edited in place, and an update merges the local edits (three-way, with a dialog for conflicts); Export as Pack shares the user's own items; pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
 

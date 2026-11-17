@@ -2253,8 +2253,8 @@
         "../../docs/plugin-repositories.md"
       ],
       "limitations": [
-        "Design proposed under decision D16 (docs/plugin-repositories.md); implementation starts after the user approves the design and answers its open decisions. Not in runnableTasks until then.",
-        "No product code, build or runtime check is part of the registration; Azure DevOps sign-in, the credential manager flow and the update check are unverified."
+        "Design accepted by the user on 2026-11-17 with every decision approved (decision D16, docs/plugin-repositories.md section 10). Planned, not started. Authorized ahead of G02/G03 and listed in runnableTasks.",
+        "No product code, build or runtime check yet; Azure DevOps sign-in, the credential manager flow and the update check are unverified."
       ],
       "slices": [
         "E15a: Plugins and Packs window (Installed, Available, Repositories), ordered repositories, migration, merged catalog with sources and Kind filter, install-source pinning, build_catalog.py, in-app guide, public operations, planned",
@@ -2270,7 +2270,7 @@
         "../../docs/plugin-repositories.md"
       ],
       "limitations": [
-        "Design proposed under decision D16 (docs/plugin-repositories.md); the user decided the editing model (edit in place with merge) and the merge UI on 2026-11-17; implementation starts after the user approves the remaining design and answers its open decisions. Not in runnableTasks until then.",
+        "Design accepted by the user on 2026-11-17 with every decision approved (decision D16, docs/plugin-repositories.md section 10). Planned, not started. Follows E15.",
         "Python decoders in packs stay inactive until MD03's decoder contract exists."
       ],
       "slices": [
@@ -2968,7 +2968,8 @@
     "G02",
     "U15",
     "U16",
-    "R06"
+    "R06",
+    "E15"
   ],
   "addenda": {
     "messageDecoders": {

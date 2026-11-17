@@ -372,7 +372,7 @@
   "d16Checks": {
     "date": "2026-11-17",
     "decision": "D16",
-    "state": "proposed_awaiting_user_approval",
+    "state": "accepted_2026-11-17_all_decisions_approved",
     "design": "../../docs/plugin-repositories.md",
     "tasksAdded": [
       "E15",
@@ -415,9 +415,10 @@
       "G02",
       "U15",
       "U16",
-      "R06"
+      "R06",
+      "E15"
     ],
-    "e15HeldFromLedgerRunnableUntilApproval": true,
+    "e15HeldFromLedgerRunnableUntilApproval": false,
     "hashManifestFiles": 165,
     "filesAddedToHashManifest": [
       "tasks/E15.md",
@@ -448,7 +449,8 @@
     "packsWindowMergeExport": "2026-11-17 user requirements: one Plugins and Packs window (Installed, Available with a Kind filter, Repositories) for plugins and configuration packs in E15a, single-kind packs listed as their kind; pack items editable in place with the installed version as the merge base, a three-way merge on update (fields, identified arrays, diff3 for text), a merge dialog and automation strategies fail/keep_mine/take_theirs in E16a and E16c; Export as Pack and pack_export in the new slice E16d; open decision 8 on the edit-in-place model, approval moves to 9; ECO22 text widened",
     "decidedByUser": [
       "2026-11-17: pack items are edited in place and merged on update",
-      "2026-11-17: merge UI = item merge window, three-pane text merge for Lua and Python, optional external merge tool"
+      "2026-11-17: merge UI = item merge window, three-pane text merge for Lua and Python, optional external merge tool",
+      "2026-11-17: all eleven recommended decisions approved ('yes, approve all 11 recommended'); E15 authorized ahead of G02/G03, E16 follows E15"
     ],
     "gitStoreAndContribute": "2026-11-17 user request: local Git store per pack (upstream and local branches, canonical one-item-per-file form, CILogg merge driver, libgit2 local-only) in E16a/E16c; View Changes and Export Changes in E16d; Propose Changes (source_repository, GitHub and Azure DevOps REST, confirm required) in new slice E16e; open decisions 8-10 of the design; ECO22 text widened"
   }
