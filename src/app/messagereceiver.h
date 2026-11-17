@@ -128,6 +128,11 @@ class MessageReceiver final : public QObject {
             return;
         }
 
+        // The receipt tells the sender the message arrived even when its transport reported
+        // a failure (see KloggApp::sendCommandToPrimaryInstance); it is written before the
+        // command runs, so a command is never sent twice.
+        writeReceipt( data.value( QStringLiteral( "receiptPath" ) ).toString() );
+
         const auto commandValue = data.value( QStringLiteral( "command" ) );
         if ( !commandValue.canConvert<QVariantMap>() ) {
             writeFailureResult( resultPath, QStringLiteral( "Invalid commander payload." ) );
@@ -185,6 +190,27 @@ class MessageReceiver final : public QObject {
     {
         return isValidTempPath( ackPath, QStringLiteral( "klogg_activate_ack_" ),
                                 QStringLiteral( ".tmp" ) );
+    }
+
+    static void writeReceipt( const QString& receiptPath )
+    {
+        if ( receiptPath.isEmpty() ) {
+            return;
+        }
+        if ( !isValidTempPath( receiptPath, QStringLiteral( "klogg_command_receipt_" ),
+                               QStringLiteral( ".tmp" ) ) ) {
+            LOG_WARNING << "Ignoring invalid receipt path " << receiptPath;
+            return;
+        }
+        QFile receipt( receiptPath );
+        if ( receipt.open( QIODevice::WriteOnly | QIODevice::NewOnly,
+                           QFileDevice::ReadOwner | QFileDevice::WriteOwner ) ) {
+            receipt.write( "ok" );
+            receipt.close();
+        }
+        else {
+            LOG_WARNING << "Failed to create receipt file " << receiptPath << receipt.errorString();
+        }
     }
 
     static void writeFailureResult( const QString& resultPath, const QString& message )

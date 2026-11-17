@@ -846,7 +846,137 @@ class TabRef:
         )
 
 
+# The JSON payload of an action: plugin arguments, analysis arguments or a definition, as the
+# CLI's --json-file / --analysis-json and native MCP's `definition` / `analysis_json` use it.
+_PLUGIN_JSON_ACTIONS = frozenset({"invoke_plugin", "plugin_manage"})
+_ANALYSIS_JSON_ACTIONS = frozenset({
+    "preview_message", "set_preview_decoder", "regex_evaluate", "value_counts",
+    "get_value_count", "export_value_counts", "apply_value_count", "open_value_count",
+})
+_ANALYSIS_JOB_ACTIONS = frozenset({
+    "get_analysis_job", "get_analysis_results", "cancel_analysis_job", "release_analysis_job",
+})
+# CLI / native MCP argument names whose Commander field is not their camelCase form.
+_COMMANDER_ALIASES = {
+    "id": "entityId",
+    "name": "entityName",
+    "file": "filePath",
+    "port": "portName",
+    "script_file": "scriptFilePath",
+    "args_json_file": "argsJsonFilePath",
+    "scenario_file": "scenarioFilePath",
+    "suite_file": "suiteFilePath",
+    "regex": "searchUseRegex",
+    "case_sensitive": "searchCaseSensitive",
+    "inverse": "searchInverseMatch",
+    "boolean": "searchUseBoolean",
+    "keep_results": "searchKeepResults",
+    "all": "allEntities",
+    "timestamp": "timestampComment",
+    "predefined": "predefinedFilters",
+    "follow": "followFile",
+    "pretty": "prettyOutput",
+}
+# Keys the Commander request reads in snake_case.
+_SNAKE_CASE_FIELDS = frozenset({"before_context", "after_context", "max_matches", "match_mode"})
+# Commander fields that hold a file or folder path. Like the CLI, a relative path is made
+# absolute in the caller's working directory: the GUI would resolve it in its own.
+_PATH_FIELDS = frozenset({
+    "filePath", "scriptFilePath", "argsJsonFilePath", "scenarioFilePath", "suiteFilePath",
+    "deviceMapFilePath", "reportDirPath", "outputDirPath",
+})
+
+
+def _absolute_path(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    return os.path.abspath(trimmed) if trimmed else ""
+
+
+def _absolute_source(value: Any) -> Any:
+    """The path of a ``file:<path>`` source is made absolute, as the CLI does."""
+    if isinstance(value, str) and value.strip().startswith("file:"):
+        path = value.strip()[len("file:"):]
+        if path.strip():
+            return "file:" + os.path.abspath(path.strip())
+    return value
+
+
+def _camel_case(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(part[:1].upper() + part[1:] for part in rest)
+
+
+def _commander_request(action: str, request: Mapping[str, Any]) -> Dict[str, Any]:
+    """Translate CLI / native MCP argument names into a Commander request.
+
+    Commander field names (``tabId``, ``definitionPayload``...) pass through unchanged.
+    """
+    result: Dict[str, Any] = {}
+    for key, value in request.items():
+        if value is None:
+            continue
+        if key in ("definition", "analysis_json", "json"):
+            if isinstance(value, str):
+                value = json.loads(value)
+            if not isinstance(value, Mapping):
+                raise ValueError(f"{key} must be a JSON object")
+            if action in _PLUGIN_JSON_ACTIONS:
+                result["pluginArguments"] = dict(value)
+            elif action in _ANALYSIS_JSON_ACTIONS:
+                result["analysisArguments"] = dict(value)
+            else:
+                result["definitionPayload"] = dict(value)
+        elif action in _ANALYSIS_JOB_ACTIONS and key in ("job_id", "cursor", "page_size"):
+            result.setdefault("analysisArguments", {})[_camel_case(key)] = value
+        elif key == "text":
+            result["commentText" if action == "add_comment" else "searchText"] = value
+        elif key == "auto_refresh":
+            if action == "set_filter":
+                result["rearmAutoRefresh"] = bool(value)
+                result["runSearch"] = result.get("runSearch", False) or bool(value)
+            else:
+                result["searchAutoRefresh"] = bool(value)
+        elif key == "search":
+            result["runSearch"] = bool(value)
+        elif key in ("enabled", "disabled"):
+            result["enabled"] = bool(value) if key == "enabled" else not bool(value)
+        elif key in _COMMANDER_ALIASES:
+            result[_COMMANDER_ALIASES[key]] = value
+        elif key in _SNAKE_CASE_FIELDS or "_" not in key:
+            result[key] = value
+        else:
+            result[_camel_case(key)] = value
+    for field in _PATH_FIELDS & result.keys():
+        result[field] = _absolute_path(result[field])
+    if "source" in result:
+        result["source"] = _absolute_source(result["source"])
+    return result
+
+
 class Application:
+    def command(self, action: str, **request: Any) -> Dict[str, Any]:
+        """Run a Commander action: the same route as the CLI and native MCP.
+
+        Arguments use the CLI / native MCP names (``tab_id``, ``window_index``,
+        ``plugin_id``, ``definition``, ``analysis_json``, ``source``...) or Commander
+        field names. ``source`` chooses what a tab-bound tool works on: ``"focused"``,
+        ``"all"``, ``"tab:<id>"`` or ``"file:<path>"``; an explicit tab selector wins.
+        Returns the result payload; raises KloggError when Commander reports a failure.
+        """
+        return _get_client().command(action, **_commander_request(action, request))
+
+    def set_regex_lab(self, definition: Mapping[str, Any], *,
+                      window_index: Optional[int] = None) -> Dict[str, Any]:
+        """Set (and with ``"operation": "run"`` run) the Regex Lab dock of a window."""
+        return self.command("set_regex_lab", definition=definition, window_index=window_index)
+
+    def set_value_counts(self, definition: Mapping[str, Any], *,
+                         window_index: Optional[int] = None) -> Dict[str, Any]:
+        """Set (and with ``"operation": "run"`` run) the Value Counts dock of a window."""
+        return self.command("set_value_counts", definition=definition, window_index=window_index)
+
     def get_info(self) -> Dict[str, Any]:
         return _get_client().command("get_info")
 

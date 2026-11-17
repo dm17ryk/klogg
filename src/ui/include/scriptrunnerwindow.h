@@ -8,6 +8,7 @@ class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 
+class AnalysisSourcePicker;
 class ScriptSupervisor;
 
 class ScriptRunnerWindow : public QWidget {
@@ -45,6 +46,8 @@ class ScriptRunnerWindow : public QWidget {
     QLabel* subscriptionsLabel_;
     QPlainTextEdit* outputEdit_;
     QPushButton* runButton_;
+    // U15b: the COM tab(s) Run starts the script on (focused, a COM tab or all COM tabs).
+    AnalysisSourcePicker* runSource_ = nullptr;
     QPushButton* runGlobalButton_;
     QPushButton* rerunGlobalButton_;
     QPushButton* stopGlobalButton_;

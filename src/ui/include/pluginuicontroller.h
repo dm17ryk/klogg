@@ -8,6 +8,7 @@
 #include <QStyle>
 #include <functional>
 
+class AnalysisSourcePicker;
 class MainWindow;
 class PluginViewHost;
 class PluginUiController final : public QObject {
@@ -22,6 +23,8 @@ public:
     {
         return viewHost_;
     }
+    // The source the Plugins menu's actions run on (U15b): focused, all, tab:<id> or file:<path>.
+    QString actionSource() const;
 
 private:
     void refreshActions();
@@ -45,4 +48,5 @@ private:
     QJsonArray actionDescriptions_;
     QSet<QString> iconWarnings_;
     PluginViewHost* viewHost_ = nullptr;
+    AnalysisSourcePicker* sourcePicker_ = nullptr;
 };
