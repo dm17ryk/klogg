@@ -1,10 +1,10 @@
 {
   "valid": true,
-  "taskCount": 126,
-  "requirementCount": 206,
-  "markdownFiles": 157,
-  "validatedLocalLinks": 634,
-  "topologicalTaskCount": 126,
+  "taskCount": 128,
+  "requirementCount": 209,
+  "markdownFiles": 159,
+  "validatedLocalLinks": 656,
+  "topologicalTaskCount": 128,
   "issues": [],
   "integrationChecks": {
     "originalTasksAndHardEdgesPreserved": 97,
@@ -366,6 +366,76 @@
       "README.md",
       "TASK_INDEX.json"
     ],
+    "productCodeChanged": false,
+    "productBuildRun": false
+  },
+  "d16Checks": {
+    "date": "2026-11-17",
+    "decision": "D16",
+    "state": "proposed_awaiting_user_approval",
+    "design": "../../docs/plugin-repositories.md",
+    "tasksAdded": [
+      "E15",
+      "E16"
+    ],
+    "addedRequirements": [
+      "ECO20",
+      "ECO21",
+      "ECO22"
+    ],
+    "newTaskHardDependencies": {
+      "E15": [
+        "G01"
+      ],
+      "E16": [
+        "E15"
+      ]
+    },
+    "addedHardEdges": [
+      "E09 -> E16",
+      "R04 -> E15",
+      "R04 -> E16"
+    ],
+    "coordinationWithoutHardEdge": "MD03 activates the Python decoders of preview packs",
+    "otherTaskRecordsPreserved": true,
+    "previousRequirementsAndOwnershipPreserved": true,
+    "otherTaskProgressAndEvidencePreserved": true,
+    "storedTopologicalOrderComplete": true,
+    "storedTopologicalOrderDependencyValid": true,
+    "storedOrderFix": "E14 was missing from suggestedTopologicalOrder since decision D14; it now follows E13",
+    "r04CardFix": "tasks/R04.md now lists R06 (a hard edge in TASK_INDEX.json since decision D15) besides E15 and E16",
+    "dagRunnableTasks": [
+      "E15",
+      "G02",
+      "R06",
+      "U15",
+      "U16"
+    ],
+    "ledgerRunnableTasks": [
+      "G02",
+      "U15",
+      "U16",
+      "R06"
+    ],
+    "e15HeldFromLedgerRunnableUntilApproval": true,
+    "hashManifestFiles": 165,
+    "filesAddedToHashManifest": [
+      "tasks/E15.md",
+      "tasks/E16.md"
+    ],
+    "hashesRefreshed": [
+      "08-ecosystem.md",
+      "09-release.md",
+      "FEATURE_COVERAGE.json",
+      "FEATURE_COVERAGE.md",
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E09.md",
+      "tasks/R04.md"
+    ],
+    "privateNamesPublished": false,
     "productCodeChanged": false,
     "productBuildRun": false
   }

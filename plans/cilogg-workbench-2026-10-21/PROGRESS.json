@@ -2245,6 +2245,39 @@
       ],
       "slices": []
     },
+    "E15": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "../../docs/plugin-repositories.md"
+      ],
+      "limitations": [
+        "Design proposed under decision D16 (docs/plugin-repositories.md); implementation starts after the user approves the design and answers its open decisions. Not in runnableTasks until then.",
+        "No product code, build or runtime check is part of the registration; Azure DevOps sign-in, the credential manager flow and the update check are unverified."
+      ],
+      "slices": [
+        "E15a: repositories, migration, merged catalog with sources, install-source pinning, build_catalog.py, public operations, planned",
+        "E15b: Azure DevOps sign-in (Git Credential Manager, personal access token store), credential scope and redirect rules, planned",
+        "E15c: silent update check, notices, per-repository auto-update, planned"
+      ]
+    },
+    "E16": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "../../docs/plugin-repositories.md"
+      ],
+      "limitations": [
+        "Design proposed under decision D16 (docs/plugin-repositories.md); implementation starts after the user approves the design and answers its open decisions. Not in runnableTasks until then.",
+        "Python decoders in packs stay inactive until MD03's decoder contract exists."
+      ],
+      "slices": [
+        "E16a: preview pack kind with read-only JSON previews and trusted Lua for TShark, planned",
+        "E16b: Python decoders through the MD03 decoder contract, planned"
+      ]
+    },
     "I02": {
       "status": "planned",
       "commit": null,
@@ -2917,7 +2950,8 @@
     "D12: see ../../docs/workbench/decisions.md",
     "D13: see ../../docs/workbench/decisions.md",
     "D14: see ../../docs/workbench/decisions.md",
-    "D15: see ../../docs/workbench/decisions.md"
+    "D15: see ../../docs/workbench/decisions.md",
+    "D16: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

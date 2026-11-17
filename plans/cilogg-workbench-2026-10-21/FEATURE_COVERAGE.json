@@ -1414,6 +1414,30 @@
     ]
   },
   {
+    "id": "ECO20",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Several plugin repositories, including private Azure DevOps ones signed in through the Git Credential Manager or a stored personal access token; credentials never written out and kept inside the repository's scope",
+    "tasks": [
+      "E15"
+    ]
+  },
+  {
+    "id": "ECO21",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "One merged plugin list with each entry's source; updates only from the install source, checked silently at startup and daily, installed by the user unless auto-update is on for that repository",
+    "tasks": [
+      "E15"
+    ]
+  },
+  {
+    "id": "ECO22",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Preview packs: versioned preview definitions, Lua and Python decoders installed and updated from plugin repositories, with read-only previews and trusted pack Lua for TShark",
+    "tasks": [
+      "E16"
+    ]
+  },
+  {
     "id": "QUAL01",
     "group": "Quality, compatibility and delivery",
     "description": "Current-source reconciliation and credit existing work",

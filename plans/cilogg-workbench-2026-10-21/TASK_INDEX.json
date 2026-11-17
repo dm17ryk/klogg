@@ -1345,7 +1345,8 @@
         "G03",
         "E01",
         "U07",
-        "U11"
+        "U11",
+        "E16"
       ],
       "status": "planned",
       "requirements": [
@@ -1355,7 +1356,7 @@
         "ECO12",
         "ECO13"
       ],
-      "task_body_chars": 4252,
+      "task_body_chars": 4502,
       "taskFile": "tasks/E09.md"
     },
     {
@@ -1613,6 +1614,37 @@
       "requirements": [],
       "task_body_chars": 1947,
       "taskFile": "tasks/E14.md"
+    },
+    {
+      "id": "E15",
+      "title": "Plugin repositories with private Azure DevOps sign-in and update checks",
+      "plan": "08-ecosystem.md",
+      "anchor": "e15--plugin-repositories-with-private-azure-devops-sign-in-and-update-checks",
+      "dependencies": [
+        "G01"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO20",
+        "ECO21"
+      ],
+      "task_body_chars": 6173,
+      "taskFile": "tasks/E15.md"
+    },
+    {
+      "id": "E16",
+      "title": "Preview packs: versioned previews, Lua and Python decoders as plugins",
+      "plan": "08-ecosystem.md",
+      "anchor": "e16--preview-packs-versioned-previews-lua-and-python-decoders-as-plugins",
+      "dependencies": [
+        "E15"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO22"
+      ],
+      "task_body_chars": 4568,
+      "taskFile": "tasks/E16.md"
     },
     {
       "id": "I02",
@@ -2286,14 +2318,16 @@
         "U14",
         "U15",
         "U16",
-        "R06"
+        "R06",
+        "E15",
+        "E16"
       ],
       "status": "planned",
       "requirements": [
         "UX18",
         "QUAL10"
       ],
-      "task_body_chars": 2973,
+      "task_body_chars": 3033,
       "taskFile": "tasks/R04.md"
     },
     {
@@ -2827,6 +2861,8 @@
     "V14",
     "D10",
     "D13",
+    "E15",
+    "E16",
     "E09",
     "A08",
     "A06",
@@ -2839,6 +2875,7 @@
     "D12",
     "E12",
     "E13",
+    "E14",
     "I02",
     "V09",
     "V11",
@@ -2890,7 +2927,8 @@
     "R04 is the full-program completion gate.",
     "2026-11-04: complete decoder core MD01-MD06, then UT00-UT13, then remaining W1 onward; MD07-MD08 remain deferred. R04 also requires UT13.",
     "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests. They depend only on the completed G01 and are selectable ahead of G02/G03; U03 depends on U16 (its workspace snapshot embeds the pane layout) and R04 on all four. Decision D13 records the user's answers (U14 confirmed, U15 'all' means every open tab, U16 design approved).",
-    "2026-11-15: decision D15 adds R06 (debuggable problem reports: activity journal, memory status, local report bundle, crash dumps) for the user's exception report. It depends only on the completed G01 and is selectable ahead of G02/G03; R04 depends on R06."
+    "2026-11-15: decision D15 adds R06 (debuggable problem reports: activity journal, memory status, local report bundle, crash dumps) for the user's exception report. It depends only on the completed G01 and is selectable ahead of G02/G03; R04 depends on R06.",
+    "2026-11-17: decision D16 proposes E15 (plugin repositories with private Azure DevOps sign-in and update checks) and E16 (preview packs) for the user's request to install and update internal plugins and previews from a private repository. Design only: implementation starts after the user approves it, so neither task is in PROGRESS.json.runnableTasks yet. E15 depends only on the completed G01 and E16 on E15; E09 depends on E16 and R04 on both. E14, missing from the stored order since decision D14, now follows E13."
   ],
   "reconciledDate": "2026-11-04"
 }
