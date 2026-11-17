@@ -437,6 +437,7 @@
     ],
     "privateNamesPublished": false,
     "productCodeChanged": false,
-    "productBuildRun": false
+    "productBuildRun": false,
+    "independentDesignReview": "read-only architect review against the code; findings addressed before the PR: Lua merged into the profile snapshot with every pack file listed (the worker copies scripts and strips LUA_*, so no require), the limit of 8 in four places, request origin for GUI-only prompts, git launched by absolute path without askpass, reject only after an in-scope 401 in a GUI operation, visualstudio.com converted to dev.azure.com, normalized scope and ManualRedirectPolicy, per-entry catalog failures, unsupported kinds hidden, pack validation reading kind first, route limits"
   }
 }

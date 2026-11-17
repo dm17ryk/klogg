@@ -45,7 +45,10 @@ possibly as plugins. Licensed protocol Lua sources cannot be public either.
   has the catalog's ID and version. It sends no authentication.
 - `PluginManager::loadCatalog()` accepts `schema_version: 1` with at most 1,000 entries, keeps the
   entries for this `os`/`arch`, requires `protocol_version`, `id`, `version`, an HTTPS `url` and a
-  64-digit `sha256`, and adds a host-generated `entry_id`.
+  64-digit `sha256`, and adds a host-generated `entry_id` (a hash of the entry, unknown keys
+  included). One invalid entry for this platform fails the whole catalog.
+- `Manifest::parse()` requires `protocol_version: 1`, at least one capability (`datasource`,
+  `converter`, `tool`) and a package-relative executable or `python`.
 - **Browse Plugins** (`PluginUiController::browseDialog`) has one URL field, a Fetch button, a
   table (Plugin, Version, Description) and Install / Update Selected.
 - Plugin `secret` configuration fields are kept in settings with current-user file permissions; the
@@ -54,9 +57,19 @@ possibly as plugins. Licensed protocol Lua sources cannot be public either.
 - User previews live in `previews.json` beside the application settings
   (`PreviewRepository`: `version: 1`, `previews`, `blocks`).
 - The TShark decoder configuration ([TShark previews](workbench/tshark-preview.md)) holds the
-  `tshark` and `text2pcap` executables, up to 8 absolute Lua paths of at most 1 MiB each,
-  `allowExternalLua`, the default dissector and the preview and protocol routes. Executable and Lua
-  paths come only from these trusted settings.
+  `tshark` and `text2pcap` executables, up to 8 absolute Lua paths of at most 1 MiB each, one global
+  `allowExternalLua` approval ("I trust and approve execution of the selected external Lua
+  scripts") that any Lua requires, the default dissector, and at most 128 preview and 32 protocol
+  routes; the saved configuration is at most 64 KiB. Executable and Lua paths come only from these
+  trusted settings. The limit of 8 scripts is enforced in `previewdecodersettings.cpp`,
+  `tsharkpreviewclient.cpp`, `scripts/plugins/message_decoder_preview_worker.py` and
+  `scripts/plugins/message_decoder_pdu.py`.
+- When a TShark session starts, the preview worker copies each selected script into its own
+  isolated folder as `selected-<n>.lua`, loads them with `-X lua_script:`, records each script's
+  SHA-256 (`scriptSha256`) and removes every `WIRESHARK_*` and `LUA_*` variable from the
+  environment, so a script cannot `require` modules from elsewhere.
+- Commander requests carry no origin: the GUI dialogs, the CLI, native MCP and Python all reach the
+  same executor with the same request type.
 - The application updater (`VersionChecker`) checks on a schedule, skips the check when version
   checking is off or CILogg runs in automation or headless mode, and retries a failed background
   check silently.
@@ -93,19 +106,29 @@ Rules:
 
 ### 3.2 Catalog format
 
-`plugins.json` stays at `schema_version: 1`. These keys are added; older CILogg versions ignore
-them:
+`plugins.json` stays at `schema_version: 1`, and every entry keeps `protocol_version: 1`. These
+keys are added; older CILogg versions keep them in the entry (and in its `entry_id` hash) but do not
+act on them:
 
-- `kind`: `process` (default, today's plugins) or `preview-pack` (section 4).
+- `kind`: `process` (default, today's plugins) or `preview-pack` (section 4). A host hides every
+  entry whose `kind` it does not support, so a host with E15 but without E16 does not offer preview
+  packs.
 - `os` and `arch` may be `any` for packages that run everywhere (preview packs, pure-Python
   plugins). An older CILogg skips such entries because they match no platform name, so it never
   offers a package it cannot install.
-- `min_host_version`: the oldest CILogg version that can use the package. Newer hosts hide entries
-  they cannot use and say why.
+- `min_host_version`: the oldest CILogg version that can use the package. Hosts from E15 on hide
+  entries they cannot use and say why; older hosts ignore the key, which is one more reason for
+  packs to use `os: any`.
 - `released`, `homepage`, `license`: shown in the details pane.
 
 The host-generated `entry_id` also covers the repository ID, so the same package listed by two
 repositories gives two distinct entries.
+
+**Invalid entries.** Today one invalid entry for the host's platform fails the whole catalog. With
+several repositories, an invalid entry fails only itself: it is left out, counted in the
+repository's warnings and named in its status line, and the rest of that repository still loads. An
+unreadable `plugins.json` (bad JSON, wrong schema, too large, an HTML sign-in page) still fails its
+whole repository, and only that repository.
 
 ### 3.3 The merged catalog in the Plugins window
 
@@ -142,30 +165,41 @@ repositories gives two distinct entries.
 
 **None.** As today: HTTPS with no credential.
 
-**Azure DevOps.** For a repository on `dev.azure.com` (or the older `<organization>.visualstudio.com`
-form):
+**Azure DevOps.** For a repository on `dev.azure.com`. An address in the older
+`https://<organization>.visualstudio.com/...` form is converted to
+`https://dev.azure.com/<organization>/...` when the repository is added, so the credential request
+and the scope always use one host.
 
 1. **Address.** The user pastes the repository address
    (`https://dev.azure.com/<organization>/<project>/_git/<repository>`) or a file link copied from
    the web portal (`...?path=/plugins.json&version=GBcatalog`). CILogg derives the Items API
    address that returns the raw file:
-   `https://dev.azure.com/<organization>/<project>/_apis/git/repositories/<repository>/items?path=<path>&versionDescriptor.versionType=branch&versionDescriptor.version=<branch>&download=true&api-version=7.1`.
-   Package addresses in an Azure DevOps catalog may use either form; CILogg converts them the same
-   way.
-2. **Git Credential Manager (default).** CILogg runs `git credential fill` (arguments as a list,
-   never a shell command line) and writes `protocol=https`, `host=dev.azure.com`,
-   `path=<organization>/<project>/_git/<repository>` and `capability[]=authtype` to its standard
-   input, the same request Git makes when it clones that repository. A user who already cloned the
-   repository is signed in without a prompt. The result is used as follows:
+   `https://dev.azure.com/<organization>/<project>/_apis/git/repositories/<repository>/items?path=<path>&versionDescriptor.versionType=branch&versionDescriptor.version=<branch>&$format=octetStream&download=true&api-version=7.1`,
+   requested with `Accept: application/octet-stream`, so the reply is the file and not the item's
+   metadata. Package addresses in an Azure DevOps catalog may use either form; CILogg converts them
+   the same way. The exact parameters are checked against Azure DevOps in E15b.
+2. **Git Credential Manager (default).** CILogg runs Git by the absolute path that
+   `QStandardPaths::findExecutable("git")` returns (or a Git path the user sets in the trusted
+   settings), never a bare `git` that Windows could resolve from the current folder. The command is
+   `git -c core.askPass= credential fill`, with arguments as a list, never a shell command line, and
+   with `GIT_TERMINAL_PROMPT=0` set and `GIT_ASKPASS` and `SSH_ASKPASS` removed, so Git can neither
+   wait on a console nor start another prompt program. Its standard input is `protocol=https`,
+   `host=dev.azure.com`, `path=<organization>/<project>/_git/<repository>` and
+   `capability[]=authtype`: the request Git makes when it clones that repository. A user who
+   already cloned the repository is signed in without a prompt. An interactive sign-in is the credential
+   manager's own window, allowed only for operations started in the GUI (section 3.6); every other
+   call also sets `GCM_INTERACTIVE=never`. The result is used as follows:
    - `authtype=Bearer` with `credential=<token>` (Git 2.46 or newer): `Authorization: Bearer`.
    - `username`/`password` where the password is a Microsoft Entra access token (a JWT, which is
      what Git Credential Manager returns by default): `Authorization: Bearer <password>`.
    - Any other `username`/`password` (for example a PAT stored by the credential manager):
      `Authorization: Basic`.
-   After a successful request CILogg runs `git credential approve`; after a 401 it runs
-   `git credential reject` and, only when the user started the operation in the GUI, asks once more
-   with `fill` (Git Credential Manager then shows its own sign-in window). This is the protocol Git
-   itself follows.
+   After a successful request CILogg runs `git credential approve` with the complete `fill` output.
+   `git credential reject` deletes the credential that Git itself uses, so CILogg runs it only after
+   a 401 from an address inside the repository's scope, during an operation the user started in the
+   GUI, with the complete `fill` output, and then asks once more with `fill` (the credential manager
+   shows its sign-in window). Silent checks and CLI/MCP/Python operations never reject; they mark
+   the repository "Sign-in needed".
 3. **Personal access token (fallback).** When Git is not installed, the credential manager is
    missing or the user prefers it, **Sign In** asks for a PAT with the Code (Read) scope. It is
    stored in the operating system credential store through QtKeychain (Windows Credential Manager,
@@ -189,22 +223,32 @@ checks.
   `get_plugins` or `repositories` results, job results, the R06 activity journal, problem reports
   or the public issue text. The journal records only operation names and key names, as for every
   other command. Messages from `git credential` on standard error are not logged; only its exit
-  code is.
-- **Scope.** A credential is attached only to requests whose scheme, host and port equal the
-  repository's, and on `dev.azure.com` only below `https://dev.azure.com/<organization>/`. A
-  package address outside that scope is downloaded without a credential.
-- **Redirects.** Requests that carry a credential use manual redirect handling: at most 5 hops,
-  HTTPS only; the credential stays only while the target remains inside the scope, and a redirect
-  that leaves the scope continues without it. Requests without a credential keep today's policy.
+  code is. Redirect addresses are not logged either, because signed download addresses carry
+  tokens in their query.
+- **Scope.** The repository's scope is its scheme, host and port, and on `dev.azure.com` also the
+  path prefix `/<organization>/`. A request is in scope only if its address matches after
+  normalization: the path is percent-decoded, the organization is compared without regard to
+  case, and a path with `..` segments or an encoded `/` or `\` is out of scope. A credential is
+  attached only to requests in scope; a package address outside the scope is downloaded without
+  one.
+- **Redirects.** Qt follows redirects by copying the original request, and nothing documents that a
+  hand-set `Authorization` header is removed on the way, so CILogg assumes it would be forwarded.
+  Requests that carry a credential therefore use `QNetworkRequest::ManualRedirectPolicy`: CILogg
+  follows at most 5 hops itself, HTTPS only, checks each target against the scope, keeps the
+  credential only while the target stays in scope and continues without it once a hop leaves the
+  scope. Each hop gets a fresh 30-second timer and the same size limit. Requests without a
+  credential keep today's policy.
+- **Request origin.** Commander requests gain an `origin` (`gui`, `cli`, `mcp`, `python`,
+  `scenario`) that the transport sets and a request payload cannot set or change: the GUI dialogs set
+  `gui`, the CLI socket sets `cli`, native MCP sets `mcp`, and so on. The rules below use it.
 - **Input.** In the GUI a PAT is typed into a password field. The CLI accepts it only from a file or
   standard input (`--token-file`, `--token-stdin`), never as an argument, so it does not end up in
-  the shell history or the process list. Native MCP and Python cannot submit a PAT; they can start
-  a credential manager sign-in and read the sign-in state.
-- **Interactive prompts.** Only an operation the user starts in the GUI may show a sign-in window.
-  Silent update checks and CLI/MCP/Python operations run `git credential fill` with
-  `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never` and report `sign_in_required` instead of
-  prompting. A `git credential` call is stopped after 15 seconds when silent and 3 minutes when
-  interactive.
+  the shell history or the process list. Requests with origin `mcp`, `python` or `scenario` cannot
+  submit a PAT.
+- **Interactive prompts.** Only requests with origin `gui` may show the credential manager's
+  sign-in window. For every other origin, and for the silent update check, `repository_sign_in`
+  with the credential manager is a silent test that reports `signedIn` or `sign_in_required`. A
+  `git credential` call is stopped after 15 seconds when silent and 3 minutes when interactive.
 
 ### 3.7 Update checks and auto-update
 
@@ -235,7 +279,7 @@ use the same Commander implementation:
 | `repository_add` | `name`, `url`, `sign_in`, optional `branch`, `path`, `enabled`, `auto_update` | The new record. Rejects user information in the address and duplicate addresses. |
 | `repository_update` | `repository` plus any of the add options | The changed record. |
 | `repository_remove` | `repository` | Installed plugins keep running; their source becomes unavailable. |
-| `repository_sign_in` | `repository`, `method` (`git-credential-manager` or `personal-access-token`), CLI only: `--token-file` / `--token-stdin` | A job; the result says whether the sign-in works. |
+| `repository_sign_in` | `repository`, `method` (`git-credential-manager` or `personal-access-token`); a PAT only from the GUI or the CLI (`--token-file` / `--token-stdin`) | A job; the result says whether the sign-in works. Outside the GUI it is a silent test (section 3.6). |
 | `repository_sign_out` | `repository` | Deletes a stored PAT. It does not touch the Git credential manager, which Git also uses. |
 | `catalog` | optional `repository` | One job; `plugins` (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count). The old `url` option still works: it sets the `default` repository's address and fetches it. |
 | `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source | A job. |
@@ -256,6 +300,7 @@ executable and never starts a process:
   "id": "org.example.protocol-previews",
   "name": "Example protocol previews",
   "version": "1.2.0",
+  "protocol_version": 1,
   "kind": "preview-pack",
   "pack_format": 1,
   "previews": "previews.json",
@@ -268,12 +313,17 @@ executable and never starts a process:
 }
 ```
 
+- `Manifest::parse()` reads `kind` first. For `preview-pack` the process rules (`capabilities`,
+  `executable`, `arguments`, actions, views) do not apply, and a pack that declares any of them is
+  invalid. `id`, `name`, `version` and `protocol_version: 1` are checked as for every plugin, so the
+  identity check of downloads is unchanged.
 - `previews` is a file with the same format as the user's `previews.json` (`version: 1`,
   `previews`, `blocks`).
-- `lua.load` lists the Lua files in loading order: at most 8 files of at most 1 MiB each, inside
-  `lua.folder`.
-- `decoder_routes` uses the format of the TShark decoder routes and may name only the pack's own
-  previews.
+- `lua.load` lists every Lua file of the pack, in loading order: at most 8 files of at most 1 MiB
+  each, inside `lua.folder`. Files in the folder that are not listed are an error (section 4.3).
+- `decoder_routes` uses the format of the TShark decoder routes. Its `previewRoutes` keys must be
+  names of the pack's own previews; its `protocolRoutes` keys are assembled protocol names, as in
+  the user's routes. Each list keeps the decoder's limits (128 preview routes, 32 protocol routes).
 - `python_decoders` is described in section 4.4.
 
 Packs install, update, enable, disable and remove exactly like plugins, from the same repositories
@@ -291,19 +341,31 @@ packs. Packs are platform independent, so their catalog entries use `os: any` an
 
 ### 4.3 Lua for TShark
 
-- While a pack is enabled, its Lua files are added to the TShark decoder profile as trusted
-  scripts. Installing the pack from a repository the user added, and enabling it, is the trust
-  decision; the per-file "I trust and approve" checkbox stays for the user's own Lua files.
+- While a pack is enabled, its Lua files are trusted TShark scripts. Installing the pack from a
+  repository the user added, and enabling it, is the trust decision: pack Lua does not need the
+  global `allowExternalLua` approval, which still governs the user's own Lua files.
+- Pack Lua is merged into the profile when a TShark session starts (the snapshot), never into the
+  saved decoder configuration, which keeps its own limits (8 user scripts, 64 KiB).
+- The worker treats pack files like the user's: it copies each listed file into its isolated
+  folder, loads it with `-X lua_script:` in the listed order and records its SHA-256 in
+  `scriptSha256`. Packs load in ID order, then the user's own scripts. Because the worker removes
+  `LUA_*` variables and runs only the copies, a pack cannot `require` its own modules in
+  `pack_format` 1: a script needed by another is listed before it, and shared code uses globals.
+  A later `pack_format` could copy the whole bounded `lua` folder into the isolated folder and set
+  the search path to that copy.
+- Two scripts that register the same protocol fail visibly, as TShark reports them.
+- The profile limit grows from 8 Lua files to 32 in total, the user's own 8 included, with at most
+  8 per pack and 1 MiB per file. The limit of 8 is enforced today in four places
+  (`previewdecodersettings.cpp` for the saved configuration, and `tsharkpreviewclient.cpp`,
+  `message_decoder_preview_worker.py` and `message_decoder_pdu.py` for the profile); E16 raises it
+  to 32 in the last three. Enabling a pack that would exceed 32 is refused with a message.
 - The `tshark` and `text2pcap` executables remain user settings. A pack cannot set or change an
   executable path, and preview requests and imported JSON still cannot name Lua or executables.
-- Lua runs from the installed pack folder. The pack's `lua` folder is added to the Lua search path
-  so that `require` finds the pack's own modules. Packs load in ID order, then the user's own
-  scripts. Two scripts that register the same protocol fail visibly, as TShark reports them.
-- The profile limit grows from 8 Lua files to 32 in total, the user's own 8 included, with at most
-  8 per pack and 1 MiB per file. Enabling a pack that would exceed 32 is refused with a message.
 - Enabling, disabling or updating a pack discards the warm TShark sessions, so the next preview
   loads the current scripts.
-- `decoder_routes` are merged below the user's routes: a user route with the same key wins.
+- `decoder_routes` are merged below the user's routes when the profile is built: a user route with
+  the same key wins. Enabling a pack whose routes would take a merged list past 128 preview routes
+  or 32 protocol routes is refused with a message.
 - If the decoder is disabled or TShark is not configured, the pack's Lua is idle, previews fall
   back to JSON, and the Plugins window shows "Needs TShark (Preview Decoder Settings)".
 
@@ -350,6 +412,7 @@ the built catalog on a `catalog` branch that only the pipeline writes:
 main branch
   sources.json            what to package (see below)
   packs/<pack>/           preview packs authored here: plugin.json, previews.json, lua/, python/
+  tools/build_catalog.py  copy of the klogg script, taken at a recorded klogg commit
   azure-pipelines.yml     the build
 catalog branch (written by the pipeline only)
   plugins.json
@@ -380,7 +443,7 @@ the `catalog` branch and pushes one commit that updates the packages and `plugin
 a catalog never names a missing package:
 
 ```yaml
-trigger: { branches: { include: [ main ] } }
+trigger: { batch: true, branches: { include: [ main ] } }
 resources:
   repositories:
     - repository: plugin_source
@@ -411,8 +474,10 @@ steps:
 ```
 
 `tools/build_catalog.py` is a copy of the klogg script taken at a recorded klogg commit, so the
-pipeline does not depend on the public repository at build time. The exact YAML is checked on its
-first run. The project's build service account needs Read on the source repositories and Contribute
+pipeline does not depend on the public repository at build time. `batch: true` keeps runs from
+piling up; if a push is still rejected because another run moved `catalog` first, the run fails
+without changing anything and the next run builds again. The exact YAML is checked on its first
+run. The project's build service account needs Read on the source repositories and Contribute
 on the catalog repository. Users need only Read on the catalog repository.
 
 **Users** add the repository once (Plugins > Manage Plugins > Repositories > Add, sign-in Azure
@@ -421,18 +486,26 @@ the Git Credential Manager they already use for that organization.
 
 ## 8. Tests
 
-- **E15:** catalog merge with one repository failing; migration of a changed `catalogUrl`; entry IDs
-  that differ per repository; update only from the install source and the explicit source switch;
-  update check deadline, automation skip and auto-update within the major version; a fake
-  `git credential` helper (Bearer, JWT password, Basic, failure, timeout, approve/reject calls);
-  PAT through a fake credential store; the credential absent from settings, logs, journal, job
-  results and problem reports; no credential outside the scope or after a redirect that leaves it;
-  203 and HTML replies treated as sign-in needed; the CLI refusing a token argument; MCP refusing a
-  PAT. A local HTTPS test server answers catalog and package requests and records the headers.
-- **E16:** pack manifest validation (no executable, Lua count and size, routes naming only pack
-  previews); read-only pack previews and Copy to My Previews; user preview precedence; pack Lua in
-  the TShark profile only while enabled; warm sessions discarded on update; JSON fallback without
-  TShark; `python_decoders` listed and inactive.
+- **E15:** catalog merge with one repository failing; one invalid entry left out while the rest of
+  its repository loads; entries of an unsupported `kind` hidden; migration of a changed
+  `catalogUrl`; entry IDs that differ per repository; update only from the install source and the
+  explicit source switch; update check deadline, automation skip and auto-update within the major
+  version; a fake `git credential` helper (Bearer, JWT password, Basic, failure, timeout, the
+  environment it receives: no askpass variables, `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`
+  outside the GUI; approve and reject calls with the complete `fill` output, no reject from silent
+  checks); `visualstudio.com` addresses converted to `dev.azure.com`; PAT through a fake credential
+  store; the credential absent from settings, logs, journal, job results and problem reports; no
+  credential outside the scope, for paths with `..` or encoded slashes, or after a redirect that
+  leaves the scope; 203 and HTML replies treated as sign-in needed; the request `origin` set by each
+  transport and not settable from the payload; the CLI refusing a token argument; MCP and Python
+  refusing a PAT and never prompting. A local HTTPS test server answers catalog and package
+  requests and records the headers.
+- **E16:** pack manifest validation (`kind` read first, no process keys, `protocol_version: 1`, every
+  Lua file listed, count and size limits, preview routes naming only pack previews); read-only pack
+  previews and Copy to My Previews; user preview precedence; pack Lua in the profile snapshot only
+  while enabled, copied, hashed and loaded in order, never written into the saved configuration;
+  the 32-file and route limits; warm sessions discarded on update; JSON fallback without TShark;
+  `python_decoders` listed and inactive.
 - Both: GUI, CLI, native MCP and Python give the same results; `[plugins]` and new `[workbench][E15]`
   / `[workbench][E16]` Catch2 cases; `tests/plugins` for the catalog script.
 

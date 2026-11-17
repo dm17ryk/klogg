@@ -1628,7 +1628,7 @@
         "ECO20",
         "ECO21"
       ],
-      "task_body_chars": 6173,
+      "task_body_chars": 6853,
       "taskFile": "tasks/E15.md"
     },
     {
@@ -1643,7 +1643,7 @@
       "requirements": [
         "ECO22"
       ],
-      "task_body_chars": 4568,
+      "task_body_chars": 4938,
       "taskFile": "tasks/E16.md"
     },
     {
