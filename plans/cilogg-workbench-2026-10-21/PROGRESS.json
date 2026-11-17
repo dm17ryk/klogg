@@ -2206,6 +2206,7 @@
       "commit": null,
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/102",
       "evidence": [
+        "E13a merged 2026-11-12 as squash commit f87b00bb (PR #102). Hosted CI on the PR head cd1948a8: 40 checks passed, 1 skipped.",
         "E13a local qualification 2026-11-11 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022 Community, build-windows.ps1 exit 0): cilogg_itests [workbench][E13] 17 cases / 338 assertions passed; cilogg_tests [plugins],[E13],[commander] 81 cases / 2413 assertions passed; ctest 10/10; tests/plugins 202 OK (48 skipped); tests/mcp test_workbench_* 111 OK; workbench_parity.py --task E13 passed; host_integration.py passed.",
         "Independent C++/Qt review: 3 HIGH and 9 MEDIUM findings (modal exec lifetime, oversized events, cancel-grace side effects, stale root props, id-less nodes, text limits, warning growth, forced renders, table model edge cases, message rate) fixed with regression tests before the PR.",
         "../../docs/plugin-views.md"
@@ -2214,9 +2215,11 @@
         "E13a (plugin views engine, branch feat/plugin-views) authorized out of wave order by decision D11.",
         "pause_comm --wait busy guard has no automated test (needs a real COM tab in MainWindow); the KLOGG_SHARED_SERIAL_WRITER branch of the port-release check is not built or tested.",
         "No C++ SDK view example; no dedicated MCP command to open a view (automation uses the pluginViewAction_<plugin>_<view> menu action).",
-        "Hosted CI (Windows/Linux/macOS) and a packaged manual view-demo check are not run locally."
+        "A packaged manual view-demo check was not run; hosted CI on Windows, Linux and macOS passed at the merge."
       ],
-      "slices": []
+      "slices": [
+        "E13a: plugin views engine, PR https://github.com/dm17ryk/klogg/pull/102, merged as f87b00bb on 2026-11-12"
+      ]
     },
     "E14": {
       "status": "completed",
@@ -2307,10 +2310,12 @@
       "slices": []
     },
     "U14": {
-      "status": "in_progress",
-      "commit": null,
+      "status": "completed",
+      "commit": "6f999cd912ac6445d454b7582c88722b351cba9b",
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/106",
       "evidence": [
+        "Merged 2026-11-14 as squash commit 6f999cd9 (PR #106). Hosted CI on the PR head c77fd4e4: 25 checks passed, 1 skipped.",
+        "Follow-up from the user's report on build 26.04.2.1233, PR #115 merged 2026-11-17 as d2a9007c: the Matched by column is drawn at the right edge of the filtered view; a filter made of several top-level alternatives shows the alternative that matched (a named filter shows 'Name: alternative'); a label that does not fit is shown in a tooltip; the label cap went from 64 to 256 characters. Hosted CI on the PR head 544cf146: 25 checks passed, 1 skipped.",
         "Local qualification 2026-11-13: cilogg_tests [U14] 5 cases / 24 assertions; cilogg_itests [U14],[logdata],[ui][automation] 88 cases / 3449 assertions passed.",
         "Independent C++ review: no critical/high findings; medium findings fixed in the PR.",
         "Codex/Sourcery review fixes, commits d3f6244e + 1afc338f, local qualification 2026-11-13: cilogg_tests [U14] 8 cases / 47 assertions; cilogg_itests [U14],[logdata],[ui][automation],[ui][context],[ui][filter-options],[ui][wrap],[ui][analysiscommands] 108 cases / 3675 assertions passed."
@@ -2324,20 +2329,21 @@
     "U15": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": "https://github.com/dm17ryk/klogg/pull/107",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/114",
       "evidence": [
+        "U15a merged 2026-11-14 as squash commit c8aeab16 (PR #107). Hosted CI on the PR head 221576fb: 25 checks passed, 1 skipped.",
         "U15a local qualification 2026-11-13: cilogg_tests [U15] 3 cases / 24 assertions; cilogg_itests [U15],[regexlab],[valuecounts],[analysiscommands] 34 cases / 551 assertions passed.",
         "Independent C++ review: high finding (empty sourceTabId) and medium findings fixed in the PR.",
         "Staged 'all' and the Codex review fixes, commit 487a3f42 local qualification 2026-11-13: cilogg_tests [U15] 7 cases / 77 assertions; cilogg_itests [regexlab],[valuecounts],[analysiscommands] 37 cases / 596 assertions passed."
       ],
       "limitations": [
         "User 2026-11-13 (decision D13): 'all opened' means every open tab. PR #107 replaces the source-count limit (too_many_sources) with staged runs (AnalysisRuns: at most 8 of a Run's jobs unfinished under AnalysisJobService's 10 admitted / 26 retained; 16 finished jobs kept per dock; a released or evicted source re-runs when selected); the focused tab resolves to its id; an explicit Commander tab selector wins for Apply; Apply/Open are refused with source_closed once the result's tab is closed. Results are shown one source at a time, as the user approved; merged totals are not part of U15a. The public Python route (klogg.app.command, set_regex_lab, set_value_counts) and its parity case moved to U15b.",
-        "U15b (plugin actions/views, Script Runner, Preview, search all open tabs) not started.",
+        "U15b (plugin actions/views, Script Runner, Preview, search in all open tabs) is in PR #114, open; its hosted CI was still running on 2026-11-17.",
         "Cross-window routing has no automated test."
       ],
       "slices": [
-        "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107",
-        "U15b: remaining tab-bound tools, planned"
+        "U15a: Regex Lab and Value Counts, PR https://github.com/dm17ryk/klogg/pull/107, merged as c8aeab16 on 2026-11-14",
+        "U15b: remaining tab-bound tools, PR https://github.com/dm17ryk/klogg/pull/114, open"
       ]
     },
     "U16": {
@@ -2346,6 +2352,9 @@
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/111",
       "evidence": [
         "../../docs/split-panes.md (design approved by the user 2026-11-13, decision D13)",
+        "U16b merged 2026-11-16 as squash commit d9eeb0b8 (PR #111). Hosted CI on the PR head fa1d06cc: 35 checks passed, 1 skipped.",
+        "PR #113 (merged 2026-11-16 as 5133a6c7) ships python_runtime on macOS (Contents/Resources) and on Linux (beside the executable), so Script Runner, run_script / run_global_script and scenarios find their bootstrap there. The macOS native parity run of #111 had hit the missing runtime; #111 only worked around it in the test payload. Hosted CI on the PR head 799a2d7e: 25 checks passed, 1 cancelled.",
+        "Follow-up from the user's report on build 26.04.2.1233, PR #115 merged 2026-11-17 as d2a9007c: a Panes submenu in every log view's context menu (Move to Pane, Split Right, Split Down, Close Pane, Equalize Panes, Merge All Panes); a context menu on an empty pane (Open File Here, Open COM Port Here, Move Tab Here, Split, Close, Equalize, Merge); in a narrow pane the search bar folds its least important controls into an overflow menu (»); a pane's minimum width is about half the unfolded search bar's width.",
         "U16a local qualification 2026-11-14 (MSVC /WX, Qt 6.10.1, offscreen) after merging master c8aeab16: cilogg_itests [U16] 10 cases / 339 assertions; cilogg_tests [U16] 3 cases / 45 assertions; cilogg_itests [ui]~[workbench-native] 123 cases / 23550 assertions; cilogg_itests [logdata] 88 cases / 3373 assertions; cilogg_tests 333 cases / 14201 assertions passed.",
         "Independent C++ review: one high finding (a moved tab was briefly reported as current without a tab id, which could switch the Actions destination) and medium test-robustness findings fixed before the PR; Codex review findings (focus follows a new pane, pane commands retranslate) fixed in 078dd8fe; macOS clang -Wsign-conversion fix 4e472769.",
         "U16b local qualification 2026-11-15 (MSVC /WX RelWithDebInfo, Qt 6.10.1, offscreen) on origin/master f76317b8: cilogg_tests [U16] 4 cases / 148 assertions; cilogg_itests [workbench][U16] 12 cases / 511 assertions; cilogg_tests 335 cases / 14315 assertions; cilogg_itests [ui]~[workbench-native] 174 cases / 24196 assertions; cilogg_itests [logdata] 88 cases / 3403 assertions; workbench_parity.py --task U16 (pane_operations_parity through CLI, native MCP and a Python global script) and --task G03 (five cases) passed; tests/mcp 111 OK; tests/plugins 204 OK.",
@@ -2361,7 +2370,7 @@
       ],
       "slices": [
         "U16a: pane tree, split/close/merge/move, tab transfer API, session and project restore, PR https://github.com/dm17ryk/klogg/pull/108, merged as c252b175 on 2026-11-15",
-        "U16b: Commander/CLI/MCP/Python pane operations and the get_info pane fields, PR https://github.com/dm17ryk/klogg/pull/111",
+        "U16b: Commander/CLI/MCP/Python pane operations and the get_info pane fields, PR https://github.com/dm17ryk/klogg/pull/111, merged as d9eeb0b8 on 2026-11-16",
         "U16c: drag and drop between panes, planned"
       ]
     },
@@ -2478,10 +2487,11 @@
       "slices": []
     },
     "R05": {
-      "status": "in_progress",
-      "commit": null,
+      "status": "completed",
+      "commit": "80fe479549f7133fdff17c1d090c41550d57dcfd",
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/105",
       "evidence": [
+        "Merged 2026-11-14 as squash commit 80fe4795 (PR #105). Hosted CI on the PR head b7eb06d3: 25 checks passed, 1 skipped.",
         "Root cause from the user update cache (2026-11-13): 1203 helper run ended with 1223 after 78 s (shell error box), another transaction installed 1203 at 12:07:34, pending-update.json for 1203 never cleared; every cilogg.exe process (incl. one per MCP tool call) loaded and locked it and armed the exit-time install.",
         "Local qualification 2026-11-13 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022): cilogg_tests [updater] 22 cases / 165 assertions; full cilogg_tests 305 cases / 13794 assertions passed.",
         "Independent C++ review: no critical/high findings; medium findings fixed before the PR. clang-cl -Wdangling-else fix after the first CI run.",
@@ -2489,8 +2499,7 @@
       ],
       "limitations": [
         "PR #105 implements (2026-11-13): claim lock + non-replacing claim with token re-check, launchedAt, exclusive updater.lock, next-start recovery of a launched record (running / report once / young kept / abandoned reported once and restored as ready, not re-armed), reconciliation consumes the record atomically, cleanup keeps every referenced package, foreign pending records never overwritten, distinct relaunch phase, stagedPath == packagePath with a hash of the launched file, startup acknowledgement before session restore. POSIX branches compile only in hosted CI; the deny-write verification is Windows-only and cannot stop a same-user attacker who controls the record.",
-        "No real elevated (UAC) install was exercised locally.",
-        "Hosted CI pending at registration time."
+        "No real elevated (UAC) install was exercised locally."
       ],
       "slices": []
     },
@@ -2873,8 +2882,9 @@
     "R06": {
       "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/112",
       "evidence": [
+        "R06a merged 2026-11-16 as squash commit d15f1509 (PR #112). Hosted CI on the PR head 1d1d41d9: 26 checks passed.",
         "Reported 2026-11-15: the exception issue for 'CheckFileChangesOperation failed: bad allocation' (release 1203, during automatic actions) held only the message and versions. Measured at the time: system commit 84/85.9 GB used (1.9 GB free), RAM 2/31.8 GB free, CILogg main process 0.83 GB private; most memory was held by other processes, so the 5 MB change-check buffer failed because the computer was out of memory.",
         "R06a local qualification 2026-11-15 (Windows, RelWithDebInfo, Qt 6.10.1, VS 2022, build-windows.ps1 exit 0): cilogg_tests [diagnostics] 9 cases / 113 assertions passed; full cilogg_tests 343 cases / 14325 assertions passed; ctest 10/10 passed; plan validator valid.",
         "R06a end-to-end check in an isolated portable copy (offscreen, CLI): create_report wrote report.md/json, journal.log, repro.json, cilogg.log, memory.csv, context.json and the zip; the journal held startup, open_file, the indexing, set_regex_lab with its payload reduced to key names, and create_report; context.json listed the open tab; list_reports returned the report.",
@@ -2887,7 +2897,7 @@
         "A folder with spaces in a path other than the report's own file can leave a folder fragment in the public issue text."
       ],
       "slices": [
-        "R06a: activity journal, memory status, report bundle, notice, commands, in progress",
+        "R06a: activity journal, memory status, report bundle, notice, commands, PR https://github.com/dm17ryk/klogg/pull/112, merged as d15f1509 on 2026-11-16",
         "R06b: crash minidumps, throw-site stacks, published debug symbols, planned"
       ]
     }
@@ -2917,8 +2927,6 @@
   ],
   "runnableTasks": [
     "G02",
-    "R05",
-    "U14",
     "U15",
     "U16",
     "R06"
