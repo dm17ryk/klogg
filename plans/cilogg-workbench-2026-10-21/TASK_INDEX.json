@@ -1628,7 +1628,7 @@
         "ECO20",
         "ECO21"
       ],
-      "task_body_chars": 8685,
+      "task_body_chars": 9134,
       "taskFile": "tasks/E15.md"
     },
     {
@@ -1643,7 +1643,7 @@
       "requirements": [
         "ECO22"
       ],
-      "task_body_chars": 7171,
+      "task_body_chars": 10363,
       "taskFile": "tasks/E16.md"
     },
     {
@@ -2929,7 +2929,8 @@
     "2026-11-13: decision D12 adds R05, U14, U15 and U16 for the user's updater and workspace requests. They depend only on the completed G01 and are selectable ahead of G02/G03; U03 depends on U16 (its workspace snapshot embeds the pane layout) and R04 on all four. Decision D13 records the user's answers (U14 confirmed, U15 'all' means every open tab, U16 design approved).",
     "2026-11-15: decision D15 adds R06 (debuggable problem reports: activity journal, memory status, local report bundle, crash dumps) for the user's exception report. It depends only on the completed G01 and is selectable ahead of G02/G03; R04 depends on R06.",
     "2026-11-17: decision D16 proposes E15 (plugin repositories with private Azure DevOps sign-in and update checks) and E16 (configuration packs) for the user's request to install and update internal plugins and previews from a private repository. Design only: implementation starts after the user approves it, so neither task is in PROGRESS.json.runnableTasks yet. E15 depends only on the completed G01 and E16 on E15; E09 depends on E16 and R04 on both. E14, missing from the stored order since decision D14, now follows E13.",
-    "2026-11-17 (later): the user removed the private working configuration from the public repository and asked to deliver it, with the TShark Lua, as a plugin from the private Azure DevOps repository. E16 therefore covers configuration packs (previews, Lua and Python decoders, actions with automatic responses, highlighters, predefined filters) in slices E16a-E16c. Dependencies are unchanged."
+    "2026-11-17 (later): the user removed the private working configuration from the public repository and asked to deliver it, with the TShark Lua, as a plugin from the private Azure DevOps repository. E16 therefore covers configuration packs (previews, Lua and Python decoders, actions with automatic responses, highlighters, predefined filters) in slices E16a-E16c. Dependencies are unchanged.",
+    "2026-11-17 (later): the user asked for repository handling of highlighters, actions, responses, previewers and filters like plugins, and for merging local edits on update. E15a gains one Plugins and Packs window (Installed, Available with a Kind filter, Repositories); E16a and E16c gain local edits as an overlay with a three-way merge; the new slice E16d brings Export as Pack. Dependencies are unchanged."
   ],
   "reconciledDate": "2026-11-04"
 }

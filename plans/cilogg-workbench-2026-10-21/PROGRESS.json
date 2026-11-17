@@ -2257,7 +2257,7 @@
         "No product code, build or runtime check is part of the registration; Azure DevOps sign-in, the credential manager flow and the update check are unverified."
       ],
       "slices": [
-        "E15a: repositories, migration, merged catalog with sources, install-source pinning, build_catalog.py, public operations, planned",
+        "E15a: Plugins and Packs window (Installed, Available, Repositories), ordered repositories, migration, merged catalog with sources and Kind filter, install-source pinning, build_catalog.py, in-app guide, public operations, planned",
         "E15b: Azure DevOps sign-in (Git Credential Manager, personal access token store), credential scope and redirect rules, planned",
         "E15c: silent update check, notices, per-repository auto-update, planned"
       ]
@@ -2274,9 +2274,10 @@
         "Python decoders in packs stay inactive until MD03's decoder contract exists."
       ],
       "slices": [
-        "E16a: configuration pack kind and content validation, read-only JSON previews and trusted Lua for TShark, planned",
+        "E16a: configuration pack kind and content validation, JSON previews and trusted Lua for TShark, local edits as an overlay with three-way merge, merge dialog and automation strategies, planned",
         "E16b: Python decoders through the MD03 decoder contract, planned",
-        "E16c: actions with automatic responses (off until enabled), highlighters and predefined filters from packs, planned"
+        "E16c: actions with automatic responses (off until enabled), highlighters and predefined filters from packs, with their local edits and merge, planned",
+        "E16d: Export as Pack (dialog and pack_export) and its part of the guide, planned"
       ]
     },
     "I02": {

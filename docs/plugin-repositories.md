@@ -23,6 +23,14 @@ repos download and install them. also add description/procedure in cilogg how to
 to create your own plugin repo and use it." Sections 3.3 (the ordered table), 3.9 (the in-app guide)
 and open decision 7 cover this.
 
+**Requirements (Dmitry, 2026-11-17, later):** "same with highlighters, actions, responses,
+previewers window with repo management ability do download and install/update/remove so all this
+can also be shared online with public and private repos", "and filters", and: "thinking about it, in
+opposite to code plugins like CPF/ADB/SysLog, text json/lua/python/klogg format files like in
+highlighters and filters we can have conflicts - when user changed it locally and want to update -
+we need to be able to merge it somehow". Sections 3.3 (one window for plugins and packs), 4.6 (local
+edits and merge on update), 4.7 (Export as Pack) and open decision 8 cover this.
+
 ## 1. Summary
 
 - The Plugins window manages an ordered table of **plugin repositories**. Each one is a
@@ -35,18 +43,21 @@ and open decision 7 cover this.
   operating system's credential store. Credentials are never written to settings, exports, logs,
   the activity journal or problem reports, are sent only to the repository's own host and
   organization, and are never forwarded across redirects.
-- **Browse Plugins** shows one list merged from all enabled repositories, grouped in repository
-  order, with a Source column. A plugin always updates from the repository it was installed from.
+- One **Plugins and Packs** window (tabs Installed, Available, Repositories) replaces Manage
+  Plugins and Browse Plugins. Its Available tab shows one list merged from all enabled
+  repositories, grouped in repository order, with Kind and Source columns and a Kind filter. A plugin always updates from the repository it was installed from.
 - An **in-app guide** (in Help > Documentation, and from the Repositories dialog) explains how to
   pack a plugin, how to create a repository of your own (public or private) and how to use it.
 - CILogg checks for updates **silently at startup and once a day**, like the application updater.
   Installing stays a user action unless **auto-update** is turned on for that repository.
 - A new plugin kind, the **configuration pack**, carries preview definitions (the JSON of
   `previews.json`), Lua decoders for TShark, Python decoders, actions with automatic responses,
-  highlighters and predefined filters. Packs are versioned and updated from the same repositories.
-  Their items are read-only (copy one to edit it), a pack's automatic responses start switched off,
-  and TShark gets the pack's Lua folder as a trusted path, because installing from a repository the
-  user added is the trust decision.
+  highlighters and predefined filters. Packs are versioned and installed, updated and removed in
+  the same window as plugins, from the same repositories. Their items can be edited in place: the
+  installed version stays as the merge base, and an update merges the local edits (three-way, with a
+  dialog for conflicts). A pack's automatic responses start switched off, TShark gets the pack's Lua
+  folder as a trusted path, because installing from a repository the user added is the trust
+  decision, and **Export as Pack** turns the user's own items into a pack to share.
 - Everything in this repository stays generic. A company keeps its private plugins, packs and the
   pipeline that builds its catalog in its own repository (section 7).
 
@@ -151,6 +162,9 @@ act on them:
   entries they cannot use and say why; older hosts ignore the key, which is one more reason for
   packs to use `os: any`.
 - `released`, `homepage`, `license`: shown in the details pane.
+- `contents`: for packs, the content types they carry (`previews`, `actions`, `highlights`,
+  `filters`, `lua`, `python_decoders`), so the Kind filter works before anything is downloaded.
+  `build_catalog.py` fills it from the pack's `plugin.json`.
 
 The host-generated `entry_id` also covers the repository ID, so the same package listed by two
 repositories gives two distinct entries.
@@ -161,34 +175,54 @@ repository's warnings and named in its status line, and the rest of that reposit
 unreadable `plugins.json` (bad JSON, wrong schema, too large, an HTML sign-in page) still fails its
 whole repository, and only that repository.
 
-### 3.3 The merged catalog in the Plugins window
+### 3.3 One window for plugins and packs
 
-- **Manage Plugins** gains a **Repositories…** button. Its dialog is a table with one row per
-  repository, in order: position, Enabled (check box), Name, Address, Sign-in, State (signed in,
-  sign-in needed, number of plugins, "No plugins in this repository"), Last check and Auto-update
-  (check box). The buttons are **Add**, **Edit**, **Remove**, **Move Up**, **Move Down**, **Sign In**,
-  **Sign Out** and **How to...** (section 3.9). Adding an Azure DevOps repository tests the address
-  and the sign-in before saving. The single URL field of today's Browse dialog is gone; its address
-  is the first row after migration.
-- **The order is a priority.** Browse Plugins groups its list by repository in this order. When two
-  repositories offer the same plugin ID, both rows are shown with their source, and a new install
-  of that plugin takes the entry from the higher repository unless the user picks the other row.
-  Installed plugins stay pinned to the repository they came from (section 3.4): moving a repository
-  up or down never changes an installed plugin's source, never offers it as an update from another
-  repository and never installs anything.
-- **Browse Plugins** replaces its URL field with the merged list from all enabled repositories:
-  columns Plugin, Version, Kind, Source (repository name), Description, plus an Installed column
-  with the installed version. Fetch refreshes every enabled repository in parallel (at most 4 at a
-  time) in one job. A repository that fails does not hide the others: its row in the status area
-  says "Sign-in needed", "Not found" or the network error, with a Sign In button where it helps.
+The Manage Plugins and Browse Plugins dialogs become one **Plugins and Packs** window with three
+tabs. Install, Update and Remove behave the same for every kind of package.
+
+- **Installed:** every installed plugin and pack, with Name, Kind, Version, Source (a repository
+  name, "Local file" or "Shipped with CILogg") and State ("Enabled", "Running", "Update to 1.3.0",
+  "Edited locally (3 items)", "Update needs a merge"). Buttons: **Update**, **Remove**,
+  **Enable / Disable**, **Configure** (process plugins), **Reset to Pack Version** and
+  **Export as Pack…** (packs, sections 4.6 and 4.7). What Manage Plugins shows today
+  (configuration, storage limits, the captures folder, restart) stays on this tab.
+- **Available:** the merged list from all enabled repositories, grouped in repository order, with
+  Name, Kind, Version, Source, Installed (the installed version) and Description, a **Kind** filter
+  (All, Plugins, Previewers, Decoders (Lua and Python), Actions and responses, Highlighters,
+  Filters), a search box, **Fetch** and **Install / Update**. Fetch refreshes every enabled
+  repository in parallel (at most 4 at a time) in one job. A repository that fails does not hide
+  the others: its group says "Sign-in needed", "Not found" or the network error, with a Sign In
+  button where it helps.
+- **Repositories:** a table with one row per repository, in order: position, Enabled (check box),
+  Name, Address, Sign-in, State (signed in, sign-in needed, number of packages, "No plugins in this
+  repository"), Last check and Auto-update (check box). The buttons are **Add**, **Edit**, **Remove**,
+  **Move Up**, **Move Down**, **Sign In**, **Sign Out** and **How to...** (section 3.9). Adding an
+  Azure DevOps repository tests the address and the sign-in before saving. Today's single URL field
+  is gone; its address is the first row after migration.
+- **Entry points.** The Plugins menu keeps Manage Plugins… (opens Installed) and Browse Plugins…
+  (opens Available); the Commander `plugin_manage` contract is unchanged. The Highlighters dialog,
+  the predefined filters dialog, the Actions window and the preview settings each get a **Packs…**
+  button that opens Available filtered to their kind, and their own lists show installed pack items
+  with the pack's name (sections 4.2 and 4.5).
+- **Kind of a package.** Process plugins are "Plugins". A pack whose `contents` (section 3.2) has one
+  type is listed as that type: a pack with only filters is "Filters", only highlighters
+  "Highlighters", only previews (with or without their Lua) "Previewers", only Lua or Python
+  "Decoders", actions and responses "Actions and responses". A pack with several types is
+  "Configuration pack", and the details pane lists its types; the Kind filter finds it under each
+  of them.
+- **The order is a priority.** The Available tab groups its list by repository in this order. When
+  two repositories offer the same package ID, both rows are shown with their source, and a new
+  install takes the entry from the higher repository unless the user picks the other row.
+  Installed packages stay pinned to the repository they came from (section 3.4): moving a
+  repository up or down never changes an installed package's source, never offers it as an update
+  from another repository and never installs anything.
 - **Status texts are words, never a bare job state.** A repository whose catalog has no entry for
-  this platform shows "No plugins in this repository" (in its group of the list, in the status area
-  and in the Repositories table). An empty merged list says "No plugins in the enabled repositories"
-  with a link to the guide. A finished fetch says, for example, "12 plugins from 2 repositories";
-  a running one "Loading 2 repositories…".
-- Install and Update use the selected entry (`catalog_entry_id`), as today.
-- Manage Plugins shows each installed plugin's source: a repository name, "Local file" or "Shipped
-  with CILogg", and an Update button when the source offers a newer version.
+  this platform shows "No plugins in this repository" (in its group, in the status area and in the
+  Repositories table). An empty merged list says "No plugins in the enabled repositories" with a
+  link to the guide. A finished fetch says, for example, "12 packages from 2 repositories"; a
+  running one "Loading 2 repositories…".
+- Install and Update use the selected entry (`catalog_entry_id`), as today. Updating a pack that the
+  user edited merges the edits (section 4.6).
 
 ### 3.4 Install source and updates
 
@@ -318,7 +352,7 @@ checks.
   next check without a dialog. A setting next to the application update settings turns it off.
 - A check fetches the catalog and compares it with the installed versions from that repository. New
   versions appear as an **Updates (n)** entry in the Plugins menu and on the Update buttons of
-  Manage Plugins, with one non-modal notice per new version. **Skip this version** hides a version
+  the Installed tab, with one non-modal notice per new version. **Skip this version** hides a version
   until a newer one appears.
 - **Auto-update** is a per-repository switch, off by default. When it is on, a check that finds an
   update downloads, verifies and installs it for plugins already installed from that repository: a
@@ -327,6 +361,8 @@ checks.
   new plugin, never enables a disabled one and keeps configuration (as updates do today). Each
   automatic update is journaled and announced in a notice; a failed one is reported once and
   retried at the next check.
+- **Packs with local edits** are auto-updated only when the merge has no conflicts (section 4.6);
+  otherwise they show "Update needs a merge" and wait for the user.
 
 ### 3.8 Commander, CLI, native MCP and Python
 
@@ -343,11 +379,15 @@ use the same Commander implementation:
 | `repository_sign_in` | `repository`, `method` (`git-credential-manager` or `personal-access-token`); a PAT only from the GUI or the CLI (`--token-file` / `--token-stdin`) | A job; the result says whether the sign-in works. Outside the GUI it is a silent test (section 3.6). |
 | `repository_sign_out` | `repository` | Deletes a stored PAT. It does not touch the Git credential manager, which Git also uses. |
 | `catalog` | optional `repository` | One job; `plugins` in repository order (each with `repository` and `kind`) and `repositories` (per repository: state, error, entry count; `empty: true` for "No plugins in this repository"). The old `url` option still works: it adds that address as a repository with sign-in `none` if no repository has it, and fetches it. |
-| `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source | A job. |
+| `install`, `update` | `catalog_entry_id`, as today; `switch_source: true` to change the source; for packs with local edits `strategy` (`fail` by default, `keep_mine`, `take_theirs`) | A job. A pack update with conflicts and `strategy: fail` refuses and lists the conflicts (pack, kind, item, field). |
+| `pack_edits` | `plugin` | The pack's local edits (kind, item, edited or deleted, base version). |
+| `pack_reset` | `plugin`, optional `item` (kind and identity) | Drops the local edits of the item or of the whole pack. |
+| `pack_export` | item selectors by kind and name or ID, `id`, `name`, `version`, `description`, `output` (folder or `.zip`) | Writes the pack; returns its path and contents. |
 | `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id`. |
 
-`get_plugins` adds `kind`, `source` (`repository`, `local` or `shipped`, the repository ID and the
-installed version) and `update` (the newest version from the source, if any).
+`get_plugins` adds `kind`, `contents` (packs), `source` (`repository`, `local` or `shipped`, the
+repository ID and the installed version), `update` (the newest version from the source, if any) and
+`localEdits` (the number of locally edited items of a pack).
 
 ### 3.9 In-app guide: pack a plugin, create a repository, use it
 
@@ -364,6 +404,8 @@ the design as built. It has four parts:
    actions, highlighters and filters from CILogg, add the Lua, write `kind: config-pack`), version
    numbers (raise the version for every change; a published version never changes), and building
    the zips, SHA-256 values and `plugins.json` with `python scripts/plugins/build_catalog.py`.
+   **Export as Pack…** (section 4.7) writes a pack from the user's own filters, highlighters,
+   actions and responses, previews and Lua or Python files.
 2. **Create your own repository.**
    - Public: any HTTPS static host serves `plugins.json` and the zips, for example a GitHub
      repository (the `raw.githubusercontent.com` address of `plugins.json`, zips as files or release
@@ -373,8 +415,9 @@ the design as built. It has four parts:
      repository, with a pipeline that writes the catalog to its own branch), and what readers need
      (Read access, Git for Windows with its credential manager, or a PAT with Code (Read)).
 3. **Use it in CILogg.** Repositories > Add (name, address, sign-in), the order and what it means,
-   Fetch and Install in Browse Plugins, the update notice and Update button, auto-update, switching a
-   plugin's source, removing a repository, and the same steps through the CLI
+   Fetch and Install on the Available tab, the Kind filter and the Packs… buttons, the update
+   notice and Update button, editing pack items and updating a pack you edited (the merge dialog,
+   Reset to Pack Version, section 4.6), auto-update, switching a plugin's source, removing a repository, and the same steps through the CLI
    (`cilogg command --action plugin_manage --plugin-operation repository_add --json-file ...`).
 4. **Troubleshooting.** "Sign-in needed", "Not found", "No plugins in this repository",
    "SHA-256 mismatch", "Package identity differs from catalog", and entries hidden because the
@@ -437,21 +480,21 @@ Packs install, update, enable, disable and remove exactly like plugins, from the
 or from a local zip. Operations that need a process (`restart`, plugin actions, views) are rejected
 for packs. Packs are platform independent, so their catalog entries use `os: any` and `arch: any`.
 
-### 4.2 Read-only previews
+### 4.2 Pack items in CILogg's lists
 
-- Previews of enabled packs appear in the preview list with a lock and the pack name. They cannot
-  be edited or deleted.
+- Previews of enabled packs appear in the preview list with the pack's name. They can be edited in
+  place (section 4.6) or copied.
 - **Blocks stay inside their pack.** A pack preview resolves `source: block` references only from
   its own pack's `blocks`, and a user preview only from the user's. When previews are merged, a
   pack's blocks are renamed internally to `<pack-id>/<block>` and the pack's references are
   rewritten, so pack blocks never collide with the user's or another pack's.
-- **Copy to My Previews** makes an editable copy in `previews.json` together with every block the
-  preview needs, directly or through other blocks. A copied block whose name is already used in
-  the user's blocks gets a free name (`<block> (<pack name>)`, then a number), and the copy's
-  references are rewritten to it. The copy then depends on nothing in the pack: updating,
-  disabling or removing the pack does not change it.
+- **Copy to My Previews** still makes an independent copy in `previews.json` together with every
+  block the preview needs, directly or through other blocks. A copied block whose name is already
+  used in the user's blocks gets a free name (`<block> (<pack name>)`, then a number), and the
+  copy's references are rewritten to it. A copy has no link to the pack: updates never reach it. To
+  keep receiving updates, edit the pack item in place instead.
 - A user preview with the same name as a pack preview takes precedence, the way a user-installed
-  plugin takes precedence over a shipped one. The pack preview then shows "Replaced by your copy".
+  plugin takes precedence over a shipped one. The pack preview then shows "Replaced by your item".
 - **Between packs** there is no precedence: enabling a pack (or applying an update) that has a
   preview name already used by another enabled pack is refused, with a message naming both packs.
 - **Quotas.** The JSON preview service gives up entirely above 128 previews or 4,096 blocks
@@ -460,8 +503,8 @@ for packs. Packs are platform independent, so their catalog entries use `os: any
   would exceed any of these limits, so a pack can never switch previews off.
 - **Exports.** Configuration exports read `PreviewManager::all()` and `blocks()` today, both for the
   live export and for the project snapshot (`configurationexport.cpp`). E16 makes both select only
-  the user's previews and blocks, so exports and project snapshots never contain pack definitions.
-  A pack update never changes the user's previews or copies.
+  the user's own previews and blocks, so exports and project snapshots never contain pack items
+  (edited or not). Export as Pack (section 4.7) is the way to share pack items.
 
 ### 4.3 Lua for TShark
 
@@ -514,29 +557,94 @@ it exists, a pack's `python_decoders` are installed and updated with the pack an
 A Python decoder that is needed sooner can be shipped as an ordinary process plugin (a `converter`
 or `tool`).
 
-### 4.5 Actions, highlighters and filters
+### 4.5 Actions, responses, highlighters and filters
 
-The same rules as for previews (section 4.2) apply to the other content of a pack:
+The rules of section 4.2 apply to the other content of a pack:
 
-- **Read-only, copy to edit.** Pack actions and automatic responses appear in the Actions window,
-  pack highlighter sets in the Highlighters dialog and pack predefined filters in the filters list,
-  each with a lock and the pack name. **Copy to My Actions / Highlighters / Filters** makes an
-  editable copy in the user's own configuration; a pack update never changes a copy.
-- **Precedence and collisions.** A user item with the same name takes precedence over the pack's,
-  which shows "Replaced by your copy". Two enabled packs with an item of the same name are refused
-  at enable or update time, with a message naming both packs.
+- **Shown with the pack's name, editable in place.** Pack actions and automatic responses appear in
+  the Actions window, pack highlighter sets in the Highlighters dialog and pack predefined filters
+  in the filters list, each with the pack's name. They can be edited in place (section 4.6), and
+  **Copy to My Actions / Highlighters / Filters** makes an independent copy.
+- **Identity.** Each item is identified within its pack: actions and responses by their `id` (only
+  unique within one file, so they are namespaced `<pack-id>/<id>` next to the user's), highlighter
+  sets and predefined filters by their `id` (a UUID), previews and blocks by their name. A user item
+  with the same name takes precedence over the pack's, which shows "Replaced by your item". Two
+  enabled packs with an item of the same identity or name are refused at enable or update time,
+  with a message naming both packs.
 - **Automatic responses start off.** An automatic response sends data to a device without a click,
   so every response a pack brings is installed switched off, and the user turns on each one (or all
-  of the pack's responses at once, after a confirmation that lists them). The on or off choice is
-  kept per pack and response name in the user's settings and survives pack updates. Responses keep
-  the existing coupling with Actions (decision D05). Pack actions only run when the user or a
-  scenario runs them, as for the user's own actions.
-- **Highlighter sets** from packs are offered in the set list; which set is active stays the user's
-  choice.
-- **Exports** and project snapshots contain only the user's items, as for previews.
+  of the pack's responses at once, after a confirmation that lists them). Responses keep the
+  existing coupling with Actions (decision D05). Pack actions only run when the user or a scenario
+  runs them, as for the user's own actions.
+- **User state is not content.** Whether an action or response is on, and which highlighter sets
+  are active, is the user's state, kept per pack and item in the user's settings. It survives pack
+  updates, is never a local edit and never causes a merge conflict.
+- **Exports** and project snapshots contain only the user's own items, as for previews.
 - **Limits.** The existing limits of the action, highlighter and filter stores apply to the user's
   items and all enabled packs together; enabling or updating a pack that would exceed one is
   refused with a message.
+
+### 4.6 Local edits and merge on update
+
+Process plugins (for example a CPF tool, ADB or Syslog) are replaced whole on update. Pack content
+is text the user edits (preview JSON, Lua, Python, actions and responses, highlighter and filter
+collections), so an update merges instead of overwriting the edits or silently ignoring the new
+version.
+
+- **The installed version stays pristine.** The installed pack folder is never changed; it is the
+  merge base. Edits are an overlay in the user's plugin data (`pack-edits/<pack-id>/`): per item,
+  the pack ID, the item's identity (section 4.5), the SHA-256 of the canonical base item it was
+  edited from, and the edited item; per text file, the edited copy and the base file's SHA-256.
+  Deleting a pack item locally stores a tombstone. CILogg uses the edited item where one exists and
+  the pack's otherwise; lists mark edited items, and **Reset to Pack Version** (per item, or for the
+  whole pack) drops the overlay.
+- **Update is a three-way merge** per item, with base = the installed version, theirs = the new
+  version and mine = the local edit:
+  - not edited locally: take theirs;
+  - edited locally, unchanged in the new version: keep mine;
+  - changed on both sides in different fields: merge the fields automatically; the same new value
+    on both sides is not a conflict;
+  - the same field changed differently on both sides, or deleted on one side and changed on the
+    other: a conflict;
+  - new in the new version: added; removed from the new version and not edited locally: removed.
+  Fields are the JSON members of an item (nested objects recursively). Arrays whose elements have
+  an identity (preview `fields` by `name`) merge per element; other arrays are single values.
+  Ordered lists without identities, such as the rules of a highlighter set, merge like text with
+  one canonical line per rule. Lua and Python files merge as text (diff3).
+- **The merge dialog** lists every conflict by pack, kind, item and field, with **Keep Mine**,
+  **Take Theirs**, **Edit** (start from either side) and **Keep Both** (the new version stays the
+  pack item, and mine becomes the user's own item, renamed "<name> (mine)"). It also offers
+  **Keep Mine for All** and **Take Theirs for All**, and a side-by-side three-way view (base, theirs,
+  mine and the result) for text files and long fields. Nothing is applied until **Apply**.
+- **Never silent.** Cancelling the merge leaves the old version installed and the edits untouched.
+  Apply installs the new version and writes the rebased overlay in one step (the new folder and the
+  new overlay are staged first; a failure restores both). Items whose merged result equals the new
+  version leave the overlay. An item removed from the new version but kept with Keep Mine becomes
+  the user's own item.
+- **Automation.** Commander, the CLI, native MCP, Python and scenarios never open the dialog.
+  `update` of a pack with conflicts reports them and refuses unless given a `strategy`: `fail` (the
+  default), `keep_mine` or `take_theirs`; merges without conflicts apply as in the GUI.
+- **Silent checks and auto-update** apply an update with local edits only when it merges without
+  conflicts. Otherwise the pack shows "Update needs a merge" and a notice offers to open the merge.
+- **Export as Pack** of an edited pack item exports its current content (section 4.7).
+
+### 4.7 Export as Pack
+
+**Export as Pack…** (on the Installed tab, and in the Highlighters, filters, Actions and preview
+windows) shares a user's own items:
+
+- The user picks items from their filters, highlighter sets, actions and responses, previews (with
+  the blocks they need, collected automatically) and Lua or Python files, including pack items they
+  edited (their current content), then gives an ID, a name, a version and a description.
+- CILogg writes a pack folder or zip: `plugin.json` with `kind: config-pack` and a `content`
+  object, and the content files in the formats CILogg imports and exports. Responses are exported
+  with their content; on another computer they arrive switched off. Nothing from the user's
+  preferences or session is included, and no path outside the pack is written.
+- The output is ready for `scripts/plugins/build_catalog.py` (section 7) and can also be installed
+  directly as a local zip. The guide (section 3.9) covers export, publishing to a public or private
+  repository and installing elsewhere.
+- Commander, the CLI, native MCP and Python get `pack_export` with the same choices (item
+  selectors by kind and name or ID, the pack identity and the output path).
 
 ## 5. Security
 
@@ -644,7 +752,7 @@ without changing anything and the next run builds again. The exact YAML is check
 run. The project's build service account needs Read on the source repositories and Contribute
 on the catalog repository. Users need only Read on the catalog repository.
 
-**Users** add the repository once (Plugins > Manage Plugins > Repositories > Add, sign-in Azure
+**Users** add the repository once (Plugins > Manage Plugins… > Repositories tab > Add, sign-in Azure
 DevOps, address `https://dev.azure.com/<org>/<project>/_git/<repository>`) and are signed in through
 the Git Credential Manager they already use for that organization.
 
@@ -669,11 +777,13 @@ the Git Credential Manager they already use for that organization.
   `repository_move` persist it, Browse groups by it, a new install of a plugin offered twice takes
   the higher repository, reordering changes no installed plugin and offers no update); an empty
   catalog shown as "No plugins in this repository", never as a bare job state; How to... and Help >
-  Plugin Repositories Guide open the documentation at the guide's anchor. A local HTTPS test server
+  Plugin Repositories Guide open the documentation at the guide's anchor; the one window's three
+  tabs, the Kind filter (single-kind packs listed as their kind) and the Packs… buttons opening
+  Available filtered to their kind. A local HTTPS test server
   answers catalog and package requests and records the headers.
 - **E16:** pack manifest validation (`kind` read first, no process keys including `configuration`,
   `protocol_version: 1`, every Lua file listed, count and size limits, preview routes naming only
-  pack previews); read-only pack previews; Copy to My Previews with the block closure and renamed
+  pack previews); pack previews listed with the pack's name; Copy to My Previews with the block closure and renamed
   colliding blocks, unchanged after the pack is updated or removed; pack blocks resolved only inside
   their pack; user preview precedence; a preview-name collision between two packs refused; the
   aggregate preview quotas; exports and project snapshots without pack definitions; pack Lua in the
@@ -681,25 +791,40 @@ the Git Credential Manager they already use for that organization.
   saved configuration, in a per-pack environment where two packs with the same global keep their
   own values; the 32-file and route limits; warm sessions discarded on update; JSON fallback
   without TShark; `python_decoders` listed and inactive; pack actions, highlighters and filters
-  read-only with Copy to My..., user precedence, collisions between packs refused, store limits,
+  listed with the pack's name, Copy to My..., user precedence, collisions between packs refused, store limits,
   exports without pack items; pack automatic responses off after install and their on or off choice
-  kept across an update.
+  kept across an update. Local edits and merge: the installed folder unchanged by edits; the overlay
+  with base hashes and tombstones; Reset to Pack Version; every three-way case per item (not edited,
+  edited only locally, different fields, the same field, deleted against changed, added, removed)
+  with the same new value on both sides not a conflict; per-element merge of identified arrays;
+  highlighter rules and Lua and Python files by diff3 with and without conflicts; Keep Mine, Take
+  Theirs, Edit, Keep Both and the for-all choices; Cancel and a failed apply leaving the old
+  version and the edits; automation strategies `fail`, `keep_mine` and `take_theirs` and no dialog
+  outside the GUI; auto-update skipping a conflicting pack and applying a clean merge. Export as Pack:
+  the selected items with the blocks they need, edited pack items exported with their current
+  content, no preferences or session, responses arriving switched off, the output accepted by
+  `build_catalog.py` and installable as a local zip, `pack_export` matching the dialog.
 - Both: GUI, CLI, native MCP and Python give the same results; `[plugins]` and new `[workbench][E15]`
   / `[workbench][E16]` Catch2 cases; `tests/plugins` for the catalog script.
 
 ## 9. Slices
 
-- **E15a:** the ordered repository table (Add, Edit, Remove, Move Up, Move Down, Enable),
+- **E15a:** the Plugins and Packs window (Installed, Available, Repositories) replacing Manage
+  Plugins and Browse Plugins, the ordered repository table (Add, Edit, Remove, Move Up, Move Down,
+  Enable), the Kind filter,
   migration, merged catalog grouped by repository order with sources, install-source pinning,
   status texts including "No plugins in this repository", `build_catalog.py`, the in-app guide
   (section 3.9), and Commander/CLI/MCP/Python operations for public repositories.
 - **E15b:** Azure DevOps sign-in (credential manager, PAT store), credential scope and redirect
   rules.
 - **E15c:** update check, notices, auto-update.
-- **E16a:** configuration pack kind with JSON previews and Lua for TShark.
+- **E16a:** configuration pack kind with JSON previews and Lua for TShark; local edits as an
+  overlay, the three-way merge engine (structured items and diff3 text), the merge dialog, Reset to
+  Pack Version and the automation strategies, for previews, blocks and Lua or Python files.
 - **E16b:** Python decoders, activated with MD03.
 - **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
-  filters in packs.
+  filters in packs, with their local edits and merge, and the Packs… buttons in their windows.
+- **E16d:** Export as Pack (dialog and `pack_export`) and its part of the guide.
 
 ## 10. Open decisions
 
@@ -718,5 +843,8 @@ the Git Credential Manager they already use for that organization.
    install of a plugin offered by several repositories takes the higher one, while installed plugins
    stay pinned to their source. The alternative is display order only, with CILogg asking which
    repository to use whenever two offer the same plugin.
-8. **Approval and order of work:** whether E15 (and then E16) may start ahead of G02/G03, as E13a
+8. **Local edits to pack items:** edit in place with the installed version kept as the merge base
+   and a three-way merge on update (recommended), or read-only pack items with Copy to My... only
+   (simpler, but a copy never receives updates).
+9. **Approval and order of work:** whether E15 (and then E16) may start ahead of G02/G03, as E13a
    and R06 did.

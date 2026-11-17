@@ -1432,7 +1432,7 @@
   {
     "id": "ECO22",
     "group": "Sources, integrations, sharing and extension",
-    "description": "Configuration packs: versioned preview definitions, Lua and Python decoders, actions with automatic responses, highlighters and predefined filters installed and updated from plugin repositories; pack items read-only (copy to edit), pack automatic responses off until enabled, pack Lua trusted for TShark",
+    "description": "Configuration packs: versioned preview definitions, Lua and Python decoders, actions with automatic responses, highlighters and predefined filters installed, updated and removed from plugin repositories in the same window as plugins; pack items editable in place with local edits merged on update (three-way, conflicts resolved by the user); Export as Pack; pack automatic responses off until enabled; pack Lua trusted for TShark",
     "tasks": [
       "E16"
     ]

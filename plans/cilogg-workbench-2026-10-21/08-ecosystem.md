@@ -509,6 +509,6 @@ The full card is [tasks/E15.md](tasks/E15.md). The design is [docs/plugin-reposi
 
 **Integrated hard dependencies:** E15. Proposed under [decision D16](../../docs/workbench/decisions.md). E09 depends on E16.
 
-**Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Pack items are read-only (copy one to edit it); pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
+**Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Packs share the Plugins and Packs window with plugins; pack items can be edited in place, and an update merges the local edits (three-way, with a dialog for conflicts); Export as Pack shares the user's own items; pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
 
 The full card is [tasks/E16.md](tasks/E16.md).
