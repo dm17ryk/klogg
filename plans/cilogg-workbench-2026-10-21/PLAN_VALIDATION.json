@@ -396,7 +396,7 @@
       "R04 -> E15",
       "R04 -> E16"
     ],
-    "coordinationWithoutHardEdge": "MD03 activates the Python decoders of preview packs",
+    "coordinationWithoutHardEdge": "MD03 activates the Python decoders of configuration packs",
     "otherTaskRecordsPreserved": true,
     "previousRequirementsAndOwnershipPreserved": true,
     "otherTaskProgressAndEvidencePreserved": true,
@@ -433,6 +433,8 @@
       "README.md",
       "TASK_INDEX.json",
       "tasks/E09.md",
+      "tasks/E15.md",
+      "tasks/E16.md",
       "tasks/R04.md",
       "tasks/R06.md"
     ],
@@ -440,6 +442,7 @@
     "productCodeChanged": false,
     "productBuildRun": false,
     "independentDesignReview": "read-only architect review against the code; findings addressed before the PR: Lua merged into the profile snapshot with every pack file listed (the worker copies scripts and strips LUA_*, so no require), the limit of 8 in four places, request origin for GUI-only prompts, git launched by absolute path without askpass, reject only after an in-scope 401 in a GUI operation, visualstudio.com converted to dev.azure.com, normalized scope and ManualRedirectPolicy, per-entry catalog failures, unsupported kinds hidden, pack validation reading kind first, route limits",
-    "codexReviewFixes": "14 inline Codex findings on PR #118 addressed: staged kind checked against its entry and never changed by an update; aggregate preview quotas; Copy to My Previews with the block closure; unique, never reused repository IDs; repository address not editable (new repository instead), so a PAT never changes scope and source pinning holds; removal deletes the stored PAT; preview-name collisions between packs refused and pack blocks scoped to their pack; exports limited to user previews; pack Lua documented as unrestricted local code; crash dumps kept out of the shareable zip (R06 card note); configuration rejected in packs; one Lua environment per pack; one Semantic Versioning 2.0.0 order"
+    "codexReviewFixes": "14 inline Codex findings on PR #118 addressed: staged kind checked against its entry and never changed by an update; aggregate preview quotas; Copy to My Previews with the block closure; unique, never reused repository IDs; repository address not editable (new repository instead), so a PAT never changes scope and source pinning holds; removal deletes the stored PAT; preview-name collisions between packs refused and pack blocks scoped to their pack; exports limited to user previews; pack Lua documented as unrestricted local code; crash dumps kept out of the shareable zip (R06 card note); configuration rejected in packs; one Lua environment per pack; one Semantic Versioning 2.0.0 order",
+    "configurationPackExtension": "2026-11-17 user follow-up: the private working configuration left the public repository and is delivered from the private Azure DevOps repository, so E16 covers configuration packs (previews, Lua and Python decoders, actions with automatic responses off until enabled, highlighters, predefined filters) in slices E16a-E16c; hard edges and requirement owners unchanged; ECO22 text widened"
   }
 }

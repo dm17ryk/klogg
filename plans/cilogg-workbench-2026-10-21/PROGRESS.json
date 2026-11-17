@@ -2274,8 +2274,9 @@
         "Python decoders in packs stay inactive until MD03's decoder contract exists."
       ],
       "slices": [
-        "E16a: preview pack kind with read-only JSON previews and trusted Lua for TShark, planned",
-        "E16b: Python decoders through the MD03 decoder contract, planned"
+        "E16a: configuration pack kind and content validation, read-only JSON previews and trusted Lua for TShark, planned",
+        "E16b: Python decoders through the MD03 decoder contract, planned",
+        "E16c: actions with automatic responses (off until enabled), highlighters and predefined filters from packs, planned"
       ]
     },
     "I02": {

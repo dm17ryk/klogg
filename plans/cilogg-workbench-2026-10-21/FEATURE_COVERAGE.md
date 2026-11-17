@@ -204,7 +204,7 @@
 | ECO19 | Core operation without cloud account or AI provider | E12, R03 |
 | ECO20 | Several plugin repositories, including private Azure DevOps ones signed in through the Git Credential Manager or a stored personal access token; credentials never written out and kept inside the repository's scope | E15 |
 | ECO21 | One merged plugin list with each entry's source; updates only from the install source, checked silently at startup and daily, installed by the user unless auto-update is on for that repository | E15 |
-| ECO22 | Preview packs: versioned preview definitions, Lua and Python decoders installed and updated from plugin repositories, with read-only previews and trusted pack Lua for TShark | E16 |
+| ECO22 | Configuration packs: versioned preview definitions, Lua and Python decoders, actions with automatic responses, highlighters and predefined filters installed and updated from plugin repositories; pack items read-only (copy to edit), pack automatic responses off until enabled, pack Lua trusted for TShark | E16 |
 
 ## Quality, compatibility and delivery
 

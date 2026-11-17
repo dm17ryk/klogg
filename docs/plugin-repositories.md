@@ -1,15 +1,20 @@
-# Plugin repositories and preview packs (E15, E16) — proposed design
+# Plugin repositories and configuration packs (E15, E16) — proposed design
 
 **Status:** proposed on 2026-11-17 for the user's approval (decision D16 in
 [docs/workbench/decisions.md](workbench/decisions.md)). Nothing here is implemented. The tasks are
 [E15](../plans/cilogg-workbench-2026-10-21/tasks/E15.md) (plugin repositories) and
-[E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (preview packs). The open decisions are
+[E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (configuration packs). The open decisions are
 listed at the end.
 
 **Request (2026-11-17):** can CILogg install and update plugins from a private Azure DevOps
 repository? An internal tool plugin must not be published publicly. Message previews (the JSON
 preview definitions, Lua decoders and Python decoders) should be delivered and updated the same way,
 possibly as plugins. Licensed protocol Lua sources cannot be public either.
+
+**Follow-up (2026-11-17):** the user removed the private working configuration (previews, actions,
+highlighters, predefined filters) from the public repository and asked to deliver it, with the
+TShark Lua, as a plugin from the private Azure DevOps repository. Packs therefore carry actions,
+highlighters and filters as well as previews and decoders.
 
 ## 1. Summary
 
@@ -26,11 +31,12 @@ possibly as plugins. Licensed protocol Lua sources cannot be public either.
   plugin always updates from the repository it was installed from.
 - CILogg checks for updates **silently at startup and once a day**, like the application updater.
   Installing stays a user action unless **auto-update** is turned on for that repository.
-- A new plugin kind, the **preview pack**, carries preview definitions (the JSON of `previews.json`),
-  Lua decoders for TShark and Python decoders. Packs are versioned and updated from the same
-  repositories. Their previews are read-only (copy one to edit it), and TShark gets the pack's Lua
-  folder as a trusted path, because installing from a repository the user added is the trust
-  decision.
+- A new plugin kind, the **configuration pack**, carries preview definitions (the JSON of
+  `previews.json`), Lua decoders for TShark, Python decoders, actions with automatic responses,
+  highlighters and predefined filters. Packs are versioned and updated from the same repositories.
+  Their items are read-only (copy one to edit it), a pack's automatic responses start switched off,
+  and TShark gets the pack's Lua folder as a trusted path, because installing from a repository the
+  user added is the trust decision.
 - Everything in this repository stays generic. A company keeps its private plugins, packs and the
   pipeline that builds its catalog in its own repository (section 7).
 
@@ -118,10 +124,10 @@ Rules:
 keys are added; older CILogg versions keep them in the entry (and in its `entry_id` hash) but do not
 act on them:
 
-- `kind`: `process` (default, today's plugins) or `preview-pack` (section 4). A host hides every
-  entry whose `kind` it does not support, so a host with E15 but without E16 does not offer preview
-  packs.
-- `os` and `arch` may be `any` for packages that run everywhere (preview packs, pure-Python
+- `kind`: `process` (default, today's plugins) or `config-pack` (section 4). A host hides every
+  entry whose `kind` it does not support, so a host with E15 but without E16 does not offer
+  configuration packs.
+- `os` and `arch` may be `any` for packages that run everywhere (configuration packs, pure-Python
   plugins). An older CILogg skips such entries because they match no platform name, so it never
   offers a package it cannot install.
 - `min_host_version`: the oldest CILogg version that can use the package. Hosts from E15 on hide
@@ -168,7 +174,7 @@ whole repository, and only that repository.
   unavailable" and get no updates until the repository is back or the user switches the source.
 - The staged `plugin.json` must have the selected entry's `kind` as well as its ID and version;
   a mismatch rejects the package. An update cannot change a plugin's kind: an installed process
-  plugin is never replaced by a preview pack with the same ID, or the other way round.
+  plugin is never replaced by a configuration pack with the same ID, or the other way round.
 - Versions are ordered by one Semantic Versioning 2.0.0 implementation, shared by manifest
   validation, catalog validation and update selection: major, minor and patch compare as numbers;
   a pre-release is lower than its release (`1.0.0-alpha < 1.0.0`); pre-release identifiers compare
@@ -283,7 +289,7 @@ checks.
   until a newer one appears.
 - **Auto-update** is a per-repository switch, off by default. When it is on, a check that finds an
   update downloads, verifies and installs it for plugins already installed from that repository: a
-  running plugin is replaced when it stops (as today), a preview pack at once. Auto-update stays
+  running plugin is replaced when it stops (as today), a configuration pack at once. Auto-update stays
   within the installed major version; a new major version waits for a click. It never installs a
   new plugin, never enables a disabled one and keeps configuration (as updates do today). Each
   automatic update is journaled and announced in a notice; a failed one is reported once and
@@ -309,48 +315,59 @@ use the same Commander implementation:
 `get_plugins` adds `kind`, `source` (`repository`, `local` or `shipped`, the repository ID and the
 installed version) and `update` (the newest version from the source, if any).
 
-## 4. Preview packs (E16)
+## 4. Configuration packs (E16)
 
 ### 4.1 The pack
 
-A preview pack is a plugin package whose `plugin.json` says `"kind": "preview-pack"`. It has no
-executable and never starts a process:
+A configuration pack is a plugin package whose `plugin.json` says `"kind": "config-pack"`. It has no
+executable and never starts a process. Everything it delivers is listed under `content`; each entry is
+optional, and a pack may carry only previews, only Lua, or everything:
 
 ```json
 {
-  "id": "org.example.protocol-previews",
-  "name": "Example protocol previews",
+  "id": "org.example.protocol-config",
+  "name": "Example protocol configuration",
   "version": "1.2.0",
   "protocol_version": 1,
-  "kind": "preview-pack",
+  "kind": "config-pack",
   "pack_format": 1,
-  "previews": "previews.json",
-  "lua": { "folder": "lua", "load": ["common.lua", "protocol.lua"] },
-  "decoder_routes": {
-    "previewRoutes": { "Protocol frame": { "dissector": "protocol" } },
-    "protocolRoutes": {}
-  },
-  "python_decoders": [ { "id": "frame-summary", "module": "python/frame_summary.py" } ]
+  "content": {
+    "previews": "previews.json",
+    "actions": "actions.json",
+    "highlights": "highlights.conf",
+    "filters": "filters.conf",
+    "lua": { "folder": "lua", "load": ["common.lua", "protocol.lua"] },
+    "decoder_routes": {
+      "previewRoutes": { "Protocol frame": { "dissector": "protocol" } },
+      "protocolRoutes": {}
+    },
+    "python_decoders": [ { "id": "frame-summary", "module": "python/frame_summary.py" } ]
+  }
 }
 ```
 
-- `Manifest::parse()` reads `kind` first. For `preview-pack` the process rules do not apply, and a
-  pack that declares any process key (`capabilities`, `executable`, `arguments`, `actions`,
-  `views`, `configuration`, `enabled_by_default`) is invalid: a pack has no process to use them and
-  no settings of its own. `id`, `name`, `version` and `protocol_version: 1` are checked as for every plugin, so the
-  identity check of downloads is unchanged.
-- `previews` is a file with the same format as the user's `previews.json` (`version: 1`,
-  `previews`, `blocks`).
+- `Manifest::parse()` reads `kind` first. For `config-pack` the process rules do not apply, and a
+  pack that declares any process key at the top level (`capabilities`, `executable`, `arguments`,
+  `actions`, `views`, `configuration`, `enabled_by_default`) is invalid: a pack has no process to
+  use them and no settings of its own. `id`, `name`, `version` and `protocol_version: 1` are checked
+  as for every plugin, so the identity check of downloads is unchanged.
+- The content files use the formats CILogg already imports and exports, so a pack is made by
+  exporting a working configuration:
+  - `previews`: the format of the user's `previews.json` (`version: 1`, `previews`, `blocks`);
+  - `actions`: the format of `actions.json` (actions and automatic responses);
+  - `highlights`: an exported highlighter collection (`HighlighterSetCollection`, version 2);
+  - `filters`: an exported predefined-filter collection (`PredefinedFiltersCollection`, version 3).
+  Preferences and session files are never part of a pack: they belong to one user and machine.
 - `lua.load` lists every Lua file of the pack, in loading order: at most 8 files of at most 1 MiB
   each, inside `lua.folder`. Files in the folder that are not listed are an error (section 4.3).
 - `decoder_routes` uses the format of the TShark decoder routes. Its `previewRoutes` keys must be
   names of the pack's own previews; its `protocolRoutes` keys are assembled protocol names, as in
   the user's routes. Each list keeps the decoder's limits (128 preview routes, 32 protocol routes).
-- `python_decoders` is described in section 4.4.
+- `python_decoders` is described in section 4.4; actions, highlighters and filters in section 4.5.
 
 Packs install, update, enable, disable and remove exactly like plugins, from the same repositories
-or from a local zip. Operations that need a process (`restart`, actions, views) are rejected for
-packs. Packs are platform independent, so their catalog entries use `os: any` and `arch: any`.
+or from a local zip. Operations that need a process (`restart`, plugin actions, views) are rejected
+for packs. Packs are platform independent, so their catalog entries use `os: any` and `arch: any`.
 
 ### 4.2 Read-only previews
 
@@ -429,6 +446,30 @@ it exists, a pack's `python_decoders` are installed and updated with the pack an
 A Python decoder that is needed sooner can be shipped as an ordinary process plugin (a `converter`
 or `tool`).
 
+### 4.5 Actions, highlighters and filters
+
+The same rules as for previews (section 4.2) apply to the other content of a pack:
+
+- **Read-only, copy to edit.** Pack actions and automatic responses appear in the Actions window,
+  pack highlighter sets in the Highlighters dialog and pack predefined filters in the filters list,
+  each with a lock and the pack name. **Copy to My Actions / Highlighters / Filters** makes an
+  editable copy in the user's own configuration; a pack update never changes a copy.
+- **Precedence and collisions.** A user item with the same name takes precedence over the pack's,
+  which shows "Replaced by your copy". Two enabled packs with an item of the same name are refused
+  at enable or update time, with a message naming both packs.
+- **Automatic responses start off.** An automatic response sends data to a device without a click,
+  so every response a pack brings is installed switched off, and the user turns on each one (or all
+  of the pack's responses at once, after a confirmation that lists them). The on or off choice is
+  kept per pack and response name in the user's settings and survives pack updates. Responses keep
+  the existing coupling with Actions (decision D05). Pack actions only run when the user or a
+  scenario runs them, as for the user's own actions.
+- **Highlighter sets** from packs are offered in the set list; which set is active stays the user's
+  choice.
+- **Exports** and project snapshots contain only the user's items, as for previews.
+- **Limits.** The existing limits of the action, highlighter and filter stores apply to the user's
+  items and all enabled packs together; enabling or updating a pack that would exceed one is
+  refused with a message.
+
 ## 5. Security
 
 - Plugins are programs and Lua is code. The protection is that CILogg installs only from
@@ -443,6 +484,8 @@ or `tool`).
   anywhere, but the credential of another repository is never attached to them.
 - A pack's Lua is code with the user's permissions (section 4.3); nothing in this design sandboxes
   it. Pack previews follow the same validation and limits as user previews.
+- Pack actions send data to devices only when run; pack automatic responses start switched off
+  (section 4.5).
 - Crash dumps can contain tokens that were in memory (section 3.6); they are not shared unless the
   user adds them.
 
@@ -464,7 +507,7 @@ the built catalog on a `catalog` branch that only the pipeline writes:
 ```text
 main branch
   sources.json            what to package (see below)
-  packs/<pack>/           preview packs authored here: plugin.json, previews.json, lua/, python/
+  packs/<pack>/           configuration packs authored here: plugin.json and its content files
   tools/build_catalog.py  copy of the klogg script, taken at a recorded klogg commit
   azure-pipelines.yml     the build
 catalog branch (written by the pipeline only)
@@ -565,7 +608,10 @@ the Git Credential Manager they already use for that organization.
   profile snapshot only while enabled, copied, hashed and loaded in order, never written into the
   saved configuration, in a per-pack environment where two packs with the same global keep their
   own values; the 32-file and route limits; warm sessions discarded on update; JSON fallback
-  without TShark; `python_decoders` listed and inactive.
+  without TShark; `python_decoders` listed and inactive; pack actions, highlighters and filters
+  read-only with Copy to My..., user precedence, collisions between packs refused, store limits,
+  exports without pack items; pack automatic responses off after install and their on or off choice
+  kept across an update.
 - Both: GUI, CLI, native MCP and Python give the same results; `[plugins]` and new `[workbench][E15]`
   / `[workbench][E16]` Catch2 cases; `tests/plugins` for the catalog script.
 
@@ -576,8 +622,10 @@ the Git Credential Manager they already use for that organization.
 - **E15b:** Azure DevOps sign-in (credential manager, PAT store), credential scope and redirect
   rules.
 - **E15c:** update check, notices, auto-update.
-- **E16a:** preview pack kind with JSON previews and Lua for TShark.
+- **E16a:** configuration pack kind with JSON previews and Lua for TShark.
 - **E16b:** Python decoders, activated with MD03.
+- **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
+  filters in packs.
 
 ## 10. Open decisions
 

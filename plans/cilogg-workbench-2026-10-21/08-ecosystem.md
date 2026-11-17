@@ -334,7 +334,7 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 
 **Outcome:** Reuse developer knowledge across projects and teams.
 
-**Depends on:** E01, U07, U11; E16 (decision D16: packs extend the preview pack format and reuse the E15 repositories and credential handling). G01–G03 are common prerequisites for public feature tasks.
+**Depends on:** E01, U07, U11; E16 (decision D16: packs extend the configuration pack format and reuse the E15 repositories and credential handling). G01–G03 are common prerequisites for public feature tasks.
 
 **Files and ownership:**
 - Extend existing config import/export and plugin repository/storage services.
@@ -505,10 +505,10 @@ The full card, with files, interfaces and acceptance, is [tasks/E14.md](tasks/E1
 
 The full card is [tasks/E15.md](tasks/E15.md). The design is [docs/plugin-repositories.md](../../docs/plugin-repositories.md).
 
-### E16 — Preview packs: versioned previews, Lua and Python decoders as plugins
+### E16 — Configuration packs: previews, decoders, actions, highlighters and filters as plugins
 
 **Integrated hard dependencies:** E15. Proposed under [decision D16](../../docs/workbench/decisions.md). E09 depends on E16.
 
-**Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark and Python decoders, versioned and updated from the plugin repositories. Pack previews are read-only (copy one to edit it); pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
+**Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Pack items are read-only (copy one to edit it); pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
 
 The full card is [tasks/E16.md](tasks/E16.md).
