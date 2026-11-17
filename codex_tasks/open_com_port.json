@@ -1,17 +1,17 @@
 {
   "task": "Implement Open COM Port stream source",
-  "repo_root": "C:\\Essence_SC\\lsrc\\klogg",
+  "repo_root": "C:\\src\\klogg",
   "build_root": "build_root",
   "shell": "x64 Native Tools Command Prompt for VS 2022",
   "env": {
-    "QTDIR": "C:\\Essence_SC\\qt6",
-    "CMAKE_PREFIX_PATH": "C:\\Essence_SC\\qt6",
-    "KLOGG_WORKSPACE": "C:\\Essence_SC\\lsrc\\klogg",
+    "QTDIR": "C:\\Qt\\6.10.1\\msvc2022_64",
+    "CMAKE_PREFIX_PATH": "C:\\Qt\\6.10.1\\msvc2022_64",
+    "KLOGG_WORKSPACE": "C:\\src\\klogg",
     "KLOGG_BUILD_ROOT": "build_root",
     "platform": "x64",
     "KLOGG_QT": "Qt6",
-    "KLOGG_QT_DIR": "C:\\Essence_SC\\qt6",
-    "PATH_prepend": ["C:\\Essence_SC\\qt6\\bin"]
+    "KLOGG_QT_DIR": "C:\\Qt\\6.10.1\\msvc2022_64",
+    "PATH_prepend": ["C:\\Qt\\6.10.1\\msvc2022_64\\bin"]
   },
   "configure_command": "cmake -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..",
   "build_command": "cmake --build . --config RelWithDebInfo",

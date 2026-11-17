@@ -241,29 +241,41 @@ include(prepare_version)
 include(FindPkgConfig)
 
 if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUTABLE)
-  set(
-    KLOGG_PKG_CONFIG_CANDIDATES
-    "C:/Essence_SC/Strawberry/c/bin/pkg-config.exe"
-    "C:/Essence_SC/Strawberry/c/bin/pkg-config"
-    "C:/Essence_SC/Strawberry/c/bin/pkgconf.exe"
-    "C:/Essence_SC/Strawberry/c/bin/pkgconf"
-    "C:/Strawberry/c/bin/pkg-config.exe"
-    "C:/Strawberry/c/bin/pkg-config"
-    "C:/Strawberry/c/bin/pkgconf.exe"
-    "C:/Strawberry/c/bin/pkgconf"
-    "C:/Essence_SC/Git/usr/bin/pkg-config.exe"
-    "C:/Essence_SC/Git/usr/bin/pkg-config"
-    "C:/Essence_SC/Git/usr/bin/pkgconf.exe"
-    "C:/Essence_SC/Git/usr/bin/pkgconf"
-    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config.exe"
-    "$ENV{ProgramFiles}/Git/usr/bin/pkg-config"
-    "$ENV{ProgramFiles}/Git/usr/bin/pkgconf.exe"
-    "$ENV{ProgramFiles}/Git/usr/bin/pkgconf"
-    "C:/Essence_SC/Strawberry/perl/bin/pkg-config.bat"
-    "C:/Essence_SC/Strawberry/perl/bin/pkg-config"
-    "C:/Strawberry/perl/bin/pkg-config.bat"
-    "C:/Strawberry/perl/bin/pkg-config"
-  )
+  # Strawberry Perl and Git for Windows ship pkg-config. Prefer the installations found on PATH,
+  # then their default locations: native executables first, the Perl script wrapper last.
+  set(KLOGG_PKG_CONFIG_NATIVE_DIRS)
+  set(KLOGG_PKG_CONFIG_PERL_DIRS)
+  find_program(KLOGG_PERL_FOR_PKG_CONFIG perl)
+  if(KLOGG_PERL_FOR_PKG_CONFIG)
+    get_filename_component(KLOGG_PERL_BIN_DIR "${KLOGG_PERL_FOR_PKG_CONFIG}" DIRECTORY)
+    get_filename_component(KLOGG_STRAWBERRY_ROOT "${KLOGG_PERL_BIN_DIR}/../.." ABSOLUTE)
+    list(APPEND KLOGG_PKG_CONFIG_NATIVE_DIRS "${KLOGG_STRAWBERRY_ROOT}/c/bin")
+    list(APPEND KLOGG_PKG_CONFIG_PERL_DIRS "${KLOGG_PERL_BIN_DIR}")
+  endif()
+  list(APPEND KLOGG_PKG_CONFIG_NATIVE_DIRS "C:/Strawberry/c/bin")
+  find_program(KLOGG_GIT_FOR_PKG_CONFIG git)
+  if(KLOGG_GIT_FOR_PKG_CONFIG)
+    # git.exe is in cmd/ or bin/, or in mingw64/bin/ or ucrt64/bin/ of the installation.
+    get_filename_component(KLOGG_GIT_BIN_DIR "${KLOGG_GIT_FOR_PKG_CONFIG}" DIRECTORY)
+    foreach(KLOGG_GIT_ROOT_RELATIVE ".." "../..")
+      get_filename_component(KLOGG_GIT_ROOT "${KLOGG_GIT_BIN_DIR}/${KLOGG_GIT_ROOT_RELATIVE}" ABSOLUTE)
+      list(APPEND KLOGG_PKG_CONFIG_NATIVE_DIRS "${KLOGG_GIT_ROOT}/usr/bin")
+    endforeach()
+  endif()
+  list(APPEND KLOGG_PKG_CONFIG_NATIVE_DIRS "$ENV{ProgramFiles}/Git/usr/bin")
+  list(APPEND KLOGG_PKG_CONFIG_PERL_DIRS "C:/Strawberry/perl/bin")
+  list(REMOVE_DUPLICATES KLOGG_PKG_CONFIG_NATIVE_DIRS)
+  list(REMOVE_DUPLICATES KLOGG_PKG_CONFIG_PERL_DIRS)
+  set(KLOGG_PKG_CONFIG_CANDIDATES)
+  foreach(KLOGG_PKG_CONFIG_DIR IN LISTS KLOGG_PKG_CONFIG_NATIVE_DIRS)
+    foreach(KLOGG_PKG_CONFIG_NAME pkg-config.exe pkg-config pkgconf.exe pkgconf)
+      list(APPEND KLOGG_PKG_CONFIG_CANDIDATES "${KLOGG_PKG_CONFIG_DIR}/${KLOGG_PKG_CONFIG_NAME}")
+    endforeach()
+  endforeach()
+  foreach(KLOGG_PKG_CONFIG_DIR IN LISTS KLOGG_PKG_CONFIG_PERL_DIRS)
+    list(APPEND KLOGG_PKG_CONFIG_CANDIDATES "${KLOGG_PKG_CONFIG_DIR}/pkg-config.bat"
+         "${KLOGG_PKG_CONFIG_DIR}/pkg-config")
+  endforeach()
   foreach(KLOGG_PKG_CONFIG_CANDIDATE IN LISTS KLOGG_PKG_CONFIG_CANDIDATES)
     if(EXISTS "${KLOGG_PKG_CONFIG_CANDIDATE}")
       execute_process(
@@ -283,13 +295,7 @@ if(WIN32 AND KLOGG_REGEX_BACKEND STREQUAL "vectorscan" AND NOT PKG_CONFIG_EXECUT
     find_program(
       KLOGG_PKG_CONFIG_EXECUTABLE
       NAMES pkgconf.exe pkgconf pkg-config.exe pkg-config pkg-config.bat
-      HINTS
-        "C:/Essence_SC/Strawberry/c/bin"
-        "C:/Essence_SC/Strawberry/perl/bin"
-        "C:/Essence_SC/Git/usr/bin"
-        "C:/Strawberry/c/bin"
-        "C:/Strawberry/perl/bin"
-        "$ENV{ProgramFiles}/Git/usr/bin"
+      HINTS ${KLOGG_PKG_CONFIG_NATIVE_DIRS} ${KLOGG_PKG_CONFIG_PERL_DIRS}
     )
     if(KLOGG_PKG_CONFIG_EXECUTABLE)
       execute_process(

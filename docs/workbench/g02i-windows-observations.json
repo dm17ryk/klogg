@@ -26,7 +26,7 @@
     "localSdk": "Qt6.10.1",
     "metadataSourceSha256": "c39b1b888bc47295adc2fbdd9f7cbb69d503fe11b36446aaaa5a353fbd36b735",
     "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
-    "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+    "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
     "reusedMetadataSource": "g02h-build-metadata.json",
     "searchEngine": "qt",
     "sourceEquivalentBaseline": "6acb5bc4c0a38ed488e4ff0bbdedd5d2682c6ec8",

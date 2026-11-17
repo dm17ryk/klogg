@@ -211,7 +211,7 @@ cilogg command --help
 From a local Windows build tree, run the executable from `build_root`:
 
 ```powershell
-cd D:\Essence_SC\lsrc\klogg\build_root
+cd D:\src\klogg\build_root
 .\output\RelWithDebInfo\cilogg.exe --help
 .\output\RelWithDebInfo\cilogg.exe command --help
 ```
@@ -220,7 +220,7 @@ Before running build-tree executables on Windows, deploy the Qt runtime DLLs
 next to the executable:
 
 ```powershell
-$env:QTDIR = 'C:\Essence_SC\QtSDK\6.12.0\msvc2022_64'
+$env:QTDIR = 'C:\Qt\6.12.0\msvc2022_64'
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_tests.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_itests.exe"

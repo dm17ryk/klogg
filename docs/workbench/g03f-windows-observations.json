@@ -51,7 +51,7 @@
         "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
         "executedBinary": "payload-06c1026fb7c742b7916864f86a28144e/cilogg-analysis-06c1026fb7c742b7916864f86a28144e.exe",
         "executedBinarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
-        "sourcePath": "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log",
+        "sourcePath": "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log",
         "cases": [
           {
             "id": "regex-lab",
@@ -129,7 +129,7 @@
             "serverExitCode": 0,
             "windowId": "2b65e90e54be42aa969bafdd5e5d73ff",
             "sourceFiles": [
-              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
+              "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
             ]
           },
           {
@@ -140,7 +140,7 @@
             "serverExitCode": 0,
             "windowId": "2b65e90e54be42aa969bafdd5e5d73ff",
             "sourceFiles": [
-              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
+              "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-native-provenance/source.log"
             ]
           }
         ],
@@ -176,7 +176,7 @@
         "binarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
         "executedBinary": "payload-39ac19e86d2b4e36849904b8844bd9a9/cilogg-analysis-39ac19e86d2b4e36849904b8844bd9a9.exe",
         "executedBinarySha256": "22b6f03e27459d1150d402cf8259e4d23b420bdde620f8fe23a29b53a485b438",
-        "sourcePath": "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log",
+        "sourcePath": "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log",
         "cases": [
           {
             "id": "regex-lab",
@@ -254,7 +254,7 @@
             "serverExitCode": 0,
             "windowId": "2f2485ba05d749abb75238fc10620fdc",
             "sourceFiles": [
-              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
+              "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
             ]
           },
           {
@@ -265,7 +265,7 @@
             "serverExitCode": 0,
             "windowId": "2f2485ba05d749abb75238fc10620fdc",
             "sourceFiles": [
-              "C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
+              "C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg/build_root/g03f-offscreen-provenance/source.log"
             ]
           }
         ],

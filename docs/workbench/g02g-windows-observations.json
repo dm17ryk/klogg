@@ -54,7 +54,7 @@
       "cacheSha256": "f10da53df78c688b4fa0b47384740adc127818a06751d79a10faba267e0b6f79",
       "compiler": "unreported",
       "configuration": "RelWithDebInfo",
-      "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+      "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
       "sourceRevision": "493124be92f962aeba97bf92c0ac55c59743d925",
       "sourceState": "G02g uncommitted working tree; exact changed-source hashes in observations",
       "localSdk": "Qt6.10.1"

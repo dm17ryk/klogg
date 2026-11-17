@@ -11,7 +11,7 @@ performance measurements.
 Run from the repository root, using Python 3.9 or newer and a deployed executable:
 
 ```powershell
-python tests/mcp/workbench_parity.py --executable C:/Essence_SC/cilogg/cilogg.exe --task G03 --artifacts build_root/workbench-parity/G03
+python tests/mcp/workbench_parity.py --executable C:/Tools/cilogg/cilogg.exe --task G03 --artifacts build_root/workbench-parity/G03
 python tests/mcp/workbench_parity.py --executable build_root/output/RelWithDebInfo/cilogg_portable.exe --task P04 --artifacts build_root/workbench-parity/P04 --backend accelerated
 python -m unittest discover -s tests/mcp -p 'test_workbench_*.py' -v
 ```

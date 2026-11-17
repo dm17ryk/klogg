@@ -390,10 +390,10 @@ Include job/source/request IDs, source generation/revision, processed bytes/line
 Verified Windows entry points (run in a clean terminal; inspect current scripts before execution):
 
 ```powershell
-$env:QTDIR = 'C:\Essence_SC\qt6.10.1'
+$env:QTDIR = 'C:\Qt\6.10.1\msvc2022_64'
 $env:CILOGG_QT_DIR = $env:QTDIR
 $env:CMAKE_PREFIX_PATH = $env:QTDIR
-$env:CILOGG_WORKSPACE = 'D:\Essence_SC\lsrc\klogg'
+$env:CILOGG_WORKSPACE = 'D:\src\klogg'
 $env:CILOGG_BUILD_ROOT = 'build_root'
 $env:platform = 'x64'
 $env:CILOGG_QT = 'Qt6'

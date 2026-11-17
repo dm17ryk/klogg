@@ -19,7 +19,7 @@
         "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
         "compiler": "unreported",
         "configuration": "RelWithDebInfo",
-        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
       },
       "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
       "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -95,7 +95,7 @@
         "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
         "compiler": "unreported",
         "configuration": "RelWithDebInfo",
-        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
       },
       "sourceRevision": "d73b9be5d92de0b0a28e9ca48756b9dc8737146a",
       "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -269,7 +269,7 @@
         "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
         "compiler": "unreported",
         "configuration": "RelWithDebInfo",
-        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+        "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
       },
       "sourceRevision": "9d92edd99c4457501c2083c2652c501bd3228ac4",
       "sourceDirty": true,

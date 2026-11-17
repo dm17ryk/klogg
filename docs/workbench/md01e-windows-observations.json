@@ -7,13 +7,13 @@
   "MD01Acceptance": "pending",
   "W0Acceptance": "pending",
   "privateLua": {
-    "originalSha256": "7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea",
-    "qualifiedSha256": "2f7d0209cf3166a38867e88603fcbdc579f00766d1c75335d7e1e7df073d3c80",
+    "originalSha256": "withheld",
+    "qualifiedSha256": "withheld",
     "distributed": false,
     "license": "not_verified",
     "installation": {
       "state": "installed_versioned_local_pack",
-      "directoryRelativeToLocalAppData": "CILogg/decoder-packs/md01e-2f7d0209",
+      "directoryRelativeToLocalAppData": "CILogg/decoder-packs/md01e-<pack hash prefix>",
       "configurationFile": "decoder-settings.json",
       "scriptsByteVerified": true,
       "scope": "CILogg-only local pack; qualification does not upgrade the global Wireshark pack or establish redistribution/full-capture acceptance"
@@ -53,7 +53,7 @@
         ]
       },
       "firstRepairRed": {
-        "sha256": "9c06a308269486778c54b1f48f9928c6cc38256167592dd7eec2c4d3663af87e",
+        "sha256": "withheld",
         "observed": {
           "ehci.tag.name": [],
           "ehci.checksum.valid": [
@@ -62,7 +62,7 @@
         }
       },
       "qualifiedRepairGreen": {
-        "sha256": "2f7d0209cf3166a38867e88603fcbdc579f00766d1c75335d7e1e7df073d3c80",
+        "sha256": "withheld",
         "fixtureId": "ehci-crc-prefix-tags",
         "verifiedBy": "NativeEhciCapabilityTests.test_strict_capability_manifest_covers_payload_crc_and_length_recovery on Python3.14.10 and3.9.25",
         "passed": true,
@@ -201,7 +201,7 @@
         "cases": 1,
         "assertions": 334,
         "failedAssertions": 4,
-        "pack": "original7cf4bef2"
+        "pack": "original"
       },
       "green": {
         "exitCode": 0,
@@ -209,7 +209,7 @@
         "cases": 1,
         "assertions": 1278,
         "failedAssertions": 0,
-        "pack": "qualified2f7d0209"
+        "pack": "qualified"
       },
       "scope": "Three real native PreviewMessageTab fixtures, exact field columns/raw NUL/following map/checksum absence, tooltip HTML,10-second pane budget; offscreen Qt widget capture; no installer/compositor/interactive-input or default3-second latency acceptance"
     },

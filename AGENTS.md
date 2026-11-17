@@ -7,10 +7,10 @@ We run from: Windows `x64 Native Tools Command Prompt for VS 2022`.
 Before any CMake/build steps, ensure these env vars are set:
 
 ```bash
-set QTDIR=C:\Essence_SC\QtSDK\6.12.0\msvc2022_64
+set QTDIR=C:\Qt\6.12.0\msvc2022_64
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
+set CILOGG_WORKSPACE=D:\src\klogg
 set CILOGG_BUILD_ROOT=build_root
 set platform=x64
 set CILOGG_QT=Qt6
