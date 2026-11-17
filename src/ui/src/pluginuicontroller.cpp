@@ -1,17 +1,19 @@
 #include "pluginuicontroller.h"
+#include "analysissource.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginviewhost.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
-#include <QDir>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QDoubleValidator>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QLabel>
@@ -26,10 +28,13 @@
 #include <QTableWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace {
+// The action form. With `source`, its first row is the shared source picker (U15b).
 bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields,
-                 QJsonObject* values )
+                 QJsonObject* values, QString* source = nullptr,
+                 const std::function<QVariantList()>& sources = {} )
 {
     QDialog dialog( parent );
     dialog.setObjectName( "pluginFormDialog" );
@@ -37,6 +42,14 @@ bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields
     auto* layout = new QVBoxLayout( &dialog );
     auto* form = new QFormLayout;
     layout->addLayout( form );
+    AnalysisSourcePicker* picker = nullptr;
+    if ( source ) {
+        picker = new AnalysisSourcePicker( sources, SourceRules{}, &dialog );
+        picker->setObjectName( "pluginFormSource" );
+        picker->setAccessibleName( QObject::tr( "Run on" ) );
+        picker->setSelection( *source );
+        form->addRow( QObject::tr( "Run on" ), picker );
+    }
     QMap<QString, std::function<QJsonValue()>> getters;
     for ( const auto& item : fields ) {
         const auto field = item.toObject();
@@ -161,6 +174,9 @@ bool editValues( QWidget* parent, const QString& title, const QJsonArray& fields
             return;
         }
         *values = updated;
+        if ( picker ) {
+            *source = picker->selection();
+        }
         dialog.accept();
     } );
     return dialog.exec() == QDialog::Accepted;
@@ -210,6 +226,28 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
     browse->setToolTip( tr( "Browse the online plugin catalog" ) );
     menu_->addAction( manage );
     menu_->addAction( browse );
+    menu_->addSeparator();
+    // U15b: the source the plugin actions of this menu and the toolbar run on.
+    auto* sourceRow = new QWidget( window );
+    auto* sourceLayout = new QHBoxLayout( sourceRow );
+    sourceLayout->setContentsMargins( 8, 2, 8, 2 );
+    auto* sourceLabel = new QLabel( tr( "Run actions on" ), sourceRow );
+    sourcePicker_ = new AnalysisSourcePicker(
+        [ window = QPointer<MainWindow>( window ) ] {
+            return window ? window->toolSources() : QVariantList{};
+        },
+        SourceRules{}, sourceRow );
+    sourcePicker_->setObjectName( "pluginSourcePicker" );
+    sourcePicker_->setAccessibleName( sourceLabel->text() );
+    sourcePicker_->setToolTip( tr( "The tab, file or tabs that plugin actions run on" ) );
+    sourceLabel->setBuddy( sourcePicker_ );
+    sourceLayout->addWidget( sourceLabel );
+    sourceLayout->addWidget( sourcePicker_, 1 );
+    auto* sourceAction = new QWidgetAction( this );
+    sourceAction->setObjectName( "pluginSourceAction" );
+    sourceAction->setDefaultWidget( sourceRow );
+    menu_->addAction( sourceAction );
+    connect( menu_, &QMenu::aboutToShow, sourcePicker_, &AnalysisSourcePicker::refresh );
     menu_->addSeparator();
     if ( toolbar ) {
         toolbar->addAction( manage );
@@ -278,6 +316,13 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
             return window ? window->pluginContext( {} ) : QVariantMap{};
         },
         manager, executor_ );
+    viewHost_->setSourceProviders(
+        [ window = QPointer<MainWindow>( window ) ] {
+            return window ? window->toolSources() : QVariantList{};
+        },
+        [ window = QPointer<MainWindow>( window ) ]( const QString& source, QString* error ) {
+            return window ? window->pluginContextForSource( source, error ) : QVariantMap{};
+        } );
     refreshActions();
     connect( window, &MainWindow::windowClosed, this, [ this ] {
         if ( viewHost_ ) {
@@ -437,26 +482,49 @@ QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject&
     return generic;
 }
 
+QString PluginUiController::actionSource() const
+{
+    return sourcePicker_ ? sourcePicker_->selection() : QStringLiteral( "focused" );
+}
+
 void PluginUiController::invoke( const QString& id, const QJsonObject& action )
 {
     QJsonObject arguments;
     const auto context = window_->pluginContext( {} );
-    if ( action.value( "capability" ) == "converter" ) {
-        arguments.insert( "input_path", QJsonValue::fromVariant( context.value( "filePath" ) ) );
+    // A converter reads the focused tab's file unless another source is chosen; each job of
+    // another source gets its own tab's file from its context.
+    const auto focusedPath = QJsonValue::fromVariant( context.value( "filePath" ) );
+    const bool converter = action.value( "capability" ) == "converter";
+    if ( converter ) {
+        arguments.insert( "input_path", focusedPath );
     }
+    auto source = actionSource();
     const auto fields = action.value( "fields" ).toArray();
     if ( !fields.isEmpty()
          && !editValues( window_, action.value( "label" ).toString( "Plugin action" ), fields,
-                         &arguments ) ) {
+                         &arguments, &source, [ window = window_ ] {
+                             return window ? window->toolSources() : QVariantList{};
+                         } ) ) {
         return;
     }
     CommanderRequest request;
     request.action = CommanderAction::InvokePlugin;
     request.pluginId = id;
     request.pluginAction = action.value( "id" ).toString();
+    if ( source == QLatin1String( "focused" ) ) {
+        request.windowIndex = context.value( "windowIndex" ).toInt();
+        request.tabId = context.value( "tabId" ).toString();
+    }
+    else {
+        request.source = source;
+        if ( converter && arguments.value( "input_path" ) == focusedPath ) {
+            arguments.remove( "input_path" );
+        }
+    }
     request.pluginArguments = arguments.toVariantMap();
-    request.windowIndex = context.value( "windowIndex" ).toInt();
-    request.tabId = context.value( "tabId" ).toString();
+    LOG_DEBUG << "Plugin action from the menu plugin=" << id.toStdString()
+              << " action=" << request.pluginAction.toStdString()
+              << " source=" << source.toStdString();
     report( executor_( request ) );
 }
 

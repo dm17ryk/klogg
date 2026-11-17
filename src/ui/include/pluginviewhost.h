@@ -26,6 +26,10 @@ class PluginViewHost final : public QObject {
 public:
     using Executor = std::function<CommanderResult( const CommanderRequest& )>;
     using ContextProvider = std::function<QVariantMap()>;
+    // U15b: the tabs a view can follow, and the plugin context of a source for a view of this
+    // window (an empty map and *error when the source cannot be used).
+    using SourcesProvider = std::function<QVariantList()>;
+    using SourceContext = std::function<QVariantMap( const QString& source, QString* error )>;
 
     PluginViewHost( QMainWindow* window, QString windowId, ContextProvider context,
                     cilogg::plugins::PluginManager* manager, Executor executor,
@@ -33,9 +37,19 @@ public:
     ~PluginViewHost() override;
 
     // Opens (or raises) a declared view; `overrides` are view/show keys (area, floating,
-    // title, focus). Returns false and an error message when the plugin cannot open it.
+    // title, focus, and with source providers `source`). Returns false and an error message
+    // when the plugin cannot open it.
     bool openView( const QString& pluginId, const QString& viewId,
                    const QJsonObject& overrides = {}, QString* error = nullptr );
+    // U15b: views get a source picker (focused tab, a tab or a file). The view's context, sent
+    // in view/opened and used by its buttons, is that source's tab; without providers it is the
+    // window's current tab, as before.
+    void setSourceProviders( SourcesProvider sources, SourceContext context );
+    QString viewSource( const QString& pluginId, const QString& viewId ) const;
+    // Re-sends view/opened with the new source's context. False (and *error) if the source
+    // cannot be used; the view keeps its previous source.
+    bool setViewSource( const QString& pluginId, const QString& viewId, const QString& source,
+                        QString* error = nullptr );
     void closeView( const QString& pluginId, const QString& viewId );
     QWidget* container( const QString& pluginId, const QString& viewId ) const;
     PluginView* view( const QString& pluginId, const QString& viewId ) const;
@@ -70,12 +84,15 @@ private:
     void invokeAction( const QString& pluginId, const QString& viewId, const QString& action,
                        const QVariantMap& arguments );
     QJsonObject definition( const QString& pluginId, const QString& viewId ) const;
+    QVariantMap contextFor( const QString& source, QString* error ) const;
     bool eventFilter( QObject* watched, QEvent* event ) override;
     int scaled( int milliseconds ) const;
 
     QPointer<QMainWindow> window_;
     QString windowId_;
     ContextProvider context_;
+    SourcesProvider sources_;
+    SourceContext sourceContext_;
     QPointer<cilogg::plugins::PluginManager> manager_;
     Executor executor_;
     PluginViewDialogs dialogs_;

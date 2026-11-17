@@ -100,6 +100,10 @@ public:
     bool isPartialSelection() const;
     std::optional<AnalysisRequest> analysisRequest( const QString& scope, QString* error ) const;
     CommanderRequest analysisSearchRequest( const CommanderRequest& draft ) const;
+    // U15b: the search line as a Commander search request (text, options, context, limits).
+    CommanderRequest currentSearchRequest() const;
+    // Shows a search summary (search in all open tabs) on the search info line.
+    void showSearchSummary( const QString& text, const QString& details );
     bool navigateToAnalysisResult( const SourceLocation& location );
 
     // Display the QFB at the bottom, remembering where the focus was
@@ -220,6 +224,9 @@ Q_SIGNALS:
     void replaceDataInScratchpad( QString );
     void sendToPreview( QString rawLine, QString previewNameOrAuto );
     void sendPreparedToPreview( PreparedPreview prepared, QString previewNameOrAuto );
+    // The search line's "In all open tabs" option is on and a search was started: the window
+    // runs this search in every open tab instead.
+    void searchAllTabsRequested( CommanderRequest request );
 
     // "auto-refresh" check has been changed
     void searchRefreshChanged( bool isRefreshing );
@@ -236,6 +243,8 @@ Q_SIGNALS:
 private Q_SLOTS:
     // Instructs the widget to start a search using the current search line.
     void startNewSearch();
+    // The search button / Enter: with the "All Tabs" option, the window searches every tab.
+    void startSearchFromSearchLine();
     // Stop the currently ongoing search (if one exists)
     void stopSearch();
     void loadIcons();
@@ -458,6 +467,7 @@ private:
     QToolButton* clearButton_;
     QToolButton* searchButton_;
     QToolButton* keepSearchResultsButton_;
+    QToolButton* searchAllTabsButton_ = nullptr;
     QToolButton* stopButton_;
     QToolButton* clearResultsButton_ = nullptr;
 
