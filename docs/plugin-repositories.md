@@ -3,7 +3,8 @@
 **Status:** accepted on 2026-11-17; the user approved every decision in section 10 (decision D16 in
 [docs/workbench/decisions.md](workbench/decisions.md)). Slice E15a (public repositories, the
 Plugins and Packs window, the merged catalog, install-source pinning, `build_catalog.py` and the
-in-app guide) is implemented; E15b, E15c and E16 are not. The tasks are
+in-app guide) is implemented in PR https://github.com/dm17ryk/klogg/pull/122; E15b, E15c and E16
+are not. The tasks are
 [E15](../plans/cilogg-workbench-2026-10-21/tasks/E15.md) (plugin repositories), which may start
 ahead of G02/G03, and then [E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (configuration
 packs).
