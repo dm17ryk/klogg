@@ -1,6 +1,6 @@
 # Complete Feature Coverage
 
-205 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
+209 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
 
 ## Exploration, fields, time and data
 
@@ -202,6 +202,9 @@
 | ECO17 | Capability introspection and supported Python/MCP clients | E11 |
 | ECO18 | Optional AI parser/query/chart/rule proposals with normal validation | E12 |
 | ECO19 | Core operation without cloud account or AI provider | E12, R03 |
+| ECO20 | Several plugin repositories, including private Azure DevOps ones signed in through the Git Credential Manager or a stored personal access token; credentials never written out and kept inside the repository's scope | E15 |
+| ECO21 | One merged plugin list with each entry's source; updates only from the install source, checked silently at startup and daily, installed by the user unless auto-update is on for that repository | E15 |
+| ECO22 | Configuration packs: versioned preview definitions, Lua and Python decoders, actions with automatic responses, highlighters and predefined filters installed, updated and removed from plugin repositories in the same window as plugins; pack items edited in place with local edits kept in a local store and merged on update (three-way, conflicts resolved by the user in an item or text merge window); Export as Pack; changes sent back as a patch or a pull request; pack automatic responses off until enabled; pack Lua trusted for TShark | E16 |
 
 ## Quality, compatibility and delivery
 

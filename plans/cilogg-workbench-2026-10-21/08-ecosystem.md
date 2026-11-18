@@ -329,12 +329,12 @@ Exercise stale source/state; malformed/large input; cancellation/backpressure; r
 
 ### E09 — Create shareable packs and Git-backed team configuration
 
-**Integrated hard dependencies:** G01, G02, G03, E01, U07, U11. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
+**Integrated hard dependencies:** G01, G02, G03, E01, U07, U11, E16. Capability-conditional dependencies described below are additional runtime gates; they do not reverse these edges.
 
 
 **Outcome:** Reuse developer knowledge across projects and teams.
 
-**Depends on:** E01, U07, U11. G01–G03 are common prerequisites for public feature tasks.
+**Depends on:** E01, U07, U11; E16 (decision D16: packs extend the configuration pack format and reuse the E15 repositories and credential handling). G01–G03 are common prerequisites for public feature tasks.
 
 **Files and ownership:**
 - Extend existing config import/export and plugin repository/storage services.
@@ -496,3 +496,19 @@ The full card, with files, interfaces, test cases and acceptance, is [tasks/E13.
 **Outcome:** Plugin views gain editable table cells (text, number, choice, multichoice, boolean) confirmed by a plugin patch, a `multichoice` check-dropdown field, and toolbar/menu/icon keys for actions and views. The host announces `view_edit`; plugins that do not use the new keys behave exactly as before. See [decision D14](../../docs/workbench/decisions.md).
 
 The full card, with files, interfaces and acceptance, is [tasks/E14.md](tasks/E14.md).
+
+### E15 — Plugin repositories with private Azure DevOps sign-in and update checks
+
+**Integrated hard dependencies:** G01. Accepted under [decision D16](../../docs/workbench/decisions.md) on 2026-11-17 and authorized ahead of G02/G03; planned, not started.
+
+**Outcome:** several plugin catalogs managed in the Plugins window and through Commander/CLI/MCP/Python; sign-in none or Azure DevOps (Git Credential Manager, personal access token as the fallback); one merged list with each entry's source; updates only from the install source; a silent update check at startup and once a day, with auto-update only where a repository enables it. Credentials stay out of settings, logs and reports and inside their repository's scope.
+
+The full card is [tasks/E15.md](tasks/E15.md). The design is [docs/plugin-repositories.md](../../docs/plugin-repositories.md).
+
+### E16 — Configuration packs: previews, decoders, actions, highlighters and filters as plugins
+
+**Integrated hard dependencies:** E15. Accepted under [decision D16](../../docs/workbench/decisions.md) on 2026-11-17; follows E15. E09 depends on E16.
+
+**Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Packs share the Plugins and Packs window with plugins; pack items can be edited in place, and an update merges the local edits (three-way, with a dialog for conflicts); Export as Pack shares the user's own items; pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
+
+The full card is [tasks/E16.md](tasks/E16.md).
