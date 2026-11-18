@@ -136,6 +136,7 @@ jobs:
           - os: ubuntu_focal
             os_version: 22.04
             arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64: QEMU emulation hit the 6 h job limit
             backend: vectorscan
             check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
@@ -150,6 +151,7 @@ jobs:
           - os: ubuntu_jammy
             os_version: 22.04
             arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64: QEMU emulation hit the 6 h job limit
             backend: vectorscan
             check_command: apt-get update && apt install --dry-run /usr/local/cilogg*.deb
             cpack_gen: DEB
@@ -301,6 +303,7 @@ jobs:
           - os: fedora40
             os_version: 22.04
             arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64: QEMU emulation hit the 6 h job limit
             backend: vectorscan
             check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
@@ -315,6 +318,7 @@ jobs:
           - os: fedora41
             os_version: 22.04
             arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64: QEMU emulation hit the 6 h job limit
             backend: vectorscan
             check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
@@ -329,6 +333,7 @@ jobs:
           - os: fedora42
             os_version: 22.04
             arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64: QEMU emulation hit the 6 h job limit
             backend: vectorscan
             check_command: rpm -K /usr/local/cilogg*.rpm && rpm -qp --requires /usr/local/cilogg*.rpm > /dev/null
             cpack_gen: RPM
