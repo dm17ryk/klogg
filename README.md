@@ -78,8 +78,8 @@ Log views use the included [sample device log](docs/examples/device-session.txt)
 <td width="50%"><strong>🔁 React to incoming logs</strong><br>Configure match rules and automatic responses.</td>
 </tr>
 <tr>
-<td><a href="docs/images/actions-showcase.jpg"><img src="docs/images/actions-showcase.jpg" alt="Normal CILogg Actions window with COM routing and reusable command sequences" width="100%"></a></td>
-<td><a href="docs/images/responses-showcase.jpg"><img src="docs/images/responses-showcase.jpg" alt="Normal CILogg Responses window with enabled match rules" width="100%"></a></td>
+<td><a href="docs/images/actions-showcase.jpg"><img src="docs/images/actions-showcase.jpg" alt="CILogg Actions window with the action-tab selector and reusable command sequences" width="100%"></a></td>
+<td><a href="docs/images/responses-showcase.jpg"><img src="docs/images/responses-showcase.jpg" alt="CILogg Responses window with text, hex and regex match rules" width="100%"></a></td>
 </tr>
 <tr>
 <td><strong>🧩 Connect more log sources</strong><br>Manage bundled ADB Logcat and Syslog plugins.</td>
