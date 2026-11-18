@@ -293,7 +293,7 @@
           "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
           "compiler": "unreported",
           "configuration": "RelWithDebInfo",
-          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+          "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
         },
         "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
         "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -305,7 +305,7 @@
           "backendRequested": "qt",
           "backendVerified": false,
           "guiMode": "offscreen controls; interactive usability unmeasured",
-          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executable": "C:\\Users\\dev\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
           "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
           "sdk": {
             "version": "2.3.0",
@@ -700,7 +700,7 @@
           "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
           "compiler": "unreported",
           "configuration": "RelWithDebInfo",
-          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+          "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
         },
         "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
         "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -723,7 +723,7 @@
           "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
           "compiler": "unreported",
           "configuration": "RelWithDebInfo",
-          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+          "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
         },
         "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
         "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -735,7 +735,7 @@
           "backendRequested": "qt",
           "backendVerified": false,
           "guiMode": "offscreen controls; interactive usability unmeasured",
-          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executable": "C:\\Users\\dev\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
           "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
           "sdk": {
             "version": "1.30.0",
@@ -1130,7 +1130,7 @@
           "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
           "compiler": "unreported",
           "configuration": "RelWithDebInfo",
-          "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+          "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
         },
         "sourceRevision": "7c2a3735c6b511c043b551aa9d26d514d20fa344",
         "productSourceTree": "7cc701e10f503446d70aef7483f8dbc7a668d7d6",
@@ -1142,7 +1142,7 @@
           "backendRequested": "qt",
           "backendVerified": false,
           "guiMode": "offscreen controls; interactive usability unmeasured",
-          "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+          "executable": "C:\\Users\\dev\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
           "executableSha256": "4b12b906bea1989989b6501b5f148b66a14ee5b3932081370a7115fd06d63cce",
           "sdk": {
             "version": "2.3.0",
@@ -1764,7 +1764,7 @@
             "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
             "compiler": "unreported",
             "configuration": "RelWithDebInfo",
-            "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+            "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
           },
           "sourceRevision": "c4309a1ba489c4ea934ad231bbf6381321551351",
           "productSourceTree": "19a00b0a12cbeb3d536fd0f473a1220c418603de",
@@ -1776,7 +1776,7 @@
             "backendRequested": "qt",
             "backendVerified": false,
             "guiMode": "offscreen controls; interactive usability unmeasured",
-            "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+            "executable": "C:\\Users\\dev\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
             "executableSha256": "f975557a479659fc07b1155771da2b474b959c059d84b82ce1a913e57ba684c8",
             "sdk": {
               "version": "1.30.0",
@@ -2170,7 +2170,7 @@
             "cacheSha256": "b078f7eeb0bd6f3d620a499fe8b303059867dd50eb42382943693a2f6a60a85c",
             "compiler": "unreported",
             "configuration": "RelWithDebInfo",
-            "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6"
+            "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6"
           },
           "sourceRevision": "c4309a1ba489c4ea934ad231bbf6381321551351",
           "productSourceTree": "19a00b0a12cbeb3d536fd0f473a1220c418603de",
@@ -2182,7 +2182,7 @@
             "backendRequested": "qt",
             "backendVerified": false,
             "guiMode": "offscreen controls; interactive usability unmeasured",
-            "executable": "C:\\Essence_SC\\home\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
+            "executable": "C:\\Users\\dev\\.codex\\worktrees\\linked-regex-charts-p06\\klogg\\build_root\\output\\RelWithDebInfo\\cilogg.exe",
             "executableSha256": "f975557a479659fc07b1155771da2b474b959c059d84b82ce1a913e57ba684c8",
             "sdk": {
               "version": "2.3.0",

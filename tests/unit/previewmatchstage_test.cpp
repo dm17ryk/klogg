@@ -605,9 +605,10 @@ TEST_CASE( "Preview match stage decodes SRING payload", "[previewmatch]" )
 {
     loadMatchConfig();
 
+    // Synthetic payload: "EHCP029SYNTHETIC-TEST-PAYLOAD-NOT-REAL-DATA!C40D".
     const QString line = QString::fromLatin1(
-        "SRING: 1,48,4548435030323930303030303030303431303431303830303130303235313210"
-        "3130353734365A23302143343044" );
+        "SRING: 1,48,4548435030323953594E5448455449432D544553542D5041594C4F41442D"
+        "4E4F542D5245414C2D444154412143343044" );
 
     PreviewMessageTab tab( line, "SRING->EHCP", 1 );
     waitForPreview( tab );
@@ -623,8 +624,7 @@ TEST_CASE( "Preview match stage parses direct EHCP payload", "[previewmatch]" )
     loadMatchConfig();
 
     const QString line = QString::fromLatin1(
-        "12/10/2025 12:57:45.945 [RX] - #4 \"EHCP04202090100410411080010782512101057"
-        "37E#INN000000NNNSCE0Y8D6FDIPR1!D774\"" );
+        "01/01/2026 00:00:00.000 [RX] - #4 \"EHCP042SYNTHETIC-TEST-PAYLOAD!D774\"" );
 
     PreviewMessageTab tab( line, "EHCP direct", 1 );
     waitForPreview( tab );

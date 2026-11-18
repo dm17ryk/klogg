@@ -19,5 +19,8 @@ struct PreviewAssembly {
 };
 
 // A bounded physical-row snapshot of CP NET UART diagnostics, not a TCP decoder.
+// An HTTP carrier needs a Host header. With a nonempty httpHosts list its value must match
+// one entry (case-insensitive); an empty list accepts any host.
 PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetIndex,
-                                        quint64 firstPhysicalLine = 0 );
+                                        quint64 firstPhysicalLine = 0,
+                                        const QStringList& httpHosts = {} );

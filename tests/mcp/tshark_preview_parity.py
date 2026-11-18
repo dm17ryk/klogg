@@ -168,6 +168,8 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
     external = os.environ.get("CILOGG_PREVIEW_ENGINE_CONFIG")
     if external:
         external_config = json.loads(Path(external).read_text(encoding="utf-8"))
+        # The synthetic carrier below uses its own host; it replaces any host list of the pack.
+        external_config["assemblyHttpHosts"] = ["assembly.example"]
         pair("set_preview_decoder", external_config)
         manifests = [ROOT / "test_data/message_decoders/packs.json"]
         if os.environ.get("CILOGG_PREVIEW_EHCI_CAPABILITIES") == "1":
@@ -190,7 +192,7 @@ def exercise(cli, command, _finish, _rows, _normalized, catalog, artifacts):
                           if f["attributes"].get("name") == name]
                 assert actual == expected, (case["id"], name, "raw bytes", actual, expected)
         body = "EHCI001INF00000004TESTCRC0000"
-        headers = ["PUT fixture.dat HTTP/1.1", "Host: CARE-PANELINFO",
+        headers = ["PUT fixture.dat HTTP/1.1", "Host: assembly.example",
                    "Content-Length: %d" % len(body), "Content-Type: application/octet-stream", ""]
         header_bytes = len("\r\n".join(headers).encode()) + 2
         def chunk(parts, size):

@@ -29,7 +29,7 @@
       "configuration": "RelWithDebInfo",
       "configuredBackend": "qt",
       "productSourceTree": "d9152ee78e11582da91287c366c7dbb4226a75d5",
-      "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+      "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
       "searchEngine": "qt",
       "sourceRevision": "1bdcfb858e37ae29cbf074df9150e5ccf9f158a5",
       "testSourceTree": "59b6a03a339cdb772e2293a138b2fc337c366f7c"
