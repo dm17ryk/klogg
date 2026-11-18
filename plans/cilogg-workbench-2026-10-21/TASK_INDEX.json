@@ -1854,7 +1854,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "requirements": [
         "UX20"
       ],
