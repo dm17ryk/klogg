@@ -360,11 +360,14 @@ Parses the whole line as a single `text` field.
 
 ### Example 2: EHCP (direct)
 
-Log line (example):
+Log line (synthetic example):
 
 ```
-12/10/2025 12:57:45.945 [RX] - #4 "EHCP042020901004104108001078251210105737E#INN...!D774"
+01/01/2026 00:00:00.000 [RX] - #4 "EHCP01BSYNTHETIC-TEST-PAYLOAD!0000"
 ```
+
+Here `01B` (27) is the size, so `data` takes the 22 characters
+`SYNTHETIC-TEST-PAYLOAD`, and `0000` is the checksum.
 
 Config:
 
@@ -423,16 +426,16 @@ Config:
 
 ### Example 3: SRING → hex decode → EHCP (two-stage)
 
-SRING line:
+SRING line (synthetic example):
 
 ```
-SRING: 1,48,4548435030323930303030...
+SRING: 1,34,4548435030314253594E5448455449432D544553542D5041594C4F41442130303030
 ```
 
 Decoded payload becomes:
 
 ```
-EHCP029000000004104108001000251210105746Z#0!C40D
+EHCP01BSYNTHETIC-TEST-PAYLOAD!0000
 ```
 
 Config:

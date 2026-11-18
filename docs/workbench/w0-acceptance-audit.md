@@ -77,8 +77,9 @@ These remain owned work; none is reported as passed by this audit:
 
 ## MD01 input preflight
 
-The user supplied local Lua-plugin and capture directories. The actual
-`essence_ehcp.lua` and `essence_ehci.lua` are present, with 7,831 and 867 lines.
+The user supplied local Lua-plugin and capture directories. The actual private
+EHCP and EHCI Lua packs are present, with 7,831 and 867 lines; this public record
+names them `private-ehcp-pack.lua` and `private-ehci-pack.lua`.
 Four local PCAPNG files were located. Only names/lengths/hashes and installed
 tool versions are inventoried; no packet bodies or Lua source are copied into
 tracked files. Private path mappings remain in ignored local artifacts.

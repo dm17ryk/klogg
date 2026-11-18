@@ -59,7 +59,7 @@
         "configuredBackend": "qt",
         "localSdk": "Qt6.10.1",
         "productSourceTree": "f86985727a354813fd64a1ca9a5e55ddf379f469",
-        "qtPackage": "C:/Essence_SC/qt6.10.1/lib/cmake/Qt6",
+        "qtPackage": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
         "searchEngine": "qt",
         "sourceRevision": "567a47741e04e18fdfc655d5bc0242ff4fd1288f",
         "sourceState": "G02g uncommitted working tree; exact changed-source hashes in observations"
