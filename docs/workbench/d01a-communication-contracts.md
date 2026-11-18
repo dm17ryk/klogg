@@ -60,7 +60,7 @@ tested source. The same Windows MSVC 19.44 / Qt 6.10.1, Qt-only environment was
 used; these results do not replace hosted macOS or other-platform qualification.
 
 The native evidence below lives in the primary qualification checkout,
-C:/Essence_SC/home/.codex/worktrees/linked-regex-charts-p06/klogg, rather than
+C:/Users/dev/.codex/worktrees/linked-regex-charts-p06/klogg, rather than
 the secondary PR96 publication checkout. Private evidence is in
 build_root/ci96-97-green-full-ctest.log and its JSON result, with binary/source
 identities in build_root/ci96-97-green-runtime.json.

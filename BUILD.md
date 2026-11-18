@@ -36,10 +36,10 @@ pwsh.exe -NoExit -NoProfile -Command "&{Import-Module 'd:\Program Files\Microsof
 Set the environment expected by the repo:
 
 ```bat
-set QTDIR=C:\Essence_SC\QtSDK\6.12.0\msvc2022_64
+set QTDIR=C:\Qt\6.12.0\msvc2022_64
 set PATH=%QTDIR%\bin;%PATH%
 set CMAKE_PREFIX_PATH=%QTDIR%
-set CILOGG_WORKSPACE=D:\Essence_SC\lsrc\klogg
+set CILOGG_WORKSPACE=D:\src\klogg
 set CILOGG_BUILD_ROOT=build_root
 set platform=x64
 set CILOGG_QT=Qt6
@@ -82,7 +82,7 @@ environment with `aqtinstall==3.3.0`:
 
 ```powershell
 python -m pip install 'aqtinstall==3.3.0'
-python scripts/codex/aqt-windows-612.py install-qt windows desktop 6.12.0 win64_msvc2022_64 --outputdir C:\Essence_SC\QtSDK --modules qt5compat qtserialport qtimageformats --archives qtbase qtsvg qttools qttranslations
+python scripts/codex/aqt-windows-612.py install-qt windows desktop 6.12.0 win64_msvc2022_64 --outputdir C:\Qt --modules qt5compat qtserialport qtimageformats --archives qtbase qtsvg qttools qttranslations
 ```
 
 The adapter handles Qt 6.12's architecture-specific metadata directory while

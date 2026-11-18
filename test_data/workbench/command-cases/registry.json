@@ -10,9 +10,22 @@
     "P04": ["regex-lab"],
     "P05": ["value-counts"],
     "E13": ["plugin-views"],
+    "U15": ["u15_python_source_parity", "u15b_sources"],
     "U16": ["pane_operations_parity"]
   },
   "cases": [
+    {
+      "id": "u15_python_source_parity",
+      "kind": "u15-docks",
+      "action": "set_regex_lab",
+      "operations": ["open_file", "get_info", "focus_tab", "set_regex_lab", "get_regex_lab", "set_value_counts", "get_value_counts", "get_analysis_results", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
+    {
+      "id": "u15b_sources",
+      "kind": "u15b-sources",
+      "action": "search",
+      "operations": ["open_file", "get_info", "search", "preview_message", "plugin_manage", "invoke_plugin", "get_plugin_job", "get_plugins", "open_plugin_view", "run_script", "run_global_script", "get_global_script_status", "stop_global_script", "get_ui"]
+    },
     {
       "id": "pane_operations_parity",
       "kind": "pane-operations",

@@ -14,7 +14,7 @@ their existing behavior.
 ## Supported fragmented logs
 
 The first adapter supports the observed CP NET UART dump format: a `PUT` request
-with `Host: CARE-PANELINFO`, one positive `Content-Length`, and an EHCI body,
+with a `Host` header, one positive `Content-Length`, and an EHCI body,
 followed by task-tagged `NET Send message command` and `NET SendTCPData Len(...)`
 diagnostics. CILogg timestamp and RX/TX wrappers are supported. Continuations use
 the same direction, task and port. Unrelated diagnostics and other ports are
@@ -28,6 +28,13 @@ checksum or successful network delivery**. Missing or ambiguous dumps remain
 incomplete. This is reconstruction of decoded UTF-8 log text, not TCP sequence
 reassembly or recovery of bytes omitted by UART logging. Other carrier formats
 and new TShark decoders remain subsequent work.
+
+The `assemblyHttpHosts` list in the
+[preview decoder settings](workbench/tshark-preview.md) restricts which `Host`
+values mark a carrier request. It is empty by default, which accepts any host.
+Set it, for example from a private configuration pack, to the host names your
+devices use; the comparison ignores case. The list applies even while the TShark
+decoder is disabled.
 
 For continuations, a unique suffix immediately preceding the send diagnostic
 may exclude unrelated raw replies such as `OK`. Exclusions are counted in

@@ -93,6 +93,33 @@ TEST_CASE( "Preview dialog rejects invalid settings atomically", "[ui][previewde
                .contains( "invalid_dissector" ) );
 }
 
+TEST_CASE( "Preview dialog edits the assembly HTTP host list", "[ui][previewdecoderui]" )
+{
+    RestoreDecoder restore;
+    auto& settings = PreviewDecoderSettings::instance();
+    REQUIRE( settings.setConfiguration(
+        { { "assemblyHttpHosts", QVariantList{ "first.example", "second.example" } } } ) );
+    PreviewDecoderSettingsDialog dialog;
+    auto* hosts = dialog.findChild<QLineEdit*>( "decoderAssemblyHttpHosts" );
+    REQUIRE( hosts );
+    CHECK( hosts->text() == "first.example, second.example" );
+    auto* apply = dialog.findChild<QDialogButtonBox*>()->button( QDialogButtonBox::Apply );
+    hosts->setText( " one.example ,,two.example:8080, " );
+    apply->click();
+    CHECK( settings.configuration().value( "assemblyHttpHosts" )
+           == QVariantList{ "one.example", "two.example:8080" } );
+    const auto revision = settings.revision();
+    hosts->setText( "two words" );
+    apply->click();
+    CHECK( settings.revision() == revision );
+    CHECK( dialog.findChild<QLabel*>( "decoderValidationError" )
+               ->text()
+               .contains( "invalid_assembly_host" ) );
+    hosts->clear();
+    apply->click();
+    CHECK( settings.configuration().value( "assemblyHttpHosts" ).toList().isEmpty() );
+}
+
 TEST_CASE( "JSON pane uses supervised carrier selection and rejects stale delivery",
            "[ui][previewdecoderui]" )
 {

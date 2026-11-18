@@ -93,15 +93,29 @@ Today's panels (`src/ui/src/pluginuicontroller.cpp:644-735`) have these limits:
 
 | Direction | Method | Parameters |
 | --- | --- | --- |
-| host → plugin | `view/opened` | `view_id`, `window_id`, `context` (as in `invoke`) |
+| host → plugin | `view/opened` | `view_id`, `window_id`, `context` (as in `invoke`). Sent again, with the new tab's `context`, when the user chooses another source for the view (section 2.2.1). |
 | host → plugin | `view/closed` | `view_id`, `window_id` |
 | host → plugin | `view/event` | `view_id`, `window_id`, `element_id`, `type` (`changed`, `clicked`, `selected`, `edited`), `value`, `inputs` (all field values of the view). An `edited` event also carries `row_id`, `column_id` and `previous` (section 2.5). |
 | plugin → host | `view/update` | `view_id`, `window_id` (optional), and either `root` (a full element tree) or `patch` (a list of `{id, set: {...}}`, plus table row operations) |
-| plugin → host | `view/show` | `view_id`, `window_id` (optional; default is the most recently active CILogg window), and optional overrides `area`, `floating`, `title`, `focus` |
+| plugin → host | `view/show` | `view_id`, `window_id` (optional; default is the most recently active CILogg window), and optional overrides `area`, `floating`, `title`, `focus`, `source` (section 2.2.1) |
 | plugin → host | `view/hide` | `view_id`, `window_id` (optional; default is every window) |
 | plugin → host | `ui/message` | `message_id`, `window_id` (optional), `title`, `text`, `icon` (`info`, `warning`, `error`, `question`), `buttons` (from `ok`, `cancel`, `yes`, `no`, `retry`, `abort`, `ignore`, `close`), `default`, `timeout_ms` (optional), `modal` (default true) |
 | host → plugin | `ui/message_result` | `message_id`, `button`, `timed_out` |
 | plugin → host | `ui/close_message` | `message_id`. It closes an open box; the result reports `button: "closed"`. |
+
+#### 2.2.1 The tab a view follows
+
+A view has a **Source** row at its top: the focused tab (the default), a tab of any CILogg
+window, or a file (opened first if needed). The view's `context` is that tab's context, with the
+view's own `window_id` and `windowIndex`. Choosing another source sends `view/opened` again with
+the new `context`, and the view's action buttons run on that tab. With the focused tab, the
+context is the window's current tab when the view opens, and buttons use the current tab when
+pressed, as before. "All open files" is not offered: a view follows one source.
+
+Automation opens a view on a source with
+`command --action open_plugin_view --plugin-id <id> --view-id <view> [--source focused|tab:<id>|file:<path>] [--window-index <n>]`
+(native MCP: `open_plugin_view` with `plugin_id`, `view_id`, `source`); a plugin can pass
+`source` in `view/show`. See [choosing what a tool works on](source-picker.md).
 
 - `view/update` is accepted at any time while the plugin runs; it is not tied to a job. Without a
   `window_id`, it applies to the view in every window where it is open.

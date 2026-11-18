@@ -2,7 +2,7 @@
 
 All ten JPEG images were captured on 28 October 2026 from the **normal installed
 Windows CILogg**, build **26.04.2.1078**, running from
-`C:\Essence_SC\cilogg\cilogg.exe`. They replace the earlier portable-build captures.
+`C:\Tools\cilogg\cilogg.exe`. They replace the earlier portable-build captures.
 The viewer uses the installation's existing dark theme, font, and highlighter sets.
 
 | Image | Workflow |

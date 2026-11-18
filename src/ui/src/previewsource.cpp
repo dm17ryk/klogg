@@ -4,10 +4,18 @@
 #include "log.h"
 #include "logdata.h"
 #include "previewassembly.h"
+#include "previewdecodersettings.h"
 #include <QTextCodec>
 #include <algorithm>
 
 namespace {
+QStringList assemblyHttpHosts()
+{
+    return PreviewDecoderSettings::instance()
+        .configuration()
+        .value( "assemblyHttpHosts" )
+        .toStringList();
+}
 QStringList readRows( const std::shared_ptr<LogData>& source, const SourceSnapshot& snapshot,
                       quint64 first, int count, QString* error )
 {
@@ -96,7 +104,7 @@ PreparedPreview preparePreviewText( const QString& text, std::optional<quint64> 
     }
     result.text = lineOneBased ? withoutRecordEnd( rows[ target ] ) : text;
     if ( reassemble ) {
-        const auto assembled = assemblePreviewMessage( rows, target );
+        const auto assembled = assemblePreviewMessage( rows, target, 0, assemblyHttpHosts() );
         result.assembly = assembled.metadata();
         if ( assembled.state == "complete" )
             result.text = assembled.text;
@@ -138,8 +146,8 @@ PreparedPreview preparePreviewSource( const std::shared_ptr<LogData>& source, qu
         QString contextError;
         const auto rows = readRows( source, snapshot, first, 1024, &contextError );
         if ( contextError.isEmpty() ) {
-            const auto assembled
-                = assemblePreviewMessage( rows, static_cast<int>( physicalLine - first ), first );
+            const auto assembled = assemblePreviewMessage(
+                rows, static_cast<int>( physicalLine - first ), first, assemblyHttpHosts() );
             result.assembly = assembled.metadata();
             if ( !assembled.physicalLines.isEmpty() )
                 result.validationPhysicalLine

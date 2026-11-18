@@ -19,8 +19,8 @@ for example in PowerShell:
 
 ```powershell
 python scripts/plugins/message_decoder_pdu.py `
-  --tshark C:/Essence_SC/Wireshark/tshark.exe `
-  --text2pcap C:/Essence_SC/Wireshark/text2pcap.exe `
+  --tshark C:/Tools/Wireshark/tshark.exe `
+  --text2pcap C:/Tools/Wireshark/text2pcap.exe `
   --lua test_data/message_decoders/pdu_probe.lua `
   --manifest test_data/message_decoders/probe.json `
   --output build_root/md01-probe
@@ -98,12 +98,10 @@ that the Windows isolation profile proves Unix isolation.
 
 The [machine-readable observation summary](md01a-windows-observations.json)
 records source-coupled raw-result hashes and actual checks. The installed
-TShark/text2pcap 4.6.9 report Lua 5.4.6. The local external pack identities remain:
-
-| Input | SHA-256 |
-| --- | --- |
-| essence_ehcp.lua | `8c58aa088b8d151f0aa053e86d4de8aebe3f5e280771157fb8841f8276737d35` |
-| essence_ehci.lua | `7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea` |
+TShark/text2pcap 4.6.9 report Lua 5.4.6. The local external packs were the
+private EHCP and EHCI Lua packs (`private-ehcp-pack.lua` and
+`private-ehci-pack.lua` here); their hashes are kept with the private packs, not
+in this public record.
 
 | Case | Actual result |
 | --- | --- |

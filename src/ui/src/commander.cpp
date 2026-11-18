@@ -1,7 +1,8 @@
 #include "commander.h"
 
-#include <QFile>
+#include <QCoreApplication>
 #include <QEventLoop>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -173,6 +174,8 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "get_plugin_job" );
     case CommanderAction::CancelPluginJob:
         return QStringLiteral( "cancel_plugin_job" );
+    case CommanderAction::OpenPluginView:
+        return QStringLiteral( "open_plugin_view" );
     case CommanderAction::SetActionsEnabled:
         return QStringLiteral( "set_actions_enabled" );
     case CommanderAction::SetAutoResponsesEnabled:
@@ -248,6 +251,9 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == "invoke_plugin" ) { return CommanderAction::InvokePlugin; }
     if ( normalized == "get_plugin_job" ) { return CommanderAction::GetPluginJob; }
     if ( normalized == "cancel_plugin_job" ) { return CommanderAction::CancelPluginJob; }
+    if ( normalized == "open_plugin_view" ) {
+        return CommanderAction::OpenPluginView;
+    }
     if ( normalized == "list_reports" ) { return CommanderAction::ListReports; }
     if ( normalized == "create_report" ) { return CommanderAction::CreateReport; }
     if ( normalized == QStringLiteral( "open_file" ) ) {
@@ -515,6 +521,63 @@ bool isCommanderAnalysisAction( CommanderAction action )
         || action == CommanderAction::SetRegexLab || action == CommanderAction::ApplyRegexLabPattern;
 }
 
+std::optional<AnalysisSource> AnalysisSource::parse( const QString& text, QString* errorMessage )
+{
+    const auto value = text.trimmed();
+    AnalysisSource source;
+    if ( value.isEmpty() || value == QLatin1String( "focused" ) ) {
+        return source;
+    }
+    if ( value == QLatin1String( "all" ) ) {
+        source.kind = Kind::AllOpen;
+        return source;
+    }
+    if ( value.startsWith( QLatin1String( "tab:" ) ) && value.size() > 4 ) {
+        source.kind = Kind::Tab;
+        source.tabId = value.mid( 4 );
+        return source;
+    }
+    if ( value.startsWith( QLatin1String( "file:" ) ) && value.size() > 5 ) {
+        source.kind = Kind::File;
+        source.filePath = value.mid( 5 );
+        return source;
+    }
+    if ( errorMessage ) {
+        *errorMessage = QCoreApplication::translate(
+                            "AnalysisSource",
+                            "Unknown source \"%1\"; use focused, all, tab:<id> or file:<path>." )
+                            .arg( value );
+    }
+    return std::nullopt;
+}
+
+QString AnalysisSource::toString() const
+{
+    switch ( kind ) {
+    case Kind::Focused:
+        return QStringLiteral( "focused" );
+    case Kind::AllOpen:
+        return QStringLiteral( "all" );
+    case Kind::Tab:
+        return QStringLiteral( "tab:" ) + tabId;
+    case Kind::File:
+        return QStringLiteral( "file:" ) + filePath;
+    }
+    return QStringLiteral( "focused" );
+}
+
+bool commanderActionAcceptsSource( CommanderAction action )
+{
+    return action == CommanderAction::InvokePlugin || action == CommanderAction::OpenPluginView
+           || action == CommanderAction::RunScript || action == CommanderAction::PreviewMessage
+           || action == CommanderAction::Search;
+}
+
+bool hasCommanderTabSelector( const CommanderRequest& request )
+{
+    return !request.tabId.isEmpty() || request.tabIndex.has_value();
+}
+
 bool isCommanderPaneAction( CommanderAction action )
 {
     return action == CommanderAction::SplitPane || action == CommanderAction::FocusPane
@@ -531,6 +594,10 @@ QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
     map.insert( QStringLiteral( "pluginAction" ), request.pluginAction );
     map.insert( QStringLiteral( "pluginJobId" ), request.pluginJobId );
     map.insert( QStringLiteral( "pluginArguments" ), request.pluginArguments );
+    if ( !request.viewId.isEmpty() )
+        map.insert( QStringLiteral( "viewId" ), request.viewId );
+    if ( !request.source.isEmpty() )
+        map.insert( QStringLiteral( "source" ), request.source );
     if ( !request.analysisArguments.isEmpty() ) map.insert( QStringLiteral( "analysisArguments" ), request.analysisArguments );
 
     if ( !request.filePath.isEmpty() ) {
@@ -718,6 +785,13 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.pluginAction = map.value( QStringLiteral( "pluginAction" ) ).toString();
     request.pluginJobId = map.value( QStringLiteral( "pluginJobId" ) ).toString();
     request.pluginArguments = map.value( QStringLiteral( "pluginArguments" ) ).toMap();
+    request.viewId = map.value( QStringLiteral( "viewId" ) ).toString();
+    if ( map.contains( QStringLiteral( "source" ) )
+         && map.value( QStringLiteral( "source" ) ).userType() != QMetaType::QString ) {
+        setError( errorMessage, QStringLiteral( "The commander source must be a string." ) );
+        return std::nullopt;
+    }
+    request.source = map.value( QStringLiteral( "source" ) ).toString();
     if ( map.contains( "analysisArguments" ) && map.value( "analysisArguments" ).userType() != QMetaType::QVariantMap ) {
         setError( errorMessage, "Analysis arguments must be an object." );
         return std::nullopt;

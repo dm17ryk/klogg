@@ -53,6 +53,12 @@ bool encoding( const QString& value )
 {
     return value == "utf8" || value == "hex" || value == "base64";
 }
+bool httpHost( const QVariant& value )
+{
+    // Printable ASCII without spaces or commas: a host name, optionally with a port.
+    static const QRegularExpression pattern( "\\A[\\x21-\\x2B\\x2D-\\x7E]{1,255}\\z" );
+    return isString( value ) && pattern.match( value.toString() ).hasMatch();
+}
 bool path( const QString& value, bool executable, bool empty )
 {
     if ( value.isEmpty() )
@@ -73,7 +79,8 @@ bool normalize( const QVariantMap& input, QVariantMap* output, QString* error )
                         { "defaultDissector", "" },
                         { "inputEncoding", "utf8" },
                         { "previewRoutes", QVariantMap{} },
-                        { "protocolRoutes", QVariantMap{} } };
+                        { "protocolRoutes", QVariantMap{} },
+                        { "assemblyHttpHosts", QVariantList{} } };
     const auto reject = [ error ]( const QString& reason ) {
         if ( error )
             *error = reason;
@@ -103,6 +110,12 @@ bool normalize( const QVariantMap& input, QVariantMap* output, QString* error )
             return reject( "invalid_script" );
     if ( enabled && !scripts.isEmpty() && !config.value( "allowExternalLua" ).toBool() )
         return reject( "external_lua_not_approved" );
+    const auto hosts = config.value( "assemblyHttpHosts" ).toList();
+    if ( hosts.size() > 16 )
+        return reject( "assembly_host_limit" );
+    for ( const auto& host : hosts )
+        if ( !httpHost( host ) )
+            return reject( "invalid_assembly_host" );
     for ( const auto* key : { "previewRoutes", "protocolRoutes" } ) {
         auto routes = config.value( key ).toMap();
         const bool protocol = QString::fromLatin1( key ) == "protocolRoutes";

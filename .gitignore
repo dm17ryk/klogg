@@ -62,6 +62,9 @@ cmake-build-relwithdebinfo/
 website/hugo
 website/resources/
 
+# Generated code indexes (ctags; the GitNexus database is ignored below)
+.vscode-ctags*
+
 # Local debug/backups
 config/klogg_session_bak.conf
 tmp_abc.txt

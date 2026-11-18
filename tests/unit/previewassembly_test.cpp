@@ -25,16 +25,20 @@ void chunk( QStringList& rows, const QStringList& payload, qint64 bytes, int por
         QString( "#12 102 INFO:NET TCP message was sent successfully Len(%1)" ).arg( bytes ) );
     rows << wrapped( "#12 103 DETAILS:NET return value:0" );
 }
-QStringList headers( qint64 length )
+const QString Host = QStringLiteral( "Host: assembly.example" );
+QStringList headers( qint64 length, const QString& host )
 {
-    return { "PUT sample.dat HTTP/1.1", "Host: CARE-PANELINFO",
-             QString( "Content-Length: %1" ).arg( length ),
-             "Content-Type: application/octet-stream", "" };
+    QStringList fields{ "PUT sample.dat HTTP/1.1", QString( "Content-Length: %1" ).arg( length ),
+                        "Content-Type: application/octet-stream", "" };
+    if ( !host.isEmpty() )
+        fields.insert( 1, host );
+    return fields;
 }
 const QString Message = QStringLiteral( "EHCI001INF00000004TESTCRC0000" );
-QStringList firstChunk( qint64 advertised = Message.size(), int bytesDelta = 0 )
+QStringList firstChunk( qint64 advertised = Message.size(), int bytesDelta = 0,
+                        const QString& host = Host )
 {
-    auto payload = headers( advertised );
+    auto payload = headers( advertised, host );
     const auto headerBytes = payload.join( "\r\n" ).toUtf8().size() + 2;
     payload << Message.left( 15 );
     QStringList rows;
@@ -131,6 +135,34 @@ TEST_CASE( "Equal-byte continuation candidates with different physical rows rema
     CHECK( result.state == "incomplete" );
     CHECK( result.reason == "ambiguous_fragment" );
     CHECK( result.receivedBytes == 15 );
+}
+
+TEST_CASE( "A configured HTTP host list selects the carrier requests", "[previewassembly]" )
+{
+    const auto assembled = []( const QString& host, const QStringList& hosts ) {
+        auto rows = firstChunk( Message.size(), 0, host );
+        chunk( rows, { Message.mid( 15 ) }, Message.size() - 15 );
+        const auto target = static_cast<int>( rows.indexOf( wrapped( Message.left( 15 ) ) ) );
+        REQUIRE( target >= 0 );
+        return assemblePreviewMessage( rows, target, 0, hosts );
+    };
+    SECTION( "an empty list accepts any host" )
+    {
+        CHECK( assembled( "Host: other.example", {} ).state == "complete" );
+    }
+    SECTION( "listed hosts match without regard to case or surrounding blanks" )
+    {
+        const QStringList hosts{ "first.example", "ASSEMBLY.EXAMPLE" };
+        CHECK( assembled( Host, hosts ).state == "complete" );
+        CHECK( assembled( "host:\tassembly.example ", hosts ).state == "complete" );
+    }
+    SECTION( "other hosts and requests without a host are not carriers" )
+    {
+        CHECK( assembled( Host, { "other.example" } ).state == "unavailable" );
+        CHECK( assembled( "Host: assembly.example.test", { "assembly.example" } ).state
+               == "unavailable" );
+        CHECK( assembled( QString(), {} ).state == "unavailable" );
+    }
 }
 
 TEST_CASE( "Ordinary log rows and diagnostics are not payload fragments", "[previewassembly]" )

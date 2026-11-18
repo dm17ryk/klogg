@@ -61,6 +61,77 @@ TEST_CASE( "file_source_without_tab", "[workbench][U15]" )
     REQUIRE( closed.fileToOpen == "/logs/c.log" );
 }
 
+TEST_CASE( "source_rules_reject_and_filter: tools refuse the sources they cannot use",
+           "[workbench][U15]" )
+{
+    const auto open = OpenSource::fromVariantList( {
+        QVariantMap{ { "tabId", "f1" }, { "filePath", "/logs/a.log" }, { "sourceType", "file" } },
+        QVariantMap{ { "tabId", "c1" },
+                     { "filePath", "/captures/c1.log" },
+                     { "sourceType", "com" },
+                     { "focused", true } },
+        QVariantMap{ { "tabId", "u1" }, { "filePath", "/remote/u.log" }, { "sourceType", "url" } },
+        QVariantMap{
+            { "tabId", "c2" }, { "filePath", "/captures/c2.log" }, { "sourceType", "com" } },
+    } );
+    REQUIRE( open.at( 1 ).sourceType == "com" );
+    const auto parse = []( const char* text ) { return *AnalysisSource::parse( text ); };
+
+    // Preview and plugin views: one source at a time.
+    const auto one = SourceRules::oneSource();
+    const auto all = resolveAnalysisSource( parse( "all" ), open, one );
+    REQUIRE( all.reason == "invalid_source" );
+    REQUIRE_FALSE( all.message.isEmpty() );
+    REQUIRE( resolveAnalysisSource( parse( "tab:u1" ), open, one ).tabIds == QStringList{ "u1" } );
+    REQUIRE( resolveAnalysisSource( parse( "file:/logs/a.log" ), open, one ).tabIds
+             == QStringList{ "f1" } );
+
+    // Script Runner: live COM tabs only; a file is never a live session.
+    const auto com = SourceRules::liveComTabs();
+    REQUIRE( resolveAnalysisSource( parse( "all" ), open, com ).tabIds
+             == QStringList{ "c1", "c2" } );
+    REQUIRE( resolveAnalysisSource( parse( "focused" ), open, com ).tabIds == QStringList{ "c1" } );
+    REQUIRE( resolveAnalysisSource( parse( "tab:c2" ), open, com ).tabIds == QStringList{ "c2" } );
+    REQUIRE( resolveAnalysisSource( parse( "tab:f1" ), open, com ).reason == "not_com_tab" );
+    REQUIRE( resolveAnalysisSource( parse( "file:/captures/c1.log" ), open, com ).reason
+             == "invalid_source" );
+    const auto noCom = OpenSource::fromVariantList(
+        { QVariantMap{ { "tabId", "f1" }, { "filePath", "/logs/a.log" }, { "focused", true } } } );
+    REQUIRE( resolveAnalysisSource( parse( "all" ), noCom, com ).reason == "no_open_sources" );
+    REQUIRE( resolveAnalysisSource( parse( "focused" ), noCom, com ).reason == "not_com_tab" );
+
+    // The default rules are U15a's: everything is allowed.
+    REQUIRE( resolveAnalysisSource( parse( "all" ), open ).tabIds.size() == 4 );
+
+    // get_info windows become the same source list the pickers use.
+    const QVariantList windows{
+        QVariantMap{ { "windowIndex", 0 },
+                     { "isActiveWindow", false },
+                     { "currentTabId", "f1" },
+                     { "tabs", QVariantList{ QVariantMap{ { "tabId", "f1" },
+                                                          { "tabIndex", 0 },
+                                                          { "filePath", "/logs/a.log" },
+                                                          { "displayName", "a.log" },
+                                                          { "sourceType", "file" } } } } },
+        QVariantMap{ { "windowIndex", 1 },
+                     { "isActiveWindow", true },
+                     { "currentTabId", "c1" },
+                     { "tabs", QVariantList{ QVariantMap{ { "tabId", "c1" },
+                                                          { "tabIndex", 0 },
+                                                          { "filePath", "/captures/c1.log" },
+                                                          { "displayName", "COM5" },
+                                                          { "sourceType", "com" } } } } },
+    };
+    const auto listed = OpenSource::fromVariantList( analysisSourcesFromWindowInfo( windows ) );
+    REQUIRE( listed.size() == 2 );
+    REQUIRE_FALSE( listed.at( 0 ).focused );
+    REQUIRE( listed.at( 1 ).focused );
+    REQUIRE( listed.at( 1 ).windowIndex == 1 );
+    REQUIRE( listed.at( 1 ).sourceType == "com" );
+    REQUIRE( listed.at( 1 ).label.contains( "COM5" ) );
+    REQUIRE( listed.at( 1 ).label.contains( "2" ) ); // names the second window
+}
+
 TEST_CASE( "all_open_files_every_tab", "[workbench][U15]" )
 {
     REQUIRE( resolveAnalysisSource( *AnalysisSource::parse( "all" ), {} ).reason

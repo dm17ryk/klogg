@@ -6,8 +6,7 @@ preview integration. It preserves the remaining MD01, W0 and generic MD03 gates.
 
 ## Cause and repair
 
-The original pinned EHCI pack (SHA-256
-7cf4bef218f2d48b0dc229c950d91a82a52bb29c3b2de50cdc6411914ffddaea)
+The original pinned EHCI pack (its SHA-256 is kept with the private pack)
 produces no protocol tree for bare partial and direct embedded-NUL inputs.
 The native byte-API probe observed string length 1 and raw length 10 for a
 10-byte synthetic buffer containing NUL. Exported-PDU can_desegment was numeric 0;
@@ -26,8 +25,7 @@ like checksum markers. The reproduced failure is fixed by giving a valid tag
 header priority over a CRC prefix. Public synthetic regression coverage includes
 both tags, a following INF map and a valid terminal checksum.
 
-The qualified private copy has SHA-256
-2f7d0209cf3166a38867e88603fcbdc579f00766d1c75335d7e1e7df073d3c80.
+The SHA-256 of the qualified private copy is kept with the private pack.
 The public PR contains synthetic fixtures, raw-byte proof assertions and
 end-to-end qualification tests. It does not redistribute private Lua or captures;
 external-pack licensing/distribution remains unverified.
@@ -105,7 +103,7 @@ additional rows continue below the visible area.
 ## Local qualified pack
 
 The local qualification installs byte-verified scripts into
-`%LOCALAPPDATA%\CILogg\decoder-packs\md01e-2f7d0209`. The directory also contains
+`%LOCALAPPDATA%\CILogg\decoder-packs\md01e-<pack hash prefix>`. The directory also contains
 `decoder-settings.json`, with trusted explicit tool/script paths and an EHCI
 assembly route. Load that configuration through `set_preview_decoder` using the
 existing CLI JSON-file option or the equivalent native-MCP configuration object.
@@ -113,7 +111,7 @@ The versioned directory is CILogg-specific; global Wireshark upgrade, full-captu
 acceptance and private-pack redistribution remain separate gates.
 
 For historical pinned-pack negative tests, point `CILOGG_EHCI_LUA` at the original
-7cf4bef2 pack. Point `CILOGG_EHCI_CAPABILITIES_LUA` at the qualified 2f7d0209 copy
+pack. Point `CILOGG_EHCI_CAPABILITIES_LUA` at the qualified copy
 for this profile. Their separate opt-ins preserve the original evidence epoch.
 
 ## PR90 review follow-up

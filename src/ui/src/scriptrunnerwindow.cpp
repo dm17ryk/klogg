@@ -12,6 +12,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "analysissource.h"
 #include "scriptsupervisor.h"
 
 namespace {
@@ -38,7 +39,7 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     , summaryLabel_( new QLabel( this ) )
     , subscriptionsLabel_( new QLabel( this ) )
     , outputEdit_( new QPlainTextEdit( this ) )
-    , runButton_( new QPushButton( tr( "Run On Active Tab" ), this ) )
+    , runButton_( new QPushButton( tr( "Run On" ), this ) )
     , runGlobalButton_( new QPushButton( tr( "Run Global" ), this ) )
     , rerunGlobalButton_( new QPushButton( tr( "Rerun Global" ), this ) )
     , stopGlobalButton_( new QPushButton( tr( "Stop Global" ), this ) )
@@ -70,7 +71,15 @@ ScriptRunnerWindow::ScriptRunnerWindow( ScriptSupervisor* supervisor, QWidget* p
     buttonRow->addWidget( stopGlobalButton_ );
     buttonRow->addSpacing( 12 );
     auto* openFolderButton = new QPushButton( tr( "Open Folder" ), this );
+    runButton_->setObjectName( QStringLiteral( "scriptRunnerRun" ) );
+    runSource_ = new AnalysisSourcePicker(
+        [ supervisor ] { return supervisor ? supervisor->toolSources() : QVariantList{}; },
+        SourceRules::liveComTabs(), this );
+    runSource_->setObjectName( QStringLiteral( "scriptRunnerSource" ) );
+    runSource_->setAccessibleName( tr( "Run the script on" ) );
+    runSource_->setToolTip( tr( "The focused tab, one COM tab or every COM tab" ) );
     buttonRow->addWidget( runButton_ );
+    buttonRow->addWidget( runSource_ );
     buttonRow->addWidget( rerunButton_ );
     buttonRow->addWidget( stopButton_ );
     buttonRow->addWidget( openFolderButton );
@@ -156,8 +165,12 @@ void ScriptRunnerWindow::runScript()
     request.action = CommanderAction::RunScript;
     request.scriptFilePath = scriptPathEdit_->text().trimmed();
     request.argsJsonFilePath = argsJsonPathEdit_->text().trimmed();
-    supervisor_->runScript( request );
+    request.source = runSource_->selection();
+    const auto result = supervisor_->runScript( request );
     refreshFromSupervisor();
+    if ( !result.ok() ) {
+        statusLabel_->setText( tr( "Status: %1" ).arg( result.message ) );
+    }
 }
 
 void ScriptRunnerWindow::runGlobalScript()

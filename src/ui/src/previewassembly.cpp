@@ -24,6 +24,14 @@ QString trimRecordEnd( QString line )
         line.chop( 1 );
     return line;
 }
+bool acceptedHost( const QString& header, const QStringList& hosts )
+{
+    static const QRegularExpression field( R"(^Host:[ \t]*(\S+)[ \t]*$)",
+                                           QRegularExpression::CaseInsensitiveOption );
+    const auto host = field.match( header );
+    return host.hasMatch()
+           && ( hosts.isEmpty() || hosts.contains( host.captured( 1 ), Qt::CaseInsensitive ) );
+}
 } // namespace
 
 QVariantMap PreviewAssembly::metadata() const
@@ -45,7 +53,7 @@ QVariantMap PreviewAssembly::metadata() const
 }
 
 PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetIndex,
-                                        quint64 firstPhysicalLine )
+                                        quint64 firstPhysicalLine, const QStringList& httpHosts )
 {
     PreviewAssembly unavailable;
     if ( lines.size() > MaxRows ) {
@@ -163,9 +171,7 @@ PreviewAssembly assemblePreviewMessage( const QStringList& lines, int targetInde
                         }
                         expected = field.captured( 1 ).toLongLong();
                     }
-                    host = host
-                           || payload[ i ].compare( "Host: CARE-PANELINFO", Qt::CaseInsensitive )
-                                  == 0;
+                    host = host || acceptedHost( payload[ i ], httpHosts );
                 }
                 if ( host && expected > 0 && body > 0 && body < payload.size()
                      && payload[ body ].startsWith( "EHCI" ) ) {

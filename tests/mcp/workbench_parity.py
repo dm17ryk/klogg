@@ -95,6 +95,16 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") in ("u15-docks", "u15b-sources"):
+            from workbench_sources import exercise_docks, exercise_tools
+
+            handler = exercise_docks if case["kind"] == "u15-docks" else exercise_tools
+            result = handler(cli, command, catalog, artifacts)
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         if case.get("kind") == "pane-operations":
             from workbench_panes import exercise_panes
 
@@ -203,15 +213,28 @@ def main(arguments=None):
 
         cases = select_cases(args.task)
         setup_payload = None
-        if any(case.get("kind") in ("plugin-views", "pane-operations") for case in cases):
+        kinds = {case.get("kind") for case in cases}
+        if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources"}:
             import os
 
-            # Plugin views and the pane case's Python API script run in this interpreter.
+            # Plugin views, the pane case's Python API script and the U15 Python fixtures run
+            # in this interpreter.
             os.environ.setdefault("CILOGG_SCRIPT_PYTHON", sys.executable)
-        if any(case.get("kind") == "plugin-views" for case in cases):
+        steps = []
+        if kinds & {"plugin-views", "u15b-sources"}:
             from workbench_plugin_views import install_view_demo
 
-            setup_payload = install_view_demo
+            steps.append(install_view_demo)
+        if kinds & {"u15-docks", "u15b-sources"}:
+            from workbench_sources import install_python_runtime
+
+            steps.append(install_python_runtime)
+        if steps:
+
+            def setup_payload(payload):
+                for step in steps:
+                    step(payload)
+
         run(
             args.executable.resolve(),
             args.artifacts.resolve(),

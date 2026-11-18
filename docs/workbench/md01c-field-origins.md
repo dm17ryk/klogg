@@ -6,8 +6,8 @@ passed through the named Exported-PDU bridge. MD01 and G02/W0 remain open.
 
 ```powershell
 python scripts/plugins/message_decoder_origins.py `
-  --tshark C:/Essence_SC/Wireshark/tshark.exe `
-  --text2pcap C:/Essence_SC/Wireshark/text2pcap.exe `
+  --tshark C:/Tools/Wireshark/tshark.exe `
+  --text2pcap C:/Tools/Wireshark/text2pcap.exe `
   --lua test_data/message_decoders/pdu_probe.lua `
   --manifest test_data/message_decoders/probe.json `
   --output build_root/decoder-origin-proof
