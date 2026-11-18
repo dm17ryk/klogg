@@ -22,6 +22,7 @@ private:
     QLineEdit* text2pcap_;
     QLineEdit* dissector_;
     QComboBox* encoding_;
+    QLineEdit* assemblyHosts_;
     QListWidget* scripts_;
     QTableWidget* previewRoutes_;
     QTableWidget* protocolRoutes_;

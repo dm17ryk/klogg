@@ -78,7 +78,7 @@ visualization plans and must be verified again before dependent code changes.
 ## Toolchain and validation boundaries
 
 - C++17 and existing Qt5/Qt6 core compatibility remain requirements.
-- Local usable SDK: `C:\Essence_SC\qt6.10.1`; `bin\qmake.exe` exists. The configured
+- Local usable SDK: `C:\Qt\6.10.1\msvc2022_64`; `bin\qmake.exe` exists. The configured
   Qt 6.12 directory has no `bin\qmake.exe`. The user authorized Qt 6.10.1 locally
   and Qt 6.12 in CI; do not silently change the local SDK to an incomplete folder.
 - Build only in the worktree's `build_root`; use the repository's clean Windows

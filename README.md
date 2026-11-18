@@ -78,8 +78,8 @@ Log views use the included [sample device log](docs/examples/device-session.txt)
 <td width="50%"><strong>🔁 React to incoming logs</strong><br>Configure match rules and automatic responses.</td>
 </tr>
 <tr>
-<td><a href="docs/images/actions-showcase.jpg"><img src="docs/images/actions-showcase.jpg" alt="Normal CILogg Actions window with COM routing and reusable command sequences" width="100%"></a></td>
-<td><a href="docs/images/responses-showcase.jpg"><img src="docs/images/responses-showcase.jpg" alt="Normal CILogg Responses window with enabled match rules" width="100%"></a></td>
+<td><a href="docs/images/actions-showcase.jpg"><img src="docs/images/actions-showcase.jpg" alt="CILogg Actions window with the action-tab selector and reusable command sequences" width="100%"></a></td>
+<td><a href="docs/images/responses-showcase.jpg"><img src="docs/images/responses-showcase.jpg" alt="CILogg Responses window with text, hex and regex match rules" width="100%"></a></td>
 </tr>
 <tr>
 <td><strong>🧩 Connect more log sources</strong><br>Manage bundled ADB Logcat and Syslog plugins.</td>
@@ -211,7 +211,7 @@ cilogg command --help
 From a local Windows build tree, run the executable from `build_root`:
 
 ```powershell
-cd D:\Essence_SC\lsrc\klogg\build_root
+cd D:\src\klogg\build_root
 .\output\RelWithDebInfo\cilogg.exe --help
 .\output\RelWithDebInfo\cilogg.exe command --help
 ```
@@ -220,7 +220,7 @@ Before running build-tree executables on Windows, deploy the Qt runtime DLLs
 next to the executable:
 
 ```powershell
-$env:QTDIR = 'C:\Essence_SC\QtSDK\6.12.0\msvc2022_64'
+$env:QTDIR = 'C:\Qt\6.12.0\msvc2022_64'
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_tests.exe"
 & "$env:QTDIR\bin\windeployqt.exe" ".\output\RelWithDebInfo\cilogg_itests.exe"

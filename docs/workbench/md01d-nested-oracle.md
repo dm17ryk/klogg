@@ -9,8 +9,8 @@ Full MD01 and G02/W0 acceptance remain open.
 
 ```powershell
 python scripts/plugins/message_decoder_pdu.py `
-  --tshark C:/Essence_SC/Wireshark/tshark.exe `
-  --text2pcap C:/Essence_SC/Wireshark/text2pcap.exe `
+  --tshark C:/Tools/Wireshark/tshark.exe `
+  --text2pcap C:/Tools/Wireshark/text2pcap.exe `
   --lua test_data/message_decoders/sring_probe.lua `
   --manifest test_data/message_decoders/nested-strict.json `
   --output build_root/strict-nested-proof

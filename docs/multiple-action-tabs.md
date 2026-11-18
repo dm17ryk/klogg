@@ -1,6 +1,6 @@
 # Multiple Actions tabs
 
-![Normal CILogg Actions window with the action-tab selector and reusable commands](images/actions-showcase.jpg)
+![CILogg Actions window with the action-tab selector and reusable commands; no destination is connected](images/actions-showcase.jpg)
 
 Every live communication tab has its own **Actions enabled** flag. Enable or
 disable it in the tab's right-click menu or **File > COM ports > port > Actions

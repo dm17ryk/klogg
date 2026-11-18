@@ -316,6 +316,48 @@ TEST_CASE( "Decoder revisions belong only to internal snapshots", "[previewdecod
            == PreviewDecoderSettings::instance().revision() );
 }
 
+TEST_CASE( "Assembly HTTP hosts are validated and select carriers for text previews",
+           "[previewdecoder][previewassembly]" )
+{
+    RestoreDecoder restore;
+    auto& settings = PreviewDecoderSettings::instance();
+    REQUIRE( settings.setConfiguration( {} ) );
+    CHECK( settings.configuration().value( "assemblyHttpHosts" ).toList().isEmpty() );
+    QString error;
+    CHECK_FALSE( settings.setConfiguration( { { "assemblyHttpHosts", "assembly.example" } }, &error ) );
+    CHECK( error == "invalid_type" );
+    for ( const auto& host : { QVariant( "two words" ), QVariant( "a,b" ), QVariant( "" ),
+                               QVariant( 7 ), QVariant( QString( 256, QLatin1Char( 'x' ) ) ) } ) {
+        CHECK_FALSE(
+            settings.setConfiguration( { { "assemblyHttpHosts", QVariantList{ host } } }, &error ) );
+        CHECK( error == "invalid_assembly_host" );
+    }
+    QVariantList many;
+    for ( int i = 0; i < 17; ++i )
+        many << QString( "host%1.example" ).arg( i );
+    CHECK_FALSE( settings.setConfiguration( { { "assemblyHttpHosts", many } }, &error ) );
+    CHECK( error == "assembly_host_limit" );
+    CHECK( settings.configuration().value( "assemblyHttpHosts" ).toList().isEmpty() );
+
+    const QString body = "EHCI001INF00000004TESTCRC0000";
+    QStringList rows{ "PUT sample.dat HTTP/1.1", "Host: assembly.example",
+                      QString( "Content-Length: %1" ).arg( body.size() ),
+                      "Content-Type: application/octet-stream", "" };
+    const auto bytes = rows.join( "\r\n" ).toUtf8().size() + 2 + body.toUtf8().size();
+    rows << body << "#12 1 INFO:NET Send message command: 5975"
+         << QString( "#12 2 DETAILS:NET SendTCPData Len(%1) Port(5975)" ).arg( bytes );
+    const auto text = rows.join( '\n' );
+    CHECK( preparePreviewText( text ).text == body );
+    REQUIRE( settings.setConfiguration(
+        { { "assemblyHttpHosts", QVariantList{ "first.example", "Assembly.Example:80" } } } ) );
+    CHECK( preparePreviewText( text ).assembly.value( "state" ) == "unavailable" );
+    REQUIRE( settings.setConfiguration(
+        { { "assemblyHttpHosts", QVariantList{ "first.example", "Assembly.Example" } } } ) );
+    const auto prepared = preparePreviewText( text );
+    CHECK( prepared.assembly.value( "state" ) == "complete" );
+    CHECK( prepared.text == body );
+}
+
 TEST_CASE( "Native decoder routes retain named carrier precedence", "[previewdecoder]" )
 {
     if ( qEnvironmentVariable( "CILOGG_TSHARK" ).isEmpty()

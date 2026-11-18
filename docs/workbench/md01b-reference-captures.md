@@ -12,10 +12,10 @@ Use Python 3.9+, the Windows Wireshark tools and explicitly trusted Lua packs:
 
 ```powershell
 python scripts/plugins/message_decoder_reference.py `
-  --tshark C:/Essence_SC/Wireshark/tshark.exe `
-  --text2pcap C:/Essence_SC/Wireshark/text2pcap.exe `
-  --lua <path-to-essence_ehcp.lua> `
-  --lua <path-to-essence_ehci.lua> `
+  --tshark C:/Tools/Wireshark/tshark.exe `
+  --text2pcap C:/Tools/Wireshark/text2pcap.exe `
+  --lua <path-to-private-ehcp-pack.lua> `
+  --lua <path-to-private-ehci-pack.lua> `
   --capture <private-reference.pcapng> `
   --sha256 <expected-capture-sha256> `
   --dissector ehcp `
