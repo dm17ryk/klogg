@@ -72,3 +72,13 @@ tmp_abc.txt
 # python
 __pycache__/
 .gitnexus
+
+# Private configuration and panel logs: kept in the private plugin repository, never here.
+/config/preview_EHCP.json
+/config/preview_EHCI.json
+/config/preview_AT.json
+/config/actions.json
+/config/highlights.conf
+/config/Communication Sniffer Filters.conf
+/config/*.zip
+/codex_tasks/HL_BUG_*
