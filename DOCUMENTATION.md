@@ -104,7 +104,7 @@ to incoming lines. Typed parameters let a command definition guide data entry.
 
 The response editor links an incoming match to a sequence of actions and delays:
 
-[![Response editor showing the Panel Ready trigger and linked action steps](docs/images/response-editor-showcase.jpg)](docs/images/response-editor-showcase.jpg)
+[![Response editor showing a Gateway ready trigger and linked action steps](docs/images/response-editor-showcase.jpg)](docs/images/response-editor-showcase.jpg)
 
 - [Commander and serial workflows](README.md#commander-automation)
 - [Routing actions across multiple serial tabs](docs/multiple-action-tabs.md)

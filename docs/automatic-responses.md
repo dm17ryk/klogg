@@ -1,6 +1,6 @@
 # Per-tab automatic responses
 
-![Normal CILogg Responses window with configured match rules](images/responses-showcase.jpg)
+![CILogg Responses window with configured match rules](images/responses-showcase.jpg)
 
 [Inspect the response editor →](images/response-editor-showcase.jpg) or browse the
 [complete screenshot gallery](screenshots.md#device-workflows).

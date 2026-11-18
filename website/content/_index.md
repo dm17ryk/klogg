@@ -51,7 +51,7 @@ Discover the values that dominate your log, then filter, navigate, or export CSV
 
 | Reusable device commands | Automatic responses |
 | --- | --- |
-| [![Actions with COM routing and command sequences](screenshots/actions-showcase.jpg)](screenshots/actions-showcase.jpg) | [![Responses with configured match rules](screenshots/responses-showcase.jpg)](screenshots/responses-showcase.jpg) |
+| [![Actions with the action-tab selector and command sequences](screenshots/actions-showcase.jpg)](screenshots/actions-showcase.jpg) | [![Responses with configured match rules](screenshots/responses-showcase.jpg)](screenshots/responses-showcase.jpg) |
 
 | Bundled sources and plugins | Highlighter sets |
 | --- | --- |
