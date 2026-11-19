@@ -20,6 +20,7 @@ add_executable(cilogg_tests
     plugin_credentials_test.cpp
     plugin_signin_test.cpp
     plugin_updates_test.cpp
+    configpack_test.cpp
     mcp_test.cpp
     configuration_test.cpp
     captureevaluator_test.cpp
@@ -61,6 +62,7 @@ target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"
     CILOGG_APP_DIR="$<TARGET_FILE_DIR:klogg>"
     PREVIEW_PUBLIC_LUA_PATH="${CMAKE_SOURCE_DIR}/test_data/message_decoders/pdu_probe.lua"
+    CILOGG_EXAMPLE_PACK_PATH="${CMAKE_SOURCE_DIR}/plugins/examples/protocol-pack"
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
 add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture fake_git klogg)

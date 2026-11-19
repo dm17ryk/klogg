@@ -169,8 +169,16 @@ class PortableExamples(unittest.TestCase):
         import zipfile
         for manifest, archive in module.package_examples(self.root / "packages"):
             with zipfile.ZipFile(archive) as package:
-                self.assertIn("cilogg_plugin.py", package.namelist())
                 self.assertEqual(json.loads(package.read("plugin.json"))["id"], manifest["id"])
+                if manifest.get("kind") == "config-pack":
+                    # A pack has no program: no SDK, and every listed content file is packed.
+                    self.assertNotIn("cilogg_plugin.py", package.namelist())
+                    self.assertIn(manifest["content"]["previews"], package.namelist())
+                    for name in manifest["content"]["lua"]["load"]:
+                        self.assertIn(manifest["content"]["lua"]["folder"] + "/" + name,
+                                      package.namelist())
+                    continue
+                self.assertIn("cilogg_plugin.py", package.namelist())
                 entry_point = (manifest["arguments"][0] if manifest["executable"] == "python"
                                else manifest["executable"])
                 self.assertIn(entry_point, package.namelist())

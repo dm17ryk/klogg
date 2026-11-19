@@ -1,5 +1,6 @@
 #include "pluginmanifest.h"
 
+#include "configpack.h"
 #include "log.h"
 #include "plugincatalog.h"
 #include "pluginfeatures.h"
@@ -235,7 +236,12 @@ Manifest Manifest::read( const QString& directory )
         m.error = QStringLiteral( "Cannot read plugin.json (maximum 1 MiB)." );
         return m;
     }
-    return parse( file.readAll(), directory );
+    auto m = parse( file.readAll(), directory );
+    // A pack is only as valid as the files it lists (design 4.1).
+    if ( m.valid() && isConfigPack( m.json ) ) {
+        m.error = validatePackFiles( m.json, directory );
+    }
+    return m;
 }
 
 Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
@@ -248,7 +254,9 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
     m.id = m.json.value( "id" ).toString();
     m.name = m.json.value( "name" ).toString();
     m.version = m.json.value( "version" ).toString();
-    m.executable = m.json.value( "executable" ).toString();
+    // `kind` decides which rules apply: a configuration pack has no process (design 4.1).
+    const bool pack = isConfigPack( m.json );
+    m.executable = pack ? QString{} : m.json.value( "executable" ).toString();
 #ifdef Q_OS_WIN
     if ( !m.executable.isEmpty() && m.executable != "python"
          && QFileInfo( m.executable ).suffix().isEmpty() ) {
@@ -267,6 +275,15 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
          || ( m.json.contains( "configuration" ) && !m.json.value( "configuration" ).isArray() )
          || ( m.json.contains( "views" ) && !m.json.value( "views" ).isArray() ) ) {
         m.error = QStringLiteral( "Invalid manifest identity, version, JSON or protocol version." );
+    }
+    if ( pack ) {
+        if ( m.error.isEmpty() ) {
+            m.error = validatePackManifest( m.json );
+        }
+        LOG_DEBUG << "Plugin manifest (configuration pack) id=" << m.id.toStdString()
+                  << " directory=" << directory.toStdString() << " valid=" << m.valid()
+                  << " reason=" << m.error.toStdString();
+        return m;
     }
     const auto capabilities = m.json.value( "capabilities" ).toArray();
     if ( capabilities.isEmpty() ) {

@@ -15,6 +15,7 @@
 
 #include "iconloader.h"
 #include "previewmanager.h"
+#include "previewpackregistry.h"
 #include "previewstablemodel.h"
 
 ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
@@ -78,6 +79,16 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
         clearButton_->setIcon( iconLoader.load( "icons8-delete-16" ) );
     }
 
+    // A configuration pack preview becomes an independent preview of the user's (E16).
+    copyButton_ = new QToolButton( this );
+    copyButton_->setObjectName( QStringLiteral( "copyPackPreviewButton" ) );
+    copyButton_->setText( tr( "Copy to My Previews" ) );
+    copyButton_->setToolButtonStyle( Qt::ToolButtonTextOnly );
+    copyButton_->setAccessibleName( tr( "Copy to My Previews" ) );
+    copyButton_->setToolTip( tr( "Copy this pack preview, with the blocks it needs, into your own "
+                                 "previews. Updates of the pack do not change the copy." ) );
+    copyButton_->setEnabled( false );
+
     buttonBox_ = new QDialogButtonBox( QDialogButtonBox::Close, this );
     auto* importButton = buttonBox_->addButton( tr( "Import" ), QDialogButtonBox::ActionRole );
     importButton->setObjectName( QStringLiteral( "importPreviewsButton" ) );
@@ -91,6 +102,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     connect( removeButton_, &QToolButton::clicked, this,
              &ImportPreviewsDialog::removeSelectedPreview );
     connect( clearButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::clearAllPreviews );
+    connect( copyButton_, &QToolButton::clicked, this, &ImportPreviewsDialog::copySelectedPreview );
     connect( buttonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject );
     connect( &PreviewManager::instance(), &PreviewManager::previewsChanged, this,
              &ImportPreviewsDialog::refreshTable );
@@ -103,6 +115,7 @@ ImportPreviewsDialog::ImportPreviewsDialog( QWidget* parent )
     headerLayout->addWidget( moveDownButton_ );
     headerLayout->addWidget( removeButton_ );
     headerLayout->addWidget( clearButton_ );
+    headerLayout->addWidget( copyButton_ );
     headerLayout->addStretch();
     layout->addLayout( headerLayout );
     layout->addWidget( tableView_ );
@@ -152,7 +165,7 @@ void ImportPreviewsDialog::moveSelectedPreview( int delta )
 
     const int row = index.row();
     const int targetRow = row + delta;
-    if ( targetRow < 0 || targetRow >= model_->rowCount() ) {
+    if ( targetRow < 0 || targetRow >= PreviewManager::instance().all().size() ) {
         return;
     }
 
@@ -183,6 +196,22 @@ void ImportPreviewsDialog::removeSelectedPreview()
     if ( !PreviewManager::instance().removeByName( name ) ) {
         QMessageBox::warning( this, tr( "Remove preview" ), tr( "Failed to remove preview." ) );
         pendingSelectionRow_ = -1;
+    }
+}
+
+void ImportPreviewsDialog::copySelectedPreview()
+{
+    const auto index = tableView_->selectionModel() ? tableView_->selectionModel()->currentIndex()
+                                                    : QModelIndex();
+    const auto* preview = index.isValid() ? model_->previewAt( index.row() ) : nullptr;
+    if ( !preview || !model_->isPackRow( index.row() ) ) {
+        return;
+    }
+    // A copy: the row's preview is replaced while the copy is applied.
+    const auto name = preview->name;
+    const auto error = PreviewPackRegistry::instance().copyPreview( name );
+    if ( !error.isEmpty() ) {
+        QMessageBox::warning( this, tr( "Copy to My Previews" ), error );
     }
 }
 
@@ -219,11 +248,15 @@ void ImportPreviewsDialog::updateButtons()
                                   ? tableView_->selectionModel()->currentIndex()
                                   : QModelIndex();
     const int currentRow = currentIndex.isValid() ? currentIndex.row() : -1;
-    const int rowCount = model_->rowCount();
-    moveUpButton_->setEnabled( hasSelection && currentRow > 0 );
-    moveDownButton_->setEnabled( hasSelection && currentRow >= 0 && currentRow < rowCount - 1 );
-    removeButton_->setEnabled( hasSelection );
-    clearButton_->setEnabled( rowCount > 0 );
+    // Move, Remove and Clear act on the user's own previews; pack previews come after them.
+    const int ownCount = static_cast<int>( PreviewManager::instance().all().size() );
+    const bool ownRow = hasSelection && currentRow >= 0 && currentRow < ownCount;
+    moveUpButton_->setEnabled( ownRow && currentRow > 0 );
+    moveDownButton_->setEnabled( ownRow && currentRow < ownCount - 1 );
+    removeButton_->setEnabled( ownRow );
+    clearButton_->setEnabled( ownCount > 0 );
+    copyButton_->setEnabled( hasSelection && currentRow >= 0 && model_->isPackRow( currentRow )
+                             && !model_->isReplacedRow( currentRow ) );
 }
 
 void ImportPreviewsDialog::updateDialogWidth()

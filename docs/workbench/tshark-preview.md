@@ -10,6 +10,16 @@ feature does not claim an OS sandbox. CILogg resolves its bundled Python runtime
 when available, otherwise a suitable system Python; a trusted
 `CILOGG_SCRIPT_PYTHON` can select an interpreter for controlled deployments.
 
+**Configuration packs** (plugins with `"kind": "config-pack"`, see
+[plugin repositories and configuration packs](../plugin-repositories.md) section 4.3) can add
+Lua and routes. While a pack is enabled, its Lua files load before your own scripts, without the
+external Lua approval (installing and enabling the pack is that decision), each pack in a Lua
+environment of its own. A session holds at most 32 Lua files, your 8 included. Pack routes sit
+below yours: a route of yours with the same key wins. Pack Lua and routes are added when a
+session starts and are never written into these settings, their exports or projects. Enabling,
+disabling or updating a pack starts new TShark sessions. Without TShark, pack previews use
+their JSON definitions.
+
 Configure preview routes by existing preview definition name, and protocol
 routes by assembled protocol name. Each selects a named dissector and may
 specify its expected protocol; protocol routes also select input encoding.

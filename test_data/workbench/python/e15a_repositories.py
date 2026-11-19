@@ -53,6 +53,14 @@ def main():
         report["checkUpdates"] = {"state": checked["state"], "updates": result.get("updates"),
                                   "checked": result.get("checked")}
         report["repositories"] = manage("repositories")["repositories"]
+        # E16a1: the example configuration pack the CLI installed and MCP enabled.
+        report["plugins"] = app.command("get_plugins")["plugins"]
+        try:
+            app.command("plugin_manage", plugin_operation="restart",
+                        plugin_id="org.cilogg.example.protocol-pack")
+            report["packRestartRefused"] = False
+        except KloggError:
+            report["packRestartRefused"] = True
     except Exception as error:  # reported to the parity driver, which fails the case
         report["errors"].append(f"{type(error).__name__}: {error}")
     with open(arguments["output"], "w", encoding="utf-8") as output:

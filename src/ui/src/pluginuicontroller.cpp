@@ -1,11 +1,13 @@
 #include "pluginuicontroller.h"
 #include "analysissource.h"
+#include "configpack.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginicons.h"
 #include "pluginmenus.h"
 #include "pluginsandpacks.h"
 #include "pluginviewhost.h"
+#include "previewdecodersettings.h"
 #include "semanticversion.h"
 #include <QCheckBox>
 #include <QComboBox>
@@ -392,6 +394,21 @@ void PluginUiController::report( const CommanderResult& result )
         QMessageBox::warning( window_, tr( "Plugins" ), result.message );
     }
 }
+bool PluginUiController::confirmPackLua( QWidget* parent, const QString& id ) const
+{
+    if ( !manager_ ) {
+        return false;
+    }
+    for ( const auto& value : manager_->plugins() ) {
+        const auto p = value.toMap();
+        if ( p.value( "id" ) == id ) {
+            return pluginsui::confirmPackLua( parent, manager_, id, p.value( "name" ).toString(),
+                                              p.value( "contents" ).toStringList(), true );
+        }
+    }
+    return true;
+}
+
 int PluginUiController::pendingUpdateCount() const
 {
     if ( !manager_ ) {
@@ -884,6 +901,19 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                     others.append( entry.value( "repositoryName" ).toString() );
                 }
             }
+            // Configuration packs (E16): what the pack's content still needs.
+            if ( p.value( "kind" ) == "config-pack" && p.value( "error" ).toString().isEmpty() ) {
+                const auto decoder = PreviewDecoderSettings::instance().configuration();
+                if ( p.value( "luaFiles" ).toInt() > 0
+                     && ( !decoder.value( "enabled" ).toBool()
+                          || decoder.value( "tshark" ).toString().isEmpty() ) ) {
+                    state += QStringLiteral( " · " ) + tr( "Needs TShark (Preview Decoder Settings)" );
+                }
+                if ( p.value( "pythonDecoders" ).toInt() > 0 ) {
+                    state += QStringLiteral( " · " )
+                             + tr( "Python decoders: requires a newer CILogg" );
+                }
+            }
             const auto update = p.value( "update" ).toMap();
             if ( !update.isEmpty() ) {
                 state += QStringLiteral( " · " )
@@ -965,6 +995,19 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 if ( job.value( "state" ) != "completed" ) {
                     status->setText( tr( "Could not check for updates: %1" )
                                          .arg( job.value( "error" ).toString() ) );
+                    return;
+                }
+                // The new version's Lua runs as soon as an enabled pack is updated (design 4.3).
+                QString entryId;
+                for ( const auto& value : self->manager_->plugins() ) {
+                    if ( value.toMap().value( "id" ) == id ) {
+                        entryId = value.toMap().value( "update" ).toMap().value( "entry_id" ).toString();
+                    }
+                }
+                if ( !pluginsui::confirmPackLua( tab, self->manager_, id, name,
+                                                 pluginsui::catalogContents( self->manager_, entryId ),
+                                                 false ) ) {
+                    status->setText( tr( "The update of %1 was not installed." ).arg( name ) );
                     return;
                 }
                 CommanderRequest request;
@@ -1071,8 +1114,12 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                                                      { "configure", tr( "Configure…" ) },
                                                      { "restart", tr( "Restart" ) },
                                                      { "remove", tr( "Remove" ) } };
+    QList<QPushButton*> processOnly;
     for ( const auto& [ operation, label ] : operations ) {
         auto* button = addButton( row, label, "pluginManage_" + operation );
+        if ( operation == "configure" || operation == "restart" ) {
+            processOnly.append( button );
+        }
         connect(
             button, &QPushButton::clicked, tab, [ this, tab, managed = operation, selectedId ] {
                 const auto id = selectedId();
@@ -1084,6 +1131,10 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 r.origin = CommanderOriginGui;
                 r.pluginId = id;
                 r.pluginOperation = managed;
+                // Enabling a pack with Lua is the trust decision for its code (design 4.3).
+                if ( managed == "enable" && !confirmPackLua( tab, id ) ) {
+                    return;
+                }
                 if ( managed == "configure" ) {
                     for ( const auto& value : manager_->plugins() ) {
                         const auto p = value.toMap();
@@ -1115,6 +1166,17 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 report( executor_( r ) );
             } );
     }
+    // A configuration pack has no process and no settings: Configure and Restart do not apply.
+    connect( table, &QTableWidget::itemSelectionChanged, tab, [ self, processOnly, selectedId ] {
+        if ( !self || !self->manager_ ) {
+            return;
+        }
+        const auto id = selectedId();
+        const auto kind = cilogg::plugins::packageKind( self->manager_->manifest( id ) );
+        for ( auto* button : processOnly ) {
+            button->setEnabled( id.isEmpty() || kind != QLatin1String( "config-pack" ) );
+        }
+    } );
     row->addStretch( 1 );
     for ( const auto& source : QStringList{ "folder", "zip" } ) {
         auto* button = addButton(
@@ -1126,6 +1188,16 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                                   : QFileDialog::getOpenFileName( tab, tr( "Plugin package" ), {},
                                                                   "ZIP (*.zip)" );
             if ( !path.isEmpty() ) {
+                // A local package that replaces an enabled pack with Lua: asked first (design
+                // 4.3). The manifest is only read for the question; the install checks it.
+                const auto manifest = cilogg::plugins::PluginRepository::packageManifest( path );
+                if ( cilogg::plugins::isConfigPack( manifest )
+                     && !pluginsui::confirmPackLua(
+                         tab, manager_, manifest.value( "id" ).toString(),
+                         manifest.value( "name" ).toString(),
+                         cilogg::plugins::packContents( manifest ), false ) ) {
+                    return;
+                }
                 CommanderRequest r;
                 r.action = CommanderAction::PluginManage;
                 r.origin = CommanderOriginGui;

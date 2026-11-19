@@ -55,6 +55,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginsandpacks.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginupdatenotices.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginupdatenotices.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/previewpackregistry.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/previewpackregistry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginview.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintablemodel.h

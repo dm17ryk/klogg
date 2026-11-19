@@ -1,4 +1,5 @@
 #include "pluginmanager.h"
+#include "configpack.h"
 #include "klogg_version.h"
 #include "log.h"
 #include "pluginfeatures.h"
@@ -205,6 +206,9 @@ void PluginManager::discover()
         }
         auto entry = std::make_unique<Entry>();
         entry->manifest = std::move( manifest );
+        if ( isConfigPack( entry->manifest.json ) ) {
+            entry->pack = packSummary( entry->manifest.json, entry->manifest.directory );
+        }
         if ( enabledByDefault.contains( id ) ) {
             const auto key = configurationKey( id ) + "enabled";
             if ( !entry->manifest.valid() ) {
@@ -249,6 +253,10 @@ QVariantList PluginManager::plugins() const
         value[ "id" ] = id;
         value[ "directory" ] = entry->manifest.directory;
         value[ "kind" ] = packageKind( entry->manifest.json );
+        // Pack fields (design 4.1): `contents` and the counts of what the pack delivers.
+        for ( auto field = entry->pack.cbegin(); field != entry->pack.cend(); ++field ) {
+            value[ field.key() ] = field.value();
+        }
         value[ "source" ] = sourceInfo( id, *entry );
         // The newest version from the source repository, if it is newer (design 3.8).
         const auto update = updateInfo( id, *entry );
@@ -759,6 +767,9 @@ Result PluginManager::invoke( const QString& pluginId, const QString& action,
     auto& e = *it->second;
     if ( !e.manifest.valid() ) {
         return { e.manifest.error, {} };
+    }
+    if ( isConfigPack( e.manifest.json ) ) {
+        return { "A configuration pack has no process or plugin actions.", {} };
     }
     if ( !settings_.value( configurationKey( pluginId ) + "enabled", false ).toBool() ) {
         return { "Plugin is disabled.", {} };
@@ -1334,6 +1345,20 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         return { "Plugin not found.", {} };
     }
     auto& e = *it->second;
+    const bool pack = isConfigPack( e.manifest.json );
+    if ( pack && ( operation == "restart" || operation == "configure" ) ) {
+        return { QStringLiteral( "A configuration pack has no process or settings: %1 does not "
+                                 "apply." )
+                     .arg( operation ),
+                 {} };
+    }
+    if ( pack && operation == "enable" && e.manifest.valid() && packCheck_ ) {
+        const auto refusal = packCheck_( id, e.manifest.directory, e.manifest.json );
+        if ( !refusal.isEmpty() ) {
+            LOG_INFO << "Configuration pack enable refused id=" << id.toStdString();
+            return { refusal, {} };
+        }
+    }
     if ( operation == "remove" || operation == "disable" ) {
         revokeViews( id );
     }
@@ -1562,7 +1587,16 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         } );
         return;
     }
-    const auto error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+    // A new version of an enabled pack must still fit with the user's items and the other
+    // enabled packs; otherwise the installed version stays (design 4.2).
+    auto error = QString{};
+    if ( isConfigPack( staged.manifest.json ) && packCheck_
+         && settings_.value( configurationKey( staged.manifest.id ) + "enabled", false ).toBool() ) {
+        error = packCheck_( staged.manifest.id, staged.manifest.directory, staged.manifest.json );
+    }
+    if ( error.isEmpty() ) {
+        error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+    }
     QVariantMap result{ { "pluginId", staged.manifest.id },
                         { "version", staged.manifest.version },
                         { "repository", source.repository } };
@@ -2284,5 +2318,34 @@ bool PluginManager::isPluginCapture( const QString& path ) const
     const auto captures = QDir::cleanPath( QDir( dataRoot_ ).absoluteFilePath( "captures" ) ) + '/';
     return QDir::cleanPath( QFileInfo( path ).absoluteFilePath() )
         .startsWith( captures, Qt::CaseInsensitive );
+}
+
+void PluginManager::setPackCheck( PackCheck check )
+{
+    packCheck_ = std::move( check );
+}
+
+QJsonObject PluginManager::manifest( const QString& pluginId ) const
+{
+    const auto it = entries_.find( pluginId );
+    return it == entries_.end() ? QJsonObject{} : it->second->manifest.json;
+}
+
+QString PluginManager::pluginDirectory( const QString& pluginId ) const
+{
+    const auto it = entries_.find( pluginId );
+    return it == entries_.end() ? QString{} : it->second->manifest.directory;
+}
+
+QStringList PluginManager::enabledPacks() const
+{
+    QStringList ids;
+    for ( const auto& [ id, entry ] : entries_ ) {
+        if ( entry->manifest.valid() && isConfigPack( entry->manifest.json )
+             && settings_.value( configurationKey( id ) + "enabled", false ).toBool() ) {
+            ids.append( id );
+        }
+    }
+    return ids; // entries_ is ordered by ID
 }
 } // namespace cilogg::plugins

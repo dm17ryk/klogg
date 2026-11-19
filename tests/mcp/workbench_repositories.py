@@ -56,6 +56,21 @@ def update_check(job):
             "checked": result.get("checked")}
 
 
+# E16a1: the public example configuration pack, installed from its folder.
+PACK_ID = "org.cilogg.example.protocol-pack"
+PACK_FOLDER = Path(__file__).resolve().parents[2] / "plugins/examples/protocol-pack"
+PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews", "luaFiles",
+               "pythonDecoders")
+
+
+def pack_fields(plugins, pack_id=PACK_ID):
+    """The get_plugins fields of a configuration pack that every surface must agree on."""
+    for plugin in plugins:
+        if plugin.get("id") == pack_id:
+            return {key: plugin.get(key) for key in PACK_FIELDS}
+    return None
+
+
 class Surfaces:
     def __init__(self, cli, command, artifacts):
         self.cli = cli
@@ -208,6 +223,34 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
         60, "gui_check_updates_status_missing")
     report["gui"].append({"objectName": "pluginCheckUpdates", "state": "failed"})
 
+    # E16a1: a configuration pack installs like a plugin and reports the same pack fields
+    # everywhere; it has no process, so Restart is refused on every surface.
+    installed = surfaces.finished(
+        surfaces.manage_cli("install", {"path": str(PACK_FOLDER)})["jobId"], False)
+    compare_json("completed", installed["state"], "$.pack.install")
+    command("plugin_manage", {"plugin_operation": "enable", "plugin_id": PACK_ID})
+    expected_pack = {"id": PACK_ID, "kind": "config-pack", "version": "1.0.0", "enabled": True,
+                     "error": "", "contents": ["previews", "lua"], "previews": 1, "luaFiles": 2,
+                     "pythonDecoders": 0}
+    compare_json(expected_pack, pack_fields(cli("get_plugins")["plugins"]), "$.pack.cli")
+    compare_json(expected_pack, pack_fields(command("get_plugins", {})["plugins"]), "$.pack.mcp")
+    for name, refused in (
+            ("cli", cli("plugin_manage", "--plugin-operation", "restart", "--plugin-id", PACK_ID,
+                        success=False)),
+            ("mcp", command("plugin_manage", {"plugin_operation": "restart", "plugin_id": PACK_ID},
+                            success=False))):
+        if not refused:
+            raise ParityError(f"pack_restart_not_refused: {name}")
+    command("set_ui", {"window_index": 0, "object_name": "pluginsAndPacksTabs",
+                       "definition": {"currentIndex": 0}})
+    installed_table = wait_until(
+        lambda: (lambda table: table if table and any(
+            row[0] == "Example protocol pack" for row in table.get("items", [])) else None)(
+            ui_object(command, "pluginManagerTable")), 20, "gui_pack_row_missing")
+    pack_row = next(row for row in installed_table["items"] if row[0] == "Example protocol pack")
+    compare_json("Previewers", pack_row[1], "$.pack.gui.kind")
+    report["gui"].append({"objectName": "pluginManagerTable", "pack": pack_row[1]})
+
     # Python: klogg.app.command reaches the same operations.
     python = run_python([("e15a_repositories", {"closed": CLOSED})])[0]
     if python.get("errors"):
@@ -222,6 +265,12 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     compare_json(True, python["refusedHttp"], "$.python.refusedHttp")
     compare_json({"state": "failed", "updates": [], "checked": ["parity-python"]},
                  python["checkUpdates"], "$.python.checkUpdates")
+    compare_json(expected_pack, pack_fields(python["plugins"]), "$.python.pack")
+    compare_json(True, python["packRestartRefused"], "$.python.packRestartRefused")
+    cli("plugin_manage", "--plugin-operation", "disable", "--plugin-id", PACK_ID)
+    cli("plugin_manage", "--plugin-operation", "remove", "--plugin-id", PACK_ID)
+    if pack_fields(cli("get_plugins")["plugins"]) is not None:
+        raise ParityError("pack_not_removed")
     # Clean up through the CLI; removed IDs are never given again.
     for repository in ("parity-python", "parity-cli", "parity-mcp"):
         surfaces.manage_cli("repository_remove", {"repository": repository})
