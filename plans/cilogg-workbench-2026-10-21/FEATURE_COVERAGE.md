@@ -1,6 +1,6 @@
 # Complete Feature Coverage
 
-209 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
+212 individually mapped requirements. Every owner is a task in TASK_INDEX.json. Feature implementation remains planned; G01 reconciliation is recorded in the ledger. Existing delivered functionality is credited in MERGE_MAP.md and the execution baseline; this does not mark the broader requirements complete.
 
 ## Exploration, fields, time and data
 
@@ -205,6 +205,9 @@
 | ECO20 | Several plugin repositories, including private Azure DevOps ones signed in through the Git Credential Manager or a stored personal access token; credentials never written out and kept inside the repository's scope | E15 |
 | ECO21 | One merged plugin list with each entry's source; updates only from the install source, checked silently at startup and daily, installed by the user unless auto-update is on for that repository | E15 |
 | ECO22 | Configuration packs: versioned preview definitions, Lua and Python decoders, actions with automatic responses, highlighters and predefined filters installed, updated and removed from plugin repositories in the same window as plugins; pack items edited in place with local edits kept in a local store and merged on update (three-way, conflicts resolved by the user in an item or text merge window); Export as Pack; changes sent back as a patch or a pull request; pack automatic responses off until enabled; pack Lua trusted for TShark | E16 |
+| ECO23 | Plugin menus and submenus under Plugins (and one optional top-level menu) and in the tab, pane, log and filtered view context menus, with conditions, check and radio entries, dynamic submenus and user-editable keyboard shortcuts; the same entries through Commander, CLI and MCP | E17 |
+| ECO24 | Rich plugin view elements: drop-downs plain, with icons, with check boxes and with radio marks in forms and table cells; check box and radio elements; tables with icons, cell tooltips and Shift/Ctrl multiple selection; tree and file tree browser elements with Shift/Ctrl multiple selection; static and plugin-filled advanced tooltips on every element through host queries with timeouts and a cache; layout, rich text, images and charts | E17 |
+| ECO25 | Advanced plugin SDK platform: versioned host features and plugin feature negotiation that keep protocol v1 traffic unchanged for existing plugins; toolbars, status items, notifications, clipboard, drag and drop, view state and session restore, theme events and settings pages in Options; typed Python and C++ SDKs with a fake-host test harness, JSON Schemas and a protocol log | E17 |
 
 ## Quality, compatibility and delivery
 

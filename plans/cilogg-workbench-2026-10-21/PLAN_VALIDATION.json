@@ -1,10 +1,10 @@
 {
   "valid": true,
-  "taskCount": 128,
-  "requirementCount": 209,
-  "markdownFiles": 159,
-  "validatedLocalLinks": 656,
-  "topologicalTaskCount": 128,
+  "taskCount": 129,
+  "requirementCount": 212,
+  "markdownFiles": 160,
+  "validatedLocalLinks": 669,
+  "topologicalTaskCount": 129,
   "issues": [],
   "integrationChecks": {
     "originalTasksAndHardEdgesPreserved": 97,
@@ -518,5 +518,69 @@
     "independentReview": "cpp-reviewer: no critical finding; 2 high (a skipped major version stopped same-major auto-update; a rejected user operation cancelled an automatic update), 3 medium and 2 low findings fixed with tests; announcing while no notice can be shown and the menu count cost are documented limitations",
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except four init-captures of pluginuicontroller.cpp that are on master and pass GCC",
     "qualification": "local_gates_passed_hosted_pending"
+  },
+  "d17Checks": {
+    "date": "2026-11-19",
+    "decision": "D17",
+    "state": "proposed_awaiting_approval",
+    "design": "../../docs/plugin-sdk-advanced.md",
+    "tasksAdded": [
+      "E17"
+    ],
+    "addedRequirements": [
+      "ECO23",
+      "ECO24",
+      "ECO25"
+    ],
+    "newTaskHardDependencies": {
+      "E17": [
+        "E14"
+      ]
+    },
+    "addedHardEdges": [
+      "R04 -> E17"
+    ],
+    "coordinationWithoutHardEdge": "E01 absorbs the versioned host features and the plugin's features; E16 shares the manifest parser and the Plugins and Packs window (each E17 slice merges master first)",
+    "otherTaskRecordsPreserved": true,
+    "previousRequirementsAndOwnershipPreserved": true,
+    "otherTaskProgressAndEvidencePreserved": true,
+    "storedTopologicalOrderComplete": true,
+    "storedTopologicalOrderDependencyValid": true,
+    "dagRunnableTasks": [
+      "E15",
+      "E17",
+      "G02",
+      "R06",
+      "U16"
+    ],
+    "ledgerRunnableTasks": [
+      "G02",
+      "U16",
+      "R06",
+      "E15"
+    ],
+    "e17HeldFromLedgerRunnableUntilApproval": true,
+    "openQuestions": 22,
+    "independentDesignReview": "read-only architect review against the code; findings addressed before the PR: exact compatibility statement instead of byte-for-byte (additive initialize keys; new event keys only for plugins with handles; golden-frame test); E14 action/view icon kept a file path with icon_ref for new forms; static manifest handles so the host knows before the first start, queries only while ready and never through the start-up queue; per-plugin check of query answers, backlog guard, null not counted by the breaker, per-method SDK lanes; new keys instead of new values (toggle_selection) and SDK builder fallbacks for older hosts; tab menu pane commands are inline, not a Panes submenu; compiled-in shortcut list needs a plugin provider and conflicting plugin shortcuts are refused; queued menu handlers and ids instead of tab indexes; native menu bars fill dynamic submenus from the last answer; corrected section 2 facts (log menu refills several submenus, captions already used as accessible names, element tooltips not plain text today, C++ SDK behaviour); one field vocabulary (secret, min/max); slice dependencies, image limits, text limits and batching made consistent; added host events and the version-skew tests",
+    "separateApprovalNeeded": "E17i host commands (question 13)",
+    "hashManifestFiles": 166,
+    "filesAddedToHashManifest": [
+      "tasks/E17.md"
+    ],
+    "hashesRefreshed": [
+      "08-ecosystem.md",
+      "09-release.md",
+      "FEATURE_COVERAGE.json",
+      "FEATURE_COVERAGE.md",
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E17.md",
+      "tasks/R04.md"
+    ],
+    "privateNamesPublished": false,
+    "productCodeChanged": false,
+    "productBuildRun": false
   }
 }

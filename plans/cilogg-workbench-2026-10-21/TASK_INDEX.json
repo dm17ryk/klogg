@@ -1647,6 +1647,23 @@
       "taskFile": "tasks/E16.md"
     },
     {
+      "id": "E17",
+      "title": "Advanced plugin SDK: menus, rich elements, tooltips with handlers and window integration",
+      "plan": "08-ecosystem.md",
+      "anchor": "e17--advanced-plugin-sdk-menus-rich-elements-tooltips-with-handlers-and-window-integration",
+      "dependencies": [
+        "E14"
+      ],
+      "status": "planned",
+      "requirements": [
+        "ECO23",
+        "ECO24",
+        "ECO25"
+      ],
+      "task_body_chars": 10478,
+      "taskFile": "tasks/E17.md"
+    },
+    {
       "id": "I02",
       "title": "Compare files, runs, periods and distributions",
       "plan": "05-insights.md",
@@ -2320,7 +2337,8 @@
         "U16",
         "R06",
         "E15",
-        "E16"
+        "E16",
+        "E17"
       ],
       "status": "planned",
       "requirements": [
@@ -2876,6 +2894,7 @@
     "E12",
     "E13",
     "E14",
+    "E17",
     "I02",
     "V09",
     "V11",
@@ -2932,7 +2951,8 @@
     "2026-11-17 (later): the user removed the private working configuration from the public repository and asked to deliver it, with the TShark Lua, as a plugin from the private Azure DevOps repository. E16 therefore covers configuration packs (previews, Lua and Python decoders, actions with automatic responses, highlighters, predefined filters) in slices E16a-E16c. Dependencies are unchanged.",
     "2026-11-17 (later): the user asked for repository handling of highlighters, actions, responses, previewers and filters like plugins, and for merging local edits on update. E15a gains one Plugins and Packs window (Installed, Available with a Kind filter, Repositories); E16a and E16c gain local edits as an overlay with a three-way merge; the new slice E16d brings Export as Pack. Dependencies are unchanged.",
     "2026-11-17 (later): the user decided the pack editing model (edit in place with merge) and the merge UI (item merge window, three-pane text merge, optional external merge tool), and asked to use Git internally and to let users send changes back. E16a and E16c gain a local Git store per pack, E16d View Changes and Export Changes, and the new slice E16e Propose Changes. Dependencies are unchanged.",
-    "2026-11-17 (later): the user accepted the D16 design and approved all eleven recommended decisions. E15 is authorized ahead of G02/G03 and listed in PROGRESS.json.runnableTasks; E16 follows E15. Both stay planned and not started. Dependencies are unchanged."
+    "2026-11-17 (later): the user accepted the D16 design and approved all eleven recommended decisions. E15 is authorized ahead of G02/G03 and listed in PROGRESS.json.runnableTasks; E16 follows E15. Both stay planned and not started. Dependencies are unchanged.",
+    "2026-11-19: decision D17 proposes E17 (advanced plugin SDK: plugin menus and context menus with shortcuts, drop-downs with icons, check boxes or radio marks in forms and table cells, check box and radio elements, table icons and cell tooltips, plugin-filled advanced tooltips through host queries with timeouts, Shift/Ctrl selection in tables, trees and a file tree, capability negotiation and window integration) for the user's request of 2026-11-19. Design only: implementation starts after the user approves it, so E17 is not in PROGRESS.json.runnableTasks. E17 depends on E14 (completed); R04 depends on E17. E01 absorbs the versioned host features later (coordination, no hard edge)."
   ],
   "reconciledDate": "2026-11-04"
 }

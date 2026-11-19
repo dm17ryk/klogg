@@ -512,3 +512,13 @@ The full card is [tasks/E15.md](tasks/E15.md). The design is [docs/plugin-reposi
 **Outcome:** a plugin kind that carries preview definitions, Lua decoders for TShark, Python decoders, actions with automatic responses, highlighters and predefined filters, versioned and updated from the plugin repositories. Packs share the Plugins and Packs window with plugins; pack items can be edited in place, and an update merges the local edits (three-way, with a dialog for conflicts); Export as Pack shares the user's own items; pack automatic responses start switched off; pack Lua is a trusted TShark script while the pack is enabled. Python decoders are activated by MD03's decoder contract.
 
 The full card is [tasks/E16.md](tasks/E16.md).
+
+### E17 — Advanced plugin SDK: menus, rich elements, tooltips with handlers and window integration
+
+**Integrated hard dependencies:** E14. Proposed under [decision D17](../../docs/workbench/decisions.md) on 2026-11-19; design only, awaiting the user's approval, so it is not runnable yet. R04 depends on E17.
+
+**Outcome:** plugins add their own menus and submenus under Plugins and to the tab, pane and log context menus, with shortcuts; drop-downs with icons, check boxes or radio marks in forms and table cells; check box and radio elements; tables with icons, per-cell and plugin-filled advanced tooltips and Shift/Ctrl selection; a tree and a file tree browser; plus capability negotiation, host queries with timeouts, layout and content elements, toolbars, status items, notifications, drag and drop, state, theme, settings pages and typed SDKs with a test harness. The protocol version stays 1.
+
+**Coordination:** E01 later absorbs the versioned host features and the plugin's `features`. E16 shares the manifest parser and the Plugins and Packs window; each slice merges master first.
+
+The full card is [tasks/E17.md](tasks/E17.md). The design is [docs/plugin-sdk-advanced.md](../../docs/plugin-sdk-advanced.md).
