@@ -2113,6 +2113,11 @@ QString PluginManager::query( const QString& pluginId, const QString& method,
             return sanitizeTooltip( result, error );
         };
     }
+    else if ( method == QLatin1String( "field/complete" ) ) {
+        validator = []( const QJsonValue& result, QString* error ) -> QJsonValue {
+            return sanitizeCompletion( result, error );
+        };
+    }
     else if ( method == QLatin1String( "menu/populate" ) ) {
         // Entries may name only the actions and views the manifest declares (design 7.4).
         const auto& manifest = entries_.at( pluginId )->manifest.json;

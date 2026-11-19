@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 
+class QLineEdit;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -30,6 +31,10 @@ struct PluginViewDialogs {
         openFile;
     std::function<QString( QWidget* parent, const QString& objectName, const QString& title )>
         directory;
+    // E17c `color` fields: the chosen "#rrggbb", empty when cancelled.
+    std::function<QString( QWidget* parent, const QString& objectName, const QString& title,
+                           const QString& current )>
+        color;
     static PluginViewDialogs native();
 };
 
@@ -142,11 +147,27 @@ private:
     QWidget* dialogParent();
     QJsonValue fieldValue( const Node& node ) const;
     void setFieldValue( Node& node, const QJsonValue& value );
+    // E17c (docs/plugin-sdk-advanced.md section 8): checkbox, radio_group and check_group, the
+    // widgets of the new field kinds and styles, completion, colors and validation.
+    QWidget* buildToggle( Node& node, const QJsonObject& element, QWidget* parent );
+    QWidget* buildFieldWidget( Node& node, const QJsonObject& element, QWidget* row,
+                               const std::function<void()>& changedSoon,
+                               const std::function<void()>& changedNow );
+    void attachCompletion( Node& node, QLineEdit* edit );
+    void pickColor( const QString& id );
+    QIcon iconFor( const QJsonValue& reference ) const;
+    // Checks every field's rules, shows the messages and sets every button's enabled state
+    // (`enabled` and `requires_valid`). fieldValid and fieldsValid read its results.
+    void refreshValidity();
+    bool fieldValid( const Node& node ) const;
+    bool fieldsValid( const QJsonValue& requirement ) const;
+    void focusFirstInvalid();
     void updateAccessibility( Node& node );
     void watchTooltips( Node& node );
     PluginTooltips::Target tooltipTarget( const QString& elementId, const QString& rowId,
                                           const QString& columnId ) const;
     PluginTooltips* tooltips_ = nullptr;
+    PluginViewQueries queries_;
 
     QString pluginId_;
     QString viewId_;

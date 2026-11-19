@@ -1,6 +1,8 @@
 // Copyright (C) 2026 CILogg contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "checkcombobox.h"
+#include "pluginchoicewidgets.h" // PopupFilter
+#include "plugintablemodel.h" // plainToolTip
 #include "pluginview.h" // the plugin view limits (pluginview.h does not include this header)
 
 #include <QAbstractItemView>
@@ -44,7 +46,8 @@ CheckComboBox::CheckComboBox( QWidget* parent )
     } );
 }
 
-void CheckComboBox::setChoices( const QJsonArray& choices )
+void CheckComboBox::setChoices( const QJsonArray& choices,
+                                const std::function<QIcon( const QJsonValue& )>& icons )
 {
     const auto checked = checkedValues();
     populating_ = true;
@@ -54,6 +57,25 @@ void CheckComboBox::setChoices( const QJsonArray& choices )
             break;
         }
         const auto object = choice.toObject();
+        const auto type = object.value( "type" ).toString();
+        // E17c: separators and section titles between the choices (not checkable, no value).
+        if ( type == QLatin1String( "separator" ) || type == QLatin1String( "section" ) ) {
+            auto* item = new QStandardItem(
+                type == QLatin1String( "section" )
+                    ? object.value( "label" ).toString().left( PluginView::MaxTextChars )
+                    : QString{} );
+            item->setFlags( Qt::NoItemFlags );
+            if ( type == QLatin1String( "separator" ) ) {
+                item->setData( QStringLiteral( "separator" ), Qt::AccessibleDescriptionRole );
+            }
+            else {
+                auto font = item->font();
+                font.setBold( true );
+                item->setFont( font );
+            }
+            items_->appendRow( item );
+            continue;
+        }
         const auto value = limitValue( choice.isObject() ? object.value( "value" ) : choice );
         const auto label = object.value( "label" );
         // Labels are plain text of at most MaxTextChars, as for a `choice` field.
@@ -61,8 +83,17 @@ void CheckComboBox::setChoices( const QJsonArray& choices )
             ( label.isString() ? label.toString() : value.toVariant().toString() )
                 .left( PluginView::MaxTextChars ) );
         item->setData( value.toVariant(), ValueRole );
-        item->setFlags( Qt::ItemIsEnabled | Qt::ItemIsUserCheckable );
+        item->setFlags( object.value( "enabled" ).toBool( true )
+                            ? Qt::ItemIsEnabled | Qt::ItemIsUserCheckable
+                            : Qt::ItemIsUserCheckable );
         item->setData( checked.contains( value ) ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole );
+        if ( object.contains( "icon" ) && icons ) {
+            item->setIcon( icons( object.value( "icon" ) ) );
+        }
+        if ( object.value( "tooltip" ).isString() ) {
+            item->setToolTip( pluginview::plainToolTip(
+                object.value( "tooltip" ).toString().left( PluginView::MaxTextChars ) ) );
+        }
         items_->appendRow( item );
     }
     populating_ = false;
@@ -79,6 +110,9 @@ void CheckComboBox::setCheckedValues( const QJsonArray& values )
     populating_ = true;
     for ( int row = 0; row < items_->rowCount(); ++row ) {
         auto* item = items_->item( row );
+        if ( !item->flags().testFlag( Qt::ItemIsUserCheckable ) ) {
+            continue; // a separator or section title never gets a check box
+        }
         const auto value = QJsonValue::fromVariant( item->data( ValueRole ) );
         item->setCheckState( wanted.contains( value ) ? Qt::Checked : Qt::Unchecked );
     }
@@ -110,7 +144,9 @@ QJsonArray CheckComboBox::checkedValues() const
 QString CheckComboBox::summary() const
 {
     QStringList labels;
+    int choices = 0; // separators and section titles are not choices
     for ( int row = 0; row < items_->rowCount(); ++row ) {
+        choices += items_->item( row )->flags().testFlag( Qt::ItemIsUserCheckable ) ? 1 : 0;
         if ( items_->item( row )->checkState() == Qt::Checked ) {
             labels.append( items_->item( row )->text() );
         }
@@ -118,11 +154,28 @@ QString CheckComboBox::summary() const
     if ( labels.isEmpty() ) {
         return tr( "None" );
     }
-    return labels.size() == items_->rowCount() && labels.size() > 1 ? tr( "All" ) : labels.join( ", " );
+    return labels.size() == choices && labels.size() > 1 ? tr( "All" ) : labels.join( ", " );
+}
+
+void CheckComboBox::makeSearchable()
+{
+    if ( findChild<pluginchoices::PopupFilter*>( QString{}, Qt::FindDirectChildrenOnly ) ) {
+        return;
+    }
+    new pluginchoices::PopupFilter(
+        this,
+        []( const QModelIndex& index ) {
+            return index.flags().testFlag( Qt::ItemIsUserCheckable );
+        },
+        true );
 }
 
 void CheckComboBox::toggle( QStandardItem* item )
 {
+    // Separators, section titles and disabled choices do not toggle (E17c).
+    if ( !item->isEnabled() || !item->flags().testFlag( Qt::ItemIsUserCheckable ) ) {
+        return;
+    }
     item->setCheckState( item->checkState() == Qt::Checked ? Qt::Unchecked : Qt::Checked );
 }
 

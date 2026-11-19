@@ -1,15 +1,19 @@
 """UI gallery (README.md): static and advanced tooltips, a registered icon and accessible names
 (E17a); a Plugins submenu with a check box, radio items, a dynamic submenu and a shortcut, and
-entries in the log and tab context menus (E17b)."""
+entries in the log and tab context menus (E17b); choices with icons, separators and styles,
+check boxes, radio buttons, the new field kinds, validation and completion (E17c)."""
 from __future__ import annotations
 
+import json
 import threading
 from typing import Dict, List, Optional, Set, Tuple
 
 from cilogg_plugin import (
-    JsonObject, MenuPopulateResult, MenuQuery, Plugin, Tooltip, TooltipQuery, UiCommand, button,
-    column, field, group, image_ref, label, menu_item, menu_set, replace_rows, row, set_props,
-    status_ref, svg_icon, table, table_column, table_row, tooltip_content, update_rows,
+    CompleteQuery, CompletionItem, JsonObject, MenuPopulateResult, MenuQuery, Plugin, Tooltip,
+    TooltipQuery, UiCommand, builtin_ref, button, check_group, checkbox, choice, choice_section,
+    choice_separator, column, completion_item, field, group, image_ref, label, menu_item,
+    menu_set, radio_group, replace_rows, row, set_props, status_ref, svg_icon, table,
+    table_column, table_row, tooltip_content, update_rows,
 )
 
 plugin = Plugin()
@@ -33,6 +37,8 @@ icons_registered = False
 highlight_offline = False
 sort_key = "name"
 last_command: Optional[str] = None  # What the last menu command did, for the status label.
+# The last `changed` event or Apply click of the "Choices and fields" group.
+last_control_event = "Change a control: its event shows here."
 open_windows: Set[str] = set()
 boards: Dict[str, Dict[str, object]] = {
     "b1": {"name": "Board 1", "state": "connected", "uptime": 12, "firmware": "3.2.1", "resets": 0},
@@ -69,11 +75,80 @@ def status_text() -> str:
     return text if last_command is None else f"{text}. {last_command}"
 
 
+SPEEDS = [
+    choice("auto", "Automatic", icon=builtin_ref("refresh"), tooltip="Detect the speed"),
+    choice_separator(),
+    choice_section("Fixed speeds"),
+    choice(115200, "115200", icon=status_ref("ok")),
+    choice(57600, "57600", icon=status_ref("ok")),
+    choice(9600, "9600", icon=status_ref("muted"), tooltip="Too slow for the boards",
+           enabled=False),
+]
+FIRMWARE = [f"3.{minor}.{patch}" for minor in range(3) for patch in range(10)]
+E17C_FEATURES = ("choices", "toggles", "field_kinds", "validation")
+
+
+def choices_group(board_names: List[str], status: str) -> JsonObject:
+    """E17c: every choice style, the check box and radio elements, one field of each new kind,
+    validation and completion. On an older CILogg the SDK sends the fields it knows."""
+    if all(plugin.supports(feature) for feature in E17C_FEATURES):
+        note = "Each control reports its changes below; Apply needs a valid label and retries."
+    else:
+        note = ("This CILogg shows these controls as plain fields; check boxes, radio buttons "
+                "and validation need a newer CILogg.")
+    return group(
+        "Choices and fields",
+        label("choices_note", note),
+        field("speed", "choice", label="Speed", value="auto", choices=SPEEDS,
+              tooltip="Icons, a separator, a section title and a disabled choice."),
+        field("parity", "choice", label="Parity", value="none", indicator="radio",
+              choices=[choice("none", "None"), choice("even", "Even"), choice("odd", "Odd")]),
+        field("direction", "choice", label="Direction", value="both", style="radio",
+              orientation="horizontal",
+              choices=[choice("rx", "Receive"), choice("tx", "Send"), choice("both", "Both")]),
+        field("channels", "multichoice", label="Channels", value=["debug"], style="checkboxes",
+              columns=2, choices=[choice("debug", "Debug"), choice("modem", "Modem"),
+                                  choice("radio", "Radio"), choice("gps", "GPS")]),
+        field("firmware", "choice", label="Firmware", value="3.2.1", choices=FIRMWARE,
+              searchable=True, tooltip="Type in the open list to filter it."),
+        field("target_board", "choice", label="Target board", value=board_names[0],
+              choices=board_names, editable=True, completion=True,
+              tooltip="Type a board name: the plugin completes it."),
+        checkbox("verbose", "Verbose logging", value=None, tristate=True,
+                 tooltip="Partly checked: some boards log verbosely."),
+        radio_group("mode", [choice("auto", "Automatic"), choice("manual", "Manual"),
+                             choice("off", "Off")], "auto", title="Mode",
+                    orientation="horizontal"),
+        check_group("logs", [choice("boot", "Boot"), choice("radio", "Radio"),
+                             choice("modem", "Modem"), choice("power", "Power")], ["boot"],
+                    title="Logs", columns=2, all_none=True),
+        field("notes", "multiline", label="Notes", rows=3, monospace=True,
+              placeholder="One note per line"),
+        field("token", "secret", label="Access token"),
+        field("level", "slider", label="Log level", value=3, min=0, max=5, step=1),
+        field("led_color", "color", label="LED color", value="#1565c0"),
+        field("start_date", "date", label="Start date", value="2026-11-19"),
+        field("start_time", "time", label="Start time", value="08:30:00"),
+        field("start_at", "datetime", label="Start at", value="2026-11-19T08:30:00"),
+        field("board_label", "text", label="Board label", required=True,
+              pattern="[A-Za-z0-9_-]+", placeholder="board_7",
+              tooltip="Letters, digits, _ and - only."),
+        field("retries", "integer", label="Retries", value=3, min=0, max=10, step=1),
+        row(button("apply", "Apply", event=True, requires_valid=["board_label", "retries"],
+                   tooltip="Enabled while the board label and the retries are valid."),
+            label("choices_status", status),
+            id="apply_row"),
+        id="choices",
+    )
+
+
 def gallery_tree() -> JsonObject:
     with state_lock:
         rows = [board_row(board_id) for board_id in sorted_board_ids()]
         current = revision
         status = status_text()
+        board_names = sorted(str(board["name"]) for board in boards.values())
+        control_event = last_control_event
     if plugin.supports("tooltips"):
         note = "Rest the pointer on the controls to see their tooltips."
     else:
@@ -106,6 +181,7 @@ def gallery_tree() -> JsonObject:
                 id="change_row"),
             id="advanced",
         ),
+        choices_group(board_names, control_event),
         id="body",
     )
 
@@ -186,9 +262,50 @@ def closed(params: JsonObject) -> None:
         open_windows.discard(str(params.get("window_id")))
 
 
+def event_value(value: object) -> str:
+    """A value as the choices status label shows it: text as typed, anything else as JSON."""
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def control_event_text(params: JsonObject) -> Optional[str]:
+    """The status of a `changed` event ("changed <element>=<value> valid=<true|false>"; an
+    event without `valid`, such as a check box's, counts as valid) or of the Apply click."""
+    element_id, event_type = params.get("element_id"), params.get("type")
+    if event_type == "changed":
+        valid = "false" if params.get("valid") is False else "true"
+        return f"changed {element_id}={event_value(params.get('value'))} valid={valid}"
+    if element_id == "apply" and event_type == "clicked":
+        inputs = params.get("inputs")
+        values = inputs if isinstance(inputs, dict) else {}
+        return ("clicked apply " + " ".join(f"{name}={event_value(values.get(name))}"
+                                             for name in ("board_label", "retries")))
+    return None
+
+
+def show_control_event(text: str) -> None:
+    global last_control_event
+    with state_lock:
+        last_control_event = text
+    plugin.patch(VIEW, [set_props("choices_status", text=text)])
+
+
+@plugin.complete(VIEW, "target_board")
+def complete_board(query: CompleteQuery) -> List[CompletionItem]:
+    """The editable Target board choice: board names that start with the typed text (any
+    case), with their state."""
+    typed = query.text.strip().casefold()
+    with state_lock:
+        found = sorted((str(board["name"]), str(board["state"])) for board in boards.values())
+    return [completion_item(name, f"{name} ({state})", icon=status_ref(STATE_TONES[state]))
+            for name, state in found if name.casefold().startswith(typed)]
+
+
 @plugin.on_view_event
 def event(params: JsonObject) -> None:
     if params.get("element_id") != "change" or params.get("type") != "clicked":
+        text = control_event_text(params)
+        if text is not None:
+            show_control_event(text)
         return
     rows, status, offline, same_order = change_data()
     # Patching rows and the status label drops their cached tooltips on the host. The summary

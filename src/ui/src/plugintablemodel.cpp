@@ -3,6 +3,7 @@
 #include "plugintablemodel.h"
 
 #include "checkcombobox.h"
+#include "pluginchoicewidgets.h"
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -213,6 +214,24 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
     }
     if ( role == Qt::ForegroundRole && toneColor( row.tone ).isValid() ) {
         return toneColor( row.tone );
+    }
+    if ( role == Qt::DecorationRole && iconFor ) {
+        // E17c: a committed choice with an icon shows it in the cell (section 8.4).
+        const auto editor = editorFor( index );
+        // The first choice whose label is the cell text, as when the editor opens; separators and
+        // section titles are no choices.
+        if ( editor.value( "kind" ) == "choice" ) {
+            for ( const auto& choice : editor.value( "choices" ).toArray() ) {
+                const auto object = choice.toObject();
+                if ( object.contains( "type" ) || choiceLabel( choice ) != value ) {
+                    continue;
+                }
+                if ( !object.contains( "icon" ) ) {
+                    return {};
+                }
+                return iconFor( object.value( "icon" ) );
+            }
+        }
     }
     return {};
 }
@@ -770,7 +789,11 @@ QComboBox* PluginCellDelegate::comboOfList( QObject* watched )
 QWidget* PluginCellDelegate::createChecks( QWidget* parent, const QJsonObject& editor ) const
 {
     auto* box = new CheckComboBox( parent );
-    box->setChoices( editor.value( "choices" ).toArray() ); // at most PluginView::MaxElements
+    // At most PluginView::MaxElements; E17c entries with icons, and `searchable` (section 8.4).
+    box->setChoices( editor.value( "choices" ).toArray(), iconFor );
+    if ( editor.value( "searchable" ).toBool() ) {
+        box->makeSearchable();
+    }
     auto* self = const_cast<PluginCellDelegate*>( this );
     // popupClosed comes from inside the popup's Hide handler: only signal here, the view
     // deletes the editor later (destroyEditor uses deleteLater).
@@ -790,15 +813,13 @@ QWidget* PluginCellDelegate::createChecks( QWidget* parent, const QJsonObject& e
 QWidget* PluginCellDelegate::createChoice( QWidget* parent, const QJsonObject& editor ) const
 {
     auto* combo = new QComboBox( parent );
-    for ( const auto& choice : editorChoices( editor ) ) {
-        if ( combo->count() >= PluginView::MaxElements ) {
-            break;
-        }
-        auto value = choiceValue( choice );
-        if ( value.isString() ) {
-            value = value.toString().left( PluginView::MaxFieldValueChars );
-        }
-        combo->addItem( choiceLabel( choice ), value.toVariant() );
+    // E17c: choice objects with icons, tooltips, disabled entries, separators and sections, and
+    // `indicator: "radio"` (docs/plugin-sdk-advanced.md section 8.4).
+    pluginchoices::fillCombo( combo,
+                              pluginchoices::parse( editorChoices( editor ), PluginView::MaxElements ),
+                              iconFor, editor.value( "indicator" ) == "radio" );
+    if ( editor.value( "searchable" ).toBool() ) {
+        pluginchoices::makeSearchable( combo );
     }
     auto* self = const_cast<PluginCellDelegate*>( this );
     connect( combo, &QComboBox::activated, this, [ self, combo ] {

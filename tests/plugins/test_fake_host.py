@@ -71,10 +71,12 @@ class FakeHostTests(unittest.TestCase):
                          (self.testing.TO_PLUGIN, "initialize", "initialize"))
         params = sent.message["params"]
         self.assertEqual(params["host_features"], ["views", "view_edit", "queries", "tooltips", "icons",
-                                                   "menus", "shortcuts"])
+                                                   "menus", "shortcuts", "choices", "toggles",
+                                                   "field_kinds", "validation"])
         self.assertEqual(params["host_feature_versions"],
                          {"views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1,
-                          "menus": 1, "shortcuts": 1})
+                          "menus": 1, "shortcuts": 1, "choices": 1, "toggles": 1,
+                          "field_kinds": 1, "validation": 1})
         self.assertEqual(params["host_limits"]["max_table_cells"], 50000)
         self.assertEqual(params["host_version"], self.testing.HOST_VERSION)
         self.assertEqual(params["configuration"], {"prefix": "x"})
@@ -123,6 +125,32 @@ class FakeHostTests(unittest.TestCase):
         with self.assertRaises(self.testing.RpcError) as caught:
             host.invoke("fail")
         self.assertEqual((caught.exception.code, caught.exception.message), (-32000, "no device"))
+        self.assertEqual(host.errors, [])
+
+    def test_e17c_helpers_complete_fields_and_change_fields(self):
+        events = []
+        changed = threading.Event()
+        plugin = self.sdk.Plugin({"id": "test", "capabilities": ["tool"],
+                                  "handles": ["field/complete", "query/cancel"]})
+
+        @plugin.complete("main", "board")
+        def board(query):
+            return [name for name in ("Board 1", "Board 2", "Other") if name.startswith(query.text)]
+
+        @plugin.on_view_event
+        def event(params):
+            events.append(params)
+            changed.set()
+
+        host = self.host(plugin)
+        host.initialize()
+        self.assertEqual(host.complete_field("main", "board", "Bo"),
+                         {"items": [{"value": "Board 1"}, {"value": "Board 2"}]})
+        self.assertIsNone(host.complete_field("main", "other", "Bo"))
+        host.change_field("main", "label", "bad name", valid=False)
+        self.assertTrue(changed.wait(2))
+        self.assertEqual((events[0]["type"], events[0]["valid"], events[0]["inputs"]),
+                         ("changed", False, {"label": "bad name"}))
         self.assertEqual(host.errors, [])
 
     def test_query_timeout_sends_query_cancel(self):

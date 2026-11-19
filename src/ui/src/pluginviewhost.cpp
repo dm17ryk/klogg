@@ -413,6 +413,35 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     queries.iconHtml = [ pluginId, directory ]( const QJsonValue& reference ) {
         return PluginIconRegistry::instance().iconHtml( pluginId, directory, reference );
     };
+    queries.icon = [ pluginId, directory ]( const QJsonValue& reference ) {
+        return PluginIconRegistry::instance().icon( pluginId, directory, reference );
+    };
+    // E17c completion (design 8.2): one query per view; a newer one replaces it.
+    queries.complete = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId,
+                         key ]( const QJsonObject& params, int timeoutMs,
+                                std::function<void( const QJsonArray& )> done ) {
+        if ( !host ) {
+            return QString{};
+        }
+        const auto it = host->open_.find( key );
+        if ( !host->manager_ || it == host->open_.end() || it->second->stopped ) {
+            return QString{};
+        }
+        auto full = params;
+        full.insert( "view_id", viewId );
+        full.insert( "window_id", host->windowId_ );
+        full.insert( "context",
+                     QJsonObject::fromVariantMap( host->contextFor( it->second->source, nullptr ) ) );
+        const auto scope = cilogg::plugins::PluginManager::viewScope( host->windowId_, viewId );
+        return host->manager_->query(
+            pluginId, QStringLiteral( "field/complete" ), full, timeoutMs,
+            QStringLiteral( "complete:" ) + scope, scope,
+            [ answered = std::move( done ) ]( const cilogg::plugins::PluginQueries::Outcome& outcome ) {
+                answered( outcome.status == cilogg::plugins::PluginQueries::Status::Answered
+                              ? outcome.result.toObject().value( "items" ).toArray()
+                              : QJsonArray{} );
+            } );
+    };
     view->setQueries( std::move( queries ) );
     view->setEnabled( false ); // until the plugin sends its root
     layout->addWidget( view, 1 );
