@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "blocks": [
+    {
+      "name": "demo_body_block",
+      "format": "match",
+      "type": "string",
+      "regex": "^(?<length>[0-9A-Fa-f]{2})(?<data>[0-9A-Fa-f]*)$",
+      "fields": [
+        { "name": "length", "source": "capture", "capture": "length", "format": "string" },
+        { "name": "data", "source": "capture", "capture": "data", "format": "string" }
+      ],
+      "source": "capture",
+      "capture": "body"
+    }
+  ],
+  "previews": [
+    {
+      "name": "Demo frame",
+      "regex": "^DEMO (?<payload>(?<type>[0-9A-Fa-f]{2})(?<body>[0-9A-Fa-f]*))$",
+      "type": "string",
+      "format": "fields",
+      "bufferCapture": "payload",
+      "fields": [
+        {
+          "name": "type",
+          "source": "capture",
+          "capture": "type",
+          "format": "enum",
+          "enumMap": { "01": "Ping", "02": "Pong", "03": "Status" }
+        },
+        { "name": "body", "source": "block", "block": "demo_body_block" }
+      ]
+    }
+  ]
+}

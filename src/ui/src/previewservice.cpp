@@ -63,8 +63,6 @@ QByteArray readExact( QFile& input, int count )
 
 QByteArray PreviewService::definitions()
 {
-    const auto revision = PreviewDecoderSettings::instance().revision();
-    const auto& manager = PreviewManager::instance();
     static QByteArray cached;
     static bool dirty = true;
     static const auto invalidator = QObject::connect(
@@ -73,8 +71,24 @@ QByteArray PreviewService::definitions()
     if ( !dirty )
         return cached;
     dirty = false;
-    cached.clear();
-    if ( manager.all().size() > 128 || manager.blocks().size() > 4096 )
+    const auto& manager = PreviewManager::instance();
+    const auto revision = PreviewDecoderSettings::instance().revision();
+    cached = definitionsFor( manager.effective(), manager.effectiveBlocks(), revision );
+    // The pack check keeps enabled packs within the limits, but the user's own previews can
+    // grow later: then the packs' previews give way, never the user's (design 4.2).
+    if ( cached.isEmpty() && !manager.packPreviews().isEmpty() ) {
+        LOG_WARNING << "Preview definitions over the limits with configuration packs; "
+                       "using the user's previews only";
+        cached = definitionsFor( manager.all(), manager.blocks(), revision );
+    }
+    return cached;
+}
+
+QByteArray PreviewService::definitionsFor( const QVector<PreviewDefinition>& previews,
+                                           const QMap<QString, PreviewFieldSpec>& blocks,
+                                           const QString& revision )
+{
+    if ( previews.size() > 128 || blocks.size() > 4096 )
         return {};
     QVector<QPair<const PreviewFieldSpec*, int>> pending;
     qint64 characters = 0;
@@ -92,13 +106,13 @@ QByteArray PreviewService::definitions()
             pending.push_back( { &field, depth } );
         return true;
     };
-    for ( const auto& preview : manager.all() ) {
+    for ( const auto& preview : previews ) {
         if ( !stringFits( preview.name ) || !stringFits( preview.regex )
              || !stringFits( preview.bufferCapture.name )
              || !stringFits( preview.offset.expression ) || !enqueue( preview.fields, 0 ) )
             return {};
     }
-    for ( auto block = manager.blocks().cbegin(); block != manager.blocks().cend(); ++block ) {
+    for ( auto block = blocks.cbegin(); block != blocks.cend(); ++block ) {
         if ( !stringFits( block.key() ) )
             return {};
         pending.push_back( { &block.value(), 0 } );
@@ -124,13 +138,10 @@ QByteArray PreviewService::definitions()
             return {};
     }
     auto object
-        = QJsonDocument::fromJson( PreviewRepository::serialize( manager.all(), manager.blocks() ) )
-              .object();
+        = QJsonDocument::fromJson( PreviewRepository::serialize( previews, blocks ) ).object();
     object[ "_decoderRuntimeRevision" ] = revision;
     const auto bytes = QJsonDocument( object ).toJson( QJsonDocument::Compact );
-    if ( bytes.size() <= DefinitionsLimit )
-        cached = bytes;
-    return cached;
+    return bytes.size() <= DefinitionsLimit ? bytes : QByteArray{};
 }
 
 namespace {
@@ -456,7 +467,8 @@ public:
             return;
         }
         QVariantMap profile;
-        for ( const auto* key : { "tshark", "text2pcap", "lua" } )
+        // `packLua`: the enabled packs' Lua, loaded before the user's scripts (design 4.3).
+        for ( const auto* key : { "tshark", "text2pcap", "lua", "packLua" } )
             profile[ key ] = snapshot_.configuration.value( key );
         profile[ "dissector" ] = route.value( "dissector" );
         profile[ "protocol" ] = route.value( "protocol" );

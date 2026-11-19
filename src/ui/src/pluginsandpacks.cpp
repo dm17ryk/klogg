@@ -669,6 +669,13 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
                 }
                 options.insert( "switch_source", true );
             }
+            // The new version's Lua runs at once when the installed pack is enabled.
+            if ( !confirmPackLua( tab, plugins, id, name,
+                                  catalogContents( plugins, options.value( "catalog_entry_id" )
+                                                                .toString() ),
+                                  false ) ) {
+                return;
+            }
             const auto result = executor( manageRequest(
                 installed && installedSource == repository ? "update" : "install", options, id ) );
             if ( !result.ok() ) {
@@ -693,6 +700,44 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
                    ? tr( "Press Fetch to load the catalogs of the enabled repositories." )
                    : QString{} );
     return tab;
+}
+
+bool confirmPackLua( QWidget* parent, cilogg::plugins::PluginManager* manager, const QString& id,
+                     const QString& name, const QStringList& contents, bool enabling )
+{
+    if ( !manager || !contents.contains( QStringLiteral( "lua" ) ) ) {
+        return true;
+    }
+    // A pack that is not enabled runs no Lua: installing or updating it is asked about when it
+    // is enabled.
+    if ( !enabling && !manager->enabledPacks().contains( id ) ) {
+        return true;
+    }
+    return confirm( parent, tr( "Configuration Pack Lua" ),
+                    ( enabling ? tr( "\"%1\" contains Lua code that runs on this computer, with "
+                                     "your permissions, whenever TShark decodes a preview. "
+                                     "Enable it only if you trust its source." )
+                               : tr( "This version of \"%1\" contains Lua code that runs on this "
+                                     "computer, with your permissions, whenever TShark decodes "
+                                     "a preview, as soon as it is installed. Install it only if "
+                                     "you trust its source." ) )
+                        .arg( name.isEmpty() ? id : name ) );
+}
+
+QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId )
+{
+    if ( !manager || entryId.isEmpty() ) {
+        return {};
+    }
+    for ( const auto& value : manager->catalogEntries() ) {
+        const auto entry = value.toMap();
+        if ( entry.value( "entry_id" ).toString() == entryId ) {
+            return entry.value( "kind" ).toString() == QLatin1String( "config-pack" )
+                       ? entry.value( "contents" ).toStringList()
+                       : QStringList{};
+        }
+    }
+    return {};
 }
 
 QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager* manager,

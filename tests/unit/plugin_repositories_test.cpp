@@ -189,9 +189,10 @@ TEST_CASE(
     auto http = valid;
     http[ "id" ] = "org.test.http";
     http[ "url" ] = "http://test.invalid/v.zip";
+    // A kind this host does not run (configuration packs are supported since E16).
     auto pack = valid;
     pack[ "id" ] = "org.test.pack";
-    pack[ "kind" ] = "config-pack";
+    pack[ "kind" ] = "future-kind";
     pack[ "contents" ] = QJsonArray{ "filters" };
     auto tooNew = valid;
     tooNew[ "id" ] = "org.test.new";
@@ -218,7 +219,7 @@ TEST_CASE(
     REQUIRE( read.warnings.join( '\n' ).contains( "org.test.twin 3.0.0" ) );
     REQUIRE( read.hidden.size() == 2 );
     REQUIRE( read.hidden[ 0 ].toObject().value( "id" ) == "org.test.pack" );
-    REQUIRE( read.hidden[ 0 ].toObject().value( "reason" ).toString().contains( "config-pack" ) );
+    REQUIRE( read.hidden[ 0 ].toObject().value( "reason" ).toString().contains( "future-kind" ) );
     REQUIRE( read.hidden[ 1 ].toObject().value( "reason" ) == "Needs CILogg 99.1 or newer." );
     // The entry ID covers the repository: the same package in two repositories is two entries.
     const auto other = readCatalog( bytes, "other", "26.4.2.1078" );
@@ -547,7 +548,7 @@ TEST_CASE( "Updates come only from the install source; another repository needs 
     const auto v110 = fixturePackage( temp.path(), "org.test.fixture", "1.1.0" );
     const auto v120 = fixturePackage( temp.path(), "org.test.fixture", "1.2.0-beta.1" );
     const auto wrongKind
-        = fixturePackage( temp.path(), "org.test.kind", "1.0.0", { { "kind", "config-pack" } } );
+        = fixturePackage( temp.path(), "org.test.kind", "1.0.0", { { "kind", "future-kind" } } );
     server.route( "/a/1.0.0.zip", { 200, v100, "application/zip", 0 } );
     server.route( "/b/1.1.0.zip", { 200, v110, "application/zip", 0 } );
     server.route( "/a/1.2.0.zip", { 200, v120, "application/zip", 0 } );

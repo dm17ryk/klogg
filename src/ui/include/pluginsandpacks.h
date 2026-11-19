@@ -23,6 +23,16 @@ QString sourceLabel( const QVariantMap& plugin );
 // The repository's state for its group header and the Repositories table.
 QString repositoryStateText( const QVariantMap& repository );
 
+// Configuration pack Lua is unrestricted local code (docs/plugin-repositories.md 4.3). Every GUI
+// path asks before it can run: when a pack with Lua is enabled, and when an install or update
+// replaces an enabled pack with a version that has Lua. `contents` lists the content types of
+// the package being enabled or installed (catalog `contents`, or those of its manifest). True
+// when there is nothing to ask or the user agrees.
+bool confirmPackLua( QWidget* parent, cilogg::plugins::PluginManager* manager, const QString& id,
+                     const QString& name, const QStringList& contents, bool enabling );
+// The content types of the catalog entry `entryId`; empty when unknown or not a pack.
+QStringList catalogContents( cilogg::plugins::PluginManager* manager, const QString& entryId );
+
 // Calls `done` with the job payload once job `jobId` has finished.
 void followJob( QObject* owner, QPointer<cilogg::plugins::PluginManager> manager,
                 const QString& jobId, std::function<void( const QVariantMap& )> done );

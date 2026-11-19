@@ -1,5 +1,6 @@
 #include "previewdecodeutils.h"
 
+#include <QRegularExpression>
 #include <QtGlobal>
 #include <limits>
 
@@ -283,6 +284,78 @@ PreviewExpressionResult evaluatePreviewExpression( const PreviewValueExpr& expr,
     result.ok = true;
     result.value = total;
     return result;
+}
+
+namespace {
+// This is intentionally a code-level table rather than runtime config: the
+// fallback names are tied to blocks that ship with the preview definitions,
+// so the two are versioned together. If/when block specs gain their own
+// optional "fallback" field in the preview config (see PreviewFieldSpec),
+// this table can be replaced by reading that field.
+struct BlockFallbackRule {
+    const char* prefix;
+    const char* fallback;
+};
+
+constexpr BlockFallbackRule kBlockFallbackRules[] = {
+    { "at_command_", "at_command_generic_args_block" },
+    { "at_response_", "at_response_generic_args_block" },
+};
+} // namespace
+
+QStringList previewFallbackBlockNames( const QString& resolvedName )
+{
+    // A pack block is `<pack-id>/<block>` (pack IDs never contain a slash), and a block copied
+    // from a pack whose name the user already used is `<block> (<pack name>)`: the generic
+    // block keeps the same prefix and suffix, so the copy finds its own copy of it.
+    static const QRegularExpression shape(
+        QRegularExpression::anchoredPattern( "(?:([^/]*)/)?(.*_block)( \\([^()]*\\))?" ) );
+    const auto match = shape.match( resolvedName );
+    if ( !match.hasMatch() ) {
+        return {};
+    }
+    const auto prefix = match.capturedLength( 1 ) > 0 || resolvedName.startsWith( '/' )
+                            ? match.captured( 1 ) + '/'
+                            : QString{};
+    const auto local = match.captured( 2 );
+    const auto suffix = match.captured( 3 );
+    for ( const auto& rule : kBlockFallbackRules ) {
+        if ( !local.startsWith( QLatin1String( rule.prefix ) ) ) {
+            continue;
+        }
+        QStringList names;
+        if ( !prefix.isEmpty() || !suffix.isEmpty() ) {
+            names.append( prefix + QLatin1String( rule.fallback ) + suffix );
+        }
+        names.append( QLatin1String( rule.fallback ) );
+        return names;
+    }
+    return {};
+}
+
+QString previewBlockReferencePattern( const QString& reference )
+{
+    const auto text = reference.trimmed();
+    QString pattern;
+    int pos = 0;
+    while ( pos < text.size() ) {
+        // The placeholder spellings of resolveTemplateString: ${name} and {name}.
+        const bool dollar
+            = text.at( pos ) == '$' && pos + 1 < text.size() && text.at( pos + 1 ) == '{';
+        if ( text.at( pos ) != '{' && !dollar ) {
+            pattern += QRegularExpression::escape( text.mid( pos, 1 ) );
+            ++pos;
+            continue;
+        }
+        const int end = clampToInt( text.indexOf( '}', dollar ? pos + 2 : pos + 1 ) );
+        if ( end < 0 ) {
+            pattern += QRegularExpression::escape( text.mid( pos ) );
+            break;
+        }
+        pattern += QStringLiteral( ".*" );
+        pos = end + 1;
+    }
+    return QRegularExpression::anchoredPattern( pattern );
 }
 
 QString resolveTemplateString( const QString& templateText,

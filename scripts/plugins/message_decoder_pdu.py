@@ -21,6 +21,7 @@ from message_decoder_wire import ProofError, fields_named, hexdump, normalize_pd
 
 LOG = logging.getLogger("cilogg.decoder.proof")
 INPUT_LIMIT = 1024 * 1024
+PROFILE_SCRIPT_LIMIT = 32
 OUTPUT_LIMIT = 16 * 1024 * 1024
 BRIDGE_FRAME_LIMIT = 262144
 
@@ -221,7 +222,8 @@ class PduEngine:
     def __init__(self, tshark, text2pcap, workspace, scripts=()):
         self.tshark, self.text2pcap = Path(tshark).resolve(), Path(text2pcap).resolve()
         originals = [Path(script).resolve() for script in scripts]
-        if len(originals) > 8:
+        # The session profile limit: the user's scripts and configuration pack files together.
+        if len(originals) > PROFILE_SCRIPT_LIMIT:
             raise ProofError("input_limit")
         for path in [self.tshark, self.text2pcap] + originals:
             if not path.is_file():
@@ -251,6 +253,11 @@ class PduEngine:
             )
         self.isolated = False
         self.env = os.environ.copy()
+        # As in the preview worker: no inherited Lua search paths or Wireshark settings, so
+        # only the copied scripts load (docs/plugin-repositories.md 4.3).
+        for name in list(self.env):
+            if name.startswith(("WIRESHARK_", "LUA_")):
+                del self.env[name]
         for variable, relative in (
             ("WIRESHARK_CONFIG_DIR", "config"),
             ("WIRESHARK_PLUGIN_DIR", "plugins"),

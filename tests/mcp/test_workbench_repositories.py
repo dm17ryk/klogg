@@ -63,6 +63,17 @@ class E15HelperTests(unittest.TestCase):
         with self.assertRaises(ParityError):
             workbench_repositories.row_of(command, "Missing")
 
+    def test_pack_fields_read_the_compared_pack_fields(self):
+        plugins = [{"id": "other"},
+                   {"id": workbench_repositories.PACK_ID, "kind": "config-pack", "pid": 1,
+                    "contents": ["previews", "lua"], "previews": 1, "luaFiles": 2}]
+        fields = workbench_repositories.pack_fields(plugins)
+        self.assertEqual(set(fields), set(workbench_repositories.PACK_FIELDS))
+        self.assertEqual(fields["luaFiles"], 2)
+        self.assertNotIn("pid", fields)
+        self.assertIsNone(workbench_repositories.pack_fields([{"id": "other"}]))
+        self.assertTrue((workbench_repositories.PACK_FOLDER / "plugin.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

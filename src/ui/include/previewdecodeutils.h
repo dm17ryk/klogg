@@ -35,3 +35,10 @@ PreviewExpressionResult evaluatePreviewExpression( const PreviewValueExpr& expr,
 QString resolveTemplateString( const QString& templateText,
                                const QMap<QString, QString>& values,
                                QStringList* missing = nullptr );
+// The generic blocks a missing `at_command_..._block` or `at_response_..._block` falls back to,
+// in the order to try. A name in a configuration pack's `<pack-id>/` namespace tries the pack's
+// own generic block first.
+QStringList previewFallbackBlockNames( const QString& resolvedName );
+// The regular expression of the block names a block reference (a name, or a template with
+// ${value} or {value} placeholders) can resolve to.
+QString previewBlockReferencePattern( const QString& reference );

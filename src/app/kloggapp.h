@@ -80,6 +80,7 @@
 #include "pluginsourceruns.h"
 #include "pluginupdatechecker.h"
 #include "pluginupdatenotices.h"
+#include "previewpackregistry.h"
 #include "scenariorunner.h"
 #include "scenariorunnerwindow.h"
 #include "scriptrunnerwindow.h"
@@ -105,6 +106,8 @@ class KloggApp : public QApplication {
         QNetworkProxyFactory::setUseSystemConfiguration( true );
         // Commander clients reach this instance through its single-application name.
         pluginManager_.setInstanceId( singleApplication_.name() );
+        // Enabled configuration packs feed previews and the TShark decoder (E16).
+        PreviewPackRegistry::instance().attach( &pluginManager_ );
         scriptSupervisor_.setCommanderExecutor(
             [ this ]( const CommanderRequest& request ) { return executeCommanderRequest( request ); } );
         scenarioRunner_.setCommanderExecutor(

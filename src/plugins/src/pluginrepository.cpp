@@ -1,10 +1,12 @@
 #include "pluginrepository.h"
+#include "configpack.h"
 #include "log.h"
 #include "persistentinfo.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <karchive.h>
@@ -209,7 +211,8 @@ StagedPlugin PluginRepository::stage( const QString& source, const QString& inst
     if ( result.error.isEmpty() ) {
         result.manifest = Manifest::read( packagePath );
         result.error = result.manifest.error;
-        if ( result.manifest.executable != "python"
+        // A configuration pack has no executable; Manifest::read checked its files.
+        if ( !isConfigPack( result.manifest.json ) && result.manifest.executable != "python"
              && !QFileInfo::exists( QDir( packagePath ).filePath( result.manifest.executable ) ) ) {
             result.error = "Plugin executable missing from package.";
         }
@@ -221,6 +224,30 @@ StagedPlugin PluginRepository::stage( const QString& source, const QString& inst
     LOG_DEBUG << "Plugin stage source=" << source.toStdString() << " entries=" << budget.entries
               << " bytes=" << budget.bytes << " error=" << result.error.toStdString();
     return result;
+}
+
+QJsonObject PluginRepository::packageManifest( const QString& source )
+{
+    QByteArray bytes;
+    const QFileInfo info( source );
+    if ( info.isDir() ) {
+        QFile file( QDir( source ).filePath( "plugin.json" ) );
+        if ( file.open( QIODevice::ReadOnly ) && file.size() <= MaxMessageBytes ) {
+            bytes = file.readAll();
+        }
+    }
+    else if ( info.isFile() && info.size() <= MaxPackageBytes ) {
+        KZip zip( source );
+        if ( zip.open( QIODevice::ReadOnly ) ) {
+            const auto* entry = zip.directory()->entry( "plugin.json" );
+            const auto* file = entry && entry->isFile() ? static_cast<const KArchiveFile*>( entry )
+                                                        : nullptr;
+            if ( file && file->size() <= MaxMessageBytes ) {
+                bytes = file->data();
+            }
+        }
+    }
+    return QJsonDocument::fromJson( bytes ).object();
 }
 
 QString PluginRepository::commit( const StagedPlugin& stage, const QString& installRoot )

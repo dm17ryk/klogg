@@ -204,6 +204,15 @@ everywhere, such as a pure-Python plugin; list each platform for native programs
 an unchanged plugin changes nothing, and a changed plugin with the same version is refused.
 For several packages, list them in a `sources.json` file and pass `--sources sources.json`.
 
+**Configuration packs** are packages without a program: `"kind": "config-pack"` and a `content`
+object that lists preview definitions (`previews.json` format), Lua files for TShark and their
+decoder routes, and Python decoders (carried now, run by a later CILogg). They install, update,
+enable and remove like plugins, from the same repositories; build them with `--os any --arch
+any`. Pack previews appear in the previews dialog with the pack's name, and **Copy to My
+Previews** makes your own copy. CILogg asks before it enables a pack with Lua, because that Lua
+runs on your computer. The [plugin SDK](docs/plugin-sdk.md#configuration-packs) describes the
+format; [plugins/examples/protocol-pack](plugins/examples/protocol-pack) is a complete example.
+
 ### 2. Create your own repository
 
 **Public.** Any HTTPS static host serves `plugins.json` and the ZIPs: a GitHub repository

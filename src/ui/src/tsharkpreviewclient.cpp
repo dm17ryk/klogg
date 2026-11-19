@@ -163,8 +163,9 @@ bool validResponse( const QJsonObject& value, const QString& id )
          && !integer( value.value( "enginePid" ), 1, 9007199254740991.0 ) )
         return false; // Metadata only; never used to find/terminate a process.
     if ( value.contains( "scriptSha256" ) ) {
+        // The packs' files and the user's scripts (PreviewDecoderSettings::ProfileLuaLimit).
         if ( !value.value( "scriptSha256" ).isArray()
-             || value.value( "scriptSha256" ).toArray().size() > 8 )
+             || value.value( "scriptSha256" ).toArray().size() > 32 )
             return false;
         static const QRegularExpression hash( "\\A[0-9a-f]{64}\\z" );
         for ( const auto& digest : value.value( "scriptSha256" ).toArray() )

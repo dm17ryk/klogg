@@ -1639,7 +1639,7 @@
       "dependencies": [
         "E15"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "ECO22"
       ],
