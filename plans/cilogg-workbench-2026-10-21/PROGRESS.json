@@ -2297,18 +2297,21 @@
       ]
     },
     "E17": {
-      "status": "planned",
+      "status": "in_progress",
       "commit": null,
-      "pullRequest": null,
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/130",
       "evidence": [
-        "../../docs/plugin-sdk-advanced.md"
+        "../../docs/plugin-sdk-advanced.md",
+        "E17a open as PR https://github.com/dm17ryk/klogg/pull/130 (branch feat/e17a-sdk-foundation, feature commit 1bcb3906, based on master e989f899): capability negotiation (host_feature_versions views 2 and view_edit, queries, tooltips, icons 1; host_version; host_limits; manifest handles, requires and icon_ref; result features and sdk), host queries (src/plugins/src/pluginqueries.cpp), plain-text and advanced tooltips with a cache (src/ui/src/plugintooltips.cpp), icons and registered images (src/ui/src/pluginicons.cpp), accessible names, the table model moved to src/ui/src/plugintablemodel.cpp, get_plugin_tooltip on every surface, C++ SDK 2.0.0 and Python SDK 2.0.0 with cilogg_plugin_testing.FakeHost, and plugins/examples/ui-gallery.",
+        "E17a local qualification 2026-11-19 (Windows, MSVC /W4 /WX RelWithDebInfo, Qt 6.10.1, offscreen): cilogg_tests default suite 410 cases / 16388 assertions; [E17] 12 cases / 301 assertions in three runs, including the golden-frame test that compares a plugin without handles with frames recorded from the pre-E17 build (tests/unit/golden/plugin_frames_without_handles.json); cilogg_itests [ui]~[workbench-native] 197 cases / 24855 assertions, [E17] 9 cases / 184 assertions in three runs, [E13],[E14] 66 cases / 812 assertions, [logdata] 90 cases; python tests/plugins 267 OK (48 skipped) with the pinned E14 SDK and the E14 manifest rules over every example; mypy --strict clean on both Python SDK files; tests/mcp self-tests 123 OK; native parity --task E17 (new case e17_tooltips: GUI, CLI, native MCP and Python) and --task E13 passed; clang-cl with the GCC/Clang warning set clean on every changed C++ file.",
+        "Independent C++ review (cpp-reviewer): 2 high (a dangling query id when a pending query was replaced by its exclusive key; a C++ SDK query handler returning an undefined value or throwing a non-standard exception could end the plugin) and 6 medium findings (SDK shutdown waiting on handlers, SVG data: images, decoded-image memory, ui/icons applied once per window, get_plugin_tooltip sharing the hover's key, invalid answers not logged once) fixed with tests; 4 low findings fixed, 3 documented."
       ],
       "limitations": [
-        "Design proposed on 2026-11-19 (decision D17, docs/plugin-sdk-advanced.md) with 22 open questions and recommended answers; awaiting the user's approval. Planned, not started, and not runnable until approved.",
-        "Slice E17i (host commands from plugins) changes the statement of decisions D11 and D14 that plugins never send requests to the host, so it needs its own explicit approval (question 13 of the design)."
+        "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
+        "E17a leaves for later slices, as planned: menus (E17b), choices and toggles (E17c), rich tables (E17d), trees (E17e), layout and content (E17f), window integration (E17g), and the C++ fake host header, JSON Schemas, validator, protocol log and C++ view example (E17h)."
       ],
       "slices": [
-        "E17a: capability negotiation (handles, features, requires), host queries, icons, plain-text element tooltips, static and advanced tooltips, accessibility names, table model extraction, SDK forward and backward compatibility, typing, fake host, golden-frame and version-skew tests, planned",
+        "E17a: capability negotiation (handles, features, requires), host queries, icons, plain-text element tooltips, static and advanced tooltips, accessibility names, table model extraction, SDK forward and backward compatibility, typing, fake host, golden-frame and version-skew tests, in progress (https://github.com/dm17ryk/klogg/pull/130)",
         "E17b: plugin menus, context menus (tab, pane, log, element), dynamic submenus, ui/command, keyboard shortcuts, get_plugin_menus and trigger_plugin_menu, planned",
         "E17c: choice styles and icons, searchable, editable and completing drop-downs, checkbox, radio_group and check_group, cell editor choices, new field kinds, validation, planned",
         "E17d: rich table cells, row icons and check boxes, toggle selection and selection patch, table events, element context menus, Copy and Export, kept columns, planned",
@@ -3008,7 +3011,8 @@
     "G02",
     "U16",
     "R06",
-    "E16"
+    "E16",
+    "E17"
   ],
   "addenda": {
     "messageDecoders": {

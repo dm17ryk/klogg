@@ -563,7 +563,7 @@
   "d17Checks": {
     "date": "2026-11-19",
     "decision": "D17",
-    "state": "proposed_awaiting_approval",
+    "state": "accepted",
     "design": "../../docs/plugin-sdk-advanced.md",
     "tasksAdded": [
       "E17"
@@ -598,9 +598,10 @@
       "G02",
       "U16",
       "R06",
-      "E16"
+      "E16",
+      "E17"
     ],
-    "e17HeldFromLedgerRunnableUntilApproval": true,
+    "e17HeldFromLedgerRunnableUntilApproval": false,
     "openQuestions": 22,
     "independentDesignReview": "read-only architect review against the code; findings addressed before the PR: exact compatibility statement instead of byte-for-byte (additive initialize keys; new event keys only for plugins with handles; golden-frame test); E14 action/view icon kept a file path with icon_ref for new forms; static manifest handles so the host knows before the first start, queries only while ready and never through the start-up queue; per-plugin check of query answers, backlog guard, null not counted by the breaker, per-method SDK lanes; new keys instead of new values (toggle_selection) and SDK builder fallbacks for older hosts; tab menu pane commands are inline, not a Panes submenu; compiled-in shortcut list needs a plugin provider and conflicting plugin shortcuts are refused; queued menu handlers and ids instead of tab indexes; native menu bars fill dynamic submenus from the last answer; corrected section 2 facts (log menu refills several submenus, captions already used as accessible names, element tooltips not plain text today, C++ SDK behaviour); one field vocabulary (secret, min/max); slice dependencies, image limits, text limits and batching made consistent; added host events and the version-skew tests",
     "separateApprovalNeeded": "E17i host commands (question 13)",
@@ -624,6 +625,40 @@
     "productCodeChanged": false,
     "productBuildRun": false,
     "masterMergedAt": "85fe48b5629c2ff43ecfa5304c2541cc1718df26",
-    "mergeConflictResolved": "Master's ledger update (#126: E15 completed) kept in PROGRESS.json, TASK_INDEX.json, README.md, tasks/E15.md and its PLAN_VALIDATION.json records; E17 additions re-applied on top; PACKAGE_SHA256.json recomputed"
+    "mergeConflictResolved": "Master's ledger update (#126: E15 completed) kept in PROGRESS.json, TASK_INDEX.json, README.md, tasks/E15.md and its PLAN_VALIDATION.json records; E17 additions re-applied on top; PACKAGE_SHA256.json recomputed",
+    "acceptedOn": "2026-11-19",
+    "acceptance": "every recommended answer of section 23; a separate yes to question 13 (E17i last); slices in order, each its own branch and pull request"
+  },
+  "e17aChecks": {
+    "date": "2026-11-19",
+    "task": "E17",
+    "slice": "E17a",
+    "decision": "D17",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/130",
+    "basedOn": "e989f899347e3711ee29d762daa6cfba0816a059",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "08-ecosystem.md",
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E17.md"
+    ],
+    "independentReview": "cpp-reviewer: 2 high, 6 medium and 4 low findings fixed with tests; 3 low findings documented (query/cancel only to plugins that declare it, as the design requires; null answers not cached; manifest error precedence unchanged)",
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except one init-capture of pluginview.cpp that is on master and passes GCC",
+    "goldenFrames": "recorded with the pre-E17 build; the E17a host matches them except for the additive initialize keys",
+    "nativeParity": [
+      "E17 (e17_tooltips)",
+      "E13 (plugin-views)"
+    ],
+    "gitnexusDetectChanges": "critical by name matching (299 flows share names such as run, send, notify); the changed symbols are the plugin protocol, both SDKs, the view renderer and get_plugin_tooltip",
+    "preExistingIssueFound": "destroying a MainWindow with an open plugin dock without closing it crashes in PluginViewHost::saveState; not changed in E17a",
+    "qualification": "local_gates_passed_hosted_pending"
   }
 }
