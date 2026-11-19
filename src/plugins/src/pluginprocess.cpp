@@ -1,5 +1,6 @@
 #include "pluginprocess.h"
 #include "log.h"
+#include "pluginfeatures.h"
 #include <QDir>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
@@ -96,6 +97,7 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
     error_.clear();
     input_.clear();
     descriptor_ = {};
+    features_.clear();
     process_.setWorkingDirectory( manifest_.directory );
     auto env = QProcessEnvironment::systemEnvironment();
     env.insert( "PYTHONUNBUFFERED", "1" );
@@ -108,10 +110,13 @@ void PluginProcess::start( const QJsonObject& configuration, const QString& conf
         = { { "protocol_version", ProtocolVersion },  { "plugin_id", manifest_.id },
             { "configuration", configuration },       { "config_directory", configDirectory },
             { "max_message_bytes", MaxMessageBytes }, { "max_pending_bytes", MaxPendingBytes } };
-    // Optional host features, announced as notifications-only protocol v1 extensions.
-    // Plugins ignore unknown names; E01 may later fold this into negotiated capabilities.
-    initializeParams_.insert( "host_features",
-                              QJsonArray{ QStringLiteral( "views" ), QStringLiteral( "view_edit" ) } );
+    // Host features, their versions, the host's version and limits (docs/plugin-sdk-advanced.md
+    // section 4.1). Additive keys only: both SDKs read initialize parameters by name, so older
+    // plugin copies ignore them. E01 may later fold this into negotiated capabilities.
+    initializeParams_.insert( "host_features", hostFeatureNames() );
+    initializeParams_.insert( "host_feature_versions", hostFeatureVersions() );
+    initializeParams_.insert( "host_version", hostVersion_ );
+    initializeParams_.insert( "host_limits", hostLimits() );
     const auto executable
         = manifest_.executable == "python"
               ? pythonExecutable
@@ -174,7 +179,9 @@ void PluginProcess::send( const QJsonObject& message )
     bytes.append( '\n' );
     if ( process_.write( bytes ) != bytes.size() ) {
         fail( process_.errorString() );
+        return;
     }
+    Q_EMIT frameTransferred( true, message );
 }
 
 void PluginProcess::drain()
@@ -228,6 +235,7 @@ void PluginProcess::drain()
             fail( "Malformed plugin JSON-RPC envelope." );
             return;
         }
+        Q_EMIT frameTransferred( false, frame );
         if ( state_ == "initializing" ) {
             if ( frame.value( "id" ) != "initialize" || !frame.value( "result" ).isObject() ) {
                 fail( "Expected initialization response." );
@@ -249,6 +257,8 @@ void PluginProcess::drain()
                 fail( "Incompatible plugin initialization response." );
                 return;
             }
+            // Optional E17 keys: invalid values are ignored, never fatal (design 4.2).
+            features_ = pluginFeatures( descriptor_.value( "features" ) );
             deadline_.stop();
             setState( "ready" );
             const auto waiting = std::exchange( waiting_, {} );

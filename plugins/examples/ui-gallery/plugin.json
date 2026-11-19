@@ -1,0 +1,14 @@
+{
+  "id": "org.cilogg.ui-gallery",
+  "name": "UI Gallery",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "capabilities": ["tool"],
+  "executable": "python",
+  "arguments": ["main.py"],
+  "description": "A gallery of plugin view features: static and advanced tooltips, registered icons and accessible names.",
+  "handles": ["tooltip/resolve", "query/cancel"],
+  "views": [
+    {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520}
+  ]
+}

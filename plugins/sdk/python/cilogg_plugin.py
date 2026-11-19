@@ -1,28 +1,218 @@
-"""CILogg process-plugin SDK, protocol 1. Python standard library only."""
+"""CILogg process-plugin SDK 2.0.0, protocol 1. Python standard library only.
+
+Version 2.0.0 adds capability negotiation (`Plugin.supports`, `host_limits`, `host_version`),
+host queries answered on worker lanes (`@plugin.tooltip`, `@plugin.query`), tooltip
+invalidation, registered icons and forward compatibility with newer hosts. See
+docs/plugin-sdk.md and docs/plugin-sdk-advanced.md.
+"""
 from __future__ import annotations
 
+import base64
+import collections
+import collections.abc
 import json
+import os
 import pathlib
 import queue
 import sys
 import threading
 import time
 import uuid
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import (
+    Any, Callable, Deque, Dict, FrozenSet, Iterable, List, Mapping, NamedTuple, Optional,
+    Protocol, Sequence, Tuple, TypedDict, Union,
+)
 
-JsonObject = dict[str, Any]
+JsonObject = Dict[str, Any]
 Action = Callable[["Job", JsonObject], Optional[JsonObject]]
 ViewCallback = Callable[[JsonObject], None]
 
+SDK_NAME = "cilogg_plugin.py"
+SDK_VERSION = "2.0.0"
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE
 CANCEL_FLUSH_TIMEOUT = 1.0
 VIEW_QUEUE_LIMIT = 1024
 MESSAGE_BUTTONS = ("ok", "cancel", "yes", "no", "retry", "abort", "ignore", "close")
 
+# Limits of a host that does not announce host_limits (the E13/E14 limits, unchanged since).
+DEFAULT_HOST_LIMITS: Dict[str, int] = {
+    "max_elements": 512, "max_table_cells": 50000, "max_text_chars": 4096,
+    "max_message_bytes": MAX_MESSAGE,
+}
+
+# Host queries (docs/plugin-sdk-advanced.md, section 5).
+TOOLTIP_RESOLVE = "tooltip/resolve"
+QUERY_CANCEL = "query/cancel"
+QUERY_DEFAULT_TIMEOUT_MS: Dict[str, int] = {
+    "tooltip/resolve": 1500, "menu/populate": 1000, "tree/children": 10000, "field/complete": 500,
+}
+# Method -> (worker threads, latest wins). Other query methods get one FIFO worker each.
+QUERY_LANES: Dict[str, Tuple[int, bool]] = {
+    "tooltip/resolve": (1, True), "field/complete": (1, True),
+    "menu/populate": (1, False), "tree/children": (2, False),
+}
+QUERY_QUEUE_LIMIT = 64
+METHOD_NOT_FOUND = -32601
+HANDLER_FAILED = -32000
+
+TOOLTIP_TONES = ("normal", "ok", "warn", "error", "muted", "accent")
+MAX_TOOLTIP_ROWS = 32
+MAX_TOOLTIP_TTL_MS = 600000
+
+# Host methods the SDK handles itself; @plugin.query cannot take them over.
+_CORE_HOST_METHODS = frozenset({
+    "initialize", "shutdown", "invoke", "configure", "cancel", "stream/opened", "stream/ack",
+    "stream/stop", "view/opened", "view/closed", "view/event", "ui/message_result", QUERY_CANCEL,
+})
+_VIEW_NOTIFICATIONS = ("view/opened", "view/closed", "view/event", "ui/message_result")
+
+# Element properties a host without the feature does not know; update() and patch() remove them.
+_TOOLTIP_ELEMENT_KEYS = frozenset({"tooltip_provider", "tooltip_key"})
+_TOOLTIP_COLUMN_KEYS = frozenset({"tooltip", "tooltip_provider", "tooltip_key"})
+_TOOLTIP_ROW_KEYS = frozenset({"tooltip_provider", "tooltip_key"})
+_ACCESSIBLE_KEYS = frozenset({"accessible_name", "accessible_description"})
+_ROW_OPERATIONS = ("replace_rows", "update_rows", "insert_rows")
+
+
+# Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
+# `total=False` classes are optional.
+class JsonRpcErrorObject(TypedDict):
+    code: int
+    message: str
+
+
+class JsonRpcRequest(TypedDict):
+    jsonrpc: str
+    id: Union[str, int]
+    method: str
+    params: JsonObject
+
+
+class JsonRpcNotification(TypedDict):
+    jsonrpc: str
+    method: str
+    params: JsonObject
+
+
+class HostLimits(TypedDict, total=False):
+    max_elements: int
+    max_table_cells: int
+    max_text_chars: int
+    max_message_bytes: int
+
+
+class _InitializeParamsRequired(TypedDict):
+    protocol_version: int
+    plugin_id: str
+
+
+class InitializeParams(_InitializeParamsRequired, total=False):
+    configuration: JsonObject
+    config_directory: str
+    max_message_bytes: int
+    max_pending_bytes: int
+    host_features: List[str]
+    host_feature_versions: Dict[str, int]
+    host_version: str
+    host_limits: HostLimits
+
+
+class SdkInfo(TypedDict):
+    name: str
+    version: str
+
+
+class _InitializeResultRequired(TypedDict):
+    plugin_id: str
+    protocol_version: int
+    capabilities: List[str]
+    actions: List[JsonObject]
+    configuration: List[JsonObject]
+    sdk: SdkInfo
+
+
+class InitializeResult(_InitializeResultRequired, total=False):
+    features: List[str]
+
+
+# An icon reference: "icons/x.svg", "builtin:<name>", "status:<tone>", "image:<id>" or
+# {"light": <ref>, "dark": <ref>}.
+IconRef = Union[str, Dict[str, str]]
+
+
+class _TooltipResolveRequired(TypedDict):
+    view_id: str
+    element_id: str
+
+
+class TooltipResolveParams(_TooltipResolveRequired, total=False):
+    window_id: str
+    row_id: str
+    column_id: str
+    node_id: str
+    tooltip_key: str
+    timeout_ms: int
+    context: JsonObject
+
+
+class Tooltip(TypedDict, total=False):
+    """An advanced tooltip; every part is plain text."""
+    title: str
+    text: str
+    rows: List[List[str]]
+    tone: str
+    icon: IconRef
+    footer: str
+    ttl_ms: int
+
+
+class _TooltipInvalidateRequired(TypedDict):
+    view_id: str
+
+
+class TooltipInvalidateParams(_TooltipInvalidateRequired, total=False):
+    window_id: str
+    element_id: str
+    row_ids: List[str]
+    node_ids: List[str]
+
+
+class IconImage(TypedDict, total=False):
+    """One registered image: exactly one of png (base64) or svg (text)."""
+    png: str
+    svg: str
+    picture: bool
+    mask: bool
+
+
+class UiIconsParams(TypedDict, total=False):
+    icons: Dict[str, IconImage]
+    remove: List[str]
+
+
+class QueryCancelParams(TypedDict):
+    id: Union[str, int]
+
+
+TooltipAnswer = Union[Tooltip, Mapping[str, Any], str, None]
+
+
+class LineReader(Protocol):
+    def readline(self, size: int = -1, /) -> bytes: ...
+
+
+class ByteWriter(Protocol):
+    def write(self, data: bytes, /) -> int: ...
+
+    def flush(self) -> None: ...
+
 
 # Plugin view element builders (docs/plugin-views.md). Each returns a plain dict; arguments
-# that are None are omitted. Element ids must be unique within one view.
+# that are None are omitted. Element ids must be unique within one view. Every element also
+# takes `tooltip`, `tooltip_provider`, `tooltip_key`, `accessible_name` and
+# `accessible_description` as keyword properties; update() and patch() drop the ones the
+# host does not know.
 def _element(element_type: str, element_id: Optional[str], /, **props: Any) -> JsonObject:
     element: JsonObject = {"type": element_type}
     if element_id is not None:
@@ -77,19 +267,28 @@ def progress(id: str, value: Optional[float] = None, busy: Optional[bool] = None
 
 
 def table_column(id: str, title: Optional[str] = None, width: Optional[int] = None,
-                 editable: Optional[bool] = None) -> JsonObject:
+                 editable: Optional[bool] = None, tooltip: Optional[str] = None,
+                 tooltip_provider: Optional[bool] = None,
+                 tooltip_key: Optional[str] = None) -> JsonObject:
+    """A table column. `tooltip` is the header tooltip; `tooltip_provider` asks the plugin
+    for the tooltips of this column's cells (host feature tooltips)."""
     column_object: JsonObject = {"id": id, "title": title if title is not None else id}
-    if width is not None:
-        column_object["width"] = width
-    if editable is not None:
-        column_object["editable"] = editable
+    for key, value in (("width", width), ("editable", editable), ("tooltip", tooltip),
+                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key)):
+        if value is not None:
+            column_object[key] = value
     return column_object
 
 
 def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
-              tooltip: Optional[str] = None, editors: Optional[JsonObject] = None) -> JsonObject:
+              tooltip: Optional[str] = None, editors: Optional[JsonObject] = None,
+              tooltip_provider: Optional[bool] = None,
+              tooltip_key: Optional[str] = None) -> JsonObject:
+    """A table row. `tooltip_key` (at most 128 characters) is part of the host's tooltip cache
+    key: change it when the row's advanced tooltips change."""
     row_object: JsonObject = {"id": id, "cells": [str(cell) for cell in cells]}
-    for key, value in (("tone", tone), ("tooltip", tooltip), ("editors", editors)):
+    for key, value in (("tone", tone), ("tooltip", tooltip), ("editors", editors),
+                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key)):
         if value is not None:
             row_object[key] = value
     return row_object
@@ -144,8 +343,83 @@ def remove_rows(table_id: str, row_ids: Sequence[str]) -> JsonObject:
     return {"id": table_id, "remove_rows": list(row_ids)}
 
 
+# Advanced tooltips and icons (host features tooltips and icons).
+def tooltip_content(text: Optional[str] = None, *, title: Optional[str] = None,
+                    rows: Optional[Sequence[Sequence[Any]]] = None, tone: Optional[str] = None,
+                    icon: Optional[IconRef] = None, footer: Optional[str] = None,
+                    ttl_ms: Optional[int] = None) -> Tooltip:
+    """Build an advanced tooltip answer. rows are (name, value) pairs (at most 32); ttl_ms is
+    how long the host may cache the answer (0 to 600000, default 30 s on the host)."""
+    if tone is not None and tone not in TOOLTIP_TONES:
+        raise ValueError(f"Unknown tooltip tone: {tone}")
+    if ttl_ms is not None and not 0 <= ttl_ms <= MAX_TOOLTIP_TTL_MS:
+        raise ValueError(f"ttl_ms must be between 0 and {MAX_TOOLTIP_TTL_MS}")
+    content: Tooltip = {}
+    if title is not None:
+        content["title"] = title
+    if text is not None:
+        content["text"] = text
+    if rows is not None:
+        pairs = [list(pair) for pair in rows]
+        if len(pairs) > MAX_TOOLTIP_ROWS or any(len(pair) != 2 for pair in pairs):
+            raise ValueError(f"Tooltip rows are at most {MAX_TOOLTIP_ROWS} (name, value) pairs")
+        content["rows"] = [[str(name), str(value)] for name, value in pairs]
+    if tone is not None:
+        content["tone"] = tone
+    if icon is not None:
+        content["icon"] = icon
+    if footer is not None:
+        content["footer"] = footer
+    if ttl_ms is not None:
+        content["ttl_ms"] = ttl_ms
+    return content
+
+
+def png_icon(data: bytes, *, picture: bool = False) -> IconImage:
+    """A register_icons() entry from PNG bytes; picture=True for the image element."""
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Not PNG data")
+    entry: IconImage = {"png": base64.b64encode(data).decode("ascii")}
+    if picture:
+        entry["picture"] = True
+    return entry
+
+
+def svg_icon(text: str, *, picture: bool = False, mask: bool = False) -> IconImage:
+    """A register_icons() entry from SVG text. mask=True marks a monochrome icon that the host
+    recolours with the theme's text colour. The host refuses references other than data: URIs."""
+    if "<svg" not in text:
+        raise ValueError("Not SVG text")
+    entry: IconImage = {"svg": text}
+    if picture:
+        entry["picture"] = True
+    if mask:
+        entry["mask"] = True
+    return entry
+
+
+def image_ref(icon_id: str) -> str:
+    """The icon reference of an image registered with register_icons()."""
+    return f"image:{icon_id}"
+
+
+def builtin_ref(name: str) -> str:
+    """The icon reference of a built-in host icon such as info, warning or device."""
+    return f"builtin:{name}"
+
+
+def status_ref(tone: str) -> str:
+    """The icon reference of a coloured status dot (normal, ok, warn, error, muted, accent)."""
+    return f"status:{tone}"
+
+
+def themed_ref(light: str, dark: str) -> Dict[str, str]:
+    """Different icon references for light and dark themes."""
+    return {"light": light, "dark": dark}
+
+
 class Cancelled(Exception):
-    """The host cancelled this job or stopped its stream."""
+    """The host cancelled this job, query or stream, or the plugin is stopping."""
 
 
 class Job:
@@ -163,7 +437,7 @@ class Job:
         self.check_cancelled()
         self.plugin.notify("progress", {"job_id": self.id, "value": value})
 
-    def panel(self, identifier: str, title: str, elements: list[JsonObject]) -> None:
+    def panel(self, identifier: str, title: str, elements: List[JsonObject]) -> None:
         self.check_cancelled()
         self.plugin.notify("panel/update", {
             "job_id": self.id,
@@ -207,7 +481,7 @@ class Stream:
 
     def write(self, records: Iterable[str], *, finish_on_cancel: bool = False) -> None:
         """Write a bounded batch; optionally finish it within one second of cancellation."""
-        cancellation_deadline = None
+        cancellation_deadline: Optional[float] = None
 
         def check() -> None:
             nonlocal cancellation_deadline
@@ -307,34 +581,361 @@ class View:
     def hide(self, window_id: Optional[str] = None) -> None:
         self.plugin.hide_view(self.id, window_id)
 
+    def invalidate_tooltips(self, element_id: Optional[str] = None,
+                            row_ids: Optional[Sequence[str]] = None,
+                            node_ids: Optional[Sequence[str]] = None,
+                            window_id: Optional[str] = None) -> bool:
+        return self.plugin.invalidate_tooltips(self.id, element_id, row_ids, node_ids, window_id)
+
+
+def _optional_text(value: Any) -> Optional[str]:
+    return value if isinstance(value, str) else None
+
+
+def _query_timeout_ms(method: str, value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    default = QUERY_DEFAULT_TIMEOUT_MS.get(method)
+    return None if default is None else float(default)
+
+
+def _id_key(identifier: Any) -> str:
+    return json.dumps(identifier, sort_keys=True)
+
+
+class Query:
+    """A request from the host that a query handler answers (docs/plugin-sdk.md).
+
+    The handler's return value is the answer. `deadline` is the time.monotonic() value after
+    which the host stops waiting (None when the host gave no timeout and the method has no
+    default); `cancelled` is set by query/cancel, by a newer query in a latest-wins lane and
+    when the plugin stops, and then no answer is sent."""
+
+    def __init__(self, plugin: Plugin, identifier: Any, method: str, params: JsonObject,
+                 received: Optional[float] = None) -> None:
+        self.plugin = plugin
+        self.id = identifier
+        self.method = method
+        self.params = params
+        self.received = time.monotonic() if received is None else received
+        self.timeout_ms = _query_timeout_ms(method, params.get("timeout_ms"))
+        self.deadline: Optional[float] = (
+            None if self.timeout_ms is None else self.received + self.timeout_ms / 1000.0)
+        context = params.get("context")
+        self.context: JsonObject = context if isinstance(context, dict) else {}
+        self.cancelled = threading.Event()
+        self.lock = threading.Lock()
+
+    def remaining(self) -> float:
+        """Seconds left until the deadline (0 when passed, infinity without a deadline)."""
+        if self.deadline is None:
+            return float("inf")
+        return max(0.0, self.deadline - time.monotonic())
+
+    def expired(self) -> bool:
+        return self.deadline is not None and time.monotonic() > self.deadline
+
+    def check_cancelled(self) -> None:
+        """Raise Cancelled when nobody waits for the answer any more."""
+        if self.cancelled.is_set() or self.plugin.stopping.is_set():
+            raise Cancelled("Query cancelled")
+
+    def cancel(self) -> None:
+        with self.lock:
+            self.cancelled.set()
+
+
+class TooltipQuery(Query):
+    """A tooltip/resolve query: which element (and row, column or node) the pointer rests on."""
+
+    @property
+    def view_id(self) -> str:
+        return _optional_text(self.params.get("view_id")) or ""
+
+    @property
+    def element_id(self) -> str:
+        return _optional_text(self.params.get("element_id")) or ""
+
+    @property
+    def window_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("window_id"))
+
+    @property
+    def row_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("row_id"))
+
+    @property
+    def column_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("column_id"))
+
+    @property
+    def node_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("node_id"))
+
+    @property
+    def tooltip_key(self) -> Optional[str]:
+        return _optional_text(self.params.get("tooltip_key"))
+
+
+QueryHandler = Callable[[Query], Any]
+TooltipHandler = Callable[[TooltipQuery], TooltipAnswer]
+
+
+def _tooltip_answer(answer: object) -> Optional[JsonObject]:
+    if answer is None:
+        return None
+    if isinstance(answer, str):
+        return {"text": answer}
+    if isinstance(answer, collections.abc.Mapping):
+        return dict(answer)
+    raise TypeError("A tooltip handler returns a dict, a string or None")
+
+
+class _QueryLane:
+    """The worker threads of one query method (QUERY_LANES)."""
+
+    def __init__(self, plugin: Plugin, method: str, workers: int, latest_wins: bool) -> None:
+        self.plugin = plugin
+        self.method = method
+        self.workers = workers
+        self.latest_wins = latest_wins
+        self.condition = threading.Condition()
+        self.waiting: Deque[Query] = collections.deque()
+        self.threads: List[threading.Thread] = []
+        self.closed = False
+
+    def submit(self, query: Query) -> Optional[List[Query]]:
+        """Queue a query. Returns the waiting queries it replaced, or None when it was refused."""
+        with self.condition:
+            if self.closed:
+                return None
+            replaced: List[Query] = []
+            if self.latest_wins:
+                replaced = list(self.waiting)
+                self.waiting.clear()
+            elif len(self.waiting) >= QUERY_QUEUE_LIMIT:
+                return None
+            self.waiting.append(query)
+            if len(self.threads) < self.workers:
+                thread = threading.Thread(
+                    target=self._run, daemon=True,
+                    name=f"plugin-query-{self.method}-{len(self.threads) + 1}")
+                self.threads.append(thread)
+                thread.start()
+            self.condition.notify()
+        return replaced
+
+    def remove(self, query: Query) -> None:
+        with self.condition:
+            try:
+                self.waiting.remove(query)
+            except ValueError:
+                pass
+
+    def close(self) -> List[threading.Thread]:
+        with self.condition:
+            self.closed = True
+            self.waiting.clear()
+            self.condition.notify_all()
+            return list(self.threads)
+
+    def _run(self) -> None:
+        while True:
+            with self.condition:
+                while not self.waiting and not self.closed:
+                    self.condition.wait()
+                if self.closed:
+                    return
+                query = self.waiting.popleft()
+            self.plugin._run_query(query)
+
+
+class _StripRules(NamedTuple):
+    element: FrozenSet[str]
+    column: FrozenSet[str]
+    row: FrozenSet[str]
+
+
+def _without(item: Any, keys: FrozenSet[str]) -> Any:
+    if not isinstance(item, dict) or keys.isdisjoint(item):
+        return item
+    return {key: value for key, value in item.items() if key not in keys}
+
+
+def _map_list(items: Any, convert: Callable[[Any], Any]) -> Any:
+    """Convert every item; return the original list when nothing changed."""
+    if not isinstance(items, list):
+        return items
+    converted = [convert(item) for item in items]
+    return items if all(new is old for new, old in zip(converted, items)) else converted
+
+
+def _compatible_element(element: Any, rules: _StripRules) -> Any:
+    """Return the element (or a `set` dict of patch properties) without the properties the
+    host does not know, copying only what changes."""
+    if not isinstance(element, dict):
+        return element
+    result = _without(element, rules.element)
+    changes: JsonObject = {}
+    for key, convert in (("children", lambda child: _compatible_element(child, rules)),
+                         ("columns", lambda item: _without(item, rules.column)),
+                         ("rows", lambda item: _without(item, rules.row))):
+        if key in result:
+            value = _map_list(result[key], convert)
+            if value is not result[key]:
+                changes[key] = value
+    if changes:
+        result = {**result, **changes}
+    return result
+
+
+def _compatible_patch_entry(entry: Any, rules: _StripRules) -> Any:
+    if not isinstance(entry, dict):
+        return entry
+    changes: JsonObject = {}
+    if "set" in entry:
+        properties = _compatible_element(entry["set"], rules)
+        if properties is not entry["set"]:
+            changes["set"] = properties
+    for operation in _ROW_OPERATIONS:
+        if operation in entry:
+            rows = _map_list(entry[operation], lambda item: _without(item, rules.row))
+            if rows is not entry[operation]:
+                changes[operation] = rows
+    return {**entry, **changes} if changes else entry
+
 
 class Plugin:
-    def __init__(self, manifest_path: str = "plugin.json") -> None:
-        self.manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
-        self.actions: dict[str, Action] = {}
-        self.jobs: dict[str, Job] = {}
-        self.streams: dict[str, Stream] = {}
-        self.workers: dict[str, threading.Thread] = {}
+    def __init__(self, manifest_path: Union[str, os.PathLike[str], Mapping[str, Any]] = "plugin.json") -> None:
+        """Read plugin.json (the host starts the plugin in its folder) or take a manifest dict."""
+        if isinstance(manifest_path, collections.abc.Mapping):
+            self.manifest: JsonObject = dict(manifest_path)
+        else:
+            self.manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
+        self.actions: Dict[str, Action] = {}
+        self.jobs: Dict[str, Job] = {}
+        self.streams: Dict[str, Stream] = {}
+        self.workers: Dict[str, threading.Thread] = {}
         self.configuration: JsonObject = {}
-        self.config_directory = None
-        self.host_features: list[str] = []
+        self.config_directory: Optional[str] = None
+        self.host_features: List[str] = []
+        self.host_feature_versions: Dict[str, int] = {}
+        self.host_version: Optional[str] = None
+        self.host_limits: Dict[str, int] = dict(DEFAULT_HOST_LIMITS)
+        self.features: List[str] = []
         self.lock = threading.RLock()
         self.output_lock = threading.Lock()
+        self.output: Optional[ByteWriter] = None
         self.credit = threading.Condition()
         self.pending_bytes = 0
         self.stopping = threading.Event()
         self.initialized = False
-        self.view_callbacks: dict[str, list[ViewCallback]] = {
+        self.view_callbacks: Dict[str, List[ViewCallback]] = {
             "view/opened": [], "view/closed": [], "view/event": []}
-        self.messages: dict[str, Message] = {}
-        self.view_queue: queue.Queue = queue.Queue(maxsize=VIEW_QUEUE_LIMIT)
+        self.messages: Dict[str, Message] = {}
+        self.view_queue: queue.Queue[Optional[Tuple[List[ViewCallback], JsonObject]]] = (
+            queue.Queue(maxsize=VIEW_QUEUE_LIMIT))
         self.view_worker: Optional[threading.Thread] = None
+        self.query_handlers: Dict[str, QueryHandler] = {}
+        self.tooltip_handlers: Dict[Tuple[str, Optional[str]], TooltipHandler] = {}
+        self.queries: Dict[str, Query] = {}
+        self.lanes: Dict[str, _QueryLane] = {}
 
     def action(self, identifier: str) -> Callable[[Action], Action]:
         def register(callback: Action) -> Action:
             self.actions[identifier] = callback
             return callback
         return register
+
+    # Capability negotiation (docs/plugin-sdk-advanced.md, section 4).
+    def supports(self, feature: str, version: int = 1) -> bool:
+        """True when the host announced `feature` at `version` or newer. A host that sends no
+        host_feature_versions has every announced feature at version 1."""
+        if feature not in self.host_features:
+            return False
+        return self.host_feature_versions.get(feature, 1) >= version
+
+    # Host queries (docs/plugin-sdk-advanced.md, section 5).
+    def query(self, method: str) -> Callable[[QueryHandler], QueryHandler]:
+        """Register handler(query) -> answer for a host query method such as tree/children.
+
+        The handler runs on the method's lane, never on the reader, a job or a view callback
+        thread. Its return value (JSON) is the result; an exception answers error -32000.
+        Register handlers before serve(): the initialize result lists them in `features`, and
+        plugin.json must list the method (and query/cancel) in `handles`."""
+        if not method or method in _CORE_HOST_METHODS:
+            raise ValueError(f"Not a query method: {method!r}")
+
+        def register(handler: QueryHandler) -> QueryHandler:
+            self.query_handlers[method] = handler
+            return handler
+        return register
+
+    def tooltip(self, view_id: str,
+                element_id: Optional[str] = None) -> Callable[[TooltipHandler], TooltipHandler]:
+        """Register handler(TooltipQuery) for the advanced tooltips of one element, or of any
+        element of the view when element_id is None (an element's own handler wins).
+
+        The handler returns a dict (see tooltip_content()), a plain string (the tooltip text)
+        or None (no advanced tooltip: the static one is shown)."""
+        if not view_id:
+            raise ValueError("A tooltip handler needs a view id")
+
+        def register(handler: TooltipHandler) -> TooltipHandler:
+            self.tooltip_handlers[(view_id, element_id)] = handler
+            return handler
+        return register
+
+    def handled_methods(self) -> List[str]:
+        """The host-to-plugin methods the registered handlers answer (`features`)."""
+        methods = set(self.query_handlers)
+        if self.tooltip_handlers:
+            methods.add(TOOLTIP_RESOLVE)
+        if methods:
+            methods.add(QUERY_CANCEL)
+        return sorted(methods)
+
+    def invalidate_tooltips(self, view_id: str, element_id: Optional[str] = None,
+                            row_ids: Optional[Sequence[str]] = None,
+                            node_ids: Optional[Sequence[str]] = None,
+                            window_id: Optional[str] = None) -> bool:
+        """Drop the host's cached advanced tooltips of a view, an element, or some of its rows
+        or nodes. Returns False (and sends nothing) on a host without the tooltips feature."""
+        if (row_ids is not None or node_ids is not None) and element_id is None:
+            raise ValueError("row_ids and node_ids need the element_id of their table or tree")
+        params: TooltipInvalidateParams = {"view_id": view_id}
+        if window_id:
+            params["window_id"] = window_id
+        if element_id is not None:
+            params["element_id"] = element_id
+        if row_ids is not None:
+            params["row_ids"] = [str(item) for item in row_ids]
+        if node_ids is not None:
+            params["node_ids"] = [str(item) for item in node_ids]
+        if not self.supports("tooltips"):
+            return False
+        self.notify("tooltip/invalidate", params)
+        return True
+
+    def register_icons(self, icons: Mapping[str, IconImage],
+                       remove: Optional[Sequence[str]] = None) -> bool:
+        """Register images (png_icon(), svg_icon()) for the plugin's lifetime and remove others;
+        use them as image_ref(id). Returns False (and sends nothing) on a host without the
+        icons feature."""
+        entries: Dict[str, IconImage] = {}
+        for icon_id, entry in icons.items():
+            if not isinstance(icon_id, str) or not icon_id:
+                raise ValueError("Icon ids are non-empty strings")
+            if ("png" in entry) == ("svg" in entry):
+                raise ValueError(f"Icon {icon_id} needs exactly one of png or svg")
+            entries[icon_id] = entry
+        params: UiIconsParams = {"icons": entries}
+        if remove:
+            params["remove"] = [str(item) for item in remove]
+        if not self.supports("icons"):
+            return False
+        self.notify("ui/icons", params)
+        return True
 
     # Plugin views and message boxes (docs/plugin-views.md).
     @property
@@ -364,9 +965,25 @@ class Plugin:
     def view(self, identifier: str) -> View:
         return View(self, identifier)
 
+    def _strip_rules(self) -> Optional[_StripRules]:
+        element: FrozenSet[str] = frozenset()
+        column_keys: FrozenSet[str] = frozenset()
+        row_keys: FrozenSet[str] = frozenset()
+        if not self.supports("tooltips"):
+            element |= _TOOLTIP_ELEMENT_KEYS
+            column_keys |= _TOOLTIP_COLUMN_KEYS
+            row_keys |= _TOOLTIP_ROW_KEYS
+        if not self.supports("views", 2):
+            element |= _ACCESSIBLE_KEYS
+        if not (element or column_keys or row_keys):
+            return None
+        return _StripRules(element, column_keys, row_keys)
+
     def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
         """Replace a view's element tree (in every window without window_id)."""
-        params: JsonObject = {"view_id": view_id, "root": root}
+        rules = self._strip_rules()
+        params: JsonObject = {
+            "view_id": view_id, "root": root if rules is None else _compatible_element(root, rules)}
         if window_id:
             params["window_id"] = window_id
         self.notify("view/update", params)
@@ -374,7 +991,11 @@ class Plugin:
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
         """Apply set_props()/row operation entries to existing elements."""
-        params: JsonObject = {"view_id": view_id, "patch": list(changes)}
+        rules = self._strip_rules()
+        entries = list(changes)
+        if rules is not None:
+            entries = [_compatible_patch_entry(entry, rules) for entry in entries]
+        params: JsonObject = {"view_id": view_id, "patch": entries}
         if window_id:
             params["window_id"] = window_id
         self.notify("view/update", params)
@@ -419,7 +1040,7 @@ class Plugin:
             raise
         return handle
 
-    def _queue_view_callback(self, callbacks: list[ViewCallback], params: JsonObject) -> None:
+    def _queue_view_callback(self, callbacks: List[ViewCallback], params: JsonObject) -> None:
         if not callbacks:
             return
         with self.lock:
@@ -457,28 +1078,31 @@ class Plugin:
         self._queue_view_callback(self.view_callbacks[method], params)
 
     @staticmethod
-    def encode(message: JsonObject) -> bytes:
+    def encode(message: Mapping[str, Any]) -> bytes:
         encoded = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if len(encoded) > MAX_MESSAGE:
             raise ValueError("Plugin message exceeds 1 MiB; split it into smaller batches")
         return encoded + b"\n"
 
-    def send(self, message: JsonObject) -> None:
+    def send(self, message: Mapping[str, Any]) -> None:
         encoded = self.encode(message)
         with self.output_lock:
-            sys.stdout.buffer.write(encoded)
-            sys.stdout.buffer.flush()
+            output: ByteWriter = self.output if self.output is not None else sys.stdout.buffer
+            output.write(encoded)
+            output.flush()
 
-    def notify(self, method: str, params: JsonObject) -> None:
+    def notify(self, method: str, params: Mapping[str, Any]) -> None:
         self.send({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def _send_error(self, request_id: Any, code: int, text: str) -> None:
+        self.send({"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": text}})
 
     def _invoke(self, request_id: str, params: JsonObject) -> None:
         identifier = params["job_id"]
         job = Job(self, identifier, params.get("context", {}))
         with self.lock:
             if len(self.jobs) >= 128:
-                self.send({"jsonrpc": "2.0", "id": request_id,
-                           "error": {"code": -32000, "message": "Too many jobs"}})
+                self._send_error(request_id, HANDLER_FAILED, "Too many jobs")
                 return
             self.jobs[identifier] = job
 
@@ -491,8 +1115,7 @@ class Plugin:
             except Exception as error:
                 print(f"Plugin job {identifier}: {error}", file=sys.stderr, flush=True)
                 if not self.stopping.is_set():
-                    self.send({"jsonrpc": "2.0", "id": request_id,
-                               "error": {"code": -32000, "message": str(error)}})
+                    self._send_error(request_id, HANDLER_FAILED, str(error))
             finally:
                 with self.lock:
                     self.jobs.pop(identifier, None)
@@ -503,22 +1126,145 @@ class Plugin:
             self.workers[identifier] = worker
         worker.start()
 
+    def _has_query_handler(self, method: str) -> bool:
+        return method in self.query_handlers or (method == TOOLTIP_RESOLVE
+                                                 and bool(self.tooltip_handlers))
+
+    def _submit_query(self, identifier: Any, method: str, params: JsonObject) -> None:
+        if self.stopping.is_set():
+            return
+        query: Query = (TooltipQuery if method == TOOLTIP_RESOLVE else Query)(
+            self, identifier, method, params)
+        with self.lock:
+            key = _id_key(identifier)
+            previous = self.queries.get(key)
+            self.queries[key] = query
+            lane = self.lanes.get(method)
+            if lane is None:
+                workers, latest_wins = QUERY_LANES.get(method, (1, False))
+                lane = self.lanes[method] = _QueryLane(self, method, workers, latest_wins)
+        if previous is not None:  # The host reused a pending id: only the newest gets an answer.
+            previous.cancel()
+            self._lane_remove(previous)
+        replaced = lane.submit(query)
+        if replaced is None:
+            self._forget_query(query)
+            if not self.stopping.is_set():
+                self._send_error(identifier, HANDLER_FAILED, "Too many waiting queries")
+            return
+        for older in replaced:  # Latest wins: a replaced query gets no answer.
+            older.cancel()
+            self._forget_query(older)
+
+    def _lane_remove(self, query: Query) -> None:
+        with self.lock:
+            lane = self.lanes.get(query.method)
+        if lane is not None:
+            lane.remove(query)
+
+    def _forget_query(self, query: Query) -> None:
+        with self.lock:
+            key = _id_key(query.id)
+            if self.queries.get(key) is query:
+                del self.queries[key]
+
+    def _cancel_query(self, identifier: Any) -> None:
+        with self.lock:
+            query = self.queries.pop(_id_key(identifier), None)
+        if query is not None:
+            query.cancel()
+            self._lane_remove(query)
+
+    def _tooltip_handler(self, query: TooltipQuery) -> Optional[Callable[[TooltipQuery], object]]:
+        specific = self.tooltip_handlers.get((query.view_id, query.element_id))
+        if specific is not None:
+            return specific
+        general = self.tooltip_handlers.get((query.view_id, None))
+        if general is not None:
+            return general
+        return self.query_handlers.get(TOOLTIP_RESOLVE)
+
+    def _answer_query(self, query: Query) -> Any:
+        if isinstance(query, TooltipQuery):
+            handler = self._tooltip_handler(query)
+            return None if handler is None else _tooltip_answer(handler(query))
+        query_handler = self.query_handlers.get(query.method)
+        return None if query_handler is None else query_handler(query)
+
+    def _run_query(self, query: Query) -> None:
+        try:
+            # Dropped without an answer: cancelled, replaced, stopping, or too late to start.
+            if query.cancelled.is_set() or self.stopping.is_set() or query.expired():
+                return
+            response: JsonObject
+            try:
+                response = {"jsonrpc": "2.0", "id": query.id, "result": self._answer_query(query)}
+                self.encode(response)  # The answer must be JSON and fit into one message.
+            except Exception as error:
+                if not query.cancelled.is_set():
+                    print(f"Plugin query {query.method} {query.id}: {error}", file=sys.stderr,
+                          flush=True)
+                response = {"jsonrpc": "2.0", "id": query.id, "error": {
+                    "code": HANDLER_FAILED, "message": str(error) or type(error).__name__}}
+            with query.lock:
+                if query.cancelled.is_set() or self.stopping.is_set():
+                    return
+                try:
+                    self.send(response)
+                except Exception as error:  # The host may already be gone.
+                    print(f"Plugin query {query.method} {query.id}: {error}", file=sys.stderr,
+                          flush=True)
+        finally:
+            self._forget_query(query)
+
+    def _warn_unlisted_handles(self) -> None:
+        handles = self.manifest.get("handles")
+        listed = {name for name in handles if isinstance(name, str)} if isinstance(handles, list) else set()
+        missing = [method for method in self.handled_methods() if method not in listed]
+        if missing:
+            print("cilogg_plugin: warning: plugin.json \"handles\" does not list "
+                  f"{', '.join(missing)}; CILogg sends these methods only to plugins that list "
+                  "them", file=sys.stderr, flush=True)
+
+    def _initialize(self, request_id: Any, params: JsonObject) -> None:
+        if self.initialized or params.get("protocol_version") != 1 or params.get("plugin_id") != self.manifest["id"]:
+            raise ValueError("Incompatible initialization")
+        self.configuration = params.get("configuration", {})
+        self.config_directory = params.get("config_directory")
+        self.host_features = [str(name) for name in params.get("host_features", [])]
+        versions = params.get("host_feature_versions")
+        self.host_feature_versions = {
+            str(name): version for name, version in versions.items()
+            if isinstance(version, int) and not isinstance(version, bool) and version >= 1
+        } if isinstance(versions, dict) else {}
+        self.host_version = _optional_text(params.get("host_version")) or None
+        limits = params.get("host_limits")
+        self.host_limits = dict(DEFAULT_HOST_LIMITS)
+        if isinstance(limits, dict):
+            self.host_limits.update({
+                str(name): value for name, value in limits.items()
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0})
+        self.features = self.handled_methods()
+        self.initialized = True
+        result: InitializeResult = {
+            "plugin_id": self.manifest["id"], "protocol_version": 1,
+            "capabilities": self.manifest["capabilities"],
+            "actions": self.manifest.get("actions", []),
+            "configuration": self.manifest.get("configuration", []),
+            "sdk": {"name": SDK_NAME, "version": SDK_VERSION},
+        }
+        if self.features:
+            result["features"] = list(self.features)
+        self.send({"jsonrpc": "2.0", "id": request_id, "result": result})
+
     def _dispatch(self, message: JsonObject) -> None:
         method = message.get("method")
         params = message.get("params", {})
+        if not isinstance(method, str) or not isinstance(params, dict):
+            raise ValueError("Malformed host JSON-RPC")
+        is_request = "id" in message
         if method == "initialize":
-            if self.initialized or params.get("protocol_version") != 1 or params.get("plugin_id") != self.manifest["id"]:
-                raise ValueError("Incompatible initialization")
-            self.configuration = params.get("configuration", {})
-            self.config_directory = params.get("config_directory")
-            self.host_features = [str(name) for name in params.get("host_features", [])]
-            self.initialized = True
-            self.send({"jsonrpc": "2.0", "id": message["id"], "result": {
-                "plugin_id": self.manifest["id"], "protocol_version": 1,
-                "capabilities": self.manifest["capabilities"],
-                "actions": self.manifest.get("actions", []),
-                "configuration": self.manifest.get("configuration", []),
-            }})
+            self._initialize(message["id"], params)
         elif method == "shutdown":
             self.stopping.set()
         elif not self.initialized:
@@ -532,7 +1278,7 @@ class Plugin:
                 job = self.jobs.get(params["job_id"])
                 if job:
                     job.cancelled.set()
-        elif method.startswith("stream/"):
+        elif method in ("stream/opened", "stream/ack", "stream/stop"):
             with self.lock:
                 stream = self.streams.get(params["stream_id"])
                 if stream:
@@ -542,15 +1288,27 @@ class Plugin:
                         stream.ack.set()
                     elif method == "stream/stop":
                         stream.closed.set()
-        elif method in ("view/opened", "view/closed", "view/event", "ui/message_result"):
+        elif method in _VIEW_NOTIFICATIONS:
             self._view_notification(method, params)
-        else:
-            raise ValueError(f"Unknown host method: {method}")
+        elif method == QUERY_CANCEL:
+            self._cancel_query(params.get("id"))
+        elif is_request and self._has_query_handler(method):
+            self._submit_query(message["id"], method, params)
+        elif is_request:
+            # Forward compatibility: a newer host's request is refused, never fatal.
+            self._send_error(message["id"], METHOD_NOT_FOUND, "Method not found")
+        # A newer host's notification is ignored.
 
-    def serve(self) -> None:
+    def serve(self, stdin: Optional[LineReader] = None, stdout: Optional[ByteWriter] = None) -> None:
+        """Run the protocol until shutdown or end of input (default: this process's stdin and
+        stdout; a test host can pass binary streams)."""
+        if stdout is not None:
+            self.output = stdout
+        source: LineReader = stdin if stdin is not None else sys.stdin.buffer
+        self._warn_unlisted_handles()
         try:
             while not self.stopping.is_set():
-                line = sys.stdin.buffer.readline(MAX_MESSAGE + 2)
+                line = source.readline(MAX_MESSAGE + 2)
                 if not line:
                     break
                 if len(line.rstrip(b"\r\n")) > MAX_MESSAGE or not line.endswith(b"\n"):
@@ -573,6 +1331,13 @@ class Plugin:
                 for handle in self.messages.values():
                     handle.done.set()
                 self.messages.clear()
+                queries = list(self.queries.values())
+                self.queries.clear()
+                lanes = list(self.lanes.values())
+            for pending in queries:
+                pending.cancel()
+            for lane in lanes:
+                workers.extend(lane.close())
             with self.credit:
                 self.credit.notify_all()
             deadline = time.monotonic() + 2.8

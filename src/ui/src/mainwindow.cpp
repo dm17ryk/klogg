@@ -939,6 +939,8 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSearch( request );
     case CommanderAction::OpenPluginView:
         return commanderOpenPluginView( request );
+    case CommanderAction::GetPluginTooltip:
+        return commanderGetPluginTooltip( request );
     case CommanderAction::SetFollowMode:
         return commanderSetFollowMode( request );
     case CommanderAction::InvokeAction:

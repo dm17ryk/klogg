@@ -626,6 +626,16 @@ class KloggApp : public QApplication {
             // U15b: a source picks the tab(s); "all" invokes once per open tab, staged.
             return pluginSourceRuns_.invoke( request );
         }
+        if ( request.action == CommanderAction::GetPluginTooltip ) {
+            // E17a: a tooltip of a view open in this window (docs/plugin-sdk-advanced.md 9.5).
+            auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
+                                               : activeWindowIfAny();
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "Requested window was not found." ) );
+            }
+            return window->executeCommanderRequest( request );
+        }
         if ( request.action == CommanderAction::OpenPluginView ) {
             auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
                                                : activeWindowOrCreate();

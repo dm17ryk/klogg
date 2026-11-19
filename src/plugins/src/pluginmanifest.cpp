@@ -2,6 +2,7 @@
 
 #include "log.h"
 #include "plugincatalog.h"
+#include "pluginfeatures.h"
 #include "semanticversion.h"
 #include <QDir>
 #include <QFile>
@@ -137,6 +138,14 @@ QString validatePresentation( const QJsonObject& item, const QString& id, bool a
              || !imageSuffix.match( icon ).hasMatch() ) {
             return QStringLiteral( "Invalid icon (a .png, .ico or .svg path inside the plugin): %1" )
                 .arg( id );
+        }
+    }
+    // E17: every icon reference form; wins over `icon` on hosts that know it. `icon` itself stays
+    // a plugin file, because an older host refuses anything else there.
+    if ( item.contains( "icon_ref" ) ) {
+        const auto error = validateIconReference( item.value( "icon_ref" ) );
+        if ( !error.isEmpty() ) {
+            return QStringLiteral( "Invalid icon_ref: %1 (%2)" ).arg( id, error );
         }
     }
     return {};
@@ -289,6 +298,19 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
     }
     if ( !fieldError.isEmpty() ) {
         m.error = fieldError;
+    }
+    // E17: the host-to-plugin methods the plugin handles and the host features it requires.
+    const auto handlesError = validateHandles( m.json.value( "handles" ) );
+    if ( !handlesError.isEmpty() ) {
+        m.error = handlesError;
+    }
+    const auto requiresError = validateRequires( m.json.value( "requires" ), &m.missingFeatures );
+    if ( !requiresError.isEmpty() ) {
+        m.error = requiresError;
+    }
+    else if ( m.error.isEmpty() && !m.missingFeatures.isEmpty() ) {
+        m.error = QStringLiteral( "Requires a newer CILogg (missing: %1)." )
+                      .arg( m.missingFeatures.join( QStringLiteral( ", " ) ) );
     }
     // `kind` is read before anything else matters: a kind this host does not support is never
     // run, whatever else the manifest says (configuration packs come with E16).

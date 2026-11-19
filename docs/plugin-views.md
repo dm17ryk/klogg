@@ -257,6 +257,18 @@ Each view and element gets an object name, `pluginView_<plugin>_<view>` and
 The existing UI automation (`get_ui`, `set_ui`, `activate_ui`, also through MCP) can therefore
 fill fields, press buttons and answer message boxes, as in native windows.
 
+Since E17a, every element also takes `tooltip_provider`, `tooltip_key`, `tooltip_timeout_ms`,
+`accessible_name` and `accessible_description`, table columns take `tooltip`, `tooltip_provider`
+and `tooltip_key`, and rows take `tooltip_provider` and `tooltip_key`
+([advanced plugin SDK](plugin-sdk-advanced.md), sections 9 and 12.4; host side in
+[plugin-sdk.md](plugin-sdk.md)). The tooltip of an element or a table cell is readable through the
+same path as a hover:
+`command --action get_plugin_tooltip --plugin-id <id> --view-id <view> --element-id <element>
+[--row-id <row> --column-id <column>] [--no-cache] [--window-index <n>]` (native MCP:
+`get_plugin_tooltip` with `plugin_id`, `view_id`, `element_id`, `row_id`, `column_id`,
+`no_cache`). It returns `source` (`static`, `cache` or `plugin`), `tooltip`, `html`,
+`staticTooltip` and `latencyMs`.
+
 ## 6. Related small host changes
 
 - **Executable path for plugins.** Pass `CILOGG_EXECUTABLE` (the running `cilogg.exe`) and

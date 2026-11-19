@@ -57,6 +57,12 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginupdatenotices.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginview.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginview.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintablemodel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintablemodel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintooltips.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintooltips.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginicons.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginicons.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginviewhost.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewhost.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindowplugins.cpp

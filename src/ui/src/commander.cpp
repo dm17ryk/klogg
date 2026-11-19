@@ -176,6 +176,8 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "cancel_plugin_job" );
     case CommanderAction::OpenPluginView:
         return QStringLiteral( "open_plugin_view" );
+    case CommanderAction::GetPluginTooltip:
+        return QStringLiteral( "get_plugin_tooltip" );
     case CommanderAction::SetActionsEnabled:
         return QStringLiteral( "set_actions_enabled" );
     case CommanderAction::SetAutoResponsesEnabled:
@@ -253,6 +255,9 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == "cancel_plugin_job" ) { return CommanderAction::CancelPluginJob; }
     if ( normalized == "open_plugin_view" ) {
         return CommanderAction::OpenPluginView;
+    }
+    if ( normalized == "get_plugin_tooltip" ) {
+        return CommanderAction::GetPluginTooltip;
     }
     if ( normalized == "list_reports" ) { return CommanderAction::ListReports; }
     if ( normalized == "create_report" ) { return CommanderAction::CreateReport; }
@@ -797,6 +802,16 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.pluginJobId = map.value( QStringLiteral( "pluginJobId" ) ).toString();
     request.pluginArguments = map.value( QStringLiteral( "pluginArguments" ) ).toMap();
     request.viewId = map.value( QStringLiteral( "viewId" ) ).toString();
+    if ( request.action == CommanderAction::GetPluginTooltip ) {
+        // Python scripts and scenarios name the tooltip target as request fields (element_id
+        // becomes elementId); the CLI puts it into pluginArguments.
+        for ( const auto* key : { "elementId", "rowId", "columnId", "nodeId", "noCache" } ) {
+            const QString name = QLatin1String( key );
+            if ( map.contains( name ) && !request.pluginArguments.contains( name ) ) {
+                request.pluginArguments.insert( name, map.value( name ) );
+            }
+        }
+    }
     if ( map.contains( QStringLiteral( "source" ) )
          && map.value( QStringLiteral( "source" ) ).userType() != QMetaType::QString ) {
         setError( errorMessage, QStringLiteral( "The commander source must be a string." ) );

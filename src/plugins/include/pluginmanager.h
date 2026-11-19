@@ -1,6 +1,7 @@
 #pragma once
 #include "plugincatalog.h"
 #include "pluginprocess.h"
+#include "pluginqueries.h"
 #include "pluginrepositories.h"
 #include "pluginrepository.h"
 #include "pluginstorage.h"
@@ -8,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QNetworkAccessManager>
+#include <QSet>
 #include <QSettings>
 #include <QVariantMap>
 #include <deque>
@@ -110,6 +112,27 @@ public:
     // Process state of a plugin ("stopped" when it has no process); empty when unknown.
     QString pluginState( const QString& pluginId ) const;
 
+    // Host queries (docs/plugin-sdk-advanced.md section 5). Sent only while the plugin is ready
+    // and reading its input, when it lists `method` both in plugin.json `handles` and in the
+    // `features` of its initialize result, and while the circuit breaker allows the method.
+    // `timeoutMs` is bounded by the method's maximum (0 means its default). `scope` groups the
+    // queries of one view (viewScope()), which end when the view closes. Returns the query id, or
+    // an empty string and *reason when nothing was sent (the callback then never runs).
+    QString query( const QString& pluginId, const QString& method, const QJsonObject& params,
+                   int timeoutMs, const QString& exclusiveKey, const QString& scope,
+                   PluginQueries::Callback callback, QString* reason = nullptr );
+    // The host stopped waiting: forgets the query and sends `query/cancel`.
+    void cancelQuery( const QString& id );
+    static QString viewScope( const QString& windowId, const QString& viewId );
+    // Whether plugin.json lists `method` in `handles` (known before the plugin starts).
+    bool declaresHandler( const QString& pluginId, const QString& method ) const;
+    // Whether the running plugin handles `method`: `handles` and its initialize `features`.
+    bool handles( const QString& pluginId, const QString& method ) const;
+    PluginQueries& queries()
+    {
+        return *queries_;
+    }
+
 Q_SIGNALS:
     void changed();
     void fileReady( const QString& path, bool follow, const QVariantMap& context );
@@ -121,6 +144,8 @@ Q_SIGNALS:
     void viewRequest( const QString& pluginId, const QString& method, const QJsonObject& params );
     // The plugin (re)initialized and was sent view/opened for its open views.
     void pluginReady( const QString& pluginId );
+    // Every frame sent to (`outgoing`) or read from a plugin process (PluginProcess).
+    void protocolFrame( const QString& pluginId, bool outgoing, const QJsonObject& frame );
     // The plugin was disabled or removed: close its views without a result.
     void viewsRevoked( const QString& pluginId );
     // New versions that an update check found, each announced once and never when skipped
@@ -236,6 +261,8 @@ private:
     void completeManagement( const QString& operation, const QString& pluginId,
                              const QString& jobId );
     void handleMessage( const QString& pluginId, const QJsonObject& frame );
+    bool sendQueryFrame( const QString& pluginId, const QString& id, const QString& method,
+                         const QJsonObject& params );
     void processStopped( const QString& pluginId );
     void stopStream( const QString& id, bool notify );
     void install( const QString& source, const QString& jobId, const QString& expectedId = {},
@@ -374,5 +401,7 @@ private:
     int storageTicks_ = 0;
     quint64 storageScanGeneration_ = 0;
     bool shuttingDown_ = false;
+    std::unique_ptr<PluginQueries> queries_;
+    mutable QSet<QString> featureWarnings_; // plugin|method listed in handles or features only
 };
 } // namespace cilogg::plugins

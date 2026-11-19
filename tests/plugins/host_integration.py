@@ -278,6 +278,27 @@ def run(build: Path, artifacts: Path) -> None:
                     while cli("get_plugin_job", "--plugin-job-id", started["jobId"])["state"] != "cancelled":
                         assert time.monotonic() < deadline, "Cancelling job did not finish"
                         time.sleep(0.05)
+                # E17a: the ui-gallery view answers advanced tooltips through the host's query
+                # path; the CLI and MCP read the same tooltip, and a table cell asks per cell.
+                gallery = "org.cilogg.ui-gallery"
+                if gallery in identifiers:
+                    cli("activate_ui", "--object-name", f"pluginViewAction_{gallery}_gallery")
+                    summary_button = f"pluginView_{gallery}_gallery_summary"
+                    deadline = time.monotonic() + 30
+                    while not any(o.get("objectName") == summary_button and o.get("enabled")
+                                  for o in cli("get_ui")["objects"]):
+                        assert time.monotonic() < deadline, "UI gallery was not rendered"
+                        time.sleep(0.1)
+                    through_cli = cli("get_plugin_tooltip", "--plugin-id", gallery, "--view-id",
+                                      "gallery", "--element-id", "summary", "--no-cache")
+                    through_mcp = mcp.command("get_plugin_tooltip", {
+                        "plugin_id": gallery, "view_id": "gallery", "element_id": "summary",
+                        "no_cache": True})
+                    assert through_cli["source"] == "plugin", through_cli
+                    assert through_cli["tooltip"] == through_mcp["tooltip"], (through_cli, through_mcp)
+                    cell = cli("get_plugin_tooltip", "--plugin-id", gallery, "--view-id", "gallery",
+                               "--element-id", "boards", "--row-id", "b1", "--column-id", "state")
+                    assert cell["tooltip"]["title"] == "Connected", cell
                 # Syslog crosses real UDP, the plugin protocol and the native capture writer.
                 syslog = "org.cilogg.syslog-server"
                 for protocol in ("cli", "mcp", "gui"):

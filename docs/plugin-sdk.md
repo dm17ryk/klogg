@@ -105,8 +105,9 @@ Host requests:
 
 | Method | Parameters / result |
 | --- | --- |
-| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit"]`); return identity/version, capabilities, actions, configuration fields |
+| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit", "queries", "tooltips", "icons"]`), `host_feature_versions`, `host_version`, `host_limits`; return identity/version, capabilities, actions, configuration fields, and optionally `features` (the host-to-plugin methods the plugin handles) and `sdk` (`{name, version}`) |
 | `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete |
+| `tooltip/resolve` | A host query (ids `q:<n>`), sent only to a plugin that lists it in `handles` and `features`: `view_id`, `window_id`, `element_id`, optional `row_id`, `column_id`, `tooltip_key`, `timeout_ms`, `context`; answer a tooltip object or `null` (see below) |
 
 The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
 executable) and `CILOGG_INSTANCE_ID` (the single-application name that Commander clients use to
@@ -189,8 +190,8 @@ them; it is disabled by default.
 Hosts that announce `view_edit` also support editable table cells and the `multichoice` field (see
 [plugin views](plugin-views.md), sections 2.5 and 2.3) and the `toolbar` / `menu` / `icon` manifest
 keys (section 2.1). The Python SDK helpers are
-`table_column(id, title=None, width=None, editable=None)`,
-`table_row(id, cells, tone=None, tooltip=None, editors=None)` and
+`table_column(id, title=None, width=None, editable=None, tooltip=None, tooltip_provider=None, tooltip_key=None)`,
+`table_row(id, cells, tone=None, tooltip=None, editors=None, tooltip_provider=None, tooltip_key=None)` and
 `editor(kind, choices=None, min=None, max=None, max_length=None, placeholder=None, value=None)`.
 `Plugin.supports_view_edit` is true when the host announced `view_edit`; a plugin should fall back to
 read-only tables when it is false. The view-demo has an editable table.
@@ -198,6 +199,161 @@ read-only tables when it is false. The view-demo has an editable table.
 External windows belong to the plugin process. See the Python `external-window`
 SDK example: Tk runs on the main thread while the protocol reader and jobs run on
 workers. Keep the protocol reader responsive, and close windows on shutdown.
+
+## Advanced SDK in the host: negotiation, host queries, tooltips and icons (E17a)
+
+The [advanced plugin SDK](plugin-sdk-advanced.md) keeps protocol version 1. A plugin that does not
+opt in gets exactly the frames it got before, apart from the additive `initialize` keys (a
+golden-frame test checks this).
+
+- **Manifest keys.** `handles` lists the host-to-plugin methods the plugin handles (for example
+  `["tooltip/resolve", "query/cancel"]`); names this CILogg does not know are allowed. `requires`
+  (`{"host_features": ["tooltips", "views>=2"]}`) makes an older CILogg show "Requires a newer CILogg
+  (missing: …)" and never start the plugin. `icon_ref` on actions and views takes every icon
+  reference form and wins over the file `icon`, which stays a plugin file so the previous CILogg
+  still loads the manifest. Older hosts ignore all three keys.
+- **Host queries.** The host sends `tooltip/resolve` only while the plugin is ready and reading its
+  input, and only when the method is in both `handles` and the initialize `features`. At most 8
+  queries are outstanding per plugin and one tooltip query per view. When the host stops waiting
+  (timeout, the pointer left, the view closed) it sends `query/cancel` `{id}`; a late answer is
+  dropped. Five failures in a row (timeouts, errors, invalid answers; a `null` answer does not
+  count) pause the method for 60 seconds. `get_plugins` reports `features`, `sdk`,
+  `missingFeatures` and per method `sent`, `answered`, `timedOut`, `failed`, `medianMs`, `p95Ms`
+  and `pausedUntil`.
+- **Tooltips.** Every element's `tooltip` is plain text, as row tooltips already were; table
+  columns take `tooltip` too. `"tooltip_provider": true` on an element, a table column or a row
+  asks the plugin (default timeout 1,500 ms, `tooltip_timeout_ms` up to 5,000); `tooltip_key`
+  (128 characters) is part of the cache key. The answer is `null` or `{title, text, rows, tone,
+  icon, footer, ttl_ms}`; the host renders it with every string escaped. While the plugin answers,
+  the static tooltip shows, or "Loading…" after 250 ms. Answers are kept for `ttl_ms` (default
+  30 s, at most 10 minutes; 256 per view) and dropped by a patch to the element or row, by
+  `tooltip/invalidate` `{view_id, element_id, row_ids}`, and when the plugin restarts.
+- **Icons.** An icon reference is a plugin file (`.png`, `.ico`, `.svg`), `builtin:<name>`,
+  `status:<tone>`, `image:<id>` or `{"light": …, "dark": …}`. `ui/icons`
+  `{"icons": {"<id>": {"png": "<base64>"} | {"svg": "<text>", "mask": true}}, "remove": [...]}`
+  registers images until the plugin stops (256 icons of 64 KiB, 4 MiB in all, 256 × 256 pixels;
+  16 pictures of 1 MiB with `"picture": true`; 128 MiB decoded in all). SVG, registered or a plugin
+  file, may embed only raster `data:` images and fragments of itself; anything else is refused.
+- **Accessibility.** An element's accessible name is its caption or text (field and button
+  `label`, group `title`, label text), else its id; `accessible_name` and
+  `accessible_description` override, and the static tooltip is the description by default. Field
+  captions are the label buddies of their controls.
+- **C++ SDK** (`cilogg_plugin.h` 2.0.0): `onQuery(method, handler)` with the same per-method
+  workers as Python, `features` and `sdk` in the initialize result, `-32601` for unknown host
+  requests, `supports()`, `hostLimits()`, `hostVersion()`, `invalidateTooltips()` and
+  `registerIcons()` (both do nothing on an older host). A long handler should poll
+  `query.expired()`, which turns true on `query/cancel`, at the deadline and at shutdown.
+
+## Python SDK 2.0: negotiation, host queries, tooltips, icons and testing
+
+`plugins/sdk/python/cilogg_plugin.py` is version 2.0.0 (`SDK_VERSION`); it is still one
+standard-library file for Python 3.9 or newer, fully type-hinted (`TypedDict` classes for the
+messages, such as `InitializeParams`, `TooltipResolveParams`, `Tooltip` and `IconImage`) and
+checked with `mypy --strict` in CI. Every name of the earlier SDK keeps working. The design is
+[the advanced plugin SDK](plugin-sdk-advanced.md) (E17); slice E17a adds:
+
+- **Negotiation.** `plugin.supports(feature, version=1)` is true when the host announced the
+  feature in `host_features` at that version or newer (`host_feature_versions`; a host that sends
+  no versions has every listed feature at version 1, and a version alone does not announce a
+  feature). `plugin.host_limits` is a dict with `max_elements`, `max_table_cells`,
+  `max_text_chars` and `max_message_bytes`: the host's values, or the E13/E14 limits
+  (`DEFAULT_HOST_LIMITS`) on an older host. `plugin.host_version` is the host's version string,
+  or None. The initialize result always carries `sdk` (`{"name": "cilogg_plugin.py",
+  "version": "2.0.0"}`) and, when handlers are registered, `features`.
+- **Host queries.** `@plugin.tooltip(view_id, element_id=None)` registers the advanced-tooltip
+  handler of one element, or of every other element of the view when `element_id` is None (the
+  element's own handler wins). `@plugin.query(method)` registers a handler for any other query
+  method (`menu/populate`, `tree/children`, `field/complete`, …); one registered for
+  `tooltip/resolve` is the fallback after the tooltip handlers. A handler gets a `Query`
+  (`id`, `method`, `params`, `context`, `timeout_ms`, `deadline`, `remaining()`, `cancelled`,
+  `check_cancelled()`); a tooltip handler gets a `TooltipQuery`, which adds `view_id`,
+  `window_id`, `element_id`, `row_id`, `column_id`, `node_id` and `tooltip_key`. A tooltip
+  handler returns a dict (build it with `tooltip_content(text, title=, rows=, tone=, icon=,
+  footer=, ttl_ms=)`), a plain string (the tooltip text) or None (the static tooltip stays); any
+  other handler returns its JSON result. An exception answers the JSON-RPC error `-32000` with its
+  message. The SDK lists the registered methods, and `query/cancel`, in `features`
+  (`plugin.handled_methods()`), so register handlers before `serve()`.
+- **`handles`.** CILogg sends a query method only to a plugin whose `plugin.json` lists it in
+  `handles` (and `query/cancel` with it):
+
+  ```json
+  "handles": ["tooltip/resolve", "query/cancel"]
+  ```
+
+  At start the SDK prints a warning on stderr for every handled method that `handles` lacks.
+- **Lanes.** Query handlers never run on the reader, on job threads or on the view-callback
+  thread:
+
+  | Method | Workers | A newer query… |
+  | --- | --- | --- |
+  | `tooltip/resolve`, `field/complete` | 1 each | replaces a waiting one (latest wins; the replaced one gets no answer) |
+  | `menu/populate` | 1 | waits its turn |
+  | `tree/children` | 2 | waits its turn |
+  | any other method | 1 per method | waits its turn |
+
+  A query whose deadline (`timeout_ms` from receipt, or the method's default) passed before its
+  handler started is dropped without an answer. `query/cancel` `{id}` drops a waiting query and
+  suppresses the answer of a running one; a long handler can poll `query.check_cancelled()`.
+- **Tooltips and accessible names on elements.** Every element builder takes `tooltip`,
+  `tooltip_provider=True` (ask the plugin for the tooltip), `tooltip_key` (at most 128 characters,
+  part of the host's cache key: change it when the tooltip changes), `accessible_name` and
+  `accessible_description` as keyword properties; table columns take a header `tooltip`,
+  `tooltip_provider` and `tooltip_key`, rows `tooltip_provider` and `tooltip_key`.
+  `plugin.invalidate_tooltips(view_id, element_id=None, row_ids=None, node_ids=None,
+  window_id=None)` (also `View.invalidate_tooltips`) drops cached answers; a patch of an element
+  or row drops them by itself.
+- **Icons.** `plugin.register_icons({id: entry}, remove=None)` registers images for the plugin's
+  lifetime. Build entries with `png_icon(data, picture=False)` and `svg_icon(text,
+  picture=False, mask=False)` (`mask`: a monochrome icon that the host recolours), and refer to
+  icons with `image_ref(id)`, `builtin_ref(name)`, `status_ref(tone)` or
+  `themed_ref(light, dark)`.
+- **Forward compatibility.** A request the SDK does not know (a method of a newer host) is
+  answered with the JSON-RPC error `-32601` "Method not found", and an unknown notification is
+  ignored; SDK 1 ended its protocol loop on both.
+- **Backward compatibility.** `update()` and `patch()` remove, centrally, what the host does not
+  know: `tooltip_provider`, `tooltip_key` and column `tooltip` without the `tooltips` feature,
+  `accessible_name` and `accessible_description` without `views` version 2. The caller's
+  dictionaries are not changed. `invalidate_tooltips` and `register_icons` send nothing and return
+  False on a host without `tooltips` or `icons`, because an older host logs a warning for every
+  unknown method. `Plugin(manifest)` also accepts a manifest dict instead of a `plugin.json` path,
+  and `serve(stdin=None, stdout=None)` accepts binary streams.
+
+`plugins/examples/ui-gallery` (disabled by default) shows static and advanced tooltips on a
+label, a button, a field, table headers and every table cell, a registered icon,
+`invalidate_tooltips` and accessible names, and degrades on an older CILogg.
+
+### Testing plugins without CILogg
+
+`plugins/sdk/python/cilogg_plugin_testing.py` (standard library only) has a `FakeHost` that
+drives a plugin as CILogg does and records every frame in both directions:
+
+```python
+from cilogg_plugin_testing import FakeHost
+
+with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, executable, arguments
+    host.initialize()                     # a current host; initialize_older_host() plays E13/E14
+    assert host.invoke("hello", {"name": "Ann"})["greeting"] == "hi Ann"
+    host.open_view("main")
+    root = host.wait_for("view/update")["root"]
+    tip = host.resolve_tooltip("main", "devices", row_id="r1", column_id="state")
+```
+
+- Start a plugin with `FakeHost.start(command, cwd)`, `FakeHost.start_package(folder)` or, for
+  a `Plugin` object in the test process, `FakeHost.in_process(plugin)`.
+- `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
+  host_limits=…)` sends the current host's keys by default; pass None to leave one out.
+- `invoke`, `start_invoke`, `cancel`, `configure`, `open_view`, `close_view`, `view_event`,
+  `message_result`, `request`, `notify` and `send_frame` (any frame, also raw bytes) send;
+  `wait_for(method, predicate)` consumes the next matching plugin notification and
+  `notifications(method)` lists them all; `records`, `panels` and `progress` collect stream
+  data (acknowledged like the host), panels and progress.
+- `query(method, params, timeout_ms=…, timeout=…)` and `resolve_tooltip(view, element, …)` ask
+  host queries; without an answer in time the host sends `query/cancel` and raises
+  `QueryTimeout`. `send_query`, `wait_response`, `cancel_query` and `answers(id)` test
+  cancellation and lanes. An error answer raises `RpcError` (`code`, `message`).
+- `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
+  lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
+  `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.
 
 ## CLI and MCP
 

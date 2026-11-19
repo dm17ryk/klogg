@@ -1,10 +1,11 @@
-# Advanced plugin SDK (E17): menus, rich elements, tooltips with handlers and window integration — proposed design
+# Advanced plugin SDK (E17): menus, rich elements, tooltips with handlers and window integration — design
 
-**Status:** proposed on 2026-11-19 for the user's approval (decision D17 in
+**Status:** accepted on 2026-11-19 (decision D17 in
 [docs/workbench/decisions.md](workbench/decisions.md), task
-[E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). Design only: nothing here is implemented.
-Section 23 lists the open questions, each with a recommended answer. Implementation starts after
-approval, one branch and pull request per slice (section 21).
+[E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
+answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
+slices in order, one branch and pull request each (section 21). **E17a is implemented** (section
+24); E17b to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1266,3 +1267,58 @@ the user says otherwise.
     of its actions does, with "Loading…" until the answer (10 seconds in all); tooltips, completion
     and every other query never start a plugin, and a stopped plugin's targets show their static
     content.
+
+## 24. E17a as built
+
+E17a implements sections 4 to 6, 9 (static and advanced tooltips on the existing elements, table
+column headers and table cells), 12.4, the `get_plugin_tooltip` operation of section 15 and the
+SDK parts of section 16 that do not depend on later slices. Where the design left a choice open,
+E17a decided as follows.
+
+- **Feature versions.** `views` is version 2: version 2 adds the element properties
+  `accessible_name` and `accessible_description`. `view_edit`, `queries`, `tooltips` and `icons` are
+  version 1. A plugin uses a feature only when `host_features` lists it (`supports()` in both
+  SDKs); an older host that sends only `host_features` has version 1 of each feature it lists.
+- **Where the code is.** `src/plugins/src/pluginfeatures.cpp` (feature table, limits, `handles`,
+  `requires`, icon references, the tooltip answer check), `src/plugins/src/pluginqueries.cpp` (host
+  queries), `src/ui/src/plugintablemodel.cpp` (the table model and cell delegate, moved out of
+  `pluginview.cpp` without behaviour change), `src/ui/src/plugintooltips.cpp` (hover, cache,
+  rendering) and `src/ui/src/pluginicons.cpp` (icon references and registered images).
+- **Why a query is not sent.** `PluginManager::query` returns no id and a reason: `not ready` (the
+  plugin is not running, or not reading its input), `not handled` (the method is missing from
+  `handles` or from `features`), `paused` (circuit breaker), `busy` (eight outstanding) or `not a
+  query method`. The target then falls back at once.
+- **One tooltip query per view.** The exclusive key is the view in its window, so a new hover in
+  the same view replaces the old query. `get_plugin_tooltip` uses the same path with its own key,
+  so a hover never cancels it.
+- **Images.** Besides the limits of section 6, the decoded images of one plugin (icons and
+  pictures together) stay within 128 MiB, since a 1 MiB PNG can decode to 64 MiB. An SVG, whether
+  registered or a plugin file, may embed only raster `data:` images (`image/png`, `image/jpeg`,
+  `image/gif`) and fragments of itself; an embedded SVG is refused because it would be decoded
+  without this check. `ui/icons` is applied once, whatever the number of windows.
+- **Cache generations.** An answer that arrives after an invalidation of its target is shown but
+  not kept, so a late answer never brings back stale content.
+- **C++ SDK robustness.** A handler that returns an undefined value answers `null`, a handler
+  that throws anything answers a JSON-RPC error, and at shutdown every pending query reports
+  `expired()`, so handlers that poll it return at once.
+- **What a tooltip query carries.** `view_id`, `window_id`, `element_id`, for a table cell
+  `row_id` and `column_id`, the most specific `tooltip_key` (the row's, else the column's, else the
+  element's), `timeout_ms` and the view's `context`. The cache key holds every key that applies.
+- **Built-in icons** use the platform style's standard icons where one exists (for example
+  `play`, `folder`, `warning`) and a symbol drawn in the palette's text colour otherwise, so all of
+  them follow the theme. `record` is a red status dot.
+- **Accessible names** of labels, badges and progress bars now come from their text (before E17a
+  they used the element id), as section 12.4 asks.
+- **Status in the Plugins and Packs window.** A plugin with unmet `requires` shows "Requires a newer
+  CILogg (missing: …)"; a method paused by the circuit breaker adds "; tooltip/resolve paused until
+  HH:MM:SS".
+- **Journal.** Each finished tooltip query adds one activity journal entry with the plugin, view,
+  element, row, column and latency, never the answer.
+- **`get_plugin_tooltip`** returns `source` (`static`, `cache` or `plugin`), `tooltip` (the checked
+  answer, or null), `html` (the rendered, escaped answer), `staticTooltip` and `latencyMs`.
+  `--node-id` is refused until E17e adds trees.
+- **Frames.** `PluginProcess` emits every frame it sends and reads (`PluginManager::protocolFrame`);
+  the golden-frame test uses it now and the protocol log of E17h will.
+- **Left for later slices.** The C++ fake host (`cilogg_plugin_testing.h`) and the C++ view example
+  come with E17h; the Python fake host is in E17a. `ui-gallery` shows E17a's tooltips, icons and
+  accessible names and grows with each slice.

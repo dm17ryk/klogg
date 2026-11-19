@@ -104,6 +104,8 @@ enum class CommanderAction {
     ClosePane,
     MergePanes,
     MoveTab,
+    // Advanced plugin SDK (E17a).
+    GetPluginTooltip,
 };
 
 enum class CommanderResultCode {

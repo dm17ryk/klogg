@@ -1,0 +1,14 @@
+{
+  "id": "org.cilogg.test.skew",
+  "name": "Version Skew Fixture",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "capabilities": ["tool"],
+  "executable": "python",
+  "arguments": ["main.py"],
+  "actions": [
+    {"id": "echo", "label": "Echo", "capability": "tool",
+     "fields": [{"id": "text", "label": "Text", "type": "text"}]}
+  ],
+  "views": [{"id": "main", "title": "Skew", "kind": "dock", "area": "left"}]
+}

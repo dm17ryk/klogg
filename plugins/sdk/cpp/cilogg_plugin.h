@@ -4,21 +4,44 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QUuid>
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <future>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace cilogg_plugin {
 constexpr int MaxMessage = 1024 * 1024;
 constexpr int MaxPending = 8 * MaxMessage;
+constexpr const char* SdkName = "cilogg_plugin.h";
+constexpr const char* SdkVersion = "2.0.0";
 class Server;
+
+// A host query (docs/plugin-sdk-advanced.md section 5): a request from the host with a deadline.
+// The handler's answer is sent only while expired() is false.
+struct Query {
+    QString id;
+    QString method;
+    QJsonObject params;
+    std::chrono::steady_clock::time_point deadline;
+    std::shared_ptr<std::atomic<bool>> cancelled = std::make_shared<std::atomic<bool>>( false );
+    // The host stopped waiting (query/cancel) or the deadline passed.
+    bool expired() const
+    {
+        return cancelled->load() || std::chrono::steady_clock::now() >= deadline;
+    }
+};
 struct Job {
     QString id;
     QJsonObject context;
@@ -82,6 +105,71 @@ public:
     {
         std::lock_guard<std::mutex> guard( mutex_ );
         return hostFeatures_;
+    }
+    // Whether the host has `feature` in at least `version` (initialize `host_feature_versions`;
+    // a host that only lists `host_features` has version 1 of each).
+    bool supports( const QString& feature, int version = 1 ) const
+    {
+        std::lock_guard<std::mutex> guard( mutex_ );
+        if ( hostFeatureVersions_.contains( feature ) ) {
+            return hostFeatureVersions_.value( feature ).toInt() >= version;
+        }
+        return version <= 1 && hostFeatures_.contains( feature );
+    }
+    QJsonObject hostLimits() const
+    {
+        std::lock_guard<std::mutex> guard( mutex_ );
+        return hostLimits_;
+    }
+    QString hostVersion() const
+    {
+        std::lock_guard<std::mutex> guard( mutex_ );
+        return hostVersion_;
+    }
+    // Host queries (docs/plugin-sdk-advanced.md section 5): `tooltip/resolve`, and later
+    // `menu/populate`, `tree/children` and `field/complete`. Register before serve(); the methods
+    // are announced in the initialize result's `features` (list them in plugin.json `handles`
+    // too). Handlers run on per-method workers, never on the reader thread: tooltip/resolve and
+    // field/complete on one worker where a newer waiting query replaces an older one,
+    // tree/children on two, every other method on one. A handler returns the result (null for
+    // "nothing"); an exception answers a JSON-RPC error.
+    using QueryHandler = std::function<QJsonValue( const Query& query )>;
+    void onQuery( const QString& method, QueryHandler handler )
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        lanes_[ method ].handler = std::move( handler );
+        lanes_[ method ].workers = method == "tree/children" ? 2 : 1;
+        lanes_[ method ].latestWins = method == "tooltip/resolve" || method == "field/complete";
+    }
+    // tooltip/invalidate: drops the host's cached advanced tooltips of a view, an element, or some
+    // rows. Does nothing on a host without the `tooltips` feature.
+    void invalidateTooltips( const QString& viewId, const QString& elementId = {},
+                             const QJsonArray& rowIds = {}, const QString& windowId = {} )
+    {
+        if ( !supports( "tooltips" ) ) {
+            return;
+        }
+        QJsonObject params{ { "view_id", viewId } };
+        if ( !elementId.isEmpty() ) {
+            params.insert( "element_id", elementId );
+        }
+        if ( !rowIds.isEmpty() ) {
+            params.insert( "row_ids", rowIds );
+        }
+        notify( "tooltip/invalidate", withWindow( params, windowId ) );
+    }
+    // ui/icons: registers images ({"<id>": {"png": "<base64>"} or {"svg": "<text>"}}) for
+    // `image:<id>` icon references. Does nothing on a host without the `icons` feature.
+    void registerIcons( const QJsonObject& icons, const QJsonArray& remove = {} )
+    {
+        if ( !supports( "icons" ) ) {
+            return;
+        }
+        QJsonObject params{ { "icons", icons } };
+        if ( !remove.isEmpty() ) {
+            params.insert( "remove", remove );
+        }
+        notify( "ui/icons", params );
     }
     void updateView( const QString& viewId, const QJsonObject& root, const QString& windowId = {} )
     {
@@ -183,6 +271,18 @@ public:
     }
     void serve()
     {
+        {
+            // The host sends a query only when plugin.json lists it in `handles` too.
+            std::lock_guard<std::mutex> guard( queryMutex_ );
+            const auto handles = manifest_.value( "handles" ).toArray();
+            for ( const auto& lane : lanes_ ) {
+                if ( !handles.contains( lane.first ) ) {
+                    std::cerr << "cilogg_plugin: " << lane.first.toStdString()
+                              << " has a handler but is missing from handles in plugin.json"
+                              << std::endl;
+                }
+            }
+        }
         std::vector<char> buffer( MaxMessage + 2 );
         try {
             while ( !stopping_.load()
@@ -215,6 +315,18 @@ public:
         }
         stopping_ = true;
         {
+            // Waiting queries are dropped and running ones see expired(), so handlers that poll
+            // it return at once instead of at their deadlines.
+            std::lock_guard<std::mutex> guard( queryMutex_ );
+            for ( auto& pending : pendingQueries_ ) {
+                *pending.second->cancelled = true;
+            }
+            for ( auto& lane : lanes_ ) {
+                lane.second.queue.clear();
+            }
+            queryCondition_.notify_all();
+        }
+        {
             std::lock_guard<std::mutex> guard( mutex_ );
             for ( auto& pair : jobs_ ) {
                 pair.second->cancelled = true;
@@ -224,6 +336,10 @@ public:
         for ( auto& worker : workers_ ) {
             worker.get();
         }
+        for ( auto& thread : queryThreads_ ) {
+            thread.join();
+        }
+        queryThreads_.clear();
     }
     bool stopping() const
     {
@@ -269,10 +385,116 @@ private:
             throw std::runtime_error( "Host pipe closed" );
         }
     }
+    struct Lane {
+        QueryHandler handler;
+        int workers = 1;
+        bool latestWins = false;
+        int started = 0;
+        std::deque<std::shared_ptr<Query>> queue;
+    };
+    bool hasQueryHandler( const QString& method )
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        return lanes_.count( method ) > 0;
+    }
+    QJsonArray queryFeatures()
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        QJsonArray features;
+        for ( const auto& lane : lanes_ ) {
+            features.append( lane.first );
+        }
+        if ( !features.isEmpty() ) {
+            features.append( QStringLiteral( "query/cancel" ) );
+        }
+        return features;
+    }
+    void enqueueQuery( const QJsonObject& frame )
+    {
+        auto query = std::make_shared<Query>();
+        query->id = frame.value( "id" ).toString();
+        query->method = frame.value( "method" ).toString();
+        query->params = frame.value( "params" ).toObject();
+        const auto timeout = std::clamp( query->params.value( "timeout_ms" ).toInt( 5000 ), 1, 60000 );
+        query->deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds( timeout );
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        auto& lane = lanes_.at( query->method );
+        if ( lane.latestWins ) {
+            for ( const auto& waiting : lane.queue ) {
+                *waiting->cancelled = true; // replaced by a newer query: no answer
+                pendingQueries_.erase( waiting->id );
+            }
+            lane.queue.clear();
+        }
+        lane.queue.push_back( query );
+        pendingQueries_[ query->id ] = query;
+        while ( lane.started < lane.workers ) {
+            ++lane.started;
+            queryThreads_.emplace_back( [ this, method = query->method ] { runLane( method ); } );
+        }
+        queryCondition_.notify_all();
+    }
+    void cancelQuery( const QString& id )
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        const auto found = pendingQueries_.find( id );
+        if ( found == pendingQueries_.end() ) {
+            return;
+        }
+        *found->second->cancelled = true;
+        auto& queue = lanes_.at( found->second->method ).queue;
+        queue.erase( std::remove( queue.begin(), queue.end(), found->second ), queue.end() );
+        pendingQueries_.erase( found );
+    }
+    void runLane( const QString& method )
+    {
+        for ( ;; ) {
+            std::shared_ptr<Query> query;
+            QueryHandler handler;
+            {
+                std::unique_lock<std::mutex> lock( queryMutex_ );
+                auto& lane = lanes_.at( method );
+                queryCondition_.wait( lock, [ & ] { return stopping_.load() || !lane.queue.empty(); } );
+                if ( lane.queue.empty() ) {
+                    return; // stopping
+                }
+                query = lane.queue.front();
+                lane.queue.pop_front();
+                handler = lane.handler;
+            }
+            // A query whose deadline passed before its handler started is dropped.
+            if ( !query->expired() ) {
+                QJsonObject frame{ { "jsonrpc", "2.0" }, { "id", query->id } };
+                try {
+                    const auto result = handler( *query );
+                    // An undefined value would drop the key: an answer needs `result` or `error`.
+                    frame.insert( "result",
+                                  result.isUndefined() ? QJsonValue( QJsonValue::Null ) : result );
+                } catch ( const std::exception& error ) {
+                    frame.insert( "error", QJsonObject{ { "code", -32000 },
+                                                        { "message", QString::fromUtf8( error.what() ) } } );
+                } catch ( ... ) {
+                    // Never std::terminate on a worker thread.
+                    frame.insert( "error", QJsonObject{ { "code", -32000 },
+                                                        { "message", "Query handler failed" } } );
+                }
+                if ( !query->expired() ) {
+                    try {
+                        send( frame );
+                    } catch ( ... ) {
+                        std::cerr << "Could not deliver a query answer" << std::endl;
+                    }
+                }
+            }
+            std::lock_guard<std::mutex> guard( queryMutex_ );
+            pendingQueries_.erase( query->id );
+        }
+    }
     void dispatch( const QJsonObject& frame )
     {
         const auto method = frame.value( "method" ).toString();
         const auto params = frame.value( "params" ).toObject();
+        const bool request = frame.contains( "id" );
         if ( method == "initialize" ) {
             if ( initialized_ || params.value( "protocol_version" ).toInt() != 1
                  || params.value( "plugin_id" ) != manifest_.value( "id" ) ) {
@@ -283,16 +505,22 @@ private:
                 std::lock_guard<std::mutex> guard( mutex_ );
                 configuration_ = params.value( "configuration" ).toObject();
                 hostFeatures_ = params.value( "host_features" ).toArray();
+                hostFeatureVersions_ = params.value( "host_feature_versions" ).toObject();
+                hostLimits_ = params.value( "host_limits" ).toObject();
+                hostVersion_ = params.value( "host_version" ).toString();
             }
-            send(
-                { { "jsonrpc", "2.0" },
-                  { "id", frame.value( "id" ) },
-                  { "result", QJsonObject{ { "plugin_id", manifest_.value( "id" ) },
-                                           { "protocol_version", 1 },
-                                           { "capabilities", manifest_.value( "capabilities" ) },
-                                           { "actions", manifest_.value( "actions" ) },
-                                           { "configuration",
-                                             manifest_.value( "configuration" ).toArray() } } } } );
+            QJsonObject result{ { "plugin_id", manifest_.value( "id" ) },
+                                { "protocol_version", 1 },
+                                { "capabilities", manifest_.value( "capabilities" ) },
+                                { "actions", manifest_.value( "actions" ) },
+                                { "configuration", manifest_.value( "configuration" ).toArray() },
+                                { "sdk", QJsonObject{ { "name", SdkName },
+                                                      { "version", SdkVersion } } } };
+            const auto features = queryFeatures();
+            if ( !features.isEmpty() ) {
+                result.insert( "features", features );
+            }
+            send( { { "jsonrpc", "2.0" }, { "id", frame.value( "id" ) }, { "result", result } } );
         }
         else if ( method == "shutdown" ) {
             stopping_ = true;
@@ -335,10 +563,23 @@ private:
                 jobs_.erase( job->id );
             } ) );
         }
-        else if ( method.startsWith( "view/" ) || method.startsWith( "ui/" ) ) {
+        else if ( request && hasQueryHandler( method ) ) {
+            enqueueQuery( frame );
+        }
+        else if ( !request && method == "query/cancel" ) {
+            cancelQuery( params.value( "id" ).toString() );
+        }
+        else if ( !request && ( method.startsWith( "view/" ) || method.startsWith( "ui/" ) ) ) {
             if ( notification_ ) {
                 notification_( method, params );
             }
+        }
+        else if ( request ) {
+            // A request this SDK does not know (a newer host): method not found, never fatal.
+            send( { { "jsonrpc", "2.0" },
+                    { "id", frame.value( "id" ) },
+                    { "error",
+                      QJsonObject{ { "code", -32601 }, { "message", "Method not found" } } } } );
         }
         else {
             std::lock_guard<std::mutex> guard( mutex_ );
@@ -373,6 +614,14 @@ private:
     QJsonObject manifest_;
     QJsonObject configuration_;
     QJsonArray hostFeatures_;
+    QJsonObject hostFeatureVersions_;
+    QJsonObject hostLimits_;
+    QString hostVersion_;
+    std::map<QString, Lane> lanes_;
+    std::map<QString, std::shared_ptr<Query>> pendingQueries_; // waiting or running, by id
+    std::vector<std::thread> queryThreads_;
+    std::mutex queryMutex_;
+    std::condition_variable queryCondition_;
     Notification notification_;
     std::map<QString, Action> actions_;
     std::map<QString, std::shared_ptr<Job>> jobs_;

@@ -372,6 +372,8 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     // search --source (U15b): one chosen tab, a file, or every open tab of every window.
     CommanderResult commanderSearchSource( const CommanderRequest& request );
     CommanderResult commanderOpenPluginView( const CommanderRequest& request );
+    // E17a get_plugin_tooltip (docs/plugin-sdk-advanced.md section 9.5).
+    CommanderResult commanderGetPluginTooltip( const CommanderRequest& request );
     // This window, or the window holding the tab.
     MainWindow* windowOwningTab( const QString& tabId );
     // Runs the search in each tab (any window) without bringing a tab to the front; returns the

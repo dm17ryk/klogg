@@ -2,11 +2,13 @@
 #include "analysissource.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "pluginicons.h"
 #include "pluginsandpacks.h"
 #include "pluginviewhost.h"
 #include "semanticversion.h"
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -282,6 +284,12 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
             refresh->start();
         }
     } );
+    // Registered images can change a menu entry's icon_ref icon.
+    connect( &PluginIconRegistry::instance(), &PluginIconRegistry::changed, refresh, [ refresh ] {
+        if ( !refresh->isActive() ) {
+            refresh->start();
+        }
+    } );
     connect( refresh, &QTimer::timeout, this, &PluginUiController::refreshActions );
     panelTimer_ = new QTimer( this );
     panelTimer_->setInterval( 100 );
@@ -412,7 +420,10 @@ void PluginUiController::refreshActions()
                 { "directory", p.value( "directory" ).toString() },
                 { "actions", QJsonArray::fromVariantList( p.value( "actions" ).toList() ) },
                 { "views", QJsonArray::fromVariantList( p.value( "views" ).toList() ) },
-                { "icons", iconFiles( p ) } } );
+                { "icons", iconFiles( p ) },
+                // Registered images (image:<id> in icon_ref) change without a manifest change.
+                { "images", static_cast<qint64>( PluginIconRegistry::instance().generation(
+                                p.value( "id" ).toString() ) ) } } );
         }
     }
     if ( descriptions == actionDescriptions_ ) {
@@ -504,6 +515,15 @@ QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject&
                                    QStyle::StandardPixmap fallback )
 {
     const auto generic = window_->style()->standardIcon( fallback );
+    // E17: icon_ref (every icon reference form) wins over the E14 file `icon`.
+    if ( item.contains( "icon_ref" ) ) {
+        const auto resolved = PluginIconRegistry::instance().icon(
+            plugin.value( "id" ).toString(), plugin.value( "directory" ).toString(),
+            item.value( "icon_ref" ) );
+        if ( !resolved.isNull() ) {
+            return resolved;
+        }
+    }
     const auto icon = item.value( "icon" ).toString();
     if ( icon.isEmpty() ) {
         return generic;
@@ -680,7 +700,9 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
             const auto id = p.value( "id" ).toString();
             const auto source = p.value( "source" ).toMap();
             QString state
-                = !p.value( "error" ).toString().isEmpty()
+                = !p.value( "missingFeatures" ).toStringList().isEmpty()
+                      ? p.value( "error" ).toString() // "Requires a newer CILogg (missing: …)."
+                  : !p.value( "error" ).toString().isEmpty()
                       ? tr( "Error: %1" ).arg( p.value( "error" ).toString() )
                   : p.value( "state" ) == "ready" ? tr( "Running" )
                   : p.value( "state" ) == "starting" || p.value( "state" ) == "initializing"
@@ -689,6 +711,16 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                   : p.value( "state" ) == "failed"   ? tr( "Failed" )
                   : p.value( "enabled" ).toBool()    ? tr( "Enabled" )
                                                      : tr( "Disabled" );
+            // A method the circuit breaker paused (docs/plugin-sdk-advanced.md section 5.2).
+            for ( const auto& query : p.value( "queries" ).toList() ) {
+                const auto until = QDateTime::fromString(
+                    query.toMap().value( "pausedUntil" ).toString(), Qt::ISODateWithMs );
+                if ( until.isValid() ) {
+                    state += tr( "; %1 paused until %2" )
+                                 .arg( query.toMap().value( "method" ).toString(),
+                                       until.toLocalTime().toString( "HH:mm:ss" ) );
+                }
+            }
             // An update only from the install source (get_plugins `update`); other repositories
             // are only mentioned.
             QStringList others;

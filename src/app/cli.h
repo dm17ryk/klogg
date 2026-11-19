@@ -352,6 +352,12 @@ private:
             "--tab-id <id>] [--window-index <n>]\n"
             "    Source selections: focused, all, tab:<id>, file:<path>. An explicit tab "
             "selector wins over --source.\n"
+            "  get_plugin_tooltip --plugin-id <id> --view-id <view> --element-id <element> "
+            "[--row-id <row> --column-id <column>] [--node-id <node>] [--no-cache] "
+            "[--window-index <n>]\n"
+            "    The tooltip of an element or a table cell of an open plugin view, through the "
+            "same path as a hover: its source (static, cache or plugin), the tooltip and the "
+            "latency.\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
             "  list_reports [--pretty]  (diagnostic report bundles, newest first)\n"
@@ -1556,6 +1562,22 @@ private:
         const QCommandLineOption viewIdOption( QStringLiteral( "view-id" ),
                                                QStringLiteral( "Plugin view identifier." ),
                                                QStringLiteral( "id" ) );
+        // get_plugin_tooltip (E17a).
+        const QCommandLineOption elementIdOption( QStringLiteral( "element-id" ),
+                                                  QStringLiteral( "Plugin view element id." ),
+                                                  QStringLiteral( "id" ) );
+        const QCommandLineOption rowIdOption( QStringLiteral( "row-id" ),
+                                              QStringLiteral( "Plugin table row id." ),
+                                              QStringLiteral( "id" ) );
+        const QCommandLineOption columnIdOption( QStringLiteral( "column-id" ),
+                                                 QStringLiteral( "Plugin table column id." ),
+                                                 QStringLiteral( "id" ) );
+        const QCommandLineOption nodeIdOption( QStringLiteral( "node-id" ),
+                                               QStringLiteral( "Plugin tree node id." ),
+                                               QStringLiteral( "id" ) );
+        const QCommandLineOption noCacheOption(
+            QStringLiteral( "no-cache" ),
+            QStringLiteral( "get_plugin_tooltip: ask the plugin even when a cached answer exists." ) );
         const QCommandLineOption predefinedOption(
             QStringLiteral( "predefined" ),
             QStringLiteral( "Use predefined filters instead of search-history filters." ) );
@@ -1703,6 +1725,11 @@ private:
         parser.addOption( waitOption );
         parser.addOption( sourceOption );
         parser.addOption( viewIdOption );
+        parser.addOption( elementIdOption );
+        parser.addOption( rowIdOption );
+        parser.addOption( columnIdOption );
+        parser.addOption( nodeIdOption );
+        parser.addOption( noCacheOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
@@ -1822,10 +1849,21 @@ private:
             }
             request.source = source->toString();
         }
-        if ( parser.isSet( viewIdOption ) && request.action != CommanderAction::OpenPluginView ) {
+        if ( parser.isSet( viewIdOption ) && request.action != CommanderAction::OpenPluginView
+             && request.action != CommanderAction::GetPluginTooltip ) {
             result.output_message = formatParserError(
-                parser, QStringLiteral( "--view-id is only supported by open_plugin_view." ) );
+                parser, QStringLiteral( "--view-id is only supported by open_plugin_view and "
+                                        "get_plugin_tooltip." ) );
             return result;
+        }
+        for ( const auto* option :
+              { &elementIdOption, &rowIdOption, &columnIdOption, &nodeIdOption, &noCacheOption } ) {
+            if ( parser.isSet( *option ) && request.action != CommanderAction::GetPluginTooltip ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--%1 is only supported by get_plugin_tooltip." )
+                                .arg( option->names().constFirst() ) );
+                return result;
+            }
         }
 
         const auto parseFilterCount
@@ -2245,6 +2283,30 @@ private:
                 return result;
             }
             if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) {
+                return result;
+            }
+            break;
+        case CommanderAction::GetPluginTooltip:
+            request.pluginId = parser.value( "plugin-id" ).trimmed();
+            request.viewId = parser.value( viewIdOption ).trimmed();
+            request.pluginArguments = {
+                { "elementId", parser.value( elementIdOption ).trimmed() },
+                { "rowId", parser.value( rowIdOption ).trimmed() },
+                { "columnId", parser.value( columnIdOption ).trimmed() },
+                { "nodeId", parser.value( nodeIdOption ).trimmed() },
+                { "noCache", parser.isSet( noCacheOption ) },
+            };
+            if ( request.pluginId.isEmpty() || request.viewId.isEmpty()
+                 || request.pluginArguments.value( "elementId" ).toString().isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "get_plugin_tooltip requires --plugin-id, --view-id "
+                                            "and --element-id." ) );
+                return result;
+            }
+            if ( parser.isSet( rowIdOption ) != parser.isSet( columnIdOption ) ) {
+                result.output_message = formatParserError(
+                    parser,
+                    QStringLiteral( "--row-id and --column-id name a table cell together." ) );
                 return result;
             }
             break;

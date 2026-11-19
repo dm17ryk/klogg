@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "plugintooltips.h"
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -90,6 +91,24 @@ public:
                                   const QString& elementId = {} );
     static QString limitText( const QString& text, int maximum = MaxTextChars );
 
+    // Advanced tooltips (docs/plugin-sdk-advanced.md section 9): the host's queries, cache
+    // invalidation (`tooltip/invalidate`; every element when `elementId` is empty) and the reset
+    // when the plugin stops or restarts.
+    void setQueries( PluginViewQueries queries );
+    void invalidateTooltips( const QString& elementId, const QStringList& rowIds = {},
+                             const QStringList& nodeIds = {} );
+    void resetTooltips();
+    PluginTooltips* tooltips() const
+    {
+        return tooltips_;
+    }
+    // get_plugin_tooltip: the tooltip of an element or a table cell, through the same path as a
+    // hover. `staticTip` is the static tooltip. False (and *error) when there is no such target.
+    using TooltipResolved = std::function<void( const QString& source, const QJsonObject& tooltip,
+                                                const QString& staticTip, qint64 latencyMs )>;
+    bool resolveTooltip( const QString& elementId, const QString& rowId, const QString& columnId,
+                         bool useCache, TooltipResolved done, QString* error = nullptr );
+
 Q_SIGNALS:
     // `element_id`, `type` (changed|clicked|selected|edited), `value`, `inputs`, and `truncated`
     // when a value or the inputs were shortened. `edited` also carries `row_id`, `column_id` and
@@ -123,6 +142,11 @@ private:
     QWidget* dialogParent();
     QJsonValue fieldValue( const Node& node ) const;
     void setFieldValue( Node& node, const QJsonValue& value );
+    void updateAccessibility( Node& node );
+    void watchTooltips( Node& node );
+    PluginTooltips::Target tooltipTarget( const QString& elementId, const QString& rowId,
+                                          const QString& columnId ) const;
+    PluginTooltips* tooltips_ = nullptr;
 
     QString pluginId_;
     QString viewId_;

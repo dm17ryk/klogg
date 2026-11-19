@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pluginviewhost.h"
 #include "analysissource.h"
+#include "diagnostics.h"
 #include "log.h"
+#include "pluginicons.h"
 #include "pluginmanager.h"
 #include <QAbstractButton>
 #include <QDialog>
@@ -121,6 +123,8 @@ PluginViewHost::PluginViewHost( QMainWindow* window, QString windowId, ContextPr
                  dropMessages( pluginId );
                  setStopped( pluginId, true );
              } );
+    // ui/icons and the end of a plugin's images, once for every window.
+    PluginIconRegistry::instance().attach( manager_ );
     connect( manager_, &cilogg::plugins::PluginManager::pluginReady, this,
              [ this ]( const QString& pluginId ) { setStopped( pluginId, false ); } );
     connect( manager_, &cilogg::plugins::PluginManager::viewsRevoked, this,
@@ -345,6 +349,71 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
     auto* view = new PluginView( pluginId, viewId, dialogs_, body );
     // Dialogs outlive a view that is deleted while one of them is open.
     view->setDialogParent( window_ );
+    // Advanced tooltips ask the plugin through host queries (docs/plugin-sdk-advanced.md 5, 9).
+    QString directory;
+    for ( const auto& plugin : manager_->plugins() ) {
+        if ( plugin.toMap().value( "id" ) == pluginId ) {
+            directory = plugin.toMap().value( "directory" ).toString();
+        }
+    }
+    PluginViewQueries queries;
+    queries.resolveTooltip
+        = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId,
+            key ]( const QJsonObject& params, int timeoutMs, bool hover,
+                   std::function<void( bool, const QJsonObject& )> done ) {
+              if ( !host ) {
+                  return QString{};
+              }
+              const auto it = host->open_.find( key );
+              if ( !host->manager_ || it == host->open_.end() || it->second->stopped ) {
+                  return QString{};
+              }
+              auto full = params;
+              full.insert( "view_id", viewId );
+              full.insert( "window_id", host->windowId_ );
+              full.insert( "context", QJsonObject::fromVariantMap(
+                                          host->contextFor( it->second->source, nullptr ) ) );
+              const auto scope
+                  = cilogg::plugins::PluginManager::viewScope( host->windowId_, viewId );
+              // One hover query per view; get_plugin_tooltip reads have their own key, so a hover
+              // never cancels them (design 5.2).
+              return host->manager_->query(
+                  pluginId, QStringLiteral( "tooltip/resolve" ), full, timeoutMs,
+                  ( hover ? QStringLiteral( "tooltip:" ) : QStringLiteral( "tooltip-read:" ) )
+                      + scope,
+                  scope,
+                  [ answered = std::move( done ), pluginId, viewId,
+                    params ]( const cilogg::plugins::PluginQueries::Outcome& outcome ) {
+                      using Status = cilogg::plugins::PluginQueries::Status;
+                      if ( outcome.status != Status::Cancelled ) {
+                          // Method, target ids and latency only, never the contents (design 5.3).
+                          static const QStringList statuses{ "answered", "nothing", "error",
+                                                             "invalid", "timed out", "cancelled" };
+                          cilogg::diagnostics::ActivityJournal::record(
+                              QStringLiteral( "plugin" ),
+                              QStringLiteral( "Plugin tooltip query %1" )
+                                  .arg( statuses.value( static_cast<int>( outcome.status ) ) ),
+                              { { "plugin", pluginId },
+                                { "view", viewId },
+                                { "element", params.value( "element_id" ).toString() },
+                                { "row", params.value( "row_id" ).toString() },
+                                { "column", params.value( "column_id" ).toString() },
+                                { "latencyMs", outcome.latencyMs } } );
+                      }
+                      answered( outcome.status == Status::Answered
+                                    || outcome.status == Status::Nothing,
+                                outcome.result.toObject() );
+                  } );
+          };
+    queries.cancel = [ manager = manager_ ]( const QString& id ) {
+        if ( manager ) {
+            manager->cancelQuery( id );
+        }
+    };
+    queries.iconHtml = [ pluginId, directory ]( const QJsonValue& reference ) {
+        return PluginIconRegistry::instance().iconHtml( pluginId, directory, reference );
+    };
+    view->setQueries( std::move( queries ) );
     view->setEnabled( false ); // until the plugin sends its root
     layout->addWidget( view, 1 );
     open->note = note;
@@ -619,6 +688,21 @@ void PluginViewHost::handleRequest( const QString& pluginId, const QString& meth
             finishMessage( key, "closed", false );
         }
     }
+    else if ( method == "tooltip/invalidate" && forThisWindow ) {
+        const auto it = open_.find( keyOf( pluginId, params.value( "view_id" ).toString() ) );
+        if ( it != open_.end() && it->second->view ) {
+            QStringList rows;
+            for ( const auto& row : params.value( "row_ids" ).toArray() ) {
+                rows.append( row.toString() );
+            }
+            QStringList nodes;
+            for ( const auto& node : params.value( "node_ids" ).toArray() ) {
+                nodes.append( node.toString() );
+            }
+            it->second->view->invalidateTooltips( params.value( "element_id" ).toString(), rows,
+                                                  nodes );
+        }
+    }
 }
 
 void PluginViewHost::queueUpdate( const QString& pluginId, const QJsonObject& params )
@@ -700,6 +784,8 @@ void PluginViewHost::setStopped( const QString& pluginId, bool stopped )
         // Disabled while stopped, and after a restart until the plugin sends a new root, so a
         // stale view never looks live.
         open->awaitingRoot = true;
+        // Pending tooltip queries end; cached answers go with the stop and the restart.
+        open->view->resetTooltips();
         if ( stopped ) {
             // An edit the plugin never confirmed must not look saved.
             open->view->revertPendingEdits();

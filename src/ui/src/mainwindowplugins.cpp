@@ -2,7 +2,12 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginuicontroller.h"
+#include "pluginview.h"
 #include "pluginviewhost.h"
+#include <QEventLoop>
+#include <QPointer>
+#include <QTimer>
+#include <memory>
 
 void MainWindow::setPluginManager(
     cilogg::plugins::PluginManager& manager,
@@ -112,4 +117,76 @@ CommanderResult MainWindow::commanderOpenPluginView( const CommanderRequest& req
                                { "viewId", request.viewId },
                                { "source", host->viewSource( request.pluginId, request.viewId ) },
                                { "windowIndex", static_cast<int>( session_.windowIndex() ) } } );
+}
+
+CommanderResult MainWindow::commanderGetPluginTooltip( const CommanderRequest& request )
+{
+    auto* host = pluginController_ ? pluginController_->viewHost() : nullptr;
+    auto* view = host ? host->view( request.pluginId, request.viewId ) : nullptr;
+    if ( view == nullptr ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "The plugin view is not open in this window." ) );
+    }
+    const auto& arguments = request.pluginArguments;
+    const auto elementId = arguments.value( "elementId" ).toString();
+    const auto rowId = arguments.value( "rowId" ).toString();
+    const auto columnId = arguments.value( "columnId" ).toString();
+    if ( !arguments.value( "nodeId" ).toString().isEmpty() ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest,
+                                 tr( "This CILogg has no tree elements; --node-id needs one." ) );
+    }
+    // The same query path as a hover; the answer arrives within the query timeout (at most
+    // 5 s), so a nested event loop waits for it as search --wait does.
+    struct State {
+        bool finished = false;
+        QVariantMap payload;
+        QPointer<QEventLoop> loop;
+    };
+    auto state = std::make_shared<State>();
+    QString error;
+    const auto started = view->resolveTooltip(
+        elementId, rowId, columnId, !arguments.value( "noCache" ).toBool(),
+        [ state ]( const QString& source, const QJsonObject& tooltip, const QString& staticTip,
+                   qint64 latencyMs ) {
+            state->finished = true;
+            state->payload = { { "source", source },
+                               { "tooltip", tooltip.isEmpty() ? QVariant()
+                                                              : QVariant( tooltip.toVariantMap() ) },
+                               { "html", tooltip.isEmpty() ? QString{}
+                                                           : PluginTooltips::render( tooltip ) },
+                               { "staticTooltip", staticTip },
+                               { "latencyMs", latencyMs } };
+            if ( state->loop ) {
+                state->loop->quit();
+            }
+        },
+        &error );
+    if ( !started ) {
+        return commanderFailure( CommanderResultCode::InvalidRequest, error );
+    }
+    const QPointer<MainWindow> self( this );
+    if ( !state->finished ) {
+        QEventLoop loop;
+        state->loop = &loop;
+        QTimer::singleShot( 6000, &loop, &QEventLoop::quit );
+        loop.exec();
+    }
+    if ( !self ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 QStringLiteral( "The window closed." ) );
+    }
+    if ( !state->finished ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed,
+                                 tr( "The tooltip did not arrive in time." ) );
+    }
+    auto payload = state->payload;
+    payload.insert( "pluginId", request.pluginId );
+    payload.insert( "viewId", request.viewId );
+    payload.insert( "elementId", elementId );
+    payload.insert( "rowId", rowId );
+    payload.insert( "columnId", columnId );
+    LOG_DEBUG << "get_plugin_tooltip plugin=" << request.pluginId.toStdString()
+              << " view=" << request.viewId.toStdString() << " element=" << elementId.toStdString()
+              << " source=" << payload.value( "source" ).toString().toStdString();
+    return commanderSuccess( {}, payload );
 }

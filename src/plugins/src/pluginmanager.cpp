@@ -1,6 +1,7 @@
 #include "pluginmanager.h"
 #include "klogg_version.h"
 #include "log.h"
+#include "pluginfeatures.h"
 #include "pythonruntime.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -98,7 +99,14 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     , networkAccess_( network ? network : &network_ )
     , instanceId_( QStringLiteral( "pid-%1" ).arg( QCoreApplication::applicationPid() ) )
     , hostVersion_( QString( kloggVersion() ) )
+    , queries_( std::make_unique<PluginQueries>(
+          [ this ]( const QString& pluginId, const QString& id, const QString& method,
+                    const QJsonObject& params ) {
+              return sendQueryFrame( pluginId, id, method, params );
+          },
+          this ) )
 {
+    connect( queries_.get(), &PluginQueries::breakerChanged, this, &PluginManager::changed );
     QDir().mkpath( dataRoot_ );
     QDir().mkpath( QDir( dataRoot_ ).filePath( "captures" ) );
     repositories_.migrate();
@@ -253,6 +261,12 @@ QVariantList PluginManager::plugins() const
         const auto config = QJsonDocument::fromJson(
             settings_.value( configurationKey( id ) + "configuration", "{}" ).toByteArray() );
         auto configValues = config.object().toVariantMap();
+        // E17 (docs/plugin-sdk-advanced.md sections 4 and 5): unmet requirements, the plugin's
+        // own announcement and host query statistics.
+        value[ "missingFeatures" ] = entry->manifest.missingFeatures;
+        value[ "features" ] = QStringList{};
+        value[ "sdk" ] = QVariantMap{};
+        value[ "queries" ] = queries_->statistics( id );
         if ( entry->process ) {
             value[ "pid" ] = entry->process->pid();
             const auto descriptor = entry->process->descriptor();
@@ -262,6 +276,8 @@ QVariantList PluginManager::plugins() const
                     value[ "configuration" ]
                         = descriptor.value( "configuration" ).toArray().toVariantList();
                 }
+                value[ "features" ] = entry->process->features();
+                value[ "sdk" ] = pluginSdk( descriptor.value( "sdk" ) ).toVariantMap();
             }
         }
         const auto fields = QJsonArray::fromVariantList( value.value( "configuration" ).toList() );
@@ -607,6 +623,7 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
     const auto id = entry.manifest.id;
     entry.process = std::make_unique<PluginProcess>( entry.manifest );
     auto* process = entry.process.get();
+    process->setHostVersion( hostVersion_ );
     connect( process, &PluginProcess::changed, this, &PluginManager::changed );
     connect( process, &PluginProcess::changed, this, [ this, id ] {
         const auto foundEntry = entries_.find( id );
@@ -656,6 +673,10 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
             Q_EMIT pluginReady( id );
         }
     } );
+    connect( process, &PluginProcess::frameTransferred, this,
+             [ this, id ]( bool outgoing, const QJsonObject& frame ) {
+                 Q_EMIT protocolFrame( id, outgoing, frame );
+             } );
     connect( process, &PluginProcess::message, this,
              [ this, id ]( const QJsonObject& frame ) { handleMessage( id, frame ); } );
     connect( process, &PluginProcess::stopped, this, [ this, id ] { processStopped( id ); } );
@@ -874,6 +895,8 @@ void PluginManager::processStopped( const QString& id )
     for ( const auto& key : streams ) {
         stopStream( key, false );
     }
+    // Pending host queries end at once; their targets fall back (design 5.2).
+    queries_->dropPlugin( id );
     for ( auto& [ key, j ] : jobs_ ) {
         if ( j.pluginId == id ) {
             j.outputSupervised = false;
@@ -1013,6 +1036,12 @@ void PluginManager::shutdown()
 void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& frame )
 {
     auto* process = entries_.at( pluginId )->process.get();
+    // Answers to host queries (`q:` ids) are checked against the pending queries first; jobs use
+    // UUIDs, so the two never collide (design 5.2).
+    if ( frame.contains( "id" ) && !frame.contains( "method" )
+         && queries_->handleResponse( pluginId, frame ) ) {
+        return;
+    }
     if ( frame.contains( "id" ) && !frame.contains( "method" ) ) {
         const auto id = frame.value( "id" ).toString();
         const auto it = jobs_.find( id );
@@ -1158,7 +1187,8 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
     }
     else if ( !frame.contains( "id" )
               && ( method == "view/update" || method == "view/show" || method == "view/hide"
-                   || method == "ui/message" || method == "ui/close_message" ) ) {
+                   || method == "ui/message" || method == "ui/close_message"
+                   || method == "tooltip/invalidate" || method == "ui/icons" ) ) {
         handleUiMessage( pluginId, method, params );
     }
     else {
@@ -1612,6 +1642,7 @@ void PluginManager::closeView( const QString& pluginId, const QString& viewId,
     openViews_.erase( open );
     LOG_DEBUG << "Plugin view closed plugin=" << pluginId.toStdString()
               << " view=" << viewId.toStdString() << " window=" << windowId.toStdString();
+    queries_->dropScope( pluginId, viewScope( windowId, viewId ) );
     const auto entry = entries_.find( pluginId );
     if ( entry != entries_.end() && entry->second->process
          && entry->second->process->state() == "ready" ) {
@@ -1746,6 +1777,17 @@ void PluginManager::handleUiMessage( const QString& pluginId, const QString& met
 {
     const auto size
         = QJsonDocument( params ).toJson( QJsonDocument::Compact ).size(); // ids and sizes only
+    if ( method == "ui/icons" ) {
+        // Registered images (docs/plugin-sdk-advanced.md section 6), checked and decoded by the
+        // UI's icon registry; they need no view.
+        if ( !params.value( "icons" ).isObject() && !params.value( "remove" ).isArray() ) {
+            LOG_WARNING << "Plugin ui/icons needs icons or remove plugin=" << pluginId.toStdString();
+            return;
+        }
+        LOG_DEBUG << "Plugin icons plugin=" << pluginId.toStdString() << " bytes=" << size;
+        Q_EMIT viewRequest( pluginId, method, params );
+        return;
+    }
     if ( method == "ui/message" || method == "ui/close_message" ) {
         const auto messageId = params.value( "message_id" ).toString();
         if ( messageId.isEmpty() || messageId.size() > 128 ) {
@@ -1877,6 +1919,12 @@ void PluginManager::handleUiMessage( const QString& pluginId, const QString& met
                   << " view=" << viewId.toStdString() << " window=" << windowId.toStdString();
         Q_EMIT viewRequest( pluginId, method, resolved );
     }
+    else if ( method == "tooltip/invalidate" ) {
+        LOG_DEBUG << "Plugin tooltips invalidated plugin=" << pluginId.toStdString()
+                  << " view=" << viewId.toStdString()
+                  << " element=" << params.value( "element_id" ).toString().left( 128 ).toStdString();
+        Q_EMIT viewRequest( pluginId, method, params );
+    }
     else {
         LOG_DEBUG << "Plugin view hide plugin=" << pluginId.toStdString()
                   << " view=" << viewId.toStdString();
@@ -1926,5 +1974,112 @@ QString PluginManager::pluginState( const QString& pluginId ) const
         return {};
     }
     return it->second->process ? it->second->process->state() : QStringLiteral( "stopped" );
+}
+
+QString PluginManager::viewScope( const QString& windowId, const QString& viewId )
+{
+    return QStringLiteral( "view:" ) + windowId + '/' + viewId;
+}
+
+bool PluginManager::declaresHandler( const QString& pluginId, const QString& method ) const
+{
+    const auto it = entries_.find( pluginId );
+    return it != entries_.end() && it->second->manifest.valid()
+           && handledMethods( it->second->manifest.json.value( "handles" ) ).contains( method );
+}
+
+bool PluginManager::handles( const QString& pluginId, const QString& method ) const
+{
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() || !it->second->process
+         || it->second->process->state() != "ready" ) {
+        return false;
+    }
+    const bool declared = declaresHandler( pluginId, method );
+    const bool announced = it->second->process->features().contains( method );
+    if ( declared != announced ) {
+        // The initialize result is the authority while the plugin runs (design 4.2).
+        const auto key = pluginId + '|' + method;
+        if ( !featureWarnings_.contains( key ) ) {
+            featureWarnings_.insert( key );
+            LOG_WARNING << "Plugin method listed in only one of handles and features, not sent "
+                        << "plugin=" << pluginId.toStdString() << " method=" << method.toStdString()
+                        << " handles=" << declared << " features=" << announced;
+        }
+    }
+    return declared && announced;
+}
+
+bool PluginManager::sendQueryFrame( const QString& pluginId, const QString& id,
+                                    const QString& method, const QJsonObject& params )
+{
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() || !it->second->process
+         || it->second->process->state() != "ready" ) {
+        return false; // never through the start-up queue (design 5.2)
+    }
+    if ( id.isEmpty() && !handles( pluginId, method ) ) {
+        return false; // query/cancel only to plugins that declared it
+    }
+    auto* process = it->second->process.get();
+    const auto size = QJsonDocument( params ).toJson( QJsonDocument::Compact ).size() + 128;
+    if ( process->pendingOutputBytes() + size > MaxPendingBytes / 2 ) {
+        // The plugin is not reading its input: the target falls back (design 5.2).
+        LOG_DEBUG << "Plugin query not sent: plugin input backlog plugin="
+                  << pluginId.toStdString() << " method=" << method.toStdString();
+        return false;
+    }
+    if ( id.isEmpty() ) {
+        process->notify( method, params );
+    }
+    else {
+        process->request( id, method, params );
+    }
+    return process->state() == "ready";
+}
+
+QString PluginManager::query( const QString& pluginId, const QString& method,
+                              const QJsonObject& params, int timeoutMs,
+                              const QString& exclusiveKey, const QString& scope,
+                              PluginQueries::Callback callback, QString* reason )
+{
+    const auto refuse = [ reason ]( const QString& text ) {
+        if ( reason ) {
+            *reason = text;
+        }
+        return QString{};
+    };
+    if ( shuttingDown_ ) {
+        return refuse( QStringLiteral( "shutting down" ) );
+    }
+    if ( !isQueryMethod( method ) ) {
+        return refuse( QStringLiteral( "not a query method" ) );
+    }
+    if ( !handles( pluginId, method ) ) {
+        return refuse( pluginState( pluginId ) == "ready" ? QStringLiteral( "not handled" )
+                                                          : QStringLiteral( "not ready" ) );
+    }
+    auto bounded = params;
+    const auto timeout = boundedQueryTimeout( method, timeoutMs );
+    bounded.insert( "timeout_ms", timeout );
+    PluginQueries::Validator validator;
+    if ( method == QLatin1String( "tooltip/resolve" ) ) {
+        validator = []( const QJsonValue& result, QString* error ) -> QJsonValue {
+            return sanitizeTooltip( result, error );
+        };
+    }
+    PluginQueries::Request request;
+    request.pluginId = pluginId;
+    request.method = method;
+    request.params = bounded;
+    request.timeoutMs = timeout;
+    request.exclusiveKey = exclusiveKey;
+    request.scope = scope;
+    return queries_->send( request, std::move( validator ), std::move( callback ), reason );
+}
+
+void PluginManager::cancelQuery( const QString& id )
+{
+    queries_->cancel( id );
 }
 } // namespace cilogg::plugins

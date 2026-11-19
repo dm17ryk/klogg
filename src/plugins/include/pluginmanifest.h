@@ -21,6 +21,9 @@ struct Manifest {
     QStringList arguments;
     QJsonObject json;
     QString error;
+    // `requires` entries this host does not meet (docs/plugin-sdk-advanced.md section 4.3); the
+    // manifest is then not usable and `error` says "Requires a newer CILogg".
+    QStringList missingFeatures;
 
     bool valid() const
     {

@@ -17,6 +17,11 @@ public:
     // `environment` adds host variables (CILOGG_EXECUTABLE, CILOGG_INSTANCE_ID) to the child.
     void start( const QJsonObject& configuration, const QString& configDirectory,
                 const QString& pythonExecutable, const QMap<QString, QString>& environment = {} );
+    // The CILogg version announced in `initialize` (`host_version`); set before start().
+    void setHostVersion( const QString& version )
+    {
+        hostVersion_ = version;
+    }
     void request( const QString& id, const QString& method, const QJsonObject& params );
     void notify( const QString& method, const QJsonObject& params );
     void cancelRequest( const QString& id );
@@ -33,6 +38,12 @@ public:
     QJsonObject descriptor() const
     {
         return descriptor_;
+    }
+    // The host-to-plugin methods the plugin announced in `features` (design 4.2); empty until
+    // it is initialized.
+    QStringList features() const
+    {
+        return features_;
     }
     qint64 pid() const
     {
@@ -53,6 +64,9 @@ Q_SIGNALS:
     void message( const QJsonObject& message );
     void diagnostic( const QString& text );
     void stopped();
+    // Every frame written to the plugin (`outgoing`) and every well-formed frame read from it, for
+    // the golden-frame tests and the protocol log (docs/plugin-sdk-advanced.md sections 16, 20).
+    void frameTransferred( bool outgoing, const QJsonObject& frame );
 
 private:
     void send( const QJsonObject& message );
@@ -64,7 +78,9 @@ private:
     QByteArray input_;
     QList<QJsonObject> waiting_;
     QJsonObject descriptor_;
+    QStringList features_;
     QJsonObject initializeParams_;
+    QString hostVersion_;
     QString state_ = QStringLiteral( "stopped" );
     QString error_;
 };
