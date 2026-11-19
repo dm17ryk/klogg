@@ -9,6 +9,27 @@ on:
   pull_request:
     # The branches below must be a subset of the branches above
     branches: [master]
+    # Same list as ci-build.yml (decision D18): documentation-only pull
+    # requests skip the analysis. The weekly schedule still scans master.
+    paths:
+      - '**'
+      - '!website/**'
+      - '!BUILD.md'
+      - '!CODE_OF_CONDUCT.md'
+      - '!CONTRIBUTING.md'
+      - '!README.md'
+      - '!latest.json'
+      - '!.gitignore'
+      - '!docs/**'
+      - 'docs/plugin-sdk.md'
+      - '!plans/**'
+      - '!doc/**'
+      - '!screenshots/**'
+      - '!CHANGELOG.md'
+      - '!SECURITY.md'
+      - '!CONFIGURATION_EXPORTS.md'
+      - '!AGENTS.md'
+      - '!CLAUDE.md'
   schedule:
     - cron: '0 22 * * 4'
   workflow_dispatch:
