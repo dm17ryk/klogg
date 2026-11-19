@@ -2296,6 +2296,29 @@
         "E16e: Propose Changes as a pull request through the GitHub and Azure DevOps REST APIs, after E15b, planned"
       ]
     },
+    "E17": {
+      "status": "planned",
+      "commit": null,
+      "pullRequest": null,
+      "evidence": [
+        "../../docs/plugin-sdk-advanced.md"
+      ],
+      "limitations": [
+        "Design proposed on 2026-11-19 (decision D17, docs/plugin-sdk-advanced.md) with 22 open questions and recommended answers; awaiting the user's approval. Planned, not started, and not runnable until approved.",
+        "Slice E17i (host commands from plugins) changes the statement of decisions D11 and D14 that plugins never send requests to the host, so it needs its own explicit approval (question 13 of the design)."
+      ],
+      "slices": [
+        "E17a: capability negotiation (handles, features, requires), host queries, icons, plain-text element tooltips, static and advanced tooltips, accessibility names, table model extraction, SDK forward and backward compatibility, typing, fake host, golden-frame and version-skew tests, planned",
+        "E17b: plugin menus, context menus (tab, pane, log, element), dynamic submenus, ui/command, keyboard shortcuts, get_plugin_menus and trigger_plugin_menu, planned",
+        "E17c: choice styles and icons, searchable, editable and completing drop-downs, checkbox, radio_group and check_group, cell editor choices, new field kinds, validation, planned",
+        "E17d: rich table cells, row icons and check boxes, toggle selection and selection patch, table events, element context menus, Copy and Export, kept columns, planned",
+        "E17e: tree and file_tree elements with Shift/Ctrl multiple selection, planned",
+        "E17f: layout containers, text_view with Markdown, image, sparkline, chart, button styles, busy overlay, dialog results, planned",
+        "E17g: toolbars, status items, notifications, clipboard, drag and drop, view state and restore, theme, settings pages, message box input, file dialogs, host events, planned",
+        "E17h: JSON Schemas, validator, protocol log, developer mode, C++ view example, planned",
+        "E17i: host commands from plugins, only after a separate approval, planned"
+      ]
+    },
     "I02": {
       "status": "planned",
       "commit": null,
@@ -2972,7 +2995,8 @@
     "D13: see ../../docs/workbench/decisions.md",
     "D14: see ../../docs/workbench/decisions.md",
     "D15: see ../../docs/workbench/decisions.md",
-    "D16: see ../../docs/workbench/decisions.md"
+    "D16: see ../../docs/workbench/decisions.md",
+    "D17: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

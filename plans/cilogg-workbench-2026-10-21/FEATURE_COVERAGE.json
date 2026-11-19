@@ -1438,6 +1438,30 @@
     ]
   },
   {
+    "id": "ECO23",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Plugin menus and submenus under Plugins (and one optional top-level menu) and in the tab, pane, log and filtered view context menus, with conditions, check and radio entries, dynamic submenus and user-editable keyboard shortcuts; the same entries through Commander, CLI and MCP",
+    "tasks": [
+      "E17"
+    ]
+  },
+  {
+    "id": "ECO24",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Rich plugin view elements: drop-downs plain, with icons, with check boxes and with radio marks in forms and table cells; check box and radio elements; tables with icons, cell tooltips and Shift/Ctrl multiple selection; tree and file tree browser elements with Shift/Ctrl multiple selection; static and plugin-filled advanced tooltips on every element through host queries with timeouts and a cache; layout, rich text, images and charts",
+    "tasks": [
+      "E17"
+    ]
+  },
+  {
+    "id": "ECO25",
+    "group": "Sources, integrations, sharing and extension",
+    "description": "Advanced plugin SDK platform: versioned host features and plugin feature negotiation that keep protocol v1 traffic unchanged for existing plugins; toolbars, status items, notifications, clipboard, drag and drop, view state and session restore, theme events and settings pages in Options; typed Python and C++ SDKs with a fake-host test harness, JSON Schemas and a protocol log",
+    "tasks": [
+      "E17"
+    ]
+  },
+  {
     "id": "QUAL01",
     "group": "Quality, compatibility and delivery",
     "description": "Current-source reconciliation and credit existing work",
