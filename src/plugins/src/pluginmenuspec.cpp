@@ -598,6 +598,11 @@ std::vector<PluginShortcut> manifestShortcuts( const QString& pluginId, const QS
     base.pluginName = pluginName;
     for ( const auto& value : manifest.value( "menus" ).toArray() ) {
         const auto menu = value.toObject();
+        // A menu this host does not show gets no shortcuts: its entries expect a context this
+        // host never builds (an element row, a toolbar).
+        if ( !renderedMenuLocations().contains( menu.value( "location" ).toString() ) ) {
+            continue;
+        }
         auto menuBase = base;
         menuBase.kind = QStringLiteral( "menu" );
         menuBase.menuId = menu.value( "id" ).toString();

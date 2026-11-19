@@ -691,16 +691,25 @@ void PluginViewHost::handleRequest( const QString& pluginId, const QString& meth
     else if ( method == "tooltip/invalidate" && forThisWindow ) {
         const auto it = open_.find( keyOf( pluginId, params.value( "view_id" ).toString() ) );
         if ( it != open_.end() && it->second->view ) {
+            // Bounded: a longer list drops every tooltip of the element, which is always safe
+            // and never scans the cache once per id.
+            constexpr int MaxInvalidatedIds = 1000;
+            const auto rowList = params.value( "row_ids" ).toArray();
+            const auto nodeList = params.value( "node_ids" ).toArray();
+            const auto elementId = params.value( "element_id" ).toString();
+            if ( rowList.size() > MaxInvalidatedIds || nodeList.size() > MaxInvalidatedIds ) {
+                it->second->view->invalidateTooltips( elementId );
+                return;
+            }
             QStringList rows;
-            for ( const auto& row : params.value( "row_ids" ).toArray() ) {
+            for ( const auto& row : rowList ) {
                 rows.append( row.toString() );
             }
             QStringList nodes;
-            for ( const auto& node : params.value( "node_ids" ).toArray() ) {
+            for ( const auto& node : nodeList ) {
                 nodes.append( node.toString() );
             }
-            it->second->view->invalidateTooltips( params.value( "element_id" ).toString(), rows,
-                                                  nodes );
+            it->second->view->invalidateTooltips( elementId, rows, nodes );
         }
     }
 }

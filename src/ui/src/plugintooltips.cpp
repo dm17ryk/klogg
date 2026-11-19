@@ -8,6 +8,7 @@
 #include <QEvent>
 #include <QFontMetrics>
 #include <QHelpEvent>
+#include <QSet>
 #include <QToolTip>
 #include <QWidget>
 #include <algorithm>
@@ -77,16 +78,18 @@ void PluginTooltips::invalidateElement( const QString& elementId )
 void PluginTooltips::invalidateRows( const QString& elementId, const QStringList& rowIds )
 {
     ++generation_;
+    const QSet<QString> ids( rowIds.begin(), rowIds.end() ); // one lookup per cache entry
     cache_.removeIf( [ & ]( const auto& item ) {
-        return item.value().elementId == elementId && rowIds.contains( item.value().rowId );
+        return item.value().elementId == elementId && ids.contains( item.value().rowId );
     } );
 }
 
 void PluginTooltips::invalidateNodes( const QString& elementId, const QStringList& nodeIds )
 {
     ++generation_;
+    const QSet<QString> ids( nodeIds.begin(), nodeIds.end() );
     cache_.removeIf( [ & ]( const auto& item ) {
-        return item.value().elementId == elementId && nodeIds.contains( item.value().nodeId );
+        return item.value().elementId == elementId && ids.contains( item.value().nodeId );
     } );
 }
 

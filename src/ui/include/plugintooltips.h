@@ -86,6 +86,8 @@ public:
 
     // The structured answer as rich text in which every plugin string is escaped.
     static QString render( const QJsonObject& tooltip, const QString& iconHtml = {} );
+    // render() with the answer's icon resolved through this view's icons, as the GUI shows it.
+    QString renderWithIcon( const QJsonObject& tooltip ) const;
 
 protected:
     bool eventFilter( QObject* watched, QEvent* event ) override;
@@ -114,7 +116,6 @@ private:
     void leave();
     const QJsonObject* cached( const QString& cacheKey );
     void store( const Target& target, const QJsonObject& tooltip, quint64 generation );
-    QString renderWithIcon( const QJsonObject& tooltip ) const;
 
     PluginViewQueries queries_;
     QHash<QWidget*, Locator> locators_;

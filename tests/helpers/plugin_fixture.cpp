@@ -534,6 +534,15 @@ int main( int argc, char** argv )
         }
         return QJsonObject{ { "converted", true } };
     } );
+    // What the C++ SDK's supports() says about the host this run was initialized by.
+    plugin.action( "supports", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& arguments ) {
+        QJsonObject result;
+        for ( const auto& name : arguments.value( "features" ).toArray() ) {
+            result.insert( name.toString(), plugin.supports( name.toString() ) );
+            result.insert( name.toString() + "@2", plugin.supports( name.toString(), 2 ) );
+        }
+        return result;
+    } );
     plugin.action( "summary", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
         plugin.progress( job, 0.5 );
         plugin.panel(

@@ -472,6 +472,69 @@ TEST_CASE( "E17b menu/update and check marks change the entries", "[ui][workbenc
     REQUIRE( entryOf( fixture.menusOf( "plugins" ), "safe" ).value( "checked" ).toBool() );
 }
 
+TEST_CASE( "E17b menu/update reaches open entries, keeps radio groups exclusive and covers "
+           "submenus",
+           "[ui][workbench][E17]" )
+{
+    MenuWindow fixture;
+    auto& window = *fixture.window;
+    auto& registry = PluginMenuRegistry::instance();
+    auto* own = window.findChild<QMenu*>( "pluginMenu_" + PluginId + "_main" );
+    REQUIRE( own );
+    Q_EMIT own->aboutToShow();
+    auto* rename = own->findChild<QAction*>( "pluginMenuItem_" + PluginId + "_main_rename" );
+    REQUIRE( rename );
+    // An open entry changes in place, and a click uses its state now.
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "rename" },
+                                         { "set", QJsonObject{ { "title", "Live" },
+                                                               { "visible", false } } } } } );
+    REQUIRE( rename->text() == "Live" );
+    REQUIRE_FALSE( rename->isVisible() );
+    const auto before = commands( fixture.folder ).size();
+    rename->trigger(); // a click on the entry as it was: the hidden entry does nothing
+    QTest::qWait( 100 );
+    REQUIRE( commands( fixture.folder ).size() == before );
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "rename" },
+                                         { "set", QJsonObject{ { "visible", true },
+                                                               { "enabled", false } } } } } );
+    REQUIRE( rename->isVisible() );
+    REQUIRE_FALSE( rename->isEnabled() );
+    // A plugin that checks a radio entry unchecks the rest of the group.
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "safe" }, { "set", QJsonObject{ { "checked", true } } } } } );
+    const auto listed = fixture.menusOf( "plugins" );
+    REQUIRE( entryOf( listed, "safe" ).value( "checked" ).toBool() );
+    REQUIRE_FALSE( entryOf( listed, "fast" ).value( "checked" ).toBool() );
+    // An entry under a disabled or hidden submenu cannot be triggered.
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "mode" }, { "set", QJsonObject{ { "enabled", false } } } } } );
+    REQUIRE( fixture.trigger( "main", "fast" ).code == CommanderResultCode::InvalidRequest );
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "mode" },
+                                         { "set", QJsonObject{ { "enabled", true },
+                                                               { "visible", false } } } } } );
+    REQUIRE( fixture.trigger( "main", "fast" ).code == CommanderResultCode::InvalidRequest );
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "mode" }, { "set", QJsonObject{ { "visible", true } } } } } );
+    REQUIRE( fixture.trigger( "main", "fast" ).ok() );
+    // Hiding the Plugins location hides the plugin's Plugins entries: no flat entries come back.
+    REQUIRE( fixture.manager->manage( "menus", PluginId,
+                                      { { "hidden_locations", QVariantList{ "plugins" } } } )
+                 .ok() );
+    auto* plugins = window.findChild<QMenu*>( "pluginsMenu" );
+    REQUIRE( waitFor( [ & ] {
+        return window.findChild<QMenu*>( "pluginMenu_" + PluginId + "_main" ) == nullptr
+               || !plugins->actions().contains(
+                   window.findChild<QMenu*>( "pluginMenu_" + PluginId + "_main" )->menuAction() );
+    } ) );
+    for ( const auto* action : plugins->actions() ) {
+        REQUIRE_FALSE( action->objectName().startsWith( "pluginAction_" + PluginId ) );
+        REQUIRE_FALSE( action->objectName().startsWith( "pluginViewAction_" + PluginId ) );
+    }
+}
+
 TEST_CASE( "E17b shortcuts: registered per window, refused on CILogg's keys, listed in Options",
            "[ui][workbench][E17]" )
 {

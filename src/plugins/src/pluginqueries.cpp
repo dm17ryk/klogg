@@ -187,8 +187,10 @@ void PluginQueries::dropScope( const QString& pluginId, const QString& scopePref
 {
     QStringList ids;
     for ( const auto& [ id, entry ] : pending_ ) {
+        // The scope itself or one below it: closing "view:w1/tips" never ends "view:w1/tips2".
         if ( entry.pluginId == pluginId && !entry.scope.isEmpty()
-             && entry.scope.startsWith( scopePrefix ) ) {
+             && ( entry.scope == scopePrefix
+                  || entry.scope.startsWith( scopePrefix + QLatin1Char( '/' ) ) ) ) {
             ids.append( id );
         }
     }

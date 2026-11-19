@@ -48,6 +48,25 @@ void collectEntries( const QJsonArray& items, QList<QJsonObject>* entries )
     }
 }
 
+// The submenus above entry `itemId`, outermost first; false when the entry is not there.
+bool entryPath( const QJsonArray& items, const QString& itemId, QList<QJsonObject>* path )
+{
+    for ( const auto& value : items ) {
+        const auto entry = value.toObject();
+        if ( entry.value( "id" ).toString() == itemId ) {
+            return true;
+        }
+        if ( entry.value( "items" ).isArray() ) {
+            path->append( entry );
+            if ( entryPath( entry.value( "items" ).toArray(), itemId, path ) ) {
+                return true;
+            }
+            path->removeLast();
+        }
+    }
+    return false;
+}
+
 // The menus of `location` of one plugin, with their top-level entries in declaration order.
 std::vector<std::pair<QJsonObject, QJsonObject>> topLevelEntries( const QJsonObject& manifest,
                                                                   const QString& location )
@@ -190,12 +209,35 @@ QJsonObject PluginMenuRegistry::entryState( const QString& pluginId, const QStri
 void PluginMenuRegistry::applyUpdate( const QString& pluginId, const QString& menuId,
                                       const QJsonArray& changes )
 {
+    // The declared menu, for the radio groups of checked entries.
+    QJsonObject definition;
+    for ( auto* manager : std::as_const( attached_ ) ) {
+        for ( const auto& source : manager->menuSources() ) {
+            if ( source.id == pluginId ) {
+                definition = cp::findMenu( source.manifest, menuId );
+            }
+        }
+    }
     for ( const auto& value : changes ) {
         const auto change = value.toObject();
-        auto& stored = overrides_[ menuKey( { pluginId, menuId, change.value( "id" ).toString() } ) ];
+        const auto itemId = change.value( "id" ).toString();
+        auto& stored = overrides_[ menuKey( { pluginId, menuId, itemId } ) ];
         const auto set = change.value( "set" ).toObject();
         for ( auto it = set.begin(); it != set.end(); ++it ) {
             stored.insert( it.key(), it.value() );
+        }
+        // A radio entry checked by the plugin unchecks the rest of its group, as a click does.
+        const auto group = cp::findMenuEntry( definition, itemId ).value( "group" ).toString();
+        if ( set.value( "checked" ).toBool() && !group.isEmpty() ) {
+            QList<QJsonObject> entries;
+            collectEntries( definition.value( "items" ).toArray(), &entries );
+            for ( const auto& other : entries ) {
+                if ( other.value( "group" ).toString() == group
+                     && other.value( "id" ).toString() != itemId ) {
+                    overrides_[ menuKey( { pluginId, menuId, other.value( "id" ).toString() } ) ]
+                        .insert( "checked", false );
+                }
+            }
         }
     }
     Q_EMIT changed( pluginId );
@@ -530,6 +572,21 @@ QAction* PluginMenus::addEntry( QMenu* menu, QAction* before, const Source& plug
         submenu->setToolTipsVisible( true );
         submenu->menuAction()->setToolTip( tooltip );
         submenu->setEnabled( entry.value( "enabled" ).toBool( true ) );
+        if ( declared ) {
+            // menu/update while the menu is open changes the submenu in place (design 7.4).
+            connect( &registry, &PluginMenuRegistry::changed, submenu,
+                     [ guarded = QPointer<QMenu>( submenu ), pluginId = plugin.id, menuId,
+                       item ]( const QString& changedPlugin ) {
+                         if ( !guarded || changedPlugin != pluginId ) {
+                             return;
+                         }
+                         const auto now
+                             = PluginMenuRegistry::instance().entryState( pluginId, menuId, item );
+                         guarded->setTitle( menuText( now.value( "title" ).toString() ) );
+                         guarded->setEnabled( now.value( "enabled" ).toBool( true ) );
+                         guarded->menuAction()->setVisible( now.value( "visible" ).toBool( true ) );
+                     } );
+        }
         menu->insertAction( before, submenu->menuAction() );
         if ( kind == QLatin1String( "submenu" ) ) {
             addEntries( submenu, plugin, definition, entry.value( "items" ).toArray(), context,
@@ -577,11 +634,47 @@ QAction* PluginMenus::addEntry( QMenu* menu, QAction* before, const Source& plug
         action->setShortcuts( keys );
         action->setShortcutContext( Qt::WidgetShortcut );
     }
+    if ( declared ) {
+        // menu/update while the menu is open changes the entry in place (design 7.4).
+        connect( &registry, &PluginMenuRegistry::changed, action,
+                 [ self = QPointer<PluginMenus>( this ), action, plugin, menuId,
+                   item ]( const QString& changedPlugin ) {
+                     if ( !self || changedPlugin != plugin.id ) {
+                         return;
+                     }
+                     const auto now
+                         = PluginMenuRegistry::instance().entryState( plugin.id, menuId, item );
+                     const auto why = self->unavailableReason( plugin, now );
+                     action->setText( menuText( now.value( "title" ).toString() ) );
+                     action->setVisible( now.value( "visible" ).toBool( true ) );
+                     action->setEnabled( now.value( "enabled" ).toBool( true ) && why.isEmpty() );
+                     action->setToolTip( why.isEmpty()
+                                             ? pluginview::plainToolTip( now.value( "tooltip" ).toString(
+                                                   now.value( "title" ).toString() ) )
+                                             : why );
+                     if ( now.contains( "icon" ) ) {
+                         action->setIcon( self->iconFor( plugin, now.value( "icon" ) ) );
+                     }
+                     if ( action->isCheckable() ) {
+                         const QSignalBlocker blocker( action );
+                         action->setChecked( now.value( "checked" ).toBool() );
+                     }
+                 } );
+    }
     connect( action, &QAction::triggered, this,
-             [ this, plugin, definition, entry, context, checkable ]( bool checked ) {
+             [ this, plugin, definition, menuId, item, entry, context, checkable,
+               declared ]( bool checked ) {
+                 // The entry as it is now: a menu/update may have disabled or hidden it.
+                 const auto now = declared
+                                      ? PluginMenuRegistry::instance().entryState( plugin.id,
+                                                                                   menuId, item )
+                                      : entry;
+                 if ( !now.value( "enabled" ).toBool( true ) || !now.value( "visible" ).toBool( true ) ) {
+                     return;
+                 }
                  auto picked = context;
                  picked.readText(); // the view and its selection are still there
-                 activate( plugin, definition, entry, picked, QStringLiteral( "menu" ),
+                 activate( plugin, definition, now, picked, QStringLiteral( "menu" ),
                            checkable ? std::optional<bool>( checked ) : std::nullopt );
              } );
     menu->insertAction( before, action );
@@ -990,6 +1083,22 @@ std::optional<PluginMenus::Picked> PluginMenus::pick( const QString& pluginId,
          || !cp::menuConditionsHold( entry.value( "when" ), context.conditions() ) ) {
         return refuse( CommanderResultCode::InvalidRequest,
                        tr( "The menu entry is not shown in this context." ) );
+    }
+    // The submenus above it too: a user can reach the entry only through every one of them.
+    QList<QJsonObject> ancestors;
+    entryPath( definition.value( "items" ).toArray(), itemId, &ancestors );
+    for ( const auto& declaredParent : std::as_const( ancestors ) ) {
+        const auto parent
+            = PluginMenuRegistry::instance().entryState( pluginId, menuId, declaredParent );
+        if ( !parent.value( "visible" ).toBool( true )
+             || !cp::menuConditionsHold( parent.value( "when" ), context.conditions() ) ) {
+            return refuse( CommanderResultCode::InvalidRequest,
+                           tr( "The menu entry is not shown in this context." ) );
+        }
+        if ( !parent.value( "enabled" ).toBool( true ) ) {
+            return refuse( CommanderResultCode::InvalidRequest,
+                           tr( "The menu entry is disabled." ) );
+        }
     }
     if ( entry.value( "checkable" ).toBool() && !checked ) {
         // A click: radio entries become checked, check boxes toggle.

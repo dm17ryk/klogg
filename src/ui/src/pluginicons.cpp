@@ -243,7 +243,10 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
         Image stored{ image, bytes.size(), entry.value( "mask" ).toBool() && format == "svg" };
         const auto replaced
             = ( picture ? images.pictures : images.icons ).value( id ).image.sizeInBytes();
-        if ( images.decodedBytes - replaced + image.sizeInBytes() > MaxDecodedBytes ) {
+        // An id registered in the other class (icon or picture) moves: its old image goes.
+        const auto opposite
+            = ( picture ? images.icons : images.pictures ).value( id ).image.sizeInBytes();
+        if ( images.decodedBytes - replaced - opposite + image.sizeInBytes() > MaxDecodedBytes ) {
             refuse( QStringLiteral( "decoded images exceed %1 MiB" )
                         .arg( MaxDecodedBytes / ( 1024 * 1024 ) ) );
             continue;
@@ -255,6 +258,11 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
             }
             images.decodedBytes += image.sizeInBytes() - replaced;
             images.pictures.insert( id, stored );
+            if ( images.icons.contains( id ) ) {
+                images.iconBytes -= images.icons.value( id ).bytes;
+                images.decodedBytes -= opposite;
+                images.icons.remove( id );
+            }
         }
         else {
             const auto previous = images.icons.value( id ).bytes;
@@ -269,6 +277,10 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
             images.iconBytes += stored.bytes - previous;
             images.decodedBytes += image.sizeInBytes() - replaced;
             images.icons.insert( id, stored );
+            if ( images.pictures.contains( id ) ) {
+                images.decodedBytes -= opposite;
+                images.pictures.remove( id );
+            }
         }
         changedAny = true;
     }

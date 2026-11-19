@@ -348,14 +348,15 @@ QJsonObject sanitizeTooltip( const QJsonValue& answer, QString* error )
     if ( !footer.isEmpty() ) {
         result.insert( "footer", footer );
     }
+    // An icon is something to show on its own (the renderer draws an icon without a title).
+    if ( object.contains( "icon" ) && validateIconReference( object.value( "icon" ) ).isEmpty() ) {
+        result.insert( "icon", object.value( "icon" ) );
+    }
     if ( result.isEmpty() ) {
         return {}; // nothing to show: the static tooltip stays
     }
     if ( toneNames().contains( object.value( "tone" ).toString() ) ) {
         result.insert( "tone", object.value( "tone" ) );
-    }
-    if ( object.contains( "icon" ) && validateIconReference( object.value( "icon" ) ).isEmpty() ) {
-        result.insert( "icon", object.value( "icon" ) );
     }
     const auto ttlMs = ttl.isDouble() ? ttl.toDouble() : double{ DefaultTooltipTtlMs };
     result.insert( "ttl_ms", static_cast<qint64>( std::clamp( ttlMs, 0.0,

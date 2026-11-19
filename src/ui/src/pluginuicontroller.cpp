@@ -489,7 +489,14 @@ void PluginUiController::refreshActions()
         const auto id = plugin.value( "id" ).toString();
         // E17b: a plugin with a `plugins` menu (or a menu bar menu moved back under Plugins) gets
         // its own submenu instead of flat entries (docs/plugin-sdk-advanced.md 7.7).
-        const bool ownMenu = addOwnMenus( plugin, false );
+        // A declared `plugins` menu replaces the flat entries even while the user hides it, so
+        // hiding the location hides the plugin's Plugins entries instead of bringing them back.
+        const bool movedMenu = addOwnMenus( plugin, false );
+        const auto menus = plugin.value( "menus" ).toList();
+        const bool ownMenu
+            = movedMenu || std::any_of( menus.begin(), menus.end(), []( const QVariant& menu ) {
+                  return menu.toMap().value( "location" ) == QLatin1String( "plugins" );
+              } );
         // Views: a Plugins menu entry (menu, default true) and/or a toolbar button (toolbar, default
         // false) that open or raise the view in this window.
         for ( const auto& item : plugin.value( "views" ).toList() ) {

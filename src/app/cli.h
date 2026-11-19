@@ -2347,6 +2347,15 @@ private:
                                             "and --element-id." ) );
                 return result;
             }
+            // The view of one window: --window-index chooses it (the active window otherwise).
+            if ( hasTabId || hasTabIndex ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "get_plugin_tooltip takes --window-index, not a tab." ) );
+                return result;
+            }
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) {
+                return result;
+            }
             if ( parser.isSet( rowIdOption ) != parser.isSet( columnIdOption ) ) {
                 result.output_message = formatParserError(
                     parser,

@@ -89,6 +89,10 @@ class ManifestsLoadInThePreviousHost(unittest.TestCase):
         for path in manifests + [FIXTURE / "plugin.json"]:
             with self.subTest(plugin=path.parent.name):
                 manifest = json.loads(path.read_text(encoding="utf-8"))
+                if manifest.get("kind") == "config-pack":
+                    # E16a1 configuration packs have no process (no executable, no
+                    # capabilities); configpack_test.cpp checks the example against their rules.
+                    continue
                 self.assertEqual(e14_manifest_rules.validate_manifest(manifest), [])
 
     def test_the_rules_refuse_new_enumeration_values(self):

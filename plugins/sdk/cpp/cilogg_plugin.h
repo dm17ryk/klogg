@@ -111,10 +111,14 @@ public:
     bool supports( const QString& feature, int version = 1 ) const
     {
         std::lock_guard<std::mutex> guard( mutex_ );
+        // `host_features` announces a feature; a version alone announces nothing.
+        if ( !hostFeatures_.contains( feature ) ) {
+            return false;
+        }
         if ( hostFeatureVersions_.contains( feature ) ) {
             return hostFeatureVersions_.value( feature ).toInt() >= version;
         }
-        return version <= 1 && hostFeatures_.contains( feature );
+        return version <= 1;
     }
     QJsonObject hostLimits() const
     {

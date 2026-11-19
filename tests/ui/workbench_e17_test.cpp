@@ -341,6 +341,26 @@ TEST_CASE( "E17 icons: built-in, status, files, themes, registered images and th
     REQUIRE_FALSE( PluginIconRegistry::safeSvg(
         "<svg><image href=\"data:image/svg+xml;base64,AAAA\"/></svg>" ) );
     REQUIRE_FALSE( PluginIconRegistry::safeSvg( "<svg><image href=\"other.png\"/></svg>" ) );
+    // An id registered again in the other class leaves the old one (Codex review of #130).
+    registry.apply( plugin, { { "icons", QJsonObject{ { "moving", entry( png ) } } } } );
+    REQUIRE( registry.iconCount( plugin ) == 2 );
+    auto picture = entry( png );
+    picture.insert( "picture", true );
+    registry.apply( plugin, { { "icons", QJsonObject{ { "moving", picture } } } } );
+    REQUIRE( registry.iconCount( plugin ) == 1 );
+    REQUIRE( registry.pictureCount( plugin ) == 2 );
+    REQUIRE( registry.icon( plugin, {}, "image:moving" ).isNull() );
+    registry.apply( plugin, { { "icons", QJsonObject{ { "moving", entry( png ) } } } } );
+    REQUIRE( registry.iconCount( plugin ) == 2 );
+    REQUIRE( registry.pictureCount( plugin ) == 1 );
+    registry.apply( plugin, { { "remove", QJsonArray{ "moving" } } } );
+    // The rendered HTML of get_plugin_tooltip carries the icon the GUI shows.
+    PluginTooltips tooltips;
+    PluginViewQueries withIcons;
+    withIcons.iconHtml = []( const QJsonValue& ) { return QStringLiteral( "<img src=\"x\">" ); };
+    tooltips.setQueries( withIcons );
+    REQUIRE( tooltips.renderWithIcon( { { "text", "t" }, { "icon", "status:ok" } } )
+                 .contains( "<img src=\"x\">" ) );
     const auto generation = registry.generation( plugin );
     registry.apply( plugin, { { "remove", QJsonArray{ "ok" } } } );
     REQUIRE( registry.iconCount( plugin ) == 0 );

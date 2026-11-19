@@ -283,6 +283,18 @@ TEST_CASE( "E17b manifests validate menus and shortcuts", "[plugins][E17]" )
     REQUIRE( shortcuts.front().key == "plugin/org.test.menus/main/rename" );
     REQUIRE( shortcuts.front().declared == QStringList{ "Ctrl+Alt+Shift+F11" } );
     REQUIRE( shortcuts.front().location == "plugins" );
+    // A menu at a location this host does not show gets no shortcuts (Codex review of #131).
+    auto future = menuManifest( "org.test.menus" );
+    auto menus = future.value( "menus" ).toArray();
+    menus.append( QJsonObject{
+        { "id", "later" },
+        { "location", "toolbar" },
+        { "items", QJsonArray{ QJsonObject{ { "id", "go" },
+                                            { "title", "Go" },
+                                            { "event", true },
+                                            { "shortcut", "Ctrl+Alt+Shift+F10" } } } } } );
+    future.insert( "menus", menus );
+    REQUIRE( manifestShortcuts( "org.test.menus", "Menus", future ).size() == 1 );
 }
 
 TEST_CASE( "E17b when conditions decide which entries a menu shows", "[plugins][E17]" )

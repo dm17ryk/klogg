@@ -482,14 +482,18 @@ CommanderResult MainWindow::commanderGetPluginTooltip( const CommanderRequest& r
     QString error;
     const auto started = view->resolveTooltip(
         elementId, rowId, columnId, !arguments.value( "noCache" ).toBool(),
-        [ state ]( const QString& source, const QJsonObject& tooltip, const QString& staticTip,
-                   qint64 latencyMs ) {
+        [ state, tooltips = QPointer<PluginTooltips>( view->tooltips() ) ](
+            const QString& source, const QJsonObject& tooltip, const QString& staticTip,
+            qint64 latencyMs ) {
             state->finished = true;
+            // The HTML the GUI shows, with the answer's icon (render() alone leaves it out).
+            const auto html = tooltip.isEmpty() ? QString{}
+                              : tooltips        ? tooltips->renderWithIcon( tooltip )
+                                                : PluginTooltips::render( tooltip );
             state->payload = { { "source", source },
                                { "tooltip", tooltip.isEmpty() ? QVariant()
                                                               : QVariant( tooltip.toVariantMap() ) },
-                               { "html", tooltip.isEmpty() ? QString{}
-                                                           : PluginTooltips::render( tooltip ) },
+                               { "html", html },
                                { "staticTooltip", staticTip },
                                { "latencyMs", latencyMs } };
             if ( state->loop ) {

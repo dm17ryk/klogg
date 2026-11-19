@@ -3,6 +3,7 @@
 //
 // Advanced plugin SDK (E17, docs/plugin-sdk-advanced.md): negotiation, manifests, host queries
 // and golden frames.
+#include "cli.h"
 #include "commander.h"
 #include "pluginfeatures.h"
 #include "pluginmanager.h"
@@ -12,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -402,6 +404,99 @@ struct QueryFixture {
 };
 } // namespace
 
+TEST_CASE( "E17 the C++ SDK needs host_features before a feature version counts",
+           "[plugins][E17]" )
+{
+    // A host that lists `menus` only in host_feature_versions does not announce it.
+    QTemporaryDir temp;
+    auto json = fixtureManifest( "org.test.supports" );
+    json[ "actions" ] = QJsonArray{ QJsonObject{ { "id", "supports" }, { "capability", "tool" } } };
+    const auto folder = fixturePackage( temp.path(), json );
+    QProcess process;
+    process.setWorkingDirectory( folder );
+    process.start( QDir( folder ).filePath( json.value( "executable" ).toString() ), QStringList{} );
+    REQUIRE( process.waitForStarted() );
+    const auto send = [ & ]( const QJsonObject& frame ) {
+        process.write( QJsonDocument( frame ).toJson( QJsonDocument::Compact ) + '\n' );
+    };
+    const auto answer = [ & ]( const QString& id ) {
+        QElapsedTimer timer;
+        timer.start();
+        QByteArray buffer;
+        while ( timer.elapsed() < 10000 ) {
+            process.waitForReadyRead( 100 );
+            buffer += process.readAllStandardOutput();
+            for ( const auto& line : buffer.split( '\n' ) ) {
+                const auto frame = QJsonDocument::fromJson( line ).object();
+                if ( frame.value( "id" ) == id ) {
+                    return frame;
+                }
+            }
+        }
+        return QJsonObject{};
+    };
+    send( { { "jsonrpc", "2.0" },
+            { "id", "initialize" },
+            { "method", "initialize" },
+            { "params", QJsonObject{ { "protocol_version", 1 },
+                                     { "plugin_id", "org.test.supports" },
+                                     { "configuration", QJsonObject{} },
+                                     { "host_features", QJsonArray{ "views", "tooltips" } },
+                                     { "host_feature_versions",
+                                       QJsonObject{ { "views", 2 }, { "menus", 1 } } } } } } );
+    REQUIRE( answer( "initialize" ).contains( "result" ) );
+    send( { { "jsonrpc", "2.0" },
+            { "id", "j1" },
+            { "method", "invoke" },
+            { "params", QJsonObject{ { "job_id", "j1" },
+                                     { "action", "supports" },
+                                     { "context", QJsonObject{} },
+                                     { "arguments", QJsonObject{ { "features",
+                                                                   QJsonArray{ "views", "tooltips",
+                                                                               "menus" } } } } } } } );
+    const auto result = answer( "j1" ).value( "result" ).toObject();
+    process.closeWriteChannel();
+    process.waitForFinished( 5000 );
+    REQUIRE( result.value( "views" ) == true );
+    REQUIRE( result.value( "views@2" ) == true );
+    REQUIRE( result.value( "tooltips" ) == true );   // listed: version 1
+    REQUIRE( result.value( "tooltips@2" ) == false );
+    REQUIRE( result.value( "menus" ) == false );     // a version alone announces nothing
+}
+
+TEST_CASE( "E17 a closed view ends its own queries, not those of a view with a longer id",
+           "[plugins][E17]" )
+{
+    QStringList sent;
+    PluginQueries queries(
+        [ &sent ]( const QString&, const QString& id, const QString& method, const QJsonObject& ) {
+            sent.append( method + ':' + id );
+            return true;
+        } );
+    QStringList ended;
+    const auto send = [ & ]( const QString& scope ) {
+        PluginQueries::Request request;
+        request.pluginId = "org.p";
+        request.method = "tooltip/resolve";
+        request.scope = scope;
+        QString reason;
+        return queries.send(
+            request, []( const QJsonValue& value, QString* ) { return value; },
+            [ &ended, scope ]( const PluginQueries::Outcome& outcome ) {
+                if ( outcome.status == Status::Cancelled ) {
+                    ended.append( scope );
+                }
+            },
+            &reason );
+    };
+    REQUIRE_FALSE( send( "view:w1/tips" ).isEmpty() );
+    REQUIRE_FALSE( send( "view:w1/tips2" ).isEmpty() );
+    REQUIRE_FALSE( send( "view:w1/tips/inner" ).isEmpty() );
+    queries.dropScope( "org.p", "view:w1/tips" );
+    ended.sort();
+    REQUIRE( ended == QStringList{ "view:w1/tips", "view:w1/tips/inner" } );
+}
+
 TEST_CASE( "E17 host features, versions and limits are announced in initialize",
            "[plugins][E17]" )
 {
@@ -548,6 +643,10 @@ TEST_CASE( "E17 icon references and tooltip answers are validated", "[plugins][E
     REQUIRE( defaults.value( "ttl_ms" ).toDouble() == DefaultTooltipTtlMs );
     REQUIRE_FALSE( defaults.contains( "tone" ) );
     REQUIRE_FALSE( defaults.contains( "icon" ) );
+    // An icon alone is something to show (Codex review of #130).
+    const auto iconOnly = sanitizeTooltip( QJsonObject{ { "icon", "status:ok" } }, &error );
+    REQUIRE( iconOnly.value( "icon" ) == "status:ok" );
+    REQUIRE( sanitizeTooltip( QJsonObject{ { "icon", "../bad.png" } }, &error ).isEmpty() );
     for ( const auto& invalid :
           { QJsonValue( QJsonArray{ 1, 2 } ), QJsonValue( 7 ),
             QJsonValue( QJsonObject{ { "title", 3 } } ),
@@ -784,6 +883,17 @@ TEST_CASE( "E17 get_plugin_tooltip reads its target from request fields and CLI 
     REQUIRE( roundTrip );
     REQUIRE( roundTrip->pluginArguments.value( "elementId" ) == "tip" );
     REQUIRE( commanderActionToString( CommanderAction::GetPluginTooltip ) == "get_plugin_tooltip" );
+    // --window-index picks the window; a tab selector is refused (Codex review of #130).
+    const QStringList base{ "cilogg", "command", "--action", "get_plugin_tooltip", "--plugin-id",
+                            "org.test.a",  "--view-id", "tips",     "--element-id", "rows" };
+    const CliParameters windowed( base + QStringList{ "--window-index", "2" } );
+    REQUIRE( windowed.commander_request );
+    REQUIRE( windowed.commander_request->windowIndex == 2 );
+    const CliParameters plain( base );
+    REQUIRE( plain.commander_request );
+    REQUIRE_FALSE( plain.commander_request->windowIndex );
+    REQUIRE_FALSE( CliParameters( base + QStringList{ "--tab-id", "t1" } ).commander_request );
+    REQUIRE_FALSE( CliParameters( base + QStringList{ "--window-index", "x" } ).commander_request );
 }
 
 TEST_CASE( "E17 ui/icons and tooltip/invalidate from a plugin reach the UI", "[plugins][E17]" )

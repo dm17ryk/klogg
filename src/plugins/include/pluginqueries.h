@@ -56,7 +56,7 @@ public:
         int timeoutMs = 0;
         // A new query with the same key replaces the pending one (one tooltip per view).
         QString exclusiveKey;
-        // dropScope() forgets every query whose scope starts with its prefix (a closed view).
+        // dropScope() forgets every query of its scope or a scope below it ("<scope>/...").
         QString scope;
     };
 
