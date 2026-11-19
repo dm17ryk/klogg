@@ -10,6 +10,8 @@
         assert host.resolve_tooltip("main", "devices", row_id="r1", column_id="state") is not None
         assert host.populate_menu("main", "recent")["items"]       # a dynamic submenu opens
         host.send_command("lines", "explain", "log", selection=log_selection([(10, 12)]))
+        assert host.complete_field("main", "board", "Bo")["items"]  # typing paused in a field
+        host.change_field("main", "label", "x y", valid=False)      # a field changed
 
 The host records every frame in both directions (`frames`), answers stream/open and
 stream/data like CILogg, and checks the plugin's JSON-RPC envelopes (`errors`). See
@@ -36,14 +38,21 @@ Predicate = Callable[[JsonObject], bool]
 PathLike = Union[str, "os.PathLike[str]"]
 
 # What the current CILogg announces in initialize (docs/plugin-sdk-advanced.md, section 4.1).
-HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts")
+HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts",
+                 "choices", "toggles", "field_kinds", "validation")
 HOST_FEATURE_VERSIONS: Mapping[str, int] = {
     "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
-    "shortcuts": 1}
+    "shortcuts": 1, "choices": 1, "toggles": 1, "field_kinds": 1, "validation": 1}
 HOST_LIMITS: Mapping[str, int] = {
     "max_elements": 512, "max_table_cells": 50000, "max_text_chars": 4096,
     "max_message_bytes": 1048576}
 HOST_VERSION = "0.0.0-fakehost"
+# What CILogg announced with E17b: menus and shortcuts, no choices, toggles, field kinds or
+# validation.
+E17B_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts")
+E17B_HOST_FEATURE_VERSIONS: Mapping[str, int] = {
+    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
+    "shortcuts": 1}
 # What CILogg announced with E17a: queries, tooltips and icons, no menus or shortcuts.
 E17A_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons")
 E17A_HOST_FEATURE_VERSIONS: Mapping[str, int] = {
@@ -464,6 +473,20 @@ class FakeHost:
                                    "element_id": element_id, "type": event_type, "value": value,
                                    "inputs": dict(inputs or {}), **extra})
 
+    def change_field(self, view_id: str, element_id: str, value: Any, *,
+                     valid: Optional[bool] = None, window_id: str = "w1",
+                     inputs: Optional[Mapping[str, Any]] = None) -> None:
+        """Send a `changed` view/event, as when the user changes a field, a check box, a radio
+        group or a check group. `valid` is the field's validity: a host with validation sends
+        it only for fields that declare a validation key (required, pattern, min, max,
+        min_length, max_length or a non-empty error), so leave it None for other elements.
+        `inputs` gets the new value under element_id, like the host's."""
+        all_inputs = dict(inputs or {})
+        all_inputs[element_id] = value
+        extra: JsonObject = {} if valid is None else {"valid": valid}
+        self.view_event(view_id, element_id, "changed", value, window_id=window_id,
+                        inputs=all_inputs, **extra)
+
     def message_result(self, message_id: str, button: str, timed_out: bool = False) -> None:
         self.notify("ui/message_result", {"message_id": message_id, "button": button,
                                           "timed_out": timed_out})
@@ -517,6 +540,21 @@ class FakeHost:
                             context=context)
         if result is not None and not isinstance(result, dict):
             raise RpcError(-32603, "A tooltip answer is null or an object")
+        return result
+
+    def complete_field(self, view_id: str, element_id: str, text: str,
+                       cursor: Optional[int] = None, *, window_id: str = "w1",
+                       timeout_ms: int = 500, timeout: Optional[float] = None,
+                       context: Optional[Mapping[str, Any]] = None) -> Optional[JsonObject]:
+        """Ask field/complete, as when typing pauses in a field with `completion`; `cursor`
+        defaults to the end of the text. Returns the answer ({items}) or None."""
+        params: JsonObject = {"view_id": view_id, "window_id": window_id,
+                              "element_id": element_id, "text": text,
+                              "cursor": len(text) if cursor is None else cursor}
+        result = self.query("field/complete", params, timeout_ms=timeout_ms, timeout=timeout,
+                            context=context)
+        if result is not None and not isinstance(result, dict):
+            raise RpcError(-32603, "A field/complete answer is null or an object")
         return result
 
     # Menus.

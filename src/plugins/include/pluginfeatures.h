@@ -69,4 +69,9 @@ const QStringList& toneNames();
 // answer and an answer without any text give an empty object ("nothing"). `error` is set for an
 // invalid answer.
 QJsonObject sanitizeTooltip( const QJsonValue& answer, QString* error );
+
+// A `field/complete` answer (section 8.2): `{items: [{value, label, icon}]}` (a list alone is
+// accepted), at most MaxCompletionItems; null gives an empty object ("nothing").
+constexpr int MaxCompletionItems = 100;
+QJsonObject sanitizeCompletion( const QJsonValue& answer, QString* error );
 } // namespace cilogg::plugins

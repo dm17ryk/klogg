@@ -4,6 +4,8 @@
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QIcon>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QObject>
@@ -30,6 +32,15 @@ struct PluginViewQueries {
     std::function<void( const QString& id )> cancel;
     // An icon reference as an <img> element for the rendered tooltip; empty when unusable.
     std::function<QString( const QJsonValue& reference )> iconHtml;
+    // E17c: sends `field/complete` with `params` (element_id, text, cursor; the host adds the
+    // view, window and context) and the field's `completion_timeout_ms` (0: the default); `done`
+    // gets the items (none when there is nothing). Returns the query id, empty when nothing was
+    // sent (done never runs then).
+    std::function<QString( const QJsonObject& params, int timeoutMs,
+                           std::function<void( const QJsonArray& items )> done )>
+        complete;
+    // An icon reference as an icon (choices); null when unusable.
+    std::function<QIcon( const QJsonValue& reference )> icon;
 };
 
 // Static and advanced tooltips of one plugin view (section 9): watches widgets for tooltip

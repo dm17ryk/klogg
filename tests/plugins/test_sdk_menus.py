@@ -541,7 +541,8 @@ class FakeHostHelpers(MenuCase):
 
     def test_feature_sets(self):
         testing = self.testing
-        self.assertEqual(testing.HOST_FEATURES[-2:], ("menus", "shortcuts"))
+        self.assertEqual(testing.E17B_HOST_FEATURES[-2:], ("menus", "shortcuts"))
+        self.assertTrue({"menus", "shortcuts"} <= set(testing.HOST_FEATURES))
         self.assertEqual(testing.HOST_FEATURE_VERSIONS["menus"], 1)
         self.assertEqual(testing.HOST_FEATURE_VERSIONS["shortcuts"], 1)
         self.assertNotIn("menus", testing.E17A_HOST_FEATURES)

@@ -84,6 +84,8 @@ public:
     std::function<bool( const QString& rowId, const QString& columnId, const QJsonValue& value,
                         const QString& previous )>
         onEdited;
+    // E17c: icon references of choices (a committed choice shows its icon in the cell).
+    std::function<QIcon( const QJsonValue& reference )> iconFor;
 
     int rowCount( const QModelIndex& parent = {} ) const override;
     int columnCount( const QModelIndex& parent = {} ) const override;
@@ -149,6 +151,8 @@ public:
 
     // Set by the view: reports an editor kind this delegate does not know (it gets a text editor).
     std::function<void( const QString& kind )> onUnknownKind;
+    // Set by the view: icons of choices (E17c).
+    std::function<QIcon( const QJsonValue& reference )> iconFor;
 
     QWidget* createEditor( QWidget* parent, const QStyleOptionViewItem& option,
                            const QModelIndex& index ) const override;

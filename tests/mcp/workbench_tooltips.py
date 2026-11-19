@@ -85,12 +85,15 @@ def exercise_tooltips(cli, command, catalog, artifacts, run_python):
         "cli": cli_tooltip(cli, "summary"),
         "mcp": mcp_tooltip(command, "summary"),
     }
-    # A host runs one global script: the E17b menus fixture runs in the same one.
+    # A host runs one global script: the E17b menus and E17c choices fixtures run in the same one.
+    import workbench_choices
     import workbench_menus
 
-    python, menus = run_python([("e17_tooltips", {"plugin": PLUGIN, "view": VIEW}),
-                                ("e17_menus", {"plugin": PLUGIN})])
+    python, menus, choices = run_python([("e17_tooltips", {"plugin": PLUGIN, "view": VIEW}),
+                                         ("e17_menus", {"plugin": PLUGIN}),
+                                         ("e17_choices", {"plugin": PLUGIN, "view": VIEW})])
     workbench_menus.PYTHON_RESULT = menus
+    workbench_choices.PYTHON_RESULT = choices
     if python.get("errors"):
         raise ParityError(f"python_fixture_failed: {python['errors']}")
     surfaces["python"] = python["summary"]

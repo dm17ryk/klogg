@@ -774,5 +774,33 @@
       "ci-release.yml takes the last successful CI Build on any branch and event, so a pull request build can be released; limiting it to master pushes was left for a separate decision",
       "the three validate jobs and the release job each pick the last successful run on their own and can differ if a CI Build finishes during a release"
     ]
+  },
+  "e17cChecks": {
+    "date": "2026-11-19",
+    "task": "E17",
+    "slice": "E17c",
+    "decision": "D17",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/132",
+    "stackedOn": "0af0742960ddc007c6264d2429abda88ab2c70fa",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "TASK_INDEX.json"
+    ],
+    "independentReview": "cpp-reviewer: 5 medium and 8 low findings fixed (tests for the medium ones); per-paint cell icon lookup and live-region announcements left as notes",
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except one init-capture of pluginview.cpp that is on master",
+    "nativeParity": [
+      "E17 (e17_tooltips, e17_menus, e17_choices)",
+      "E13 (plugin-views)"
+    ],
+    "hostIntegration": "tests/plugins/host_integration.py PASS (isolated portable copy, offscreen)",
+    "gitnexusDetectChanges": "risk low; the index has no entries for the new C++ members",
+    "qualification": "local_gates_passed_hosted_pending"
   }
 }

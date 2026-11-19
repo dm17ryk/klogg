@@ -195,6 +195,21 @@ int main( int argc, char** argv )
             return QJsonObject{ { "items", items },
                                 { "cache_ms", item == "cached" ? 60000 : 0 } };
         } );
+        // E17c completion (docs/plugin-sdk-advanced.md 8.2): names starting with the text.
+        plugin.onQuery( "field/complete", []( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto typed = query.params.value( "text" ).toString();
+            if ( typed == "bad" ) {
+                return QJsonArray{ QJsonObject{ { "label", "no value" } } };
+            }
+            QJsonArray items;
+            for ( const auto* name : { "alpha", "alps", "beta" } ) {
+                if ( QString::fromLatin1( name ).startsWith( typed ) ) {
+                    items.append( QJsonObject{ { "value", QString::fromLatin1( name ) },
+                                               { "label", QString::fromLatin1( name ).toUpper() } } );
+                }
+            }
+            return QJsonObject{ { "items", items } };
+        } );
         // ui/command: recorded, and "rename" changes the entry through menu/update.
         plugin.onCommand( [ &plugin ]( const QJsonObject& params ) {
             QFile log( "host-messages.jsonl" );
