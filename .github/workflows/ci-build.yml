@@ -3,46 +3,54 @@ name: "CI Build"
 on:
   push:
     branches: [ master ]
-    # Changes that only touch these paths skip the build (decision D18 in
-    # docs/workbench/decisions.md). DOCUMENTATION.md and MCP.md are NOT listed:
-    # DOCUMENTATION.md is compiled into the app and MCP.md is installed with it.
+    # The build runs only when a change touches a path this list keeps (decision
+    # D18 in docs/workbench/decisions.md). GitHub checks the patterns in order and
+    # the last match wins: '**' keeps every file, each '!' line drops a path that
+    # nothing builds, and a later plain line keeps a file again.
+    # Never drop DOCUMENTATION.md (compiled into the app) or MCP.md (installed with
+    # it); docs/plugin-sdk.md is kept because the Windows package installs it
+    # (packaging/windows/prepare_release.cmd, cilogg.nsi).
     # Keep this list in sync with pull_request below and with codeql-analysis.yml.
-    paths-ignore:
-      - 'website/**'
-      - BUILD.md
-      - CODE_OF_CONDUCT.md
-      - CONTRIBUTING.md
-      - README.md
-      - latest.json
-      - .gitignore
-      - 'docs/**'
-      - 'plans/**'
-      - 'doc/**'
-      - 'screenshots/**'
-      - CHANGELOG.md
-      - SECURITY.md
-      - CONFIGURATION_EXPORTS.md
-      - AGENTS.md
-      - CLAUDE.md
+    paths:
+      - '**'
+      - '!website/**'
+      - '!BUILD.md'
+      - '!CODE_OF_CONDUCT.md'
+      - '!CONTRIBUTING.md'
+      - '!README.md'
+      - '!latest.json'
+      - '!.gitignore'
+      - '!docs/**'
+      - 'docs/plugin-sdk.md'
+      - '!plans/**'
+      - '!doc/**'
+      - '!screenshots/**'
+      - '!CHANGELOG.md'
+      - '!SECURITY.md'
+      - '!CONFIGURATION_EXPORTS.md'
+      - '!AGENTS.md'
+      - '!CLAUDE.md'
   pull_request:
     branches: [ master ]
-    paths-ignore:
-      - 'website/**'
-      - BUILD.md
-      - CODE_OF_CONDUCT.md
-      - CONTRIBUTING.md
-      - README.md
-      - latest.json
-      - .gitignore
-      - 'docs/**'
-      - 'plans/**'
-      - 'doc/**'
-      - 'screenshots/**'
-      - CHANGELOG.md
-      - SECURITY.md
-      - CONFIGURATION_EXPORTS.md
-      - AGENTS.md
-      - CLAUDE.md
+    paths:
+      - '**'
+      - '!website/**'
+      - '!BUILD.md'
+      - '!CODE_OF_CONDUCT.md'
+      - '!CONTRIBUTING.md'
+      - '!README.md'
+      - '!latest.json'
+      - '!.gitignore'
+      - '!docs/**'
+      - 'docs/plugin-sdk.md'
+      - '!plans/**'
+      - '!doc/**'
+      - '!screenshots/**'
+      - '!CHANGELOG.md'
+      - '!SECURITY.md'
+      - '!CONFIGURATION_EXPORTS.md'
+      - '!AGENTS.md'
+      - '!CLAUDE.md'
   workflow_dispatch:
 
 jobs:
