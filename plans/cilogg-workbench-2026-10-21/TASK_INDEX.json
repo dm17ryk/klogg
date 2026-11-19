@@ -1623,7 +1623,7 @@
       "dependencies": [
         "G01"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "requirements": [
         "ECO20",
         "ECO21"

@@ -519,6 +519,47 @@
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except four init-captures of pluginuicontroller.cpp that are on master and pass GCC",
     "qualification": "local_gates_passed_hosted_pending"
   },
+  "e15CompletedChecks": {
+    "date": "2026-11-19",
+    "decision": "D16",
+    "taskCompleted": "E15",
+    "mergedPullRequests": [
+      {
+        "slice": "E15a",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/122",
+        "mergeCommit": "22d491b8f4c05de3fe622199ba3798c41b786ed6"
+      },
+      {
+        "slice": "E15b",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/124",
+        "mergeCommit": "f1125bc600e72954e86437cf366add5972e46c5c"
+      },
+      {
+        "slice": "E15c",
+        "pullRequest": "https://github.com/dm17ryk/klogg/pull/125",
+        "mergeCommit": "bde34adf35583f08a33cd92758900b3e5d989037"
+      }
+    ],
+    "e15cHostedChecks": "35 passed, 0 failed on the PR head aaadc263; master's tree equals that head",
+    "runnableTasksRemoved": [
+      "E15"
+    ],
+    "runnableTasksAdded": [
+      "E16"
+    ],
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "hashManifestFiles": 165,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "README.md",
+      "TASK_INDEX.json",
+      "tasks/E15.md"
+    ],
+    "productCodeChanged": false,
+    "productBuildRun": false
+  },
   "d17Checks": {
     "date": "2026-11-19",
     "decision": "D17",
@@ -547,7 +588,7 @@
     "storedTopologicalOrderComplete": true,
     "storedTopologicalOrderDependencyValid": true,
     "dagRunnableTasks": [
-      "E15",
+      "E16",
       "E17",
       "G02",
       "R06",
@@ -557,7 +598,7 @@
       "G02",
       "U16",
       "R06",
-      "E15"
+      "E16"
     ],
     "e17HeldFromLedgerRunnableUntilApproval": true,
     "openQuestions": 22,
@@ -581,6 +622,8 @@
     ],
     "privateNamesPublished": false,
     "productCodeChanged": false,
-    "productBuildRun": false
+    "productBuildRun": false,
+    "masterMergedAt": "85fe48b5629c2ff43ecfa5304c2541cc1718df26",
+    "mergeConflictResolved": "Master's ledger update (#126: E15 completed) kept in PROGRESS.json, TASK_INDEX.json, README.md, tasks/E15.md and its PLAN_VALIDATION.json records; E17 additions re-applied on top; PACKAGE_SHA256.json recomputed"
   }
 }

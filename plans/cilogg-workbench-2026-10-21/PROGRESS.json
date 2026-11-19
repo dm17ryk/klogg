@@ -2246,11 +2246,12 @@
       "slices": []
     },
     "E15": {
-      "status": "in_progress",
-      "commit": null,
+      "status": "completed",
+      "commit": "bde34adf35583f08a33cd92758900b3e5d989037",
       "pullRequest": "https://github.com/dm17ryk/klogg/pull/125",
       "evidence": [
         "../../docs/plugin-repositories.md",
+        "E15 completed 2026-11-19: the last slice, E15c, merged as squash commit bde34adf (PR https://github.com/dm17ryk/klogg/pull/125) after all 35 hosted checks passed on the PR head aaadc263; master's tree equals that head. The earlier slices are merged as 22d491b8 (E15a, PR #122) and f1125bc6 (E15b, PR #124).",
         "E15a merged: PR https://github.com/dm17ryk/klogg/pull/122 squash-merged on 2026-11-19 as master 22d491b8 after all 40 hosted checks passed (feature commit 82be15df, first stacked on the design PR #118).",
         "E15a local qualification 2026-11-17 (Windows, MSVC /W4 /WX RelWithDebInfo, Qt 6.10.1, offscreen): cilogg_tests 372 cases / 15178 assertions; cilogg_tests [E15] 15 cases / 593 assertions with a local HTTPS server (tests/helpers/https_catalog_server.h) that serves catalogs and packages and records request headers; cilogg_tests [plugins] 50 cases / 2038 assertions; cilogg_itests [E15] 2 cases / 80 assertions (Plugins and Packs window, Repositories table, Fetch, Install, How to... and Help > Plugin Repositories Guide at the anchor); cilogg_itests [ui]~[workbench-native] 185 cases / 24562 assertions; cilogg_itests [logdata] 90 cases / 3396 assertions; ctest 10/10; python tests/plugins 214 OK (48 skipped) including test_build_catalog.py; tests/mcp self-tests OK.",
         "Native parity workbench_parity.py --task E15 (case e15a_repositories) passed: the same repository list and catalog results through the GUI controls, the CLI, native MCP and a Python global script; --task E13 and --task U15 still pass.",
@@ -2263,17 +2264,17 @@
         "E15c 2026-11-19 (PR https://github.com/dm17ryk/klogg/pull/125, branch feat/e15c-plugin-update-checks from f1125bc6): a silent update check 60 s after the start of an interactive GUI process and then hourly (PluginUpdateChecker), fetching only the enabled repositories not checked in the last 24 hours and not tried by the check in the last 24 hours, never in automation or headless mode, switched by Options > Update (versionchecker.plugins); the last catalog of each repository saved in <plugin data>/catalog-cache and read again at start; Plugins > Updates (n), Update (n) and the State column; one app-level non-modal notice per new version (Open Plugins, Skip This Version, Close; one listing notice for more than three); skip_update; per-repository auto-update (Repositories tab column) to the newest version within the installed major version that waits for a running plugin to stop, journaled and announced, a failure reported once and retried at the next check, replaced by an install, update or remove the user starts; check_updates and the get_plugins update field through Commander, the CLI help, native MCP and Python (the E15a parity case runs check_updates on all four surfaces). An independent cpp-reviewer pass found no critical issue; its 2 high, 3 medium and 2 low findings were fixed with tests, and testing found and fixed an automatic update that lowered the announced version. Local (Windows, MSVC /W4 /WX RelWithDebInfo, Qt 6.10.1, offscreen): cilogg_tests 399 cases / 16096 assertions (cilogg_tests [E15],[configuration] 42 cases / 1482 assertions), cilogg_itests [ui]~[workbench-native] 188 cases / 24671 assertions (cilogg_itests [E15] 4 cases / 182 assertions), cilogg_itests [logdata] 90 cases / 3402 assertions, ctest passed; clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror clean on every changed C++ file except four init-captures already on master."
       ],
       "limitations": [
-        "E15a is merged (PR #122) and E15b is merged (PR #124, f1125bc6); E15c (update checks, notices, auto-update) is in review in https://github.com/dm17ryk/klogg/pull/125.",
+        "All three slices are merged: E15a (PR #122, 22d491b8), E15b (PR #124, f1125bc6) and E15c (PR #125, bde34adf).",
         "Linux and macOS builds (GCC/Clang -Wshadow -Wconversion -Wsign-conversion -Werror), QtKeychain's Linux (Qt DBus, libsecret at run time) and macOS (Objective-C++) backends are checked by hosted CI only; the HTTPS cases log a warning and return on a Qt build without a TLS backend.",
         "GUI checked offscreen only; no real public repository and no real Azure DevOps organization were used: the Items API parameters, the Git Credential Manager window and the operating system credential store were exercised through the local HTTPS server, the fake git helper and the session store.",
         "E15b accepted limits: token copies held by Qt containers and request lambdas are released but only buffers CILogg owns alone are zeroed; any process of the same user can reach the single-instance channel as origin cli (it cannot claim gui); concurrent sign-ins to one repository are not serialized; the Available tab shows \"Sign-in needed\" but signs in from the Repositories tab only.",
-        "Known low-severity behaviours kept for later slices: a repository operation whose settings write fails reports the error after the in-memory change; a token in a catalog URL query would be stored like the rest of the address (credentials are E15b); a superseded catalog job's requests run until they finish or time out.",
+        "Known low-severity behaviours accepted in E15a: a repository operation whose settings write fails reports the error after the in-memory change; a token in a catalog URL query would be stored like the rest of the address (credentials are E15b); a superseded catalog job's requests run until they finish or time out.",
         "E15c accepted limits: an automatic update that waits for a running plugin is dropped when CILogg exits first and is downloaded again by the next start's check; a Restart racing the stop may start the old version once more, which is then replaced at its next stop; the silent check ticks hourly and decides per repository (24 h since the last successful check and since the last scheduled attempt); notices are application-level non-modal message boxes, not a notification area; a version found by a check while no notice can be shown (automation mode) is marked announced and is only listed under Plugins > Updates (n) later; the Plugins menu recomputes the update count at each debounced (200 ms) refresh; configuration packs (E16) are not auto-updated yet."
       ],
       "slices": [
         "E15a: Plugins and Packs window (Installed, Available, Repositories), ordered public repositories, migration, merged catalog with sources and Kind filter, install-source pinning, build_catalog.py, in-app guide, public operations, PR https://github.com/dm17ryk/klogg/pull/122, merged as 22d491b8",
         "E15b: Azure DevOps sign-in (Git Credential Manager, personal access token store), credential scope and redirect rules, request origin, PR https://github.com/dm17ryk/klogg/pull/124, merged as f1125bc6",
-        "E15c: silent update check (60 s after start, then each repository once a day), saved catalogs, Plugins > Updates (n), one notice per new version, Skip this version, per-repository auto-update within the installed major version that waits for a running plugin to stop, check_updates, skip_update and the get_plugins update field, PR https://github.com/dm17ryk/klogg/pull/125, in review"
+        "E15c: silent update check (60 s after start, then each repository once a day), saved catalogs, Plugins > Updates (n), one notice per new version, Skip this version, per-repository auto-update within the installed major version that waits for a running plugin to stop, check_updates, skip_update and the get_plugins update field, PR https://github.com/dm17ryk/klogg/pull/125, merged as bde34adf"
       ]
     },
     "E16": {
@@ -2284,7 +2285,7 @@
         "../../docs/plugin-repositories.md"
       ],
       "limitations": [
-        "Design accepted by the user on 2026-11-17 with every decision approved (decision D16, docs/plugin-repositories.md section 10). Planned, not started. Follows E15.",
+        "Design accepted by the user on 2026-11-17 with every decision approved (decision D16, docs/plugin-repositories.md section 10). Planned, not started. Follows E15, which completed on 2026-11-19, so E16 is runnable.",
         "Python decoders in packs stay inactive until MD03's decoder contract exists."
       ],
       "slices": [
@@ -3007,7 +3008,7 @@
     "G02",
     "U16",
     "R06",
-    "E15"
+    "E16"
   ],
   "addenda": {
     "messageDecoders": {
