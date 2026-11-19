@@ -19,6 +19,7 @@ add_executable(cilogg_tests
     plugin_signin_test.cpp
     plugin_updates_test.cpp
     configpack_test.cpp
+    packmerge_test.cpp
     mcp_test.cpp
     configuration_test.cpp
     captureevaluator_test.cpp

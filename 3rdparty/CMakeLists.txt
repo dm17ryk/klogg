@@ -435,6 +435,44 @@ if(qtkeychain_ADDED)
   endif()
 endif()
 
+# libgit2 keeps the local store of each configuration pack (docs/plugin-repositories.md 4.6,
+# decision 9): history, the merge base and three-way merges of pack items. Built static and local
+# only: no HTTPS or SSH transports, no network authentication, bundled zlib and regex; the DLL C
+# runtime of the rest of CILogg. GPLv2 with the linking exception.
+cpmaddpackage(
+  NAME
+  libgit2
+  GITHUB_REPOSITORY
+  libgit2/libgit2
+  VERSION
+  1.9.1
+  EXCLUDE_FROM_ALL
+  YES
+  OPTIONS
+  "BUILD_SHARED_LIBS OFF"
+  "BUILD_TESTS OFF"
+  "BUILD_CLI OFF"
+  "BUILD_EXAMPLES OFF"
+  "BUILD_FUZZERS OFF"
+  "USE_HTTPS OFF"
+  "USE_SSH OFF"
+  "USE_GSSAPI OFF"
+  "USE_NTLMCLIENT OFF"
+  "USE_AUTH_NTLM OFF"
+  "USE_AUTH_NEGOTIATE OFF"
+  "USE_ICONV OFF"
+  "USE_BUNDLED_ZLIB ON"
+  "REGEX_BACKEND builtin"
+  "USE_HTTP_PARSER builtin"
+  "STATIC_CRT OFF"
+  "DEPRECATE_HARD ON"
+)
+if(libgit2_ADDED)
+  add_library(klogg_libgit2 INTERFACE)
+  target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
+  target_include_directories(klogg_libgit2 SYSTEM INTERFACE ${libgit2_SOURCE_DIR}/include)
+endif()
+
 
 cpmaddpackage(
   NAME
