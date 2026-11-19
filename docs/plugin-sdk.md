@@ -105,9 +105,10 @@ Host requests:
 
 | Method | Parameters / result |
 | --- | --- |
-| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit", "queries", "tooltips", "icons"]`), `host_feature_versions`, `host_version`, `host_limits`; return identity/version, capabilities, actions, configuration fields, and optionally `features` (the host-to-plugin methods the plugin handles) and `sdk` (`{name, version}`) |
-| `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete |
+| `initialize` | `protocol_version`, `plugin_id`, `configuration`, `config_directory`, transport limits, `host_features` (`["views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts"]`), `host_feature_versions`, `host_version`, `host_limits`; return identity/version, capabilities, actions, configuration fields, and optionally `features` (the host-to-plugin methods the plugin handles) and `sdk` (`{name, version}`) |
+| `invoke` | `job_id`, `action`, `arguments`, `context`; respond to the request ID when complete. An action run from a menu entry or its shortcut gets `context.menu`: `location`, `menu_id`, `item_id`, and for `log` entries `line` and `selection` (`ranges`, `count`, `text`, `truncated`) |
 | `tooltip/resolve` | A host query (ids `q:<n>`), sent only to a plugin that lists it in `handles` and `features`: `view_id`, `window_id`, `element_id`, optional `row_id`, `column_id`, `tooltip_key`, `timeout_ms`, `context`; answer a tooltip object or `null` (see below) |
+| `menu/populate` | A host query for a `dynamic` menu entry (docs/plugin-sdk-advanced.md 7.4): `menu_id`, `item_id`, `location`, `window_id`, `context` (ids, the line under the pointer and the selected line ranges, never the text), `timeout_ms`; answer `{items, cache_ms}` with entries of the menu schema without shortcuts or dynamic entries; `null` is an empty list |
 
 The plugin process environment also contains `CILOGG_EXECUTABLE` (the running CILogg
 executable) and `CILOGG_INSTANCE_ID` (the single-application name that Commander clients use to
@@ -118,6 +119,17 @@ Host notifications: `configure` (`configuration`), `cancel` (`job_id`), `shutdow
 `stream/opened` (`stream_id`), `stream/ack` (`stream_id`, `sequence`), and
 `stream/stop` (`stream_id`). Host context includes stable window/tab IDs and the
 file path when a file is targeted. Jobs return immediately to command callers.
+
+Menus (E17b, docs/plugin-sdk-advanced.md section 7): plugin.json `menus` declares menus in the
+locations `plugins` (the plugin's submenu in Plugins, which replaces its flat entries), `menubar`
+(one menu after Plugins), `tab`, `pane` and `log` (context menus). Entries run an `action`, open a
+`view`, or with `event: true` send the host notification `ui/command` (`origin` (`menu` or
+`shortcut`), `menu_id`, `item_id`, `location`, `window_id`, `checked`, `context` with the selected
+text for `log` entries); list `ui/command` in `handles`, or the host disables those entries. The
+plugin notification `menu/update` (`menu_id`, `items: [{id, set: {title, icon, tooltip, enabled,
+visible, checked}}]`) changes declared entries in every window. `shortcut` (on menu entries,
+actions and views, at most 32) is a portable key sequence with Ctrl, Alt or Meta, or a function
+key; a shortcut CILogg already uses is refused and listed in the Plugins and Packs window.
 
 Plugin notifications:
 
@@ -242,9 +254,13 @@ golden-frame test checks this).
   workers as Python, `features` and `sdk` in the initialize result, `-32601` for unknown host
   requests, `supports()`, `hostLimits()`, `hostVersion()`, `invalidateTooltips()` and
   `registerIcons()` (both do nothing on an older host). A long handler should poll
-  `query.expired()`, which turns true on `query/cancel`, at the deadline and at shutdown.
+  `query.expired()`, which turns true on `query/cancel`, at the deadline and at shutdown. E17b
+  adds `onCommand(handler)` for `ui/command` (on the protocol reader thread, like
+  `onNotification`; registering it announces `ui/command` in `features`) and
+  `updateMenu(menuId, items)` (nothing on a host without `menus`); a dynamic submenu is an
+  `onQuery( "menu/populate", ... )` handler that returns `{items, cache_ms}`.
 
-## Python SDK 2.0: negotiation, host queries, tooltips, icons and testing
+## Python SDK 2.0: negotiation, host queries, tooltips, icons, menus and testing
 
 `plugins/sdk/python/cilogg_plugin.py` is version 2.0.0 (`SDK_VERSION`); it is still one
 standard-library file for Python 3.9 or newer, fully type-hinted (`TypedDict` classes for the
@@ -320,7 +336,74 @@ checked with `mypy --strict` in CI. Every name of the earlier SDK keeps working.
 
 `plugins/examples/ui-gallery` (disabled by default) shows static and advanced tooltips on a
 label, a button, a field, table headers and every table cell, a registered icon,
-`invalidate_tooltips` and accessible names, and degrades on an older CILogg.
+`invalidate_tooltips` and accessible names, a Plugins submenu with a check box, radio entries, a
+dynamic submenu and a shortcut, log and tab context menu entries, and degrades on an older
+CILogg.
+
+### Menus and commands (E17b)
+
+A host that announces `menus` and `shortcuts` (version 1 each) shows the `menus` of
+`plugin.json`: the plugin's submenu of **Plugins**, a menu-bar menu, and entries in the tab,
+pane, log and element context menus and in toolbar drop-downs (design section 7). The SDK builds
+the entries and handles the two host-to-plugin methods:
+
+- **Builders.** `menu(id, location, items, title=None, icon=None)` (`location` is one of
+  `MENU_LOCATIONS`: `plugins`, `menubar`, `tab`, `pane`, `log`, `element`, `toolbar`),
+  `menu_item(id, title, *, icon=None, tooltip=None, enabled=None, visible=None, checkable=None,
+  checked=None, group=None, event=None, action=None, arguments=None, view=None, items=None,
+  dynamic=None, when=None, shortcut=None)`, `menu_separator()` and `menu_section(title)` return
+  plain dicts (`Menu`, `MenuEntry`) for `plugin.json` and for populate answers. `menu_item`
+  raises ValueError for the shapes CILogg refuses: an entry does exactly one of `action` (with
+  `arguments`), `view` or `event=True`, or is a submenu (`items`, or `dynamic=True`) without
+  shortcut or check mark; `checked=True` and `group` need `checkable=True`; `shortcut` is a key
+  sequence such as `"Ctrl+Alt+D"` or a list of two.
+- **Dynamic submenus.** `@plugin.menu_populate(menu_id, item_id=None)` registers
+  `handler(MenuQuery)` for the `dynamic` entry `item_id` of a menu, or for every dynamic entry of
+  the menu; an entry's own handler wins, and a `@plugin.query("menu/populate")` handler is the
+  last fallback (its result goes out unchanged). `MenuQuery` adds `menu_id`, `item_id`,
+  `location`, `window_id` and, for log menus, `line` (the line under the pointer), `selection`,
+  `ranges` and `line_count` to `Query` (a populate query never carries the selected text). The handler returns a list of entries, a
+  dict `{"items": [...], "cache_ms": n}` (CILogg may show the answer again for `cache_ms`
+  without asking) or None. The SDK removes `shortcut` keys from the entries, keeps `cache_ms`
+  within 0 to 60,000 ms and answers the error `-32000` for any other return value. Handlers run
+  on the `menu/populate` lane (default timeout 1,000 ms).
+- **Commands.** `@plugin.on_command(menu_id=None, item_id=None)` registers `handler(UiCommand)`
+  for `ui/command`, which CILogg sends when the user picks an `event` entry (`origin` `menu`) or
+  presses its shortcut (`shortcut`). The most specific handler wins: menu and entry, then the
+  entry in any menu, then the menu, then the handler without ids; a command without a handler
+  is reported on stderr. `UiCommand` has `params`, `origin`, `menu_id`, `item_id`, `location`,
+  `window_id`, `checked` (the new state of a checkable entry, else None) and `context`, and for
+  log entries `line`, `selection`, `ranges` (1-based `(first, last)` pairs, at most 64),
+  `line_count`, `text` (the selected text, at most 64 KiB) and `truncated`. Handlers run in arrival order on
+  the worker thread of the view callbacks, never on the protocol reader; an exception is printed
+  on stderr. `action` and `view` entries never reach the plugin as commands: CILogg runs them.
+- **Run-time changes.** `plugin.update_menu(menu_id, items)` sends `menu/update` with
+  `menu_set(item_id, title=, icon=, tooltip=, enabled=, visible=, checked=)` entries (or a dict
+  `{item_id: {"title": ...}}`); open menus change in place. On a host without `menus` it sends
+  nothing and returns False.
+- **`features` and `handles`.** The initialize result lists `menu/populate` (and `query/cancel`)
+  when a populate handler is registered and `ui/command` when a command handler is;
+  `plugin.json` must list them in `handles`, or the SDK warns at start. The messages have
+  `TypedDict` classes: `MenuPopulateParams`, `MenuPopulateResult`, `UiCommandParams`,
+  `LogSelection`, `MenuUpdateParams`, `MenuUpdateItem`, `MenuItemChanges` and `MenuWhen`.
+
+```python
+from cilogg_plugin import MenuPopulateResult, MenuQuery, Plugin, UiCommand, menu_item
+
+plugin = Plugin()
+RECENT = ["boot.log", "radio.log"]
+
+
+@plugin.menu_populate("main", "recent")  # {"id": "recent", "title": "Recent", "dynamic": true}
+def recent(query: MenuQuery) -> MenuPopulateResult:
+    items = [menu_item(f"recent_{n}", name, event=True) for n, name in enumerate(RECENT)]
+    return {"items": items, "cache_ms": 5000}
+
+
+@plugin.on_command("lines", "explain")  # an event entry of a "log" menu
+def explain(command: UiCommand) -> None:
+    print(command.line_count, command.ranges, command.text)
+```
 
 ### Testing plugins without CILogg
 
@@ -341,7 +424,9 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
 - Start a plugin with `FakeHost.start(command, cwd)`, `FakeHost.start_package(folder)` or, for
   a `Plugin` object in the test process, `FakeHost.in_process(plugin)`.
 - `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
-  host_limits=…)` sends the current host's keys by default; pass None to leave one out.
+  host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus` and
+  `shortcuts`); pass None to leave one out, or `E17A_HOST_FEATURES` and
+  `E17A_HOST_FEATURE_VERSIONS` to play a CILogg without menus.
 - `invoke`, `start_invoke`, `cancel`, `configure`, `open_view`, `close_view`, `view_event`,
   `message_result`, `request`, `notify` and `send_frame` (any frame, also raw bytes) send;
   `wait_for(method, predicate)` consumes the next matching plugin notification and
@@ -351,6 +436,11 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   host queries; without an answer in time the host sends `query/cancel` and raises
   `QueryTimeout`. `send_query`, `wait_response`, `cancel_query` and `answers(id)` test
   cancellation and lanes. An error answer raises `RpcError` (`code`, `message`).
+- `populate_menu(menu_id, item_id, location="plugins", context=None, timeout_ms=1000)` opens a
+  dynamic submenu (returns `{items, cache_ms}` or None); `send_command(menu_id, item_id,
+  location="plugins", origin="menu", checked=None, context=None, selection=None)` picks an
+  `event` entry, with `log_selection(ranges, count=None, text=None, truncated=None)` building
+  the `context.selection` of a log entry.
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

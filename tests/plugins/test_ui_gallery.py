@@ -11,11 +11,15 @@ SDK = ROOT / "plugins/sdk/python"
 EXAMPLE = ROOT / "plugins/examples/ui-gallery"
 
 
-def load_testing():
-    spec = importlib.util.spec_from_file_location("ui_gallery_test_host", SDK / "cilogg_plugin_testing.py")
+def load_module(name, filename):
+    spec = importlib.util.spec_from_file_location(name, SDK / filename)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_testing():
+    return load_module("ui_gallery_test_host", "cilogg_plugin_testing.py")
 
 
 def elements(root):
@@ -41,20 +45,141 @@ class UiGallery(unittest.TestCase):
         self.host = self.testing.FakeHost.start_package(package, timeout=10)
         self.addCleanup(self.host.close)
 
-    def open_gallery(self):
-        self.host.open_view("gallery")
+    def open_gallery(self, window_id="w1"):
+        self.host.open_view("gallery", window_id=window_id)
         return elements(self.host.wait_for("view/update", lambda params: "root" in params)["root"])
+
+    def next_patch(self):
+        return self.host.wait_for("view/update", lambda params: "patch" in params)["patch"]
 
     def test_manifest_is_disabled_by_default_and_lists_its_queries(self):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
         self.assertFalse(manifest.get("enabled_by_default", False))
-        self.assertEqual(manifest["handles"], ["tooltip/resolve", "query/cancel"])
+        self.assertEqual(manifest["handles"],
+                         ["tooltip/resolve", "menu/populate", "ui/command", "query/cancel"])
         self.assertEqual([(view["id"], view["kind"]) for view in manifest["views"]], [("gallery", "dock")])
+
+    def test_manifest_declares_its_menus(self):
+        manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
+        menus = {menu["id"]: menu for menu in manifest["menus"]}
+        self.assertEqual({menu_id: menu["location"] for menu_id, menu in menus.items()},
+                         {"main": "plugins", "lines": "log", "tabs": "tab"})
+        self.assertEqual(menus["main"]["title"], "UI Gallery")
+        entries = {entry["id"]: entry for entry in menus["main"]["items"] if "id" in entry}
+        self.assertEqual([entry.get("type", "item") for entry in menus["main"]["items"]],
+                         ["item", "separator", "item", "section", "item", "item", "separator", "item"])
+        self.assertEqual((entries["open_gallery"]["view"], entries["open_gallery"]["shortcut"]),
+                         ("gallery", "Ctrl+Alt+Shift+G"))
+        self.assertTrue(entries["highlight_offline"]["event"] and entries["highlight_offline"]["checkable"])
+        self.assertNotIn("group", entries["highlight_offline"])
+        self.assertEqual([(entries[item]["group"], entries[item]["checkable"], entries[item].get("checked", False))
+                          for item in ("sort_name", "sort_state")],
+                         [("sort", True, True), ("sort", True, False)])
+        self.assertTrue(entries["boards"]["dynamic"])
+        self.assertEqual(menus["lines"]["items"][0]["when"], {"selection": "lines"})
+        self.assertTrue(menus["lines"]["items"][0]["event"])
+        self.assertTrue(menus["tabs"]["items"][0]["event"])
+        # Every entry has a shape the host accepts: the SDK builders check the same rules.
+        sdk = load_module("ui_gallery_test_sdk", "cilogg_plugin.py")
+        for menu in manifest["menus"]:
+            self.assertEqual(sdk.menu(menu["id"], menu["location"], menu["items"],
+                                      title=menu.get("title"), icon=menu.get("icon")), menu)
+            for entry in menu["items"]:
+                if entry.get("type", "item") == "item":
+                    keywords = {key: value for key, value in entry.items() if key not in ("id", "title")}
+                    self.assertEqual(sdk.menu_item(entry["id"], entry["title"], **keywords), entry)
+
+    def event_entries(self):
+        """(menu_id, entry) for every event entry of plugin.json."""
+        manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
+        found = []
+        for menu in manifest["menus"]:
+            pending = list(menu["items"])
+            while pending:
+                entry = pending.pop(0)
+                pending.extend(entry.get("items", []))
+                if entry.get("event"):
+                    found.append((menu["id"], menu["location"], entry))
+        return found
+
+    def test_menus_and_commands_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        boards = host.populate_menu("main", "boards")
+        self.assertEqual(boards["cache_ms"], 2000)
+        self.assertEqual([(entry["id"], entry["title"], entry["icon"], entry["event"])
+                          for entry in boards["items"]],
+                         [("board_b1", "Board 1 (connected)", "status:ok", True),
+                          ("board_b2", "Board 2 (idle)", "status:warn", True),
+                          ("board_b3", "Board 3 (offline)", "status:error", True)])
+        self.assertTrue(all("shortcut" not in entry for entry in boards["items"]))
+
+        # A log command before the view opens: the view shows the count when it opens.
+        host.send_command("lines", "count_lines", "log", context={"tab_id": "t1", "view": "main"},
+                          selection=self.testing.log_selection([(5, 9), (20, 21)], text="x"))
+        tree = self.open_gallery()
+        self.assertEqual(tree["status"]["text"],
+                         "Data revision 0. 7 selected lines in 2 ranges of the log.")
+
+        host.send_command("main", "highlight_offline", checked=True)
+        patch = self.next_patch()
+        self.assertEqual([(row["id"], row["tone"]) for row in patch[0]["replace_rows"]],
+                         [("b1", "muted"), ("b2", "muted"), ("b3", "error")])
+        self.assertEqual(patch[1], {"id": "status", "set": {
+            "text": "Data revision 0. Offline boards highlighted."}})
+
+        host.send_command("main", "sort_state", checked=True)
+        patch = self.next_patch()
+        self.assertEqual([row["id"] for row in patch[0]["replace_rows"]], ["b3", "b2", "b1"])
+        self.assertEqual(patch[1]["set"]["text"], "Data revision 0. Sorted by state.")
+        self.assertEqual([entry["id"] for entry in host.populate_menu("main", "boards")["items"]],
+                         ["board_b3", "board_b2", "board_b1"])
+
+        host.send_command("main", "board_b2")
+        self.assertEqual(self.next_patch(), [{"id": "status", "set": {
+            "text": "Data revision 0. Board 2 picked from the Boards menu (idle)."}}])
+        host.send_command("tabs", "describe_tab", "tab",
+                          context={"tab_id": "t7", "file_path": "C:/logs/app.log", "tab_kind": "file"})
+        self.assertEqual(self.next_patch()[0]["set"]["text"],
+                         "Data revision 0. Tab t7 (file): C:/logs/app.log.")
+        host.send_command("tabs", "describe_tab", "tab",
+                          context={"tab_id": "t8", "port_name": "COM5", "tab_kind": "serial"})
+        self.assertEqual(self.next_patch()[0]["set"]["text"],
+                         "Data revision 0. Tab t8 (serial): COM5.")
+
+        # Sorted by state, Change data replaces the rows in their new order and updates the
+        # Boards entry of the Plugins menu.
+        host.view_event("gallery", "change", "clicked")
+        patch = self.next_patch()
+        self.assertEqual([row["id"] for row in patch[0]["replace_rows"]], ["b2", "b1", "b3"])
+        self.assertEqual(host.wait_for("menu/update"), {
+            "menu_id": "main", "items": [{"id": "boards", "set": {"title": "Boards (1 offline)"}}]})
+
+        # A closed gallery gets no patches; it shows the last command when it opens again.
+        host.close_view("gallery")
+        host.send_command("main", "highlight_offline", origin="shortcut", checked=False)
+        host.send_command("lines", "count_lines", "log", context={"view": "filtered"},
+                          selection=self.testing.log_selection([(3, 3)]))
+        tree = self.open_gallery("w2")
+        self.assertEqual(tree["status"]["text"],
+                         "Data revision 1. 1 selected line in 1 range of the filtered view.")
+        self.assertEqual([row["tone"] for row in tree["boards"]["rows"]], ["error", "warn", "ok"])
+        with self.assertRaises(TimeoutError):
+            host.wait_for("view/update", lambda params: "patch" in params, timeout=0.3)
+
+        # Every event entry of plugin.json has a handler (an unhandled one is logged on stderr).
+        for menu_id, location, entry in self.event_entries():
+            host.send_command(menu_id, entry["id"], location,
+                              checked=True if entry.get("checkable") else None)
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
 
     def test_current_host_gets_icons_properties_and_tooltip_answers(self):
         host = self.host
         result = host.initialize()
-        self.assertEqual(result["features"], ["query/cancel", "tooltip/resolve"])
+        self.assertEqual(result["features"],
+                         ["menu/populate", "query/cancel", "tooltip/resolve", "ui/command"])
         self.assertEqual(result["sdk"]["version"], "2.0.0")
         tree = self.open_gallery()
         icons = host.wait_for("ui/icons")  # registered when the view first opens
@@ -94,6 +219,8 @@ class UiGallery(unittest.TestCase):
                          ["b1-1", "b2-1", "b3-1"])
         self.assertEqual(patch[1], {"id": "status", "set": {"text": "Data revision 1"}})
         self.assertEqual(host.wait_for("tooltip/invalidate"), {"view_id": "gallery", "element_id": "summary"})
+        self.assertEqual(host.wait_for("menu/update")["items"],
+                         [{"id": "boards", "set": {"title": "Boards (1 offline)"}}])
         self.assertEqual(host.resolve_tooltip("gallery", "boards", row_id="b1", column_id="state")["title"],
                          "Idle")
         self.assertEqual(host.resolve_tooltip("gallery", "summary")["footer"], "Data revision 1")
@@ -120,7 +247,23 @@ class UiGallery(unittest.TestCase):
         self.assertEqual(host.shutdown(), 0)
         self.assertEqual(host.notifications("ui/icons"), [])
         self.assertEqual(host.notifications("tooltip/invalidate"), [])
+        self.assertEqual(host.notifications("menu/update"), [])
         self.assertEqual(host.errors, [])
+
+    def test_e17a_host_gets_tooltips_but_no_menu_updates(self):
+        host = self.host
+        host.initialize(host_features=self.testing.E17A_HOST_FEATURES,
+                        host_feature_versions=self.testing.E17A_HOST_FEATURE_VERSIONS)
+        tree = self.open_gallery()
+        self.assertTrue(tree["summary"]["tooltip_provider"])
+        self.assertEqual(host.resolve_tooltip("gallery", "summary")["title"], "Fleet summary")
+        host.view_event("gallery", "change", "clicked")
+        self.assertEqual(self.next_patch()[1], {"id": "status", "set": {"text": "Data revision 1"}})
+        self.assertEqual(host.wait_for("tooltip/invalidate"), {"view_id": "gallery", "element_id": "summary"})
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.notifications("menu/update"), [])
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
 
 
 if __name__ == "__main__":

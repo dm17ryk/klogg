@@ -107,6 +107,7 @@ int main( int argc, char** argv )
     // E17a host queries (docs/plugin-sdk-advanced.md sections 5 and 9): the answer depends on the
     // element. "no-queries" registers no handler, so the initialize result lists no features.
     std::atomic<int> counted{ 0 };
+    std::atomic<int> populated{ 0 };
     if ( mode != "no-queries" ) {
         plugin.onQuery( "tooltip/resolve", [ & ]( const cilogg_plugin::Query& query ) -> QJsonValue {
             const auto params = query.params;
@@ -168,6 +169,50 @@ int main( int argc, char** argv )
                                 { "icon", "image:dot" },
                                 { "footer", "Updated" },
                                 { "ttl_ms", 60000 } };
+        } );
+        // E17b dynamic submenus (docs/plugin-sdk-advanced.md 7.4), by entry id.
+        plugin.onQuery( "menu/populate", [ & ]( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto item = query.params.value( "item_id" ).toString();
+            if ( item == "slowmenu" ) {
+                while ( !query.expired() ) {
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+                }
+                return QJsonValue::Null;
+            }
+            if ( item == "badmenu" ) {
+                return QJsonObject{ { "items", QJsonArray{ QJsonObject{ { "id", "x" } } } } };
+            }
+            const auto context = query.params.value( "context" ).toObject();
+            QJsonArray items;
+            items.append( QJsonObject{ { "id", "r1" },
+                                       { "title", QString( "First %1" ).arg( ++populated ) },
+                                       { "event", true } } );
+            items.append( QJsonObject{ { "type", "separator" } } );
+            items.append( QJsonObject{
+                { "id", "r2" },
+                { "title", "Tab " + context.value( "tab_id" ).toString().left( 8 ) },
+                { "event", true } } );
+            return QJsonObject{ { "items", items },
+                                { "cache_ms", item == "cached" ? 60000 : 0 } };
+        } );
+        // ui/command: recorded, and "rename" changes the entry through menu/update.
+        plugin.onCommand( [ &plugin ]( const QJsonObject& params ) {
+            QFile log( "host-messages.jsonl" );
+            if ( log.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+                log.write( QJsonDocument( QJsonObject{ { "method", "ui/command" },
+                                                       { "params", params } } )
+                               .toJson( QJsonDocument::Compact ) );
+                log.write( "\n" );
+            }
+            if ( params.value( "item_id" ).toString() == "rename" ) {
+                plugin.updateMenu(
+                    params.value( "menu_id" ).toString(),
+                    QJsonArray{ QJsonObject{
+                        { "id", "rename" },
+                        { "set", QJsonObject{ { "title", "Renamed" }, { "enabled", true } } } },
+                                QJsonObject{ { "id", "toggle" },
+                                             { "set", QJsonObject{ { "enabled", false } } } } } );
+            }
         } );
     }
     // Plugin views: record every view/ui notification and answer like a small view plugin.

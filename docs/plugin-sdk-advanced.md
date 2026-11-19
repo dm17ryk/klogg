@@ -4,8 +4,8 @@
 [docs/workbench/decisions.md](workbench/decisions.md), task
 [E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
 answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
-slices in order, one branch and pull request each (section 21). **E17a is implemented** (section
-24); E17b to E17i are planned.
+slices in order, one branch and pull request each (section 21). **E17a and E17b are implemented**
+(sections 24 and 25); E17c to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1322,3 +1322,82 @@ E17a decided as follows.
 - **Left for later slices.** The C++ fake host (`cilogg_plugin_testing.h`) and the C++ view example
   come with E17h; the Python fake host is in E17a. `ui-gallery` shows E17a's tooltips, icons and
   accessible names and grows with each slice.
+
+## 25. E17b as built
+
+E17b implements section 7 (menus, context menus, dynamic submenus, `ui/command`, shortcuts) and
+the `get_plugin_menus` and `trigger_plugin_menu` operations of section 15. Where the design left a
+choice open, E17b decided as follows.
+
+- **Feature versions.** `menus` and `shortcuts` are version 1.
+- **Where the code is.** `src/plugins/src/pluginmenuspec.cpp` (manifest rules, `when`, the
+  `menu/populate` and `menu/update` checks, shortcut assignment), `src/ui/src/pluginmenus.cpp` (the
+  process-wide menu state, each window's menus, dynamic submenus, picked entries, shortcuts) and
+  `src/ui/include/pluginmenuhost.h` (how a log view asks its window for plugin entries). The hooks
+  are `PluginUiController::refreshActions` (Plugins menu and menu bar),
+  `MainWindow::extendTabContextMenu` (location `tab`), `MainWindow::addPaneCommands` (location
+  `pane`: the tab menu, the Panes submenu of the log views and the menu of an empty pane) and
+  `AbstractLogView`'s context menu (location `log`).
+- **Locations.** This host shows `plugins`, `menubar`, `tab`, `pane` and `log`. A manifest may
+  name any other lowercase location (`element` and `toolbar` come with E17d and E17g); such a menu
+  is checked like the others and not shown, so an older host never shows it out of place.
+- **Entries.** A menu entry's `icon` takes every icon reference of section 6 (menus are a new key,
+  so an older host never reads them). Separators and sections have no id. Menu and entry ids have
+  no `/`, and no menu is called `action` or `view`, because ids name shortcuts. Titles are plain
+  text: `&` shows as written (no mnemonic) and tabs and control characters show as spaces;
+  tooltips are plain text like element tooltips. A shortcut is one key combination with Ctrl, Alt
+  or Meta, or a function key; a list of two gives two combinations.
+- **Conditions.** `views` holds only in the log views, `tab_kinds` and `file_patterns` only with a
+  tab (the glob is matched against the file name, case-insensitively), and outside the log views
+  there is no selection (`selection: none` holds). Tab kinds: `serial` for a COM capture,
+  `plugin_stream` for a capture in the plugin data folder, `file` otherwise.
+- **Plugins menu.** A plugin's submenus take the place of its flat entries where those used to
+  be (plugin id order, as before). Its toolbar buttons stay.
+- **Run-time state.** `menu/update` changes last until the plugin stops; check marks, whether set
+  by the user or by `menu/update`, last for the session. A picked check box or radio entry changes
+  its mark only when the command was sent or the action started (not after a refusal or a
+  cancelled form). Disabling or removing a plugin forgets its menu state.
+- **Dynamic submenus.** An answer is cached per entry, location and tab for its `cache_ms`. A
+  `null` answer is an empty list and shows "No entries"; an error, a timeout or an invalid answer
+  shows "Not available". There is one `menu/populate` at a time per window (the exclusive key of
+  section 5.2). An entry of an answer sends its own id as `item_id`; its object name appends that
+  id to the dynamic entry's.
+- **`ui/command`.** It needs `ui/command` in `handles`. Up to 16 commands wait for a plugin that is
+  starting; a plugin that stops before it is ready drops them with a warning in the log.
+- **Selections.** Ranges hold file line numbers. The selection is described only when some
+  enabled plugin shows `log` entries. A filtered view maps its rows to file lines one at a time,
+  until the 64 ranges are full or 100,000 rows were mapped; `count` is always the total. The text
+  is read when the entry is picked: whole lines joined with line feeds, or the selected part of
+  one line, at most 64 KiB of UTF-8 with `truncated`.
+- **Shortcuts.** Each window registers the assigned shortcuts as window shortcuts; the menu entries
+  show their keys. A shortcut whose keys CILogg uses (its shortcut list, the window's actions and
+  shortcuts, the reserved keys) is refused; with two combinations only the refused one is dropped.
+  Between plugins the holder of a key keeps it while CILogg runs; at start the order is plugin
+  name order. A menu entry's shortcut acts like a click with the current context: nothing when
+  the entry is hidden or disabled there, the action's form when it has fields, `origin`
+  `shortcut` in `ui/command`, and a message when it fails. Options > Shortcuts lists the plugin
+  entries as "Plugins: <plugin>: <entry>" and stores a plugin shortcut only when the user changes
+  it, so a plugin update can change its default. It offers each key once, and never a key that
+  CILogg or another plugin holds (that would block the dialog as a duplicate); the row's tooltip
+  says why a default was refused.
+- **Hiding.** `plugin_manage --plugin-operation menus` with `{"hidden_locations": [...]}` (the
+  Plugins and Packs window's "Menu Locations…" button) hides a plugin's entries per location;
+  hiding `menubar` moves the menu back under Plugins. Shortcuts stay active.
+- **`get_plugins`** gains `hiddenMenuLocations` and `shortcuts` (each with `key`, `title`,
+  `declared`, `keys`, `state` (`active`, `refused`, `cleared` or `none`), `reason` and `userSet`).
+  The Plugins and Packs window adds refused shortcuts to the plugin's state.
+- **`get_plugin_menus`** returns `location`, `windowIndex`, `tabId`, the `context` a plugin would
+  get (without the selected text) and `entries`: `pluginId`, `menuId`, `itemId`, `kind`, `title`,
+  `path` (the submenu titles above it), `enabled`, `visible`, `checkable`, `checked`, `group`,
+  `when`, `conditionsHold`, `shown`, `unavailable`, `shortcut` and `declaredShortcut`.
+- **`trigger_plugin_menu`** acts like a click on a declared entry: it refuses a hidden, disabled or
+  submenu entry, toggles a check box, checks a radio entry (`--checked true|false` sets the mark)
+  and runs an action without its form (the entry's `arguments` and the field defaults). With
+  `--lines` a `log` entry gets those file lines as its selection, clamped to the file, sorted and
+  merged; `--lines` that names no line of the file is refused. A tab selector picks the window
+  that holds the tab.
+- **SDKs.** The C++ SDK gains `onCommand` (on the protocol reader thread, like `onNotification`)
+  and `updateMenu`; `menu/populate` is an `onQuery` handler. The Python SDK gains
+  `@plugin.menu_populate`, `@plugin.on_command`, `update_menu`, menu builders and `FakeHost`
+  helpers (`populate_menu`, `send_command`). Both stay at SDK version 2.0.0: E17a and E17b ship
+  together as the first E17 release.

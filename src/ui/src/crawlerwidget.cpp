@@ -1354,6 +1354,20 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
     }
 }
 
+AbstractLogView* CrawlerWidget::pluginLogView() const
+{
+    if ( filteredView_ != nullptr
+         && ( filteredView_->hasFocus() || filteredView_ == qfSavedFocus_ ) ) {
+        return filteredView_;
+    }
+    return logMainView_;
+}
+
+AbstractLogView* CrawlerWidget::mainLogView() const
+{
+    return logMainView_;
+}
+
 // Returns a pointer to the window in which the search should be done
 AbstractLogView* CrawlerWidget::activeView() const
 {

@@ -282,7 +282,13 @@ def run(build: Path, artifacts: Path) -> None:
                 # path; the CLI and MCP read the same tooltip, and a table cell asks per cell.
                 gallery = "org.cilogg.ui-gallery"
                 if gallery in identifiers:
-                    cli("activate_ui", "--object-name", f"pluginViewAction_{gallery}_gallery")
+                    # E17b: the gallery declares a Plugins menu, which replaces its flat entries;
+                    # its "Open gallery" entry opens the view.
+                    entries = cli("get_plugin_menus", "--location", "plugins", "--plugin-id",
+                                  gallery)["entries"]
+                    assert any(e["itemId"] == "open_gallery" and e["shown"] for e in entries), entries
+                    cli("trigger_plugin_menu", "--plugin-id", gallery, "--menu-id", "main",
+                        "--item-id", "open_gallery")
                     summary_button = f"pluginView_{gallery}_gallery_summary"
                     deadline = time.monotonic() + 30
                     while not any(o.get("objectName") == summary_button and o.get("enabled")

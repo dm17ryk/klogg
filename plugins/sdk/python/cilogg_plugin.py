@@ -2,8 +2,10 @@
 
 Version 2.0.0 adds capability negotiation (`Plugin.supports`, `host_limits`, `host_version`),
 host queries answered on worker lanes (`@plugin.tooltip`, `@plugin.query`), tooltip
-invalidation, registered icons and forward compatibility with newer hosts. See
-docs/plugin-sdk.md and docs/plugin-sdk-advanced.md.
+invalidation, registered icons, menus with dynamic submenus and commands
+(`@plugin.menu_populate`, `@plugin.on_command`, `Plugin.update_menu`, `menu_item` and the other
+menu builders) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
+docs/plugin-sdk-advanced.md.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import time
 import uuid
 from typing import (
     Any, Callable, Deque, Dict, FrozenSet, Iterable, List, Mapping, NamedTuple, Optional,
-    Protocol, Sequence, Tuple, TypedDict, Union,
+    Protocol, Sequence, Tuple, Type, TypedDict, Union, cast,
 )
 
 JsonObject = Dict[str, Any]
@@ -60,10 +62,19 @@ TOOLTIP_TONES = ("normal", "ok", "warn", "error", "muted", "accent")
 MAX_TOOLTIP_ROWS = 32
 MAX_TOOLTIP_TTL_MS = 600000
 
+# Menus, context menus and commands (docs/plugin-sdk-advanced.md, section 7).
+MENU_POPULATE = "menu/populate"
+UI_COMMAND = "ui/command"
+MENU_UPDATE = "menu/update"
+MENU_LOCATIONS = ("plugins", "menubar", "tab", "pane", "log", "element", "toolbar")
+COMMAND_ORIGINS = ("menu", "shortcut", "toolbar", "status")
+MAX_MENU_CACHE_MS = 60000
+
 # Host methods the SDK handles itself; @plugin.query cannot take them over.
 _CORE_HOST_METHODS = frozenset({
     "initialize", "shutdown", "invoke", "configure", "cancel", "stream/opened", "stream/ack",
     "stream/stop", "view/opened", "view/closed", "view/event", "ui/message_result", QUERY_CANCEL,
+    UI_COMMAND,
 })
 _VIEW_NOTIFICATIONS = ("view/opened", "view/closed", "view/event", "ui/message_result")
 
@@ -73,6 +84,7 @@ _TOOLTIP_COLUMN_KEYS = frozenset({"tooltip", "tooltip_provider", "tooltip_key"})
 _TOOLTIP_ROW_KEYS = frozenset({"tooltip_provider", "tooltip_key"})
 _ACCESSIBLE_KEYS = frozenset({"accessible_name", "accessible_description"})
 _ROW_OPERATIONS = ("replace_rows", "update_rows", "insert_rows")
+_SHORTCUT_KEYS = frozenset({"shortcut"})  # Not allowed in menu/populate answers.
 
 
 # Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
@@ -196,6 +208,117 @@ class QueryCancelParams(TypedDict):
 
 
 TooltipAnswer = Union[Tooltip, Mapping[str, Any], str, None]
+
+
+class MenuWhen(TypedDict, total=False):
+    """Conditions the host checks when a menu opens; the entry shows only when all hold."""
+    views: List[str]  # main, filtered
+    tab_kinds: List[str]  # file, serial, plugin_stream
+    file_patterns: List[str]
+    selection: str  # none, lines, any
+    min_lines: int
+    max_lines: int
+
+
+class MenuEntry(TypedDict, total=False):
+    """A menu entry (docs/plugin-sdk-advanced.md, section 7.3). An item does one of `action`
+    (with `arguments`), `view` or `event`, or is a submenu (`items`, or `dynamic`)."""
+    id: str
+    type: str  # item (default), separator, section
+    title: str
+    icon: IconRef
+    tooltip: str
+    shortcut: Union[str, List[str]]
+    enabled: bool
+    visible: bool
+    checkable: bool
+    checked: bool
+    group: str
+    when: MenuWhen
+    items: List[MenuEntry]
+    dynamic: bool
+    action: str
+    arguments: JsonObject
+    view: str
+    event: bool
+
+
+class _MenuRequired(TypedDict):
+    id: str
+    location: str
+    items: List[MenuEntry]
+
+
+class Menu(_MenuRequired, total=False):
+    """One entry of the manifest's `menus`."""
+    title: str
+    icon: IconRef
+
+
+class _MenuPopulateParamsRequired(TypedDict):
+    menu_id: str
+    item_id: str
+
+
+class MenuPopulateParams(_MenuPopulateParamsRequired, total=False):
+    location: str
+    window_id: str
+    context: JsonObject
+    timeout_ms: int
+
+
+class _MenuPopulateResultRequired(TypedDict):
+    items: List[MenuEntry]
+
+
+class MenuPopulateResult(_MenuPopulateResultRequired, total=False):
+    """A menu/populate answer: entries without shortcuts; the host may reuse it for cache_ms."""
+    cache_ms: int
+
+
+class LogSelection(TypedDict, total=False):
+    """`context.selection` of a log menu: 1-based [first, last] line ranges (at most 64), the
+    selected line count, and in ui/command the selected text (at most 64 KiB)."""
+    ranges: List[List[int]]
+    count: int
+    text: str
+    truncated: bool
+
+
+class _UiCommandParamsRequired(TypedDict):
+    origin: str  # menu, shortcut, toolbar, status
+    menu_id: str
+    item_id: str
+
+
+class UiCommandParams(_UiCommandParamsRequired, total=False):
+    location: str
+    window_id: str
+    checked: bool
+    context: JsonObject
+
+
+class MenuItemChanges(TypedDict, total=False):
+    title: str
+    icon: IconRef
+    tooltip: str
+    enabled: bool
+    visible: bool
+    checked: bool
+
+
+class MenuUpdateItem(TypedDict):
+    id: str
+    set: MenuItemChanges
+
+
+class MenuUpdateParams(TypedDict):
+    menu_id: str
+    items: List[MenuUpdateItem]
+
+
+MenuAnswer = Union[MenuPopulateResult, Sequence[MenuEntry], Sequence[Mapping[str, Any]],
+                   Mapping[str, Any], None]
 
 
 class LineReader(Protocol):
@@ -416,6 +539,151 @@ def status_ref(tone: str) -> str:
 def themed_ref(light: str, dark: str) -> Dict[str, str]:
     """Different icon references for light and dark themes."""
     return {"light": light, "dark": dark}
+
+
+# Menus (host features menus and shortcuts; docs/plugin-sdk-advanced.md, section 7). The
+# builders return plain dicts for plugin.json `menus` and for menu/populate answers.
+def _shortcut_keys(shortcut: Union[str, Sequence[str], None]) -> Union[str, List[str], None]:
+    if shortcut is None:
+        return None
+    keys = [shortcut] if isinstance(shortcut, str) else list(shortcut)
+    if not 1 <= len(keys) <= 2 or not all(isinstance(key, str) and key for key in keys):
+        raise ValueError('A shortcut is a key sequence such as "Ctrl+Alt+D", or a list of two')
+    return shortcut if isinstance(shortcut, str) else keys
+
+
+def menu_item(id: str, title: str, *, icon: Optional[IconRef] = None,
+              tooltip: Optional[str] = None, enabled: Optional[bool] = None,
+              visible: Optional[bool] = None, checkable: Optional[bool] = None,
+              checked: Optional[bool] = None, group: Optional[str] = None,
+              event: Optional[bool] = None, action: Optional[str] = None,
+              arguments: Optional[Mapping[str, Any]] = None, view: Optional[str] = None,
+              items: Optional[Sequence[Mapping[str, Any]]] = None, dynamic: Optional[bool] = None,
+              when: Optional[Mapping[str, Any]] = None,
+              shortcut: Union[str, Sequence[str], None] = None) -> MenuEntry:
+    """A menu entry. It does exactly one of `action` (with `arguments`), `view` or `event=True`
+    (the host sends ui/command), or opens a submenu: `items`, or `dynamic=True` (filled by
+    menu/populate), which takes no shortcut or check mark. `checkable` entries with the same
+    `group` are exclusive (radio items); `when` holds the host's conditions (MenuWhen);
+    `shortcut` is a key sequence or a list of two (not in menu/populate answers, where the SDK
+    removes it). Raises ValueError for an entry the host would refuse for its shape."""
+    if not id or not title:
+        raise ValueError("A menu entry needs an id and a title")
+    if "/" in id:
+        raise ValueError(f"A menu entry id has no '/': {id}")
+    targets = [name for name, value in (("action", action), ("view", view), ("event", event))
+               if value is not None and value is not False]
+    if items is not None or dynamic:
+        if items is not None and dynamic:
+            raise ValueError(f"Menu entry {id} has static items or is dynamic, not both")
+        if targets or shortcut is not None or checkable:
+            raise ValueError(f"Submenu {id} has no action, view, event, shortcut or check mark")
+    elif len(targets) != 1:
+        raise ValueError(f"Menu entry {id} needs exactly one of action, view or event")
+    if arguments is not None and action is None:
+        raise ValueError("Menu entry arguments need an action")
+    if (group is not None or checked) and not checkable:
+        raise ValueError(f"A checked or grouped menu entry is checkable: {id}")
+    entry: JsonObject = {"id": id, "title": title}
+    for key, value in (
+            ("icon", icon), ("tooltip", tooltip), ("shortcut", _shortcut_keys(shortcut)),
+            ("enabled", enabled), ("visible", visible), ("checkable", checkable),
+            ("checked", checked), ("group", group), ("when", None if when is None else dict(when)),
+            ("items", None if items is None else list(items)), ("dynamic", dynamic),
+            ("action", action), ("arguments", None if arguments is None else dict(arguments)),
+            ("view", view), ("event", event or None)):
+        if value is not None:
+            entry[key] = value
+    return cast(MenuEntry, entry)
+
+
+def menu_separator(*, id: Optional[str] = None) -> MenuEntry:
+    """A separator line between menu entries."""
+    entry: MenuEntry = {"type": "separator"}
+    if id is not None:
+        entry["id"] = id
+    return entry
+
+
+def menu_section(title: str, *, id: Optional[str] = None) -> MenuEntry:
+    """A titled separator."""
+    entry: MenuEntry = {"type": "section", "title": title}
+    if id is not None:
+        entry["id"] = id
+    return entry
+
+
+def menu(id: str, location: str, items: Sequence[Mapping[str, Any]], title: Optional[str] = None,
+         icon: Optional[IconRef] = None) -> Menu:
+    """A plugin.json `menus` entry. location is plugins (the plugin's submenu of Plugins, titled
+    `title`), menubar, tab, pane, log, element or toolbar (MENU_LOCATIONS)."""
+    if not id:
+        raise ValueError("A menu needs an id")
+    if "/" in id or id in ("action", "view"):
+        raise ValueError(f"A menu id has no '/' and is not action or view: {id}")
+    if location not in MENU_LOCATIONS:
+        raise ValueError(f"Unknown menu location: {location}")
+    result: Menu = {"id": id, "location": location,
+                    "items": [cast(MenuEntry, dict(item)) for item in items]}
+    if title is not None:
+        result["title"] = title
+    if icon is not None:
+        result["icon"] = icon
+    return result
+
+
+def menu_set(item_id: str, *, title: Optional[str] = None, icon: Optional[IconRef] = None,
+             tooltip: Optional[str] = None, enabled: Optional[bool] = None,
+             visible: Optional[bool] = None, checked: Optional[bool] = None) -> MenuUpdateItem:
+    """A Plugin.update_menu() entry: the new state of one declared entry."""
+    if not item_id:
+        raise ValueError("A menu update needs the entry id")
+    changes: JsonObject = {key: value for key, value in (
+        ("title", title), ("icon", icon), ("tooltip", tooltip), ("enabled", enabled),
+        ("visible", visible), ("checked", checked)) if value is not None}
+    return {"id": item_id, "set": cast(MenuItemChanges, changes)}
+
+
+def _without_shortcuts(entry: Any) -> Any:
+    """A menu/populate entry without `shortcut` keys (also in its submenu), copied only when
+    something changes."""
+    if not isinstance(entry, dict):
+        return entry
+    result = _without(entry, _SHORTCUT_KEYS)
+    if "items" in result:
+        items = _map_list(result["items"], _without_shortcuts)
+        if items is not result["items"]:
+            result = {**result, "items": items}
+    return result
+
+
+def _cache_ms(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("cache_ms is a number of milliseconds")
+    return max(0, min(MAX_MENU_CACHE_MS, int(value)))
+
+
+def _menu_answer(answer: object) -> Optional[JsonObject]:
+    """The menu/populate result of a @plugin.menu_populate handler's return value."""
+    if answer is None:
+        return None
+    result: JsonObject
+    if isinstance(answer, collections.abc.Mapping):
+        result = dict(answer)
+    elif isinstance(answer, collections.abc.Sequence) and not isinstance(answer, (str, bytes)):
+        result = {"items": answer}
+    else:
+        raise TypeError("A menu/populate handler returns a list of entries, a dict with items "
+                        "and cache_ms, or None")
+    items = result.get("items")
+    if not isinstance(items, collections.abc.Sequence) or isinstance(items, (str, bytes)):
+        raise TypeError("A menu/populate answer needs a list of items")
+    result["items"] = [_without_shortcuts(entry) for entry in items]
+    if result.get("cache_ms") is not None:
+        result["cache_ms"] = _cache_ms(result["cache_ms"])
+    else:
+        result.pop("cache_ms", None)
+    return result
 
 
 class Cancelled(Exception):
@@ -677,8 +945,123 @@ class TooltipQuery(Query):
         return _optional_text(self.params.get("tooltip_key"))
 
 
+def _is_line(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+class _MenuContext:
+    """What a menu query or command reads from its `context`."""
+
+    context: JsonObject
+
+    def _selection_value(self, key: str) -> object:
+        selection = self.context.get("selection")
+        return selection.get(key) if isinstance(selection, dict) else None
+
+    @property
+    def line(self) -> Optional[int]:
+        """context.line of a log menu: the 1-based line under the pointer, or None."""
+        line = self.context.get("line")
+        return line if isinstance(line, int) and _is_line(line) else None
+
+    @property
+    def selection(self) -> Optional[LogSelection]:
+        """context.selection of a log menu (ranges, count; text and truncated in a command)."""
+        selection = self.context.get("selection")
+        return cast(LogSelection, selection) if isinstance(selection, dict) else None
+
+    @property
+    def ranges(self) -> List[Tuple[int, int]]:
+        """The selected [first, last] line ranges (1-based, at most 64); [] without a selection."""
+        ranges = self._selection_value("ranges")
+        if not isinstance(ranges, list):
+            return []
+        return [(int(pair[0]), int(pair[1])) for pair in ranges
+                if isinstance(pair, (list, tuple)) and len(pair) == 2
+                and _is_line(pair[0]) and _is_line(pair[1]) and pair[0] <= pair[1]]
+
+    @property
+    def line_count(self) -> int:
+        """The number of selected lines: `count` (all ranges, also beyond the 64 reported), else
+        the lines of `ranges`."""
+        count = self._selection_value("count")
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            return count
+        return sum(last - first + 1 for first, last in self.ranges)
+
+
+class MenuQuery(Query, _MenuContext):
+    """A menu/populate query: a dynamic submenu is about to show."""
+
+    @property
+    def menu_id(self) -> str:
+        return _optional_text(self.params.get("menu_id")) or ""
+
+    @property
+    def item_id(self) -> str:
+        return _optional_text(self.params.get("item_id")) or ""
+
+    @property
+    def location(self) -> Optional[str]:
+        return _optional_text(self.params.get("location"))
+
+    @property
+    def window_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("window_id"))
+
+
+class UiCommand(_MenuContext):
+    """A ui/command: the user picked an `event` menu entry (origin "menu") or pressed its
+    shortcut ("shortcut"); toolbars and status items come later ("toolbar", "status")."""
+
+    def __init__(self, plugin: Plugin, params: JsonObject) -> None:
+        self.plugin = plugin
+        self.params = params
+        context = params.get("context")
+        self.context = context if isinstance(context, dict) else {}
+
+    @property
+    def origin(self) -> str:
+        return _optional_text(self.params.get("origin")) or ""
+
+    @property
+    def menu_id(self) -> str:
+        return _optional_text(self.params.get("menu_id")) or ""
+
+    @property
+    def item_id(self) -> str:
+        return _optional_text(self.params.get("item_id")) or ""
+
+    @property
+    def location(self) -> Optional[str]:
+        return _optional_text(self.params.get("location"))
+
+    @property
+    def window_id(self) -> Optional[str]:
+        return _optional_text(self.params.get("window_id"))
+
+    @property
+    def checked(self) -> Optional[bool]:
+        """The new check state of a checkable entry; None for other entries."""
+        checked = self.params.get("checked")
+        return checked if isinstance(checked, bool) else None
+
+    @property
+    def text(self) -> Optional[str]:
+        """The selected text of a log entry (at most 64 KiB), or None."""
+        return _optional_text(self._selection_value("text"))
+
+    @property
+    def truncated(self) -> bool:
+        """True when the host cut the selected text at 64 KiB."""
+        return self._selection_value("truncated") is True
+
+
 QueryHandler = Callable[[Query], Any]
 TooltipHandler = Callable[[TooltipQuery], TooltipAnswer]
+MenuPopulateHandler = Callable[[MenuQuery], MenuAnswer]
+CommandHandler = Callable[[UiCommand], None]
+_QUERY_CLASSES: Dict[str, Type[Query]] = {TOOLTIP_RESOLVE: TooltipQuery, MENU_POPULATE: MenuQuery}
 
 
 def _tooltip_answer(answer: object) -> Optional[JsonObject]:
@@ -838,6 +1221,8 @@ class Plugin:
         self.view_worker: Optional[threading.Thread] = None
         self.query_handlers: Dict[str, QueryHandler] = {}
         self.tooltip_handlers: Dict[Tuple[str, Optional[str]], TooltipHandler] = {}
+        self.menu_populate_handlers: Dict[Tuple[str, Optional[str]], MenuPopulateHandler] = {}
+        self.command_handlers: Dict[Tuple[Optional[str], Optional[str]], CommandHandler] = {}
         self.queries: Dict[str, Query] = {}
         self.lanes: Dict[str, _QueryLane] = {}
 
@@ -886,13 +1271,79 @@ class Plugin:
             return handler
         return register
 
+    # Menus and commands (docs/plugin-sdk-advanced.md, section 7).
+    def menu_populate(self, menu_id: str, item_id: Optional[str] = None
+                      ) -> Callable[[MenuPopulateHandler], MenuPopulateHandler]:
+        """Register handler(MenuQuery) that fills the `dynamic` entry item_id of a menu, or
+        every dynamic entry of the menu when item_id is None (an entry's own handler wins; a
+        @plugin.query("menu/populate") handler is the last fallback).
+
+        The handler runs on the menu/populate lane and returns a list of entries (menu_item(),
+        menu_separator(), menu_section()), a dict {"items": [...], "cache_ms": n} or None
+        (nothing to show). The SDK removes `shortcut` keys from the
+        entries and keeps cache_ms within 0..60000 ms; any other return value answers error
+        -32000. plugin.json must list menu/populate (and query/cancel) in `handles`."""
+        if not menu_id or item_id == "":
+            raise ValueError("A menu/populate handler needs a menu id (and a non-empty entry id)")
+
+        def register(handler: MenuPopulateHandler) -> MenuPopulateHandler:
+            self.menu_populate_handlers[(menu_id, item_id)] = handler
+            return handler
+        return register
+
+    def on_command(self, menu_id: Optional[str] = None,
+                   item_id: Optional[str] = None) -> Callable[[CommandHandler], CommandHandler]:
+        """Register handler(UiCommand) for the `event` entries of a menu (or of every menu when
+        menu_id is None), or for one entry. The most specific handler wins: menu and entry,
+        then the entry in any menu, then the menu, then the handler without ids.
+
+        Handlers run in arrival order on the worker thread of the view callbacks, never on the
+        protocol reader. plugin.json must list ui/command in `handles`."""
+        if menu_id == "" or item_id == "":
+            raise ValueError("Menu and entry ids of a command handler are None or non-empty")
+
+        def register(handler: CommandHandler) -> CommandHandler:
+            self.command_handlers[(menu_id, item_id)] = handler
+            return handler
+        return register
+
+    def update_menu(self, menu_id: str,
+                    items: Union[Sequence[Mapping[str, Any]], Mapping[str, Mapping[str, Any]]]
+                    ) -> bool:
+        """Change declared entries of a menu in every window (open menus change in place):
+        a list of menu_set(item_id, title=, icon=, tooltip=, enabled=, visible=, checked=)
+        entries, or a dict {item_id: {"title": ..., ...}}. Returns False (and sends nothing) on
+        a host without the menus feature."""
+        if not menu_id:
+            raise ValueError("A menu update needs the menu id")
+        pairs: List[Tuple[Any, Any]] = (
+            list(items.items()) if isinstance(items, collections.abc.Mapping)
+            else [(item.get("id"), item.get("set")) if isinstance(item, collections.abc.Mapping)
+                  else (None, None) for item in items])
+        entries: List[MenuUpdateItem] = []
+        for item_id, changes in pairs:
+            if not isinstance(item_id, str) or not item_id:
+                raise ValueError("Every menu update names an entry id")
+            if not isinstance(changes, collections.abc.Mapping):
+                raise ValueError(f"The changes of menu entry {item_id} are not a dict")
+            entries.append({"id": item_id, "set": cast(MenuItemChanges, dict(changes))})
+        params: MenuUpdateParams = {"menu_id": menu_id, "items": entries}
+        if not self.supports("menus"):
+            return False
+        self.notify(MENU_UPDATE, params)
+        return True
+
     def handled_methods(self) -> List[str]:
         """The host-to-plugin methods the registered handlers answer (`features`)."""
         methods = set(self.query_handlers)
         if self.tooltip_handlers:
             methods.add(TOOLTIP_RESOLVE)
+        if self.menu_populate_handlers:
+            methods.add(MENU_POPULATE)
         if methods:
             methods.add(QUERY_CANCEL)
+        if self.command_handlers:
+            methods.add(UI_COMMAND)
         return sorted(methods)
 
     def invalidate_tooltips(self, view_id: str, element_id: Optional[str] = None,
@@ -1127,14 +1578,14 @@ class Plugin:
         worker.start()
 
     def _has_query_handler(self, method: str) -> bool:
-        return method in self.query_handlers or (method == TOOLTIP_RESOLVE
-                                                 and bool(self.tooltip_handlers))
+        return (method in self.query_handlers
+                or (method == TOOLTIP_RESOLVE and bool(self.tooltip_handlers))
+                or (method == MENU_POPULATE and bool(self.menu_populate_handlers)))
 
     def _submit_query(self, identifier: Any, method: str, params: JsonObject) -> None:
         if self.stopping.is_set():
             return
-        query: Query = (TooltipQuery if method == TOOLTIP_RESOLVE else Query)(
-            self, identifier, method, params)
+        query = _QUERY_CLASSES.get(method, Query)(self, identifier, method, params)
         with self.lock:
             key = _id_key(identifier)
             previous = self.queries.get(key)
@@ -1188,8 +1639,40 @@ class Plugin:
         if isinstance(query, TooltipQuery):
             handler = self._tooltip_handler(query)
             return None if handler is None else _tooltip_answer(handler(query))
+        if isinstance(query, MenuQuery):
+            populate = (self.menu_populate_handlers.get((query.menu_id, query.item_id))
+                        or self.menu_populate_handlers.get((query.menu_id, None)))
+            if populate is not None:
+                return _menu_answer(populate(query))
         query_handler = self.query_handlers.get(query.method)
         return None if query_handler is None else query_handler(query)
+
+    def _command_handler(self, command: UiCommand) -> Optional[CommandHandler]:
+        menu_id, item_id = command.menu_id or None, command.item_id or None
+        for key in ((menu_id, item_id), (None, item_id), (menu_id, None), (None, None)):
+            handler = self.command_handlers.get(key)
+            if handler is not None:
+                return handler
+        return None
+
+    def _command(self, params: JsonObject) -> None:
+        """Queue a ui/command for its handler on the view-callback worker."""
+        if not self.command_handlers:
+            return  # Not announced in `features`: a host does not send it.
+        command = UiCommand(self, params)
+        handler = self._command_handler(command)
+        if handler is None:
+            print(f"cilogg_plugin: no ui/command handler for menu {command.menu_id!r} entry "
+                  f"{command.item_id!r}", file=sys.stderr, flush=True)
+            return
+
+        def run(_params: JsonObject) -> None:
+            try:
+                handler(command)
+            except Exception as error:  # A handler failure never stops the protocol.
+                print(f"Plugin command {command.menu_id}/{command.item_id} failed: {error}",
+                      file=sys.stderr, flush=True)
+        self._queue_view_callback([run], params)
 
     def _run_query(self, query: Query) -> None:
         try:
@@ -1290,6 +1773,8 @@ class Plugin:
                         stream.closed.set()
         elif method in _VIEW_NOTIFICATIONS:
             self._view_notification(method, params)
+        elif method == UI_COMMAND and not is_request:
+            self._command(params)
         elif method == QUERY_CANCEL:
             self._cancel_query(params.get("id"))
         elif is_request and self._has_query_handler(method):

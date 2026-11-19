@@ -14,6 +14,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 SDK = ROOT / "plugins/sdk/python"
 PINNED_SDK = HERE / "fixtures/sdk_pinned/cilogg_plugin.py"
 FIXTURE = HERE / "fixtures/skew-plugin"
+# Manifest keys added by E17 (docs/plugin-sdk-advanced.md, sections 4, 6 and 7).
+E17_MANIFEST_KEYS = ("handles", "requires", "menus")
+E17_ITEM_KEYS = ("icon_ref", "shortcut")  # on actions and views
 
 sys.path.insert(0, str(HERE))
 import e14_manifest_rules  # noqa: E402
@@ -102,6 +105,8 @@ class ManifestsLoadInThePreviousHost(unittest.TestCase):
 
         cases = {
             "view kind": lambda m: m["views"][0].update(kind="panel"),
+            "view icon from a menu": lambda m: m["views"][0].update(icon="builtin:chip"),
+            "view menu flag": lambda m: m["views"][0].update(menu="main"),
             "view area": lambda m: m["views"][0].update(area="center"),
             "view icon": lambda m: m["views"][0].update(icon="builtin:play"),
             "action icon": lambda m: m["actions"][0].update(icon="../escape.png"),
@@ -116,6 +121,28 @@ class ManifestsLoadInThePreviousHost(unittest.TestCase):
             with self.subTest(case=name):
                 self.assertNotEqual(changed(mutate), [])
         self.assertEqual(changed(lambda m: m["views"][0].update(icon="icons/view.svg")), [])
+
+    def test_e17_keys_only_add_to_the_previous_manifest(self):
+        """E17a adds `handles`, `requires` and `icon_ref`, E17b `menus` and `shortcut` on
+        actions and views: keys the previous CILogg ignores. The ui-gallery manifest without
+        them gets the same verdict, and every E17b form loads in the previous CILogg."""
+        gallery = json.loads((ROOT / "plugins/examples/ui-gallery/plugin.json").read_text(encoding="utf-8"))
+        self.assertTrue({"handles", "menus"} <= set(gallery))
+        stripped = {key: value for key, value in gallery.items() if key not in E17_MANIFEST_KEYS}
+        for key in ("actions", "views"):
+            if key in stripped:
+                stripped[key] = [{name: value for name, value in item.items()
+                                  if name not in E17_ITEM_KEYS} for item in stripped[key]]
+        self.assertEqual(e14_manifest_rules.validate_manifest(stripped), [])
+        self.assertEqual(e14_manifest_rules.validate_manifest(gallery), [])
+
+        manifest = json.loads((FIXTURE / "plugin.json").read_text(encoding="utf-8"))
+        manifest.update(handles=gallery["handles"], menus=gallery["menus"],
+                        requires={"host_features": ["menus>=1", "shortcuts"]})
+        manifest["views"][0].update(shortcut="Ctrl+Alt+V", icon_ref="builtin:play")
+        manifest["actions"][0].update(shortcut=["Ctrl+Alt+E", "F9"], icon_ref={"light": "a.svg",
+                                                                              "dark": "b.svg"})
+        self.assertEqual(e14_manifest_rules.validate_manifest(manifest), [])
 
 
 if __name__ == "__main__":

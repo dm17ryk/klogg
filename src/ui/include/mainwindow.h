@@ -64,6 +64,7 @@
 #include "logpane.h"
 #include "panemenuhost.h"
 #include "pathline.h"
+#include "pluginmenuhost.h"
 #include "previewwindow.h"
 #include "quickfindmux.h"
 #include "quickfindwidget.h"
@@ -85,12 +86,13 @@ class StreamSession;
 class ScriptSupervisor;
 class VersionChecker;
 class PluginUiController;
+struct PluginMenuContext;
 namespace cilogg::plugins { class PluginManager; }
 struct SerialCaptureSettings;
 
 // Main window of the application, creates menus, toolbar and
 // the CrawlerWidget
-class MainWindow : public QMainWindow, public PaneMenuHost {
+class MainWindow : public QMainWindow, public PaneMenuHost, public PluginMenuHost {
     Q_OBJECT
 
   public:
@@ -99,6 +101,20 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
 
     // The pane commands in the context menu of a log view.
     void populatePaneMenu( QMenu& menu, QWidget* origin ) override;
+    // E17b: the plugin entries of a log view's context menu (location `log`).
+    bool hasPluginLogEntries() const override;
+    QList<QAction*> addPluginLogEntries( QMenu& menu, QAction* before, QWidget* origin,
+                                         const LogSelection& selection ) override;
+    void removePluginLogEntries( QMenu& menu, const QList<QAction*>& entries ) override;
+    // The context of a plugin menu location for a tab of this window (the focused tab when
+    // `tabId` is empty); for `log`, the selection of that tab's focused log view, or `lines` (file
+    // line ranges) when given.
+    PluginMenuContext pluginMenuContext( const QString& location, const QString& tabId = {},
+                                         const QList<QPair<qint64, qint64>>& lines = {} ) const;
+    // CILogg's own shortcuts in portable text with what owns them (for plugin shortcuts).
+    std::map<QString, QString> hostShortcutKeys() const;
+    // Registers the plugin shortcuts of this window again (plugins or shortcuts changed).
+    void updatePluginShortcuts();
 
     // Split panes. The current tab of the active pane is the window's focused tab; tab indices
     // count tabs pane by pane in layout order.
@@ -374,6 +390,11 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     CommanderResult commanderOpenPluginView( const CommanderRequest& request );
     // E17a get_plugin_tooltip (docs/plugin-sdk-advanced.md section 9.5).
     CommanderResult commanderGetPluginTooltip( const CommanderRequest& request );
+    CommanderResult commanderGetPluginMenus( const CommanderRequest& request );
+    CommanderResult commanderTriggerPluginMenu( const CommanderRequest& request );
+    // Adds the plugin section of `location` for `tabId` (and its pane) to a context menu.
+    void addPluginMenuSection( QMenu& menu, const QString& location, const QString& tabId,
+                               LogPane* pane );
     // This window, or the window holding the tab.
     MainWindow* windowOwningTab( const QString& tabId );
     // Runs the search in each tab (any window) without bringing a tab to the front; returns the

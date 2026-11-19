@@ -80,7 +80,8 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
     static const std::vector<std::pair<QString, int>> features{
         { QStringLiteral( "views" ), 2 },   { QStringLiteral( "view_edit" ), 1 },
         { QStringLiteral( "queries" ), 1 }, { QStringLiteral( "tooltips" ), 1 },
-        { QStringLiteral( "icons" ), 1 },
+        { QStringLiteral( "icons" ), 1 },   { QStringLiteral( "menus" ), 1 },
+        { QStringLiteral( "shortcuts" ), 1 },
     };
     return features;
 }
