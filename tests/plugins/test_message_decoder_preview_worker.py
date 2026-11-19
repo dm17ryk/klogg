@@ -167,6 +167,66 @@ class WireTests(unittest.TestCase):
                 worker.capture_record(data)
 
 
+class PackLuaTests(unittest.TestCase):
+    """Configuration pack Lua in a session profile (docs/plugin-repositories.md 4.3)."""
+
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.files = []
+        for index in range(12):
+            path = Path(self.folder.name) / f"{index}.lua"
+            path.write_text("-- synthetic\n", encoding="ascii")
+            self.files.append(str(path))
+
+    def tearDown(self):
+        self.folder.cleanup()
+
+    def profile(self, packs, lua=()):
+        return request(profile=dict(request()["profile"], lua=list(lua), packLua=packs))
+
+    def test_pack_lua_within_the_limits_is_accepted(self):
+        worker.validate_request(self.profile([{"id": "org.example.a", "files": self.files[:8]}]))
+        packs = [
+            {"id": "a", "files": self.files[:8]},
+            {"id": "b", "files": self.files[:8]},
+            {"id": "c", "files": self.files[:8]},
+        ]
+        # The user's 8 scripts and three packs of 8: 32 in total.
+        worker.validate_request(self.profile(packs, lua=self.files[:8]))
+
+    def test_pack_lua_limits_ids_and_shapes_are_rejected(self):
+        missing = str(Path(self.folder.name) / "missing.lua")
+        cases = [
+            ([{"id": "a", "files": self.files[:9]}], "input_limit"),
+            ([{"id": "a", "files": []}], "input_limit"),
+            ([{"id": "Bad Id", "files": self.files[:1]}], "invalid_profile"),
+            ([{"id": "a", "files": self.files[:1]}] * 2, "invalid_profile"),
+            ([{"id": "a", "files": self.files[:1], "extra": 1}], "invalid_profile"),
+            ([{"id": "a", "files": ["relative.lua"]}], "invalid_profile"),
+            ([{"id": "a", "files": [missing]}], "input_missing"),
+            ("not a list", "input_limit"),
+        ]
+        for packs, reason in cases:
+            with self.subTest(reason=reason, packs=str(packs)[:60]):
+                with self.assertRaisesRegex(wire.ProofError, reason):
+                    worker.validate_request(self.profile(packs))
+        over = [{"id": name, "files": self.files[:7]} for name in "abcd"]
+        with self.assertRaisesRegex(wire.ProofError, "input_limit"):
+            worker.validate_request(self.profile(over, lua=self.files[:8]))
+
+    def test_lua_string_escapes_every_unsafe_byte(self):
+        self.assertEqual(worker.lua_string('a"b\\c\né'), '"a\\034b\\092c\\010\\195\\169"')
+
+    def test_loader_runs_each_pack_in_its_own_environment(self):
+        copies = [(Path(self.files[0]), "org.example.a/common.lua"), (Path(self.files[1]), "x/b.lua")]
+        loader = worker.pack_loader("org.example.a", copies)
+        self.assertIn("setmetatable({}, { __index = _G })", loader)
+        self.assertIn('load(source, "@" .. file[2], "t", environment)', loader)
+        self.assertIn("setfenv(chunk, environment)", loader)
+        self.assertIn(worker.lua_string(self.files[0]), loader)
+        self.assertLess(loader.index("common.lua"), loader.index("x/b.lua"))
+
+
 class ResponseBudgetTests(unittest.TestCase):
     @staticmethod
     def row(show, depth=0, identity="probe.value"):

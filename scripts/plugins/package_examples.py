@@ -38,7 +38,9 @@ def package_examples(output: pathlib.Path) -> list[tuple[dict[str, Any], pathlib
         with tempfile.TemporaryDirectory() as temporary:
             package = pathlib.Path(temporary) / "package"
             shutil.copytree(source, package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-            shutil.copy2(ROOT / "plugins/sdk/python/cilogg_plugin.py", package)
+            # A configuration pack has no program, so it needs no SDK.
+            if manifest.get("kind") != "config-pack":
+                shutil.copy2(ROOT / "plugins/sdk/python/cilogg_plugin.py", package)
             files = builder.package_files(package, ())
             builder.write_zip(files, archive_path, builder.executable_entries(manifest, files))
         packages.append((manifest, archive_path))
@@ -65,6 +67,16 @@ def catalog(packages: list[tuple[dict[str, Any], pathlib.Path]], base_url: str) 
         local_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         if digest.hexdigest() != local_digest:
             raise ValueError(f"Published asset bytes differ: {url}")
+        if manifest.get("kind") == "config-pack":
+            # Packs are platform independent (docs/plugin-repositories.md 4.1).
+            entries.append({
+                "id": manifest["id"], "name": manifest["name"],
+                "description": manifest.get("description", ""),
+                "version": manifest["version"], "protocol_version": 1,
+                "kind": "config-pack", "contents": _build_catalog_module().contents(manifest),
+                "os": "any", "arch": "any", "url": url, "sha256": local_digest,
+            })
+            continue
         for operating_system in ("windows", "linux", "macos"):
             for architecture in ("x86_64", "arm64"):
                 entries.append({

@@ -1,5 +1,6 @@
 #include "plugincatalog.h"
 
+#include "configpack.h"
 #include "log.h"
 #include "pluginmanifest.h"
 #include "semanticversion.h"
@@ -121,7 +122,7 @@ QString packageKind( const QJsonObject& json )
 
 bool supportedKind( const QString& kind )
 {
-    return kind == QLatin1String( "process" );
+    return kind == QLatin1String( "process" ) || kind == QLatin1String( ConfigPackKind );
 }
 
 QString catalogEntryId( const QJsonObject& entry, const QString& repositoryId )

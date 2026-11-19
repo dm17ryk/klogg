@@ -1,8 +1,55 @@
 #include "previewmanager.h"
 
+#include <QRegularExpression>
+#include <QSet>
 #include <algorithm>
+#include <functional>
 
 #include "log.h"
+#include "persistentinfo.h"
+#include "previewdecodeutils.h"
+
+namespace {
+// The user's on/off choice for pack previews, per `<pack-id>/<name>`: user state, not pack
+// content, so it survives pack updates (docs/plugin-repositories.md 4.5).
+constexpr auto PackPreviewStateKey = "previewPacks/enabled";
+
+QString packItemKey( const QString& packId, const QString& name )
+{
+    return packId + '/' + name;
+}
+
+void rewriteReferences( QVector<PreviewFieldSpec>& fields,
+                        const std::function<QString( const QString& )>& rename )
+{
+    for ( auto& field : fields ) {
+        if ( !field.blockTemplate.trimmed().isEmpty() ) {
+            field.blockTemplate = rename( field.blockTemplate.trimmed() );
+        }
+        rewriteReferences( field.fields, rename );
+        rewriteReferences( field.bitfieldMap, rename );
+    }
+}
+
+PreviewFieldSpec rewriteBlock( const PreviewFieldSpec& block,
+                               const std::function<QString( const QString& )>& rename )
+{
+    QVector<PreviewFieldSpec> one{ block };
+    rewriteReferences( one, rename );
+    return one.first();
+}
+
+void collectReferences( const QVector<PreviewFieldSpec>& fields, QStringList* references )
+{
+    for ( const auto& field : fields ) {
+        if ( !field.blockTemplate.trimmed().isEmpty() ) {
+            references->append( field.blockTemplate.trimmed() );
+        }
+        collectReferences( field.fields, references );
+        collectReferences( field.bitfieldMap, references );
+    }
+}
+} // namespace
 
 PreviewManager& PreviewManager::instance()
 {
@@ -180,11 +227,27 @@ const PreviewFieldSpec* PreviewManager::findBlock( const QString& name ) const
     return &it.value();
 }
 
-void PreviewManager::setEnabled( const QString& name, bool enabled )
+void PreviewManager::setEnabled( const QString& previewName, bool enabled )
 {
+    // A copy: callers may pass a name that lives in a list a signal handler replaces.
+    const QString name = previewName;
     auto it = std::find_if( previews_.begin(), previews_.end(),
                             [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( it == previews_.end() ) {
+        // A pack preview: the choice is kept in the user's settings, never in the pack.
+        const auto pack
+            = std::find_if( packPreviews_.begin(), packPreviews_.end(),
+                            [ &name ]( const auto& preview ) { return preview.name == name; } );
+        if ( pack == packPreviews_.end() || pack->enabled == enabled ) {
+            return;
+        }
+        auto& settings = PersistentInfo::getSettings( app_settings{} );
+        auto state = settings.value( PackPreviewStateKey ).toMap();
+        state[ packItemKey( packOrigins_.value( name ).packId, name ) ] = enabled;
+        settings.setValue( PackPreviewStateKey, state );
+        pack->enabled = enabled;
+        Q_EMIT previewEnabledChanged( name, enabled );
+        Q_EMIT previewsChanged();
         return;
     }
     if ( it->enabled == enabled ) {
@@ -199,13 +262,223 @@ void PreviewManager::setEnabled( const QString& name, bool enabled )
 
 QString PreviewManager::findFirstMatchingEnabledPreview( const QString& rawLine ) const
 {
-    for ( const auto& preview : previews_ ) {
-        if ( !preview.enabled ) {
-            continue;
-        }
+    for ( const auto& preview : effectiveEnabled() ) {
         if ( preview.compiled.match( rawLine ).hasMatch() ) {
             return preview.name;
         }
     }
+    return {};
+}
+
+PreviewPackSource PreviewManager::namespaced( const PreviewPackSource& pack )
+{
+    auto result = pack;
+    const auto rename
+        = [ &pack ]( const QString& reference ) { return packItemKey( pack.packId, reference ); };
+    for ( auto& preview : result.previews ) {
+        rewriteReferences( preview.fields, rename );
+    }
+    result.blocks.clear();
+    for ( auto block = pack.blocks.cbegin(); block != pack.blocks.cend(); ++block ) {
+        result.blocks.insert( rename( block.key() ), rewriteBlock( block.value(), rename ) );
+    }
+    return result;
+}
+
+QStringList PreviewManager::blockClosure( const QVector<PreviewFieldSpec>& fields,
+                                          const QMap<QString, PreviewFieldSpec>& blocks )
+{
+    QStringList references;
+    collectReferences( fields, &references );
+    QStringList closure;
+    QSet<QString> seen;
+    static const QRegularExpression placeholder( "\\$?\\{[^}]*\\}" );
+    while ( !references.isEmpty() ) {
+        const auto reference = references.takeLast();
+        if ( seen.contains( reference ) ) {
+            continue;
+        }
+        seen.insert( reference );
+        // A template reaches every block its placeholders can produce, and the generic
+        // fallback block of its kind.
+        const QRegularExpression pattern( previewBlockReferencePattern( reference ) );
+        auto candidates = previewFallbackBlockNames( QString( reference ).replace( placeholder, "x" ) );
+        for ( auto block = blocks.cbegin(); block != blocks.cend(); ++block ) {
+            if ( pattern.match( block.key() ).hasMatch() ) {
+                candidates.append( block.key() );
+            }
+        }
+        for ( const auto& name : candidates ) {
+            if ( blocks.contains( name ) && !closure.contains( name ) ) {
+                closure.append( name );
+                collectReferences( { blocks.value( name ) }, &references );
+            }
+        }
+    }
+    return closure;
+}
+
+void PreviewManager::setPackPreviews( const QVector<PreviewPackSource>& packs )
+{
+    packSources_.clear();
+    packPreviews_.clear();
+    packBlocks_.clear();
+    packOrigins_.clear();
+    for ( const auto& pack : packs ) {
+        packSources_.insert( pack.packId, pack );
+        const auto renamed = namespaced( pack );
+        for ( auto preview : renamed.previews ) {
+            // Two enabled packs never share a preview name (the pack check refuses it); if they
+            // did, the first pack in ID order would keep it.
+            if ( packOrigins_.contains( preview.name ) ) {
+                LOG_WARNING << "Preview from two packs ignored name=" << preview.name.toStdString()
+                            << " pack=" << pack.packId.toStdString();
+                continue;
+            }
+            if ( !preview.hasEnabled ) {
+                preview.enabled = true;
+            }
+            preview.hasEnabled = true;
+            packOrigins_.insert( preview.name, { pack.packId, pack.packName } );
+            packPreviews_.push_back( std::move( preview ) );
+        }
+        for ( auto block = renamed.blocks.cbegin(); block != renamed.blocks.cend(); ++block ) {
+            packBlocks_.insert( block.key(), block.value() );
+        }
+    }
+    applyPackEnabledState();
+    LOG_DEBUG << "Pack previews set packs=" << packs.size() << " previews=" << packPreviews_.size()
+              << " blocks=" << packBlocks_.size();
+    Q_EMIT previewsChanged();
+}
+
+void PreviewManager::applyPackEnabledState()
+{
+    const auto state
+        = PersistentInfo::getSettings( app_settings{} ).value( PackPreviewStateKey ).toMap();
+    for ( auto& preview : packPreviews_ ) {
+        const auto key = packItemKey( packOrigins_.value( preview.name ).packId, preview.name );
+        if ( state.contains( key ) ) {
+            preview.enabled = state.value( key ).toBool();
+        }
+    }
+}
+
+const QVector<PreviewDefinition>& PreviewManager::packPreviews() const
+{
+    return packPreviews_;
+}
+
+std::optional<PreviewPackOrigin> PreviewManager::packOrigin( const QString& packPreviewName ) const
+{
+    const auto it = packOrigins_.find( packPreviewName );
+    if ( it == packOrigins_.end() ) {
+        return std::nullopt;
+    }
+    return it.value();
+}
+
+bool PreviewManager::replacedByUser( const QString& packPreviewName ) const
+{
+    return packOrigins_.contains( packPreviewName ) && findByName( packPreviewName ) != nullptr;
+}
+
+QVector<PreviewDefinition> PreviewManager::effective() const
+{
+    auto result = previews_;
+    for ( const auto& preview : packPreviews_ ) {
+        if ( !findByName( preview.name ) ) {
+            result.push_back( preview );
+        }
+    }
+    return result;
+}
+
+QVector<PreviewDefinition> PreviewManager::effectiveEnabled() const
+{
+    QVector<PreviewDefinition> result;
+    for ( const auto& preview : effective() ) {
+        if ( preview.enabled ) {
+            result.push_back( preview );
+        }
+    }
+    return result;
+}
+
+QMap<QString, PreviewFieldSpec> PreviewManager::effectiveBlocks() const
+{
+    auto result = blocks_;
+    for ( auto block = packBlocks_.cbegin(); block != packBlocks_.cend(); ++block ) {
+        if ( !result.contains( block.key() ) ) {
+            result.insert( block.key(), block.value() );
+        }
+    }
+    return result;
+}
+
+QString PreviewManager::copyPackPreview( const QString& name )
+{
+    if ( findByName( name ) ) {
+        return tr( "You already have a preview named \"%1\"." ).arg( name );
+    }
+    const auto origin = packOrigin( name );
+    if ( !origin ) {
+        return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
+    }
+    const auto& pack = packSources_[ origin->packId ];
+    const auto original
+        = std::find_if( pack.previews.cbegin(), pack.previews.cend(),
+                        [ &name ]( const auto& preview ) { return preview.name == name; } );
+    if ( original == pack.previews.cend() ) {
+        return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
+    }
+    const auto closure = blockClosure( original->fields, pack.blocks );
+    // Blocks whose names the user already uses are renamed, with their references
+    // (design 4.2): "<block> (<pack name>)", then a number.
+    const auto collides = [ this, &closure ]( const QString& suffix ) {
+        return std::any_of( closure.cbegin(), closure.cend(), [ this, &suffix ]( const auto& block ) {
+            return blocks_.contains( block + suffix );
+        } );
+    };
+    QString suffix;
+    for ( int number = 1; collides( suffix ); ++number ) {
+        suffix = number == 1 ? QStringLiteral( " (%1)" ).arg( origin->packName )
+                             : QStringLiteral( " (%1 %2)" ).arg( origin->packName ).arg( number );
+    }
+    // Only references that reach a copied block follow its new name; any other reference (to a
+    // block the pack does not have) is left as it is.
+    const auto rename = [ &suffix, &closure ]( const QString& reference ) {
+        const QRegularExpression pattern( previewBlockReferencePattern( reference ) );
+        const auto reaches = std::any_of( closure.cbegin(), closure.cend(), [ &pattern ]( const auto& block ) {
+            return pattern.match( block ).hasMatch();
+        } );
+        return reaches ? reference + suffix : reference;
+    };
+    auto copy = *original;
+    const auto current = std::find_if(
+        packPreviews_.cbegin(), packPreviews_.cend(),
+        [ &name ]( const auto& preview ) { return preview.name == name; } );
+    copy.enabled = current != packPreviews_.cend() ? current->enabled : true;
+    copy.hasEnabled = true;
+    if ( !suffix.isEmpty() ) {
+        rewriteReferences( copy.fields, rename );
+    }
+    const auto previousPreviews = previews_;
+    const auto previousBlocks = blocks_;
+    previews_.push_back( copy );
+    for ( const auto& block : closure ) {
+        blocks_.insert( block + suffix, suffix.isEmpty()
+                                            ? pack.blocks.value( block )
+                                            : rewriteBlock( pack.blocks.value( block ), rename ) );
+    }
+    if ( !repository_.save( previews_, blocks_ ) ) {
+        previews_ = previousPreviews;
+        blocks_ = previousBlocks;
+        return tr( "Failed to save previews configuration." );
+    }
+    LOG_INFO << "Pack preview copied name=" << name.toStdString()
+             << " pack=" << origin->packId.toStdString() << " blocks=" << closure.size()
+             << " renamed=" << !suffix.isEmpty();
+    Q_EMIT previewsChanged();
     return {};
 }

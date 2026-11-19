@@ -1,4 +1,5 @@
 #include "pluginrepository.h"
+#include "configpack.h"
 #include "log.h"
 #include "persistentinfo.h"
 #include <QCoreApplication>
@@ -209,7 +210,8 @@ StagedPlugin PluginRepository::stage( const QString& source, const QString& inst
     if ( result.error.isEmpty() ) {
         result.manifest = Manifest::read( packagePath );
         result.error = result.manifest.error;
-        if ( result.manifest.executable != "python"
+        // A configuration pack has no executable; Manifest::read checked its files.
+        if ( !isConfigPack( result.manifest.json ) && result.manifest.executable != "python"
              && !QFileInfo::exists( QDir( packagePath ).filePath( result.manifest.executable ) ) ) {
             result.error = "Plugin executable missing from package.";
         }

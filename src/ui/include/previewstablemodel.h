@@ -19,4 +19,9 @@ class PreviewsTableModel : public QAbstractTableModel {
     bool setData( const QModelIndex& index, const QVariant& value, int role ) override;
 
     void refresh();
+    // Rows list the user's previews first, then the enabled packs' previews.
+    const PreviewDefinition* previewAt( int row ) const;
+    bool isPackRow( int row ) const;
+    // A pack preview the user replaced with an item of the same name.
+    bool isReplacedRow( int row ) const;
 };

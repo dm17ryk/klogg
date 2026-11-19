@@ -335,3 +335,47 @@ to prevent case aliases from replacing another plugin on Windows.
 Restart jobs complete only after an enabled plugin successfully initializes;
 initialization failures are reported through the job. Streams remain stopped
 after restart and require explicit invocation.
+
+## Configuration packs
+
+A configuration pack is a plugin package without a program: its `plugin.json` says
+`"kind": "config-pack"` and `"pack_format": 1`, and its `content` object lists what it delivers
+in the formats CILogg already imports (design: [plugin repositories and configuration
+packs](plugin-repositories.md) section 4). The example is
+[plugins/examples/protocol-pack](../plugins/examples/protocol-pack).
+
+```json
+{
+  "id": "org.example.protocol-config", "name": "Example protocol configuration",
+  "version": "1.2.0", "protocol_version": 1, "kind": "config-pack", "pack_format": 1,
+  "content": {
+    "previews": "previews.json",
+    "lua": { "folder": "lua", "load": ["common.lua", "protocol.lua"] },
+    "decoder_routes": { "previewRoutes": { "Protocol frame": { "dissector": "protocol" } } },
+    "python_decoders": [ { "id": "frame-summary", "module": "python/frame_summary.py" } ]
+  }
+}
+```
+
+- A pack declares none of the process keys (`capabilities`, `executable`, `arguments`,
+  `actions`, `views`, `configuration`, `enabled_by_default`); `restart`, `configure`, plugin
+  actions and views are refused for it.
+- `previews` uses the `previews.json` format. Pack previews appear with the pack's name; a pack's
+  blocks are renamed `<pack-id>/<block>` so they never meet the user's or another pack's; a user
+  preview with the same name replaces the pack's; two enabled packs never share a preview name;
+  and the user's previews and all enabled packs together stay within the preview limits
+  (128 previews, 4,096 blocks, 1 MiB). **Copy to My Previews** in the previews dialog copies a pack
+  preview, with the blocks it needs and its route, into the user's own previews and routes.
+  Exports and project snapshots contain the user's previews only.
+- `lua.load` lists every file of `lua.folder` in loading order (1 to 8 files, 1 MiB each). While
+  the pack is enabled TShark loads them as trusted scripts, through a loader that gives each pack
+  one Lua environment of its own; a file cannot `require` another, so list a shared file first.
+  A profile holds at most 32 Lua files: the user's 8 and the packs' together. Pack Lua runs with
+  the user's permissions, so the GUI asks before a pack with Lua is enabled or updated.
+- `decoder_routes` (`previewRoutes` naming the pack's own previews, `protocolRoutes`) sit below
+  the user's routes; the merged lists keep 128 and 32 routes.
+- `python_decoders` are installed and updated with the pack and shown as needing a newer CILogg
+  until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
+  validated as files and loaded by a later slice (E16c).
+- `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
+  pack. Catalog entries of packs use `os: any` and `arch: any`.

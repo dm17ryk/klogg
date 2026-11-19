@@ -6,8 +6,10 @@ Plugins and Packs window, the merged catalog, install-source pinning, `build_cat
 in-app guide) is merged (PR https://github.com/dm17ryk/klogg/pull/122); slice E15b (Azure DevOps
 sign-in, the token store, credential scope and redirects, request origin) is merged (PR
 https://github.com/dm17ryk/klogg/pull/124); slice E15c (update checks, notices, Skip this version,
-auto-update) is merged (PR https://github.com/dm17ryk/klogg/pull/125), so E15 is complete; E16 is not
-implemented yet. The tasks are
+auto-update) is merged (PR https://github.com/dm17ryk/klogg/pull/125), so E15 is complete. E16a is
+delivered in two parts (decided on 2026-11-19): E16a1 (the pack kind, previews, Lua and routes for
+TShark) is in review and E16a2 (the local pack store with edit in place and merge) follows; the
+other E16 slices are planned. The tasks are
 [E15](../plans/cilogg-workbench-2026-10-21/tasks/E15.md) (plugin repositories), which may start
 ahead of G02/G03, and then [E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (configuration
 packs).
@@ -615,6 +617,31 @@ it exists, a pack's `python_decoders` are installed and updated with the pack an
 A Python decoder that is needed sooner can be shipped as an ordinary process plugin (a `converter`
 or `tool`).
 
+**As built (E16a1).** `Manifest::parse` reads `kind` first and checks a pack with
+`validatePackManifest` (`src/plugins/configpack.*`); `Manifest::read` then checks its files
+(`validatePackFiles`): listed files exist without links within 1 MiB, every file of the Lua folder
+is listed, and preview routes name the pack's own previews. `PluginManager` refuses `restart`,
+`configure` and plugin actions for packs, and asks the application's pack check
+(`setPackCheck`) before a pack is enabled or a new version of an enabled pack is installed.
+`PreviewPackRegistry` (`src/ui`) follows the manager: it reads each enabled pack once per version,
+gives its previews to `PreviewManager::setPackPreviews` (kept apart from the user's
+`previews.json`, merged by `effective()`), and its Lua and routes to
+`PreviewDecoderSettings::setPacks`, which adds them to the session snapshot only (`packLua`, routes
+below the user's) and starts new sessions. The preview worker copies each pack's files and loads
+them through a generated loader with one environment per pack (Lua 5.1 `setfenv` or 5.2+ `load`
+with an environment). The pack check refuses a shared preview name or route key, merged route and
+Lua limits, and merged previews past the service limits (`PreviewService::definitionsFor`); if the
+user's own previews grow past the limits later, evaluation drops the packs' previews instead of
+all previews. Every applied change, also a new version whose Lua keeps its file names, starts new
+TShark sessions. Pack files are checked again whenever the pack is read, and a file or the Lua
+folder reached through a link or junction is refused. A user preview with a pack preview's name
+replaces it together with its route; **Copy to My Previews** also copies the pack's route into the
+user's routes, and a renamed copy (`<block> (<pack name>)`) keeps the generic `_block` fallback.
+Pack items are replaced whole on update until E16a2 adds edit in place and merge. A pack preview's
+on/off choice is kept in the user's settings (`previewPacks/enabled`). The GUI confirmation for
+Lua names the installed version's Lua; an update that adds Lua to a pack without it is not asked
+about.
+
 ### 4.5 Actions, responses, highlighters and filters
 
 The rules of section 4.2 apply to the other content of a pack:
@@ -977,7 +1004,8 @@ the Git Credential Manager they already use for that organization.
 - **E16a:** configuration pack kind with JSON previews and Lua for TShark; the local pack store
   (libgit2, canonical form, merge driver, history, rebuild), the item merge window, the three-pane
   text merge, the optional external merge tool, Reset to Pack Version and the automation
-  strategies, for previews, blocks and Lua or Python files.
+  strategies, for previews, blocks and Lua or Python files. Delivered as two PRs (2026-11-19):
+  **E16a1** the pack kind, previews, Lua and routes, and **E16a2** the store and merge.
 - **E16b:** Python decoders, activated with MD03.
 - **E16c:** actions with automatic responses (off until enabled), highlighters and predefined
   filters in packs, with their canonical forms, local edits and merge, and the Packs… buttons in

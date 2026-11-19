@@ -183,9 +183,12 @@ class ProofTests(ProofCase):
             self.proof.load_manifest(self.root / "absent.json")
 
     def test_script_count_is_bounded_before_copy_or_engine_start(self):
+        # The profile limit: the user's scripts and configuration pack files, 32 in total
+        # (docs/plugin-repositories.md 4.3).
+        self.assertEqual(self.proof.PROFILE_SCRIPT_LIMIT, 32)
         with self.assertRaisesRegex(self.proof.ProofError, "input_limit"):
             self.proof.PduEngine(
-                sys.executable, sys.executable, self.root, scripts=[UTILITY] * 9
+                sys.executable, sys.executable, self.root, scripts=[UTILITY] * 33
             )
 
     def test_cli_missing_inputs_writes_structured_nonzero_result(self):
