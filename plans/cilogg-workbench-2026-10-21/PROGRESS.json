@@ -3001,7 +3001,8 @@
     "D14: see ../../docs/workbench/decisions.md",
     "D15: see ../../docs/workbench/decisions.md",
     "D16: see ../../docs/workbench/decisions.md",
-    "D17: see ../../docs/workbench/decisions.md"
+    "D17: see ../../docs/workbench/decisions.md",
+    "D18: see ../../docs/workbench/decisions.md"
   ],
   "knownEvidenceLimits": [
     "G01 and G03 harness acceptance satisfied. G02/W0 remain open per2026-10-31 acceptance audit; historical slice limits retain their original evidence epochs.",

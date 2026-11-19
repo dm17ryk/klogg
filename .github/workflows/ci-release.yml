@@ -97,6 +97,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Download artifacts for last successful CI workflow
+      id: download-last
       if: ${{ !github.event.inputs.ci-run-id }}
       uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
@@ -104,11 +105,30 @@ jobs:
         workflow_conclusion: success
 
     - name: Download artifacts for CI workflow with provided run id
+      id: download-run
       if: ${{ github.event.inputs.ci-run-id }}
       uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
       with:
         workflow: ci-build.yml
         run_id: ${{ github.event.inputs.ci-run-id }}
+
+    # The artifacts can come from an earlier commit than the checkout (for example
+    # after a documentation-only commit, which skips CI Build, decision D18). Tag
+    # the release at the commit the binaries were built from.
+    - name: Find the commit the artifacts were built from
+      env:
+        ARTIFACTS: ${{ steps.download-last.outputs.artifacts || steps.download-run.outputs.artifacts }}
+      shell: bash
+      run: |
+        mapfile -t shas < <(jq -r '[.[].workflow_run.head_sha // empty] | unique | .[]' <<<"$ARTIFACTS")
+        if [ "${#shas[@]}" -ne 1 ]; then
+          echo "::error::Cannot tell which commit the CI Build artifacts were built from (found: ${shas[*]:-none})"
+          exit 1
+        fi
+        echo "CILOGG_RELEASE_SHA=${shas[0]}" >> "$GITHUB_ENV"
+        if [ "${shas[0]}" != "$GITHUB_SHA" ]; then
+          echo "::notice::Artifacts were built from ${shas[0]}, not $GITHUB_SHA; the release tag will point at ${shas[0]}."
+        fi
 
     - name: Initialize version
       run: echo "CILOGG_VERSION=`cat cilogg_version/cilogg_version.txt`" >> $GITHUB_ENV
@@ -211,7 +231,7 @@ jobs:
             find ./linux-debug -maxdepth 1 -type f -print0 2>/dev/null || true
           )
         gh release delete "$tag" --cleanup-tag -y || true
-        gh release create "$tag" "${assets[@]}" "${flags[@]}" --title "CILogg ${CILOGG_VERSION}"
+        gh release create "$tag" "${assets[@]}" "${flags[@]}" --target "$CILOGG_RELEASE_SHA" --title "CILogg ${CILOGG_VERSION}"
         echo "CILOGG_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
     - name: Maintain legacy latest.json

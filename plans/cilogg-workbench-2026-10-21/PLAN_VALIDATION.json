@@ -645,5 +645,69 @@
     "productBuildRun": false,
     "masterMergedAt": "85fe48b5629c2ff43ecfa5304c2541cc1718df26",
     "mergeConflictResolved": "Master's ledger update (#126: E15 completed) kept in PROGRESS.json, TASK_INDEX.json, README.md, tasks/E15.md and its PLAN_VALIDATION.json records; E17 additions re-applied on top; PACKAGE_SHA256.json recomputed"
+  },
+  "d18Checks": {
+    "date": "2026-11-19",
+    "decision": "D18",
+    "state": "pull_request_open_awaiting_user_merge",
+    "question": "why a pull request that changes only docs/** and plans/** starts the full CI Build matrix (about 25 jobs) and CodeQL",
+    "workflowsChanged": [
+      ".github/workflows/ci-build.yml: push and pull_request paths (ordered, with ! exclusions; replaces paths-ignore)",
+      ".github/workflows/codeql-analysis.yml: pull_request paths (same list)",
+      ".github/workflows/ci-release.yml: release tag created at the commit the downloaded artifacts were built from"
+    ],
+    "sameListInAllThreeTriggers": true,
+    "stillTriggerBuild": {
+      "DOCUMENTATION.md": "compiled into the application (CMakeLists.txt DOCUMENTATION_FILE, maddy to documentation.html, documentation.qrc)",
+      "MCP.md": "installed with the application (CMakeLists.txt install, packaging/windows/cilogg.nsi, prepare_release.cmd)",
+      "docs/plugin-sdk.md": "installed by the Windows package (packaging/windows/prepare_release.cmd line 78, .github/actions/agent-package-win, packaging/windows/cilogg.nsi line 165); kept after '!docs/**'"
+    },
+    "unchangedTriggers": "CodeQL schedule and workflow_dispatch; CI Build workflow_dispatch; plugin-examples, workbench-parity, workbench-benchmarks and macos-packaging were already limited to their own paths and list none of the ignored paths",
+    "buildInputsChecked": "rg over CMake files, src, tests, scripts, tools, packaging, plugins and .github: every mention of docs/, plans/, doc/, screenshots/ and the added root Markdown files is a comment, a Markdown link or a commit-group label; no file under them is a resource, install input or test fixture",
+    "requiredStatusChecks": "none: master has no branch protection and its ruleset 11372067 has only deletion and non_fast_forward rules",
+    "releaseEffect": "ci-release.yml without ci-run-id downloads the last successful CI Build, which after a documentation-only commit was built from an earlier commit; the release job now reads workflow_run.head_sha of the downloaded artifacts and passes it to gh release create --target, failing when the artifacts name no single commit",
+    "skipCiNote": "GitHub skips push and pull_request workflows when the head commit message contains [skip ci]; the jobs' own github.event.head_commit guards in ci-build.yml only see pushes",
+    "yamlParsed": "PyYAML safe_load of the three workflows; push, pull_request and CodeQL lists identical (18 entries, no paths-ignore left); ordered last-match evaluation of sample paths as expected (docs/plugin-sdk.md, DOCUMENTATION.md, MCP.md, src, tests, packaging and workflows build; other docs, plans, doc, CHANGELOG and README do not)",
+    "actionlintRun": false,
+    "tasksAddedOrChanged": [],
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "hashManifestFiles": 166,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json"
+    ],
+    "productCodeChanged": false,
+    "productBuildRun": false,
+    "filterForm": "ordered paths list: '**' first, then '!' lines for the dropped paths, then 'docs/plugin-sdk.md' after '!docs/**'; GitHub documents negation and re-inclusion for paths (last match wins) but not '!' inside paths-ignore, and paths and paths-ignore cannot be combined",
+    "pathsDropped": [
+      "docs/**",
+      "plans/**",
+      "doc/**",
+      "screenshots/**",
+      "CHANGELOG.md",
+      "SECURITY.md",
+      "CONFIGURATION_EXPORTS.md",
+      "AGENTS.md",
+      "CLAUDE.md"
+    ],
+    "pathsDroppedBefore": [
+      "website/**",
+      "BUILD.md",
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "README.md",
+      "latest.json",
+      ".gitignore"
+    ],
+    "artifactShaSource": "GitHub list-workflow-run-artifacts objects carry workflow_run.head_sha (checked on run 44522945916); dawidd6/action-download-artifact eab87c98 exposes them as the artifacts output",
+    "reviewThreads": [
+      "release tag drift after a documentation-only commit (Codex P2): fixed in ci-release.yml",
+      "docs/plugin-sdk.md ships in the Windows package (Codex P2): kept in the build filter"
+    ],
+    "followUps": [
+      "ci-release.yml takes the last successful CI Build on any branch and event, so a pull request build can be released; limiting it to master pushes was left for a separate decision",
+      "the three validate jobs and the release job each pick the last successful run on their own and can differ if a CI Build finishes during a release"
+    ]
   }
 }
