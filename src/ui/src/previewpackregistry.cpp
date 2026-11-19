@@ -103,7 +103,8 @@ void PreviewPackRegistry::refresh()
         // A cheap list: the manager signals every job change, so this runs often.
         for ( const auto& id : manager_->enabledPacks() ) {
             const auto manifest = manager_->manifest( id );
-            const auto directory = manager_->pluginDirectory( id );
+            // The effective content: the installed version with the user's edits (design 4.6).
+            const auto directory = manager_->packContentDirectory( id );
             const auto key = contributionKey( directory, manifest );
             const auto cached = cache_.find( id );
             packs.append( cached != cache_.end() && cached->key == key

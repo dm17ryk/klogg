@@ -1,4 +1,5 @@
 #pragma once
+#include "packcanonical.h"
 #include "plugincatalog.h"
 #include "pluginprocess.h"
 #include "pluginrepositories.h"
@@ -121,6 +122,10 @@ public:
     QJsonObject manifest( const QString& pluginId ) const;
     // The folder of an installed plugin; empty when unknown.
     QString pluginDirectory( const QString& pluginId ) const;
+    // Where CILogg reads a configuration pack's effective content: its local store's content
+    // folder (the installed version with the user's edits, design 4.6), or the installed folder
+    // while the pack has no store.
+    QString packContentDirectory( const QString& pluginId ) const;
     // The valid configuration packs the user enabled, in ID order. Cheaper than plugins().
     QStringList enabledPacks() const;
 
@@ -331,6 +336,19 @@ private:
     // A removed plugin keeps no skipped, announced or failed version; an install or update the
     // user made clears a reported automatic-update failure.
     void forgetUpdates( const QString& id );
+    // Configuration pack stores (pluginmanagerpacks.cpp, design 4.6).
+    QString packStoreRoot() const;
+    // Before a pack is installed over an installed one: the merge with the local edits. Fails,
+    // with the conflicts in `result`, when the strategy leaves conflicts unresolved.
+    QString preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,
+                                PackFiles* shipped, std::optional<PackFiles>* merged,
+                                QVariantMap* result ) const;
+    QString finishPackInstall( const StagedPlugin& staged, const PackFiles& shipped,
+                               const std::optional<PackFiles>& merged, const InstallSource& source );
+    void removePackStore( const QString& pluginId );
+    int packLocalEdits( const QString& pluginId ) const;
+    static bool packOperation( const QString& operation );
+    Result managePack( const QString& operation, const QString& id, const QVariantMap& options );
     void clearAutoUpdateFailure( const QString& id );
     // The last catalog of each repository is kept in the plugin data folder, so an update check
     // after a restart still knows the versions of a repository it skips (checked < 24 h ago).

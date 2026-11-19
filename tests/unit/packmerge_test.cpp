@@ -11,9 +11,13 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
+
 #include "packcanonical.h"
 #include "packmerge.h"
 #include "packstore.h"
+#include "pluginmanager.h"
 
 using namespace cilogg::plugins;
 
@@ -61,6 +65,54 @@ QByteArray readFile( const QString& path )
 {
     QFile file( path );
     return file.open( QIODevice::ReadOnly ) ? file.readAll() : QByteArray{};
+}
+
+// A pack package folder: plugin.json, previews.json and lua/a.lua.
+QString writePackage( const QString& folder, const QString& version, const QByteArray& previews,
+                      const QByteArray& lua )
+{
+    QDir().mkpath( folder + "/lua" );
+    const auto write = [ &folder ]( const QString& name, const QByteArray& bytes ) {
+        QFile file( folder + '/' + name );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    };
+    write( "plugin.json", QJsonDocument( packManifest( version ) ).toJson() );
+    write( "previews.json", previews );
+    write( "lua/a.lua", lua );
+    return folder;
+}
+
+QVariantMap finished( PluginManager& manager, const Result& started )
+{
+    REQUIRE( started.ok() );
+    const auto jobId = started.payload.value( "jobId" ).toString();
+    QElapsedTimer timer;
+    timer.start();
+    while ( timer.elapsed() < 20000 ) {
+        QCoreApplication::processEvents( QEventLoop::AllEvents, 50 );
+        const auto job = manager.job( jobId ).payload;
+        const auto state = job.value( "state" ).toString();
+        if ( state == "completed" || state == "failed" || state == "cancelled" ) {
+            return job;
+        }
+    }
+    FAIL( "job did not finish" );
+    return {};
+}
+
+QString previewRegex( const QString& folder, const QString& name )
+{
+    const auto previews = QJsonDocument::fromJson( readFile( folder + "/previews.json" ) )
+                              .object()
+                              .value( "previews" )
+                              .toArray();
+    for ( const auto& preview : previews ) {
+        if ( preview.toObject().value( "name" ) == name ) {
+            return preview.toObject().value( "regex" ).toString();
+        }
+    }
+    return {};
 }
 } // namespace
 
@@ -327,4 +379,110 @@ TEST_CASE( "The pack store keeps versions, edits, history and merges", "[packmer
     REQUIRE( store.remove().isEmpty() );
     CHECK( !QFileInfo::exists( root.filePath( "org.example.pack.git" ) ) );
     CHECK( !QFileInfo::exists( content ) );
+}
+
+TEST_CASE( "Packs install, edit and update through their local store", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( content.endsWith( "/current" ) );
+    CHECK( previewRegex( content, "Second" ) == "^B$" );
+
+    // Edits through the pack operations, as from the editor, the CLI, MCP or Python.
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    auto item = QJsonDocument::fromJson(
+                    manager.manage( "pack_read", id, { { "path", second } } ).payload[ "content" ].toString().toUtf8() )
+                    .object();
+    item[ "regex" ] = "^MINE$";
+    const auto edited = manager.manage(
+        "pack_edit", id,
+        { { "path", second }, { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } );
+    REQUIRE( edited.ok() );
+    CHECK( previewRegex( content, "Second" ) == "^MINE$" );
+    const auto edits = manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList();
+    REQUIRE( edits.size() == 1 );
+    CHECK( edits.first().toMap()[ "state" ] == "edited" );
+    CHECK( manager.plugins().first().toMap()[ "localEdits" ] == 1 );
+    CHECK( !manager.manage( "pack_edit", id, { { "path", "files/lua/new.lua" }, { "content", "x" } } ).ok() );
+    auto renamed = item;
+    renamed[ "name" ] = "Other";
+    CHECK( !manager.manage( "pack_edit", id,
+                            { { "path", second },
+                              { "content", QString::fromUtf8( QJsonDocument( renamed ).toJson() ) } } )
+                .ok() );
+    CHECK( manager.manage( "pack_history", id, { { "path", second } } ).payload[ "commits" ].toList().size()
+           == 2 );
+
+    // A version that changes other things merges with the edit.
+    auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+    auto previews = v2Previews[ "previews" ].toArray();
+    auto firstFrame = previews[ 1 ].toObject();
+    firstFrame[ "regex" ] = "^A2$";
+    previews[ 1 ] = firstFrame;
+    v2Previews[ "previews" ] = previews;
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", QJsonDocument( v2Previews ).toJson(),
+                                  "-- a, 2\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) )[ "state" ]
+             == "completed" );
+    CHECK( previewRegex( content, "Second" ) == "^MINE$" );
+    CHECK( previewRegex( content, "First Frame" ) == "^A2$" );
+    CHECK( readFile( content + "/lua/a.lua" ) == "-- a, 2\n" );
+
+    // A version that changes the edited field: refused from automation, with the conflict.
+    auto second3 = previews[ 0 ].toObject();
+    second3[ "regex" ] = "^THEIRS$";
+    previews[ 0 ] = second3;
+    v2Previews[ "previews" ] = previews;
+    const auto v3 = writePackage( root.filePath( "v3" ), "1.2.0", QJsonDocument( v2Previews ).toJson(),
+                                  "-- a, 2\n" );
+    const auto refused = finished( manager, manager.manage( "install", {}, { { "path", v3 } } ) );
+    CHECK( refused[ "state" ] == "failed" );
+    const auto conflicts = refused[ "result" ].toMap()[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 1 );
+    CHECK( conflicts.first().toMap()[ "item" ] == "Second" );
+    CHECK( conflicts.first().toMap()[ "field" ] == "regex" );
+    CHECK( manager.plugins().first().toMap()[ "version" ] == "1.1.0" );
+    CHECK( manager.plugins().first().toMap()[ "needsMerge" ] == "1.2.0" );
+    CHECK( previewRegex( content, "Second" ) == "^MINE$" );
+
+    SECTION( "keep_mine" )
+    {
+        REQUIRE( finished( manager, manager.manage( "install", {},
+                                                     { { "path", v3 }, { "strategy", "keep_mine" } } ) )
+                     [ "state" ]
+                 == "completed" );
+        CHECK( previewRegex( content, "Second" ) == "^MINE$" );
+        CHECK( manager.plugins().first().toMap()[ "needsMerge" ].toString().isEmpty() );
+    }
+    SECTION( "take_theirs" )
+    {
+        REQUIRE( finished( manager, manager.manage( "install", {},
+                                                     { { "path", v3 }, { "strategy", "take_theirs" } } ) )
+                     [ "state" ]
+                 == "completed" );
+        CHECK( previewRegex( content, "Second" ) == "^THEIRS$" );
+    }
+    SECTION( "a resolution from the merge window" )
+    {
+        const QVariantList resolutions{ QVariantMap{
+            { "path", second }, { "field", "regex" }, { "value", "^CHOSEN$" } } };
+        REQUIRE( finished( manager, manager.manage( "install", {},
+                                                     { { "path", v3 }, { "resolutions", resolutions } } ) )
+                     [ "state" ]
+                 == "completed" );
+        CHECK( previewRegex( content, "Second" ) == "^CHOSEN$" );
+    }
+    CHECK( !manager.manage( "install", {}, { { "path", v3 }, { "strategy", "both" } } ).ok() );
+
+    // Reset to Pack Version, then removing the pack removes its store.
+    REQUIRE( manager.manage( "pack_reset", id, {} ).ok() );
+    CHECK( manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList().isEmpty() );
+    REQUIRE( manager.manage( "remove", id, {} ).ok() );
+    CHECK( !QFileInfo::exists( root.filePath( "data/pack-store/org.example.pack.git" ) ) );
 }
