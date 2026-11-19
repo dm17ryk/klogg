@@ -14,6 +14,7 @@ add_executable(cilogg_tests
     datasetcontracts_test.cpp
     valuecounts_commands_test.cpp
     plugins_test.cpp
+    plugin_repositories_test.cpp
     mcp_test.cpp
     configuration_test.cpp
     captureevaluator_test.cpp

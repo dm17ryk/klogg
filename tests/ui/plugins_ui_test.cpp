@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QPushButton>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -55,8 +56,10 @@ TEST_CASE( "Plugin dialogs preserve secrets and route storage and catalog select
     } );
     window.show();
     window.findChild<QAction*>( "managePluginsAction" )->trigger();
-    auto* manage = window.findChild<QDialog*>( "pluginManagerDialog" );
+    // E15a: Manage Plugins opens the Installed tab of the one Plugins and Packs window.
+    auto* manage = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
     REQUIRE( manage );
+    REQUIRE( manage->findChild<QTabWidget*>( "pluginsAndPacksTabs" )->currentIndex() == 0 );
     auto* table = manage->findChild<QTableWidget*>( "pluginManagerTable" );
     REQUIRE( table->rowCount() == 1 );
     table->selectRow( 0 );
@@ -92,8 +95,9 @@ TEST_CASE( "Plugin dialogs preserve secrets and route storage and catalog select
     REQUIRE( captured.pluginArguments[ "storage_limits" ].toMap()[ "max_capture_bytes" ] == 4096 );
     REQUIRE( manage->findChild<QPushButton*>( "pluginCapturesFolder" ) );
     window.findChild<QAction*>( "browsePluginsAction" )->trigger();
-    auto* browse = window.findChild<QDialog*>( "pluginCatalogDialog" );
-    REQUIRE( browse );
+    auto* browse = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
+    REQUIRE( browse == manage );
+    REQUIRE( browse->findChild<QTabWidget*>( "pluginsAndPacksTabs" )->currentIndex() == 1 );
     auto* catalog = browse->findChild<QTableWidget*>( "pluginCatalogTable" );
     catalog->setRowCount( 2 );
     for ( int row = 0; row < 2; ++row ) {
@@ -107,7 +111,6 @@ TEST_CASE( "Plugin dialogs preserve secrets and route storage and catalog select
     REQUIRE( captured.pluginId == "org.test.ui" );
     REQUIRE( captured.pluginArguments[ "catalog_entry_id" ] == "1" );
     browse->close();
-    manage->close();
 }
 
 TEST_CASE( "Plugin UI routes panels to captured windows and cleans them up", "[ui][plugins]" )

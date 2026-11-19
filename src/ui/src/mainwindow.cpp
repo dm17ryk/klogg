@@ -1529,6 +1529,9 @@ void MainWindow::reTranslateUI()
 
     showDocumentationAction->setText( transAction( action::showDocumentationText ) );
     showDocumentationAction->setStatusTip( transAction( action::showDocumentationStatusTip ) );
+    pluginRepositoriesGuideAction->setText( tr( "Plugin Repositories Guide" ) );
+    pluginRepositoriesGuideAction->setStatusTip(
+        tr( "How to pack a plugin, create a plugin repository and use it" ) );
 
     checkForUpdatesAction->setText( transAction( action::checkForUpdatesText ) );
     checkForUpdatesAction->setStatusTip( transAction( action::checkForUpdatesStatusTip ) );
@@ -1830,6 +1833,15 @@ void MainWindow::createActions()
     showDocumentationAction->setStatusTip( tr( action::showDocumentationStatusTip ) );
     connect( showDocumentationAction, &QAction::triggered, this,
              [ this ]( auto ) { this->documentation(); } );
+
+    pluginRepositoriesGuideAction = new QAction( tr( "Plugin Repositories Guide" ), this );
+    pluginRepositoriesGuideAction->setObjectName(
+        QStringLiteral( "pluginRepositoriesGuideAction" ) );
+    pluginRepositoriesGuideAction->setStatusTip(
+        tr( "How to pack a plugin, create a plugin repository and use it" ) );
+    connect( pluginRepositoriesGuideAction, &QAction::triggered, this, [ this ]( auto ) {
+        showDocumentation( QLatin1String( PluginRepositoriesGuideAnchor ) );
+    } );
 
     checkForUpdatesAction = new QAction( tr( action::checkForUpdatesText ), this );
     checkForUpdatesAction->setObjectName( QStringLiteral( "checkForUpdatesAction" ) );
@@ -2166,6 +2178,7 @@ void MainWindow::createMenus()
     helpMenu = menuBar()->addMenu( tr( menu::helpTitle ) );
     helpMenu->setObjectName( QStringLiteral( "helpMenu" ) );
     helpMenu->addAction( showDocumentationAction );
+    helpMenu->addAction( pluginRepositoriesGuideAction );
     helpMenu->addAction( checkForUpdatesAction );
     helpMenu->addSeparator();
     helpMenu->addAction( reportIssueAction );
@@ -3047,10 +3060,17 @@ void MainWindow::aboutQt()
 
 void MainWindow::documentation()
 {
+    showDocumentation( {} );
+}
+
+void MainWindow::showDocumentation( const QString& anchor )
+{
     QFile doc( ":/documentation.html" );
     if ( doc.open( QIODevice::ReadOnly | QIODevice::Text ) ) {
         const auto text = QString::fromUtf8( doc.readAll() );
         QTextBrowser* tb = new QTextBrowser();
+        tb->setObjectName( QStringLiteral( "documentationBrowser" ) );
+        tb->setProperty( "documentationAnchor", anchor );
         tb->setOpenExternalLinks( true );
         tb->setHtml( text );
         tb->setWindowFlags( Qt::Window );
@@ -3058,6 +3078,11 @@ void MainWindow::documentation()
         tb->setWindowTitle( tr( "CILogg documentation" ) );
         tb->resize( this->width() / 2, this->height() );
         tb->show();
+        if ( !anchor.isEmpty() ) {
+            // The document is laid out once the window is shown; scroll then as well.
+            tb->scrollToAnchor( anchor );
+            QTimer::singleShot( 0, tb, [ tb, anchor ] { tb->scrollToAnchor( anchor ); } );
+        }
     }
     else {
         LOG_ERROR << "Can't open documentation resource";

@@ -28,6 +28,7 @@ from the normal installed Windows application, build 26.04.2.1078.
 1. [Getting started](#getting-started)
 1. [Your first investigation](#your-first-investigation)
 1. [Feature guides](#feature-guides)
+1. [Plugins: packing, repositories and updates](#plugins-packing-repositories-and-updates)
 1. [Exploring log files](#exploring-log-files)
 1. [Settings](#settings)
 1. [Crash reporting](#crash-reporting)
@@ -125,6 +126,7 @@ log tabs. Plugins run in separate processes with the current user's permissions.
 
 [View the Syslog encoding, output, severity, and sender settings →](docs/images/syslog-settings-showcase.jpg)
 
+- [Plugin repositories: packing, publishing and installing](#plugins-packing-repositories-and-updates)
 - [Plugin installation, configuration, and SDK](docs/plugin-sdk.md)
 - [ADB devices, filters, and capture](plugins/examples/adb-logcat/README.md)
 - [Syslog listener, sender restrictions, and formats](plugins/examples/syslog-server/README.md)
@@ -158,6 +160,135 @@ of any window, a file, or all open tabs. See
 - [Highlight rules](#using-highlighters) and [quick color labels](#color-labels)
 - [Scratchpad transformations](#scratchpad)
 - [Analysis commands and result paging](docs/analysis-commands.md)
+
+<a name="plugin-repositories-guide"></a>
+
+## Plugins: packing, repositories and updates
+
+CILogg installs plugins from **plugin repositories**. A repository is a `plugins.json` catalog
+at an HTTPS address, with the plugin packages (ZIP files) it names. You can use several
+repositories at once: the CILogg examples on GitHub, a repository of your team, your own.
+Open this guide from **Help → Plugin Repositories Guide** or from **How to…** on the
+Repositories tab of the Plugins and Packs window.
+
+### 1. Pack a plugin
+
+A package is a folder, or a ZIP of it, with `plugin.json` at its root and the program beside
+it. Packages cannot contain links, `..` paths, absolute paths or Windows device names such as
+`CON`.
+
+- `plugin.json` names the plugin: `id` (lowercase letters, digits, `.`, `_`, `-`), `name`,
+  `version`, `protocol_version: 1`, the `executable` (a path inside the package, or `python`
+  with the script in `arguments`) and its `capabilities`. The
+  [plugin SDK](docs/plugin-sdk.md) describes every field and the protocol.
+- `version` follows [Semantic Versioning 2.0.0](https://semver.org): `1.4.0`,
+  `2.0.0-beta.1`. Raise it for every change you publish: a published version never changes,
+  and CILogg updates only to a higher version.
+- Optional keys that repositories show: `description`, `homepage`, `license`, `released`,
+  and `min_host_version` (the oldest CILogg version that can use the plugin, such as `26.5`).
+
+Build the ZIPs and the catalog with `scripts/plugins/build_catalog.py` from the CILogg source
+tree (Python 3.9 or newer, nothing else to install):
+
+```text
+python scripts/plugins/build_catalog.py --package my-plugin --os windows --arch x86_64 \
+    --exclude "tests/**" --catalog site --base-url https://example.com/cilogg
+```
+
+It writes `site/packages/<id>-<version>.zip` and `site/plugins.json` with each package's
+SHA-256 and address. The ZIPs are reproducible (fixed timestamps, stored entries, LF line
+endings in text files). The `executable` named in `plugin.json` keeps its execute permission;
+on Linux and macOS so does every file with an execute bit, so build packages of native
+programs there. Use `--os any --arch any` (the default) for a plugin that runs
+everywhere, such as a pure-Python plugin; list each platform for native programs. Rebuilding
+an unchanged plugin changes nothing, and a changed plugin with the same version is refused.
+For several packages, list them in a `sources.json` file and pass `--sources sources.json`.
+
+### 2. Create your own repository
+
+**Public.** Any HTTPS static host serves `plugins.json` and the ZIPs: a GitHub repository
+(the `raw.githubusercontent.com` address of `plugins.json`, the ZIPs as files or release
+assets), GitHub Pages, or a company web server. Publish the ZIPs first and the catalog that
+names them last, so the catalog never names a missing file. The catalog format is
+`schema_version: 1` with a `plugins` list; see the [plugin SDK](docs/plugin-sdk.md#packages-and-catalog-publication).
+
+**Private.** This CILogg version reads repositories that need no sign-in. Signing in to a
+private Azure DevOps repository comes in a later version; `build_catalog.py` can already write
+the Azure DevOps addresses of such a catalog (`--organization`, `--project`, `--repository`,
+`--branch` instead of `--base-url`), and [plugin repositories](docs/plugin-repositories.md)
+section 7 describes the repository and pipeline layout.
+
+### 3. Use it in CILogg
+
+**Plugins → Manage Plugins…** and **Plugins → Browse Plugins…** open the **Plugins and
+Packs** window at its Installed and Available tabs.
+
+- **Repositories** tab: one row per repository, in order: position, Enabled, Name, Address,
+  State and Last check. **Add…** asks for a name and the HTTPS address of `plugins.json`;
+  new repositories go to the end of the list. **Edit…** renames a repository; its address
+  cannot change (add a new repository for another address, then remove the old one).
+  **Move Up** and **Move Down** change the order. Clearing **Enabled** keeps the repository
+  but stops fetching it. **Remove** deletes it; plugins installed from it stay installed.
+- **The order is a priority.** The Available tab lists repositories in this order, and when
+  two repositories offer the same plugin, a new install takes the higher one unless you select
+  the other row. Moving a repository never changes or updates an installed plugin.
+- **Available** tab: **Fetch** loads every enabled repository at once. Each repository is a
+  group with its state: the number of packages, "No plugins in this repository", or the error
+  ("Not found (HTTP 404).", a network error). A failing repository does not hide the others,
+  and its packages from the last fetch that worked stay listed.
+  The columns are Name, Kind, Version, Source, Installed and Description; the **Kind** filter
+  and the search box narrow the list. **Install / Update** installs the selected row.
+- **Updates come from the install source.** CILogg remembers the repository each plugin was
+  installed from and updates it only from there: **Update** on the Installed tab checks that
+  repository and installs its newest version. Installing the same plugin from another
+  repository is a **Switch source**, which CILogg asks you to confirm and which makes that
+  repository the source from then on. A plugin installed from a local folder or ZIP has no
+  source and is never updated from a repository.
+- **Installed** tab: Name, Kind, Version, Source ("Shipped with CILogg", "Local file", a
+  repository name, or "source unavailable" when its repository was removed or disabled) and
+  State ("Enabled", "Running", "Update to 1.3.0", "Also offered by …").
+
+The same operations work from the command line, native MCP (`cilogg_execute`) and Python
+(`klogg.app.command`). Options go in a JSON file:
+
+```text
+cilogg command --action plugin_manage --plugin-operation repositories
+cilogg command --action plugin_manage --plugin-operation repository_add --json-file repo.json
+cilogg command --action plugin_manage --plugin-operation repository_move --json-file move.json
+cilogg command --action plugin_manage --plugin-operation catalog
+cilogg command --action plugin_manage --plugin-operation install --plugin-id org.example.tool
+```
+
+with, for example, `repo.json` containing
+`{"name": "Team tools", "url": "https://example.com/cilogg/plugins.json"}` and `move.json`
+containing `{"repository": "team-tools", "direction": "up"}` (or `"position": 1`).
+`repository_update` takes `repository` and `name` or `enabled`; `repository_remove` takes
+`repository`; `catalog` takes an optional `repository`; `install` and `update` take an optional
+`catalog_entry_id` and `switch_source: true`.
+
+### 4. Share your changes
+
+Plugins are shared by publishing a new version in your repository: raise `version`, rebuild
+with `build_catalog.py` and publish the files. Users get it with **Update**.
+
+### 5. Troubleshooting
+
+- **"No plugins in this repository"**: the catalog loaded but has no entry for this platform.
+  Check the `os` and `arch` of the entries (`windows`, `linux`, `macos`, `x86_64`, `arm64`, or
+  `any`).
+- **"Not found (HTTP 404)."**: the address of `plugins.json` is wrong, or the file is not
+  published yet.
+- **"The address answered with a web page, not plugins.json."**: the address points at a web
+  page (for example a GitHub page instead of the `raw.githubusercontent.com` file, or a sign-in
+  page).
+- **"Plugin package SHA-256 mismatch."**: the ZIP changed after the catalog was written.
+  Rebuild the catalog; never replace a published ZIP.
+- **"Package identity differs from catalog."**: the `id` or `version` in the ZIP's
+  `plugin.json` is not the one in the catalog entry.
+- **Entries left out**: an invalid entry (for example without `sha256`, or with a version that
+  is not a Semantic Version) is left out on its own and counted in the repository's state.
+  Entries of a kind this CILogg version does not support, or that need a newer CILogg
+  (`min_host_version`), are not offered.
 
 ## Exploring log files
 

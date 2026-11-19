@@ -22,6 +22,7 @@ set(UI_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e13_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e14_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workbench_u15b_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workbench_e15_test.cpp
 )
 
 if(NOT APPLE)
@@ -31,8 +32,10 @@ if(NOT APPLE)
         ${CMAKE_CURRENT_SOURCE_DIR}/workbench_u16_test.cpp)
 endif()
 
+# The generated user guide, so How to... and Help > Plugin Repositories Guide can be tested (E15a);
+# the klogg target below generates it first.
 add_executable(cilogg_itests ${UI_TEST_SOURCES} ${BACKWARD_ENABLE}
-    ${PROJECT_SOURCE_DIR}/src/app/klogg.qrc)
+    ${PROJECT_SOURCE_DIR}/src/app/klogg.qrc ${DOCUMENTATION_RESOURCE})
 add_executable(analysis_worker_fixture ../analysis_worker_fixture.cpp)
 target_link_libraries(analysis_worker_fixture PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 target_compile_definitions(cilogg_itests PRIVATE

@@ -11,9 +11,16 @@
     "P05": ["value-counts"],
     "E13": ["plugin-views"],
     "U15": ["u15_python_source_parity", "u15b_sources"],
-    "U16": ["pane_operations_parity"]
+    "U16": ["pane_operations_parity"],
+    "E15": ["e15a_repositories"]
   },
   "cases": [
+    {
+      "id": "e15a_repositories",
+      "kind": "e15a-repositories",
+      "action": "plugin_manage",
+      "operations": ["plugin_manage", "get_plugin_job", "get_ui", "set_ui", "activate_ui", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
     {
       "id": "u15_python_source_parity",
       "kind": "u15-docks",

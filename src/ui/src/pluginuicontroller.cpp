@@ -2,7 +2,9 @@
 #include "analysissource.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "pluginsandpacks.h"
 #include "pluginviewhost.h"
+#include "semanticversion.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -25,6 +27,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStyle>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -223,7 +226,7 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
     auto* browse = new QAction( window->style()->standardIcon( QStyle::SP_DriveNetIcon ),
                                 tr( "Browse Plugins…" ), this );
     browse->setObjectName( "browsePluginsAction" );
-    browse->setToolTip( tr( "Browse the online plugin catalog" ) );
+    browse->setToolTip( tr( "Browse the plugins of your plugin repositories" ) );
     menu_->addAction( manage );
     menu_->addAction( browse );
     menu_->addSeparator();
@@ -255,8 +258,11 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
         toolbar->widgetForAction( manage )->setAccessibleName( manage->text() );
         toolbar->widgetForAction( browse )->setAccessibleName( browse->text() );
     }
-    connect( manage, &QAction::triggered, this, &PluginUiController::manageDialog );
-    connect( browse, &QAction::triggered, this, &PluginUiController::browseDialog );
+    // One Plugins and Packs window: Manage opens its Installed tab, Browse its Available tab.
+    connect( manage, &QAction::triggered, this,
+             [ this ] { openPluginsWindow( PluginsTab::Installed ); } );
+    connect( browse, &QAction::triggered, this,
+             [ this ] { openPluginsWindow( PluginsTab::Available ); } );
     auto* refresh = new QTimer( this );
     refresh->setSingleShot( true );
     refresh->setInterval( 200 );
@@ -528,60 +534,168 @@ void PluginUiController::invoke( const QString& id, const QJsonObject& action )
     report( executor_( request ) );
 }
 
-void PluginUiController::manageDialog()
+void PluginUiController::openGuide()
 {
-    if ( !manager_ ) {
+    if ( window_ ) {
+        window_->showDocumentation( QLatin1String( MainWindow::PluginRepositoriesGuideAnchor ) );
+    }
+}
+
+void PluginUiController::openPluginsWindow( PluginsTab tab )
+{
+    if ( !manager_ || !window_ ) {
         return;
     }
-    auto* dialog = new QDialog( window_ );
-    dialog->setAttribute( Qt::WA_DeleteOnClose );
-    dialog->setObjectName( "pluginManagerDialog" );
-    dialog->setWindowTitle( tr( "Manage Plugins" ) );
-    dialog->resize( 900, 600 );
-    auto* layout = new QVBoxLayout( dialog );
-    auto* table = new QTableWidget( 0, 4, dialog );
+    if ( !pluginsWindow_ ) {
+        auto* dialog = new QDialog( window_ );
+        dialog->setAttribute( Qt::WA_DeleteOnClose );
+        dialog->setObjectName( "pluginsAndPacksDialog" );
+        dialog->setWindowTitle( tr( "Plugins and Packs" ) );
+        dialog->resize( 980, 640 );
+        auto* layout = new QVBoxLayout( dialog );
+        auto* tabs = new QTabWidget( dialog );
+        tabs->setObjectName( "pluginsAndPacksTabs" );
+        tabs->setAccessibleName( tr( "Plugins and Packs" ) );
+        const auto guide = [ self = QPointer<PluginUiController>( this ) ] {
+            if ( self ) {
+                self->openGuide();
+            }
+        };
+        tabs->addTab( createInstalledTab( tabs ), tr( "Installed" ) );
+        tabs->addTab( pluginsui::createAvailableTab( tabs, manager_, executor_, guide ),
+                      tr( "Available" ) );
+        tabs->addTab( pluginsui::createRepositoriesTab( tabs, manager_, executor_, guide ),
+                      tr( "Repositories" ) );
+        layout->addWidget( tabs );
+        pluginsWindow_ = dialog;
+        LOG_DEBUG << "Plugins and Packs window created";
+    }
+    auto* tabs = pluginsWindow_->findChild<QTabWidget*>( "pluginsAndPacksTabs" );
+    tabs->setCurrentIndex( int( tab ) );
+    pluginsWindow_->show();
+    pluginsWindow_->raise();
+    pluginsWindow_->activateWindow();
+}
+
+QWidget* PluginUiController::createInstalledTab( QWidget* parent )
+{
+    auto* tab = new QWidget( parent );
+    tab->setObjectName( "pluginsInstalledTab" );
+    auto* layout = new QVBoxLayout( tab );
+    auto* table = new QTableWidget( 0, 5, tab );
     table->setObjectName( "pluginManagerTable" );
+    table->setAccessibleName( tr( "Installed plugins" ) );
     table->setHorizontalHeaderLabels(
-        { tr( "Plugin" ), tr( "Version" ), tr( "Enabled" ), tr( "State" ) } );
+        { tr( "Name" ), tr( "Kind" ), tr( "Version" ), tr( "Source" ), tr( "State" ) } );
     table->setSelectionBehavior( QAbstractItemView::SelectRows );
     table->setSelectionMode( QAbstractItemView::SingleSelection );
     table->setEditTriggers( QAbstractItemView::NoEditTriggers );
+    table->verticalHeader()->setVisible( false );
     table->horizontalHeader()->setSectionResizeMode( QHeaderView::Stretch );
-    layout->addWidget( table );
-    auto* details = new QPlainTextEdit( dialog );
+    layout->addWidget( table, 2 );
+    auto* details = new QPlainTextEdit( tab );
     details->setReadOnly( true );
     details->setObjectName( "pluginDiagnostics" );
+    details->setAccessibleName( tr( "Plugin details" ) );
     details->setMaximumBlockCount( 2000 );
-    layout->addWidget( details );
-    auto* storageUsage = new QLabel( dialog );
+    layout->addWidget( details, 1 );
+    auto* storageUsage = new QLabel( tab );
     storageUsage->setObjectName( "pluginStorageUsage" );
     layout->addWidget( storageUsage );
+    auto* status = new QLabel( tab );
+    status->setObjectName( "pluginInstalledStatus" );
+    status->setWordWrap( true );
+    status->setTextFormat( Qt::PlainText ); // names and errors come from catalogs
+    layout->addWidget( status );
+    // Timers and job callbacks of this tab can outlive the controller.
+    const QPointer<PluginUiController> self( this );
     auto* row = new QHBoxLayout;
     layout->addLayout( row );
-    const auto refresh = [ this, table, details, storageUsage ] {
-        const auto storage = manager_->storageStatus();
+    auto* secondRow = new QHBoxLayout;
+    layout->addLayout( secondRow );
+    const auto addButton
+        = [ tab ]( QHBoxLayout* buttons, const QString& text, const QString& name ) {
+              auto* button = new QPushButton( text, tab );
+              button->setObjectName( name );
+              button->setAccessibleName( QString( text ).remove( QChar( 0x2026 ) ).trimmed() );
+              buttons->addWidget( button );
+              return button;
+          };
+    const auto selectedId = [ table ] {
+        return table->currentRow() >= 0 && table->item( table->currentRow(), 0 )
+                   ? table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString()
+                   : QString{};
+    };
+    const auto refresh = [ self, table, details, storageUsage, selectedId ] {
+        if ( !self || !self->manager_ ) {
+            return;
+        }
+        auto* manager = self->manager_.data();
+        const auto storage = manager->storageStatus();
         storageUsage->setText(
             tr( "Captured: %1 bytes; reserved: %2 bytes; total limit: %3 bytes (0 = unlimited)" )
                 .arg( storage.value( "captured_bytes" ).toLongLong() )
                 .arg( storage.value( "reserved_bytes" ).toLongLong() )
                 .arg( storage.value( "limits" ).toMap().value( "max_total_bytes" ).toLongLong() ) );
-        const auto selected
-            = table->currentRow() >= 0
-                  ? table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString()
-                  : QString{};
-        const auto list = manager_->plugins();
+        const auto selected = selectedId();
+        const auto list = manager->plugins();
+        const auto catalog = manager->catalogEntries();
         table->setRowCount( static_cast<int>( list.size() ) );
         int index = 0;
         for ( const auto& value : list ) {
             const auto p = value.toMap();
             const auto id = p.value( "id" ).toString();
-            const QStringList texts{ p.value( "name", id ).toString(),
-                                     p.value( "version" ).toString(),
-                                     p.value( "enabled" ).toBool() ? tr( "Yes" ) : tr( "No" ),
-                                     p.value( "state" ).toString() };
-            for ( int col = 0; col < 4; ++col ) {
+            const auto source = p.value( "source" ).toMap();
+            QString state
+                = !p.value( "error" ).toString().isEmpty()
+                      ? tr( "Error: %1" ).arg( p.value( "error" ).toString() )
+                  : p.value( "state" ) == "ready" ? tr( "Running" )
+                  : p.value( "state" ) == "starting" || p.value( "state" ) == "initializing"
+                      ? tr( "Starting" )
+                  : p.value( "state" ) == "stopping" ? tr( "Stopping" )
+                  : p.value( "state" ) == "failed"   ? tr( "Failed" )
+                  : p.value( "enabled" ).toBool()    ? tr( "Enabled" )
+                                                     : tr( "Disabled" );
+            // An update only from the install source; other repositories are only mentioned.
+            QString update;
+            QStringList others;
+            for ( const auto& item : catalog ) {
+                const auto entry = item.toMap();
+                if ( entry.value( "id" ) != id ) {
+                    continue;
+                }
+                if ( source.value( "type" ) == "repository"
+                     && entry.value( "repository" ) == source.value( "repository" ) ) {
+                    const auto version = entry.value( "version" ).toString();
+                    if ( cilogg::plugins::compareSemanticVersions( version,
+                                                                   p.value( "version" ).toString() )
+                                 .value_or( 0 )
+                             > 0
+                         && ( update.isEmpty()
+                              || cilogg::plugins::compareSemanticVersions( version, update )
+                                         .value_or( 0 )
+                                     > 0 ) ) {
+                        update = version;
+                    }
+                }
+                else if ( !others.contains( entry.value( "repositoryName" ).toString() ) ) {
+                    others.append( entry.value( "repositoryName" ).toString() );
+                }
+            }
+            if ( !update.isEmpty() ) {
+                state += QStringLiteral( " · " ) + tr( "Update to %1" ).arg( update );
+            }
+            if ( !others.isEmpty() ) {
+                state += QStringLiteral( " · " )
+                         + tr( "Also offered by %1" ).arg( others.join( ", " ) );
+            }
+            const QStringList texts{ p.value( "name", id ).toString(), pluginsui::kindLabel( p ),
+                                     p.value( "version" ).toString(), pluginsui::sourceLabel( p ),
+                                     state };
+            for ( int col = 0; col < texts.size(); ++col ) {
                 auto* item = new QTableWidgetItem( texts[ col ] );
                 item->setData( Qt::UserRole, id );
+                item->setToolTip( texts[ col ] );
                 table->setItem( index, col, item );
             }
             if ( id == selected ) {
@@ -596,25 +710,138 @@ void PluginUiController::manageDialog()
             }
         }
         info += "\nJobs:\n"
-                + QString::fromUtf8( QJsonDocument::fromVariant( manager_->jobs() )
+                + QString::fromUtf8( QJsonDocument::fromVariant( manager->jobs() )
                                          .toJson( QJsonDocument::Indented ) );
         details->setPlainText( info );
     };
-    const auto addButton = [ row, dialog ]( const QString& text, const QString& name ) {
-        auto* button = new QPushButton( text, dialog );
-        button->setObjectName( name );
-        row->addWidget( button );
-        return button;
-    };
+    auto* updateButton = addButton( row, tr( "Update" ), "pluginManage_update" );
+    updateButton->setToolTip( tr( "Update the selected plugin from the repository it was "
+                                  "installed from" ) );
+    connect( updateButton, &QPushButton::clicked, tab, [ this, self, tab, status, selectedId ] {
+        const auto id = selectedId();
+        if ( id.isEmpty() || !manager_ ) {
+            return;
+        }
+        QVariantMap source;
+        QString name = id;
+        for ( const auto& value : manager_->plugins() ) {
+            if ( value.toMap().value( "id" ) == id ) {
+                source = value.toMap().value( "source" ).toMap();
+                name = value.toMap().value( "name", id ).toString();
+            }
+        }
+        if ( source.value( "type" ) != "repository" ) {
+            status->setText( tr( "%1 was not installed from a repository. Install it from a "
+                                 "repository on the Available tab to get updates." )
+                                 .arg( name ) );
+            return;
+        }
+        // Load the source repository's catalog first, then update from it.
+        CommanderRequest catalog;
+        catalog.action = CommanderAction::PluginManage;
+        catalog.pluginOperation = "catalog";
+        catalog.pluginArguments = { { "repository", source.value( "repository" ) } };
+        const auto started = executor_( catalog );
+        if ( !started.ok() ) {
+            status->setText( started.message );
+            return;
+        }
+        status->setText(
+            tr( "Checking %1 for updates…" ).arg( source.value( "repositoryName" ).toString() ) );
+        pluginsui::followJob(
+            tab, manager_, started.payload.value( "jobId" ).toString(),
+            [ self, tab, status, id, name ]( const QVariantMap& job ) {
+                if ( !self ) {
+                    return;
+                }
+                if ( job.value( "state" ) != "completed" ) {
+                    status->setText( tr( "Could not check for updates: %1" )
+                                         .arg( job.value( "error" ).toString() ) );
+                    return;
+                }
+                CommanderRequest request;
+                request.action = CommanderAction::PluginManage;
+                request.pluginOperation = "update";
+                request.pluginId = id;
+                const auto result = self->executor_( request );
+                if ( !result.ok() ) {
+                    status->setText( result.message );
+                    return;
+                }
+                status->setText( tr( "Updating %1…" ).arg( name ) );
+                pluginsui::followJob(
+                    tab, self->manager_, result.payload.value( "jobId" ).toString(),
+                    [ status, name ]( const QVariantMap& update ) {
+                        status->setText(
+                            update.value( "state" ) == "completed"
+                                ? tr( "Updated %1 to %2." )
+                                      .arg( name, update.value( "result" )
+                                                      .toMap()
+                                                      .value( "version" )
+                                                      .toString() )
+                                : tr( "Could not update %1: %2" )
+                                      .arg( name, update.value( "error" ).toString() ) );
+                    } );
+            } );
+    } );
+    const QList<QPair<QString, QString>> operations{ { "enable", tr( "Enable" ) },
+                                                     { "disable", tr( "Disable" ) },
+                                                     { "configure", tr( "Configure…" ) },
+                                                     { "restart", tr( "Restart" ) },
+                                                     { "remove", tr( "Remove" ) } };
+    for ( const auto& [ operation, label ] : operations ) {
+        auto* button = addButton( row, label, "pluginManage_" + operation );
+        connect(
+            button, &QPushButton::clicked, tab, [ this, tab, managed = operation, selectedId ] {
+                const auto id = selectedId();
+                if ( id.isEmpty() || !manager_ ) {
+                    return;
+                }
+                CommanderRequest r;
+                r.action = CommanderAction::PluginManage;
+                r.pluginId = id;
+                r.pluginOperation = managed;
+                if ( managed == "configure" ) {
+                    for ( const auto& value : manager_->plugins() ) {
+                        const auto p = value.toMap();
+                        if ( p.value( "id" ) != id ) {
+                            continue;
+                        }
+                        auto config = QJsonObject::fromVariantMap(
+                            p.value( "configurationValues" ).toMap() );
+                        auto fields
+                            = QJsonArray::fromVariantList( p.value( "configuration" ).toList() );
+                        for ( int index = 0; index < fields.size(); ++index ) {
+                            auto field = fields[ index ].toObject();
+                            if ( field.value( "type" ) == "secret"
+                                 && p.value( "configuredSecrets" )
+                                        .toMap()
+                                        .value( field.value( "id" ).toString() )
+                                        .toBool() ) {
+                                field[ "required" ] = false;
+                                field[ "keep_existing" ] = true;
+                                fields[ index ] = field;
+                            }
+                        }
+                        if ( !editValues( tab, tr( "Configure Plugin" ), fields, &config ) ) {
+                            return;
+                        }
+                        r.pluginArguments = { { "configuration", config.toVariantMap() } };
+                    }
+                }
+                report( executor_( r ) );
+            } );
+    }
+    row->addStretch( 1 );
     for ( const auto& source : QStringList{ "folder", "zip" } ) {
-        auto* button
-            = addButton( source == "folder" ? tr( "Install Folder…" ) : tr( "Install ZIP…" ),
-                         "pluginInstall_" + source );
-        connect( button, &QPushButton::clicked, dialog, [ this, dialog, source ] {
+        auto* button = addButton(
+            secondRow, source == "folder" ? tr( "Install Folder…" ) : tr( "Install ZIP…" ),
+            "pluginInstall_" + source );
+        connect( button, &QPushButton::clicked, tab, [ this, tab, source ] {
             const auto path = source == "folder"
-                                  ? QFileDialog::getExistingDirectory( dialog )
-                                  : QFileDialog::getOpenFileName( dialog, tr( "Plugin package" ),
-                                                                  {}, "ZIP (*.zip)" );
+                                  ? QFileDialog::getExistingDirectory( tab )
+                                  : QFileDialog::getOpenFileName( tab, tr( "Plugin package" ), {},
+                                                                  "ZIP (*.zip)" );
             if ( !path.isEmpty() ) {
                 CommanderRequest r;
                 r.action = CommanderAction::PluginManage;
@@ -624,54 +851,14 @@ void PluginUiController::manageDialog()
             }
         } );
     }
-    for ( const auto& operation :
-          QStringList{ "enable", "disable", "configure", "restart", "remove" } ) {
-        auto* button = addButton( operation, "pluginManage_" + operation );
-        connect( button, &QPushButton::clicked, dialog, [ this, table, operation, dialog ] {
-            if ( table->currentRow() < 0 ) {
-                return;
-            }
-            const auto id = table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString();
-            CommanderRequest r;
-            r.action = CommanderAction::PluginManage;
-            r.pluginId = id;
-            r.pluginOperation = operation;
-            if ( operation == "configure" ) {
-                for ( const auto& value : manager_->plugins() ) {
-                    const auto p = value.toMap();
-                    if ( p.value( "id" ) != id ) {
-                        continue;
-                    }
-                    auto config
-                        = QJsonObject::fromVariantMap( p.value( "configurationValues" ).toMap() );
-                    auto fields
-                        = QJsonArray::fromVariantList( p.value( "configuration" ).toList() );
-                    for ( int index = 0; index < fields.size(); ++index ) {
-                        auto field = fields[ index ].toObject();
-                        if ( field.value( "type" ) == "secret"
-                             && p.value( "configuredSecrets" )
-                                    .toMap()
-                                    .value( field.value( "id" ).toString() )
-                                    .toBool() ) {
-                            field[ "required" ] = false;
-                            field[ "keep_existing" ] = true;
-                            fields[ index ] = field;
-                        }
-                    }
-                    if ( !editValues( dialog, tr( "Configure Plugin" ), fields, &config ) ) {
-                        return;
-                    }
-                    r.pluginArguments = { { "configuration", config.toVariantMap() } };
-                }
-            }
-            report( executor_( r ) );
-        } );
-    }
-    auto* storage = addButton( tr( "Storage Limits…" ), "pluginStorageLimits" );
-    connect( storage, &QPushButton::clicked, dialog, [ this, dialog ] {
-        const auto status = manager_->storageStatus();
-        auto values = QJsonObject::fromVariantMap( status.value( "limits" ).toMap() );
-        auto fields = QJsonArray::fromVariantList( status.value( "fields" ).toList() );
+    auto* storage = addButton( secondRow, tr( "Storage Limits…" ), "pluginStorageLimits" );
+    connect( storage, &QPushButton::clicked, tab, [ this, tab ] {
+        if ( !manager_ ) {
+            return;
+        }
+        const auto storageState = manager_->storageStatus();
+        auto values = QJsonObject::fromVariantMap( storageState.value( "limits" ).toMap() );
+        auto fields = QJsonArray::fromVariantList( storageState.value( "fields" ).toList() );
         for ( int index = 0; index < fields.size(); ++index ) {
             auto field = fields[ index ].toObject();
             const auto id = field.value( "id" ).toString();
@@ -681,7 +868,7 @@ void PluginUiController::manageDialog()
                                    : tr( "Free-space reserve bytes (0: disabled)" );
             fields[ index ] = field;
         }
-        if ( editValues( dialog, tr( "Plugin Capture Storage" ), fields, &values ) ) {
+        if ( editValues( tab, tr( "Plugin Capture Storage" ), fields, &values ) ) {
             CommanderRequest request;
             request.action = CommanderAction::PluginManage;
             request.pluginOperation = "configure";
@@ -689,112 +876,20 @@ void PluginUiController::manageDialog()
             report( executor_( request ) );
         }
     } );
-    auto* captures = addButton( tr( "Open Captures Folder" ), "pluginCapturesFolder" );
-    connect( captures, &QPushButton::clicked, dialog, [ this ] {
-        QDesktopServices::openUrl(
-            QUrl::fromLocalFile( manager_->storageStatus().value( "directory" ).toString() ) );
+    auto* captures = addButton( secondRow, tr( "Open Captures Folder" ), "pluginCapturesFolder" );
+    connect( captures, &QPushButton::clicked, tab, [ this ] {
+        if ( manager_ ) {
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile( manager_->storageStatus().value( "directory" ).toString() ) );
+        }
     } );
-    auto* timer = new QTimer( dialog );
+    secondRow->addStretch( 1 );
+    auto* timer = new QTimer( tab );
     timer->setInterval( 1000 );
-    connect( timer, &QTimer::timeout, dialog, refresh );
+    connect( timer, &QTimer::timeout, tab, refresh );
     timer->start();
     refresh();
-    dialog->show();
-}
-
-void PluginUiController::browseDialog()
-{
-    auto* dialog = new QDialog( window_ );
-    dialog->setAttribute( Qt::WA_DeleteOnClose );
-    dialog->setObjectName( "pluginCatalogDialog" );
-    dialog->setWindowTitle( tr( "Browse Plugins" ) );
-    dialog->resize( 850, 400 );
-    auto* layout = new QVBoxLayout( dialog );
-    auto* url = new QLineEdit( manager_->catalogUrl(), dialog );
-    url->setObjectName( "pluginCatalogUrl" );
-    layout->addWidget( url );
-    auto* fetch = new QPushButton( tr( "Fetch Catalog" ), dialog );
-    fetch->setObjectName( "fetchPluginCatalog" );
-    layout->addWidget( fetch );
-    auto* table = new QTableWidget( 0, 3, dialog );
-    table->setObjectName( "pluginCatalogTable" );
-    table->setHorizontalHeaderLabels( { tr( "Plugin" ), tr( "Version" ), tr( "Description" ) } );
-    table->setSelectionBehavior( QAbstractItemView::SelectRows );
-    table->setEditTriggers( QAbstractItemView::NoEditTriggers );
-    table->horizontalHeader()->setSectionResizeMode( QHeaderView::Stretch );
-    layout->addWidget( table );
-    auto* status = new QLabel( dialog );
-    status->setWordWrap( true );
-    status->setObjectName( "pluginCatalogStatus" );
-    layout->addWidget( status );
-    auto* install = new QPushButton( tr( "Install / Update Selected" ), dialog );
-    install->setObjectName( "installCatalogPlugin" );
-    layout->addWidget( install );
-    auto currentJob = std::make_shared<QString>();
-    connect( fetch, &QPushButton::clicked, dialog, [ this, url, currentJob, status ] {
-        CommanderRequest r;
-        r.action = CommanderAction::PluginManage;
-        r.pluginOperation = "catalog";
-        r.pluginArguments = { { "url", url->text() } };
-        const auto result = executor_( r );
-        if ( !result.ok() ) {
-            status->setText( result.message );
-            return;
-        }
-        *currentJob = result.payload.value( "jobId" ).toString();
-        status->setText( tr( "Loading…" ) );
-    } );
-    connect( install, &QPushButton::clicked, dialog, [ this, table, currentJob, status ] {
-        if ( table->currentRow() < 0 ) {
-            return;
-        }
-        CommanderRequest r;
-        r.action = CommanderAction::PluginManage;
-        r.pluginOperation = "install";
-        r.pluginId = table->item( table->currentRow(), 0 )->data( Qt::UserRole ).toString();
-        r.pluginArguments
-            = { { "catalog_entry_id",
-                  table->item( table->currentRow(), 0 )->data( Qt::UserRole + 1 ).toString() } };
-        const auto result = executor_( r );
-        if ( !result.ok() ) {
-            status->setText( result.message );
-            return;
-        }
-        *currentJob = result.payload.value( "jobId" ).toString();
-    } );
-    auto* timer = new QTimer( dialog );
-    timer->setInterval( 200 );
-    connect( timer, &QTimer::timeout, dialog, [ this, table, status, currentJob ] {
-        if ( !manager_ || currentJob->isEmpty() ) {
-            return;
-        }
-        const auto j = manager_->job( *currentJob );
-        const auto state = j.payload.value( "state" ).toString();
-        status->setText( state + ": " + j.payload.value( "error" ).toString() );
-        if ( state == "completed" && j.payload.value( "action" ) == "catalog" ) {
-            const auto list = j.payload.value( "result" ).toMap().value( "plugins" ).toList();
-            table->setRowCount( static_cast<int>( list.size() ) );
-            int row = 0;
-            for ( const auto& item : list ) {
-                const auto p = item.toMap();
-                const QStringList texts{ p.value( "name", p.value( "id" ) ).toString(),
-                                         p.value( "version" ).toString(),
-                                         p.value( "description" ).toString() };
-                for ( int col = 0; col < 3; ++col ) {
-                    auto* cell = new QTableWidgetItem( texts[ col ] );
-                    cell->setData( Qt::UserRole, p.value( "id" ) );
-                    cell->setData( Qt::UserRole + 1, p.value( "entry_id" ) );
-                    table->setItem( row, col, cell );
-                }
-                ++row;
-            }
-        }
-        if ( state != "pending" && state != "running" && state != "cancelling" ) {
-            currentJob->clear();
-        }
-    } );
-    timer->start();
-    dialog->show();
+    return tab;
 }
 
 void PluginUiController::queuePanel( const QString& pluginId, const QJsonObject& definition,

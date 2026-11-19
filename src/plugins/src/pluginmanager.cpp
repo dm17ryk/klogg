@@ -1,4 +1,5 @@
 #include "pluginmanager.h"
+#include "klogg_version.h"
 #include "log.h"
 #include "pythonruntime.h"
 #include <QCoreApplication>
@@ -25,16 +26,13 @@ QString terminalError( const QString& text )
 {
     return text.isEmpty() ? QStringLiteral( "Plugin stopped." ) : text;
 }
-QString platformName()
+bool repositoryOperation( const QString& operation )
 {
-#ifdef Q_OS_WIN
-    return "windows";
-#elif defined( Q_OS_MACOS )
-    return "macos";
-#else
-    return "linux";
-#endif
+    return operation == "repositories" || operation == "repository_add"
+           || operation == "repository_update" || operation == "repository_remove"
+           || operation == "repository_move";
 }
+
 bool pending( const QString& state )
 {
     // `cancelling`: cancel was requested; progress, panels and the final answer still count.
@@ -94,12 +92,18 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     , dataRoot_( dataRoot.isEmpty() ? PluginRepository::defaultDataRoot() : dataRoot )
     , shippedRoot_( shippedRoot.isEmpty() ? PluginRepository::shippedRoot() : shippedRoot )
     , settings_( QDir( dataRoot_ ).filePath( "settings.ini" ), QSettings::IniFormat )
+    , repositories_( settings_ )
     , storage_( QDir( dataRoot_ ).filePath( "captures" ) )
     , networkAccess_( network ? network : &network_ )
     , instanceId_( QStringLiteral( "pid-%1" ).arg( QCoreApplication::applicationPid() ) )
+    , hostVersion_( QString( kloggVersion() ) )
 {
     QDir().mkpath( dataRoot_ );
     QDir().mkpath( QDir( dataRoot_ ).filePath( "captures" ) );
+    repositories_.migrate();
+    if ( !persistSettings().isEmpty() ) {
+        LOG_WARNING << "Plugin repositories could not be persisted.";
+    }
     auto limits = storage_.limits();
     for ( auto it = limits.begin(); it != limits.end(); ++it ) {
         bool valid = false;
@@ -150,14 +154,6 @@ QString PluginManager::configurationKey( const QString& id ) const
 {
     return "plugins/" + id + "/";
 }
-QString PluginManager::catalogUrl() const
-{
-    return settings_
-        .value( "catalogUrl",
-                "https://raw.githubusercontent.com/dm17ryk/klogg/master/plugins.json" )
-        .toString();
-}
-
 void PluginManager::discover()
 {
     std::map<QString, Manifest> found;
@@ -239,6 +235,8 @@ QVariantList PluginManager::plugins() const
         auto value = entry->manifest.json.toVariantMap();
         value[ "id" ] = id;
         value[ "directory" ] = entry->manifest.directory;
+        value[ "kind" ] = packageKind( entry->manifest.json );
+        value[ "source" ] = sourceInfo( id, *entry );
         value[ "enabled" ] = settings_.value( configurationKey( id ) + "enabled", false ).toBool();
         value[ "state" ] = entry->process ? entry->process->state() : "stopped";
         value[ "error" ] = !entry->manifest.error.isEmpty() ? entry->manifest.error
@@ -1138,37 +1136,39 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( shuttingDown_ ) {
         return { "CILogg is shutting down.", {} };
     }
+    if ( repositoryOperation( operation ) ) {
+        return manageRepositories( operation, options );
+    }
+    if ( operation == "catalog" ) {
+        return startCatalog( options );
+    }
     const auto installRoot = QDir( dataRoot_ ).filePath( "plugins" );
+    // A catalog install or update first resolves its entry, so a call that names only the
+    // entry still knows its plugin ID.
+    const bool fromCatalog
+        = ( operation == "install" && !options.contains( "path" ) ) || operation == "update";
+    QJsonObject package;
+    auto target = id;
+    if ( fromCatalog ) {
+        const auto selection = selectPackage( operation, id, options, &package );
+        if ( !selection.ok() ) {
+            return selection;
+        }
+        target = package.value( "id" ).toString();
+    }
     if ( packageOperation( operation ) ) {
         const bool unscopedInstall
-            = operation == "install" && options.contains( "path" ) && id.isEmpty();
+            = operation == "install" && options.contains( "path" ) && target.isEmpty();
         for ( const auto& [ jobId, j ] : jobs_ ) {
             Q_UNUSED( jobId );
             if ( !j.invocation && pending( j.state ) && packageOperation( j.action )
                  && ( unscopedInstall || ( j.action == "install" && j.pluginId.isEmpty() )
-                      || ( !id.isEmpty() && j.pluginId == id ) ) ) {
-                LOG_DEBUG << "Plugin management overlap rejected plugin=" << id.toStdString()
+                      || ( !target.isEmpty() && j.pluginId == target ) ) ) {
+                LOG_DEBUG << "Plugin management overlap rejected plugin=" << target.toStdString()
                           << " active_job=" << j.id.toStdString();
                 return { "A plugin management operation is already running.", {} };
             }
         }
-    }
-    if ( operation == "catalog" ) {
-        const auto url = options.value( "url", catalogUrl() ).toString();
-        if ( QUrl( url ).scheme() != "https" ) {
-            return { "Catalog requires HTTPS.", {} };
-        }
-        settings_.setValue( "catalogUrl", url );
-        const auto jobId = addJob( {}, "catalog", {}, true );
-        if ( jobId.isEmpty() ) {
-            return { "Too many jobs.", {} };
-        }
-        if ( !catalogJobId_.isEmpty() ) {
-            cancel( catalogJobId_ );
-        }
-        catalogJobId_ = jobId;
-        fetch( url, jobId );
-        return job( jobId );
     }
     if ( operation == "install" && options.contains( "path" ) ) {
         const auto jobId = addJob( id, "install", {}, true );
@@ -1178,29 +1178,19 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         install( options.value( "path" ).toString(), jobId, id );
         return job( jobId );
     }
-    if ( operation == "install" || operation == "update" ) {
-        QJsonObject package;
-        const auto selector = options.value( "catalog_entry_id" ).toString();
-        for ( const auto& value : catalog_ ) {
-            const auto candidate = value.toObject();
-            if ( candidate.value( "id" ) == id
-                 && ( selector.isEmpty() || candidate.value( "entry_id" ) == selector ) ) {
-                if ( !package.isEmpty()
-                     && package.value( "entry_id" ) != candidate.value( "entry_id" ) ) {
-                    return { "Multiple catalog entries match; supply catalog_entry_id.", {} };
-                }
-                package = candidate;
-            }
-        }
-        if ( package.isEmpty() ) {
-            return { "Plugin not in the loaded catalog for this platform.", {} };
-        }
-        const auto jobId = addJob( id, operation, {}, true );
+    if ( fromCatalog ) {
+        const auto jobId = addJob( target, operation,
+                                   { { "repository", package.value( "repository" ).toString() },
+                                     { "version", package.value( "version" ).toString() },
+                                     { "entryId", package.value( "entry_id" ).toString() } },
+                                   true );
         if ( jobId.isEmpty() ) {
             return { "Too many jobs.", {} };
         }
-        fetch( package.value( "url" ).toString(), jobId, package.value( "sha256" ).toString(),
-               package.value( "version" ).toString() );
+        LOG_INFO << "Plugin " << operation.toStdString() << " id=" << target.toStdString()
+                 << " version=" << package.value( "version" ).toString().toStdString()
+                 << " repository=" << package.value( "repository" ).toString().toStdString();
+        fetchPackage( package, jobId );
         return job( jobId );
     }
     if ( operation == "configure" && id.isEmpty() ) {
@@ -1238,6 +1228,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
                 return { error, {} };
             }
             settings_.setValue( configurationKey( id ) + "enabled", false );
+            repositories_.clearSource( id );
             entries_.erase( it );
             discover();
         }
@@ -1336,6 +1327,7 @@ void PluginManager::completeManagement( const QString& operation, const QString&
         error = PluginRepository::remove( id, QDir( dataRoot_ ).filePath( "plugins" ) );
         if ( error.isEmpty() ) {
             settings_.setValue( configurationKey( id ) + "enabled", false );
+            repositories_.clearSource( id );
             entries_.erase( entry );
             discover();
         }
@@ -1382,14 +1374,16 @@ void PluginManager::install( const QString& source, const QString& jobId, const 
                      return;
                  }
                  it->second.pluginId = staged.manifest.id;
-                 commitWhenStopped( staged, jobId );
+                 // A local folder or ZIP has no source repository.
+                 commitWhenStopped( staged, jobId, InstallSource{} );
              } );
     const auto root = QDir( dataRoot_ ).filePath( "plugins" );
     watcher->setFuture(
         QtConcurrent::run( [ source, root ] { return PluginRepository::stage( source, root ); } ) );
 }
 
-void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString& jobId )
+void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString& jobId,
+                                       const InstallSource& source )
 {
     const auto jobIt = jobs_.find( jobId );
     if ( shuttingDown_ || jobIt == jobs_.end() || jobIt->second.cancelRequested ) {
@@ -1402,149 +1396,34 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         if ( existing->second->process->state() != "stopping" ) {
             existing->second->process->stop();
         }
-        QTimer::singleShot( 50, this,
-                            [ this, staged, jobId ] { commitWhenStopped( staged, jobId ); } );
+        QTimer::singleShot( 50, this, [ this, staged, jobId, source ] {
+            commitWhenStopped( staged, jobId, source );
+        } );
         return;
     }
     const auto error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+    QVariantMap result{ { "pluginId", staged.manifest.id },
+                        { "version", staged.manifest.version },
+                        { "repository", source.repository } };
     if ( error.isEmpty() ) {
+        // The install source lives in the plugin settings, not in the plugin folder. The plugin
+        // is installed at this point, so a settings write failure is a warning, not a failure:
+        // retrying would only install the same package again.
+        repositories_.setSource( staged.manifest.id, source );
+        if ( !persistSettings().isEmpty() ) {
+            LOG_WARNING << "Plugin installed but its source record could not be saved id="
+                        << staged.manifest.id.toStdString();
+            result[ "warning" ]
+                = QStringLiteral( "The plugin was installed, but its source repository could not "
+                                  "be saved in the plugin settings." );
+        }
         entries_.erase( staged.manifest.id );
         discover();
     }
     else {
         QDir( staged.directory ).removeRecursively();
     }
-    finishJob( jobId, error,
-               { { "pluginId", staged.manifest.id }, { "version", staged.manifest.version } } );
-}
-
-void PluginManager::fetch( const QString& url, const QString& jobId, const QString& sha256,
-                           const QString& expectedVersion )
-{
-    const QUrl target( url );
-    if ( target.scheme() != "https" || !target.isValid() || target.host().isEmpty() ) {
-        finishJob( jobId, "Download requires HTTPS." );
-        return;
-    }
-    QNetworkRequest request( target );
-    request.setAttribute( QNetworkRequest::RedirectPolicyAttribute,
-                          QNetworkRequest::NoLessSafeRedirectPolicy );
-    auto* reply = networkAccess_->get( request );
-    auto bytes = std::make_shared<QByteArray>();
-    auto oversized = std::make_shared<bool>( false );
-    const auto limit = sha256.isEmpty() ? MaxMessageBytes : 128 * MaxMessageBytes;
-    connect( reply, &QNetworkReply::readyRead, this, [ reply, bytes, oversized, limit ] {
-        bytes->append( reply->read( limit + 1 - bytes->size() ) );
-        if ( bytes->size() > limit ) {
-            *oversized = true;
-            reply->abort();
-        }
-    } );
-    QTimer::singleShot( 30000, reply, [ reply ] {
-        if ( !reply->isFinished() ) {
-            reply->abort();
-        }
-    } );
-    connect( reply, &QNetworkReply::finished, this,
-             [ this, reply, bytes, oversized, jobId, sha256, expectedVersion ] {
-                 reply->deleteLater();
-                 const auto it = jobs_.find( jobId );
-                 if ( it == jobs_.end() || it->second.cancelRequested || shuttingDown_ ) {
-                     return;
-                 }
-                 if ( *oversized || reply->error() != QNetworkReply::NoError ) {
-                     finishJob( jobId, *oversized ? "Download exceeds size limit."
-                                                  : reply->errorString() );
-                     return;
-                 }
-                 if ( sha256.isEmpty() ) {
-                     loadCatalog( *bytes, jobId );
-                     return;
-                 }
-                 if ( QString::fromLatin1(
-                          QCryptographicHash::hash( *bytes, QCryptographicHash::Sha256 ).toHex() )
-                          .compare( sha256, Qt::CaseInsensitive )
-                      != 0 ) {
-                     finishJob( jobId, "Plugin package SHA-256 mismatch." );
-                     return;
-                 }
-                 auto package = std::make_shared<QTemporaryFile>(
-                     QDir( dataRoot_ ).filePath( ".download-XXXXXX.zip" ) );
-                 if ( !package->open() || package->write( *bytes ) != bytes->size()
-                      || !package->flush() ) {
-                     finishJob( jobId, "Cannot stage plugin download." );
-                     return;
-                 }
-                 const auto path = package->fileName();
-                 package->close();
-                 auto* watcher = new QFutureWatcher<StagedPlugin>( this );
-                 const auto id = it->second.pluginId;
-                 const auto root = QDir( dataRoot_ ).filePath( "plugins" );
-                 connect( watcher, &QFutureWatcher<StagedPlugin>::finished, this,
-                          [ this, watcher, package, jobId, id, expectedVersion ] {
-                              const auto staged = watcher->result();
-                              watcher->deleteLater();
-                              if ( !staged.error.isEmpty() || staged.manifest.id != id
-                                   || staged.manifest.version != expectedVersion ) {
-                                  if ( !staged.directory.isEmpty() ) {
-                                      QDir( staged.directory ).removeRecursively();
-                                  }
-                                  finishJob( jobId, staged.error.isEmpty()
-                                                        ? "Package identity differs from catalog."
-                                                        : staged.error );
-                                  return;
-                              }
-                              commitWhenStopped( staged, jobId );
-                          } );
-                 watcher->setFuture( QtConcurrent::run(
-                     [ path, root, package ] { return PluginRepository::stage( path, root ); } ) );
-             } );
-}
-
-void PluginManager::loadCatalog( const QByteArray& bytes, const QString& jobId )
-{
-    if ( jobId != catalogJobId_ ) {
-        LOG_DEBUG << "Plugin stale catalog discarded job=" << jobId.toStdString();
-        finishJob( jobId, "Catalog request was superseded." );
-        return;
-    }
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson( bytes, &error );
-    if ( error.error != QJsonParseError::NoError || !document.isObject()
-         || document.object().value( "schema_version" ).toInt() != 1
-         || !document.object().value( "plugins" ).isArray() ) {
-        finishJob( jobId, "Invalid plugin catalog." );
-        return;
-    }
-    QJsonArray selected;
-    const auto packages = document.object().value( "plugins" ).toArray();
-    if ( packages.size() > 1000 ) {
-        finishJob( jobId, "Too many catalog entries." );
-        return;
-    }
-    static const QRegularExpression shaPattern( "^[a-fA-F0-9]{64}$" );
-    for ( const auto& value : packages ) {
-        auto p = value.toObject();
-        if ( p.value( "os" ).toString() != platformName()
-             || p.value( "arch" ).toString() != QSysInfo::buildCpuArchitecture() ) {
-            continue;
-        }
-        if ( p.value( "protocol_version" ).toInt() != ProtocolVersion
-             || p.value( "id" ).toString().isEmpty() || p.value( "version" ).toString().isEmpty()
-             || QUrl( p.value( "url" ).toString() ).scheme() != "https"
-             || !shaPattern.match( p.value( "sha256" ).toString() ).hasMatch() ) {
-            finishJob( jobId, "Invalid catalog package or missing SHA-256." );
-            return;
-        }
-        p.remove( "entry_id" );
-        p[ "entry_id" ] = QString::fromLatin1(
-            QCryptographicHash::hash( QJsonDocument( p ).toJson( QJsonDocument::Compact ),
-                                      QCryptographicHash::Sha256 )
-                .toHex() );
-        selected.append( p );
-    }
-    catalog_ = selected;
-    finishJob( jobId, {}, { { "plugins", catalog_.toVariantList() } } );
+    finishJob( jobId, error, result );
 }
 
 // Plugin views and message boxes (docs/plugin-views.md).

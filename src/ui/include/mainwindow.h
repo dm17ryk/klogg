@@ -168,6 +168,11 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
 
     void reTranslateUI();
 
+    // The anchor of "Plugins: packing, repositories and updates" in DOCUMENTATION.md.
+    static constexpr const char* PluginRepositoriesGuideAnchor = "plugin-repositories-guide";
+    // Help > Documentation in its own window, scrolled to `anchor` when one is given.
+    void showDocumentation( const QString& anchor );
+
     static int installLanguage( QString lang );
 
   public Q_SLOTS:
@@ -559,6 +564,7 @@ class MainWindow : public QMainWindow, public PaneMenuHost {
     QAction* importPreviewsAction;
     QAction* importActionsAction;
     QAction* showDocumentationAction;
+    QAction* pluginRepositoriesGuideAction = nullptr;
     QAction* checkForUpdatesAction;
     bool manualUpdateRequested_ = false;
     QAction* aboutAction;
