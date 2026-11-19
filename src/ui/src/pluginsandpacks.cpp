@@ -2,6 +2,7 @@
 
 #include "log.h"
 #include <QComboBox>
+#include <algorithm>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
@@ -42,6 +43,7 @@ CommanderRequest manageRequest( const QString& operation, const QVariantMap& opt
     request.pluginOperation = operation;
     request.pluginId = pluginId;
     request.pluginArguments = options;
+    request.origin = CommanderOriginGui; // a sign-in from this window may prompt
     return request;
 }
 
@@ -84,37 +86,123 @@ QString lastCheckText( const QString& iso )
                           : tr( "Never" );
 }
 
-// The Add and Edit dialog. Editing shows the address read-only: pointing at another catalog
-// means adding a new repository (docs/plugin-repositories.md 3.1).
-bool editRepository( QWidget* parent, const QString& title, QString* name, QString* address,
-                     bool editing,
-                     const std::function<QString( const QString&, const QString& )>& apply )
+// Columns of the Repositories table (docs/plugin-repositories.md 3.3).
+enum RepositoryColumn {
+    PositionColumn,
+    EnabledColumn,
+    NameColumn,
+    AddressColumn,
+    SignInColumn,
+    StateColumn,
+    LastCheckColumn,
+    RepositoryColumnCount
+};
+
+struct RepositoryForm {
+    QString name;
+    QString address;
+    QString signIn = cilogg::plugins::SignInNone;
+    QString branch;
+    QString path;
+    QString credentialSource = cilogg::plugins::CredentialSourceGitCredentialManager;
+};
+
+QString signInText( const QVariantMap& repository )
 {
+    if ( repository.value( "signIn" ).toString() != cilogg::plugins::SignInAzureDevOps ) {
+        return tr( "None" );
+    }
+    return repository.value( "credentialSource" ).toString()
+                   == cilogg::plugins::CredentialSourcePersonalAccessToken
+               ? tr( "Azure DevOps (personal access token)" )
+               : tr( "Azure DevOps (Git Credential Manager)" );
+}
+
+void showWarning( QWidget* parent, const QString& title, const QString& text )
+{
+    QMessageBox box( QMessageBox::Warning, title, text, QMessageBox::Ok, parent );
+    box.setTextFormat( Qt::PlainText );
+    box.exec();
+}
+
+// The Add and Edit dialog. Editing shows the address, sign-in, branch and path read-only:
+// pointing at another catalog means adding a new repository (docs/plugin-repositories.md 3.1).
+bool editRepository( QWidget* parent, const QString& title, RepositoryForm* values, bool editing,
+                     const std::function<QString( const RepositoryForm& )>& apply )
+{
+    using namespace cilogg::plugins;
     QDialog dialog( parent );
     dialog.setObjectName( "pluginRepositoryDialog" );
     dialog.setWindowTitle( title );
     auto* layout = new QVBoxLayout( &dialog );
     auto* form = new QFormLayout;
     layout->addLayout( form );
-    auto* nameEdit = new QLineEdit( *name, &dialog );
+    auto* nameEdit = new QLineEdit( values->name, &dialog );
     nameEdit->setObjectName( "pluginRepositoryName" );
     nameEdit->setAccessibleName( tr( "Repository name" ) );
-    nameEdit->setMaxLength( cilogg::plugins::PluginRepositories::MaxNameLength );
+    nameEdit->setMaxLength( PluginRepositories::MaxNameLength );
     form->addRow( tr( "Name" ), nameEdit );
-    auto* addressEdit = new QLineEdit( *address, &dialog );
+    auto* signIn = new QComboBox( &dialog );
+    signIn->setObjectName( "pluginRepositorySignIn" );
+    signIn->setAccessibleName( tr( "Sign-in" ) );
+    signIn->addItem( tr( "None (public HTTPS address)" ), SignInNone );
+    signIn->addItem( tr( "Azure DevOps" ), SignInAzureDevOps );
+    signIn->setCurrentIndex( std::max( 0, signIn->findData( values->signIn ) ) );
+    signIn->setEnabled( !editing );
+    form->addRow( tr( "Sign-in" ), signIn );
+    auto* addressEdit = new QLineEdit( values->address, &dialog );
     addressEdit->setObjectName( "pluginRepositoryAddress" );
-    addressEdit->setAccessibleName( tr( "Address of plugins.json" ) );
-    addressEdit->setPlaceholderText( "https://example.com/plugins.json" );
     addressEdit->setReadOnly( editing );
     form->addRow( tr( "Address" ), addressEdit );
-    auto* note = new QLabel( editing ? tr( "The address of a repository cannot be changed. To use "
-                                           "another address, add a new repository and remove "
-                                           "this one." )
-                                     : tr( "The HTTPS address of the repository's plugins.json. "
-                                           "New repositories are added at the end of the list." ),
-                             &dialog );
+    auto* branchEdit = new QLineEdit( values->branch, &dialog );
+    branchEdit->setObjectName( "pluginRepositoryBranch" );
+    branchEdit->setAccessibleName( tr( "Catalog branch" ) );
+    branchEdit->setPlaceholderText( AzureDevOpsDefaultBranch );
+    branchEdit->setReadOnly( editing );
+    form->addRow( tr( "Branch" ), branchEdit );
+    auto* pathEdit = new QLineEdit( values->path, &dialog );
+    pathEdit->setObjectName( "pluginRepositoryPath" );
+    pathEdit->setAccessibleName( tr( "Catalog path" ) );
+    pathEdit->setPlaceholderText( AzureDevOpsDefaultPath );
+    pathEdit->setReadOnly( editing );
+    form->addRow( tr( "Path" ), pathEdit );
+    auto* source = new QComboBox( &dialog );
+    source->setObjectName( "pluginRepositoryCredentialSource" );
+    source->setAccessibleName( tr( "Credential source" ) );
+    source->addItem( tr( "Git Credential Manager" ), CredentialSourceGitCredentialManager );
+    source->addItem( tr( "Personal access token" ), CredentialSourcePersonalAccessToken );
+    source->setCurrentIndex( std::max( 0, source->findData( values->credentialSource ) ) );
+    form->addRow( tr( "Credential" ), source );
+    auto* note = new QLabel( &dialog );
     note->setWordWrap( true );
     layout->addWidget( note );
+    const auto updateFields = [ = ] {
+        const bool azure = signIn->currentData().toString() == SignInAzureDevOps;
+        for ( auto* field : std::initializer_list<QWidget*>{ branchEdit, pathEdit, source } ) {
+            field->setVisible( azure );
+            if ( auto* label = form->labelForField( field ) ) {
+                label->setVisible( azure );
+            }
+        }
+        addressEdit->setAccessibleName( azure ? tr( "Azure DevOps repository address" )
+                                              : tr( "Address of plugins.json" ) );
+        addressEdit->setPlaceholderText(
+            azure ? "https://dev.azure.com/<organization>/<project>/_git/<repository>"
+                  : "https://example.com/plugins.json" );
+        note->setText(
+            editing ? tr( "The address of a repository cannot be changed. To use another address, "
+                          "add a new repository and remove this one." )
+            : azure ? tr( "Paste the repository address or a link to plugins.json copied from the "
+                          "Azure DevOps web portal. Branch and path default to catalog and "
+                          "/plugins.json. CILogg signs in through the Git Credential Manager you "
+                          "use for Git, or with a personal access token with the Code (Read) "
+                          "scope." )
+                    : tr( "The HTTPS address of the repository's plugins.json. New repositories "
+                          "are added at the end of the list." ) );
+    };
+    QObject::connect( signIn, qOverload<int>( &QComboBox::currentIndexChanged ), &dialog,
+                      updateFields );
+    updateFields();
     auto* buttons
         = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog );
     buttons->button( QDialogButtonBox::Ok )->setObjectName( "pluginRepositoryAccept" );
@@ -122,19 +210,59 @@ bool editRepository( QWidget* parent, const QString& title, QString* name, QStri
     layout->addWidget( buttons );
     QObject::connect( buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject );
     QObject::connect( buttons, &QDialogButtonBox::accepted, &dialog, [ & ] {
-        const auto error = apply( nameEdit->text().trimmed(), addressEdit->text().trimmed() );
+        RepositoryForm entered;
+        entered.name = nameEdit->text().trimmed();
+        entered.address = addressEdit->text().trimmed();
+        entered.signIn = signIn->currentData().toString();
+        entered.branch = branchEdit->text().trimmed();
+        entered.path = pathEdit->text().trimmed();
+        entered.credentialSource = source->currentData().toString();
+        const auto error = apply( entered );
         if ( !error.isEmpty() ) {
-            QMessageBox box( QMessageBox::Warning, title, error, QMessageBox::Ok, &dialog );
-            box.setTextFormat( Qt::PlainText );
-            box.exec();
+            showWarning( &dialog, title, error );
             return;
         }
-        *name = nameEdit->text().trimmed();
-        *address = addressEdit->text().trimmed();
+        *values = entered;
         dialog.accept();
     } );
-    dialog.resize( 560, dialog.sizeHint().height() );
+    dialog.resize( 600, dialog.sizeHint().height() );
     return dialog.exec() == QDialog::Accepted;
+}
+
+// Asks for a personal access token in a password field; empty when cancelled.
+QString askToken( QWidget* parent, const QString& repositoryName )
+{
+    QDialog dialog( parent );
+    dialog.setObjectName( "pluginRepositoryTokenDialog" );
+    dialog.setWindowTitle( tr( "Sign In" ) );
+    auto* layout = new QVBoxLayout( &dialog );
+    auto* text = new QLabel(
+        tr( "Personal access token for \"%1\". Create one in Azure DevOps (User settings > "
+            "Personal access tokens) with the Code (Read) scope. CILogg keeps it in the "
+            "operating system credential store, never in its settings." )
+            .arg( repositoryName ),
+        &dialog );
+    text->setTextFormat( Qt::PlainText );
+    text->setWordWrap( true );
+    layout->addWidget( text );
+    auto* token = new QLineEdit( &dialog );
+    token->setObjectName( "pluginRepositoryToken" );
+    token->setAccessibleName( tr( "Personal access token" ) );
+    token->setEchoMode( QLineEdit::Password );
+    layout->addWidget( token );
+    auto* buttons
+        = new QDialogButtonBox( QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog );
+    buttons->button( QDialogButtonBox::Ok )->setObjectName( "pluginRepositoryTokenAccept" );
+    layout->addWidget( buttons );
+    QObject::connect( buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept );
+    QObject::connect( buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject );
+    dialog.resize( 520, dialog.sizeHint().height() );
+    if ( dialog.exec() != QDialog::Accepted ) {
+        return {};
+    }
+    const auto value = token->text().trimmed();
+    token->clear();
+    return value;
 }
 } // namespace
 
@@ -226,6 +354,9 @@ QString repositoryStateText( const QVariantMap& repository )
     }
     if ( state == QLatin1String( "failed" ) ) {
         return tr( "Failed: %1" ).arg( repository.value( "lastError" ).toString() );
+    }
+    if ( state == cilogg::plugins::SignInRequiredState ) {
+        return tr( "Sign-in needed" );
     }
     if ( state == QLatin1String( "loaded" ) ) {
         const auto count = repository.value( "pluginCount" ).toInt();
@@ -572,7 +703,7 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
     auto* layout = new QVBoxLayout( tab );
     auto* table = createTable( tab, "pluginRepositoriesTable",
                                { tr( "#" ), tr( "Enabled" ), tr( "Name" ), tr( "Address" ),
-                                 tr( "State" ), tr( "Last check" ) } );
+                                 tr( "Sign-in" ), tr( "State" ), tr( "Last check" ) } );
     table->setAccessibleName( tr( "Plugin repositories" ) );
     layout->addWidget( table );
     auto* note = new QLabel(
@@ -594,6 +725,10 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
     auto* remove = addButton( row, tab, tr( "Remove" ), "pluginRepositoryRemove" );
     auto* up = addButton( row, tab, tr( "Move Up" ), "pluginRepositoryUp" );
     auto* down = addButton( row, tab, tr( "Move Down" ), "pluginRepositoryDown" );
+    auto* signInButton = addButton( row, tab, tr( "Sign In…" ), "pluginRepositorySignIn" );
+    auto* signOutButton = addButton( row, tab, tr( "Sign Out" ), "pluginRepositorySignOut" );
+    signOutButton->setToolTip( tr( "Delete the stored personal access token. The Git Credential "
+                                   "Manager, which Git also uses, is not changed." ) );
     row->addStretch( 1 );
     auto* howTo = addButton( row, tab, tr( "How to…" ), "pluginRepositoriesHowTo" );
     howTo->setToolTip( tr( "How to pack a plugin, create a repository and use it" ) );
@@ -601,16 +736,20 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
 
     const auto selectedId = [ table ] {
         const auto current = table->currentRow();
-        return current >= 0 && table->item( current, 2 )
-                   ? table->item( current, 2 )->data( IdRole ).toString()
+        return current >= 0 && table->item( current, NameColumn )
+                   ? table->item( current, NameColumn )->data( IdRole ).toString()
                    : QString{};
     };
-    const auto updateButtons = [ table, up, down, edit, remove ] {
+    const auto updateButtons = [ table, up, down, edit, remove, signInButton, signOutButton ] {
         const auto current = table->currentRow();
         up->setEnabled( current > 0 );
         down->setEnabled( current >= 0 && current + 1 < table->rowCount() );
         edit->setEnabled( current >= 0 );
         remove->setEnabled( current >= 0 );
+        const auto* signInCell = current >= 0 ? table->item( current, SignInColumn ) : nullptr;
+        const bool azure = signInCell && signInCell->data( RepositoryRole ).toBool();
+        signInButton->setEnabled( azure );
+        signOutButton->setEnabled( azure );
     };
     const auto refresh = [ plugins, table, updateButtons ]( const QString& keep ) {
         if ( !plugins ) {
@@ -627,15 +766,24 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
                                      QString{},
                                      repository.value( "name" ).toString(),
                                      repository.value( "url" ).toString(),
+                                     signInText( repository ),
                                      repositoryStateText( repository ),
                                      lastCheckText( repository.value( "lastCheck" ).toString() ) };
+            const auto state = repository.value( "state" ).toString();
             for ( int column = 0; column < cells.size(); ++column ) {
                 auto* cell = new QTableWidgetItem( cells.at( column ) );
                 cell->setData( IdRole, id );
-                cell->setToolTip( column == 4 && repository.value( "state" ) == "failed"
+                cell->setToolTip( column == StateColumn
+                                          && ( state == "failed"
+                                               || state == cilogg::plugins::SignInRequiredState )
                                       ? repository.value( "lastError" ).toString()
                                       : cells.at( column ) );
-                if ( column == 1 ) {
+                if ( column == SignInColumn ) {
+                    cell->setData( RepositoryRole, repository.value( "signIn" )
+                                                       == cilogg::plugins::SignInAzureDevOps );
+                    cell->setData( EntryRole, repository.value( "credentialSource" ) );
+                }
+                if ( column == EnabledColumn ) {
                     cell->setFlags( Qt::ItemIsEnabled | Qt::ItemIsSelectable
                                     | Qt::ItemIsUserCheckable );
                     cell->setCheckState( repository.value( "enabled" ).toBool() ? Qt::Checked
@@ -668,7 +816,7 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
     QObject::connect( table, &QTableWidget::itemSelectionChanged, tab, updateButtons );
     QObject::connect( table, &QTableWidget::itemChanged, tab,
                       [ tab, run, selectedId ]( QTableWidgetItem* item ) {
-                          if ( item->column() != 1 ) {
+                          if ( item->column() != EnabledColumn ) {
                               return;
                           }
                           const auto id = item->data( IdRole ).toString();
@@ -681,54 +829,179 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
                       } );
     QObject::connect( manager, &cilogg::plugins::PluginManager::changed, tab,
                       [ refresh, selectedId ] { refresh( selectedId() ); } );
-    QObject::connect( add, &QPushButton::clicked, tab, [ tab, executor, run ] {
-        QString name;
-        QString address;
+    const auto recordOf = [ plugins ]( const QString& id ) {
+        if ( plugins ) {
+            for ( const auto& value : plugins->repositories() ) {
+                if ( value.toMap().value( "id" ) == id ) {
+                    return value.toMap();
+                }
+            }
+        }
+        return QVariantMap{};
+    };
+    // Sign In (design 3.5): the Git Credential Manager may show its own window, because this
+    // request comes from the GUI; a personal access token is typed into a password field.
+    const auto startSignIn = [ tab, plugins, executor, status, refresh ](
+                                 const QString& id, const QString& name, const QString& source,
+                                 std::function<void( bool )> finished ) {
+        QVariantMap options{ { "repository", id }, { "method", source } };
+        if ( source == cilogg::plugins::CredentialSourcePersonalAccessToken ) {
+            const auto token = askToken( tab, name );
+            if ( token.isEmpty() ) {
+                if ( finished ) {
+                    finished( false );
+                }
+                return;
+            }
+            options.insert( "token", token );
+        }
+        status->setText( tr( "Signing in to \"%1\"…" ).arg( name ) );
+        const auto result = executor( manageRequest( "repository_sign_in", options ) );
+        if ( !result.ok() ) {
+            status->setText( result.message );
+            if ( finished ) {
+                finished( false );
+            }
+            return;
+        }
+        followJob( tab, plugins, result.payload.value( "jobId" ).toString(),
+                   [ status, refresh, id, name, finished ]( const QVariantMap& job ) {
+                       const auto outcome = job.value( "result" ).toMap();
+                       const bool signedIn = job.value( "state" ) == "completed"
+                                             && outcome.value( "signedIn" ).toBool();
+                       if ( signedIn ) {
+                           status->setText(
+                               outcome.value( "sessionOnly" ).toBool()
+                                   ? tr( "Signed in to \"%1\". No credential store is available: "
+                                         "the token is kept until CILogg exits." )
+                                         .arg( name )
+                                   : tr( "Signed in to \"%1\"." ).arg( name ) );
+                       }
+                       else {
+                           const auto error = job.value( "error" ).toString();
+                           status->setText( tr( "Signing in to \"%1\" did not work: %2" )
+                                                .arg( name, error.isEmpty()
+                                                                ? outcome.value( "error" ).toString()
+                                                                : error ) );
+                       }
+                       refresh( id );
+                       if ( finished ) {
+                           finished( signedIn );
+                       }
+                   } );
+    };
+    QObject::connect( add, &QPushButton::clicked, tab, [ tab, executor, run, startSignIn ] {
+        RepositoryForm form;
         QString added;
         editRepository(
-            tab, tr( "Add Repository" ), &name, &address, false,
-            [ executor, &added ]( const QString& newName, const QString& url ) {
-                const auto result = executor(
-                    manageRequest( "repository_add", { { "name", newName }, { "url", url } } ) );
+            tab, tr( "Add Repository" ), &form, false,
+            [ executor, &added ]( const RepositoryForm& entered ) {
+                QVariantMap options{ { "name", entered.name }, { "url", entered.address } };
+                if ( entered.signIn == cilogg::plugins::SignInAzureDevOps ) {
+                    options.insert( "sign_in", entered.signIn );
+                    options.insert( "credential_source", entered.credentialSource );
+                    if ( !entered.branch.isEmpty() ) {
+                        options.insert( "branch", entered.branch );
+                    }
+                    if ( !entered.path.isEmpty() ) {
+                        options.insert( "path", entered.path );
+                    }
+                }
+                const auto result = executor( manageRequest( "repository_add", options ) );
                 if ( result.ok() ) {
                     added = result.payload.value( "repository" ).toMap().value( "id" ).toString();
                 }
                 return result.ok() ? QString{} : result.message;
             } );
-        if ( !added.isEmpty() ) {
-            run( "repositories", {}, added );
+        if ( added.isEmpty() ) {
+            return;
         }
+        run( "repositories", {}, added );
+        if ( form.signIn != cilogg::plugins::SignInAzureDevOps ) {
+            return;
+        }
+        // Adding an Azure DevOps repository tests the address and the sign-in (design 3.3).
+        startSignIn( added, form.name, form.credentialSource,
+                     [ tab, run, added, name = form.name ]( bool signedIn ) {
+                         if ( !signedIn
+                              && !confirm( tab, tr( "Add Repository" ),
+                                           tr( "Signing in to \"%1\" did not work. Keep the "
+                                               "repository and sign in later?" )
+                                               .arg( name ) ) ) {
+                             run( "repository_remove", { { "repository", added } }, {} );
+                         }
+                     } );
     } );
-    QObject::connect(
-        edit, &QPushButton::clicked, tab, [ tab, plugins, executor, run, selectedId ] {
-            const auto id = selectedId();
-            if ( id.isEmpty() || !plugins ) {
-                return;
-            }
-            QString name;
-            QString address;
-            for ( const auto& value : plugins->repositories() ) {
-                if ( value.toMap().value( "id" ) == id ) {
-                    name = value.toMap().value( "name" ).toString();
-                    address = value.toMap().value( "url" ).toString();
-                }
-            }
-            if ( editRepository( tab, tr( "Edit Repository" ), &name, &address, true,
-                                 [ executor, id ]( const QString& newName, const QString& ) {
-                                     const auto result = executor( manageRequest(
-                                         "repository_update",
-                                         { { "repository", id }, { "name", newName } } ) );
-                                     return result.ok() ? QString{} : result.message;
-                                 } ) ) {
-                run( "repositories", {}, id );
-            }
-        } );
+    QObject::connect( edit, &QPushButton::clicked, tab,
+                      [ tab, executor, run, selectedId, recordOf ] {
+                          const auto id = selectedId();
+                          const auto record = recordOf( id );
+                          if ( record.isEmpty() ) {
+                              return;
+                          }
+                          RepositoryForm form;
+                          form.name = record.value( "name" ).toString();
+                          form.address = record.value( "url" ).toString();
+                          form.signIn = record.value( "signIn" ).toString();
+                          form.branch = record.value( "branch" ).toString();
+                          form.path = record.value( "path" ).toString();
+                          form.credentialSource = record.value( "credentialSource" ).toString();
+                          const auto previousSource = form.credentialSource;
+                          if ( editRepository(
+                                   tab, tr( "Edit Repository" ), &form, true,
+                                   [ executor, id, previousSource ]( const RepositoryForm& entered ) {
+                                       QVariantMap options{ { "repository", id },
+                                                            { "name", entered.name } };
+                                       if ( entered.signIn == cilogg::plugins::SignInAzureDevOps
+                                            && entered.credentialSource != previousSource ) {
+                                           options.insert( "credential_source",
+                                                           entered.credentialSource );
+                                       }
+                                       const auto result = executor(
+                                           manageRequest( "repository_update", options ) );
+                                       return result.ok() ? QString{} : result.message;
+                                   } ) ) {
+                              run( "repositories", {}, id );
+                          }
+                      } );
+    QObject::connect( signInButton, &QPushButton::clicked, tab,
+                      [ selectedId, recordOf, startSignIn ] {
+                          const auto record = recordOf( selectedId() );
+                          if ( record.value( "signIn" ) == cilogg::plugins::SignInAzureDevOps ) {
+                              startSignIn( record.value( "id" ).toString(),
+                                           record.value( "name" ).toString(),
+                                           record.value( "credentialSource" ).toString(), {} );
+                          }
+                      } );
+    QObject::connect( signOutButton, &QPushButton::clicked, tab,
+                      [ tab, plugins, executor, status, refresh, selectedId, recordOf ] {
+                          const auto record = recordOf( selectedId() );
+                          if ( record.value( "signIn" ) != cilogg::plugins::SignInAzureDevOps ) {
+                              return;
+                          }
+                          const auto id = record.value( "id" ).toString();
+                          const auto name = record.value( "name" ).toString();
+                          const auto result = executor(
+                              manageRequest( "repository_sign_out", { { "repository", id } } ) );
+                          if ( !result.ok() ) {
+                              status->setText( result.message );
+                              return;
+                          }
+                          followJob( tab, plugins, result.payload.value( "jobId" ).toString(),
+                                     [ status, refresh, id, name ]( const QVariantMap& job ) {
+                                         status->setText(
+                                             job.value( "state" ) == "completed"
+                                                 ? tr( "Signed out of \"%1\"." ).arg( name )
+                                                 : job.value( "error" ).toString() );
+                                         refresh( id );
+                                     } );
+                      } );
     QObject::connect( remove, &QPushButton::clicked, tab, [ tab, table, run, selectedId ] {
         const auto id = selectedId();
         if ( id.isEmpty() ) {
             return;
         }
-        const auto name = table->item( table->currentRow(), 2 )->text();
+        const auto name = table->item( table->currentRow(), NameColumn )->text();
         if ( confirm( tab, tr( "Remove Repository" ),
                       tr( "Remove the repository \"%1\"? Plugins installed from it stay "
                           "installed and get no updates until it is added again or their source "

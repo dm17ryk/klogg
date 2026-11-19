@@ -264,10 +264,16 @@ TEST_CASE( "Repository IDs are unique and never reused, and the address cannot b
     REQUIRE_FALSE( add( "", "https://example.test/x.json" ).ok() );
     REQUIRE( manager
                  .manage( "repository_add", {},
-                          { { "name", "Azure" },
-                            { "url", "https://dev.azure.com/org/project/_git/repo" },
-                            { "sign_in", "azure-devops" } } )
-                 .error.contains( "Azure DevOps" ) );
+                          { { "name", "Other" },
+                            { "url", "https://example.test/other.json" },
+                            { "sign_in", "github" } } )
+                 .error.contains( "sign_in must be none or azure-devops" ) );
+    REQUIRE( manager
+                 .manage( "repository_add", {},
+                          { { "name", "Branch" },
+                            { "url", "https://example.test/branch.json" },
+                            { "branch", "main" } } )
+                 .error.contains( "only to Azure DevOps" ) );
     REQUIRE( manager.manage( "repository_remove", {}, { { "repository", "team" } } ).ok() );
     // A removed ID is never given to a new repository.
     REQUIRE( add( "Team", "https://example.test/third/plugins.json" )

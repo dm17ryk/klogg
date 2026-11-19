@@ -156,6 +156,8 @@ public:
                           << arguments.value( 0 ) << "timeout_ms" << timeout;
         auto environment = QProcessEnvironment::systemEnvironment();
         environment.insert( "QT_QPA_PLATFORM", "offscreen" );
+        // The CLI reports its requests as coming from MCP: no sign-in prompt, no token.
+        environment.insert( "CILOGG_COMMANDER_ORIGIN", "mcp" );
         process.setProcessEnvironment( environment );
         process.start( path, arguments );
         timer.start( timeout );

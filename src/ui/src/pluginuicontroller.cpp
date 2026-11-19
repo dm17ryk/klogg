@@ -739,6 +739,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         // Load the source repository's catalog first, then update from it.
         CommanderRequest catalog;
         catalog.action = CommanderAction::PluginManage;
+        catalog.origin = CommanderOriginGui;
         catalog.pluginOperation = "catalog";
         catalog.pluginArguments = { { "repository", source.value( "repository" ) } };
         const auto started = executor_( catalog );
@@ -761,6 +762,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 }
                 CommanderRequest request;
                 request.action = CommanderAction::PluginManage;
+                request.origin = CommanderOriginGui;
                 request.pluginOperation = "update";
                 request.pluginId = id;
                 const auto result = self->executor_( request );
@@ -799,6 +801,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 }
                 CommanderRequest r;
                 r.action = CommanderAction::PluginManage;
+                r.origin = CommanderOriginGui;
                 r.pluginId = id;
                 r.pluginOperation = managed;
                 if ( managed == "configure" ) {
@@ -845,6 +848,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
             if ( !path.isEmpty() ) {
                 CommanderRequest r;
                 r.action = CommanderAction::PluginManage;
+                r.origin = CommanderOriginGui;
                 r.pluginOperation = "install";
                 r.pluginArguments = { { "path", path } };
                 report( executor_( r ) );
@@ -871,6 +875,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         if ( editValues( tab, tr( "Plugin Capture Storage" ), fields, &values ) ) {
             CommanderRequest request;
             request.action = CommanderAction::PluginManage;
+            request.origin = CommanderOriginGui;
             request.pluginOperation = "configure";
             request.pluginArguments = { { "storage_limits", values.toVariantMap() } };
             report( executor_( request ) );

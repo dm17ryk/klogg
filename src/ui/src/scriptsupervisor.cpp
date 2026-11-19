@@ -1489,11 +1489,12 @@ void ScriptSupervisor::handleRpcMessage( ScriptRun* run, const QVariantMap& mess
     }
 
     QString errorMessage;
-    const auto request = commanderRequestFromVariantMap( params, &errorMessage );
+    auto request = commanderRequestFromVariantMap( params, &errorMessage );
     if ( !request ) {
         sendRpcMessage( run, rpcErrorEnvelope( requestId, errorMessage ) );
         return;
     }
+    request->origin = CommanderOriginPython; // set by this transport only
 
     const auto result = commanderExecutor_( *request );
     sendRpcMessage( run, rpcResultEnvelope( requestId, result ) );

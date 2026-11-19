@@ -210,7 +210,20 @@ struct CommanderRequest {
     CommanderComSettings comSettings;
     QVariantMap definitionPayload;
     QVariantMap actionParameters;
+    // Who sent the request: gui, cli, mcp, python or scenario (docs/plugin-repositories.md 3.6).
+    // Set by the transport, never by a payload; empty counts as an automation origin. Only gui
+    // may show a sign-in window, and only gui and cli may submit a personal access token.
+    QString origin;
 };
+
+inline const QString CommanderOriginGui = QStringLiteral( "gui" );
+inline const QString CommanderOriginCli = QStringLiteral( "cli" );
+inline const QString CommanderOriginMcp = QStringLiteral( "mcp" );
+inline const QString CommanderOriginPython = QStringLiteral( "python" );
+inline const QString CommanderOriginScenario = QStringLiteral( "scenario" );
+// The origin a CLI process reports: cli, or mcp when native MCP started it (the MCP runtime sets
+// CILOGG_COMMANDER_ORIGIN=mcp). Never gui.
+QString commanderCliOrigin();
 
 struct CommanderResult {
     CommanderResultCode code = CommanderResultCode::Success;

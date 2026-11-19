@@ -40,7 +40,11 @@ QJsonObject parseCommandHelp( const QString& text )
             auto flags = flag.globalMatch( match.captured( 1 ) );
             while ( flags.hasNext() ) {
                 const auto name = flags.next().captured( 1 );
-                if ( QStringList{ "action", "help", "help-all", "version" }.contains( name ) ) {
+                // An MCP client cannot submit a personal access token
+                // (docs/plugin-repositories.md 3.6).
+                if ( QStringList{ "action", "help", "help-all", "version", "token-file",
+                                  "token-stdin" }
+                         .contains( name ) ) {
                     continue;
                 }
                 auto key = name;

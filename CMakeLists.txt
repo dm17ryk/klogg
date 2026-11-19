@@ -11,6 +11,11 @@ project(
   LANGUAGES C CXX ASM
 )
 
+# QtKeychain's macOS backend (3rdparty, plugin repository tokens) is Objective-C++.
+if(APPLE)
+  enable_language(OBJCXX)
+endif()
+
 set(PROJECT_HOMEPAGE_URL "https://github.com/dm17ryk/klogg")
 set(PRODUCT_DISPLAY_NAME "CILogg")
 set(PRODUCT_EXECUTABLE_NAME "cilogg")

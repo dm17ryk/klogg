@@ -331,11 +331,16 @@ private:
             "  get_plugins [--pretty]\n"
             "  plugin_manage --plugin-operation "
             "<install|remove|enable|disable|configure|restart|catalog|update|repositories|"
-            "repository_add|repository_update|repository_remove|repository_move> "
+            "repository_add|repository_update|repository_remove|repository_move|"
+            "repository_sign_in|repository_sign_out> "
             "[--plugin-id <id>] [--json-file <options.json>]\n"
-            "    Repositories: repository_add {\"name\",\"url\"}; repository_update "
-            "{\"repository\",\"name\"|\"enabled\"}; repository_remove {\"repository\"}; "
-            "repository_move {\"repository\",\"position\"|\"direction\":\"up|down\"}; catalog "
+            "    Repositories: repository_add {\"name\",\"url\"[,\"sign_in\":\"azure-devops\","
+            "\"branch\",\"path\",\"credential_source\"]}; repository_update "
+            "{\"repository\",\"name\"|\"enabled\"|\"credential_source\"}; repository_remove "
+            "{\"repository\"}; repository_move {\"repository\",\"position\"|\"direction\":"
+            "\"up|down\"}; repository_sign_in {\"repository\",\"method\":"
+            "\"git-credential-manager|personal-access-token\"} [--token-file <path>|"
+            "--token-stdin]; repository_sign_out {\"repository\"}; catalog "
             "[{\"repository\"}]; install/update [{\"catalog_entry_id\",\"switch_source\"}].\n"
             "  invoke_plugin --plugin-id <id> --plugin-action <action> [--json-file "
             "<arguments.json>] [--source <selection> | tab selector]\n"
@@ -1660,6 +1665,13 @@ private:
         parser.addOption( QCommandLineOption( "plugin-operation", "Plugin management operation.", "operation" ) );
         parser.addOption( QCommandLineOption( "plugin-action", "Plugin action identifier.", "action" ) );
         parser.addOption( QCommandLineOption( "plugin-job-id", "Plugin job identifier.", "id" ) );
+        // A personal access token never on the command line, where the shell history and the
+        // process list would keep it (docs/plugin-repositories.md 3.6).
+        parser.addOption( QCommandLineOption(
+            "token-file", "repository_sign_in: read the personal access token from this file.",
+            "path" ) );
+        parser.addOption( QCommandLineOption(
+            "token-stdin", "repository_sign_in: read the personal access token from standard input." ) );
         parser.addOption( QCommandLineOption( "analysis-json", "Analysis JSON object: pattern, options, scope, text and limits.", "json" ) );
         parser.addOption( QCommandLineOption( "job-id", "Analysis job identifier.", "id" ) );
         parser.addOption( QCommandLineOption( "cursor", "Opaque analysis result continuation cursor.", "cursor" ) );
@@ -1762,6 +1774,7 @@ private:
         CommanderRequest request;
         result.require_running = parser.isSet( requireRunningOption );
         request.action = *action;
+        request.origin = commanderCliOrigin();
         request.followFile = parser.isSet( followOption );
         request.prettyOutput = parser.isSet( prettyOption );
         request.runSearch = parser.isSet( searchOption );
@@ -2167,6 +2180,52 @@ private:
                     return result;
                 }
                 request.pluginArguments = pluginDocument.object().toVariantMap();
+            }
+            if ( request.pluginArguments.contains( "token" ) ) {
+                result.output_message = formatParserError(
+                    parser, "A personal access token is read only with --token-file or --token-stdin." );
+                return result;
+            }
+            if ( parser.isSet( "token-file" ) || parser.isSet( "token-stdin" ) ) {
+                if ( *action != CommanderAction::PluginManage
+                     || request.pluginOperation != "repository_sign_in" ) {
+                    result.output_message = formatParserError(
+                        parser, "--token-file and --token-stdin apply only to plugin_manage "
+                                "--plugin-operation repository_sign_in." );
+                    return result;
+                }
+                if ( parser.isSet( "token-file" ) && parser.isSet( "token-stdin" ) ) {
+                    result.output_message = formatParserError(
+                        parser, "Give either --token-file or --token-stdin." );
+                    return result;
+                }
+                constexpr qint64 MaxTokenBytes = 4096;
+                QByteArray token;
+                if ( parser.isSet( "token-file" ) ) {
+                    QFile tokenFile( parser.value( "token-file" ) );
+                    if ( !tokenFile.open( QIODevice::ReadOnly ) || tokenFile.size() > MaxTokenBytes ) {
+                        result.output_message
+                            = formatParserError( parser, "Cannot read the token file." );
+                        return result;
+                    }
+                    token = tokenFile.read( MaxTokenBytes );
+                }
+                else {
+                    QFile input;
+                    if ( input.open( stdin, QIODevice::ReadOnly ) ) {
+                        token = input.readLine( MaxTokenBytes );
+                    }
+                }
+                token = token.trimmed();
+                if ( token.isEmpty() ) {
+                    result.output_message
+                        = formatParserError( parser, "The personal access token is empty." );
+                    return result;
+                }
+                request.pluginArguments.insert( "token", QString::fromUtf8( token ) );
+                for ( auto& byte : token ) {
+                    byte = 0;
+                }
             }
             if ( *action == CommanderAction::InvokePlugin
                  && !validateTabSelector( "invoke_plugin", false ) ) { return result; }

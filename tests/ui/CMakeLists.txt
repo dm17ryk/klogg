@@ -42,8 +42,10 @@ target_compile_definitions(cilogg_itests PRIVATE
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     ANALYSIS_WORKER_PATH="$<TARGET_FILE:klogg>"
     ANALYSIS_FIXTURE_PATH="$<TARGET_FILE:analysis_worker_fixture>"
-    PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
-add_dependencies(cilogg_itests klogg analysis_worker_fixture preview_decoder_fixture plugin_fixture)
+    PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>"
+    FAKE_GIT_PATH="$<TARGET_FILE:fake_git>")
+add_dependencies(cilogg_itests klogg analysis_worker_fixture preview_decoder_fixture plugin_fixture
+    fake_git)
 
 target_link_libraries(cilogg_itests klogg_ui klogg_utils Catch2 Qt${QT_VERSION_MAJOR}::Test test_utils)
 set_target_properties(

@@ -30,7 +30,8 @@ bool repositoryOperation( const QString& operation )
 {
     return operation == "repositories" || operation == "repository_add"
            || operation == "repository_update" || operation == "repository_remove"
-           || operation == "repository_move";
+           || operation == "repository_move" || operation == "repository_sign_in"
+           || operation == "repository_sign_out";
 }
 
 bool pending( const QString& state )
@@ -1128,19 +1129,30 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
     }
 }
 
-Result PluginManager::manage( const QString& operation, const QString& id,
-                              const QVariantMap& options )
+void PluginManager::setPatStore( std::unique_ptr<PatStore> store )
 {
-    LOG_DEBUG << "Plugin manage id=" << id.toStdString()
-              << " operation=" << operation.toStdString();
+    if ( store ) {
+        patStore_ = std::move( store );
+    }
+}
+
+Result PluginManager::manage( const QString& operation, const QString& id,
+                              const QVariantMap& options, const QString& origin )
+{
+    // Option values are never logged: a sign-in request carries a token.
+    LOG_DEBUG << "Plugin manage id=" << id.toStdString() << " operation=" << operation.toStdString()
+              << " origin=" << origin.toStdString();
     if ( shuttingDown_ ) {
         return { "CILogg is shutting down.", {} };
     }
+    if ( options.contains( "token" ) && operation != "repository_sign_in" ) {
+        return { "token applies only to repository_sign_in.", {} };
+    }
     if ( repositoryOperation( operation ) ) {
-        return manageRepositories( operation, options );
+        return manageRepositories( operation, options, origin );
     }
     if ( operation == "catalog" ) {
-        return startCatalog( options );
+        return startCatalog( options, origin );
     }
     const auto installRoot = QDir( dataRoot_ ).filePath( "plugins" );
     // A catalog install or update first resolves its entry, so a call that names only the
@@ -1190,7 +1202,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         LOG_INFO << "Plugin " << operation.toStdString() << " id=" << target.toStdString()
                  << " version=" << package.value( "version" ).toString().toStdString()
                  << " repository=" << package.value( "repository" ).toString().toStdString();
-        fetchPackage( package, jobId );
+        fetchPackage( package, jobId, origin == RequestOriginGui );
         return job( jobId );
     }
     if ( operation == "configure" && id.isEmpty() ) {
