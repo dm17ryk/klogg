@@ -542,8 +542,8 @@ void PluginManager::fetchPackage( const QJsonObject& entry, const QString& jobId
                         GitCredentialHelper::reject(
                             gitExecutable(), *credential, this,
                             [ this, entry, jobId, interactive ]( GitCredentialHelper::Outcome ) {
-                                const auto it = jobs_.find( jobId );
-                                if ( it == jobs_.end() || it->second.cancelRequested
+                                const auto running = jobs_.find( jobId );
+                                if ( running == jobs_.end() || running->second.cancelRequested
                                      || shuttingDown_ ) {
                                     return;
                                 }
