@@ -65,7 +65,17 @@ class UiGallery(unittest.TestCase):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
         menus = {menu["id"]: menu for menu in manifest["menus"]}
         self.assertEqual({menu_id: menu["location"] for menu_id, menu in menus.items()},
-                         {"main": "plugins", "lines": "log", "tabs": "tab"})
+                         {"main": "plugins", "lines": "log", "tabs": "tab",
+                          "board_actions": "element"})
+        # E17d: the context menu of the boards table.
+        board_items = menus["board_actions"]["items"]
+        self.assertEqual([entry.get("id", entry.get("type")) for entry in board_items],
+                         ["restart", "forget", "separator", "restore"])
+        self.assertEqual([(entry["title"], entry["event"], entry.get("when"))
+                          for entry in board_items if "id" in entry],
+                         [("Restart Board", True, {"selection": "any"}),
+                          ("Remove from List", True, {"selection": "any"}),
+                          ("Restore Removed Boards", True, None)])
         self.assertEqual(menus["main"]["title"], "UI Gallery")
         entries = {entry["id"]: entry for entry in menus["main"]["items"] if "id" in entry}
         self.assertEqual([entry.get("type", "item") for entry in menus["main"]["items"]],
@@ -380,6 +390,167 @@ class UiGallery(unittest.TestCase):
         self.assertEqual(host.notifications("menu/update"), [])
         self.assertEqual(host.errors, [])
         self.assertEqual(host.stderr, "")
+
+    def table_status(self, patch):
+        """The text a patch sets on the table status label (always its last entry)."""
+        self.assertEqual(patch[-1]["id"], "table_status")
+        return patch[-1]["set"]["text"]
+
+    def test_rich_table_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        tree = self.open_gallery()
+        boards = tree["boards"]
+        self.assertEqual({key: boards[key] for key in ("selection", "export", "reorderable",
+                                                       "context_menu")},
+                         {"selection": "multi", "export": True, "reorderable": True,
+                          "context_menu": "board_actions"})
+        self.assertEqual([column["id"] for column in boards["columns"]], ["name", "state", "uptime"])
+        self.assertEqual(boards["columns"][0], {"id": "name", "title": "Board", "width": 120,
+                                                "tooltip": "The board name", "check": True,
+                                                "min_width": 80, "icon": "builtin:device"})
+        self.assertEqual(boards["columns"][2]["align"], "right")
+        bar_tooltip = "The bar compares the uptime with the longest one."
+        self.assertEqual(boards["rows"][0]["cells"], [
+            "Board 1", {"text": "connected", "icon": "status:ok"},
+            {"text": "12 min", "progress": 12 / 340, "tooltip": bar_tooltip}])
+        self.assertEqual(boards["rows"][2]["cells"][2], {"text": "0 min", "progress": 0.0,
+                                                         "tone": "muted", "tooltip": bar_tooltip})
+        self.assertEqual([row["checked"] for row in boards["rows"]], [False, False, False])
+        self.assertEqual(tree["table_status"]["text"],
+                         "Double-click, check, drag or right-click a board: the event shows here.")
+
+        # Table events: a selection changes nothing; the others show in the status label.
+        host.select_rows("gallery", "boards", ["b1"], current="b1")
+        host.activate_cell("gallery", "boards", "b2", "state")
+        self.assertEqual(self.next_patch(), [{"id": "table_status",
+                                              "set": {"text": "activated b2 state"}}])
+        host.check_rows("gallery", "boards", ["b1", "b3"], True)
+        self.assertEqual(self.next_patch(), [{"id": "table_status",
+                                              "set": {"text": "checked b1,b3 true"}}])
+        host.check_rows("gallery", "boards", "b3", False)
+        self.assertEqual(self.table_status(self.next_patch()), "checked b3 false")
+
+        # moved: the plugin replaces the rows in the new order and selects the moved rows.
+        host.move_rows("gallery", "boards", ["b3"], before="b1")
+        patch = self.next_patch()
+        self.assertEqual([(row["id"], row["checked"]) for row in patch[0]["replace_rows"]],
+                         [("b3", False), ("b1", True), ("b2", False)])
+        self.assertEqual(patch[1:], [
+            {"id": "boards", "select": ["b3"], "current": "b3", "scroll_to": "b3"},
+            {"id": "table_status", "set": {"text": "moved b3 before b1"}}])
+        host.move_rows("gallery", "boards", ["b1", "b3"])
+        patch = self.next_patch()
+        self.assertEqual([row["id"] for row in patch[0]["replace_rows"]], ["b2", "b1", "b3"])
+        self.assertEqual(patch[1], {"id": "boards", "select": ["b1", "b3"], "current": "b1",
+                                    "scroll_to": "b1"})
+        self.assertEqual(self.table_status(patch), "moved b1,b3 before end")
+        host.move_rows("gallery", "boards", ["b2", "b1"], before="b1")  # dropped on itself
+        patch = self.next_patch()
+        self.assertEqual([row["id"] for row in patch[0]["replace_rows"]], ["b2", "b1", "b3"])
+        self.assertEqual(self.table_status(patch), "moved b2,b1 before b1")
+
+        # Change data keeps the manual order.
+        host.view_event("gallery", "change", "clicked")
+        self.assertEqual([row["id"] for row in self.next_patch()[0]["update_rows"]],
+                         ["b2", "b1", "b3"])
+        self.assertEqual(host.wait_for("menu/update")["items"][0]["set"]["title"],
+                         "Boards (1 offline)")
+        host.wait_for("tooltip/invalidate")
+
+        # The context menu: Restart Board on the clicked (and selected) offline board.
+        host.send_element_command("board_actions", "restart", "gallery", "boards", row_id="b2",
+                                  column_id="state", selected_ids=["b2"])
+        patch = self.next_patch()
+        restarted = {row["id"]: row for row in patch[0]["replace_rows"]}["b2"]
+        self.assertEqual(restarted["cells"][1:], [
+            {"text": "connected", "icon": "status:ok"},
+            {"text": "0 min", "progress": 0.0, "tone": "muted", "tooltip": bar_tooltip}])
+        self.assertEqual(self.table_status(patch), "menu restart b2 1")
+        self.assertEqual(host.wait_for("menu/update")["items"],
+                         [{"id": "boards", "set": {"title": "Boards (0 offline)"}}])
+        self.assertEqual(host.wait_for("tooltip/invalidate"),
+                         {"view_id": "gallery", "element_id": "summary"})
+        self.assertEqual(host.resolve_tooltip("gallery", "boards", row_id="b2",
+                                              column_id="uptime")["rows"], [["Resets", "4"]])
+
+        # Remove from List acts on the selected rows; Restore puts them back in their place.
+        host.send_element_command("board_actions", "forget", "gallery", "boards", row_id="b1",
+                                  column_id="name", selected_ids=["b1", "b3"])
+        patch = self.next_patch()
+        self.assertEqual([row["id"] for row in patch[0]["replace_rows"]], ["b2"])
+        self.assertEqual(self.table_status(patch), "menu forget b1 2")
+        self.assertEqual([entry["id"] for entry in host.populate_menu("main", "boards")["items"]],
+                         ["board_b2"])
+        self.assertIsNone(host.resolve_tooltip("gallery", "boards", row_id="b1", column_id="name"))
+        host.send_element_command("board_actions", "restore", "gallery", "boards")
+        patch = self.next_patch()
+        self.assertEqual([(row["id"], row["checked"]) for row in patch[0]["replace_rows"]],
+                         [("b2", False), ("b1", True), ("b3", False)])
+        self.assertEqual(self.table_status(patch), "menu restore none 0")
+        host.send_element_command("board_actions", "restore", "gallery", "boards")
+        self.assertEqual(self.next_patch(), [{"id": "table_status",
+                                              "set": {"text": "menu restore none 0"}}])
+
+        # Sorting again replaces the manual order; highlighting makes offline names bold.
+        host.send_command("main", "sort_name", checked=True)
+        self.assertEqual([row["id"] for row in self.next_patch()[0]["replace_rows"]],
+                         ["b1", "b2", "b3"])
+        host.send_command("main", "highlight_offline", checked=True)
+        rows = self.next_patch()[0]["replace_rows"]
+        self.assertEqual([row["cells"][0] for row in rows],
+                         ["Board 1", "Board 2", "Board 3"])  # no board is offline now
+        tree = self.open_gallery("w2")  # a new window shows the last table event and the checks
+        self.assertEqual(tree["table_status"]["text"], "menu restore none 0")
+        self.assertEqual([(row["id"], row["checked"]) for row in tree["boards"]["rows"]],
+                         [("b1", True), ("b2", False), ("b3", False)])
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def test_highlighted_offline_board_has_a_bold_name(self):
+        host = self.host
+        host.initialize()
+        self.open_gallery()
+        host.send_command("main", "highlight_offline", checked=True)
+        rows = self.next_patch()[0]["replace_rows"]
+        self.assertEqual([row["cells"][0] for row in rows],
+                         ["Board 1", "Board 2", {"text": "Board 3", "bold": True}])
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+
+    def check_plain_table(self):
+        """An E17c or E14 host gets a table it knows: text cells, no check column, no row
+        dragging, export or context menu."""
+        host = self.host
+        tree = self.open_gallery()
+        boards = tree["boards"]
+        self.assertIn("need a newer CILogg", tree["table_status"]["text"])
+        self.assertEqual(boards["rows"][0]["cells"], ["Board 1", "connected", "12 min"])
+        for key in ("export", "reorderable", "context_menu", "header", "copy", "keep_columns",
+                    "toggle_selection"):
+            self.assertNotIn(key, boards)
+        for column in boards["columns"]:
+            self.assertTrue(set(column) <= {"id", "title", "width", "tooltip"}, column)
+        for board_row in boards["rows"]:
+            self.assertTrue(all(isinstance(item, str) for item in board_row["cells"]), board_row)
+            for key in ("checked", "icon", "drag"):
+                self.assertNotIn(key, board_row)
+        host.view_event("gallery", "change", "clicked")
+        rows = self.next_patch()[0]["update_rows"]
+        self.assertEqual(rows[2]["cells"], ["Board 3", "connected", "5 min"])
+        self.assertTrue(all("checked" not in board_row for board_row in rows))
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+
+    def test_rich_table_on_an_e17c_host(self):
+        self.host.initialize(host_features=self.testing.E17C_HOST_FEATURES,
+                             host_feature_versions=self.testing.E17C_HOST_FEATURE_VERSIONS)
+        self.check_plain_table()
+
+    def test_rich_table_on_an_e14_host(self):
+        self.host.initialize_older_host()
+        self.check_plain_table()
 
 
 if __name__ == "__main__":

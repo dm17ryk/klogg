@@ -259,7 +259,8 @@ const QStringList& menuLocations()
 
 const QStringList& renderedMenuLocations()
 {
-    static const QStringList locations{ "plugins", "menubar", "tab", "pane", "log" };
+    // E17d: `element` menus show in the context menus of view elements with `context_menu`.
+    static const QStringList locations{ "plugins", "menubar", "tab", "pane", "log", "element" };
     return locations;
 }
 
@@ -599,8 +600,11 @@ std::vector<PluginShortcut> manifestShortcuts( const QString& pluginId, const QS
     for ( const auto& value : manifest.value( "menus" ).toArray() ) {
         const auto menu = value.toObject();
         // A menu this host does not show gets no shortcuts: its entries expect a context this
-        // host never builds (an element row, a toolbar).
-        if ( !renderedMenuLocations().contains( menu.value( "location" ).toString() ) ) {
+        // host never builds (a toolbar). E17d: an `element` entry acts on the row it was opened
+        // on; with no table to act on, a window shortcut has nothing to do, so `element` menus
+        // get no shortcuts either.
+        const auto location = menu.value( "location" ).toString();
+        if ( !renderedMenuLocations().contains( location ) || location == QLatin1String( "element" ) ) {
             continue;
         }
         auto menuBase = base;

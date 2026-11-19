@@ -503,7 +503,8 @@ TEST_CASE( "E17 host features, versions and limits are announced in initialize",
     const auto features = hostFeatureNames();
     REQUIRE( features
              == QJsonArray{ "views", "view_edit", "queries", "tooltips", "icons", "menus",
-                            "shortcuts", "choices", "toggles", "field_kinds", "validation" } );
+                            "shortcuts", "choices", "toggles", "field_kinds", "validation",
+                            "rich_tables", "element_menus" } );
     REQUIRE( hostFeatureVersions().value( "views" ).toInt() == 2 );
     REQUIRE( hostLimits().value( "max_elements" ).toInt() == 512 );
     REQUIRE( hostLimits().value( "max_message_bytes" ).toInt() == MaxMessageBytes );

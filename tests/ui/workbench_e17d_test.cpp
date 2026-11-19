@@ -1,0 +1,718 @@
+// Copyright (C) 2026 CILogg contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+// E17d: rich tables and element context menus (docs/plugin-sdk-advanced.md section 10).
+#include "mainwindow.h"
+#include "pluginicons.h"
+#include "pluginmanager.h"
+#include "pluginmenus.h"
+#include "plugintablebehaviour.h"
+#include "plugintablemodel.h"
+#include "pluginview.h"
+#include "pluginviewhost.h"
+#include "session.h"
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QHeaderView>
+#include <QImage>
+#include <QJsonDocument>
+#include <QMenu>
+#include <QSignalSpy>
+#include <QTableView>
+#include <QTemporaryDir>
+#include <QTest>
+#include <catch2/catch.hpp>
+#include <map>
+#include <memory>
+
+using cilogg::plugins::PluginManager;
+
+namespace {
+const QString PluginId = QStringLiteral( "org.test.e17d" );
+
+bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
+{
+    return QTest::qWaitFor( predicate, timeout );
+}
+
+QJsonObject cell( const QString& text, const QJsonObject& extra = {} )
+{
+    QJsonObject result{ { "text", text } };
+    for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+        result.insert( it.key(), it.value() );
+    }
+    return result;
+}
+
+QJsonObject boardsTable( const QJsonObject& extra = {} )
+{
+    QJsonObject table{
+        { "type", "table" },
+        { "id", "t" },
+        { "selection", "multi" },
+        { "sortable", true },
+        { "columns",
+          QJsonArray{ QJsonObject{ { "id", "name" }, { "title", "Name" }, { "sort_as", "natural" } },
+                      QJsonObject{ { "id", "done" }, { "title", "Done" }, { "align", "right" },
+                                   { "icon", "builtin:info" } },
+                      QJsonObject{ { "id", "use" }, { "title", "Use" }, { "check", true },
+                                   { "sortable", false }, { "min_width", 60 } },
+                      QJsonObject{ { "id", "note" }, { "title", "Note" }, { "hidden", true } },
+                      QJsonObject{ { "id", "edit" }, { "title", "Edit" }, { "editable", true } } } },
+        { "rows",
+          QJsonArray{
+              QJsonObject{ { "id", "r1" },
+                           { "icon", "builtin:device" },
+                           { "cells", QJsonArray{ cell( "board 10", { { "bold", true },
+                                                                      { "tooltip", "Tenth" } } ),
+                                                  cell( "50%", { { "progress", 0.5 }, { "sort", 0.5 },
+                                                                 { "tone", "warn" } } ),
+                                                  "", "=SUM(1)", "e1" } },
+                           { "editors", QJsonObject{ { "edit", QJsonObject{ { "kind", "text" } } } } } },
+              QJsonObject{ { "id", "r2" },
+                           { "checked", true },
+                           { "cells", QJsonArray{ "board 9", cell( "100%", { { "sort", 1.0 } } ), "",
+                                                  "two, words", "e2" } } },
+              QJsonObject{ { "id", "r3" },
+                           { "cells", QJsonArray{ "board 1", cell( "25%", { { "sort", 0.25 } } ), "",
+                                                  "-dash", "e3" } } } } } };
+    for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+        table.insert( it.key(), it.value() );
+    }
+    return table;
+}
+
+// A plugin view with fake host hooks: icons, an element menu that records its target, kept
+// state in a map, and a save dialog.
+struct View {
+    PluginView view;
+    QSignalSpy events;
+    QJsonObject menuTarget;
+    QString menuId;
+    std::map<QString, QJsonObject>* store;
+    QString savePath;
+
+    View( const QJsonObject& table, std::map<QString, QJsonObject>* kept, bool extended = true )
+        : view( PluginId, "main", dialogs() )
+        , events( &view, &PluginView::eventRaised )
+        , store( kept )
+    {
+        PluginViewQueries queries;
+        queries.icon = []( const QJsonValue& reference ) {
+            return reference.toString().startsWith( "builtin:" ) ? QIcon( QPixmap( 16, 16 ) ) : QIcon{};
+        };
+        queries.elementMenu = [ this ]( QMenu* menu, const QString&, const QString& id,
+                                        const QJsonObject& target ) {
+            menuId = id;
+            menuTarget = target;
+            menu->addSeparator();
+            menu->addAction( "Plugin entry" )->setObjectName( "plugin_entry" );
+        };
+        queries.loadState = [ this ]( const QString& elementId ) {
+            return store ? ( *store )[ elementId ] : QJsonObject{};
+        };
+        queries.saveState = [ this ]( const QString& elementId, const QJsonObject& state ) {
+            if ( store ) {
+                ( *store )[ elementId ] = state;
+            }
+        };
+        view.setQueries( queries );
+        view.setExtendedEvents( extended );
+        view.setRoot( QJsonObject{ { "type", "column" },
+                                   { "id", "body" },
+                                   { "children", QJsonArray{ table } } } );
+        view.show();
+    }
+    PluginViewDialogs dialogs()
+    {
+        PluginViewDialogs result;
+        result.saveFile = [ this ]( QWidget*, const QString&, const QString&, const QString&,
+                                    const QString& ) { return savePath; };
+        return result;
+    }
+    QTableView* table() const
+    {
+        return qobject_cast<QTableView*>( view.element( "t" ) );
+    }
+    PluginTableBehaviour* behaviour() const
+    {
+        return table()->findChild<PluginTableBehaviour*>();
+    }
+    QJsonObject last() const
+    {
+        return events.last().front().toJsonObject();
+    }
+    // The last event of a type, and how many there were.
+    QJsonObject lastOf( const QString& type ) const
+    {
+        for ( auto index = events.size() - 1; index >= 0; --index ) {
+            const auto event = events.at( index ).front().toJsonObject();
+            if ( event.value( "type" ) == type ) {
+                return event;
+            }
+        }
+        return {};
+    }
+    int countOf( const QString& type ) const
+    {
+        int count = 0;
+        for ( const auto& event : events ) {
+            count += event.front().toJsonObject().value( "type" ) == type ? 1 : 0;
+        }
+        return count;
+    }
+    // The shown index of a row's cell.
+    QModelIndex index( const QString& rowId, int column ) const
+    {
+        auto* model = table()->model();
+        for ( int row = 0; row < model->rowCount(); ++row ) {
+            if ( model->index( row, 0 ).data( pluginview::RowIdRole ) == rowId ) {
+                return model->index( row, column );
+            }
+        }
+        return {};
+    }
+    QPoint center( const QString& rowId, int column ) const
+    {
+        return table()->visualRect( index( rowId, column ) ).center();
+    }
+};
+} // namespace
+
+TEST_CASE( "E17d cell objects, row icons, column options and sorting", "[ui][workbench][E17]" )
+{
+    View fixture( boardsTable(), nullptr );
+    auto* table = fixture.table();
+    REQUIRE( table );
+    const auto name = fixture.index( "r1", 0 );
+    REQUIRE( name.data( Qt::DisplayRole ) == "board 10" );
+    REQUIRE( name.data( Qt::ToolTipRole ) == "Tenth" );
+    REQUIRE( name.data( Qt::FontRole ).value<QFont>().bold() );
+    REQUIRE_FALSE( name.data( Qt::DecorationRole ).value<QIcon>().isNull() ); // the row's icon
+    const auto done = fixture.index( "r1", 1 );
+    REQUIRE( done.data( pluginview::ProgressRole ).toDouble() == 0.5 );
+    REQUIRE( done.data( Qt::ForegroundRole ).value<QColor>() == pluginview::toneColor( "warn" ) );
+    REQUIRE( ( done.data( Qt::TextAlignmentRole ).value<Qt::Alignment>() & Qt::AlignRight ) );
+    REQUIRE_FALSE( table->model()->headerData( 1, Qt::Horizontal, Qt::DecorationRole )
+                       .value<QIcon>()
+                       .isNull() );
+    REQUIRE( fixture.index( "r2", 2 ).data( Qt::CheckStateRole ) == Qt::Checked );
+    REQUIRE( fixture.index( "r1", 2 ).data( Qt::CheckStateRole ) == Qt::Unchecked );
+    REQUIRE( table->isColumnHidden( 3 ) );
+    // The user cannot make a column narrower than its min_width.
+    table->horizontalHeader()->resizeSection( 2, 10 );
+    REQUIRE( table->horizontalHeader()->sectionSize( 2 ) == 60 );
+    // natural: board 1, board 9, board 10; `sort` values sort the Done column.
+    table->sortByColumn( 0, Qt::AscendingOrder );
+    REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 1" );
+    REQUIRE( table->model()->index( 2, 0 ).data().toString() == "board 10" );
+    table->sortByColumn( 1, Qt::DescendingOrder );
+    REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 9" );
+    // A column that is not sortable keeps the order.
+    table->sortByColumn( 2, Qt::AscendingOrder );
+    REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 9" );
+    // header: false makes a list.
+    fixture.view.applyPatch( { QJsonObject{ { "id", "t" }, { "set", QJsonObject{ { "header", false } } } } } );
+    REQUIRE( table->horizontalHeader()->isHidden() );
+}
+
+TEST_CASE( "E17d check columns, toggle selection, the selection patch and activated",
+           "[ui][workbench][E17]" )
+{
+    View fixture( boardsTable( { { "toggle_selection", true } } ), nullptr );
+    auto* table = fixture.table();
+    REQUIRE( table->selectionMode() == QAbstractItemView::MultiSelection );
+    table->setFocus();
+    // Space on a check cell changes the row and reports it.
+    table->setCurrentIndex( fixture.index( "r1", 2 ) );
+    QTest::keyClick( table, Qt::Key_Space );
+    REQUIRE( waitFor( [ & ] { return fixture.countOf( "checked" ) == 1; } ) );
+    auto value = fixture.lastOf( "checked" ).value( "value" ).toObject();
+    REQUIRE( value.value( "row_id" ) == "r1" );
+    REQUIRE( value.value( "row_ids" ).toArray() == QJsonArray{ "r1" } );
+    REQUIRE( value.value( "checked" ) == true );
+    // Shift sets the range from the last check box (r2 was already checked).
+    table->selectionModel()->setCurrentIndex( fixture.index( "r3", 2 ), QItemSelectionModel::NoUpdate );
+    QTest::keyClick( table, Qt::Key_Space, Qt::ShiftModifier );
+    REQUIRE( waitFor( [ & ] { return fixture.countOf( "checked" ) == 2; } ) );
+    value = fixture.lastOf( "checked" ).value( "value" ).toObject();
+    REQUIRE( value.value( "row_id" ) == "r3" );
+    REQUIRE( value.value( "row_ids" ).toArray() == QJsonArray{ "r3" } );
+    REQUIRE( fixture.index( "r3", 2 ).data( Qt::CheckStateRole ) == Qt::Checked );
+    // Toggle selection: each click adds or removes a row; Shift+click adds the range.
+    table->clearSelection();
+    QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r1", 0 ) );
+    QTest::mouseClick( table->viewport(), Qt::LeftButton, Qt::ShiftModifier,
+                       fixture.center( "r3", 0 ) );
+    REQUIRE( table->selectionModel()->selectedRows().size() == 3 );
+    QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r2", 0 ) );
+    REQUIRE( table->selectionModel()->selectedRows().size() == 2 );
+    // `selected` carries the current row for a plugin with `handles`.
+    REQUIRE( fixture.lastOf( "selected" ).value( "current" ) == "r2" );
+    // The selection patch sets the selection and the current row without an event.
+    const auto before = fixture.events.size();
+    fixture.view.applyPatch( { QJsonObject{ { "id", "t" },
+                                            { "select", QJsonArray{ "r3", "zz" } },
+                                            { "current", "r3" },
+                                            { "scroll_to", "r3" } } } );
+    REQUIRE( fixture.events.size() == before );
+    REQUIRE( table->selectionModel()->selectedRows().size() == 1 );
+    REQUIRE( fixture.behaviour()->currentRowId() == "r3" );
+    // activated: a double-click or Enter on a cell that is not editable.
+    QTest::mouseDClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r2", 0 ) );
+    REQUIRE( waitFor( [ & ] { return fixture.countOf( "activated" ) == 1; } ) );
+    REQUIRE( fixture.lastOf( "activated" ).value( "value" ).toObject()
+             == QJsonObject{ { "row_id", "r2" }, { "column_id", "name" } } );
+    table->setCurrentIndex( fixture.index( "r1", 1 ) );
+    QTest::keyClick( table, Qt::Key_Return );
+    REQUIRE( fixture.countOf( "activated" ) == 2 );
+    REQUIRE( fixture.lastOf( "activated" ).value( "value" ).toObject().value( "row_id" ) == "r1" );
+    table->setCurrentIndex( fixture.index( "r1", 4 ) ); // editable: no activated
+    QTest::keyClick( table, Qt::Key_Return );
+    REQUIRE( fixture.countOf( "activated" ) == 2 );
+}
+
+TEST_CASE( "E17d plugins without handles get no new event keys", "[ui][workbench][E17]" )
+{
+    View fixture( boardsTable(), nullptr, false );
+    auto* table = fixture.table();
+    QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r1", 0 ) );
+    REQUIRE( fixture.countOf( "selected" ) > 0 );
+    REQUIRE_FALSE( fixture.lastOf( "selected" ).contains( "current" ) );
+    QTest::mouseDClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r2", 0 ) );
+    QTest::qWait( 50 );
+    REQUIRE( fixture.countOf( "activated" ) == 0 );
+}
+
+TEST_CASE( "E17d context and header menus, Copy, Copy All and Export CSV",
+           "[ui][workbench][E17]" )
+{
+    QTemporaryDir temp;
+    View fixture( boardsTable( { { "context_menu", "rows" }, { "export", true } } ), nullptr );
+    fixture.savePath = QDir( temp.path() ).filePath( "boards.csv" );
+    auto* table = fixture.table();
+    // A right-click on a row selects it and builds the host entries, then the plugin's.
+    std::unique_ptr<QMenu> menu( fixture.view.buildElementMenu( "t", fixture.center( "r2", 0 ) ) );
+    REQUIRE( menu );
+    const auto names = [ & ] {
+        QStringList result;
+        for ( const auto* action : menu->actions() ) {
+            if ( !action->isSeparator() ) {
+                result.append( action->objectName() );
+            }
+        }
+        return result;
+    }();
+    const auto base = PluginView::objectNameFor( PluginId, "main", "t" );
+    REQUIRE( names == QStringList{ base + "_copy", base + "_copy_all", base + "_export", "plugin_entry" } );
+    REQUIRE( fixture.menuId == "rows" );
+    REQUIRE( fixture.menuTarget.value( "row_id" ) == "r2" );
+    REQUIRE( fixture.menuTarget.value( "column_id" ) == "name" );
+    REQUIRE( fixture.menuTarget.value( "selected_ids" ).toArray() == QJsonArray{ "r2" } );
+    REQUIRE( fixture.menuTarget.value( "selected_count" ) == 1 );
+    // Copy: the selected rows, shown columns in shown order; Copy All adds a header line.
+    menu->findChild<QAction*>( base + "_copy" )->trigger();
+    REQUIRE( QApplication::clipboard()->text() == "board 9\t100%\t\te2" );
+    menu->findChild<QAction*>( base + "_copy_all" )->trigger();
+    REQUIRE( QApplication::clipboard()->text().startsWith( "Name\tDone\tUse\tEdit\nboard 10\t50%" ) );
+    // Export CSV: header and rows; a formula is never a formula, quotes where needed.
+    table->setColumnHidden( 3, false );
+    menu->findChild<QAction*>( base + "_export" )->trigger();
+    QFile csv( fixture.savePath );
+    REQUIRE( csv.open( QIODevice::ReadOnly ) );
+    const auto content = QString::fromUtf8( csv.readAll() );
+    REQUIRE( content.startsWith( "Name,Done,Use,Note,Edit\r\n" ) );
+    REQUIRE( content.contains( "board 10,50%,,'=SUM(1),e1\r\n" ) );
+    REQUIRE( content.contains( "\"two, words\"" ) );
+    REQUIRE( content.contains( ",'-dash," ) );
+    // The header menu hides and shows columns; the last shown column stays.
+    std::unique_ptr<QMenu> columns( fixture.behaviour()->buildHeaderMenu() );
+    REQUIRE( columns );
+    columns->findChild<QAction*>( base + "_column_done" )->trigger();
+    REQUIRE( table->isColumnHidden( 1 ) );
+    // Without copy, export and context_menu there is no menu at all.
+    View plain( boardsTable( { { "copy", false } } ), nullptr );
+    REQUIRE( plain.view.buildElementMenu( "t", plain.center( "r1", 0 ) ) == nullptr );
+}
+
+TEST_CASE( "E17d kept columns and reordering", "[ui][workbench][E17]" )
+{
+    std::map<QString, QJsonObject> store;
+    {
+        View fixture( boardsTable( { { "reorderable", true } } ), &store );
+        auto* table = fixture.table();
+        // Reordering sends `moved`; the plugin confirms, so the rows stay.
+        REQUIRE( fixture.behaviour()->moveRows( { "r3" }, "r1" ) );
+        REQUIRE( fixture.lastOf( "moved" ).value( "value" ).toObject()
+                 == QJsonObject{ { "row_ids", QJsonArray{ "r3" } }, { "before", "r1" } } );
+        REQUIRE( fixture.behaviour()->moveRows( { "r1" }, {} ) );
+        REQUIRE( fixture.lastOf( "moved" ).value( "value" ).toObject().value( "before" ).isNull() );
+        REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 10" );
+        // The user hides a column, widens one and sorts: kept after a moment.
+        std::unique_ptr<QMenu> columns( fixture.behaviour()->buildHeaderMenu() );
+        columns->findChild<QAction*>( PluginView::objectNameFor( PluginId, "main", "t" )
+                                      + "_column_done" )
+            ->trigger();
+        table->horizontalHeader()->resizeSection( 0, 222 );
+        table->sortByColumn( 0, Qt::DescendingOrder );
+        // While sorted, rows do not move.
+        REQUIRE_FALSE( fixture.behaviour()->moveRows( { "r3" }, "r1" ) );
+        QTest::mouseRelease( table->horizontalHeader()->viewport(), Qt::LeftButton );
+        REQUIRE( waitFor( [ & ] {
+            return store[ "t" ].value( "sort" ).toObject().value( "order" ) == "desc";
+        } ) );
+    }
+    // A new view of the same table gets them back.
+    View again( boardsTable(), &store );
+    auto* table = again.table();
+    REQUIRE( table->isColumnHidden( 1 ) );
+    REQUIRE( table->horizontalHeader()->sectionSize( 0 ) == 222 );
+    REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 10" ); // natural, desc
+}
+
+TEST_CASE( "E17d ranges, menus, Copy and sorting at their edges", "[ui][workbench][E17]" )
+{
+    const auto texts = [ & ]( QTableView* view ) {
+        QStringList result;
+        for ( int row = 0; row < view->model()->rowCount(); ++row ) {
+            result.append( view->model()->index( row, 0 ).data().toString() );
+        }
+        return result;
+    };
+    const auto oneColumn = [ & ]( const QString& sortAs, const QStringList& cells ) {
+        QJsonArray rows;
+        for ( qsizetype at = 0; at < cells.size(); ++at ) {
+            rows.append( QJsonObject{ { "id", QStringLiteral( "r%1" ).arg( at ) },
+                                      { "cells", QJsonArray{ cells.at( at ) } } } );
+        }
+        return QJsonObject{ { "type", "table" }, { "id", "t" }, { "sortable", true },
+                            { "columns", QJsonArray{ QJsonObject{ { "id", "v" }, { "title", "V" },
+                                                                  { "sort_as", sortAs } } } },
+                            { "rows", rows } };
+    };
+    SECTION( "natural sort skips leading zeros of any length; number sort puts nan last" )
+    {
+        const auto zeros = QStringLiteral( "item " ) + QString( 4000, QLatin1Char( '0' ) ) + "2";
+        View natural( oneColumn( "natural", { "item 10", zeros, "item 1" } ), nullptr );
+        natural.table()->sortByColumn( 0, Qt::AscendingOrder );
+        REQUIRE( texts( natural.table() ) == QStringList{ "item 1", zeros, "item 10" } );
+        View number( oneColumn( "number", { "x", "nan", "2", "1" } ), nullptr );
+        number.table()->sortByColumn( 0, Qt::AscendingOrder );
+        REQUIRE( texts( number.table() ) == QStringList{ "1", "2", "nan", "x" } );
+    }
+    SECTION( "a Shift check range over the id limit keeps the clicked row" )
+    {
+        QJsonArray rows;
+        for ( int at = 0; at < 1200; ++at ) {
+            rows.append( QJsonObject{ { "id", QStringLiteral( "r%1" ).arg( at ) },
+                                      { "cells", QJsonArray{ QStringLiteral( "n%1" ).arg( at ), "" } } } );
+        }
+        View fixture( QJsonObject{ { "type", "table" }, { "id", "t" }, { "rows", rows },
+                                   { "columns", QJsonArray{ QJsonObject{ { "id", "name" } },
+                                                            QJsonObject{ { "id", "use" }, { "check", true } } } } },
+                      nullptr );
+        auto* table = fixture.table();
+        table->setFocus();
+        table->setCurrentIndex( fixture.index( "r1", 1 ) );
+        QTest::keyClick( table, Qt::Key_Space );
+        REQUIRE( waitFor( [ & ] { return fixture.countOf( "checked" ) == 1; } ) );
+        table->selectionModel()->setCurrentIndex( fixture.index( "r1100", 1 ),
+                                                  QItemSelectionModel::NoUpdate );
+        QTest::keyClick( table, Qt::Key_Space, Qt::ShiftModifier );
+        REQUIRE( waitFor( [ & ] { return fixture.countOf( "checked" ) == 2; } ) );
+        const auto value = fixture.lastOf( "checked" ).value( "value" ).toObject();
+        const auto ids = value.value( "row_ids" ).toArray();
+        REQUIRE( value.value( "row_id" ) == "r1100" );
+        REQUIRE( ids.size() == 1000 );
+        REQUIRE( ids.first() == "r101" );
+        REQUIRE( ids.last() == "r1100" );
+        REQUIRE( fixture.index( "r1100", 1 ).data( Qt::CheckStateRole ) == Qt::Checked );
+    }
+    SECTION( "check cells: no selection range on Shift+click and no activated" )
+    {
+        View fixture( boardsTable( { { "toggle_selection", true } } ), nullptr );
+        auto* table = fixture.table();
+        QTest::mouseClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r1", 0 ) );
+        QTest::mouseClick( table->viewport(), Qt::LeftButton, Qt::ShiftModifier,
+                           fixture.center( "r3", 2 ) );
+        const auto r2 = fixture.index( "r2", 0 );
+        REQUIRE_FALSE( table->selectionModel()->isRowSelected( r2.row(), r2.parent() ) );
+        QTest::mouseDClick( table->viewport(), Qt::LeftButton, {}, fixture.center( "r2", 2 ) );
+        table->setFocus();
+        table->setCurrentIndex( fixture.index( "r1", 2 ) );
+        QTest::keyClick( table, Qt::Key_Return );
+        QTest::qWait( 50 );
+        REQUIRE( fixture.countOf( "activated" ) == 0 );
+    }
+    SECTION( "a right-click reports the clicked row as current; Ctrl+C on nothing keeps the clipboard" )
+    {
+        View fixture( boardsTable( { { "context_menu", "rows" } } ), nullptr );
+        auto* table = fixture.table();
+        table->setCurrentIndex( fixture.index( "r1", 0 ) );
+        std::unique_ptr<QMenu> menu( fixture.view.buildElementMenu( "t", fixture.center( "r3", 0 ) ) );
+        REQUIRE( menu );
+        REQUIRE( fixture.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ "r3" } );
+        REQUIRE( fixture.lastOf( "selected" ).value( "current" ) == "r3" );
+        table->clearSelection();
+        table->selectionModel()->clearCurrentIndex();
+        QApplication::clipboard()->setText( "keep" );
+        table->setFocus();
+        QTest::keyClick( table, Qt::Key_C, Qt::ControlModifier );
+        REQUIRE( QApplication::clipboard()->text() == "keep" );
+    }
+    SECTION( "never every column hidden" )
+    {
+        View fixture( QJsonObject{ { "type", "table" }, { "id", "t" }, { "keep_columns", false },
+                                   { "columns", QJsonArray{ QJsonObject{ { "id", "a" }, { "hidden", true } },
+                                                            QJsonObject{ { "id", "b" }, { "hidden", true } } } },
+                                   { "rows", QJsonArray{ QJsonObject{ { "id", "r1" },
+                                                                      { "cells", QJsonArray{ "x", "y" } } } } } },
+                      nullptr );
+        REQUIRE_FALSE( fixture.table()->isColumnHidden( 0 ) );
+        REQUIRE( fixture.table()->isColumnHidden( 1 ) );
+    }
+}
+
+TEST_CASE( "E17d plugin icons are resolved once until the plugin's images change",
+           "[ui][workbench][E17]" )
+{
+    QTemporaryDir temp;
+    QImage image( 16, 16, QImage::Format_ARGB32 );
+    image.fill( Qt::red );
+    const auto path = QDir( temp.path() ).filePath( "row.png" );
+    REQUIRE( image.save( path ) );
+    auto& registry = PluginIconRegistry::instance();
+    const auto plugin = QStringLiteral( "org.test.e17d.icons" );
+    REQUIRE_FALSE( registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull() );
+    // Painting asks again and again: the file is not read again (it may even be gone).
+    REQUIRE( QFile::remove( path ) );
+    REQUIRE_FALSE( registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull() );
+    // A stopped plugin may be updated on disk: its icons are resolved anew.
+    registry.clear( plugin );
+    REQUIRE( registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull() );
+}
+
+namespace {
+QJsonObject e17dManifest( const QString& executable, bool withHandles )
+{
+    QJsonObject json{
+        { "id", PluginId },
+        { "name", "E17d fixture" },
+        { "version", "1.0.0" },
+        { "protocol_version", 1 },
+        { "executable", executable },
+        { "capabilities", QJsonArray{ "tool" } },
+        { "actions", QJsonArray{ QJsonObject{ { "id", "summary" }, { "capability", "tool" } } } },
+        { "views", QJsonArray{ QJsonObject{ { "id", "tables" }, { "title", "Tables" } } } },
+        { "menus",
+          QJsonArray{ QJsonObject{
+              { "id", "rows_menu" },
+              { "location", "element" },
+              { "items",
+                QJsonArray{ QJsonObject{ { "id", "restart" }, { "title", "Restart" }, { "event", true } },
+                            QJsonObject{ { "id", "forget" },
+                                         { "title", "Forget" },
+                                         { "event", true },
+                                         { "when", QJsonObject{ { "selection", "any" } } } } } } } } } };
+    if ( withHandles ) {
+        json.insert( "handles", QJsonArray{ "ui/command" } );
+    }
+    return json;
+}
+
+QList<QJsonObject> recorded( const QString& folder, const QString& method )
+{
+    QList<QJsonObject> result;
+    QFile log( QDir( folder ).filePath( "host-messages.jsonl" ) );
+    if ( !log.open( QIODevice::ReadOnly ) ) {
+        return result;
+    }
+    for ( const auto& line : log.readAll().split( '\n' ) ) {
+        const auto frame = QJsonDocument::fromJson( line ).object();
+        if ( frame.value( "method" ) == method ) {
+            result.append( frame.value( "params" ).toObject() );
+        }
+    }
+    return result;
+}
+
+// A MainWindow with the fixture plugin's `tables` view open.
+struct TablesWindow {
+    QTemporaryDir temp;
+    QString folder;
+    std::unique_ptr<PluginManager> manager;
+    std::unique_ptr<MainWindow> window;
+
+    explicit TablesWindow( bool withHandles = true )
+    {
+        PluginMenuRegistry::instance().forgetPlugin( PluginId );
+        const auto shipped = QDir( temp.path() ).filePath( "shipped" );
+        folder = QDir( shipped ).filePath( PluginId );
+        REQUIRE( QDir().mkpath( folder ) );
+        const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
+        QFile file( QDir( folder ).filePath( "plugin.json" ) );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( QJsonDocument( e17dManifest( executable, withHandles ) ).toJson() );
+        file.close();
+        REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
+                              QDir( folder ).filePath( executable ) ) );
+        manager = std::make_unique<PluginManager>( QDir( temp.path() ).filePath( "data" ), shipped );
+        REQUIRE( manager->manage( "enable", PluginId, {} ).ok() );
+        auto session = std::make_shared<Session>();
+        window = std::make_unique<MainWindow>( WindowSession{ session, "PluginSdkE17d", 0 } );
+        window->setPluginManager( *manager, [ this ]( const CommanderRequest& request ) {
+            const auto result = manager->manage( request.pluginOperation, request.pluginId,
+                                                 request.pluginArguments );
+            return result.ok()
+                       ? commanderSuccess( {}, result.payload )
+                       : commanderFailure( CommanderResultCode::ExecutionFailed, result.error );
+        } );
+        window->show();
+        open();
+    }
+    ~TablesWindow()
+    {
+        Q_EMIT window->windowClosed();
+        QCoreApplication::processEvents();
+    }
+    PluginViewHost* host() const
+    {
+        return window->findChild<PluginViewHost*>();
+    }
+    PluginView* view() const
+    {
+        return host() ? host()->view( PluginId, "tables" ) : nullptr;
+    }
+    QTableView* table() const
+    {
+        return view() ? qobject_cast<QTableView*>( view()->element( "boards" ) ) : nullptr;
+    }
+    void open()
+    {
+        REQUIRE( waitFor( [ & ] { return host() != nullptr; } ) );
+        QString error;
+        REQUIRE( host()->openView( PluginId, "tables", {}, &error ) );
+        REQUIRE( waitFor( [ & ] { return table() && table()->model()->rowCount() == 3; }, 10000 ) );
+        REQUIRE( waitFor( [ & ] { return view()->isEnabled(); } ) );
+    }
+    CommanderResult run( CommanderRequest request )
+    {
+        return window->executeCommanderRequest( request );
+    }
+};
+} // namespace
+
+TEST_CASE( "E17d element menus run plugin entries with the clicked row and the selection",
+           "[ui][workbench][E17]" )
+{
+    TablesWindow fixture;
+    auto* table = fixture.table();
+    REQUIRE( fixture.view()->extendedEvents() );
+    // The GUI menu: host entries, then the plugin's; picking one sends ui/command.
+    const auto row = [ & ]( const QString& id ) {
+        for ( int index = 0; index < table->model()->rowCount(); ++index ) {
+            if ( table->model()->index( index, 0 ).data( pluginview::RowIdRole ) == id ) {
+                return table->visualRect( table->model()->index( index, 0 ) ).center();
+            }
+        }
+        return QPoint{};
+    };
+    std::unique_ptr<QMenu> menu( fixture.view()->buildElementMenu( "boards", row( "r2" ) ) );
+    REQUIRE( menu );
+    auto* restart = menu->findChild<QAction*>(
+        PluginMenus::entryObjectName( PluginId, "rows_menu", "restart" ) );
+    REQUIRE( restart );
+    REQUIRE( menu->findChild<QAction*>( PluginMenus::entryObjectName( PluginId, "rows_menu", "forget" ) ) );
+    restart->trigger();
+    REQUIRE( waitFor( [ & ] { return !recorded( fixture.folder, "ui/command" ).isEmpty(); } ) );
+    auto command = recorded( fixture.folder, "ui/command" ).last();
+    REQUIRE( command.value( "location" ) == "element" );
+    REQUIRE( command.value( "item_id" ) == "restart" );
+    auto context = command.value( "context" ).toObject();
+    REQUIRE( context.value( "view_id" ) == "tables" );
+    REQUIRE( context.value( "element_id" ) == "boards" );
+    REQUIRE( context.value( "row_id" ) == "r2" );
+    REQUIRE( context.value( "selected_ids" ).toArray() == QJsonArray{ "r2" } );
+    REQUIRE( context.value( "selected_count" ) == 1 );
+    // Automation: get_plugin_menus and trigger_plugin_menu with --location element.
+    CommanderRequest get;
+    get.action = CommanderAction::GetPluginMenus;
+    get.pluginId = PluginId;
+    get.viewId = "tables";
+    get.pluginArguments = { { "location", "element" }, { "elementId", "boards" } };
+    const auto entries = fixture.run( get );
+    REQUIRE( entries.ok() );
+    REQUIRE( entries.payload.value( "entries" ).toList().size() == 2 );
+    REQUIRE( entries.payload.value( "context" ).toMap().value( "element_id" ) == "boards" );
+    CommanderRequest trigger;
+    trigger.action = CommanderAction::TriggerPluginMenu;
+    trigger.pluginId = PluginId;
+    trigger.viewId = "tables";
+    trigger.pluginArguments = { { "menuId", "rows_menu" },
+                                { "itemId", "restart" },
+                                { "elementId", "boards" },
+                                { "rowId", "r1" } };
+    REQUIRE( fixture.run( trigger ).ok() );
+    REQUIRE( waitFor( [ & ] { return recorded( fixture.folder, "ui/command" ).size() == 2; } ) );
+    REQUIRE( recorded( fixture.folder, "ui/command" ).last().value( "context" ).toObject().value( "row_id" )
+             == "r1" );
+    // Without --element-id the entry is refused.
+    trigger.pluginArguments.remove( "elementId" );
+    REQUIRE_FALSE( fixture.run( trigger ).ok() );
+    // A check box and a reorder reach the plugin as events.
+    table->selectionModel()->setCurrentIndex( table->model()->index( 0, 2 ),
+                                              QItemSelectionModel::NoUpdate );
+    table->setFocus();
+    QTest::keyClick( table, Qt::Key_Space );
+    REQUIRE( waitFor( [ & ] {
+        const auto events = recorded( fixture.folder, "view/event" );
+        return std::any_of( events.begin(), events.end(), []( const QJsonObject& event ) {
+            return event.value( "type" ) == "checked";
+        } );
+    } ) );
+}
+
+TEST_CASE( "E17d kept columns live in the plugin manager across views", "[ui][workbench][E17]" )
+{
+    TablesWindow fixture;
+    auto* table = fixture.table();
+    // Entries of tables the plugin no longer has fill the view's state almost to its limit: the
+    // one saved longest ago gives way to the table being saved.
+    const QString pad( 32700, QLatin1Char( 'x' ) );
+    REQUIRE( fixture.manager->setKeptViewState(
+        PluginId, "tables",
+        QJsonObject{ { "elements",
+                       QJsonObject{ { "old1", QJsonObject{ { "saved", 1.0 }, { "pad", pad } } },
+                                    { "old2", QJsonObject{ { "saved", 2.0 }, { "pad", pad } } } } } } ) );
+    {
+        // The menu is a child of the table: released before the view closes and deletes it.
+        std::unique_ptr<QMenu> columns(
+            table->findChild<PluginTableBehaviour*>()->buildHeaderMenu() );
+        columns->findChild<QAction*>( PluginView::objectNameFor( PluginId, "tables", "boards" )
+                                      + "_column_done" )
+            ->trigger();
+    }
+    REQUIRE( waitFor( [ & ] {
+        return fixture.manager->keptViewState( PluginId, "tables" )
+            .value( "elements" )
+            .toObject()
+            .contains( "boards" );
+    } ) );
+    const auto elements
+        = fixture.manager->keptViewState( PluginId, "tables" ).value( "elements" ).toObject();
+    REQUIRE_FALSE( elements.contains( "old1" ) );
+    REQUIRE( elements.contains( "old2" ) );
+    fixture.host()->closeView( PluginId, "tables" );
+    REQUIRE( waitFor( [ & ] { return fixture.view() == nullptr; } ) );
+    fixture.open();
+    REQUIRE( fixture.table()->isColumnHidden( 1 ) );
+}
+
+TEST_CASE( "E17d without handles a plugin view gets no extended events", "[ui][workbench][E17]" )
+{
+    TablesWindow fixture( false );
+    REQUIRE_FALSE( fixture.view()->extendedEvents() );
+}

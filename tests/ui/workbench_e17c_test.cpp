@@ -92,6 +92,7 @@ struct View {
             return QStringLiteral( "q:1" );
         };
         view.setQueries( queries );
+        view.setExtendedEvents( true ); // a plugin that declares `handles`
         view.setTextDebounceMs( 10 );
         view.setRoot( root );
         view.show();

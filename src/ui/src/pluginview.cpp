@@ -4,8 +4,10 @@
 #include "checkcombobox.h"
 #include "pluginchoicewidgets.h"
 #include "pluginfeatures.h"
+#include "plugintablebehaviour.h"
 #include "plugintablemodel.h"
 #include "log.h"
+#include <QMenu>
 #include <QAbstractTableModel>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -123,7 +125,10 @@ QStringList knownKeys( const QString& type )
     if ( type == "radio_group" || type == "check_group" ) {
         return { "title", "choices", "value", "orientation", "columns", "all_none" };
     }
-    return { "columns", "rows", "sortable", "filter_box", "selection" };
+    // E17d: rich tables and element context menus (section 10).
+    return { "columns",      "rows",   "sortable",    "filter_box",  "selection",
+             "header",       "toggle_selection",      "context_menu", "copy",
+             "export",       "reorderable",           "keep_columns" };
 }
 
 // Defaults restored when a same-shaped root no longer sends a property. Properties without a
@@ -180,6 +185,13 @@ QJsonObject defaultsFor( const QString& type )
         defaults.insert( "sortable", false );
         defaults.insert( "filter_box", false );
         defaults.insert( "selection", "none" );
+        defaults.insert( "header", true );
+        defaults.insert( "toggle_selection", false );
+        defaults.insert( "context_menu", "" );
+        defaults.insert( "copy", true );
+        defaults.insert( "export", false );
+        defaults.insert( "reorderable", false );
+        defaults.insert( "keep_columns", true );
     }
     return defaults;
 }
@@ -227,6 +239,7 @@ struct PluginView::Node {
     bool rowsDirty = true;
     PluginTableModel* model = nullptr;
     QSortFilterProxyModel* proxy = nullptr;
+    PluginTableBehaviour* behaviour = nullptr; // E17d
 };
 
 PluginViewDialogs PluginViewDialogs::native()
@@ -395,11 +408,15 @@ PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, cons
     const auto* table = qobject_cast<QTableView*>( node->widget.data() );
     const auto proxied = node->proxy ? node->proxy->mapFromSource( source ) : source;
     target.rect = table ? table->visualRect( proxied ) : QRect{};
-    // The most specific key goes into the query: the row's, else the column's, else the table's.
+    // The most specific key goes into the query: the cell's (E17d), else the row's, else the
+    // column's, else the table's.
     const auto parts = cell.key.split( QChar( 0x1f ) );
-    target.tooltipKey = parts.value( 1 ).isEmpty()
-                            ? ( parts.value( 2 ).isEmpty() ? parts.value( 0 ) : parts.value( 2 ) )
-                            : parts.value( 1 );
+    for ( const auto part : { 3, 1, 2, 0 } ) {
+        if ( !parts.value( part ).isEmpty() || part == 0 ) {
+            target.tooltipKey = parts.value( part );
+            break;
+        }
+    }
     return target;
 }
 
@@ -1183,7 +1200,8 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
     layout->addWidget( filter );
     auto* table = new QTableView( box );
     node.model = new PluginTableModel( table );
-    node.proxy = new QSortFilterProxyModel( table );
+    auto* proxy = new PluginTableProxy( table ); // E17d: `sort_as` and per-column `sortable`
+    node.proxy = proxy;
     node.proxy->setSourceModel( node.model );
     node.proxy->setFilterKeyColumn( -1 );
     node.proxy->setFilterCaseSensitivity( Qt::CaseInsensitive );
@@ -1238,6 +1256,51 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
         }
     } );
     node.widget = table;
+    // E17d: toggle selection, check columns, activation, reordering, context menus, Copy and
+    // Export, the selection patch and kept columns (section 10).
+    PluginTableBehaviour::Hooks hooks;
+    const QPointer<PluginView> guard( this );
+    hooks.emitEvent = [ guard, id ]( const QString& type, const QJsonValue& value ) {
+        return guard && guard->emitEvent( id, type, value );
+    };
+    hooks.canAct = [ guard, id, model ] {
+        if ( !guard ) {
+            return false;
+        }
+        const auto found = guard->nodes_.value( id );
+        return found && found->model == model && !guard->applying_ && guard->isEnabled();
+    };
+    hooks.extendedEvents = [ guard ] { return guard && guard->extendedEvents_; };
+    hooks.elementMenu = [ guard, id ]( QMenu* menu, const QString& menuId,
+                                       const QJsonObject& target ) {
+        if ( guard && guard->queries_.elementMenu ) {
+            guard->queries_.elementMenu( menu, id, menuId, target );
+        }
+    };
+    hooks.saveFile = [ guard, id ]( const QString& title, const QString& nameFilter,
+                                    const QString& suggested ) {
+        if ( !guard || !guard->dialogs_.saveFile ) {
+            return QString{};
+        }
+        const auto name = guard->nameFor( id ) + QStringLiteral( "_export_dialog" );
+        guard->activeDialogs_.insert( name );
+        const auto path
+            = guard->dialogs_.saveFile( guard->dialogParent(), name, title, nameFilter, suggested );
+        if ( guard ) {
+            guard->activeDialogs_.remove( name );
+        }
+        return path;
+    };
+    hooks.loadState = [ guard, id ] {
+        return guard && guard->queries_.loadState ? guard->queries_.loadState( id ) : QJsonObject{};
+    };
+    hooks.saveState = [ guard, id ]( const QJsonObject& state ) {
+        if ( guard && guard->queries_.saveState ) {
+            guard->queries_.saveState( id, state );
+        }
+    };
+    table->setObjectName( nameFor( id ) );
+    node.behaviour = new PluginTableBehaviour( table, node.model, proxy, std::move( hooks ) );
     return box;
 }
 
@@ -1263,6 +1326,11 @@ void PluginView::emitSelection( const QString& id )
     QJsonObject extra{ { "selected_count", static_cast<int>( rows.size() ) } };
     if ( ids.size() < rows.size() ) {
         extra.insert( "truncated", true );
+    }
+    // E17d: the row with the keyboard focus, for plugins that declare `handles` (principle 11).
+    if ( extendedEvents_ && node->behaviour ) {
+        const auto current = node->behaviour->currentRowId();
+        extra.insert( "current", current.isEmpty() ? QJsonValue() : QJsonValue( current ) );
     }
     emitEvent( id, "selected", ids, extra );
 }
@@ -1504,12 +1572,14 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
     }
     else if ( type == "table" ) {
         auto* table = qobject_cast<QTableView*>( node.widget.data() );
+        bool columnsSet = false;
         if ( props.contains( "columns" ) && !unchanged( "columns" ) ) {
             const auto columns = props.value( "columns" ).toArray();
             if ( columns.size() > MaxTableColumns || !node.model->setColumns( columns ) ) {
                 warnOnce( "columns:" + node.id, "table columns rejected for " + node.id );
             }
             else {
+                columnsSet = true;
                 for ( int column = 0; column < columns.size(); ++column ) {
                     const auto width = columns.at( column ).toObject().value( "width" ).toInt();
                     if ( width > 0 ) {
@@ -1539,11 +1609,31 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             auto* filter = node.outer->findChild<QLineEdit*>( nameFor( node.id ) + "_filter" );
             filter->setVisible( props.value( "filter_box" ).toBool() );
         }
-        if ( props.contains( "selection" ) ) {
-            const auto mode = props.value( "selection" ).toString();
-            table->setSelectionMode( mode == "single"  ? QAbstractItemView::SingleSelection
-                                     : mode == "multi" ? QAbstractItemView::ExtendedSelection
-                                                       : QAbstractItemView::NoSelection );
+        if ( props.contains( "selection" ) || props.contains( "toggle_selection" ) ) {
+            const auto mode = node.props.value( "selection" ).toString();
+            // E17d `toggle_selection`: every click adds or removes a row (section 10.2).
+            const bool toggle = node.props.value( "toggle_selection" ).toBool();
+            table->setSelectionMode( mode == "single" ? QAbstractItemView::SingleSelection
+                                     : mode == "multi"
+                                         ? ( toggle ? QAbstractItemView::MultiSelection
+                                                    : QAbstractItemView::ExtendedSelection )
+                                         : QAbstractItemView::NoSelection );
+        }
+        // E17d table options (section 10.1); hidden columns, minimum widths and the kept
+        // columns follow the columns, after `sortable` so a kept sort applies.
+        if ( node.behaviour ) {
+            PluginTableBehaviour::Options options;
+            options.header = node.props.value( "header" ).toBool( true );
+            options.toggleSelection = node.props.value( "toggle_selection" ).toBool();
+            options.contextMenu = text( node.props, "context_menu", 128 );
+            options.copy = node.props.value( "copy" ).toBool( true );
+            options.exportCsv = node.props.value( "export" ).toBool();
+            options.reorderable = node.props.value( "reorderable" ).toBool();
+            options.keepColumns = node.props.value( "keep_columns" ).toBool( true );
+            node.behaviour->setOptions( options );
+            if ( columnsSet ) {
+                node.behaviour->columnsChanged();
+            }
         }
     }
     updateAccessibility( node );
@@ -1720,10 +1810,45 @@ void PluginView::applyPatch( const QJsonArray& patch )
         }
         if ( node->type == "table" ) {
             applyTableOperation( *node, entry );
+            // E17d selection patch (section 10.2), after any row changes of the same entry; it
+            // never echoes a `selected` event (applying_).
+            if ( node->behaviour
+                 && ( entry.contains( "select" ) || entry.contains( "current" )
+                      || entry.contains( "scroll_to" ) ) ) {
+                node->behaviour->select( entry.value( "select" ), entry.value( "current" ),
+                                         entry.value( "scroll_to" ) );
+            }
         }
     }
     refreshValidity();
     ++renders_;
+}
+
+bool PluginView::elementMenu( const QString& elementId, const QString& rowId, QString* menuId,
+                              QJsonObject* target, QString* error ) const
+{
+    const auto node = nodes_.value( elementId );
+    if ( !node || node->automatic || !node->behaviour ) {
+        *error = tr( "The view has no table with this id." );
+        return false;
+    }
+    *menuId = node->behaviour->options().contextMenu;
+    if ( menuId->isEmpty() ) {
+        *error = tr( "The table has no context_menu." );
+        return false;
+    }
+    if ( !rowId.isEmpty() && node->model->rowOf( rowId ) < 0 ) {
+        *error = tr( "The table has no row with this id." );
+        return false;
+    }
+    *target = node->behaviour->menuTarget( rowId, {} );
+    return true;
+}
+
+QMenu* PluginView::buildElementMenu( const QString& elementId, const QPoint& position )
+{
+    const auto node = nodes_.value( elementId );
+    return node && node->behaviour ? node->behaviour->buildMenu( position ) : nullptr;
 }
 
 QJsonValue PluginView::fieldValue( const Node& node ) const
@@ -2010,10 +2135,11 @@ bool PluginView::emitEvent( const QString& id, const QString& type, const QJsonV
     }
     if ( type == QLatin1String( "changed" ) ) {
         // E17c: the changed event of a field with validation says whether it is valid
-        // (section 8.6); other events keep the shape they had before E17.
+        // (section 8.6), for plugins that declare `handles` (principle 11); other events keep the
+        // shape they had before E17.
         refreshValidity();
         if ( const auto node = nodes_.value( id );
-             node && node->type == "field"
+             extendedEvents_ && node && node->type == "field"
              && ( pluginfields::validates( node->props ) || node->kind == "color" ) ) {
             event.insert( "valid", fieldValid( *node ) );
         }

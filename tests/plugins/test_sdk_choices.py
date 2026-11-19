@@ -621,12 +621,15 @@ class Completion(ChoiceCase):
 class FakeHostHelpers(ChoiceCase):
     def test_feature_sets(self):
         testing = self.testing
-        self.assertEqual(testing.HOST_FEATURES[-4:], E17C_FEATURES)
-        self.assertEqual(testing.E17B_HOST_FEATURES, testing.HOST_FEATURES[:-4])
+        self.assertEqual(testing.E17C_HOST_FEATURES[-4:], E17C_FEATURES)
+        self.assertEqual(testing.E17C_HOST_FEATURES, testing.HOST_FEATURES[:len(testing.E17C_HOST_FEATURES)])
+        self.assertEqual(testing.E17B_HOST_FEATURES, testing.E17C_HOST_FEATURES[:-4])
         self.assertEqual(testing.E17B_HOST_FEATURES[-2:], ("menus", "shortcuts"))
         for feature in E17C_FEATURES:
             self.assertEqual(testing.HOST_FEATURE_VERSIONS[feature], 1)
+            self.assertEqual(testing.E17C_HOST_FEATURE_VERSIONS[feature], 1)
         self.assertEqual(set(testing.E17B_HOST_FEATURE_VERSIONS), set(testing.E17B_HOST_FEATURES))
+        self.assertEqual(set(testing.E17C_HOST_FEATURE_VERSIONS), set(testing.E17C_HOST_FEATURES))
         self.assertEqual(testing.QUERY_DEFAULT_TIMEOUT_MS["field/complete"], 500)
 
     def test_change_field_sends_changed_with_valid(self):

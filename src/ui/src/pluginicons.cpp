@@ -290,6 +290,7 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
     }
     if ( changedAny ) {
         ++images.generation;
+        resolved_.remove( pluginId );
         Q_EMIT changed( pluginId );
     }
     return refused;
@@ -297,6 +298,7 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
 
 void PluginIconRegistry::clear( const QString& pluginId )
 {
+    resolved_.remove( pluginId ); // also file icons: a stopped plugin may be updated on disk
     const auto found = images_.find( pluginId );
     if ( found == images_.end() ) {
         return;
@@ -379,6 +381,26 @@ QIcon PluginIconRegistry::statusDot( const QString& tone )
 
 QIcon PluginIconRegistry::resolve( const QString& pluginId, const QString& directory,
                                    const QString& reference )
+{
+    // The palette is part of the key: masks are recoloured and built-in icons follow the style.
+    const auto key = directory + QLatin1Char( '\n' ) + reference + QLatin1Char( '\n' )
+                     + QApplication::palette().color( QPalette::WindowText ).name( QColor::HexArgb )
+                     + ( darkTheme() ? QLatin1Char( 'd' ) : QLatin1Char( 'l' ) );
+    auto& cache = resolved_[ pluginId ];
+    const auto found = cache.constFind( key );
+    if ( found != cache.cend() ) {
+        return *found;
+    }
+    if ( cache.size() >= MaxResolved ) {
+        cache.clear();
+    }
+    const auto loaded = load( pluginId, directory, reference );
+    cache.insert( key, loaded );
+    return loaded;
+}
+
+QIcon PluginIconRegistry::load( const QString& pluginId, const QString& directory,
+                                const QString& reference )
 {
     if ( reference.startsWith( QLatin1String( "builtin:" ) ) ) {
         const auto name = reference.mid( 8 );

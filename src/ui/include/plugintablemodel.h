@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QSortFilterProxyModel>
 #include <QStyledItemDelegate>
 #include <QVector>
 #include <functional>
@@ -25,6 +26,11 @@ constexpr int RowIdRole = Qt::UserRole + 1;
 constexpr int EditorRole = Qt::UserRole + 2; // the cell's editor spec; empty when read-only
 // The value (a QJsonValue) of an edit that waits for the plugin; invalid otherwise.
 constexpr int PendingValueRole = Qt::UserRole + 3;
+// E17d: a cell's progress (a double, 0..1) drawn behind its text; invalid otherwise.
+constexpr int ProgressRole = Qt::UserRole + 4;
+// E17d: at most this many ids in a selection patch, an element menu context, `checked` and
+// `moved` events (docs/plugin-sdk-advanced.md section 10).
+constexpr int MaxTableIds = 1000;
 // Marks the widgets PluginCellDelegate creates (direct children of a table's viewport).
 constexpr char CellEditorProperty[] = "pluginCellEditor";
 
@@ -59,6 +65,24 @@ public:
         QString tooltip; // the header's static tooltip
         bool tooltipProvider = false;
         QString tooltipKey;
+        // E17d (section 10.1).
+        Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter;
+        bool hidden = false;
+        bool sortable = true;
+        QString sortAs; // "text", "number", "natural"; empty: numbers as numbers, else text
+        int minWidth = 0;
+        bool check = false; // a check box bound to the row's `checked`
+        QJsonValue icon;
+    };
+    // E17d: what a cell object adds to its text (section 10.1).
+    struct CellStyle {
+        QJsonValue icon;
+        QString tooltip;
+        QString tooltipKey;
+        QString tone;
+        bool bold = false;
+        double progress = -1; // below 0: none
+        QVariant sort;        // invalid: the text sorts
     };
     // An edit the plugin has not confirmed yet.
     struct Pending {
@@ -75,6 +99,9 @@ public:
         QHash<int, Pending> pending; // by column
         bool tooltipProvider = false;
         QString tooltipKey;
+        QVector<CellStyle> styles; // E17d cell objects; empty when every cell is plain text
+        QJsonValue icon;           // E17d: shown in the first column
+        bool checked = false;      // E17d: shown in the check columns
     };
 
     explicit PluginTableModel( QObject* parent );
@@ -84,8 +111,13 @@ public:
     std::function<bool( const QString& rowId, const QString& columnId, const QJsonValue& value,
                         const QString& previous )>
         onEdited;
-    // E17c: icon references of choices (a committed choice shows its icon in the cell).
+    // E17c: icon references of choices (a committed choice shows its icon in the cell); E17d:
+    // cell, row and header icons.
     std::function<QIcon( const QJsonValue& reference )> iconFor;
+    // E17d: the user changed a row's check box (a click, Space, automation). The receiver decides
+    // which rows change (a Shift+click sets a range) and calls setChecked(). Without a receiver
+    // the row changes alone.
+    std::function<void( const QString& rowId, bool checked )> onCheckRequested;
 
     int rowCount( const QModelIndex& parent = {} ) const override;
     int columnCount( const QModelIndex& parent = {} ) const override;
@@ -122,6 +154,14 @@ public:
     CellTooltipTarget tooltipTarget( const QModelIndex& index, bool tableProvider,
                                      const QString& tableKey ) const;
     QString columnId( int column ) const;
+    // E17d: the column with this id, or -1; a column's options (an invalid index gives defaults).
+    int columnOf( const QString& id ) const;
+    const Column& column( int index ) const;
+    QString rowId( int row ) const;
+    bool hasCheckColumn() const;
+    bool isChecked( const QString& rowId ) const;
+    // Sets the check state of rows (unknown ids are skipped); returns the ids that changed.
+    QStringList setChecked( const QStringList& rowIds, bool checked );
 
 private:
     // An edit that never reached the plugin: the cell shows what it showed before it again, the
@@ -140,6 +180,20 @@ private:
     QHash<QString, int> index_;
 };
 
+// E17d: sorting by a column's `sort_as` (section 10.1); a cell's `sort` value replaces its text.
+// `text` compares case-insensitively, `number` numerically (text that is no number sorts last),
+// `natural` with numbers inside the text compared as numbers. Without `sort_as`, numbers sort as
+// numbers and other text as text, as before E17d.
+class PluginTableProxy final : public QSortFilterProxyModel {
+public:
+    using QSortFilterProxyModel::QSortFilterProxyModel;
+    // A column with `sortable: false` keeps the current order (the header click is ignored).
+    void sort( int column, Qt::SortOrder order = Qt::AscendingOrder ) override;
+
+protected:
+    bool lessThan( const QModelIndex& left, const QModelIndex& right ) const override;
+};
+
 // Cell editors from the row's `editors` spec (docs/plugin-views.md, editable cells).
 // Enter or leaving commits, Esc cancels; an editor closed without a change commits nothing.
 // Choice editors open their list at once: choosing an item (or closing a multichoice list with
@@ -154,6 +208,9 @@ public:
     // Set by the view: icons of choices (E17c).
     std::function<QIcon( const QJsonValue& reference )> iconFor;
 
+    // E17d: a cell's progress bar behind its text.
+    void paint( QPainter* painter, const QStyleOptionViewItem& option,
+                const QModelIndex& index ) const override;
     QWidget* createEditor( QWidget* parent, const QStyleOptionViewItem& option,
                            const QModelIndex& index ) const override;
     void setEditorData( QWidget* widget, const QModelIndex& index ) const override;

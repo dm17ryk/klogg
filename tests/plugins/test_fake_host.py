@@ -72,11 +72,13 @@ class FakeHostTests(unittest.TestCase):
         params = sent.message["params"]
         self.assertEqual(params["host_features"], ["views", "view_edit", "queries", "tooltips", "icons",
                                                    "menus", "shortcuts", "choices", "toggles",
-                                                   "field_kinds", "validation"])
+                                                   "field_kinds", "validation", "rich_tables",
+                                                   "element_menus"])
         self.assertEqual(params["host_feature_versions"],
                          {"views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1,
                           "menus": 1, "shortcuts": 1, "choices": 1, "toggles": 1,
-                          "field_kinds": 1, "validation": 1})
+                          "field_kinds": 1, "validation": 1, "rich_tables": 1,
+                          "element_menus": 1})
         self.assertEqual(params["host_limits"]["max_table_cells"], 50000)
         self.assertEqual(params["host_version"], self.testing.HOST_VERSION)
         self.assertEqual(params["configuration"], {"prefix": "x"})

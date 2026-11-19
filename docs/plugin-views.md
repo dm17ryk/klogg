@@ -151,6 +151,16 @@ them. Fields gain `indicator`, `style` (inline radio buttons or check boxes), `s
 `radio_group` and `check_group` are new, and a button with `requires_valid` waits for valid fields.
 The host announces these as `choices`, `toggles`, `field_kinds` and `validation`.
 
+Since E17d ([advanced plugin SDK](plugin-sdk-advanced.md), sections 10 and 27), table cells may
+be objects with an icon, tooltip, tone, bold text, a progress bar and a sort value; rows take an
+icon and a check state; columns take alignment, hiding, per-column sorting (`sort_as`), a
+minimum width, a check box (`check`) and a header icon; and tables take `header`,
+`toggle_selection`, `context_menu`, `copy`, `export`, `reorderable` and `keep_columns`. A patch
+`{id, select, current, scroll_to}` sets the selection, and tables send `activated`, `checked` and
+`moved`. Right-click shows Copy, Copy All, Export CSVâ€¦ and the plugin's `element` menu; the
+header menu shows and hides columns, and the host keeps widths, order, hidden columns and the sort
+per view. The host announces these as `rich_tables` and `element_menus`.
+
 #### `multichoice` fields
 
 A `multichoice` field is a check-dropdown built from the same `choices` as a `choice` field. Its
@@ -296,6 +306,13 @@ list), `<element>_value` (a slider's value), `<element>_pick` (a color's **Pickâ
 `<element>_error` (the validation message). `set_ui` sets `value` on spin boxes and sliders,
 `date`, `time` and `dateTime` on the date fields and `checked` on check boxes and radio buttons.
 `get_ui` shows a secret field's text as `<redacted>`.
+
+Since E17d, a table's element menu is readable and usable like the other menus:
+`get_plugin_menus --location element --plugin-id <id> --view-id <view> --element-id <table>
+[--row-id <row>]` and `trigger_plugin_menu ... --view-id <view> --element-id <table> [--row-id
+<row>]` (the selection is the table's). `set_ui` on a table with `indexPath` makes a row current
+(and selects it), and `checkState` changes a check box. The menus are named `<element>_menu`
+(entries `_copy`, `_copy_all`, `_export`) and `<element>_columns` (entries `_column_<id>`).
 
 ## 6. Related small host changes
 

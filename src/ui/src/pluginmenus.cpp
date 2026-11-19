@@ -171,6 +171,18 @@ QJsonObject PluginMenuContext::toJson( bool withText ) const
         }
         json.insert( "selection", selection );
     }
+    if ( location == QLatin1String( "element" ) ) {
+        // E17d (section 10.4): the view, the element, the clicked row and the selected rows.
+        const auto orNull = []( const QString& value ) {
+            return value.isEmpty() ? QJsonValue() : QJsonValue( value );
+        };
+        json.insert( "view_id", viewId );
+        json.insert( "element_id", elementId );
+        json.insert( "row_id", orNull( rowId ) );
+        json.insert( "column_id", orNull( columnId ) );
+        json.insert( "selected_ids", QJsonArray::fromStringList( selectedIds ) );
+        json.insert( "selected_count", selectedLines );
+    }
     return json;
 }
 
@@ -524,6 +536,34 @@ void PluginMenus::fillOwnMenu( QMenu* menu, const Source& plugin, const QJsonObj
     if ( menu->isEmpty() ) {
         showUnavailable( menu, tr( "No entries" ) );
     }
+}
+
+void PluginMenus::addElementMenu( QMenu* menu, const QString& pluginId, const QString& menuId,
+                                  const PluginMenuContext& context )
+{
+    const auto plugin = source( pluginId );
+    if ( menu == nullptr || !plugin || hidden( *plugin, QStringLiteral( "element" ) ) ) {
+        return;
+    }
+    const auto definition = cp::findMenu( plugin->manifest, menuId );
+    if ( definition.value( "location" ) != QLatin1String( "element" ) ) {
+        // Once per plugin and menu: the menu opens on every right-click. Bounded: a plugin that
+        // keeps renaming its `context_menu` stops adding warnings after the first hundreds.
+        static QSet<QString> warned;
+        if ( warned.size() < 256 && !warned.contains( pluginId + '|' + menuId ) ) {
+            warned.insert( pluginId + '|' + menuId );
+            LOG_WARNING << "Plugin element menu not found or not an element menu plugin="
+                        << pluginId.toStdString() << " menu=" << menuId.toStdString();
+        }
+        return;
+    }
+    // QMenu::clear() leaves submenus behind: an element menu is built anew each time.
+    if ( !menu->isEmpty() ) {
+        menu->addSeparator();
+    }
+    menu->setToolTipsVisible( true );
+    addEntries( menu, *plugin, definition, definition.value( "items" ).toArray(), context, true,
+                {} );
 }
 
 void PluginMenus::addEntries( QMenu* menu, const Source& plugin, const QJsonObject& definition,
@@ -918,6 +958,13 @@ CommanderResult PluginMenus::dispatch( const Source& plugin, const QJsonObject& 
         if ( json.contains( "selection" ) ) {
             menu.insert( "selection", json.value( "selection" ).toVariant() );
         }
+        if ( context.location == QLatin1String( "element" ) ) {
+            // E17d: the job's `menu` context names the view element and its rows.
+            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id",
+                                      "selected_ids", "selected_count" } ) {
+                menu.insert( QLatin1String( key ), json.value( QLatin1String( key ) ).toVariant() );
+            }
+        }
         if ( menuId.isEmpty() ) {
             menu.clear(); // an action's own shortcut: no menu entry
         }
@@ -986,6 +1033,10 @@ QVariantList PluginMenus::resolve( const QString& location, const PluginMenuCont
                 continue;
             }
             const auto menuId = definition.value( "id" ).toString();
+            // E17d: an element shows only the menu its `context_menu` names.
+            if ( !context.elementMenuId.isEmpty() && menuId != context.elementMenuId ) {
+                continue;
+            }
             const bool hiddenHere = hidden( plugin, location );
             // Depth-first, with the titles of the submenus above each entry.
             std::function<void( const QJsonArray&, const QStringList&, bool )> walk;
@@ -1072,6 +1123,14 @@ std::optional<PluginMenus::Picked> PluginMenus::pick( const QString& pluginId,
     if ( !context.location.isEmpty() && context.location != location ) {
         return refuse( CommanderResultCode::InvalidRequest,
                        tr( "The entry belongs to the %1 menus." ).arg( location ) );
+    }
+    if ( !context.elementMenuId.isEmpty() && menuId != context.elementMenuId ) {
+        return refuse( CommanderResultCode::InvalidRequest,
+                       tr( "The element's context menu is %1." ).arg( context.elementMenuId ) );
+    }
+    if ( location == QLatin1String( "element" ) && context.elementId.isEmpty() ) {
+        return refuse( CommanderResultCode::InvalidRequest,
+                       tr( "An element menu entry needs --view-id and --element-id." ) );
     }
     context.location = location;
     const auto entry = PluginMenuRegistry::instance().entryState( pluginId, menuId, declared );

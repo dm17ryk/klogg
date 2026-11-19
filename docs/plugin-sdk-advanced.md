@@ -4,8 +4,8 @@
 [docs/workbench/decisions.md](workbench/decisions.md), task
 [E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
 answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
-slices in order, one branch and pull request each (section 21). **E17a, E17b and E17c are
-implemented** (sections 24 to 26); E17d to E17i are planned.
+slices in order, one branch and pull request each (section 21). **E17a to E17d are
+implemented** (sections 24 to 27); E17e to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1488,3 +1488,78 @@ a choice open, E17c decided as follows.
   gains the choice, toggle and completion builders, the new `field` and `button` keywords,
   `@plugin.complete` and `FakeHost` helpers (`complete_field`, `change_field`); its builders
   downgrade a view for a host without these features. The SDK version stays 2.0.0.
+- **Principle 11 (changed with E17d).** `valid` is added to `changed` events only for plugins that
+  declare `handles` and only for fields with a rule.
+
+## 27. E17d as built
+
+E17d implements section 10 (cell objects, row icons and check boxes, column and table options,
+the selection patch, `activated`, `checked` and `moved`, element context menus, Copy and Export,
+kept columns) and the `element` location of section 7.2. Where the design left a choice open,
+E17d decided as follows.
+
+- **Feature versions.** `rich_tables` and `element_menus` are version 1.
+- **Where the code is.** `src/ui/src/plugintablemodel.cpp` (cell objects, row and column options,
+  check boxes, `PluginTableProxy` for `sort_as`), `src/ui/src/plugintablebehaviour.cpp` (toggle
+  selection, check ranges, activation, reordering, the menus, Copy and Export, the selection patch,
+  kept columns), `src/ui/src/pluginmenus.cpp` (`addElementMenu`, element contexts) and
+  `PluginManager::keptViewState` (the per-view store, in the plugin settings).
+- **Old plugins (principle 11).** `current` in `selected`, `valid` in `changed` and the
+  `activated` event go only to plugins whose manifest declares `handles`; `checked` and `moved`
+  come only from new keys.
+- **Cells.** A cell object's `tooltip` wins over the row's, its `tone` over the row's, and its
+  `sort` value replaces the text when sorting. `progress` is bounded to 0..1 and drawn behind the
+  text (not under a selected row). The row's `icon` shows in model column 0; `drag` is accepted and
+  ignored until E17g. The most specific `tooltip_key` goes into `tooltip/resolve`: the cell's, the
+  row's, the column's, then the table's.
+- **Icons.** Tables ask for icons on every paint, so the icon registry resolves a reference once
+  per plugin, folder and palette (at most 512 per plugin, null results too) and again only after
+  the plugin's registered images change or it stops (a stopped plugin may be updated on disk).
+- **Columns.** `sort_as: text` compares case-insensitively, `number` puts text that is no finite
+  number (`nan` too) last, `natural` compares digit runs as numbers, leading zeros of any length
+  skipped without copying; without `sort_as` the order is as before E17d. The user can drag
+  columns into another order.
+  A header click on a column with `sortable: false` keeps the order. `min_width` is at most 2,000
+  pixels. A `check` column shows its cell text next to the box.
+- **Check boxes.** A click, Space or `set_ui` `checkState` asks the host; with Shift the rows from
+  the last changed box to this one (in shown order, at most 1,000, counted from the clicked row so
+  it is always among them) get the same state. The host
+  shows the change at once and sends one `checked` event with `row_id` and `row_ids` (the rows
+  that changed); when the event cannot be delivered, the boxes go back.
+- **Selection.** `toggle_selection` uses Qt's multi-selection mode; Shift+click adds the range
+  from the last clicked row (remembered by id, so a re-sort keeps it); a Shift+click on a check
+  box sets a check range instead. A right-click or Shift+click makes the row current before the
+  selection changes, so `selected` carries the new `current`. The selection patch ignores unknown ids, takes at most 1,000 and one
+  row in a single-selection table, and never sends `selected`.
+- **`activated`.** A double-click, or Enter outside an editor, on a cell that is not editable and
+  not in a `check` column.
+- **Reordering.** Only while the table is unsorted and unfiltered. A drop before the lower half
+  of a row means after it; below the last row means the end. Dropping rows before one of
+  themselves does nothing. The host never moves the rows.
+- **Context menus.** Copy, Copy All and Export CSV… come first, then a separator and the plugin's
+  entries. Copy takes the selected rows, or the current row, of the shown columns in shown order;
+  Copy All adds a header line. Ctrl+C with no selected or current row leaves the clipboard alone.
+  Export writes RFC 4180 CSV (UTF-8, CRLF) row by row through the host save dialog; text that a spreadsheet would run as a formula (`=`, `+`, `@`, or `-` not followed by a
+  number) gets a leading apostrophe. The header menu (`<element>_columns`) shows and hides
+  columns; the last shown column stays. Object names: `<element>_menu`, `_copy`, `_copy_all`,
+  `_export`, `_column_<id>`.
+- **Element menus.** Only the menu that `context_menu` names, and only if its location is
+  `element` (otherwise a warning is logged once and only the host entries show). Hiding a
+  plugin's `element` entries in the Plugins and Packs window removes them. `element` entries get
+  no window shortcuts: they act on a clicked row. In `when`, `views`, `tab_kinds` and
+  `file_patterns` never hold; `selection` and `min_lines`/`max_lines` count selected rows.
+- **Kept columns.** Saved half a second after the user resized, moved, sorted (a header release)
+  or showed or hid a column, never for the plugin's own changes; restored when the plugin sets
+  the columns (a stored column the plugin no longer has is skipped, and never every column
+  hidden, also without `keep_columns`). Stored per plugin and view in the plugin settings, at most
+  64 KiB per view; each table's entry records when it was saved, and when the view's state would
+  pass the limit the entries saved longest ago (tables the plugin no longer has) give way.
+- **Automation.** `get_plugin_menus --location element` and `trigger_plugin_menu` take `--view-id`,
+  `--element-id` and `--row-id` (native MCP and Python: `view_id`, `element_id`, `row_id`); the
+  view must be open in that window, and the selection is the table's. `set_ui` with an
+  `indexPath` makes a row current and `checkState` changes a check box.
+- **SDKs.** The C++ SDK needs nothing new (element entries arrive through `onCommand`). The Python
+  SDK gains `cell()`, the new `table_row`, `table_column` and `table` keywords, `select_rows()`,
+  TypedDicts for the events and the element context, and `FakeHost` helpers (`select_rows`,
+  `activate_cell`, `check_rows`, `move_rows`, `send_element_command`); its builders downgrade a
+  view for a host without `rich_tables` or `element_menus`. The SDK version stays 2.0.0.

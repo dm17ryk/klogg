@@ -6,7 +6,7 @@
   "capabilities": ["tool"],
   "executable": "python",
   "arguments": ["main.py"],
-  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation and completion.",
+  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation, completion and a rich table with check boxes, row dragging, Export CSV and its own context menu.",
   "handles": ["tooltip/resolve", "menu/populate", "field/complete", "ui/command", "query/cancel"],
   "views": [
     {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520}
@@ -49,6 +49,19 @@
       "items": [
         {"id": "describe_tab", "title": "Describe tab", "icon": "builtin:info", "event": true,
          "tooltip": "Shows the tab in the UI Gallery status label."}
+      ]
+    },
+    {
+      "id": "board_actions",
+      "location": "element",
+      "items": [
+        {"id": "restart", "title": "Restart Board", "icon": "builtin:refresh", "event": true,
+         "when": {"selection": "any"}, "tooltip": "Restarts the selected boards."},
+        {"id": "forget", "title": "Remove from List", "icon": "builtin:delete", "event": true,
+         "when": {"selection": "any"}, "tooltip": "Removes the selected boards from the table."},
+        {"type": "separator"},
+        {"id": "restore", "title": "Restore Removed Boards", "event": true,
+         "tooltip": "Puts the removed boards back into the table."}
       ]
     }
   ]

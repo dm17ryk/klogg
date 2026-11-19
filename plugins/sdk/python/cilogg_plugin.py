@@ -5,8 +5,10 @@ host queries answered on worker lanes (`@plugin.tooltip`, `@plugin.query`), tool
 invalidation, registered icons, menus with dynamic submenus and commands
 (`@plugin.menu_populate`, `@plugin.on_command`, `Plugin.update_menu`, `menu_item` and the other
 menu builders), choices, check boxes, radio buttons, new field kinds, validation and field
-completion (`choice`, `checkbox`, `radio_group`, `check_group`, `@plugin.complete`) and forward
-compatibility with newer hosts. See docs/plugin-sdk.md and docs/plugin-sdk-advanced.md.
+completion (`choice`, `checkbox`, `radio_group`, `check_group`, `@plugin.complete`), rich tables
+and element context menus (`cell`, the new `table`, `table_column` and `table_row` keys,
+`select_rows`) and forward compatibility with newer hosts. See docs/plugin-sdk.md and
+docs/plugin-sdk-advanced.md.
 """
 from __future__ import annotations
 
@@ -122,6 +124,22 @@ _TOGGLE_FIELDS: Dict[str, Tuple[str, Optional[str], str]] = {
     "checkbox": ("boolean", None, "text"), "radio_group": ("choice", "radio", "title"),
     "check_group": ("multichoice", "checkboxes", "title")}
 _BOUNDED_KINDS = ("integer", "slider")  # their min and max belong to field_kinds
+
+# Rich tables and element context menus (docs/plugin-sdk-advanced.md, section 10; host features
+# rich_tables and element_menus).
+CELL_TONES = TOOLTIP_TONES
+COLUMN_ALIGNMENTS = ("left", "center", "right")
+SORT_AS = ("text", "number", "natural")
+TABLE_EVENTS = ("activated", "checked", "moved")  # besides selected and edited
+MAX_TABLE_IDS = 1000  # ids the host uses in select, selected_ids, checked and moved
+# Keys of the rich_tables feature (update() and patch() remove them on a host without it).
+_RICH_COLUMN_KEYS = frozenset({"align", "hidden", "sortable", "sort_as", "min_width", "check",
+                               "icon"})
+_RICH_ROW_KEYS = frozenset({"icon", "checked", "drag"})
+_RICH_TABLE_KEYS = frozenset({"header", "toggle_selection", "copy", "export", "reorderable",
+                              "keep_columns"})
+_SELECTION_PATCH_KEYS = frozenset({"select", "current", "scroll_to"})
+_ELEMENT_MENU_KEYS = frozenset({"context_menu"})  # the element_menus feature
 
 
 # Message shapes (docs/plugin-sdk.md and docs/plugin-sdk-advanced.md). Keys of the
@@ -248,7 +266,9 @@ TooltipAnswer = Union[Tooltip, Mapping[str, Any], str, None]
 
 
 class MenuWhen(TypedDict, total=False):
-    """Conditions the host checks when a menu opens; the entry shows only when all hold."""
+    """Conditions the host checks when a menu opens; the entry shows only when all hold. In an
+    element menu `selection` and `min_lines`/`max_lines` count the selected rows, and `views`,
+    `tab_kinds` and `file_patterns` never hold."""
     views: List[str]  # main, filtered
     tab_kinds: List[str]  # file, serial, plugin_stream
     file_patterns: List[str]
@@ -320,6 +340,19 @@ class LogSelection(TypedDict, total=False):
     count: int
     text: str
     truncated: bool
+
+
+class ElementMenuContext(TypedDict, total=False):
+    """The `context` of an element menu entry (location "element", host feature
+    element_menus): the clicked row and column (None when the click was not on a cell) and the
+    selected row ids (at most 1000) with their count."""
+    window_id: str
+    view_id: str
+    element_id: str
+    row_id: Optional[str]
+    column_id: Optional[str]
+    selected_ids: List[str]
+    selected_count: int
 
 
 class _UiCommandParamsRequired(TypedDict):
@@ -461,22 +494,131 @@ class CheckGroupElement(ElementProperties, total=False):
     all_none: bool
 
 
+SortValue = Union[str, int, float]
+
+
+class _TableCellRequired(TypedDict):
+    text: str
+
+
+class TableCell(_TableCellRequired, total=False):
+    """A cell object (host feature rich_tables); a cell may also be a plain string. On an older
+    host update() and patch() send its text."""
+    icon: IconRef
+    tooltip: str
+    tooltip_key: str
+    tone: str  # CELL_TONES; wins over the row's tone
+    bold: bool
+    progress: float  # 0..1, a bar behind the text
+    sort: SortValue  # the sort value instead of the text
+
+
+class TableColumn(TypedDict, total=False):
+    """A table column; the keys after `tooltip_key` need the host feature rich_tables."""
+    id: str
+    title: str
+    width: int
+    editable: bool
+    tooltip: str
+    tooltip_provider: bool
+    tooltip_key: str
+    align: str  # COLUMN_ALIGNMENTS
+    hidden: bool
+    sortable: bool
+    sort_as: str  # SORT_AS
+    min_width: int
+    check: bool  # a check box bound to the row's `checked`
+    icon: IconRef  # in the header
+
+
+class TableRow(TypedDict, total=False):
+    """A table row; `icon`, `checked` and `drag` need the host feature rich_tables."""
+    id: str
+    cells: List[Union[str, TableCell]]
+    tone: str
+    tooltip: str
+    editors: JsonObject
+    tooltip_provider: bool
+    tooltip_key: str
+    icon: IconRef  # in the first column
+    checked: bool  # shown in every check column
+    drag: Union[bool, JsonObject]  # accepted; used from E17g
+
+
+class TableElement(ElementProperties, total=False):
+    """A `table` element. `context_menu` needs the host feature element_menus, the keys before
+    it rich_tables."""
+    type: str  # table
+    columns: List[TableColumn]
+    rows: List[TableRow]
+    sortable: bool
+    filter_box: bool
+    selection: str  # none, single, multi
+    header: bool
+    toggle_selection: bool
+    copy: bool
+    export: bool
+    reorderable: bool
+    keep_columns: bool
+    context_menu: str
+
+
+class _SelectionPatchRequired(TypedDict):
+    id: str
+
+
+class SelectionPatch(_SelectionPatchRequired, total=False):
+    """A patch entry that sets a table's selection (host feature rich_tables); it never sends
+    a `selected` event back."""
+    select: List[str]
+    current: str
+    scroll_to: str
+
+
+class TableActivatedValue(TypedDict):
+    """The value of a table's `activated` event: a double-click or Enter on a cell that is not
+    editable (sent only to plugins whose manifest declares `handles`)."""
+    row_id: str
+    column_id: str
+
+
+class TableCheckedValue(TypedDict):
+    """The value of a table's `checked` event: `row_id` is the clicked row, `row_ids` every
+    row that changed (a Shift+click range, at most 1000)."""
+    row_id: str
+    row_ids: List[str]
+    checked: bool
+
+
+class TableMovedValue(TypedDict):
+    """The value of a reorderable table's `moved` event: the dragged rows in shown order and
+    the row they were dropped before (None: the end). The host does not move them: the plugin
+    confirms with a patch."""
+    row_ids: List[str]
+    before: Optional[str]
+
+
 class _ViewEventParamsRequired(TypedDict):
     view_id: str
     element_id: str
-    type: str  # changed, clicked, selected, edited
+    type: str  # changed, clicked, selected, edited, activated, checked, moved
 
 
 class ViewEventParams(_ViewEventParamsRequired, total=False):
     """A view/event. On a host with validation, the `changed` event of a field that declares a
     validation key (required, pattern, min, max, min_length, max_length or a non-empty error)
     carries `valid`; read it as optional, True when absent. Check boxes, radio groups and
-    check groups send `changed` with their value."""
+    check groups send `changed` with their value. A table's `selected` event carries
+    `selected_count` and, for plugins whose manifest declares `handles` on a host with
+    rich_tables, `current` (the row with the keyboard focus, or None); `activated`, `checked`
+    and `moved` carry TableActivatedValue, TableCheckedValue and TableMovedValue."""
     window_id: str
     value: Any
     inputs: JsonObject
     valid: bool
     truncated: bool
+    selected_count: int
+    current: Optional[str]
     row_id: str
     column_id: str
     previous: str
@@ -768,29 +910,98 @@ def progress(id: str, value: Optional[float] = None, busy: Optional[bool] = None
     return _element("progress", id, value=value, busy=busy, text=text, **props)
 
 
+def _check_one_of(name: str, value: Optional[str], allowed: Sequence[str]) -> None:
+    if value is not None and value not in allowed:
+        raise ValueError(f"{name} is one of {', '.join(allowed)}, not {value!r}")
+
+
+def cell(text: Any, *, icon: Optional[IconRef] = None, tooltip: Optional[str] = None,
+         tooltip_key: Optional[str] = None, tone: Optional[str] = None,
+         bold: Optional[bool] = None, progress: Optional[float] = None,
+         sort: Optional[SortValue] = None) -> TableCell:
+    """A cell object for table_row() (host feature rich_tables): `text` (other values are
+    converted with str()), an `icon`, a plain `tooltip` (wins over the row's), a `tooltip_key`
+    for the advanced tooltip cache, a `tone` (CELL_TONES; wins over the row's), `bold`, a
+    `progress` bar from 0 to 1 behind the text and a `sort` value (number or text) used instead
+    of the text. On an older host update() and patch() send the text alone."""
+    _check_one_of("tone", tone, CELL_TONES)
+    if progress is not None and (not _is_number(progress, False) or not 0 <= progress <= 1):
+        raise ValueError("progress is a number from 0 to 1")
+    if sort is not None and not (_is_number(sort, False) or isinstance(sort, str)):
+        raise ValueError("sort is a number or a string")
+    result: TableCell = {"text": text if isinstance(text, str) else str(text)}
+    if icon is not None:
+        result["icon"] = icon
+    if tooltip is not None:
+        result["tooltip"] = tooltip
+    if tooltip_key is not None:
+        result["tooltip_key"] = tooltip_key
+    if tone is not None:
+        result["tone"] = tone
+    if bold is not None:
+        result["bold"] = bold
+    if progress is not None:
+        result["progress"] = progress
+    if sort is not None:
+        result["sort"] = sort
+    return result
+
+
 def table_column(id: str, title: Optional[str] = None, width: Optional[int] = None,
                  editable: Optional[bool] = None, tooltip: Optional[str] = None,
                  tooltip_provider: Optional[bool] = None,
-                 tooltip_key: Optional[str] = None) -> JsonObject:
-    """A table column. `tooltip` is the header tooltip; `tooltip_provider` asks the plugin
-    for the tooltips of this column's cells (host feature tooltips)."""
+                 tooltip_key: Optional[str] = None, *, align: Optional[str] = None,
+                 hidden: Optional[bool] = None, sortable: Optional[bool] = None,
+                 sort_as: Optional[str] = None, min_width: Optional[int] = None,
+                 check: Optional[bool] = None, icon: Optional[IconRef] = None) -> JsonObject:
+    """A table column (TableColumn). `tooltip` is the header tooltip; `tooltip_provider` asks
+    the plugin for the tooltips of this column's cells (host feature tooltips).
+
+    Keys of the host feature rich_tables (update() and patch() remove them on an older host):
+    `align` (left, center, right), `hidden` (hidden at first; the header menu shows it),
+    `sortable` (False: this column of a sortable table does not sort), `sort_as` (text,
+    number, natural), `min_width` (pixels), `check` (a check box bound to the row's `checked`,
+    next to the cell text) and a header `icon`."""
+    _check_one_of("align", align, COLUMN_ALIGNMENTS)
+    _check_one_of("sort_as", sort_as, SORT_AS)
+    if min_width is not None and (not isinstance(min_width, int) or isinstance(min_width, bool)
+                                  or min_width < 0):
+        raise ValueError("min_width is a whole number of pixels, at least 0")
     column_object: JsonObject = {"id": id, "title": title if title is not None else id}
     for key, value in (("width", width), ("editable", editable), ("tooltip", tooltip),
-                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key)):
+                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key),
+                       ("align", align), ("hidden", hidden), ("sortable", sortable),
+                       ("sort_as", sort_as), ("min_width", min_width), ("check", check),
+                       ("icon", icon)):
         if value is not None:
             column_object[key] = value
     return column_object
 
 
+def _row_cell(value: Any) -> Any:
+    """A cell object stays a (copied) dict; any other value becomes its str()."""
+    return dict(value) if isinstance(value, collections.abc.Mapping) else str(value)
+
+
 def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
               tooltip: Optional[str] = None, editors: Optional[JsonObject] = None,
               tooltip_provider: Optional[bool] = None,
-              tooltip_key: Optional[str] = None) -> JsonObject:
-    """A table row. `tooltip_key` (at most 128 characters) is part of the host's tooltip cache
-    key: change it when the row's advanced tooltips change."""
-    row_object: JsonObject = {"id": id, "cells": [str(cell) for cell in cells]}
+              tooltip_key: Optional[str] = None, *, icon: Optional[IconRef] = None,
+              checked: Optional[bool] = None,
+              drag: Union[bool, Mapping[str, Any], None] = None) -> JsonObject:
+    """A table row (TableRow). Cells are strings (other values are converted with str()) or
+    cell() objects. `tooltip_key` (at most 128 characters) is part of the host's tooltip cache
+    key: change it when the row's advanced tooltips change.
+
+    Keys of the host feature rich_tables (update() and patch() remove them, and send cell
+    objects as their text, on an older host): `icon` (in the first column), `checked` (shown
+    in every check column; a row without it is unchecked) and `drag` (accepted; used from
+    E17g)."""
+    row_object: JsonObject = {"id": id, "cells": [_row_cell(value) for value in cells]}
     for key, value in (("tone", tone), ("tooltip", tooltip), ("editors", editors),
-                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key)):
+                       ("tooltip_provider", tooltip_provider), ("tooltip_key", tooltip_key),
+                       ("icon", icon), ("checked", checked),
+                       ("drag", dict(drag) if isinstance(drag, collections.abc.Mapping) else drag)):
         if value is not None:
             row_object[key] = value
     return row_object
@@ -814,10 +1025,31 @@ def editor(kind: str, choices: Optional[Sequence[Any]] = None, min: Optional[flo
 
 def table(id: str, columns: Sequence[JsonObject], rows: Optional[Sequence[JsonObject]] = None,
           sortable: Optional[bool] = None, filter_box: Optional[bool] = None,
-          selection: Optional[str] = None, **props: Any) -> JsonObject:
+          selection: Optional[str] = None, *, header: Optional[bool] = None,
+          toggle_selection: Optional[bool] = None, context_menu: Optional[str] = None,
+          copy: Optional[bool] = None, export: Optional[bool] = None,
+          reorderable: Optional[bool] = None, keep_columns: Optional[bool] = None,
+          **props: Any) -> JsonObject:
+    """A table (TableElement). `selection` is none, single or multi.
+
+    Keys of the host feature rich_tables (update() and patch() remove them on an older host):
+    `header` (False hides the header: a list), `toggle_selection` (with selection "multi":
+    every click adds or removes a row), `copy` (default True: Copy and Copy All), `export`
+    (Export CSV...), `reorderable` (rows can be dragged; the plugin gets `moved` and confirms
+    with a patch) and `keep_columns` (default True: the host keeps widths, order, hidden
+    columns and the sort). `context_menu` (host feature element_menus) names a plugin.json
+    menu with location "element" whose entries follow the host's Copy entries."""
+    if toggle_selection and selection != "multi":
+        raise ValueError('toggle_selection needs selection "multi"')
+    if context_menu is not None and (not isinstance(context_menu, str) or not context_menu
+                                     or "/" in context_menu):
+        raise ValueError(f"context_menu is the id of a menu with location element: "
+                         f"{context_menu!r}")
     return _element("table", id, columns=list(columns),
                     rows=list(rows) if rows is not None else None, sortable=sortable,
-                    filter_box=filter_box, selection=selection, **props)
+                    filter_box=filter_box, selection=selection, header=header,
+                    toggle_selection=toggle_selection, context_menu=context_menu, copy=copy,
+                    export=export, reorderable=reorderable, keep_columns=keep_columns, **props)
 
 
 # Patch entries for Plugin.patch().
@@ -843,6 +1075,26 @@ def insert_rows(table_id: str, rows: Sequence[JsonObject],
 
 def remove_rows(table_id: str, row_ids: Sequence[str]) -> JsonObject:
     return {"id": table_id, "remove_rows": list(row_ids)}
+
+
+def select_rows(table_id: str, row_ids: Optional[Sequence[str]] = None, *,
+                current: Optional[str] = None, scroll_to: Optional[str] = None) -> JsonObject:
+    """A selection patch entry (SelectionPatch, host feature rich_tables): `row_ids` replace
+    the selection (an empty list clears it; unknown ids are ignored, at most 1000 used),
+    `current` sets the row with the keyboard focus and `scroll_to` scrolls a row into view.
+    The host sends no `selected` event for it. On an older host patch() leaves it out."""
+    if isinstance(row_ids, str):
+        raise ValueError("row_ids is a list of row ids")
+    if row_ids is None and current is None and scroll_to is None:
+        raise ValueError("A selection patch needs row_ids, current or scroll_to")
+    entry: JsonObject = {"id": table_id}
+    if row_ids is not None:
+        entry["select"] = [str(row_id) for row_id in row_ids]
+    if current is not None:
+        entry["current"] = current
+    if scroll_to is not None:
+        entry["scroll_to"] = scroll_to
+    return entry
 
 
 # Advanced tooltips and icons (host features tooltips and icons).
@@ -995,7 +1247,9 @@ def menu_section(title: str, *, id: Optional[str] = None) -> MenuEntry:
 def menu(id: str, location: str, items: Sequence[Mapping[str, Any]], title: Optional[str] = None,
          icon: Optional[IconRef] = None) -> Menu:
     """A plugin.json `menus` entry. location is plugins (the plugin's submenu of Plugins, titled
-    `title`), menubar, tab, pane, log, element or toolbar (MENU_LOCATIONS)."""
+    `title`), menubar, tab, pane, log, element or toolbar (MENU_LOCATIONS). An `element` menu
+    is the context menu of the tables that name it in `context_menu` (host feature
+    element_menus); its entries get an ElementMenuContext."""
     if not id:
         raise ValueError("A menu needs an id")
     if "/" in id or id in ("action", "view"):
@@ -1396,6 +1650,41 @@ class _MenuContext:
             return count
         return sum(last - first + 1 for first, last in self.ranges)
 
+    # An element menu's context (ElementMenuContext); None or empty in other locations.
+    @property
+    def view_id(self) -> Optional[str]:
+        """The view of the element whose context menu opened."""
+        return _optional_text(self.context.get("view_id"))
+
+    @property
+    def element_id(self) -> Optional[str]:
+        """The element (a table) whose context menu opened."""
+        return _optional_text(self.context.get("element_id"))
+
+    @property
+    def row_id(self) -> Optional[str]:
+        """The clicked row; None when the click was not on a row."""
+        return _optional_text(self.context.get("row_id"))
+
+    @property
+    def column_id(self) -> Optional[str]:
+        """The clicked column; None when the click was not on a cell."""
+        return _optional_text(self.context.get("column_id"))
+
+    @property
+    def selected_ids(self) -> List[str]:
+        """The selected row ids (at most 1000); [] without a selection."""
+        ids = self.context.get("selected_ids")
+        return [item for item in ids if isinstance(item, str)] if isinstance(ids, list) else []
+
+    @property
+    def selected_count(self) -> int:
+        """The number of selected rows: `selected_count`, else the length of selected_ids."""
+        count = self.context.get("selected_count")
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            return count
+        return len(self.selected_ids)
+
 
 class MenuQuery(Query, _MenuContext):
     """A menu/populate query: a dynamic submenu is about to show."""
@@ -1448,7 +1737,9 @@ class CompleteQuery(Query):
 
 class UiCommand(_MenuContext):
     """A ui/command: the user picked an `event` menu entry (origin "menu") or pressed its
-    shortcut ("shortcut"); toolbars and status items come later ("toolbar", "status")."""
+    shortcut ("shortcut"); toolbars and status items come later ("toolbar", "status"). An
+    entry of an element menu (location "element") also has view_id, element_id, row_id,
+    column_id, selected_ids and selected_count."""
 
     def __init__(self, plugin: Plugin, params: JsonObject) -> None:
         self.plugin = plugin
@@ -1573,7 +1864,7 @@ class _QueryLane:
 
 class _StripRules(NamedTuple):
     """What update() and patch() change for the host: keys removed from every element, table
-    column and row, and whether the host has each E17c feature."""
+    column and row, and whether the host has each E17c and E17d feature."""
     element: FrozenSet[str]
     column: FrozenSet[str]
     row: FrozenSet[str]
@@ -1581,6 +1872,21 @@ class _StripRules(NamedTuple):
     toggles: bool = True
     field_kinds: bool = True
     validation: bool = True
+    rich_tables: bool = True
+    element_menus: bool = True
+
+    def table_keys(self) -> FrozenSet[str]:
+        """The table keys the host does not know."""
+        keys: FrozenSet[str] = frozenset()
+        if not self.rich_tables:
+            keys |= _RICH_TABLE_KEYS
+        if not self.element_menus:
+            keys |= _ELEMENT_MENU_KEYS
+        return keys
+
+
+# A patch entry that update rules leave out entirely (a selection patch on an older host).
+_DROPPED: Any = object()
 
 
 # Element id -> (type, field kind) of a view's last update(), for patches.
@@ -1679,20 +1985,45 @@ def _compatible_unknown(props: JsonObject, rules: _StripRules) -> JsonObject:
         remove |= _VALIDATION_KEYS - _BOUND_KEYS  # also integer and slider bounds
     if not rules.toggles:
         remove |= _TOGGLE_KEYS
+    remove |= rules.table_keys()  # no other element type has them
     result: JsonObject = _without(props, remove)
     return result if rules.choices else _with_compatible_choices(result)
 
 
-def _compatible_row(row: Any, rules: _StripRules) -> Any:
-    result = _without(row, rules.row)
-    if rules.choices or not isinstance(result, dict) or not isinstance(result.get("editors"), dict):
-        return result
-    editors = result["editors"]
+def _cell_text(value: Any) -> Any:
+    """A cell for a host without rich_tables: a cell object becomes its text."""
+    if not isinstance(value, dict):
+        return value
+    text = value.get("text")
+    if isinstance(text, str):
+        return text
+    return "" if text is None else json.dumps(text, ensure_ascii=False)
+
+
+def _compatible_editors(editors: Any) -> Any:
+    if not isinstance(editors, dict):
+        return editors
     converted = {column_id: _with_compatible_choices(spec) if isinstance(spec, dict) else spec
                  for column_id, spec in editors.items()}
     if all(converted[column_id] is editors[column_id] for column_id in editors):
+        return editors
+    return converted
+
+
+def _compatible_row(row: Any, rules: _StripRules) -> Any:
+    result = _without(row, rules.row)
+    if not isinstance(result, dict):
         return result
-    return {**result, "editors": converted}
+    changes: JsonObject = {}
+    if not rules.rich_tables and "cells" in result:
+        cells = _map_list(result["cells"], _cell_text)
+        if cells is not result["cells"]:
+            changes["cells"] = cells
+    if not rules.choices and "editors" in result:
+        editors = _compatible_editors(result["editors"])
+        if editors is not result["editors"]:
+            changes["editors"] = editors
+    return {**result, **changes} if changes else result
 
 
 def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str],
@@ -1712,6 +2043,8 @@ def _compatible_props(props: Any, rules: _StripRules, element_type: Optional[str
         result = _with_compatible_choices(result)
     elif element_type == "button" and not rules.validation:
         result = _without(result, frozenset({"requires_valid"}))
+    elif element_type == "table":
+        result = _without(result, rules.table_keys())
     elif element_type is None:
         result = _compatible_unknown(result, rules)
     changes: JsonObject = {}
@@ -1738,8 +2071,13 @@ def _compatible_element(element: Any, rules: _StripRules) -> Any:
 
 
 def _compatible_patch_entry(entry: Any, rules: _StripRules, kinds: _ElementKinds) -> Any:
+    """A patch entry the host knows, or _DROPPED for a selection patch it does not know."""
     if not isinstance(entry, dict):
         return entry
+    if not rules.rich_tables and not _SELECTION_PATCH_KEYS.isdisjoint(entry):
+        entry = _without(entry, _SELECTION_PATCH_KEYS)
+        if set(entry) <= {"id"}:
+            return _DROPPED
     changes: JsonObject = {}
     if "set" in entry:
         identifier = entry.get("id")
@@ -2039,18 +2377,23 @@ class Plugin:
             row_keys |= _TOOLTIP_ROW_KEYS
         if not self.supports("views", 2):
             element |= _ACCESSIBLE_KEYS
-        choices, toggles, field_kinds, validation = (
-            self.supports(name) for name in ("choices", "toggles", "field_kinds", "validation"))
+        choices, toggles, field_kinds, validation, rich_tables, element_menus = (
+            self.supports(name) for name in ("choices", "toggles", "field_kinds", "validation",
+                                             "rich_tables", "element_menus"))
+        if not rich_tables:
+            column_keys |= _RICH_COLUMN_KEYS
+            row_keys |= _RICH_ROW_KEYS
         if not (element or column_keys or row_keys) and choices and toggles and field_kinds \
-                and validation:
+                and validation and rich_tables and element_menus:
             return None
         return _StripRules(element, column_keys, row_keys, choices, toggles, field_kinds,
-                           validation)
+                           validation, rich_tables, element_menus)
 
     def update(self, view_id: str, root: JsonObject, window_id: Optional[str] = None) -> None:
         """Replace a view's element tree (in every window without window_id). On an older host
-        the tree is sent without what the host does not know (see _strip_rules), and E17c
-        elements as the fields it knows; the caller's tree is not changed."""
+        the tree is sent without what the host does not know (see _strip_rules), E17c elements
+        as the fields it knows and table cell objects as their text; the caller's tree is not
+        changed."""
         rules = self._strip_rules()
         if rules is not None:
             elements = _element_kinds(root)  # patch() converts by the element's type
@@ -2081,14 +2424,19 @@ class Plugin:
 
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
-        """Apply set_props()/row operation entries to existing elements. On an older host they
-        are converted like update() converts the elements of the view's last tree."""
+        """Apply set_props(), row operation and select_rows() entries to existing elements. On
+        an older host they are converted like update() converts the elements of the view's
+        last tree; a host without rich_tables gets no selection patch (and no frame when
+        nothing else is left)."""
         rules = self._strip_rules()
         entries = list(changes)
         if rules is not None:
             with self.lock:
                 elements = self._patch_elements(view_id, window_id or "")
-            entries = [_compatible_patch_entry(entry, rules, elements) for entry in entries]
+            converted = [_compatible_patch_entry(entry, rules, elements) for entry in entries]
+            entries = [entry for entry in converted if entry is not _DROPPED]
+            if converted and not entries:
+                return
         params: JsonObject = {"view_id": view_id, "patch": entries}
         if window_id:
             params["window_id"] = window_id

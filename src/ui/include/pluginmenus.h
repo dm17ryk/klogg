@@ -40,6 +40,14 @@ struct PluginMenuContext {
     std::function<QString()> text;  // log: the selected text, read only when an entry is picked
     QString pickedText;             // the text read when the entry was picked
     bool textRead = false;
+    // element (E17d, section 10.4): the view element whose context menu opened. `selectedLines`
+    // counts its selected rows, so `when` conditions on the selection apply to rows.
+    QString viewId;
+    QString elementId;
+    QString elementMenuId; // the element's `context_menu`: the only menu its entries come from
+    QString rowId;         // the clicked row; empty when the click was not on a row
+    QString columnId;
+    QStringList selectedIds; // at most pluginview::MaxTableIds
 
     cilogg::plugins::MenuConditionContext conditions() const;
     // The `context` of menu/populate and ui/command. The selected text is added only with
@@ -138,6 +146,11 @@ public:
     // Fills a plugin's own `plugins` or `menubar` menu each time it opens.
     void fillOwnMenu( QMenu* menu, const Source& plugin, const QJsonObject& definition,
                       const PluginMenuContext& context );
+    // E17d: adds the entries of a plugin's `element` menu `menuId` to an element's context menu,
+    // after a separator when the menu already has entries. Nothing when the plugin hides its
+    // `element` entries or the menu is not an `element` menu.
+    void addElementMenu( QMenu* menu, const QString& pluginId, const QString& menuId,
+                         const PluginMenuContext& context );
 
     // get_plugin_menus: the resolved entries of a location with their state and conditions.
     QVariantList resolve( const QString& location, const PluginMenuContext& context,

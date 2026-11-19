@@ -288,9 +288,47 @@ int main( int argc, char** argv )
                                                  { "cells", QJsonArray{ "2", "y" } } } } } } } }
         };
     };
-    const auto rootFor = [ tipsRoot ]( const QString& viewId ) {
+    // E17d: a rich table with cell objects, a check column, an element menu, Export and
+    // reordering (its events are recorded like every other notification).
+    const auto tablesRoot = [] {
+        const auto row = []( const QString& id, const QString& name, double progress,
+                             bool checked ) {
+            return QJsonObject{
+                { "id", id },
+                { "checked", checked },
+                { "icon", "status:ok" },
+                { "cells",
+                  QJsonArray{ QJsonObject{ { "text", name }, { "tooltip", "Board " + name } },
+                              QJsonObject{ { "text", QString::number( progress * 100 ) + "%" },
+                                           { "progress", progress },
+                                           { "sort", progress } },
+                              "" } } };
+        };
+        const QJsonArray columns{
+            QJsonObject{ { "id", "name" }, { "title", "Name" }, { "sort_as", "natural" } },
+            QJsonObject{ { "id", "done" }, { "title", "Done" }, { "align", "right" } },
+            QJsonObject{ { "id", "use" }, { "title", "Use" }, { "check", true } } };
+        const QJsonObject table{
+            { "type", "table" },        { "id", "boards" },          { "selection", "multi" },
+            { "sortable", true },       { "context_menu", "rows_menu" }, { "export", true },
+            { "reorderable", true },    { "columns", columns },
+            { "rows", QJsonArray{ row( "r1", "board 10", 0.5, false ),
+                                  row( "r2", "board 9", 1.0, true ),
+                                  row( "r3", "board 1", 0.25, false ) } } };
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "children", QJsonArray{ QJsonObject{ { "type", "label" },
+                                                   { "id", "status" },
+                                                   { "text", "ready tables" } },
+                                      table } } };
+    };
+    const auto rootFor = [ tipsRoot, tablesRoot ]( const QString& viewId ) {
         if ( viewId == "tips" ) {
             return tipsRoot();
+        }
+        if ( viewId == "tables" ) {
+            return tablesRoot();
         }
         return QJsonObject{
             { "type", "column" },

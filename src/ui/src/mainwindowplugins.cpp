@@ -249,6 +249,31 @@ void MainWindow::updatePluginShortcuts()
     menus->registerShortcuts( hostShortcutKeys(), user );
 }
 
+bool MainWindow::pluginElementMenuContext( const CommanderRequest& request,
+                                           PluginMenuContext* context, QString* error ) const
+{
+    const auto elementId = request.pluginArguments.value( "elementId" ).toString();
+    if ( request.pluginId.isEmpty() || request.viewId.isEmpty() || elementId.isEmpty() ) {
+        *error = tr( "Element menus need --plugin-id, --view-id and --element-id." );
+        return false;
+    }
+    auto* host = pluginController_ ? pluginController_->viewHost() : nullptr;
+    const auto* view = host ? host->view( request.pluginId, request.viewId ) : nullptr;
+    if ( view == nullptr ) {
+        *error = tr( "The plugin view is not open in this window." );
+        return false;
+    }
+    QString menuId;
+    QJsonObject target;
+    if ( !view->elementMenu( elementId, request.pluginArguments.value( "rowId" ).toString(),
+                             &menuId, &target, error ) ) {
+        return false;
+    }
+    *context = host->elementMenuContext( request.viewId, elementId, menuId, target );
+    context->windowIndex = static_cast<int>( session_.windowIndex() );
+    return true;
+}
+
 CommanderResult MainWindow::commanderGetPluginMenus( const CommanderRequest& request )
 {
     auto* menus = pluginController_ ? pluginController_->menus() : nullptr;
@@ -276,7 +301,16 @@ CommanderResult MainWindow::commanderGetPluginMenus( const CommanderRequest& req
     if ( !parseLineRanges( arguments.value( "lines" ).toString(), &lines, &error ) ) {
         return commanderFailure( CommanderResultCode::InvalidRequest, error );
     }
-    const auto context = pluginMenuContext( location, tabId, lines );
+    PluginMenuContext context;
+    if ( location == QLatin1String( "element" ) ) {
+        // E17d: the context menu of a table in an open plugin view.
+        if ( !pluginElementMenuContext( request, &context, &error ) ) {
+            return commanderFailure( CommanderResultCode::InvalidRequest, error );
+        }
+    }
+    else {
+        context = pluginMenuContext( location, tabId, lines );
+    }
     if ( !lines.isEmpty() && context.selectedLines == 0 ) {
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "--lines names no line of the file." ) );
@@ -331,7 +365,16 @@ CommanderResult MainWindow::commanderTriggerPluginMenu( const CommanderRequest& 
     if ( arguments.contains( "checked" ) ) {
         checked = arguments.value( "checked" ).toBool();
     }
-    auto context = pluginMenuContext( location, tabId, lines );
+    PluginMenuContext context;
+    if ( location == QLatin1String( "element" ) ) {
+        // E17d: an entry of a table's context menu, on the given row and the table's selection.
+        if ( !pluginElementMenuContext( request, &context, &error ) ) {
+            return commanderFailure( CommanderResultCode::InvalidRequest, error );
+        }
+    }
+    else {
+        context = pluginMenuContext( location, tabId, lines );
+    }
     if ( !lines.isEmpty() && context.selectedLines == 0 ) {
         return commanderFailure( CommanderResultCode::InvalidRequest,
                                  tr( "--lines names no line of the file." ) );

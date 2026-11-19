@@ -14,6 +14,7 @@
 #include <memory>
 
 class QLineEdit;
+class QMenu;
 class QScrollArea;
 class QVBoxLayout;
 
@@ -114,6 +115,25 @@ public:
     bool resolveTooltip( const QString& elementId, const QString& rowId, const QString& columnId,
                          bool useCache, TooltipResolved done, QString* error = nullptr );
 
+    // Design principle 11: the keys and events E17 adds to existing elements (`current` in
+    // `selected`, `valid` in `changed`, `activated`) go only to plugins that declare `handles`.
+    void setExtendedEvents( bool extended )
+    {
+        extendedEvents_ = extended;
+    }
+    bool extendedEvents() const
+    {
+        return extendedEvents_;
+    }
+    // E17d get_plugin_menus / trigger_plugin_menu: the `context_menu` of an element and the target
+    // its entries get (`rowId` is the clicked row; the selection is the table's). False (and
+    // *error) when the element has no element menu.
+    bool elementMenu( const QString& elementId, const QString& rowId, QString* menuId,
+                      QJsonObject* target, QString* error ) const;
+    // E17d: the context menu a right-click at `position` (the table's viewport) would show;
+    // the caller owns it (tests and automation).
+    QMenu* buildElementMenu( const QString& elementId, const QPoint& position );
+
 Q_SIGNALS:
     // `element_id`, `type` (changed|clicked|selected|edited), `value`, `inputs`, and `truncated`
     // when a value or the inputs were shortened. `edited` also carries `row_id`, `column_id` and
@@ -185,6 +205,7 @@ private:
     int renders_ = 0;
     int debounceMs_ = 300;
     bool applying_ = false;
+    bool extendedEvents_ = false;
     bool eventDropped_ = false; // set by markEventDropped() during an eventRaised emission
     bool limitReached_ = false;
     bool warningsSuppressed_ = false;
