@@ -1,5 +1,5 @@
-// Plugin repositories, the merged catalog and package downloads of PluginManager
-// (docs/plugin-repositories.md sections 3.1-3.4 and 3.8, task E15a).
+// Plugin repositories, the merged catalog, package downloads and Azure DevOps sign-in of
+// PluginManager (docs/plugin-repositories.md sections 3.1-3.6 and 3.8, tasks E15a and E15b).
 #include "log.h"
 #include "pluginmanager.h"
 #include "semanticversion.h"
@@ -10,6 +10,7 @@
 #include <QFutureWatcher>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QUrl>
@@ -19,7 +20,23 @@ namespace cilogg::plugins {
 namespace {
 constexpr int MaxParallelCatalogs = 4;
 constexpr int DownloadTimeoutMs = 30000;
+constexpr int MaxRedirects = 5;
+constexpr int MaxTokenLength = 1024;
 constexpr qint64 MaxPackageDownloadBytes = 128LL * MaxMessageBytes;
+const QString SignInNeededText = QStringLiteral( "Sign-in needed." );
+// Store keys of removed repositories whose token is not deleted yet.
+const QString PendingTokenDeletionsKey = QStringLiteral( "pendingTokenDeletions" );
+
+QString shortHash( const QString& text )
+{
+    return QString::fromLatin1(
+        QCryptographicHash::hash( text.toUtf8(), QCryptographicHash::Sha256 ).toHex().left( 16 ) );
+}
+
+bool isHttps( const QUrl& url )
+{
+    return url.isValid() && url.scheme() == QLatin1String( "https" ) && !url.host().isEmpty();
+}
 
 // A catalog address that answers with a web page (a sign-in or error page) instead of JSON.
 bool looksLikeWebPage( const QByteArray& bytes )
@@ -56,6 +73,76 @@ QString PluginManager::persistSettings()
     return settings_.status() == QSettings::NoError
                ? QString{}
                : QStringLiteral( "Cannot persist plugin settings." );
+}
+
+QString PluginManager::tokenKey( const QString& repositoryId ) const
+{
+    const auto record = repositories_.find( repositoryId );
+    return record && record->isAzureDevOps() ? tokenKeyFor( *record ) : QString{};
+}
+
+QString PluginManager::tokenKeyFor( const RepositoryRecord& record ) const
+{
+    // An installed and a portable copy, or two portable copies, keep their plugin data in
+    // different folders and may give the same ID to different repositories (design 3.5).
+    auto profile = QFileInfo( dataRoot_ ).canonicalFilePath();
+    if ( profile.isEmpty() ) {
+        profile = QDir::cleanPath( QFileInfo( dataRoot_ ).absoluteFilePath() );
+    }
+#ifdef Q_OS_WIN
+    profile = profile.toLower();
+#endif
+    return QStringLiteral( "%1/%2/%3" ).arg( shortHash( profile ), record.id,
+                                             shortHash( PluginRepositories::identity( record ) ) );
+}
+
+void PluginManager::listTokenDeletion( const QString& key )
+{
+    auto pending = settings_.value( PendingTokenDeletionsKey ).toStringList();
+    if ( !pending.contains( key ) ) {
+        pending.append( key );
+        settings_.setValue( PendingTokenDeletionsKey, pending );
+    }
+}
+
+void PluginManager::deletePendingTokens()
+{
+    for ( const auto& key : settings_.value( PendingTokenDeletionsKey ).toStringList() ) {
+        if ( !deletingTokens_.contains( key ) ) {
+            deleteToken( key );
+        }
+    }
+}
+
+void PluginManager::deleteToken( const QString& key )
+{
+    // Counted per request: a token written after an earlier deletion of the same key started is
+    // deleted by a second request, and the key leaves the list only when the last one worked.
+    deletingTokens_.append( key );
+    QPointer<PluginManager> self( this );
+    patStore_->remove( key, [ self, key ]( PatStore::Status status ) {
+        if ( !self ) {
+            return;
+        }
+        self->deletingTokens_.removeOne( key );
+        if ( !status.error.isEmpty() ) {
+            LOG_WARNING << "A plugin repository token could not be deleted; it is tried again "
+                           "later";
+            return;
+        }
+        if ( self->deletingTokens_.contains( key ) ) {
+            return;
+        }
+        auto left = self->settings_.value( PendingTokenDeletionsKey ).toStringList();
+        left.removeAll( key );
+        if ( left.isEmpty() ) {
+            self->settings_.remove( PendingTokenDeletionsKey );
+        }
+        else {
+            self->settings_.setValue( PendingTokenDeletionsKey, left );
+        }
+        self->persistSettings();
+    } );
 }
 
 void PluginManager::setHostVersion( const QString& version )
@@ -152,27 +239,64 @@ QVariantList PluginManager::catalogEntries() const
     return annotated( merged );
 }
 
+struct PluginManager::DownloadState {
+    qint64 limit = 0;
+    QString jobId;
+    DownloadHandler handler;
+    DownloadAuth auth;
+    bool manualRedirects = false; // set once for the whole chain when a credential was given
+    int hops = 0;
+};
+
 void PluginManager::download( const QString& url, qint64 limit, const QString& jobId,
-                              DownloadHandler handler )
+                              DownloadHandler handler, DownloadAuth auth )
 {
     const QUrl target( url );
-    if ( target.scheme() != "https" || !target.isValid() || target.host().isEmpty() ) {
+    if ( !isHttps( target ) ) {
         // Asynchronous like every other outcome, so callers see one completion order.
         QTimer::singleShot( 0, this, [ this, jobId, handler ] {
             const auto it = jobs_.find( jobId );
             if ( it != jobs_.end() && !it->second.cancelRequested && !shuttingDown_ ) {
-                handler( {}, QStringLiteral( "Download requires HTTPS." ) );
+                handler( {}, { QStringLiteral( "Download requires HTTPS." ) } );
             }
         } );
         return;
     }
+    auto state = std::make_shared<DownloadState>();
+    state->limit = limit;
+    state->jobId = jobId;
+    state->handler = std::move( handler );
+    state->auth = std::move( auth );
+    state->manualRedirects = static_cast<bool>( state->auth.credential );
+    downloadHop( target, state );
+}
+
+void PluginManager::downloadHop( const QUrl& target, const std::shared_ptr<DownloadState>& state )
+{
     QNetworkRequest request( target );
+    // Qt copies the request, hand-set headers included, when it follows a redirect itself: a
+    // request that can carry a credential follows redirects here instead (design 3.6).
     request.setAttribute( QNetworkRequest::RedirectPolicyAttribute,
-                          QNetworkRequest::NoLessSafeRedirectPolicy );
+                          state->manualRedirects ? QNetworkRequest::ManualRedirectPolicy
+                                                 : QNetworkRequest::NoLessSafeRedirectPolicy );
+    const bool credentialAttached
+        = state->auth.credential && state->auth.scope && state->auth.scope->contains( target );
+    if ( credentialAttached ) {
+        request.setRawHeader( "Authorization", state->auth.credential->authorization() );
+    }
+    if ( state->auth.azureDevOps
+         && target.host().compare( AzureDevOpsHost, Qt::CaseInsensitive ) == 0 ) {
+        // A missing or expired credential answers 401 instead of redirecting to a sign-in page.
+        request.setRawHeader( "X-TFS-FedAuthRedirect", "Suppress" );
+        if ( isAzureDevOpsItemsUrl( target ) ) {
+            request.setRawHeader( "Accept", "application/octet-stream" );
+        }
+    }
     auto* reply = networkAccess_->get( request );
     auto bytes = std::make_shared<QByteArray>();
     auto oversized = std::make_shared<bool>( false );
     auto timedOut = std::make_shared<bool>( false );
+    const auto limit = state->limit;
     connect( reply, &QNetworkReply::readyRead, this, [ reply, bytes, oversized, limit ] {
         bytes->append( reply->read( limit + 1 - bytes->size() ) );
         if ( bytes->size() > limit ) {
@@ -188,108 +312,343 @@ void PluginManager::download( const QString& url, qint64 limit, const QString& j
     } );
     connect(
         reply, &QNetworkReply::finished, this,
-        [ this, reply, bytes, oversized, timedOut, jobId, handler ] {
+        [ this, reply, bytes, oversized, timedOut, target, state, credentialAttached ] {
             reply->deleteLater();
-            const auto it = jobs_.find( jobId );
+            const auto it = jobs_.find( state->jobId );
             if ( it == jobs_.end() || it->second.cancelRequested || shuttingDown_ ) {
                 return;
             }
+            const auto& handler = state->handler;
             if ( *oversized ) {
-                handler( {}, QStringLiteral( "Download exceeds size limit." ) );
+                handler( {}, { QStringLiteral( "Download exceeds size limit." ) } );
                 return;
             }
             if ( *timedOut ) {
-                handler( {}, QStringLiteral( "No answer within 30 seconds." ) );
+                handler( {}, { QStringLiteral( "No answer within 30 seconds." ) } );
+                return;
+            }
+            const auto status = reply->attribute( QNetworkRequest::HttpStatusCodeAttribute ).toInt();
+            const auto location = reply->attribute( QNetworkRequest::RedirectionTargetAttribute ).toUrl();
+            if ( state->manualRedirects && status >= 300 && status < 400 && status != 304
+                 && !location.isValid() ) {
+                handler( {}, { QStringLiteral( "Unexpected redirect without a target." ) } );
+                return;
+            }
+            if ( state->manualRedirects && status >= 300 && status < 400 && location.isValid() ) {
+                const auto next = target.resolved( location );
+                if ( ++state->hops > MaxRedirects ) {
+                    handler( {}, { QStringLiteral( "Too many redirects." ) } );
+                    return;
+                }
+                if ( !isHttps( next ) ) {
+                    handler( {}, { QStringLiteral( "Download requires HTTPS." ) } );
+                    return;
+                }
+                if ( state->auth.credential
+                     && !( state->auth.scope && state->auth.scope->contains( next ) ) ) {
+                    // Continues without the credential once a hop leaves the scope.
+                    state->auth.credential.reset();
+                }
+                downloadHop( next, state );
+                return;
+            }
+            if ( state->auth.azureDevOps && status == 401 ) {
+                handler( {}, { SignInNeededText, true, credentialAttached } );
                 return;
             }
             if ( reply->error() != QNetworkReply::NoError ) {
-                const auto status
-                    = reply->attribute( QNetworkRequest::HttpStatusCodeAttribute ).toInt();
                 // Redirect addresses can carry tokens: the error text never names them.
                 handler(
                     {},
-                    status == 404 ? QStringLiteral( "Not found (HTTP 404)." )
-                    : status >= 400
-                        ? QStringLiteral( "HTTP %1 %2" )
-                              .arg( status )
-                              .arg( reply->attribute( QNetworkRequest::HttpReasonPhraseAttribute )
-                                        .toString()
-                                        .left( 128 ) )
-                              .trimmed()
-                        : reply->errorString() );
+                    { status == 404 ? QStringLiteral( "Not found (HTTP 404)." )
+                      : status >= 400
+                          ? QStringLiteral( "HTTP %1 %2" )
+                                .arg( status )
+                                .arg( reply->attribute( QNetworkRequest::HttpReasonPhraseAttribute )
+                                          .toString()
+                                          .left( 128 ) )
+                                .trimmed()
+                          : reply->errorString() } );
+                return;
+            }
+            // An HTML page or 203 from Azure DevOps is its sign-in page, never a catalog or a
+            // package (design 3.5).
+            if ( state->auth.azureDevOps
+                 && ( status == 203
+                      || reply->header( QNetworkRequest::ContentTypeHeader )
+                             .toString()
+                             .contains( QLatin1String( "text/html" ), Qt::CaseInsensitive )
+                      || looksLikeWebPage( *bytes ) ) ) {
+                handler( {}, { SignInNeededText, true, false } );
                 return;
             }
             handler( *bytes, {} );
         } );
 }
 
-void PluginManager::fetchPackage( const QJsonObject& entry, const QString& jobId )
+QString PluginManager::gitExecutable() const
+{
+    // `gitExecutable` in the plugin settings.ini is the trusted Git path (design 3.5).
+    return GitCredentialHelper::resolveGit( settings_.value( "gitExecutable" ).toString() );
+}
+
+void PluginManager::acquireCredential( const RepositoryRecord& record,
+                                       const AzureDevOpsLocation& location,
+                                       const SignInRequest& request, CredentialDone done )
+{
+    const auto method = request.method.isEmpty() ? record.credentialSource : request.method;
+    if ( method == CredentialSourcePersonalAccessToken ) {
+        if ( !request.token.isEmpty() ) {
+            done( std::make_shared<const Credential>(
+                      Credential::Source::PersonalAccessToken,
+                      authorizationForPersonalAccessToken( request.token ) ),
+                  {} );
+            return;
+        }
+        // The store answers later; the manager may be gone by then.
+        QPointer<PluginManager> self( this );
+        patStore_->read( tokenKeyFor( record ), [ self, done ]( std::optional<QByteArray> token,
+                                                                PatStore::Status status ) {
+            if ( !self ) {
+                return;
+            }
+            if ( !token || token->isEmpty() ) {
+                done( nullptr, status.error.isEmpty()
+                                   ? QStringLiteral( "Sign in with a personal access token." )
+                                   : status.error );
+                return;
+            }
+            auto credential = std::make_shared<const Credential>(
+                Credential::Source::PersonalAccessToken, authorizationForPersonalAccessToken( *token ) );
+            wipeSecret( *token );
+            done( credential, {} );
+        } );
+        return;
+    }
+    GitCredentialHelper::fill(
+        gitExecutable(), location, request.interactive, this,
+        [ done ]( CredentialPtr credential, GitCredentialHelper::Outcome outcome ) {
+            done( credential,
+                  credential ? QString{} : GitCredentialHelper::outcomeText( outcome ) );
+        } );
+}
+
+void PluginManager::fetchRepositoryCatalog( const RepositoryRecord& record, const QString& jobId,
+                                            const SignInRequest& request, DownloadHandler done,
+                                            bool retried )
+{
+    if ( !record.isAzureDevOps() ) {
+        download( record.url, MaxMessageBytes, jobId, std::move( done ), DownloadAuth{} );
+        return;
+    }
+    const auto location = record.azureDevOps();
+    if ( !location ) {
+        QTimer::singleShot( 0, this, [ done ] {
+            done( {}, { QStringLiteral( "The repository address is not valid." ) } );
+        } );
+        return;
+    }
+    const auto method = request.method.isEmpty() ? record.credentialSource : request.method;
+    acquireCredential(
+        record, *location, request,
+        [ this, record, location, jobId, request, done, retried,
+          method ]( CredentialPtr credential, const QString& error ) {
+            const auto it = jobs_.find( jobId );
+            if ( it == jobs_.end() || it->second.cancelRequested || shuttingDown_ ) {
+                return;
+            }
+            if ( !credential ) {
+                done( {}, { SignInNeededText + ' ' + error, true, false } );
+                return;
+            }
+            DownloadAuth auth{ credential, CredentialScope::forAzureDevOps( *location ), true };
+            download(
+                location->itemsUrl().toString( QUrl::FullyEncoded ), MaxMessageBytes, jobId,
+                [ this, record, jobId, request, done, retried, method,
+                  credential ]( const QByteArray& bytes, const DownloadOutcome& outcome ) {
+                    const auto git = gitExecutable();
+                    const bool manager = method == CredentialSourceGitCredentialManager;
+                    if ( outcome.error.isEmpty() ) {
+                        if ( manager ) {
+                            GitCredentialHelper::approve( git, *credential, this );
+                        }
+                        done( bytes, outcome );
+                        return;
+                    }
+                    // `git credential reject` deletes the credential Git itself uses: only after
+                    // an in-scope 401 in an operation started in the GUI (design 3.5).
+                    if ( manager && outcome.credentialRefused && request.interactive && !retried ) {
+                        GitCredentialHelper::reject(
+                            git, *credential, this,
+                            [ this, record, jobId, request, done ]( GitCredentialHelper::Outcome ) {
+                                fetchRepositoryCatalog( record, jobId, request, done, true );
+                            } );
+                        return;
+                    }
+                    done( bytes, outcome );
+                },
+                std::move( auth ) );
+        } );
+}
+
+void PluginManager::fetchPackage( const QJsonObject& entry, const QString& jobId, bool interactive,
+                                  bool retried )
+{
+    const auto url = entry.value( "url" ).toString();
+    const auto record = repositories_.find( entry.value( "repository" ).toString() );
+    const auto location = record ? record->azureDevOps() : std::nullopt;
+    if ( !location ) {
+        downloadPackage( entry, jobId, url, DownloadAuth{} );
+        return;
+    }
+    // A package of an Azure DevOps catalog: a file link becomes the Items API address, and the
+    // repository's credential goes only to addresses inside its scope (design 3.5, 3.6).
+    const auto target = azureDevOpsDownloadUrl( QUrl( url ) );
+    const auto scope = CredentialScope::forAzureDevOps( *location );
+    if ( !scope.contains( target ) ) {
+        downloadPackage( entry, jobId, target.toString( QUrl::FullyEncoded ),
+                         DownloadAuth{ nullptr, scope, true } );
+        return;
+    }
+    acquireCredential(
+        *record, *location, SignInRequest{ interactive, {}, {} },
+        [ this, entry, jobId, target, scope, interactive,
+          retried ]( CredentialPtr credential, const QString& error ) {
+            const auto it = jobs_.find( jobId );
+            if ( it == jobs_.end() || it->second.cancelRequested || shuttingDown_ ) {
+                return;
+            }
+            if ( !credential ) {
+                finishJob( jobId, SignInNeededText + ' ' + error );
+                return;
+            }
+            download(
+                target.toString( QUrl::FullyEncoded ), MaxPackageDownloadBytes, jobId,
+                [ this, entry, jobId, interactive, retried,
+                  credential ]( const QByteArray& bytes, const DownloadOutcome& outcome ) {
+                    const bool manager
+                        = credential->source() == Credential::Source::GitCredentialManager;
+                    if ( outcome.error.isEmpty() ) {
+                        if ( manager ) {
+                            GitCredentialHelper::approve( gitExecutable(), *credential, this );
+                        }
+                        stagePackage( entry, jobId, bytes );
+                        return;
+                    }
+                    // The same rule as for a catalog: `git credential reject` only after an
+                    // in-scope 401 in an operation started in the GUI, then one more try that may
+                    // ask (design 3.5).
+                    if ( manager && outcome.credentialRefused && interactive && !retried ) {
+                        GitCredentialHelper::reject(
+                            gitExecutable(), *credential, this,
+                            [ this, entry, jobId, interactive ]( GitCredentialHelper::Outcome ) {
+                                const auto running = jobs_.find( jobId );
+                                if ( running == jobs_.end() || running->second.cancelRequested
+                                     || shuttingDown_ ) {
+                                    return;
+                                }
+                                // Never retried without the repository it came from.
+                                const auto source = repositories_.find(
+                                    entry.value( "repository" ).toString() );
+                                if ( !source || !source->isAzureDevOps() ) {
+                                    finishJob( jobId,
+                                               QStringLiteral( "The repository was removed." ) );
+                                    return;
+                                }
+                                fetchPackage( entry, jobId, interactive, true );
+                            } );
+                        return;
+                    }
+                    finishJob( jobId, outcome.error );
+                },
+                DownloadAuth{ credential, scope, true } );
+        } );
+}
+
+void PluginManager::downloadPackage( const QJsonObject& entry, const QString& jobId,
+                                     const QString& url, DownloadAuth auth )
+{
+    download(
+        url, MaxPackageDownloadBytes, jobId,
+        [ this, entry, jobId ]( const QByteArray& bytes, const DownloadOutcome& outcome ) {
+            if ( !outcome.error.isEmpty() ) {
+                finishJob( jobId, outcome.error );
+                return;
+            }
+            stagePackage( entry, jobId, bytes );
+        },
+        std::move( auth ) );
+}
+
+void PluginManager::stagePackage( const QJsonObject& entry, const QString& jobId,
+                                  const QByteArray& bytes )
 {
     const auto id = entry.value( "id" ).toString();
     const auto version = entry.value( "version" ).toString();
     const auto kind = entry.value( "kind" ).toString();
     const auto sha256 = entry.value( "sha256" ).toString();
+    // The record keeps the catalog's address, which never carries a credential.
     const InstallSource source{ entry.value( "repository" ).toString(), version,
                                 entry.value( "url" ).toString() };
-    download(
-        source.url, MaxPackageDownloadBytes, jobId,
-        [ this, jobId, id, version, kind, sha256, source ]( const QByteArray& bytes,
-                                                            const QString& error ) {
-            if ( !error.isEmpty() ) {
-                finishJob( jobId, error );
-                return;
-            }
-            if ( QString::fromLatin1(
-                     QCryptographicHash::hash( bytes, QCryptographicHash::Sha256 ).toHex() )
-                     .compare( sha256, Qt::CaseInsensitive )
-                 != 0 ) {
-                finishJob( jobId, "Plugin package SHA-256 mismatch." );
-                return;
-            }
-            auto package = std::make_shared<QTemporaryFile>(
-                QDir( dataRoot_ ).filePath( ".download-XXXXXX.zip" ) );
-            if ( !package->open() || package->write( bytes ) != bytes.size()
-                 || !package->flush() ) {
-                finishJob( jobId, "Cannot stage plugin download." );
-                return;
-            }
-            const auto path = package->fileName();
-            package->close();
-            auto* watcher = new QFutureWatcher<StagedPlugin>( this );
-            const auto root = QDir( dataRoot_ ).filePath( "plugins" );
-            connect(
-                watcher, &QFutureWatcher<StagedPlugin>::finished, this,
-                [ this, watcher, package, jobId, id, version, kind, source ] {
-                    const auto staged = watcher->result();
-                    watcher->deleteLater();
-                    QString problem = staged.error;
-                    if ( problem.isEmpty()
-                         && ( staged.manifest.id != id || staged.manifest.version != version ) ) {
-                        problem = QStringLiteral( "Package identity differs from catalog." );
-                    }
-                    // An entry and its package agree on the kind, so an update can never
-                    // turn a process plugin into a pack or the other way round.
-                    if ( problem.isEmpty() && packageKind( staged.manifest.json ) != kind ) {
-                        problem = QStringLiteral( "Package kind differs from catalog." );
-                    }
-                    if ( !problem.isEmpty() ) {
-                        if ( !staged.directory.isEmpty() ) {
-                            QDir( staged.directory ).removeRecursively();
-                        }
-                        finishJob( jobId, problem );
-                        return;
-                    }
-                    commitWhenStopped( staged, jobId, source );
-                } );
-            watcher->setFuture( QtConcurrent::run(
-                [ path, root, package ] { return PluginRepository::stage( path, root ); } ) );
-        } );
+    if ( QString::fromLatin1( QCryptographicHash::hash( bytes, QCryptographicHash::Sha256 ).toHex() )
+             .compare( sha256, Qt::CaseInsensitive )
+         != 0 ) {
+        finishJob( jobId, "Plugin package SHA-256 mismatch." );
+        return;
+    }
+    auto package
+        = std::make_shared<QTemporaryFile>( QDir( dataRoot_ ).filePath( ".download-XXXXXX.zip" ) );
+    if ( !package->open() || package->write( bytes ) != bytes.size() || !package->flush() ) {
+        finishJob( jobId, "Cannot stage plugin download." );
+        return;
+    }
+    const auto path = package->fileName();
+    package->close();
+    auto* watcher = new QFutureWatcher<StagedPlugin>( this );
+    const auto root = QDir( dataRoot_ ).filePath( "plugins" );
+    connect( watcher, &QFutureWatcher<StagedPlugin>::finished, this,
+             [ this, watcher, package, jobId, id, version, kind, source ] {
+                 const auto staged = watcher->result();
+                 watcher->deleteLater();
+                 QString problem = staged.error;
+                 if ( problem.isEmpty()
+                      && ( staged.manifest.id != id || staged.manifest.version != version ) ) {
+                     problem = QStringLiteral( "Package identity differs from catalog." );
+                 }
+                 // An entry and its package agree on the kind, so an update can never turn a
+                 // process plugin into a pack or the other way round.
+                 if ( problem.isEmpty() && packageKind( staged.manifest.json ) != kind ) {
+                     problem = QStringLiteral( "Package kind differs from catalog." );
+                 }
+                 if ( !problem.isEmpty() ) {
+                     if ( !staged.directory.isEmpty() ) {
+                         QDir( staged.directory ).removeRecursively();
+                     }
+                     finishJob( jobId, problem );
+                     return;
+                 }
+                 commitWhenStopped( staged, jobId, source );
+             } );
+    watcher->setFuture( QtConcurrent::run(
+        [ path, root, package ] { return PluginRepository::stage( path, root ); } ) );
 }
 
-Result PluginManager::manageRepositories( const QString& operation, const QVariantMap& options )
+Result PluginManager::manageRepositories( const QString& operation, const QVariantMap& options,
+                                          const QString& origin )
 {
+    // Tokens of removed repositories whose deletion failed before are tried again at the next
+    // change (not at the listing the window repeats).
+    if ( operation != "repositories" ) {
+        deletePendingTokens();
+    }
     if ( operation == "repositories" ) {
         return { {}, { { "repositories", repositories() } } };
+    }
+    if ( operation == "repository_sign_in" ) {
+        return signIn( options, origin );
+    }
+    if ( operation == "repository_sign_out" ) {
+        return signOut( options );
     }
     if ( operation == "repository_add" ) {
         RepositoryRecord added;
@@ -319,12 +678,19 @@ Result PluginManager::manageRepositories( const QString& operation, const QVaria
         payload[ "repository" ] = updated.toVariant( repositories_.position( id ) );
     }
     else if ( operation == "repository_remove" ) {
+        const auto record = repositories_.find( id );
         error = rest.isEmpty() ? repositories_.remove( id )
                                : QStringLiteral( "repository_remove takes only repository." );
         if ( error.isEmpty() ) {
             // Plugins installed from it keep running; their source becomes unavailable.
             catalogs_.erase( id );
             payload[ "removed" ] = id;
+            // No token is left orphaned in the credential store (design 3.1): its deletion is
+            // listed in the same settings write that removes the repository, and a deletion that
+            // fails, or an exit before it, is tried again later.
+            if ( record && record->isAzureDevOps() ) {
+                listTokenDeletion( tokenKeyFor( *record ) );
+            }
         }
     }
     else {
@@ -336,12 +702,204 @@ Result PluginManager::manageRepositories( const QString& operation, const QVaria
     if ( !error.isEmpty() ) {
         return { error, {} };
     }
+    deletePendingTokens();
     payload[ "repositories" ] = repositories();
     Q_EMIT changed();
     return { {}, payload };
 }
 
-Result PluginManager::startCatalog( const QVariantMap& options )
+Result PluginManager::signIn( const QVariantMap& options, const QString& origin )
+{
+    for ( auto it = options.cbegin(); it != options.cend(); ++it ) {
+        if ( it.key() != "repository" && it.key() != "method" && it.key() != "token" ) {
+            return { QStringLiteral( "Unknown repository_sign_in option: %1." )
+                         .arg( it.key().left( 64 ) ),
+                     {} };
+        }
+    }
+    const auto id = options.value( "repository" ).toString();
+    const auto record = repositories_.find( id );
+    if ( !record ) {
+        return { "Repository not found.", {} };
+    }
+    if ( !record->isAzureDevOps() ) {
+        return { "repository_sign_in applies only to Azure DevOps repositories.", {} };
+    }
+    const auto method = options.value( "method", record->credentialSource ).toString();
+    if ( method != CredentialSourceGitCredentialManager
+         && method != CredentialSourcePersonalAccessToken ) {
+        return { "method must be git-credential-manager or personal-access-token.", {} };
+    }
+    SignInRequest request{ origin == RequestOriginGui, method, {} };
+    if ( options.contains( "token" ) ) {
+        // A token never comes from a script, a scenario or an MCP client (design 3.6).
+        if ( origin != RequestOriginGui && origin != RequestOriginCli ) {
+            return { "A personal access token can be given only in the CILogg window or with the "
+                     "CLI options --token-file and --token-stdin.",
+                     {} };
+        }
+        if ( method != CredentialSourcePersonalAccessToken ) {
+            return { "token applies only to method personal-access-token.", {} };
+        }
+        request.token = options.value( "token" ).toString().trimmed().toUtf8();
+        if ( request.token.isEmpty() || request.token.size() > MaxTokenLength
+             || request.token.contains( '\n' ) || request.token.contains( '\r' ) ) {
+            return { "The personal access token is empty or not valid.", {} };
+        }
+    }
+    const auto jobId
+        = addJob( {}, "repository_sign_in", { { "repository", id }, { "method", method } }, true );
+    if ( jobId.isEmpty() ) {
+        return { "Too many jobs.", {} };
+    }
+    LOG_INFO << "Plugin repository sign-in id=" << id.toStdString()
+             << " method=" << method.toStdString() << " interactive=" << request.interactive;
+    // The test is a catalog fetch: a sign-in that works also refreshes the repository.
+    fetchRepositoryCatalog(
+        *record, jobId, request,
+        [ this, id, jobId, method, key = tokenKeyFor( *record ),
+          token = request.token ]( const QByteArray& bytes,
+                                   const DownloadOutcome& outcome ) mutable {
+            const auto now = QDateTime::currentDateTimeUtc();
+            if ( outcome.signInNeeded || !outcome.error.isEmpty() ) {
+                wipeSecret( token );
+                const auto state
+                    = outcome.signInNeeded ? SignInRequiredState : QStringLiteral( "failed" );
+                repositories_.recordCheck( id, state, 0, 0, 0, outcome.error, now );
+                const auto saveError = persistSettings();
+                Q_EMIT changed();
+                if ( !outcome.signInNeeded || !saveError.isEmpty() ) {
+                    finishJob( jobId, outcome.signInNeeded ? saveError : outcome.error );
+                    return;
+                }
+                finishJob( jobId, {},
+                           { { "repository", id },
+                             { "signedIn", false },
+                             { "state", SignInRequiredState },
+                             { "error", outcome.error } } );
+                return;
+            }
+            auto read = std::make_shared<CatalogRead>( readCatalog( bytes, id, hostVersion_ ) );
+            const auto state = !read->error.isEmpty()    ? QStringLiteral( "failed" )
+                               : read->entries.isEmpty() ? QStringLiteral( "empty" )
+                                                         : QStringLiteral( "loaded" );
+            // Records the sign-in only once it is kept: a token is stored first.
+            const auto commit = [ this, id, jobId, method, read, state, now,
+                                  tokenStored = !token.isEmpty() ]( bool sessionOnly ) {
+                if ( !repositories_.find( id ) ) {
+                    finishJob( jobId, QStringLiteral( "The repository was removed." ) );
+                    return;
+                }
+                repositories_.recordCheck( id, state, int( read->entries.size() ),
+                                           int( read->warnings.size() ), int( read->hidden.size() ),
+                                           read->error, now );
+                if ( read->error.isEmpty() ) {
+                    catalogs_[ id ] = read->entries;
+                }
+                repositories_.setCredentialSource( id, method );
+                const auto saveError = persistSettings();
+                Q_EMIT changed();
+                // A sign-in whose record cannot be saved is reported: after a restart the
+                // repository would not show it. A token already stored stays with this
+                // repository; Sign Out or Remove deletes it.
+                if ( !saveError.isEmpty() ) {
+                    finishJob( jobId, saveError
+                                          + ( tokenStored
+                                                  ? QStringLiteral(
+                                                        " The sign-in is not recorded; the token is "
+                                                        "kept until Sign Out or Remove." )
+                                                  : QStringLiteral( " The sign-in is not recorded." ) ) );
+                    return;
+                }
+                QVariantMap result{ { "repository", id },
+                                    { "signedIn", true },
+                                    { "state", state },
+                                    { "error", read->error },
+                                    { "pluginCount", read->entries.size() } };
+                if ( sessionOnly ) {
+                    result[ "sessionOnly" ] = true;
+                }
+                finishJob( jobId, {}, result );
+            };
+            if ( token.isEmpty() ) {
+                commit( false );
+                return;
+            }
+            // A token is stored only after it worked, and never for a repository that was removed
+            // while it was being tested: nothing would delete it (design 3.1).
+            if ( !repositories_.find( id ) ) {
+                wipeSecret( token );
+                finishJob( jobId, QStringLiteral( "The repository was removed." ) );
+                return;
+            }
+            QPointer<PluginManager> self( this );
+            patStore_->write(
+                key, token, [ self, id, jobId, key, commit, now ]( PatStore::Status status ) {
+                    if ( !self ) {
+                        return;
+                    }
+                    if ( !status.error.isEmpty() ) {
+                        self->repositories_.recordCheck( id, SignInRequiredState, 0, 0, 0,
+                                                         status.error, now );
+                        self->persistSettings();
+                        Q_EMIT self->changed();
+                        self->finishJob( jobId, status.error );
+                        return;
+                    }
+                    if ( !self->repositories_.find( id ) ) {
+                        // Removed while the store was writing: delete the token again, also when
+                        // the removal's own deletion of this key is still running.
+                        self->listTokenDeletion( key );
+                        self->persistSettings();
+                        self->deleteToken( key );
+                    }
+                    commit( status.sessionOnly );
+                } );
+            wipeSecret( token );
+        } );
+    return job( jobId );
+}
+
+Result PluginManager::signOut( const QVariantMap& options )
+{
+    for ( auto it = options.cbegin(); it != options.cend(); ++it ) {
+        if ( it.key() != "repository" ) {
+            return { "repository_sign_out takes only repository.", {} };
+        }
+    }
+    const auto id = options.value( "repository" ).toString();
+    const auto record = repositories_.find( id );
+    if ( !record ) {
+        return { "Repository not found.", {} };
+    }
+    if ( !record->isAzureDevOps() ) {
+        return { "repository_sign_out applies only to Azure DevOps repositories.", {} };
+    }
+    const auto jobId = addJob( {}, "repository_sign_out", { { "repository", id } }, true );
+    if ( jobId.isEmpty() ) {
+        return { "Too many jobs.", {} };
+    }
+    // Deletes the stored PAT; the Git credential manager, which Git also uses, is not touched.
+    QPointer<PluginManager> self( this );
+    const bool tokenSource = record->credentialSource == CredentialSourcePersonalAccessToken;
+    patStore_->remove( tokenKeyFor( *record ), [ self, id, jobId,
+                                                 tokenSource ]( PatStore::Status status ) {
+        if ( !self ) {
+            return;
+        }
+        auto error = status.error;
+        if ( error.isEmpty() && tokenSource ) {
+            self->repositories_.recordSignOut( id );
+            error = self->persistSettings();
+            Q_EMIT self->changed();
+        }
+        self->finishJob( jobId, error,
+                         { { "repository", id }, { "signedOut", status.error.isEmpty() } } );
+    } );
+    return job( jobId );
+}
+
+Result PluginManager::startCatalog( const QVariantMap& options, const QString& origin )
 {
     for ( auto it = options.cbegin(); it != options.cend(); ++it ) {
         if ( it.key() != "url" && it.key() != "repository" ) {
@@ -406,6 +964,7 @@ Result PluginManager::startCatalog( const QVariantMap& options )
     auto run = std::make_shared<CatalogRun>();
     run->jobId = jobId;
     run->pending = ids;
+    run->interactive = origin == RequestOriginGui;
     catalogRun_ = run;
     LOG_DEBUG << "Plugin catalog job=" << jobId.toStdString() << " repositories=" << ids.size();
     fetchNextCatalogs( run );
@@ -421,12 +980,16 @@ void PluginManager::fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run )
             continue; // removed after the job started
         }
         ++run->active;
-        download( record->url, MaxMessageBytes, run->jobId,
-                  [ this, run, id ]( const QByteArray& bytes, const QString& error ) {
+        fetchRepositoryCatalog(
+            *record, run->jobId, SignInRequest{ run->interactive, {}, {} },
+                  [ this, run, id ]( const QByteArray& bytes, const DownloadOutcome& outcome ) {
                       --run->active;
                       CatalogRead read;
-                      if ( !error.isEmpty() ) {
-                          read.error = error;
+                      if ( !outcome.error.isEmpty() ) {
+                          read.error = outcome.error;
+                          if ( outcome.signInNeeded ) {
+                              run->signInNeeded.append( id );
+                          }
                       }
                       else if ( looksLikeWebPage( bytes ) ) {
                           read.error = QStringLiteral(
@@ -435,7 +998,8 @@ void PluginManager::fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run )
                       else {
                           read = readCatalog( bytes, id, hostVersion_ );
                       }
-                      const auto state = !read.error.isEmpty()    ? QStringLiteral( "failed" )
+                      const auto state = outcome.signInNeeded    ? SignInRequiredState
+                                         : !read.error.isEmpty()    ? QStringLiteral( "failed" )
                                          : read.entries.isEmpty() ? QStringLiteral( "empty" )
                                                                   : QStringLiteral( "loaded" );
                       LOG_INFO << "Plugin repository checked id=" << id.toStdString()
@@ -470,9 +1034,10 @@ void PluginManager::finishCatalog( const std::shared_ptr<CatalogRun>& run )
         }
         ++fetched;
         const auto& read = result->second;
-        const auto state = !read.error.isEmpty()    ? QStringLiteral( "failed" )
-                           : read.entries.isEmpty() ? QStringLiteral( "empty" )
-                                                    : QStringLiteral( "loaded" );
+        const auto state = run->signInNeeded.contains( record.id ) ? SignInRequiredState
+                           : !read.error.isEmpty()                 ? QStringLiteral( "failed" )
+                           : read.entries.isEmpty()                ? QStringLiteral( "empty" )
+                                                                   : QStringLiteral( "loaded" );
         if ( read.error.isEmpty() ) {
             catalogs_[ record.id ] = read.entries;
             for ( const auto& entry : read.entries ) {
@@ -490,6 +1055,7 @@ void PluginManager::finishCatalog( const std::shared_ptr<CatalogRun>& run )
                          { "name", record.name },
                          { "position", position },
                          { "state", state },
+                         { "signInNeeded", state == SignInRequiredState },
                          { "empty", state == QLatin1String( "empty" ) },
                          { "error", read.error },
                          { "entries", read.entries.size() },

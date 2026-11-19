@@ -754,11 +754,12 @@ void ScenarioRunner::handleRpcMessage( const QVariantMap& message )
     }
 
     QString errorMessage;
-    const auto request = commanderRequestFromVariantMap( params, &errorMessage );
+    auto request = commanderRequestFromVariantMap( params, &errorMessage );
     if ( !request ) {
         sendRpcMessage( rpcErrorEnvelope( requestId, errorMessage ) );
         return;
     }
+    request->origin = CommanderOriginScenario; // set by this transport only
 
     const auto result = commanderExecutor_( *request );
     sendRpcMessage( rpcResultEnvelope( requestId, result ) );

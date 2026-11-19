@@ -91,6 +91,9 @@ struct Route {
     QByteArray body;
     QByteArray contentType = "application/json";
     int delayMs = 0;
+    // Extra response headers, e.g. Location. The initializer lets routes leave it out without
+    // -Wmissing-field-initializers (GCC and Clang -Wextra).
+    QList<QPair<QByteArray, QByteArray>> headers = {};
 };
 
 struct RecordedRequest {
@@ -103,12 +106,22 @@ struct RecordedRequest {
 class TrustingNetwork final : public QNetworkAccessManager {
 public:
     int sslErrorsIgnored = 0;
+    // Requests to these hosts go to the given port on 127.0.0.1, so a test can answer for
+    // dev.azure.com while the manager sees the real address.
+    QMap<QString, quint16> hostToLocalPort;
 
 protected:
     QNetworkReply* createRequest( Operation operation, const QNetworkRequest& original,
                                   QIODevice* data ) override
     {
         QNetworkRequest request( original );
+        const auto mapped = hostToLocalPort.constFind( request.url().host().toLower() );
+        if ( mapped != hostToLocalPort.constEnd() && request.url().port( 443 ) == 443 ) {
+            auto url = request.url();
+            url.setHost( QStringLiteral( "127.0.0.1" ) );
+            url.setPort( *mapped );
+            request.setUrl( url );
+        }
 #if QT_CONFIG( ssl )
         auto configuration = request.sslConfiguration();
         configuration.addCaCertificate( certificate() );
@@ -159,6 +172,11 @@ public:
     QString url( const QString& path ) const
     {
         return QStringLiteral( "https://127.0.0.1:%1%2" ).arg( server_.serverPort() ).arg( path );
+    }
+
+    quint16 port() const
+    {
+        return server_.serverPort();
     }
 
     // `path` is matched with its query string, then without it.
@@ -222,12 +240,18 @@ private:
         const auto send = [ socket, answer ] {
             const QByteArray reason = answer.status == 200   ? "OK"
                                       : answer.status == 203 ? "Non-Authoritative Information"
+                                      : answer.status == 302 ? "Found"
+                                      : answer.status == 401 ? "Unauthorized"
                                       : answer.status == 404 ? "Not Found"
                                                              : "Status";
+            QByteArray extra;
+            for ( const auto& [ name, value ] : answer.headers ) {
+                extra += "\r\n" + name + ": " + value;
+            }
             QByteArray response
                 = "HTTP/1.1 " + QByteArray::number( answer.status ) + ' ' + reason
                   + "\r\nContent-Type: " + answer.contentType
-                  + "\r\nContent-Length: " + QByteArray::number( answer.body.size() )
+                  + "\r\nContent-Length: " + QByteArray::number( answer.body.size() ) + extra
                   + "\r\nConnection: close\r\n\r\n" + answer.body;
             socket->write( response );
             socket->flush();

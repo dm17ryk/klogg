@@ -4,6 +4,7 @@
 #include "pluginrepositories.h"
 #include "pluginrepository.h"
 #include "pluginstorage.h"
+#include "repositorycredentials.h"
 #include <QElapsedTimer>
 #include <QFile>
 #include <QNetworkAccessManager>
@@ -25,6 +26,12 @@ struct Result {
     }
 };
 
+// Who started a request (docs/plugin-repositories.md 3.6). Set by the transport, never by a
+// payload. Only `gui` may show a sign-in window; only `gui` and `cli` may submit a personal access
+// token. An empty origin is treated like an automation origin.
+inline const QString RequestOriginGui = QStringLiteral( "gui" );
+inline const QString RequestOriginCli = QStringLiteral( "cli" );
+
 class PluginManager final : public QObject {
     Q_OBJECT
 public:
@@ -34,7 +41,15 @@ public:
     void discover();
     QVariantList plugins() const;
     QVariantList jobs() const;
-    Result manage( const QString& operation, const QString& pluginId, const QVariantMap& options );
+    Result manage( const QString& operation, const QString& pluginId, const QVariantMap& options,
+                   const QString& origin = {} );
+    // Where personal access tokens are kept (default: the operating system credential store).
+    void setPatStore( std::unique_ptr<PatStore> store );
+    // The key the personal access token of an Azure DevOps repository is kept under: the CILogg
+    // profile (the plugin data folder), the repository ID and its address, so neither another
+    // CILogg copy nor a later repository with another address can read it. Empty when there is
+    // no such repository.
+    QString tokenKey( const QString& repositoryId ) const;
     Result invoke( const QString& pluginId, const QString& action, const QVariantMap& arguments,
                    const QVariantMap& context );
     Result job( const QString& id ) const;
@@ -148,9 +163,32 @@ private:
         QStringList pending;
         int active = 0;
         bool finished = false;
+        bool interactive = false; // started in the GUI: the credential manager may prompt
         std::map<QString, CatalogRead> results;
+        QStringList signInNeeded; // repositories that answered 401, 203 or a web page
     };
-    using DownloadHandler = std::function<void( const QByteArray& bytes, const QString& error )>;
+    // The credential a download may attach, and only inside `scope` (design 3.6).
+    struct DownloadAuth {
+        CredentialPtr credential;
+        std::optional<CredentialScope> scope;
+        bool azureDevOps = false; // X-TFS-FedAuthRedirect: Suppress; 203 or HTML is a sign-in page
+    };
+    struct DownloadOutcome {
+        QString error;
+        bool signInNeeded = false;
+        bool credentialRefused = false; // 401 to a request that carried the credential
+    };
+    using DownloadHandler
+        = std::function<void( const QByteArray& bytes, const DownloadOutcome& outcome )>;
+    struct DownloadState;
+    // How a repository's catalog is fetched: whether the credential manager may prompt, and the
+    // method and token of a sign-in test.
+    struct SignInRequest {
+        bool interactive = false;
+        QString method; // empty: the repository's credential source
+        QByteArray token;
+    };
+    using CredentialDone = std::function<void( CredentialPtr credential, const QString& error )>;
     void handleUiMessage( const QString& pluginId, const QString& method,
                           const QJsonObject& params );
     Result cancelJob( const QString& id, bool grace );
@@ -175,12 +213,43 @@ private:
     void commitWhenStopped( const StagedPlugin& stage, const QString& jobId,
                             const InstallSource& source );
     // HTTPS GET within `limit` bytes and 30 s. The handler runs later on this thread, and not
-    // at all once the job is cancelled or CILogg shuts down.
-    void download( const QString& url, qint64 limit, const QString& jobId,
-                   DownloadHandler handler );
-    void fetchPackage( const QJsonObject& entry, const QString& jobId );
-    Result manageRepositories( const QString& operation, const QVariantMap& options );
-    Result startCatalog( const QVariantMap& options );
+    // at all once the job is cancelled or CILogg shuts down. With a credential, redirects are
+    // followed here (at most 5, HTTPS, each checked against the scope; the credential is dropped
+    // once a hop leaves it), each hop with a fresh 30 s timer and the same limit. `auth` has no
+    // default argument: GCC and Clang refuse one whose type is a nested struct with member
+    // initializers, which is not complete inside its enclosing class.
+    void download( const QString& url, qint64 limit, const QString& jobId, DownloadHandler handler,
+                   DownloadAuth auth );
+    void downloadHop( const QUrl& target, const std::shared_ptr<DownloadState>& state );
+    QString gitExecutable() const;
+    void acquireCredential( const RepositoryRecord& record, const AzureDevOpsLocation& location,
+                            const SignInRequest& request, CredentialDone done );
+    // The catalog of one repository, signed in when it needs it. A credential manager
+    // credential refused with 401 is rejected and asked for once more only when interactive.
+    void fetchRepositoryCatalog( const RepositoryRecord& record, const QString& jobId,
+                                 const SignInRequest& request, DownloadHandler done,
+                                 bool retried = false );
+    // A package, with the repository's credential inside its scope. As with a catalog, a credential
+    // manager credential refused with 401 is rejected and asked for once more only when
+    // interactive.
+    void fetchPackage( const QJsonObject& entry, const QString& jobId, bool interactive,
+                       bool retried = false );
+    void downloadPackage( const QJsonObject& entry, const QString& jobId, const QString& url,
+                          DownloadAuth auth );
+    void stagePackage( const QJsonObject& entry, const QString& jobId, const QByteArray& bytes );
+    QString tokenKeyFor( const RepositoryRecord& record ) const;
+    // Tokens of removed repositories: listTokenDeletion() lists a key in the settings (the caller
+    // persists them), deletePendingTokens() asks the store to delete every listed key that is not
+    // already being deleted and deleteToken() asks for one key. A key stays listed until its
+    // deletion works and is tried again at the next repository change and the next start.
+    void listTokenDeletion( const QString& key );
+    void deletePendingTokens();
+    void deleteToken( const QString& key );
+    Result manageRepositories( const QString& operation, const QVariantMap& options,
+                               const QString& origin );
+    Result signIn( const QVariantMap& options, const QString& origin );
+    Result signOut( const QVariantMap& options );
+    Result startCatalog( const QVariantMap& options, const QString& origin );
     void fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run );
     void finishCatalog( const std::shared_ptr<CatalogRun>& run );
     Result selectPackage( const QString& operation, const QString& id, const QVariantMap& options,
@@ -221,6 +290,8 @@ private:
     QString catalogJobId_;
     std::shared_ptr<CatalogRun> catalogRun_;
     QString hostVersion_;
+    std::unique_ptr<PatStore> patStore_ = createSystemPatStore();
+    QStringList deletingTokens_; // token deletions the store is working on
     bool storageScanActive_ = false;
     int storageTicks_ = 0;
     quint64 storageScanGeneration_ = 0;

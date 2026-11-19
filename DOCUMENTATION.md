@@ -212,11 +212,38 @@ assets), GitHub Pages, or a company web server. Publish the ZIPs first and the c
 names them last, so the catalog never names a missing file. The catalog format is
 `schema_version: 1` with a `plugins` list; see the [plugin SDK](docs/plugin-sdk.md#packages-and-catalog-publication).
 
-**Private.** This CILogg version reads repositories that need no sign-in. Signing in to a
-private Azure DevOps repository comes in a later version; `build_catalog.py` can already write
-the Azure DevOps addresses of such a catalog (`--organization`, `--project`, `--repository`,
-`--branch` instead of `--base-url`), and [plugin repositories](docs/plugin-repositories.md)
-section 7 describes the repository and pipeline layout.
+**Private (Azure DevOps).** Keep the catalog in an Azure DevOps Git repository, usually on a
+`catalog` branch that a pipeline writes. `build_catalog.py` writes the Azure DevOps addresses
+of such a catalog (`--organization`, `--project`, `--repository`, `--branch` instead of
+`--base-url`); [plugin repositories](docs/plugin-repositories.md) section 7 describes the
+repository and pipeline layout. Users need only Read access to that repository.
+
+- **Add** it with **Sign-in: Azure DevOps** and paste the repository address
+  (`https://dev.azure.com/<organization>/<project>/_git/<repository>`) or a link to
+  `plugins.json` copied from the Azure DevOps web portal. Addresses on
+  `<organization>.visualstudio.com` are converted to `dev.azure.com`. Branch and path default
+  to `catalog` and `/plugins.json`; a file link sets both.
+- **Git Credential Manager** (the default) signs you in the way Git does: if you already
+  cloned from that organization, there is no prompt; otherwise the credential manager shows its
+  own sign-in window. CILogg runs Git by its full path (or the `gitExecutable` path in the
+  plugin `settings.ini`) and never clones anything.
+- **Personal access token**: when Git is not installed, choose it in **Edit…** or when adding,
+  then **Sign In…** asks for a token with the **Code (Read)** scope. CILogg keeps it in the
+  operating system credential store (Windows Credential Manager, macOS Keychain, Secret Service
+  or KWallet on Linux), never in its settings. Without a usable store the token is kept until
+  CILogg exits, and the window says so. **Sign Out** deletes it; removing the repository deletes
+  it too (if the store refuses, CILogg tries again later). Each CILogg copy, installed or
+  portable, keeps its own tokens.
+- Changing the credential source in **Edit…** shows "Sign-in needed" until you sign in with
+  the new one.
+- The credential is sent only to addresses of the repository's organization on
+  `dev.azure.com`, never to other hosts, other organizations or after a redirect leaves them.
+  It never appears in logs, settings, job results or problem reports.
+
+**Troubleshooting.** "Sign-in needed" means Azure DevOps answered 401 or a sign-in page:
+use **Sign In…** on the Repositories tab. Only the CILogg window can show a sign-in window;
+the CLI, native MCP, Python and scenarios check silently and report "Sign-in needed" instead.
+"Not found (HTTP 404)" usually means a wrong branch or path, or no Read access.
 
 ### 3. Use it in CILogg
 
@@ -224,9 +251,12 @@ section 7 describes the repository and pipeline layout.
 Packs** window at its Installed and Available tabs.
 
 - **Repositories** tab: one row per repository, in order: position, Enabled, Name, Address,
-  State and Last check. **Add…** asks for a name and the HTTPS address of `plugins.json`;
-  new repositories go to the end of the list. **Edit…** renames a repository; its address
-  cannot change (add a new repository for another address, then remove the old one).
+  Sign-in, State and Last check. **Add…** asks for a name, the sign-in and the address (the
+  HTTPS address of `plugins.json`, or an Azure DevOps repository); new repositories go to the
+  end of the list, and an Azure DevOps repository is signed in at once. **Edit…** renames a
+  repository or changes its credential (Git Credential Manager or personal access token); its
+  address cannot change (add a new repository for another address, then remove the old one).
+  **Sign In…** and **Sign Out** apply to Azure DevOps repositories.
   **Move Up** and **Move Down** change the order. Clearing **Enabled** keeps the repository
   but stops fetching it. **Remove** deletes it; plugins installed from it stay installed.
 - **The order is a priority.** The Available tab lists repositories in this order, and when
@@ -262,9 +292,22 @@ cilogg command --action plugin_manage --plugin-operation install --plugin-id org
 with, for example, `repo.json` containing
 `{"name": "Team tools", "url": "https://example.com/cilogg/plugins.json"}` and `move.json`
 containing `{"repository": "team-tools", "direction": "up"}` (or `"position": 1`).
-`repository_update` takes `repository` and `name` or `enabled`; `repository_remove` takes
-`repository`; `catalog` takes an optional `repository`; `install` and `update` take an optional
-`catalog_entry_id` and `switch_source: true`.
+`repository_update` takes `repository` and `name`, `enabled` or `credential_source`;
+`repository_remove` takes `repository`; `catalog` takes an optional `repository`; `install`
+and `update` take an optional `catalog_entry_id` and `switch_source: true`. An Azure DevOps
+repository is added with `"sign_in": "azure-devops"` and optional `branch`, `path` and
+`credential_source` (`git-credential-manager` or `personal-access-token`).
+`repository_sign_in` (`repository`, `method`) tests the sign-in and reports `signedIn`;
+`repository_sign_out` deletes a stored token. A personal access token is given only from the
+window or with the CLI options `--token-file <path>` or `--token-stdin`, never as an
+argument, from native MCP, Python or a scenario:
+
+```text
+cilogg command --action plugin_manage --plugin-operation repository_sign_in \
+    --json-file signin.json --token-file my-token.txt
+```
+
+with `signin.json` containing `{"repository": "team", "method": "personal-access-token"}`.
 
 ### 4. Share your changes
 

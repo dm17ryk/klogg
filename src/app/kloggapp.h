@@ -615,7 +615,7 @@ class KloggApp : public QApplication {
         }
         if ( request.action == CommanderAction::PluginManage ) {
             return pluginResult( pluginManager_.manage( request.pluginOperation, request.pluginId,
-                                                        request.pluginArguments ) );
+                                                        request.pluginArguments, request.origin ) );
         }
         if ( request.action == CommanderAction::GetPluginJob ) { return pluginResult( pluginManager_.job( request.pluginJobId ) ); }
         if ( request.action == CommanderAction::CancelPluginJob ) { return pluginResult( pluginManager_.cancel( request.pluginJobId ) ); }

@@ -1,5 +1,6 @@
 // E15a: the Plugins and Packs window, its ordered Repositories table, the merged Available list
 // and the in-app guide (docs/plugin-repositories.md sections 3.3 and 3.9).
+#include "../helpers/fake_git_environment.h"
 #include "../helpers/https_catalog_server.h"
 #include "mainwindow.h"
 #include "pluginmanager.h"
@@ -18,6 +19,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSysInfo>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -250,9 +252,14 @@ TEST_CASE( "The Plugins and Packs window manages ordered repositories and instal
     // Repositories: the migrated default first; Add, Move Up, Enable, Edit and Remove.
     tabs->setCurrentIndex( 2 );
     auto* repositories = dialog->findChild<QTableWidget*>( "pluginRepositoriesTable" );
-    REQUIRE( repositories->columnCount() == 6 );
+    REQUIRE( repositories->columnCount() == 7 );
     REQUIRE( column( repositories, 2 ) == QStringList{ "CILogg examples (GitHub)" } );
     REQUIRE( column( repositories, 0 ) == QStringList{ "1" } );
+    REQUIRE( column( repositories, 4 ) == QStringList{ "None" } );
+    // Sign In and Sign Out apply to Azure DevOps repositories only.
+    repositories->selectRow( 0 );
+    REQUIRE_FALSE( dialog->findChild<QPushButton*>( "pluginRepositorySignIn" )->isEnabled() );
+    REQUIRE_FALSE( dialog->findChild<QPushButton*>( "pluginRepositorySignOut" )->isEnabled() );
     for ( const auto& [ name, path ] :
           { std::make_pair( QString( "Empty" ), QString( "/empty/plugins.json" ) ),
             std::make_pair( QString( "Tools" ), QString( "/tools/plugins.json" ) ) } ) {
@@ -321,9 +328,9 @@ TEST_CASE( "The Plugins and Packs window manages ordered repositories and instal
     REQUIRE( available->item( 1, 3 )->text() == "Team tools" );
     REQUIRE( available->item( 1, 4 )->text().isEmpty() );
     // The Repositories table shows the same results.
-    REQUIRE( rowOf( repositories, 4, "No plugins in this repository" ) == 2 );
-    REQUIRE( repositories->item( 1, 4 )->text() == "1 package" );
-    REQUIRE( repositories->item( 1, 5 )->text() != "Never" );
+    REQUIRE( rowOf( repositories, 5, "No plugins in this repository" ) == 2 );
+    REQUIRE( repositories->item( 1, 5 )->text() == "1 package" );
+    REQUIRE( repositories->item( 1, 6 )->text() != "Never" );
     // The Kind filter: no filter packs here, one process plugin.
     auto* kind = dialog->findChild<QComboBox*>( "pluginKindFilter" );
     REQUIRE( kind->count() == 7 );
@@ -420,6 +427,139 @@ TEST_CASE( "An empty merged list says so and links to the guide", "[ui][workbenc
     REQUIRE( available->rowCount() == 1 );
     REQUIRE( available->item( 0, 0 )->text().contains( "No plugins in this repository" ) );
     requireGuide( [ status ] { Q_EMIT status->linkActivated( "guide" ); } );
+    dialog->close();
+#endif
+}
+
+TEST_CASE( "Azure DevOps repositories are added, signed in and signed out in the window",
+           "[ui][workbench][E15]" )
+{
+#ifndef CILOGG_TEST_HTTPS_SERVER
+    WARN( "This Qt build has no TLS server" );
+    return;
+#else
+    testhttps::CatalogServer server;
+    if ( !server.listening() ) {
+        WARN( "No TLS backend is available" );
+        return;
+    }
+    const QByteArray catalogPath = "/contoso/Tools/_apis/git/repositories/catalog/items";
+    server.route( catalogPath,
+                  { 200, R"({"schema_version": 1, "plugins": []})", "application/json", 0 } );
+    testgit::FakeGit git( "bearer", "ui-token" );
+    QTemporaryDir temp;
+    const auto data = QDir( temp.path() ).filePath( "data" );
+    REQUIRE( QDir().mkpath( data ) );
+    {
+        QSettings settings( QDir( data ).filePath( "settings.ini" ), QSettings::IniFormat );
+        settings.setValue( "gitExecutable", testgit::FakeGit::path() );
+    }
+    testhttps::TrustingNetwork network;
+    network.hostToLocalPort.insert( "dev.azure.com", server.port() );
+    PluginManager manager( data, QDir( temp.path() ).filePath( "none" ), nullptr, &network );
+    auto store = std::make_unique<cilogg::plugins::MemoryPatStore>();
+    auto* tokens = store.get();
+    manager.setPatStore( std::move( store ) );
+    QStringList origins;
+    const auto executor = [ &manager, &origins ]( const CommanderRequest& request ) {
+        origins.append( request.origin );
+        const auto result = manager.manage( request.pluginOperation, request.pluginId,
+                                            request.pluginArguments, request.origin );
+        return result.ok() ? commanderSuccess( {}, result.payload )
+                           : commanderFailure( CommanderResultCode::ExecutionFailed, result.error );
+    };
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession{ session, "PluginRepositoriesE15b", 0 } );
+    window.setPluginManager( manager, executor );
+    window.show();
+    window.findChild<QAction*>( "managePluginsAction" )->trigger();
+    auto* dialog = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
+    REQUIRE( dialog );
+    dialog->findChild<QTabWidget*>( "pluginsAndPacksTabs" )->setCurrentIndex( 2 );
+    auto* repositories = dialog->findChild<QTableWidget*>( "pluginRepositoriesTable" );
+    auto* status = dialog->findChild<QLabel*>( "pluginRepositoriesStatus" );
+
+    // Add: sign-in Azure DevOps with a file link; the sign-in is tested at once, interactively.
+    auto fieldsShown = std::make_shared<bool>( false );
+    onModal( []( QWidget* widget ) { return widget->objectName() == "pluginRepositoryDialog"; },
+             [ fieldsShown ]( QWidget* added ) {
+                 auto* signIn = added->findChild<QComboBox*>( "pluginRepositorySignIn" );
+                 signIn->setCurrentIndex( signIn->findData( "azure-devops" ) );
+                 *fieldsShown = added->findChild<QLineEdit*>( "pluginRepositoryBranch" )->isVisibleTo( added );
+                 added->findChild<QLineEdit*>( "pluginRepositoryName" )->setText( "Team" );
+                 added->findChild<QLineEdit*>( "pluginRepositoryAddress" )
+                     ->setText( "https://dev.azure.com/contoso/Tools/_git/catalog"
+                                "?path=/plugins.json&version=GBcatalog" );
+                 added->findChild<QPushButton*>( "pluginRepositoryAccept" )->click();
+             } );
+    dialog->findChild<QPushButton*>( "pluginRepositoryAdd" )->click();
+    REQUIRE( *fieldsShown );
+    REQUIRE( QTest::qWaitFor( [ & ] { return status->text() == "Signed in to \"Team\"."; },
+                              15000 ) );
+    const auto row = rowOf( repositories, 2, "Team" );
+    REQUIRE( row == 1 );
+    REQUIRE( repositories->item( row, 3 )->text()
+             == "https://dev.azure.com/contoso/Tools/_git/catalog" );
+    REQUIRE( repositories->item( row, 4 )->text() == "Azure DevOps (Git Credential Manager)" );
+    REQUIRE( repositories->item( row, 5 )->text() == "No plugins in this repository" );
+    REQUIRE( git.calls().value( 0 ).value( "GCM_INTERACTIVE" ).toString() == "<unset>" );
+    REQUIRE( origins.contains( "gui" ) );
+    REQUIRE_FALSE( origins.contains( QString{} ) );
+    repositories->selectRow( row );
+    REQUIRE( dialog->findChild<QPushButton*>( "pluginRepositorySignIn" )->isEnabled() );
+    REQUIRE( dialog->findChild<QPushButton*>( "pluginRepositorySignOut" )->isEnabled() );
+
+    // Edit switches to a personal access token; the address fields stay read-only.
+    auto addressReadOnly = std::make_shared<bool>( false );
+    onModal( []( QWidget* widget ) { return widget->objectName() == "pluginRepositoryDialog"; },
+             [ addressReadOnly ]( QWidget* edited ) {
+                 *addressReadOnly
+                     = edited->findChild<QLineEdit*>( "pluginRepositoryAddress" )->isReadOnly()
+                       && edited->findChild<QLineEdit*>( "pluginRepositoryBranch" )->isReadOnly()
+                       && !edited->findChild<QComboBox*>( "pluginRepositorySignIn" )->isEnabled();
+                 auto* source = edited->findChild<QComboBox*>( "pluginRepositoryCredentialSource" );
+                 source->setCurrentIndex( source->findData( "personal-access-token" ) );
+                 edited->findChild<QPushButton*>( "pluginRepositoryAccept" )->click();
+             } );
+    dialog->findChild<QPushButton*>( "pluginRepositoryEdit" )->click();
+    REQUIRE( *addressReadOnly );
+    REQUIRE( manager.repositories()[ row ].toMap()[ "credentialSource" ]
+             == "personal-access-token" );
+    REQUIRE( repositories->item( row, 4 )->text() == "Azure DevOps (personal access token)" );
+
+    // Sign In asks for the token in a password field and keeps it only in the store.
+    auto passwordField = std::make_shared<bool>( false );
+    onModal( []( QWidget* widget ) { return widget->objectName() == "pluginRepositoryTokenDialog"; },
+             [ passwordField ]( QWidget* prompt ) {
+                 auto* token = prompt->findChild<QLineEdit*>( "pluginRepositoryToken" );
+                 *passwordField = token->echoMode() == QLineEdit::Password;
+                 token->setText( "ui-pat" );
+                 prompt->findChild<QPushButton*>( "pluginRepositoryTokenAccept" )->click();
+             } );
+    repositories->selectRow( row );
+    dialog->findChild<QPushButton*>( "pluginRepositorySignIn" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return status->text().startsWith( "Signed in to \"Team\"" ); },
+                              15000 ) );
+    REQUIRE( *passwordField );
+    const auto id = manager.repositories()[ row ].toMap()[ "id" ].toString();
+    const auto key = manager.tokenKey( id );
+    REQUIRE( tokens->contains( key ) );
+    REQUIRE( server.requests.last().headers.value( "authorization" )
+             == "Basic " + QByteArray( ":ui-pat" ).toBase64() );
+    {
+        // Closed again at once: on Windows an open handle makes the next settings save fail.
+        QFile settingsFile( QDir( data ).filePath( "settings.ini" ) );
+        REQUIRE( settingsFile.open( QIODevice::ReadOnly ) );
+        REQUIRE_FALSE( settingsFile.readAll().contains( "ui-pat" ) );
+    }
+
+    // Sign Out deletes it.
+    repositories->selectRow( row );
+    dialog->findChild<QPushButton*>( "pluginRepositorySignOut" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return status->text() == "Signed out of \"Team\"."; },
+                              5000 ) );
+    REQUIRE_FALSE( tokens->contains( key ) );
+    REQUIRE( repositories->item( row, 5 )->text() == "Sign-in needed" );
     dialog->close();
 #endif
 }

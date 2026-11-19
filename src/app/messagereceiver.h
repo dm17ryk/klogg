@@ -140,13 +140,19 @@ class MessageReceiver final : public QObject {
         }
 
         QString errorMessage;
-        const auto request = commanderRequestFromVariantMap( commandValue.toMap(), &errorMessage );
+        auto request = commanderRequestFromVariantMap( commandValue.toMap(), &errorMessage );
         if ( !request ) {
             writeFailureResult( resultPath, errorMessage.isEmpty()
                                                 ? QStringLiteral( "Invalid commander payload." )
                                                 : errorMessage );
             return;
         }
+        // Another process is a CLI or the native MCP server (through the CLI), never the GUI
+        // (docs/plugin-repositories.md 3.6).
+        request->origin = commandValue.toMap().value( QStringLiteral( "origin" ) ).toString()
+                                  == CommanderOriginMcp
+                              ? CommanderOriginMcp
+                              : CommanderOriginCli;
 
         LOG_DEBUG << "Received Commander action=" << commanderActionToString( request->action );
         Q_EMIT executeCommand( *request, resultPath );

@@ -15,6 +15,8 @@ add_executable(cilogg_tests
     valuecounts_commands_test.cpp
     plugins_test.cpp
     plugin_repositories_test.cpp
+    plugin_credentials_test.cpp
+    plugin_signin_test.cpp
     mcp_test.cpp
     configuration_test.cpp
     captureevaluator_test.cpp
@@ -49,14 +51,15 @@ set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetcontracts_test.cpp"
 
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
-target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>")
+target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>"
+    FAKE_GIT_PATH="$<TARGET_FILE:fake_git>")
 target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"
     CILOGG_APP_DIR="$<TARGET_FILE_DIR:klogg>"
     PREVIEW_PUBLIC_LUA_PATH="${CMAKE_SOURCE_DIR}/test_data/message_decoders/pdu_probe.lua"
     PREVIEW_DECODER_FIXTURE_PATH="$<TARGET_FILE:preview_decoder_fixture>"
     PREVIEW_FIXTURE_PATH="$<TARGET_FILE:preview_worker_fixture>")
-add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture klogg)
+add_dependencies(cilogg_tests plugin_fixture preview_worker_fixture preview_decoder_fixture fake_git klogg)
 set_target_properties(
     cilogg_tests
     PROPERTIES AUTOMOC ON

@@ -360,6 +360,81 @@ if(KDSingleApplication_ADDED)
   set_target_properties(kdsingleapp PROPERTIES AUTOMOC ON)
 endif()
 
+# QtKeychain keeps personal access tokens of plugin repositories in the operating system
+# credential store (docs/plugin-repositories.md 3.5). Built as our own static target: no tests,
+# translations or install rules. On Linux it needs Qt DBus (KWallet and the Secret Service through
+# libsecret, which it loads at run time); without Qt DBus CILogg keeps tokens for the session only.
+cpmaddpackage(
+  NAME
+  qtkeychain
+  GITHUB_REPOSITORY
+  frankosterfeld/qtkeychain
+  GIT_TAG
+  0.17.0
+  DOWNLOAD_ONLY
+  YES
+)
+if(qtkeychain_ADDED)
+  set(_qtk_dir ${qtkeychain_SOURCE_DIR}/qtkeychain)
+  set(_qtk_sources ${_qtk_dir}/keychain.cpp ${_qtk_dir}/keychain.h ${_qtk_dir}/keychain_p.h)
+  set(_qtk_usable OFF)
+  if(WIN32)
+    list(APPEND _qtk_sources ${_qtk_dir}/keychain_win.cpp)
+    set(_qtk_usable ON)
+  elseif(APPLE)
+    list(APPEND _qtk_sources ${_qtk_dir}/keychain_apple.mm)
+    set(_qtk_usable ON)
+  elseif(UNIX)
+    find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS DBus)
+    if(TARGET Qt${QT_VERSION_MAJOR}::DBus)
+      list(APPEND _qtk_sources
+        ${_qtk_dir}/keychain_unix.cpp ${_qtk_dir}/gnomekeyring.cpp ${_qtk_dir}/gnomekeyring_p.h
+        ${_qtk_dir}/libsecret.cpp ${_qtk_dir}/libsecret_p.h
+        ${_qtk_dir}/plaintextstore.cpp ${_qtk_dir}/plaintextstore_p.h)
+      qt_add_dbus_interface(_qtk_sources ${_qtk_dir}/org.kde.KWallet.xml kwallet_interface)
+      set(_qtk_usable ON)
+    else()
+      message(STATUS "Qt DBus not found: plugin repository tokens are kept for the session only")
+    endif()
+  endif()
+
+  if(_qtk_usable)
+    set(_qtk_generated ${CMAKE_CURRENT_BINARY_DIR}/qtkeychain_generated)
+    file(WRITE ${_qtk_generated}/qkeychain_export.h
+         "#pragma once\n#define QKEYCHAIN_EXPORT\n#define QKEYCHAIN_NO_EXPORT\n")
+    add_library(klogg_qtkeychain STATIC ${_qtk_sources})
+    set_target_properties(klogg_qtkeychain PROPERTIES AUTOMOC ON)
+    # SYSTEM: our -Werror warning set does not apply to QtKeychain's headers.
+    target_include_directories(klogg_qtkeychain SYSTEM
+      PUBLIC ${qtkeychain_SOURCE_DIR} ${_qtk_generated})
+    target_include_directories(klogg_qtkeychain PRIVATE ${_qtk_dir} ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(klogg_qtkeychain PUBLIC Qt${QT_VERSION_MAJOR}::Core)
+    target_compile_definitions(klogg_qtkeychain INTERFACE CILOGG_HAVE_QTKEYCHAIN=1)
+    if(WIN32)
+      target_compile_definitions(klogg_qtkeychain PRIVATE UNICODE _UNICODE USE_CREDENTIAL_STORE=1)
+      target_link_libraries(klogg_qtkeychain PRIVATE crypt32 advapi32)
+    elseif(APPLE)
+      target_link_libraries(klogg_qtkeychain PRIVATE "-framework Foundation" "-framework Security")
+    else()
+      target_compile_definitions(klogg_qtkeychain PRIVATE KEYCHAIN_DBUS=1)
+      target_link_libraries(klogg_qtkeychain PRIVATE Qt${QT_VERSION_MAJOR}::DBus)
+      find_package(PkgConfig QUIET)
+      if(PKG_CONFIG_FOUND)
+        pkg_check_modules(QTK_LIBSECRET QUIET libsecret-1)
+        pkg_check_modules(QTK_GLIB QUIET glib-2.0)
+      endif()
+      if(QTK_LIBSECRET_FOUND AND QTK_GLIB_FOUND)
+        # Only headers and g_error_free: libsecret itself is loaded at run time.
+        target_compile_definitions(klogg_qtkeychain PRIVATE HAVE_LIBSECRET=1)
+        target_include_directories(klogg_qtkeychain SYSTEM PRIVATE ${QTK_LIBSECRET_INCLUDE_DIRS})
+        target_link_libraries(klogg_qtkeychain PRIVATE ${QTK_GLIB_LINK_LIBRARIES})
+      else()
+        message(STATUS "libsecret headers not found: QtKeychain uses KWallet only")
+      endif()
+    endif()
+  endif()
+endif()
+
 
 cpmaddpackage(
   NAME

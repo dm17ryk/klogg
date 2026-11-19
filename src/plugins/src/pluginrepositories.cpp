@@ -62,19 +62,24 @@ QString nameError( const QString& name )
     return {};
 }
 
-QString signInError( const QVariantMap& options )
+QString credentialSourceError( const QString& source )
 {
-    const auto signIn = options.value( "sign_in", QStringLiteral( "none" ) ).toString();
-    if ( signIn == QLatin1String( "none" ) ) {
+    if ( source == CredentialSourceGitCredentialManager
+         || source == CredentialSourcePersonalAccessToken ) {
         return {};
     }
-    if ( signIn == QLatin1String( "azure-devops" ) ) {
-        return QStringLiteral( "Azure DevOps sign-in is not available in this CILogg version; "
-                               "add a public HTTPS catalog." );
-    }
-    return QStringLiteral( "sign_in must be none or azure-devops." );
+    return QStringLiteral(
+        "credential_source must be git-credential-manager or personal-access-token." );
 }
 } // namespace
+
+std::optional<AzureDevOpsLocation> RepositoryRecord::azureDevOps() const
+{
+    if ( !isAzureDevOps() ) {
+        return std::nullopt;
+    }
+    return parseAzureDevOpsAddress( url, branch, path ).location;
+}
 
 const QString PluginRepositories::DefaultCatalogUrl
     = QStringLiteral( "https://raw.githubusercontent.com/dm17ryk/klogg/master/plugins.json" );
@@ -82,14 +87,19 @@ const QString PluginRepositories::DefaultName = QStringLiteral( "CILogg examples
 
 QVariantMap RepositoryRecord::toVariant( int position ) const
 {
-    // `signedIn` applies to repositories that sign in; a public one has none (null).
+    // `signedIn` applies to repositories that sign in (a public one has none, null): true after
+    // the last check or sign-in test was accepted.
+    const auto accepted
+        = lastState == QLatin1String( "loaded" ) || lastState == QLatin1String( "empty" );
     return { { "position", position },
              { "id", id },
              { "name", name },
              { "url", url },
+             { "branch", isAzureDevOps() ? QVariant( branch ) : QVariant{} },
+             { "path", isAzureDevOps() ? QVariant( path ) : QVariant{} },
              { "signIn", signIn },
              { "credentialSource", credentialSource },
-             { "signedIn", signIn == QLatin1String( "none" ) ? QVariant{} : QVariant( false ) },
+             { "signedIn", isAzureDevOps() ? QVariant( accepted ) : QVariant{} },
              { "enabled", enabled },
              { "autoUpdate", autoUpdate },
              { "lastCheck", lastCheck },
@@ -163,7 +173,9 @@ std::optional<RepositoryRecord> PluginRepositories::find( const QString& id ) co
     record.id = id;
     record.name = settings_.value( key( id, "name" ), id ).toString();
     record.url = settings_.value( key( id, "url" ) ).toString();
-    record.signIn = settings_.value( key( id, "signIn" ), QStringLiteral( "none" ) ).toString();
+    record.signIn = settings_.value( key( id, "signIn" ), SignInNone ).toString();
+    record.branch = settings_.value( key( id, "branch" ) ).toString();
+    record.path = settings_.value( key( id, "path" ) ).toString();
     record.credentialSource = settings_.value( key( id, "credentialSource" ) ).toString();
     record.enabled = settings_.value( key( id, "enabled" ), true ).toBool();
     record.autoUpdate = settings_.value( key( id, "autoUpdate" ), false ).toBool();
@@ -225,6 +237,19 @@ QString PluginRepositories::addressError( const QString& url )
     return {};
 }
 
+QString PluginRepositories::identity( const RepositoryRecord& record )
+{
+    if ( const auto location = record.azureDevOps() ) {
+        // Azure DevOps compares organization, project, repository and ref names without regard
+        // to case.
+        return QStringLiteral( "azure-devops|%1|%2|%3|%4|%5" )
+            .arg( location->organization.toLower(), location->project.toLower(),
+                  location->repository.toLower(), location->branch.toLower(),
+                  location->path.toLower() );
+    }
+    return QStringLiteral( "none|" ) + normalizedAddress( record.url );
+}
+
 QString PluginRepositories::idForAddress( const QString& url ) const
 {
     const auto wanted = normalizedAddress( url );
@@ -263,23 +288,50 @@ QString PluginRepositories::newId( const QString& name ) const
 
 QString PluginRepositories::add( const QVariantMap& options, RepositoryRecord* added )
 {
-    auto error = unknownOption(
-        options, { "name", "url", "sign_in", "branch", "path", "enabled", "auto_update" } );
-    if ( error.isEmpty() ) {
-        error = signInError( options );
+    auto error = unknownOption( options, { "name", "url", "sign_in", "branch", "path",
+                                           "credential_source", "enabled", "auto_update" } );
+    RepositoryRecord record;
+    record.signIn = options.value( "sign_in", SignInNone ).toString();
+    if ( error.isEmpty() && record.signIn != SignInNone && !record.isAzureDevOps() ) {
+        error = QStringLiteral( "sign_in must be none or azure-devops." );
     }
-    if ( error.isEmpty() && ( options.contains( "branch" ) || options.contains( "path" ) ) ) {
-        error = QStringLiteral( "branch and path apply only to Azure DevOps repositories." );
+    if ( error.isEmpty() && !record.isAzureDevOps()
+         && ( options.contains( "branch" ) || options.contains( "path" )
+              || options.contains( "credential_source" ) ) ) {
+        error = QStringLiteral(
+            "branch, path and credential_source apply only to Azure DevOps repositories." );
     }
     const auto name = options.value( "name" ).toString().trimmed();
     const auto url = options.value( "url" ).toString().trimmed();
     if ( error.isEmpty() ) {
         error = nameError( name );
     }
-    if ( error.isEmpty() ) {
-        error = addressError( url );
+    if ( error.isEmpty() && url.size() > MaxAddressLength ) {
+        error = QStringLiteral( "A repository address has at most %1 characters." )
+                    .arg( MaxAddressLength );
     }
-    RepositoryRecord record;
+    if ( error.isEmpty() && record.isAzureDevOps() ) {
+        // Paste the repository address, a file link or an Items API address (design 3.5).
+        const auto parsed = parseAzureDevOpsAddress( url, options.value( "branch" ).toString(),
+                                                     options.value( "path" ).toString() );
+        if ( !parsed.location ) {
+            error = parsed.error;
+        }
+        else {
+            record.url = parsed.location->repositoryAddress();
+            record.branch = parsed.location->branch;
+            record.path = parsed.location->path;
+            record.credentialSource
+                = options
+                      .value( "credential_source", CredentialSourceGitCredentialManager )
+                      .toString();
+            error = credentialSourceError( record.credentialSource );
+        }
+    }
+    else if ( error.isEmpty() ) {
+        error = addressError( url );
+        record.url = normalizedAddress( url );
+    }
     if ( error.isEmpty() ) {
         error = boolOption( options, "enabled", &record.enabled );
     }
@@ -290,10 +342,13 @@ QString PluginRepositories::add( const QVariantMap& options, RepositoryRecord* a
         error = QStringLiteral( "At most %1 repositories can be added." ).arg( MaxRepositories );
     }
     if ( error.isEmpty() ) {
-        const auto existing = idForAddress( url );
-        if ( !existing.isEmpty() ) {
-            error = QStringLiteral( "The repository \"%1\" already has this address." )
-                        .arg( find( existing )->name );
+        const auto wanted = identity( record );
+        for ( const auto& existing : list() ) {
+            if ( identity( existing ) == wanted ) {
+                error = QStringLiteral( "The repository \"%1\" already has this address." )
+                            .arg( existing.name );
+                break;
+            }
         }
     }
     if ( !error.isEmpty() ) {
@@ -301,10 +356,14 @@ QString PluginRepositories::add( const QVariantMap& options, RepositoryRecord* a
     }
     record.id = newId( name );
     record.name = name;
-    record.url = normalizedAddress( url );
     settings_.setValue( key( record.id, "name" ), record.name );
     settings_.setValue( key( record.id, "url" ), record.url );
     settings_.setValue( key( record.id, "signIn" ), record.signIn );
+    if ( record.isAzureDevOps() ) {
+        settings_.setValue( key( record.id, "branch" ), record.branch );
+        settings_.setValue( key( record.id, "path" ), record.path );
+        settings_.setValue( key( record.id, "credentialSource" ), record.credentialSource );
+    }
     settings_.setValue( key( record.id, "enabled" ), record.enabled );
     settings_.setValue( key( record.id, "autoUpdate" ), record.autoUpdate );
     setOrder( order() << record.id );
@@ -328,10 +387,18 @@ QString PluginRepositories::update( const QString& id, const QVariantMap& option
                                    "repository with the other address and remove this one." );
         }
     }
+    const auto previousSource = record->credentialSource;
     auto error
         = unknownOption( options, { "name", "enabled", "auto_update", "credential_source" } );
     if ( error.isEmpty() && options.contains( "credential_source" ) ) {
-        error = QStringLiteral( "credential_source applies only to Azure DevOps repositories." );
+        if ( !record->isAzureDevOps() ) {
+            error
+                = QStringLiteral( "credential_source applies only to Azure DevOps repositories." );
+        }
+        else {
+            record->credentialSource = options.value( "credential_source" ).toString();
+            error = credentialSourceError( record->credentialSource );
+        }
     }
     if ( error.isEmpty() && options.contains( "name" ) ) {
         record->name = options.value( "name" ).toString().trimmed();
@@ -349,6 +416,17 @@ QString PluginRepositories::update( const QString& id, const QVariantMap& option
     settings_.setValue( key( id, "name" ), record->name );
     settings_.setValue( key( id, "enabled" ), record->enabled );
     settings_.setValue( key( id, "autoUpdate" ), record->autoUpdate );
+    if ( record->isAzureDevOps() ) {
+        settings_.setValue( key( id, "credentialSource" ), record->credentialSource );
+        // The last check used the other source and says nothing about this one: the repository
+        // is not signed in until it is checked with the new source.
+        if ( record->credentialSource != previousSource && !record->lastState.isEmpty() ) {
+            record->lastState = SignInRequiredState;
+            record->lastError = QStringLiteral( "The credential source changed. Sign in again." );
+            settings_.setValue( key( id, "lastState" ), record->lastState );
+            settings_.setValue( key( id, "lastError" ), record->lastError );
+        }
+    }
     if ( updated ) {
         *updated = *record;
     }
@@ -368,7 +446,7 @@ QString PluginRepositories::remove( const QString& id )
     old.removeDuplicates();
     settings_.setValue( RetiredKey, old );
     settings_.remove( ItemsGroup + id );
-    // E15b: the stored personal access token of `id` is deleted here as well.
+    // PluginManager deletes the stored personal access token of `id`.
     LOG_INFO << "Plugin repository removed id=" << id.toStdString();
     return {};
 }
@@ -420,11 +498,27 @@ void PluginRepositories::recordCheck( const QString& id, const QString& state, i
     }
     settings_.setValue( key( id, "lastState" ), state );
     settings_.setValue( key( id, "lastError" ), error );
-    if ( state != QLatin1String( "failed" ) ) {
+    if ( state == QLatin1String( "loaded" ) || state == QLatin1String( "empty" ) ) {
         settings_.setValue( key( id, "lastCheck" ), when.toUTC().toString( Qt::ISODate ) );
         settings_.setValue( key( id, "pluginCount" ), count );
         settings_.setValue( key( id, "warnings" ), warnings );
         settings_.setValue( key( id, "hidden" ), hidden );
+    }
+}
+
+void PluginRepositories::recordSignOut( const QString& id )
+{
+    if ( !order().contains( id ) ) {
+        return;
+    }
+    settings_.setValue( key( id, "lastState" ), SignInRequiredState );
+    settings_.setValue( key( id, "lastError" ), QStringLiteral( "Signed out." ) );
+}
+
+void PluginRepositories::setCredentialSource( const QString& id, const QString& credentialSource )
+{
+    if ( order().contains( id ) && credentialSourceError( credentialSource ).isEmpty() ) {
+        settings_.setValue( key( id, "credentialSource" ), credentialSource );
     }
 }
 

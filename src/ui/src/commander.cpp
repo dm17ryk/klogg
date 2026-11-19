@@ -585,10 +585,21 @@ bool isCommanderPaneAction( CommanderAction action )
            || action == CommanderAction::MoveTab;
 }
 
+QString commanderCliOrigin()
+{
+    return qEnvironmentVariable( "CILOGG_COMMANDER_ORIGIN" ) == CommanderOriginMcp
+               ? CommanderOriginMcp
+               : CommanderOriginCli;
+}
+
 QVariantMap commanderRequestToVariantMap( const CommanderRequest& request )
 {
     QVariantMap map;
     map.insert( QStringLiteral( "action" ), commanderActionToString( request.action ) );
+    // Carried from a CLI process to the primary instance. commanderRequestFromVariantMap never
+    // reads it: each receiving transport decides the origin itself.
+    if ( !request.origin.isEmpty() )
+        map.insert( QStringLiteral( "origin" ), request.origin );
     map.insert( QStringLiteral( "pluginId" ), request.pluginId );
     map.insert( QStringLiteral( "pluginOperation" ), request.pluginOperation );
     map.insert( QStringLiteral( "pluginAction" ), request.pluginAction );
