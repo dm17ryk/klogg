@@ -578,7 +578,8 @@
     "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on the changed C++ files: clean except init-captures already on master",
     "qualification": "local_gates_passed_hosted_pending",
     "masterMergedAt": "e989f899347e3711ee29d762daa6cfba0816a059",
-    "mergeConflictResolved": "PLAN_VALIDATION.json keeps master's d17Checks (E17 proposed, #127) beside e16a1Checks; PACKAGE_SHA256.json recomputed"
+    "mergeConflictResolved": "PLAN_VALIDATION.json keeps master's d17Checks (E17 proposed, #127) beside e16a1Checks; PACKAGE_SHA256.json recomputed",
+    "mergedAs": "6fbb75c0"
   },
   "d17Checks": {
     "date": "2026-11-19",
@@ -645,5 +646,24 @@
     "productBuildRun": false,
     "masterMergedAt": "85fe48b5629c2ff43ecfa5304c2541cc1718df26",
     "mergeConflictResolved": "Master's ledger update (#126: E15 completed) kept in PROGRESS.json, TASK_INDEX.json, README.md, tasks/E15.md and its PLAN_VALIDATION.json records; E17 additions re-applied on top; PACKAGE_SHA256.json recomputed"
+  },
+  "e16a2Checks": {
+    "date": "2026-11-20",
+    "task": "E16",
+    "slice": "E16a2",
+    "decision": "D16",
+    "deliverySplit": "E16a delivered as E16a1 and E16a2, decided by the user on 2026-11-19",
+    "editorChoice": "Built-in text editor, decided by the user in session on 2026-11-19",
+    "basedOn": "6fbb75c0",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": "libgit2 1.9.1 (GPLv2 with the linking exception), built by CPM without network, SSH or HTTPS support, static, bundled zlib, builtin regex; decision 9 of the design",
+    "independentReview": "cpp-reviewer: no critical finding; 3 high (path traversal into the content folder through resolutions; a partly read tree could be committed; an update moved upstream before local) fixed with tests; of 9 medium, 6 fixed (content folder swap, rebuild order, open errors not taken as damage, merge tool start text and loop, one JSON value per Edit, Revert limited to the pack's history) and 3 accepted (cost of the strict reads, Keep Both copies made before Apply, sizes beyond the 1 MiB check); 2 of 4 low fixed (pack ID guard, Remove asks when a pack has edits). A re-check confirmed the fixes and found 5 low points: 4 fixed (stale libgit2 error state, leftover folders, edited files dropped by a new version reported, check folder inside the pack's store folder), 1 accepted (listings on a store that fails a read after the damage check).",
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on the changed C++ files: clean except init-captures already on master (pluginuicontroller.cpp)",
+    "qualification": "local_gates_passed_hosted_pending",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/133"
   }
 }
