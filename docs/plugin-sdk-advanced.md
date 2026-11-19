@@ -1427,12 +1427,14 @@ a choice open, E17c decided as follows.
   while it is set. The keyboard selection moves to the first shown choice, and closing the list
   clears the filter. In a check-dropdown Space still toggles. Inline lists (`style` `radio` or
   `checkboxes`) get a filter line, `<element>_search`, above the buttons.
-- **`editable`.** The typed text is the value, unless it equals a choice's label, which gives
-  that choice's value. Typing also filters the list. `changed` is debounced like text, whether
+- **`editable`.** The typed text is the value, unless it equals the label of a choice that can
+  be chosen, which gives that choice's value (a disabled entry's label stays text). Typing also
+  filters the list. `changed` is debounced like text, whether
   the text was typed or picked, and new `choices` never replace typed text.
 - **`completion`.** After 150 ms without typing, the host asks `field/complete`
   `{element_id, text, cursor}` (one per view: a newer one cancels the older one) and shows up to
-  100 items in a list under the field; picking one puts its `value` into the field.
+  100 items in a list under the field; picking one puts its `value` into the field. Each edit
+  drops the answer still in flight, so only an answer for the current text is shown.
   `completion_timeout_ms` changes the 500 ms timeout, up to 2,000 ms. The answer is `{items}`, a
   bare list or `null`; an item needs a string `value`, its `label` is plain text, and an unusable
   `icon` is dropped. A timeout, an error or an invalid answer shows no list.
@@ -1467,7 +1469,11 @@ a choice open, E17c decided as follows.
   - Validity is checked after each root, patch and change, and when a button is pressed. A rule
     counts by its value (`required: false` or an empty `pattern` is none, which is also what a
     later root that drops a rule leaves). `valid` is added only to the `changed` events of fields
-    that have a rule, so a plugin without rules gets the frames it got before.
+    that have a rule, so a plugin without rules gets the frames it got before. A `color` field's
+    own form is such a rule: it is blank or `#rrggbb`, a shorter `#abc` is only an editing state
+    that is marked "Not a color (#rrggbb)", and its `changed` events always carry `valid`.
+  - A same-shaped root that drops `min`, `max` or `step` returns the integer field or slider to
+    the kind's default range (any int; 0 to 100) or a step of 1.
   - `requires_valid: true` means every field of the view. A button that starts an action never
     starts it while any field of the view is invalid: it is refused before its confirmation or
     save dialog, and the first invalid field gets the focus. An `event` button sends `clicked`

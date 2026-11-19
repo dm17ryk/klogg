@@ -159,6 +159,7 @@ private:
     // Checks every field's rules, shows the messages and sets every button's enabled state
     // (`enabled` and `requires_valid`). fieldValid and fieldsValid read its results.
     void refreshValidity();
+    static bool kindValid( const Node& node ); // the kind's own form (a color is #rrggbb)
     bool fieldValid( const Node& node ) const;
     bool fieldsValid( const QJsonValue& requirement ) const;
     void focusFirstInvalid();

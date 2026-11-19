@@ -25,6 +25,7 @@
 #include <QTableView>
 #include <QTest>
 #include <catch2/catch.hpp>
+#include <limits>
 
 namespace {
 const QString PluginId = QStringLiteral( "org.test.e17c" );
@@ -429,6 +430,105 @@ TEST_CASE( "E17c searchable and editable drop-downs and completion", "[ui][workb
     REQUIRE( fixture.asked.last() == "al" );
     REQUIRE( fixture.timeouts.last() == 900 );
     REQUIRE( board->lineEdit()->findChild<FieldCompleter*>() );
+}
+
+TEST_CASE( "E17c dropped bounds reset, colors need six digits, disabled labels stay text",
+           "[ui][workbench][E17]" )
+{
+    const QJsonArray boards{ QJsonObject{ { "value", "b1" }, { "label", "Board one" } },
+                             QJsonObject{ { "value", "b2" }, { "label", "Board two" },
+                                          { "enabled", false } } };
+    const auto root = [ & ]( bool bounds ) {
+        const auto keys = [ & ]( int low, int high, int step ) {
+            return bounds ? QJsonObject{ { "min", low }, { "max", high }, { "step", step } }
+                          : QJsonObject{};
+        };
+        return column(
+            { field( "count", "integer", keys( 2, 8, 3 ) ), field( "level", "slider", keys( 10, 20, 5 ) ),
+              field( "tint", "color" ),
+              field( "board", "choice", { { "editable", true }, { "choices", boards } } ),
+              QJsonObject{ { "type", "button" }, { "id", "run" }, { "label", "Run" },
+                           { "action", "summary" } } } );
+    };
+    View fixture( root( true ) );
+    auto& view = fixture.view;
+    const auto changed = [ & ]( const QString& id ) {
+        return waitFor( [ & ] {
+            return !fixture.events.isEmpty() && fixture.last().value( "element_id" ) == id;
+        } );
+    };
+    auto* count = fixture.get<QSpinBox>( "count" );
+    auto* level = fixture.get<QSlider>( "level" );
+    REQUIRE( ( count->minimum() == 2 && count->maximum() == 8 && count->singleStep() == 3 ) );
+    REQUIRE( ( level->minimum() == 10 && level->maximum() == 20 && level->singleStep() == 5 ) );
+    // A same-shaped root without min, max and step returns them to the kind's defaults.
+    view.setRoot( root( false ) );
+    REQUIRE( fixture.get<QSpinBox>( "count" ) == count );
+    REQUIRE( count->minimum() == -std::numeric_limits<int>::max() );
+    REQUIRE( count->maximum() == std::numeric_limits<int>::max() );
+    REQUIRE( count->singleStep() == 1 );
+    REQUIRE( ( level->minimum() == 0 && level->maximum() == 100 && level->singleStep() == 1 ) );
+
+    // A color is blank or #rrggbb: "#abc" is marked, carries valid false and stops actions.
+    QSignalSpy actions( &view, &PluginView::actionRequested );
+    auto* tint = fixture.get<QLineEdit>( "tint" );
+    auto* error = fixture.child<QLabel>( "tint_error" );
+    REQUIRE( error->isHidden() );
+    fixture.events.clear();
+    tint->setText( "#abc" );
+    REQUIRE( changed( "tint" ) );
+    REQUIRE( fixture.last().value( "valid" ) == false );
+    REQUIRE( error->text() == "Not a color (#rrggbb)" );
+    fixture.get<QPushButton>( "run" )->click();
+    REQUIRE( actions.isEmpty() );
+    fixture.events.clear();
+    tint->setText( "#abcdef" );
+    REQUIRE( changed( "tint" ) );
+    REQUIRE( fixture.last().value( "valid" ) == true );
+    REQUIRE( error->isHidden() );
+    fixture.get<QPushButton>( "run" )->click();
+    REQUIRE( actions.size() == 1 );
+    // A plugin value is checked the same way.
+    view.applyPatch( { QJsonObject{ { "id", "tint" }, { "set", QJsonObject{ { "value", "#12" } } } } } );
+    REQUIRE_FALSE( error->isHidden() );
+
+    // Typing a disabled entry's label stays literal text; an enabled one's gives its value.
+    auto* board = fixture.get<QComboBox>( "board" );
+    board->setEditText( "Board two" );
+    REQUIRE( view.inputs().value( "board" ) == "Board two" );
+    board->setEditText( "Board one" );
+    REQUIRE( view.inputs().value( "board" ) == "b1" );
+    // New choices with typed text equal to a disabled label keep the text.
+    board->setEditText( "Board two" );
+    view.applyPatch( { QJsonObject{ { "id", "board" }, { "set", QJsonObject{ { "choices", boards } } } } } );
+    REQUIRE( board->currentIndex() == -1 );
+    REQUIRE( view.inputs().value( "board" ) == "Board two" );
+}
+
+TEST_CASE( "E17c an edit drops the completion answer still in flight", "[ui][workbench][E17]" )
+{
+    // Declared before the edit, which owns the completer and its provider.
+    QStringList asked;
+    QList<std::function<void( const QJsonArray& )>> pending;
+    QLineEdit edit;
+    auto* completer = new FieldCompleter(
+        &edit,
+        [ & ]( const QString& text, int, std::function<void( const QJsonArray& )> done ) {
+            asked.append( text );
+            pending.append( std::move( done ) );
+        },
+        {} );
+    edit.show();
+    QTest::keyClicks( &edit, "a" );
+    REQUIRE( waitFor( [ & ] { return pending.size() == 1; } ) );
+    // The user types on before the answer for "a" arrives: that answer is dropped.
+    QTest::keyClicks( &edit, "l" );
+    pending.front()( QJsonArray{ QJsonObject{ { "value", "apple" } } } );
+    REQUIRE( completer->offered().isEmpty() );
+    REQUIRE( waitFor( [ & ] { return pending.size() == 2; } ) );
+    REQUIRE( asked == QStringList{ "a", "al" } );
+    pending.back()( QJsonArray{ QJsonObject{ { "value", "alpha" } } } );
+    REQUIRE( completer->offered() == QStringList{ "alpha" } );
 }
 
 TEST_CASE( "E17c cell editors show choice icons; patches cannot restyle fields",

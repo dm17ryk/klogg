@@ -151,8 +151,12 @@ void fillCombo( QComboBox* combo, const QList<Choice>& choices, const IconResolv
 
 int findLabel( const QComboBox* combo, const QString& text )
 {
+    // A disabled entry cannot be chosen, so typing its label stays literal text.
+    const auto* model = qobject_cast<const QStandardItemModel*>( combo->model() );
     for ( int row = 0; row < combo->count(); ++row ) {
-        if ( combo->itemData( row ).isValid() && combo->itemText( row ) == text ) {
+        const auto* item = model ? model->item( row ) : nullptr;
+        if ( combo->itemData( row ).isValid() && combo->itemText( row ) == text
+             && ( !item || item->isEnabled() ) ) {
             return row;
         }
     }
@@ -541,7 +545,12 @@ FieldCompleter::FieldCompleter( QLineEdit* edit, Provider provider,
     debounce_->setSingleShot( true );
     debounce_->setInterval( DebounceMs );
     connect( debounce_, &QTimer::timeout, this, &FieldCompleter::ask );
-    connect( edit, &QLineEdit::textEdited, debounce_, qOverload<>( &QTimer::start ) );
+    connect( edit, &QLineEdit::textEdited, this, [ this ] {
+        // An answer still in flight is for the text before this edit: drop it now, not only at
+        // the next ask() after the debounce.
+        ++generation_;
+        debounce_->start();
+    } );
 }
 
 QStringList FieldCompleter::offered() const

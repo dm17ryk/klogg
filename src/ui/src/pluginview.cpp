@@ -980,8 +980,10 @@ QWidget* PluginView::buildFieldWidget( Node& node, const QJsonObject& element, Q
             edit->setEchoMode( QLineEdit::Password );
         }
         else if ( kind == "color" ) {
+            // Blank or exactly #rrggbb; a shorter "#abc" is only an intermediate editing state,
+            // which refreshValidity() reports and which keeps actions from starting.
             edit->setValidator( new QRegularExpressionValidator(
-                QRegularExpression( QStringLiteral( "#[0-9a-fA-F]{0,6}" ) ), edit ) );
+                QRegularExpression( QStringLiteral( "(#[0-9a-fA-F]{6})?" ) ), edit ) );
         }
         debounced( edit );
         connect( edit, &QLineEdit::textChanged, this, changedSoon );
@@ -1404,8 +1406,13 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         }
         // integer and slider bounds; validation reports a typed value out of them (section 8.5).
         // A bound that is not given is the kind's own: any int for integer, 0 and 100 for slider.
+        // Set now, or dropped by a same-shaped root (which resets it to the kind's default).
+        const auto touched = [ & ]( const char* key ) {
+            const QLatin1String name( key );
+            return props.contains( name ) || ( previous.contains( name ) && !node.props.contains( name ) );
+        };
         const auto setBounds = [ & ]( auto* range, int lowest, int highest ) {
-            if ( props.contains( "min" ) || props.contains( "max" ) ) {
+            if ( touched( "min" ) || touched( "max" ) ) {
                 const auto limit = static_cast<double>( std::numeric_limits<int>::max() );
                 const auto bound = [ & ]( const char* key, int fallback ) {
                     const auto given = node.props.value( QLatin1String( key ) );
@@ -1416,8 +1423,8 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
                 const auto low = bound( "min", lowest );
                 range->setRange( low, qMax( low, bound( "max", highest ) ) );
             }
-            if ( props.contains( "step" ) ) {
-                range->setSingleStep( qMax( 1, props.value( "step" ).toInt( 1 ) ) );
+            if ( touched( "step" ) ) {
+                range->setSingleStep( qMax( 1, node.props.value( "step" ).toInt( 1 ) ) );
             }
         };
         if ( auto* spin = qobject_cast<QSpinBox*>( node.widget.data() ) ) {
@@ -1849,6 +1856,17 @@ void PluginView::setFieldValue( Node& node, const QJsonValue& value )
     }
 }
 
+bool PluginView::kindValid( const Node& node )
+{
+    // The form of the field kind itself: a color is blank or #rrggbb (a rule of its own, so its
+    // changed events carry `valid`).
+    if ( node.kind != "color" ) {
+        return true;
+    }
+    const auto* edit = qobject_cast<const QLineEdit*>( node.widget.data() );
+    return !edit || edit->hasAcceptableInput();
+}
+
 bool PluginView::fieldValid( const Node& node ) const
 {
     // As of the last refreshValidity(), which runs after each root, patch and change: the rules
@@ -1890,9 +1908,12 @@ void PluginView::refreshValidity()
         if ( node->type != "field" || !node->error || !node->widget ) {
             continue;
         }
-        const auto message = pluginfields::validates( node->props )
-                                 ? pluginfields::validationError( node->props, fieldValue( *node ) )
-                                 : QString{};
+        auto message = pluginfields::validates( node->props )
+                           ? pluginfields::validationError( node->props, fieldValue( *node ) )
+                           : QString{};
+        if ( message.isEmpty() && !kindValid( *node ) ) {
+            message = tr( "Not a color (#rrggbb)" );
+        }
         if ( message == node->invalid ) {
             continue;
         }
@@ -1992,7 +2013,8 @@ bool PluginView::emitEvent( const QString& id, const QString& type, const QJsonV
         // (section 8.6); other events keep the shape they had before E17.
         refreshValidity();
         if ( const auto node = nodes_.value( id );
-             node && node->type == "field" && pluginfields::validates( node->props ) ) {
+             node && node->type == "field"
+             && ( pluginfields::validates( node->props ) || node->kind == "color" ) ) {
             event.insert( "valid", fieldValid( *node ) );
         }
     }

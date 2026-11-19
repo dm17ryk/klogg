@@ -439,7 +439,9 @@ host and answers field completion:
     (`HH:MM:SS`) and `datetime` (`YYYY-MM-DDTHH:MM:SS`, local time) (`FIELD_KINDS`);
   - `validation`: `required`, `pattern` (a regular expression for the whole text, at most 256
     characters), `min` and `max`, `min_length` and `max_length`, and `error` (the plugin's
-    message; `""` clears it). `button(..., requires_valid=True)` (every field of the view) or
+    message; `""` clears it). `min`, `max` and `step` are finite numbers, whole on `integer` and
+    `slider` fields; `rows`, `min_length` and `max_length` are whole numbers (`field()` raises
+    ValueError otherwise). `button(..., requires_valid=True)` (every field of the view) or
     `requires_valid=["label", "retries"]` keeps a button disabled until those fields are valid.
 - **Check boxes and radio buttons.** `checkbox(id, text, value=False, *, tristate=None,
   tone=None)` (`value` None is partly checked and needs `tristate=True`),
@@ -450,8 +452,9 @@ host and answers field completion:
   and they send `changed` with the new value (a list for a check group).
 - **Events.** On a host with validation, the `changed` event of a field that declares a
   validation key (`required`, `pattern`, `min`, `max`, `min_length`, `max_length` or a
-  non-empty `error`) carries `valid`; other `changed` events keep their earlier shape, so read
-  `params.get("valid", True)` (`ViewEventParams`).
+  non-empty `error`), and of every `color` field (blank or `#rrggbb`), carries `valid`; other
+  `changed` events keep their earlier shape, so read `params.get("valid", True)`
+  (`ViewEventParams`).
 - **Completion.** `@plugin.complete(view_id, element_id=None)` registers
   `handler(CompleteQuery)` for a field with `completion`, or for every such field of the view
   (an element's own handler wins; a `@plugin.query("field/complete")` handler is the last
