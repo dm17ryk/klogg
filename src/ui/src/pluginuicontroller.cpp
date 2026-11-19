@@ -1,5 +1,6 @@
 #include "pluginuicontroller.h"
 #include "analysissource.h"
+#include "configpack.h"
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginsandpacks.h"
@@ -380,19 +381,10 @@ bool PluginUiController::confirmPackLua( QWidget* parent, const QString& id ) co
     }
     for ( const auto& value : manager_->plugins() ) {
         const auto p = value.toMap();
-        if ( p.value( "id" ) != id || p.value( "kind" ) != "config-pack"
-             || p.value( "luaFiles" ).toInt() == 0 ) {
-            continue;
+        if ( p.value( "id" ) == id ) {
+            return pluginsui::confirmPackLua( parent, manager_, id, p.value( "name" ).toString(),
+                                              p.value( "contents" ).toStringList(), true );
         }
-        // Pack Lua is unrestricted local code: TShark runs it with the user's permissions.
-        return QMessageBox::question(
-                   parent, tr( "Configuration Pack Lua" ),
-                   tr( "\"%1\" contains Lua code that runs on this computer, with your "
-                       "permissions, whenever TShark decodes a preview. Enable it only if you "
-                       "trust its source." )
-                       .arg( p.value( "name", id ).toString() ),
-                   QMessageBox::Yes | QMessageBox::No, QMessageBox::No )
-               == QMessageBox::Yes;
     }
     return true;
 }
@@ -786,17 +778,11 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
         }
         QVariantMap source;
         QString name = id;
-        bool enabled = false;
         for ( const auto& value : manager_->plugins() ) {
             if ( value.toMap().value( "id" ) == id ) {
                 source = value.toMap().value( "source" ).toMap();
                 name = value.toMap().value( "name", id ).toString();
-                enabled = value.toMap().value( "enabled" ).toBool();
             }
-        }
-        // The new Lua of an enabled pack runs as soon as it is installed (design 4.3).
-        if ( enabled && !confirmPackLua( tab, id ) ) {
-            return;
         }
         if ( source.value( "type" ) != "repository" ) {
             status->setText( tr( "%1 was not installed from a repository. Install it from a "
@@ -826,6 +812,19 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                 if ( job.value( "state" ) != "completed" ) {
                     status->setText( tr( "Could not check for updates: %1" )
                                          .arg( job.value( "error" ).toString() ) );
+                    return;
+                }
+                // The new version's Lua runs as soon as an enabled pack is updated (design 4.3).
+                QString entryId;
+                for ( const auto& value : self->manager_->plugins() ) {
+                    if ( value.toMap().value( "id" ) == id ) {
+                        entryId = value.toMap().value( "update" ).toMap().value( "entry_id" ).toString();
+                    }
+                }
+                if ( !pluginsui::confirmPackLua( tab, self->manager_, id, name,
+                                                 pluginsui::catalogContents( self->manager_, entryId ),
+                                                 false ) ) {
+                    status->setText( tr( "The update of %1 was not installed." ).arg( name ) );
                     return;
                 }
                 CommanderRequest request;
@@ -1006,6 +1005,16 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                                   : QFileDialog::getOpenFileName( tab, tr( "Plugin package" ), {},
                                                                   "ZIP (*.zip)" );
             if ( !path.isEmpty() ) {
+                // A local package that replaces an enabled pack with Lua: asked first (design
+                // 4.3). The manifest is only read for the question; the install checks it.
+                const auto manifest = cilogg::plugins::PluginRepository::packageManifest( path );
+                if ( cilogg::plugins::isConfigPack( manifest )
+                     && !pluginsui::confirmPackLua(
+                         tab, manager_, manifest.value( "id" ).toString(),
+                         manifest.value( "name" ).toString(),
+                         cilogg::plugins::packContents( manifest ), false ) ) {
+                    return;
+                }
                 CommanderRequest r;
                 r.action = CommanderAction::PluginManage;
                 r.origin = CommanderOriginGui;

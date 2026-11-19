@@ -408,10 +408,10 @@ QVector<PreviewDefinition> PreviewManager::effectiveEnabled() const
 QMap<QString, PreviewFieldSpec> PreviewManager::effectiveBlocks() const
 {
     auto result = blocks_;
+    // A pack's blocks always win inside its own `<pack-id>/` namespace: a block of the user's
+    // with such a name (the pack check refuses one) never replaces what the pack's previews use.
     for ( auto block = packBlocks_.cbegin(); block != packBlocks_.cend(); ++block ) {
-        if ( !result.contains( block.key() ) ) {
-            result.insert( block.key(), block.value() );
-        }
+        result.insert( block.key(), block.value() );
     }
     return result;
 }

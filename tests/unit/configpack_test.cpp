@@ -15,6 +15,8 @@
 
 #include "configpack.h"
 #include "importpreviewsdialog.h"
+#include "pluginrepository.h"
+#include "pluginsandpacks.h"
 #include "plugincatalog.h"
 #include "pluginmanager.h"
 #include "pluginmanifest.h"
@@ -384,6 +386,9 @@ TEST_CASE( "Pack previews are namespaced, preceded by the user's and never saved
         CHECK( findIn( manager.effective(), "Pack frame" ) );
         CHECK( manager.effectiveBlocks().contains( "org.example.pack/body_ping_block" ) );
         CHECK( manager.packOrigin( "Pack frame" )->packId == PackId );
+        // A pack's own blocks win inside its namespace.
+        CHECK( manager.effectiveBlocks().value( "org.example.pack/body_ping_block" ).regex
+               == pack.blocks.value( "body_ping_block" ).regex );
         CHECK( !PreviewService::definitionsFor( manager.effective(), manager.effectiveBlocks() )
                     .isEmpty() );
 
@@ -575,6 +580,8 @@ TEST_CASE( "Pack files reached through a link are refused", "[plugins][E16]" )
     manifest = withContent( manifest, "lua",
                             QJsonObject{ { "folder", "lua" }, { "load", QJsonArray{ "sub/a.lua" } } } );
     const auto folder = writePack( root.path(), manifest );
+    // writePack wrote lua/sub/a.lua; replace the folder with a link to one elsewhere.
+    REQUIRE( QDir( folder + "/lua/sub" ).removeRecursively() );
     writeFile( outside.path() + "/a.lua", "-- elsewhere\n" );
     REQUIRE( QFile::link( outside.path(), folder + "/lua/sub" ) );
     CHECK( Manifest::read( folder ).error.contains( "link" ) );
@@ -673,6 +680,40 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
     // A pack that fits.
     auto fits = withContent( packManifest( "e.pack", 1 ), "decoder_routes", QJsonObject{} );
     CHECK( candidate( "e.pack", fits, "E frame" ).isEmpty() );
+
+    // Two packs never share a route, also while a route of the user's hides both.
+    {
+        auto& decoder = PreviewDecoderSettings::instance();
+        const auto saved = decoder.configuration();
+        auto user = saved;
+        user[ "protocolRoutes" ]
+            = QVariantMap{ { "shared0", QVariantMap{ { "dissector", "data" } } } };
+        REQUIRE( decoder.setConfiguration( user ) );
+        CHECK( candidate( "c.pack", other, "C frame" ).contains( "shared0" ) );
+        REQUIRE( decoder.setConfiguration( saved ) );
+    }
+    // The pack's block names `<pack-id>/` are reserved for it.
+    REQUIRE( PreviewManager::instance().clearAll() );
+    importUserPreviews( R"json({ "version": 1, "blocks": [ {
+        "name": "e.pack/frame_header_block", "format": "match", "type": "string",
+        "regex": "^(?<raw>.*)$", "source": "capture", "capture": "payload",
+        "fields": [ { "name": "raw", "source": "capture", "capture": "raw", "format": "string" } ]
+      } ], "previews": [ { "name": "Mine", "regex": "^MINE (?<payload>.*)$", "type": "string",
+        "format": "fields", "bufferCapture": "payload",
+        "fields": [ { "name": "raw", "source": "capture", "capture": "payload", "format": "string" } ] } ] })json" );
+    CHECK( candidate( "e.pack", fits, "E frame" ).contains( "e.pack/frame_header_block" ) );
+    REQUIRE( PreviewManager::instance().clearAll() );
+
+    // GUI questions about pack Lua: nothing to ask without Lua, or for a pack that is not
+    // enabled (its Lua runs only once it is enabled, which asks).
+    CHECK( pluginsui::confirmPackLua( nullptr, &manager, "a.pack", "A", { "previews" }, true ) );
+    CHECK( pluginsui::confirmPackLua( nullptr, &manager, "b.pack", "B", { "lua" }, false ) );
+    CHECK( pluginsui::catalogContents( &manager, "unknown-entry" ).isEmpty() );
+    const auto peeked = PluginRepository::packageManifest(
+        QDir( root.path() ).filePath( "plugins/a.pack" ) );
+    CHECK( peeked.value( "id" ) == "a.pack" );
+    CHECK( packContents( peeked ).contains( "lua" ) );
+    CHECK( PluginRepository::packageManifest( QDir( root.path() ).filePath( "missing" ) ).isEmpty() );
 
     // Copy to My Previews: the copy keeps decoding without the pack, so the pack's route becomes
     // the user's.

@@ -232,7 +232,9 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
         for ( const auto& other : others ) {
             const auto& routes = protocol ? other.protocolRoutes : other.previewRoutes;
             for ( auto route = routes.cbegin(); route != routes.cend(); ++route ) {
-                if ( own.contains( route.key() ) && !merged.contains( route.key() ) ) {
+                // Between packs there is no precedence, also while a route of the user's hides
+                // both: the user may remove it later.
+                if ( own.contains( route.key() ) ) {
                     return tr( "The packs \"%1\" and \"%2\" both route \"%3\"." )
                         .arg( packLabel( candidate ), packLabel( other ), route.key() );
                 }
@@ -264,9 +266,21 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
             .arg( luaFiles )
             .arg( PreviewDecoderSettings::ProfileLuaLimit );
     }
+    // The pack's block namespace `<pack-id>/` belongs to the pack: a block of the user's in it
+    // would meet the pack's blocks.
+    auto& manager = PreviewManager::instance();
+    const auto blockNames = manager.blocks().keys();
+    const auto reserved = std::find_if( blockNames.cbegin(), blockNames.cend(),
+                                        [ &id ]( const QString& block ) {
+                                            return block.startsWith( id + '/' );
+                                        } );
+    if ( reserved != blockNames.cend() ) {
+        return tr( "Your previews have a block named \"%1\", in the names reserved for the pack "
+                   "\"%2\". Rename that block first." )
+            .arg( *reserved, packLabel( candidate ) );
+    }
     // Quotas: the preview service gives up above its limits, so a pack must never push the
     // user's previews and the other packs past them (design 4.2).
-    auto& manager = PreviewManager::instance();
     auto previews = manager.all();
     auto blocks = manager.blocks();
     others.append( candidate );
@@ -278,9 +292,7 @@ QString PreviewPackRegistry::check( const QString& id, const QString& directory,
             }
         }
         for ( auto block = renamed.blocks.cbegin(); block != renamed.blocks.cend(); ++block ) {
-            if ( !blocks.contains( block.key() ) ) {
-                blocks.insert( block.key(), block.value() );
-            }
+            blocks.insert( block.key(), block.value() ); // as PreviewManager::effectiveBlocks
         }
     }
     if ( PreviewService::definitionsFor( previews, blocks ).isEmpty() ) {

@@ -639,9 +639,13 @@ folder reached through a link or junction is refused. A user preview with a pack
 replaces it together with its route; **Copy to My Previews** also copies the pack's route into the
 user's routes, and a renamed copy (`<block> (<pack name>)`) keeps the generic `_block` fallback.
 Pack items are replaced whole on update until E16a2 adds edit in place and merge. A pack preview's
-on/off choice is kept in the user's settings (`previewPacks/enabled`). The GUI confirmation for
-Lua names the installed version's Lua; an update that adds Lua to a pack without it is not asked
-about.
+on/off choice is kept in the user's settings (`previewPacks/enabled`). Every GUI path asks before
+pack Lua can run (`pluginsui::confirmPackLua`): Enable, and an install or update that replaces an
+enabled pack with a version that has Lua (Installed tab Update, Available tab Install / Update and
+Switch source, Install Folder and Install ZIP), judged from the new version's catalog `contents`
+or manifest. Two enabled packs never share a route, even one the user's route hides, and a pack's
+block names `<pack-id>/` are its own: its blocks win there, and enabling it is refused while a
+block of the user's uses that namespace.
 
 ### 4.5 Actions, responses, highlighters and filters
 
