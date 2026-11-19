@@ -14,6 +14,7 @@ import base64
 import collections
 import collections.abc
 import json
+import math
 import os
 import pathlib
 import queue
@@ -588,12 +589,29 @@ def _check_bounds(low: Optional[float], high: Optional[float], name: str) -> Non
         raise ValueError(f"min{name} is greater than max{name}")
 
 
-def _check_field_values(pattern: Optional[str], minimum: Optional[float],
+def _is_number(value: Any, whole: bool) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    return not whole or float(value).is_integer()
+
+
+def _check_field_values(kind: str, pattern: Optional[str], minimum: Optional[float],
                         maximum: Optional[float], step: Optional[float], rows: Optional[int],
                         min_length: Optional[int], max_length: Optional[int]) -> None:
     if pattern is not None and (not isinstance(pattern, str) or len(pattern) > MAX_PATTERN_LENGTH):
         raise ValueError(f"pattern is a regular expression of at most {MAX_PATTERN_LENGTH} "
                          "characters")
+    # integer and slider fields take whole bounds and steps (the host would truncate them);
+    # rows and length rules are always whole.
+    discrete = kind in ("integer", "slider")
+    for name, value, whole in (("min", minimum, discrete), ("max", maximum, discrete),
+                               ("step", step, discrete), ("rows", rows, True),
+                               ("min_length", min_length, True),
+                               ("max_length", max_length, True)):
+        if value is not None and not _is_number(value, whole):
+            raise ValueError(f"{name} is a {'whole' if whole else 'finite'} number")
     _check_bounds(minimum, maximum, "")
     _check_bounds(min_length, max_length, "_length")
     for name, value in (("min_length", min_length), ("max_length", max_length)):
@@ -630,7 +648,7 @@ def field(id: str, kind: str = "text", label: Optional[str] = None, value: Any =
     for a combination the host refuses."""
     _check_choice_keys(kind, indicator, style, searchable, editable, completion)
     _check_layout(orientation, columns)
-    _check_field_values(pattern, min, max, step, rows, min_length, max_length)
+    _check_field_values(kind, pattern, min, max, step, rows, min_length, max_length)
     return _element("field", id, kind=kind, label=label, value=value,
                     choices=list(choices) if choices is not None else None,
                     filter=filter, placeholder=placeholder, indicator=indicator, style=style,
@@ -1794,8 +1812,9 @@ class Plugin:
         self.complete_handlers: Dict[Tuple[str, Optional[str]], CompleteHandler] = {}
         self.queries: Dict[str, Query] = {}
         self.lanes: Dict[str, _QueryLane] = {}
-        # The element types of each view's last update() on an older host, for patch().
-        self._view_elements: Dict[str, _ElementKinds] = {}
+        # The element types of each view's last update() on an older host, for patch(), by
+        # (view id, window id); "" is an update sent to every window.
+        self._view_elements: Dict[Tuple[str, str], _ElementKinds] = {}
 
     def action(self, identifier: str) -> Callable[[Action], Action]:
         def register(callback: Action) -> Action:
@@ -2036,12 +2055,29 @@ class Plugin:
         if rules is not None:
             elements = _element_kinds(root)  # patch() converts by the element's type
             with self.lock:
-                self._view_elements[view_id] = elements
+                if not window_id:  # every window now shows this tree
+                    for key in [key for key in self._view_elements if key[0] == view_id]:
+                        del self._view_elements[key]
+                self._view_elements[(view_id, window_id or "")] = elements
         params: JsonObject = {
             "view_id": view_id, "root": root if rules is None else _compatible_element(root, rules)}
         if window_id:
             params["window_id"] = window_id
         self.notify("view/update", params)
+
+    def _patch_elements(self, view_id: str, window_id: str) -> _ElementKinds:
+        """The element types a patch() for this window converts by (the caller holds lock): the
+        window's own tree, else the tree sent to every window; a patch for every window uses
+        the types of all of the view's trees."""
+        for key in ((view_id, window_id), (view_id, "")):
+            if key in self._view_elements:
+                return self._view_elements[key]
+        merged: _ElementKinds = {}
+        if not window_id:
+            for (view, _window), kinds in self._view_elements.items():
+                if view == view_id:
+                    merged.update(kinds)
+        return merged
 
     def patch(self, view_id: str, changes: Sequence[JsonObject],
               window_id: Optional[str] = None) -> None:
@@ -2051,7 +2087,7 @@ class Plugin:
         entries = list(changes)
         if rules is not None:
             with self.lock:
-                elements = self._view_elements.get(view_id, {})
+                elements = self._patch_elements(view_id, window_id or "")
             entries = [_compatible_patch_entry(entry, rules, elements) for entry in entries]
         params: JsonObject = {"view_id": view_id, "patch": entries}
         if window_id:

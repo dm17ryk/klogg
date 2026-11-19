@@ -151,11 +151,20 @@ class Builders(ChoiceCase):
             ("text", dict(pattern="x" * 257)), ("integer", dict(min=5, max=1)),
             ("text", dict(min_length=4, max_length=2)), ("text", dict(min_length=-1)),
             ("slider", dict(step=0)), ("multiline", dict(rows=0)),
+            # Integer and slider bounds and steps, rows and length rules are whole numbers.
+            ("slider", dict(step=0.5)), ("integer", dict(min=0.5)), ("integer", dict(max=9.9)),
+            ("integer", dict(step=True)), ("multiline", dict(rows=2.5)),
+            ("text", dict(min_length=0.5)), ("text", dict(max_length=1.5)),
+            ("number", dict(min=float("nan"))), ("number", dict(max=float("inf"))),
+            ("number", dict(min="1")), ("integer", dict(max=float("inf"))),
         )
         for kind, keywords in cases:
             with self.subTest(kind=kind, keywords=keywords), self.assertRaises(ValueError):
                 sdk.field("x", kind, **keywords)
         self.assertEqual(sdk.field("x", "text", pattern="x" * 256)["pattern"], "x" * 256)
+        # Fractions stay allowed on number fields; whole floats on integer fields.
+        self.assertEqual(sdk.field("x", "number", min=0.5, max=1.5, step=0.25)["step"], 0.25)
+        self.assertEqual(sdk.field("x", "integer", min=0.0, max=10.0, step=2.0)["max"], 10.0)
         self.assertNotIn("editable", sdk.field("x", "text", editable=False, searchable=False))
 
     def test_checkbox_radio_group_and_check_group(self):
@@ -412,6 +421,32 @@ class Downgrades(ChoiceCase):
         plugin.patch("main", [sdk.set_props("x", text="still a label")])
         self.assertEqual(host.wait_for("view/update")["patch"],
                          [{"id": "x", "set": {"text": "still a label"}}])
+
+    def test_each_window_keeps_the_elements_of_its_own_update(self):
+        sdk = self.sdk
+        plugin = self.plugin(handles=None)
+        host = self.host(plugin, **self.without("toggles"))
+
+        def patched(element_id, window_id=None):
+            plugin.patch("main", [sdk.set_props(element_id, text="T")], window_id)
+            return [entry["set"] for entry in host.wait_for("view/update")["patch"]]
+
+        plugin.update("main", sdk.column(sdk.checkbox("x", "X"), sdk.checkbox("a", "A"),
+                                         id="body"), "w1")
+        host.wait_for("view/update")
+        plugin.update("main", sdk.column(sdk.label("x", "L"), sdk.checkbox("b", "B"), id="body"),
+                      "w2")
+        host.wait_for("view/update")
+        self.assertEqual(patched("x", "w1"), [{"label": "T"}])  # still w1's check box
+        self.assertEqual(patched("x", "w2"), [{"text": "T"}])
+        self.assertEqual(patched("a", "w3"), [{"text": "T"}])  # no tree known for w3
+        # A patch for every window converts by the elements of every window's tree.
+        self.assertEqual(patched("a") + patched("b"), [{"label": "T"}, {"label": "T"}])
+        # An update for every window replaces the windows' own trees.
+        plugin.update("main", sdk.column(sdk.label("x", "L"), id="body"))
+        host.wait_for("view/update")
+        self.assertEqual(patched("x", "w1"), [{"text": "T"}])
+        self.assertEqual(patched("a"), [{"text": "T"}])
 
 
 class Completion(ChoiceCase):
