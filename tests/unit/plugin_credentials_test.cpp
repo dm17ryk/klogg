@@ -4,6 +4,7 @@
 #include "azuredevops.h"
 #include "repositorycredentials.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -302,6 +303,17 @@ TEST_CASE( "The Authorization header follows the credential the helper returned"
         CHECK_FALSE( looksLikeJwt( "a.b.c" ) );
         CHECK_FALSE( looksLikeJwt( "eyJ.e30.x" ) );
     }
+    SECTION( "a value with a control character is refused" )
+    {
+        CHECK( authorizationFromCredential( parseCredentialFields( "password=ab\rX-Evil: 1\n" ) )
+                   .isEmpty() );
+        CHECK( authorizationFromCredential(
+                   parseCredentialFields( "authtype=Bearer\ncredential=a\x01" "b\n" ) )
+                   .isEmpty() );
+        CHECK( authorizationFromCredential(
+                   parseCredentialFields( "authtype=Bearer x\ncredential=ab\n" ) )
+                   .isEmpty() );
+    }
     SECTION( "no usable credential" )
     {
         CHECK( authorizationFromCredential( parseCredentialFields( "username=me\n" ) ).isEmpty() );
@@ -361,6 +373,14 @@ TEST_CASE( "git credential fill runs with the credential rules", "[plugins][E15]
         CHECK( calls.at( 0 ).value( "GCM_INTERACTIVE" ).toString() == "never" );
         CHECK( calls.at( 0 ).value( "GIT_ASKPASS" ).toString() == "<unset>" );
         CHECK( calls.at( 0 ).value( "SSH_ASKPASS" ).toString() == "<unset>" );
+        // Never inside a repository whose config could name another credential helper.
+        CHECK( QDir::cleanPath( calls.at( 0 ).value( "cwd" ).toString() )
+                   .compare( GitCredentialHelper::workingDirectory(), Qt::CaseInsensitive )
+               == 0 );
+        CHECK( QDir::cleanPath( calls.at( 0 ).value( "GIT_CEILING_DIRECTORIES" ).toString() )
+                   .compare( QFileInfo( GitCredentialHelper::workingDirectory() ).absolutePath(),
+                             Qt::CaseInsensitive )
+               == 0 );
     }
     SECTION( "an interactive fill lets the credential manager show its window" )
     {

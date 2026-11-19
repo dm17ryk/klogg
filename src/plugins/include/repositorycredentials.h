@@ -66,6 +66,8 @@ public:
     // The configured path when it is an absolute, existing, executable file; otherwise the
     // absolute path QStandardPaths finds for "git"; empty when there is none.
     static QString resolveGit( const QString& configured );
+    // The folder Git runs in: the temporary folder, never a repository (see environment()).
+    static QString workingDirectory();
     static QProcessEnvironment environment( bool interactive );
     static QByteArray fillRequest( const AzureDevOpsLocation& location );
     static QString outcomeText( Outcome outcome );

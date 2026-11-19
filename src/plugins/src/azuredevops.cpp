@@ -396,13 +396,26 @@ bool looksLikeJwt( const QByteArray& value )
 
 QByteArray authorizationFromCredential( const CredentialFields& fields )
 {
+    // A value with a control character (a CR inside a line) could split the header.
+    const auto clean = []( const QByteArray& value ) {
+        for ( const auto character : value ) {
+            const auto byte = static_cast<unsigned char>( character );
+            if ( byte < 0x20 || byte == 0x7f ) {
+                return false;
+            }
+        }
+        return true;
+    };
     const auto authType = lastValue( fields, "authtype" );
     const auto credential = lastValue( fields, "credential" );
     if ( !authType.isEmpty() && !credential.isEmpty() ) {
-        return authType + ' ' + credential;
+        return clean( authType ) && clean( credential ) && !authType.contains( ' ' )
+                   ? authType + ' ' + credential
+                   : QByteArray{};
     }
     const auto password = lastValue( fields, "password" );
-    if ( password.isEmpty() ) {
+    if ( password.isEmpty() || !clean( password )
+         || !clean( lastValue( fields, "username" ) ) ) {
         return {};
     }
     if ( looksLikeJwt( password ) ) {

@@ -251,6 +251,11 @@ void PluginManager::downloadHop( const QUrl& target, const std::shared_ptr<Downl
             }
             const auto status = reply->attribute( QNetworkRequest::HttpStatusCodeAttribute ).toInt();
             const auto location = reply->attribute( QNetworkRequest::RedirectionTargetAttribute ).toUrl();
+            if ( state->manualRedirects && status >= 300 && status < 400 && status != 304
+                 && !location.isValid() ) {
+                handler( {}, { QStringLiteral( "Unexpected redirect without a target." ) } );
+                return;
+            }
             if ( state->manualRedirects && status >= 300 && status < 400 && location.isValid() ) {
                 const auto next = target.resolved( location );
                 if ( ++state->hops > MaxRedirects ) {
@@ -658,37 +663,66 @@ Result PluginManager::signIn( const QVariantMap& options, const QString& origin 
                 finishJob( jobId, outcome.error );
                 return;
             }
-            auto read = readCatalog( bytes, id, hostVersion_ );
-            const auto state = !read.error.isEmpty()    ? QStringLiteral( "failed" )
-                               : read.entries.isEmpty() ? QStringLiteral( "empty" )
-                                                        : QStringLiteral( "loaded" );
-            repositories_.recordCheck( id, state, int( read.entries.size() ),
-                                       int( read.warnings.size() ), int( read.hidden.size() ),
-                                       read.error, now );
-            if ( read.error.isEmpty() ) {
-                catalogs_[ id ] = read.entries;
-            }
-            repositories_.setCredentialSource( id, method );
-            persistSettings();
-            Q_EMIT changed();
-            QVariantMap result{ { "repository", id },
-                                { "signedIn", true },
-                                { "state", state },
-                                { "error", read.error },
-                                { "pluginCount", read.entries.size() } };
-            if ( token.isEmpty() ) {
-                finishJob( jobId, {}, result );
-                return;
-            }
-            // A PAT is stored only after it worked.
-            QPointer<PluginManager> self( this );
-            patStore_->write( id, token, [ self, jobId, result ]( PatStore::Status status ) mutable {
-                if ( !self ) {
+            auto read = std::make_shared<CatalogRead>( readCatalog( bytes, id, hostVersion_ ) );
+            const auto state = !read->error.isEmpty()    ? QStringLiteral( "failed" )
+                               : read->entries.isEmpty() ? QStringLiteral( "empty" )
+                                                         : QStringLiteral( "loaded" );
+            // Records the sign-in only once it is kept: a token is stored first.
+            const auto commit = [ this, id, jobId, method, read, state, now ]( bool sessionOnly ) {
+                if ( !repositories_.find( id ) ) {
+                    finishJob( jobId, QStringLiteral( "The repository was removed." ) );
                     return;
                 }
-                result[ "sessionOnly" ] = status.sessionOnly;
-                self->finishJob( jobId, status.error, result );
-            } );
+                repositories_.recordCheck( id, state, int( read->entries.size() ),
+                                           int( read->warnings.size() ), int( read->hidden.size() ),
+                                           read->error, now );
+                if ( read->error.isEmpty() ) {
+                    catalogs_[ id ] = read->entries;
+                }
+                repositories_.setCredentialSource( id, method );
+                persistSettings();
+                Q_EMIT changed();
+                QVariantMap result{ { "repository", id },
+                                    { "signedIn", true },
+                                    { "state", state },
+                                    { "error", read->error },
+                                    { "pluginCount", read->entries.size() } };
+                if ( sessionOnly ) {
+                    result[ "sessionOnly" ] = true;
+                }
+                finishJob( jobId, {}, result );
+            };
+            if ( token.isEmpty() ) {
+                commit( false );
+                return;
+            }
+            // A token is stored only after it worked, and never for a repository that was removed
+            // while it was being tested: nothing would delete it (design 3.1).
+            if ( !repositories_.find( id ) ) {
+                wipeSecret( token );
+                finishJob( jobId, QStringLiteral( "The repository was removed." ) );
+                return;
+            }
+            QPointer<PluginManager> self( this );
+            patStore_->write(
+                id, token, [ self, id, jobId, commit, now ]( PatStore::Status status ) {
+                    if ( !self ) {
+                        return;
+                    }
+                    if ( !status.error.isEmpty() ) {
+                        self->repositories_.recordCheck( id, SignInRequiredState, 0, 0, 0,
+                                                         status.error, now );
+                        self->persistSettings();
+                        Q_EMIT self->changed();
+                        self->finishJob( jobId, status.error );
+                        return;
+                    }
+                    if ( !self->repositories_.find( id ) ) {
+                        // Removed while the store was writing: delete the token again.
+                        self->patStore_->remove( id, []( PatStore::Status ) {} );
+                    }
+                    commit( status.sessionOnly );
+                } );
             wipeSecret( token );
         } );
     return job( jobId );

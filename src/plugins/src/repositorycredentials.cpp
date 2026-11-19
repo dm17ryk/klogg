@@ -1,5 +1,6 @@
 #include "repositorycredentials.h"
 
+#include <QDir>
 #include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
@@ -47,6 +48,9 @@ void runGit( const QString& git, const char* verb, const QByteArray& input, bool
     }
     auto* process = new QProcess( context );
     process->setProgram( git );
+    // Never inside a repository: its .git/config could name a credential helper that would then
+    // receive the credential (GIT_CEILING_DIRECTORIES stops the search above this folder).
+    process->setWorkingDirectory( GitCredentialHelper::workingDirectory() );
     process->setArguments( { QStringLiteral( "-c" ), QStringLiteral( "core.askPass=" ),
                              QStringLiteral( "credential" ), QString::fromLatin1( verb ) } );
     process->setProcessEnvironment( GitCredentialHelper::environment( interactive ) );
@@ -142,6 +146,11 @@ QString GitCredentialHelper::resolveGit( const QString& configured )
     return !found.isEmpty() && usable( found ) ? QFileInfo( found ).absoluteFilePath() : QString{};
 }
 
+QString GitCredentialHelper::workingDirectory()
+{
+    return QDir::cleanPath( QDir::tempPath() );
+}
+
 QProcessEnvironment GitCredentialHelper::environment( bool interactive )
 {
     auto environment = QProcessEnvironment::systemEnvironment();
@@ -150,6 +159,11 @@ QProcessEnvironment GitCredentialHelper::environment( bool interactive )
             environment.remove( key );
         }
     }
+    // Repository discovery stops at the working directory: no repository config is read.
+    environment.insert( QStringLiteral( "GIT_CEILING_DIRECTORIES" ),
+                        QFileInfo( workingDirectory() ).absolutePath() );
+    environment.remove( QStringLiteral( "GIT_DIR" ) );
+    environment.remove( QStringLiteral( "GIT_WORK_TREE" ) );
     environment.insert( QStringLiteral( "GIT_TERMINAL_PROMPT" ), QStringLiteral( "0" ) );
     if ( !interactive ) {
         environment.insert( QStringLiteral( "GCM_INTERACTIVE" ), QStringLiteral( "never" ) );

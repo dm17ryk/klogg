@@ -404,9 +404,10 @@ if(qtkeychain_ADDED)
          "#pragma once\n#define QKEYCHAIN_EXPORT\n#define QKEYCHAIN_NO_EXPORT\n")
     add_library(klogg_qtkeychain STATIC ${_qtk_sources})
     set_target_properties(klogg_qtkeychain PROPERTIES AUTOMOC ON)
-    target_include_directories(klogg_qtkeychain
-      PUBLIC ${qtkeychain_SOURCE_DIR} ${_qtk_generated}
-      PRIVATE ${_qtk_dir} ${CMAKE_CURRENT_BINARY_DIR})
+    # SYSTEM: our -Werror warning set does not apply to QtKeychain's headers.
+    target_include_directories(klogg_qtkeychain SYSTEM
+      PUBLIC ${qtkeychain_SOURCE_DIR} ${_qtk_generated})
+    target_include_directories(klogg_qtkeychain PRIVATE ${_qtk_dir} ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(klogg_qtkeychain PUBLIC Qt${QT_VERSION_MAJOR}::Core)
     target_compile_definitions(klogg_qtkeychain INTERFACE CILOGG_HAVE_QTKEYCHAIN=1)
     if(WIN32)

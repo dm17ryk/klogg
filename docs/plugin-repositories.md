@@ -285,7 +285,9 @@ and the scope always use one host.
    settings), never a bare `git` that Windows could resolve from the current folder. The command is
    `git -c core.askPass= credential fill`, with arguments as a list, never a shell command line, and
    with `GIT_TERMINAL_PROMPT=0` set and `GIT_ASKPASS` and `SSH_ASKPASS` removed, so Git can neither
-   wait on a console nor start another prompt program. Its standard input is `protocol=https`,
+   wait on a console nor start another prompt program. Git runs in the temporary folder with
+   `GIT_CEILING_DIRECTORIES` set to its parent, so the configuration of a repository that CILogg
+   happens to be started in cannot name another credential helper. Its standard input is `protocol=https`,
    `host=dev.azure.com`, `path=<organization>/<project>/_git/<repository>` and
    `capability[]=authtype`: the request Git makes when it clones that repository. A user who
    already cloned the repository is signed in without a prompt. An interactive sign-in is the credential

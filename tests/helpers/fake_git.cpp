@@ -9,6 +9,7 @@
 //                  repeats).
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -89,7 +90,10 @@ int main( int argc, char** argv )
                 { "GIT_TERMINAL_PROMPT", QString::fromUtf8( environmentValue( "GIT_TERMINAL_PROMPT" ) ) },
                 { "GCM_INTERACTIVE", QString::fromUtf8( environmentValue( "GCM_INTERACTIVE" ) ) },
                 { "GIT_ASKPASS", QString::fromUtf8( environmentValue( "GIT_ASKPASS" ) ) },
-                { "SSH_ASKPASS", QString::fromUtf8( environmentValue( "SSH_ASKPASS" ) ) } };
+                { "SSH_ASKPASS", QString::fromUtf8( environmentValue( "SSH_ASKPASS" ) ) },
+                { "GIT_CEILING_DIRECTORIES",
+                  QString::fromUtf8( environmentValue( "GIT_CEILING_DIRECTORIES" ) ) },
+                { "cwd", QDir::currentPath() } };
             record.write( QJsonDocument( line ).toJson( QJsonDocument::Compact ) + '\n' );
         }
     }

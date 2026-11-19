@@ -406,6 +406,9 @@ TEST_CASE( "The credential stays inside the repository scope across redirects",
         CHECK( fixture.fetch( id, "mcp" ).value( "error" ).toString().contains(
             "Too many redirects" ) );
         CHECK( requestsTo( fixture.server, CatalogPath ).size() == 1 + 6 );
+        fixture.server.route( CatalogPath, { 302, "", "text/plain" } );
+        CHECK( fixture.fetch( id, "mcp" ).value( "error" ).toString().contains(
+            "Unexpected redirect" ) );
     }
 #endif
 }
@@ -545,6 +548,61 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
     REQUIRE( fixture.tokens->contains( id ) );
     REQUIRE( fixture.manager->manage( "repository_remove", {}, { { "repository", id } } ).ok() );
     CHECK_FALSE( fixture.tokens->contains( id ) );
+#endif
+}
+
+TEST_CASE( "A token is not kept for a removed repository or when the store refuses it",
+           "[plugins][workbench][E15][https]" )
+{
+#ifndef CILOGG_TEST_HTTPS_SERVER
+    WARN( "This Qt build has no TLS server" );
+    return;
+#else
+    SignInFixture fixture;
+    if ( !fixture.server.listening() ) {
+        WARN( "No TLS backend is available" );
+        return;
+    }
+    FakeGit git( "fail" );
+    const QVariantMap withToken{ { "method", "personal-access-token" }, { "token", "late-pat" } };
+    const auto signIn = [ & ]( const QString& id ) {
+        auto options = withToken;
+        options.insert( "repository", id );
+        return fixture.manager->manage( "repository_sign_in", {}, options, RequestOriginGui );
+    };
+
+    SECTION( "removed while the sign-in test runs" )
+    {
+        fixture.server.route( CatalogPath, { 200, emptyCatalog(), "application/json", 800 } );
+        const auto id = fixture.add();
+        const auto started = signIn( id );
+        REQUIRE( started.ok() );
+        REQUIRE( fixture.manager->manage( "repository_remove", {}, { { "repository", id } } ).ok() );
+        const auto job = finishedJob( *fixture.manager, started );
+        CHECK( job.value( "state" ) == "failed" );
+        CHECK( job.value( "error" ).toString().contains( "removed" ) );
+        CHECK_FALSE( fixture.tokens->contains( id ) );
+    }
+    SECTION( "the credential store refuses the token" )
+    {
+        class RefusingStore : public MemoryPatStore {
+        public:
+            void write( const QString&, const QByteArray&, Done done ) override
+            {
+                done( { QStringLiteral( "The credential store did not accept the token." ), false } );
+            }
+        };
+        fixture.manager->setPatStore( std::make_unique<RefusingStore>() );
+        fixture.server.route( CatalogPath, { 200, emptyCatalog() } );
+        const auto id = fixture.add();
+        const auto job = finishedJob( *fixture.manager, signIn( id ) );
+        CHECK( job.value( "state" ) == "failed" );
+        CHECK( job.value( "error" ).toString().contains( "did not accept" ) );
+        // Not recorded as signed in, and still on the credential manager.
+        CHECK( fixture.repository( id ).value( "signedIn" ) == false );
+        CHECK( fixture.repository( id ).value( "state" ) == "sign_in_required" );
+        CHECK( fixture.repository( id ).value( "credentialSource" ) == "git-credential-manager" );
+    }
 #endif
 }
 
