@@ -31,6 +31,9 @@ private:
     // The tabs of the Plugins and Packs window (docs/plugin-repositories.md 3.3).
     enum class PluginsTab { Installed = 0, Available = 1, Repositories = 2 };
     void refreshActions();
+    // Plugins > Updates (n): the updates not skipped (design 3.7).
+    int pendingUpdateCount() const;
+    void refreshUpdates();
     QIcon iconFor( const QVariantMap& plugin, const QJsonObject& item,
                    QStyle::StandardPixmap fallback );
     // Opens (or raises) the one Plugins and Packs window at `tab`.
@@ -46,6 +49,7 @@ private:
     QPointer<cilogg::plugins::PluginManager> manager_;
     Executor executor_;
     QMenu* menu_ = nullptr;
+    QAction* updatesAction_ = nullptr;
     QList<QAction*> actions_;
     QMap<QString, QPointer<QDockWidget>> panels_;
     QMap<QString, QPair<QJsonObject, QVariantMap>> pendingPanels_;

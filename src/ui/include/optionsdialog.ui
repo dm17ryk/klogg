@@ -1049,6 +1049,16 @@
         </layout>
        </item>
        <item>
+        <widget class="QCheckBox" name="checkForPluginUpdatesCheckBox">
+         <property name="text">
+          <string>Check plugin repositories for plugin updates once a day</string>
+         </property>
+         <property name="toolTip">
+          <string>A silent check about a minute after start and then daily. New versions appear as Plugins &gt; Updates and as a notice; repositories with Auto-update on install them.</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer_update">
          <property name="orientation">
           <enum>Qt::Vertical</enum>

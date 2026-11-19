@@ -45,21 +45,6 @@ bool looksLikeWebPage( const QByteArray& bytes )
     return start.startsWith( '<' );
 }
 
-// The newest entry by Semantic Versioning; the first one listed wins a tie.
-QJsonObject newest( const QList<QJsonObject>& entries )
-{
-    QJsonObject best;
-    for ( const auto& entry : entries ) {
-        if ( best.isEmpty()
-             || compareSemanticVersions( entry.value( "version" ).toString(),
-                                         best.value( "version" ).toString() )
-                        .value_or( 0 )
-                    > 0 ) {
-            best = entry;
-        }
-    }
-    return best;
-}
 } // namespace
 
 QString PluginManager::catalogUrl() const
@@ -147,7 +132,12 @@ void PluginManager::deleteToken( const QString& key )
 
 void PluginManager::setHostVersion( const QString& version )
 {
+    if ( hostVersion_ == version ) {
+        return;
+    }
     hostVersion_ = version;
+    // The saved catalogs were read for the previous version (`min_host_version`).
+    loadCatalogCache();
 }
 
 QVariantList PluginManager::repositories() const
@@ -684,6 +674,9 @@ Result PluginManager::manageRepositories( const QString& operation, const QVaria
         if ( error.isEmpty() ) {
             // Plugins installed from it keep running; their source becomes unavailable.
             catalogs_.erase( id );
+            if ( record ) {
+                removeCatalogCache( *record );
+            }
             payload[ "removed" ] = id;
             // No token is left orphaned in the credential store (design 3.1): its deletion is
             // listed in the same settings write that removes the repository, and a deletion that
@@ -997,6 +990,9 @@ void PluginManager::fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run )
                       }
                       else {
                           read = readCatalog( bytes, id, hostVersion_ );
+                          if ( read.error.isEmpty() ) {
+                              storeCatalog( id, bytes );
+                          }
                       }
                       const auto state = outcome.signInNeeded    ? SignInRequiredState
                                          : !read.error.isEmpty()    ? QStringLiteral( "failed" )
@@ -1069,6 +1065,14 @@ void PluginManager::finishCatalog( const std::shared_ptr<CatalogRun>& run )
     }
     // A repository that fails does not hide the others; only all failing fails the job.
     const auto error = fetched > 0 && errors.size() == fetched ? errors.join( "; " ) : QString{};
+    if ( run->updateCheck ) {
+        if ( updateRun_ == run ) {
+            updateRun_.reset();
+        }
+        finishUpdateCheck( run, summaries, error );
+        Q_EMIT changed();
+        return;
+    }
     finishJob( run->jobId, error,
                { { "plugins", annotated( merged ) },
                  { "repositories", summaries },
@@ -1137,12 +1141,12 @@ Result PluginManager::selectPackage( const QString& operation, const QString& id
                                .arg( pluginId, repositoryName( source ) ),
                      {} };
         }
-        chosen = newest( byRepository[ source ] );
+        chosen = newestEntry( byRepository[ source ] );
     }
     else {
         // A new install takes the higher repository; an installed plugin stays with its source.
         const auto repository = byRepository.count( source ) ? source : order.first();
-        chosen = newest( byRepository[ repository ] );
+        chosen = newestEntry( byRepository[ repository ] );
     }
     const auto from = chosen.value( "repository" ).toString();
     if ( !source.isEmpty() && from != source && !options.value( "switch_source" ).toBool() ) {

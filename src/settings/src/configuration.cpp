@@ -236,6 +236,10 @@ void Configuration::retrieveFromStorage( QSettings& settings )
     enableVersionChecking_
         = settings.value( "versionchecker.enabled", DefaultConfiguration.enableVersionChecking_ )
               .toBool();
+    enablePluginUpdateChecking_ = settings
+                                      .value( "versionchecker.plugins",
+                                              DefaultConfiguration.enablePluginUpdateChecking_ )
+                                      .toBool();
     updateChannel_ = static_cast<UpdateChannel>(
         settings.value( "versionchecker.channel",
                         static_cast<int>( DefaultConfiguration.updateChannel_ ) )
@@ -478,6 +482,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "logging.verbosity", loggingLevel_ );
 
     settings.setValue( "versionchecker.enabled", enableVersionChecking_ );
+    settings.setValue( "versionchecker.plugins", enablePluginUpdateChecking_ );
     settings.setValue( "versionchecker.channel", static_cast<int>( updateChannel_ ) );
     settings.setValue( "versionchecker.frequency", static_cast<int>( updateFrequency_ ) );
     settings.setValue( "versionchecker.action", static_cast<int>( updateAction_ ) );

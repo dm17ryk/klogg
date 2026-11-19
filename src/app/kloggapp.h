@@ -78,6 +78,8 @@
 #include "messagereceiver.h"
 #include "pluginmanager.h"
 #include "pluginsourceruns.h"
+#include "pluginupdatechecker.h"
+#include "pluginupdatenotices.h"
 #include "scenariorunner.h"
 #include "scenariorunnerwindow.h"
 #include "scriptrunnerwindow.h"
@@ -531,6 +533,7 @@ class KloggApp : public QApplication {
         automationModeEnabled_ = enabled;
         // Automated runs still write diagnostic reports, but never open a dialog.
         IssueReporter::setInteractive( !enabled );
+        pluginUpdateNotices_.setInteractive( !enabled );
         if ( topLeft != QPoint() ) {
             automationTopLeft_ = topLeft;
         }
@@ -1121,6 +1124,15 @@ class KloggApp : public QApplication {
         // secondary processes leave the persisted update transaction alone.
         versionChecker_.activate();
         versionChecker_.startCheck();
+        // Like the application updater, the plugin update check never runs in automation or
+        // headless mode (docs/plugin-repositories.md 3.7).
+        if ( cilogg::plugins::PluginUpdateChecker::mayRun( automationModeEnabled_,
+                                                           platformName() ) ) {
+            pluginUpdateChecker_.start();
+        }
+        else {
+            LOG_INFO << "Plugin update checks are off in automation or headless mode";
+        }
     }
 
     bool hasVisibleMainWindow() const
@@ -1584,6 +1596,11 @@ class KloggApp : public QApplication {
 
     MessageReceiver messageReceiver_;
     cilogg::plugins::PluginManager pluginManager_;
+    // Plugin update notices for every window, and the silent daily check (E15c).
+    PluginUpdateNotices pluginUpdateNotices_{ &pluginManager_ };
+    cilogg::plugins::PluginUpdateChecker pluginUpdateChecker_{
+        &pluginManager_, [] { return Configuration::get().pluginUpdateCheckingEnabled(); }
+    };
     PluginSourceRuns pluginSourceRuns_{
         [ this ] { return applicationAnalysisSources(); },
         [ this ]( const CommanderRequest& request ) { return invokePluginOnTab( request ); },

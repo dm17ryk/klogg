@@ -434,6 +434,7 @@ void OptionsDialog::updateDialogFromConfig()
 
     // version checking
     checkForNewVersionCheckBox->setChecked( config.versionCheckingEnabled() );
+    checkForPluginUpdatesCheckBox->setChecked( config.pluginUpdateCheckingEnabled() );
     updateChannelBox->setCurrentIndex( static_cast<int>( config.updateChannel() ) );
     updateFrequencyBox->setCurrentIndex( static_cast<int>( config.updateFrequency() ) );
     switch ( config.updateAction() ) {
@@ -644,6 +645,7 @@ void OptionsDialog::updateConfigFromDialog()
 
     // version checking
     config.setVersionCheckingEnabled( checkForNewVersionCheckBox->isChecked() );
+    config.setPluginUpdateCheckingEnabled( checkForPluginUpdatesCheckBox->isChecked() );
     config.setUpdateChannel( static_cast<UpdateChannel>( updateChannelBox->currentIndex() ) );
     config.setUpdateFrequency( static_cast<UpdateFrequency>( updateFrequencyBox->currentIndex() ) );
     if ( updateActionInstallRadio->isChecked() ) {

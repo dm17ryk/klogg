@@ -148,6 +148,21 @@ std::optional<int> compareHostVersions( const QString& a, const QString& b )
     return order < 0 ? -1 : order > 0 ? 1 : 0;
 }
 
+QJsonObject newestEntry( const QList<QJsonObject>& entries )
+{
+    QJsonObject best;
+    for ( const auto& entry : entries ) {
+        if ( best.isEmpty()
+             || compareSemanticVersions( entry.value( "version" ).toString(),
+                                         best.value( "version" ).toString() )
+                        .value_or( 0 )
+                    > 0 ) {
+            best = entry;
+        }
+    }
+    return best;
+}
+
 CatalogRead readCatalog( const QByteArray& bytes, const QString& repositoryId,
                          const QString& hostVersion, const QString& os, const QString& arch )
 {

@@ -7,6 +7,8 @@ add_library(klogg_plugins STATIC
   include/pluginrepository.h src/pluginrepository.cpp
   include/pluginstorage.h src/pluginstorage.cpp
   include/pluginmanager.h src/pluginmanager.cpp src/pluginmanagerrepositories.cpp
+  src/pluginmanagerupdates.cpp
+  include/pluginupdatechecker.h src/pluginupdatechecker.cpp
   include/pythonruntime.h src/pythonruntime.cpp
   include/repositorycredentials.h src/repositorycredentials.cpp
   include/semanticversion.h src/semanticversion.cpp)

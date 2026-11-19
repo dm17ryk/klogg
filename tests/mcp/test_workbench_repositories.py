@@ -42,6 +42,13 @@ class E15HelperTests(unittest.TestCase):
                          [{"repository": "a", "state": "failed", "entries": 0}])
         self.assertEqual(workbench_repositories.catalog_states({"state": "failed"}), [])
 
+    def test_update_check_reads_state_updates_and_checked(self):
+        job = {"state": "failed", "result": {"updates": [], "checked": ["a"], "notDue": []}}
+        self.assertEqual(workbench_repositories.update_check(job),
+                         {"state": "failed", "updates": [], "checked": ["a"]})
+        self.assertEqual(workbench_repositories.update_check({"state": "cancelled"}),
+                         {"state": "cancelled", "updates": None, "checked": None})
+
     def test_gui_rows_read_positions_names_and_check_states(self):
         table = {"objectName": "pluginRepositoriesTable",
                  "items": [["1", None, "Team", "https://a.test/p.json", "x", "Never"],

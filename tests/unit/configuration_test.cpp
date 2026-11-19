@@ -19,7 +19,9 @@ TEST_CASE( "Updater preferences persist channel frequency and action", "[configu
     QSettings settings( directory.filePath( "settings.ini" ), QSettings::IniFormat );
 
     Configuration saved;
+    REQUIRE( saved.pluginUpdateCheckingEnabled() ); // on by default (E15c)
     saved.setVersionCheckingEnabled( false );
+    saved.setPluginUpdateCheckingEnabled( false );
     saved.setUpdateChannel( UpdateChannel::Ci );
     saved.setUpdateFrequency( UpdateFrequency::Monthly );
     saved.setUpdateAction( UpdateAction::DownloadAndInstall );
@@ -29,6 +31,7 @@ TEST_CASE( "Updater preferences persist channel frequency and action", "[configu
     Configuration restored;
     restored.retrieveFromStorage( settings );
     REQUIRE_FALSE( restored.versionCheckingEnabled() );
+    REQUIRE_FALSE( restored.pluginUpdateCheckingEnabled() );
     REQUIRE( restored.updateChannel() == UpdateChannel::Ci );
     REQUIRE( restored.updateFrequency() == UpdateFrequency::Monthly );
     REQUIRE( restored.updateAction() == UpdateAction::DownloadAndInstall );

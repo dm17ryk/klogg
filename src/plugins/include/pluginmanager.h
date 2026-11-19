@@ -64,6 +64,16 @@ public:
     // The entries of each repository's last successful fetch, in repository order, with the
     // installed version of each plugin.
     QVariantList catalogEntries() const;
+    // Installed plugins that the repository they were installed from offers in a newer version
+    // (docs/plugin-repositories.md 3.7), from the last catalog of each enabled repository: `id`,
+    // `name`, `installed`, `available`, `repository`, `repositoryName`, `entry_id`, `skipped`
+    // (Skip this version) and `majorChange` (a new major version, never installed automatically).
+    QVariantList availableUpdates() const;
+    // The silent update check (design 3.7): fetches, without a sign-in window, every enabled
+    // repository not checked in the last 24 hours or without a saved catalog, then announces new
+    // versions and starts automatic updates. The payload has the `jobId` of the fetch, empty when
+    // no repository was due (the saved catalogs are still compared with the installed versions).
+    Result runScheduledUpdateCheck();
     // The CILogg version that catalog `min_host_version` keys are compared with.
     void setHostVersion( const QString& version );
     QString hostVersion() const
@@ -113,6 +123,15 @@ Q_SIGNALS:
     void pluginReady( const QString& pluginId );
     // The plugin was disabled or removed: close its views without a result.
     void viewsRevoked( const QString& pluginId );
+    // New versions that an update check found, each announced once and never when skipped
+    // (availableUpdates() fields).
+    void updatesFound( const QVariantList& updates );
+    // An automatic update was installed: `id`, `name`, `from`, `to`, `repository`,
+    // `repositoryName`.
+    void autoUpdated( const QVariantMap& update );
+    // An automatic update failed; reported once per version and tried again at the next check.
+    // The fields of autoUpdated() with `to` the version that failed, and `error`.
+    void autoUpdateFailed( const QVariantMap& update );
 
 private:
     struct Entry {
@@ -157,15 +176,26 @@ private:
         QString messageId;
         QString windowId;
     };
-    // One `catalog` job: every repository it fetches, at most MaxParallelCatalogs at a time.
+    // One `catalog` or update-check job: every repository it fetches, at most
+    // MaxParallelCatalogs at a time.
     struct CatalogRun {
         QString jobId;
         QStringList pending;
+        QStringList requested; // every repository the job fetches
         int active = 0;
         bool finished = false;
         bool interactive = false; // started in the GUI: the credential manager may prompt
+        bool updateCheck = false; // check_updates or the silent check (design 3.7)
+        QString scope;            // check_updates: only the updates of this repository
+        QStringList notDue;       // the silent check: repositories checked in the last 24 hours
         std::map<QString, CatalogRead> results;
         QStringList signInNeeded; // repositories that answered 401, 203 or a web page
+    };
+    // A staged automatic update waiting for its running plugin to stop (design 3.7).
+    struct WaitingCommit {
+        StagedPlugin staged;
+        QString jobId;
+        InstallSource source;
     };
     // The credential a download may attach, and only inside `scope` (design 3.6).
     struct DownloadAuth {
@@ -252,6 +282,46 @@ private:
     Result startCatalog( const QVariantMap& options, const QString& origin );
     void fetchNextCatalogs( const std::shared_ptr<CatalogRun>& run );
     void finishCatalog( const std::shared_ptr<CatalogRun>& run );
+    // Update checks, Skip this version and automatic updates (pluginmanagerupdates.cpp).
+    Result checkUpdates( const QVariantMap& options, const QString& origin );
+    Result startUpdateCheck( const QStringList& ids, const QStringList& notDue,
+                             const QString& scope, bool interactive );
+    void finishUpdateCheck( const std::shared_ptr<CatalogRun>& run, const QVariantList& summaries,
+                            const QString& error );
+    Result skipUpdate( const QString& id, const QVariantMap& options );
+    QVariantMap updateInfo( const QString& id, const Entry& entry ) const;
+    // Entries of the plugin's source repository that are newer than the installed version, of
+    // the same kind; `source` receives that repository.
+    QList<QJsonObject> newerFromSource( const QString& id, const Entry& entry,
+                                        std::optional<RepositoryRecord>* source ) const;
+    // The newest of them within the installed major version: what auto-update installs.
+    QJsonObject sameMajorUpdate( const QString& id ) const;
+    bool updateCheckDue( const RepositoryRecord& record, const QDateTime& now ) const;
+    bool updateCheckRunning() const;
+    // Announces new versions and starts the automatic updates the saved catalogs allow;
+    // `fetched` are the repositories this check fetched, whose failed updates are tried again.
+    // Returns the plugins whose automatic update started.
+    QStringList processUpdates( const QStringList& fetched );
+    QString startAutoUpdate( const QVariantMap& update );
+    void autoUpdateFinished( const Job& finished );
+    void reportAutoUpdateFailure( QVariantMap update, const QString& error );
+    // An install, update, remove or restart of `id` is running.
+    bool managementRunning( const QString& id ) const;
+    // Cancels the automatic update of `id` (every one when `id` is empty) that is downloading or
+    // waiting for the plugin to stop, so an operation the user starts takes its place.
+    void cancelAutoUpdate( const QString& id );
+    void discardWaitingCommit( const QString& id );
+    void updateCheckCancelled( const QString& jobId );
+    // A removed plugin keeps no skipped, announced or failed version; an install or update the
+    // user made clears a reported automatic-update failure.
+    void forgetUpdates( const QString& id );
+    void clearAutoUpdateFailure( const QString& id );
+    // The last catalog of each repository is kept in the plugin data folder, so an update check
+    // after a restart still knows the versions of a repository it skips (checked < 24 h ago).
+    QString catalogCachePath( const RepositoryRecord& record ) const;
+    void storeCatalog( const QString& repositoryId, const QByteArray& bytes );
+    void loadCatalogCache();
+    void removeCatalogCache( const RepositoryRecord& record );
     Result selectPackage( const QString& operation, const QString& id, const QVariantMap& options,
                           QJsonObject* selected ) const;
     QString installedSource( const QString& id ) const;
@@ -289,6 +359,14 @@ private:
     std::map<QString, QJsonArray> catalogs_;
     QString catalogJobId_;
     std::shared_ptr<CatalogRun> catalogRun_;
+    std::shared_ptr<CatalogRun> updateRun_; // the running update check, separate from catalogs
+    // When the silent check last tried each repository in this session, so a repository that
+    // fails is tried again after a day and not at every scheduled tick.
+    std::map<QString, QDateTime> lastScheduledAttempt_;
+    // Plugin ID -> version of the automatic update tried in this session; tried again only after
+    // its repository is fetched again.
+    std::map<QString, QString> autoUpdateTried_;
+    std::map<QString, WaitingCommit> waitingCommits_;
     QString hostVersion_;
     std::unique_ptr<PatStore> patStore_ = createSystemPatStore();
     QStringList deletingTokens_; // token deletions the store is working on

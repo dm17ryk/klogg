@@ -251,7 +251,7 @@ the CLI, native MCP, Python and scenarios check silently and report "Sign-in nee
 Packs** window at its Installed and Available tabs.
 
 - **Repositories** tab: one row per repository, in order: position, Enabled, Name, Address,
-  Sign-in, State and Last check. **Add…** asks for a name, the sign-in and the address (the
+  Sign-in, State, Last check and Auto-update. **Add…** asks for a name, the sign-in and the address (the
   HTTPS address of `plugins.json`, or an Azure DevOps repository); new repositories go to the
   end of the list, and an Azure DevOps repository is signed in at once. **Edit…** renames a
   repository or changes its credential (Git Credential Manager or personal access token); its
@@ -277,6 +277,27 @@ Packs** window at its Installed and Available tabs.
 - **Installed** tab: Name, Kind, Version, Source ("Shipped with CILogg", "Local file", a
   repository name, or "source unavailable" when its repository was removed or disabled) and
   State ("Enabled", "Running", "Update to 1.3.0", "Also offered by …").
+- **Update checks.** About a minute after CILogg starts, and then daily while it runs, CILogg
+  checks every enabled repository that was not checked in the last 24 hours, silently: no
+  sign-in window, no dialog when a repository cannot be reached (it is tried again the next
+  day). New versions of plugins installed from that repository appear as **Plugins → Updates
+  (n)…**, on the **Update (n)** button and in the State column, and each new version shows
+  one notice with **Open Plugins**, **Skip This Version** and **Close**. **Skip This Version**
+  (also a button on the Installed tab) hides that version until a newer one appears; you can
+  still install it with **Update**. **Check for Updates** on the Installed tab checks every
+  enabled repository at once. The check is off in automation and headless runs; turn it off
+  with **Tools → Options → Update → Check plugin repositories for plugin updates once a day**.
+  CILogg keeps the last catalog of each repository in the plugin data folder
+  (`catalog-cache`), so it knows the versions of a repository it did not check today.
+- **Auto-update** (a check box per repository on the Repositories tab, off by default):
+  a check that finds a new version within the installed major version (1.2.0 → 1.4.1, not
+  1.x → 2.0) downloads, verifies and installs it for plugins already installed from that
+  repository, keeping their configuration and their Enabled state. It never installs a new
+  plugin. A running plugin is replaced when it stops (Disable, Restart, closing CILogg); until
+  then it keeps running the old version, and if CILogg closes first the next start installs it
+  again. A new major version is announced and waits for **Update**. Each automatic update shows
+  a notice and is recorded in the activity journal; a failed one is reported once and tried
+  again at the next check.
 
 The same operations work from the command line, native MCP (`cilogg_execute`) and Python
 (`klogg.app.command`). Options go in a JSON file:
@@ -292,9 +313,14 @@ cilogg command --action plugin_manage --plugin-operation install --plugin-id org
 with, for example, `repo.json` containing
 `{"name": "Team tools", "url": "https://example.com/cilogg/plugins.json"}` and `move.json`
 containing `{"repository": "team-tools", "direction": "up"}` (or `"position": 1`).
-`repository_update` takes `repository` and `name`, `enabled` or `credential_source`;
-`repository_remove` takes `repository`; `catalog` takes an optional `repository`; `install`
-and `update` take an optional `catalog_entry_id` and `switch_source: true`. An Azure DevOps
+`repository_update` takes `repository` and `name`, `enabled`, `auto_update` or
+`credential_source`; `repository_remove` takes `repository`; `catalog` takes an optional
+`repository`; `install` and `update` take an optional `catalog_entry_id` and
+`switch_source: true`. `check_updates` (optional `repository`) fetches the repositories now and
+returns a job whose result lists the `updates` (`id`, `installed`, `available`, `repository`,
+`entry_id`, `skipped`, `majorChange`); `skip_update` with `--plugin-id` and `{"version": "1.3.0"}`
+is **Skip This Version**. `get_plugins` gives each plugin an `update` (the newest version from
+its source repository, or `null`). An Azure DevOps
 repository is added with `"sign_in": "azure-devops"` and optional `branch`, `path` and
 `credential_source` (`git-credential-manager` or `personal-access-token`).
 `repository_sign_in` (`repository`, `method`) tests the sign-in and reports `signedIn`;
