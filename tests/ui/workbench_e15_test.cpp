@@ -2,8 +2,10 @@
 // and the in-app guide (docs/plugin-repositories.md sections 3.3 and 3.9).
 #include "../helpers/fake_git_environment.h"
 #include "../helpers/https_catalog_server.h"
+#include "diagnostics.h"
 #include "mainwindow.h"
 #include "pluginmanager.h"
+#include "pluginupdatenotices.h"
 #include "session.h"
 #include <QAbstractButton>
 #include <QAction>
@@ -29,6 +31,7 @@
 #include <QTextBrowser>
 #include <QTextDocument>
 #include <QTimer>
+#include <algorithm>
 #include <catch2/catch.hpp>
 #include <functional>
 #include <kzip.h>
@@ -100,16 +103,16 @@ int rowOf( QTableWidget* table, int index, const QString& text )
     return int( column( table, index ).indexOf( text ) );
 }
 
-QByteArray fixtureZip( const QString& root )
+QByteArray fixtureZip( const QString& root, const QString& version = "1.0.0" )
 {
-    const auto folder = QDir( root ).filePath( "package" );
+    const auto folder = QDir( root ).filePath( "package-" + version );
     REQUIRE( QDir().mkpath( folder ) );
     const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
     QFile manifest( QDir( folder ).filePath( "plugin.json" ) );
     REQUIRE( manifest.open( QIODevice::WriteOnly ) );
     manifest.write( QJsonDocument( QJsonObject{ { "id", "org.test.e15" },
                                                 { "name", "E15 fixture" },
-                                                { "version", "1.0.0" },
+                                                { "version", version },
                                                 { "protocol_version", 1 },
                                                 { "executable", executable },
                                                 { "capabilities", QJsonArray{ "tool" } } } )
@@ -117,7 +120,7 @@ QByteArray fixtureZip( const QString& root )
     manifest.close();
     REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
                           QDir( folder ).filePath( executable ) ) );
-    const auto path = QDir( root ).filePath( "package.zip" );
+    const auto path = QDir( root ).filePath( "package-" + version + ".zip" );
     KZip zip( path );
     REQUIRE( zip.open( QIODevice::WriteOnly ) );
     REQUIRE( zip.addLocalDirectory( folder, "" ) );
@@ -252,7 +255,7 @@ TEST_CASE( "The Plugins and Packs window manages ordered repositories and instal
     // Repositories: the migrated default first; Add, Move Up, Enable, Edit and Remove.
     tabs->setCurrentIndex( 2 );
     auto* repositories = dialog->findChild<QTableWidget*>( "pluginRepositoriesTable" );
-    REQUIRE( repositories->columnCount() == 7 );
+    REQUIRE( repositories->columnCount() == 8 ); // Auto-update since E15c
     REQUIRE( column( repositories, 2 ) == QStringList{ "CILogg examples (GitHub)" } );
     REQUIRE( column( repositories, 0 ) == QStringList{ "1" } );
     REQUIRE( column( repositories, 4 ) == QStringList{ "None" } );
@@ -561,5 +564,171 @@ TEST_CASE( "Azure DevOps repositories are added, signed in and signed out in the
     REQUIRE_FALSE( tokens->contains( key ) );
     REQUIRE( repositories->item( row, 5 )->text() == "Sign-in needed" );
     dialog->close();
+#endif
+}
+
+namespace {
+QMessageBox* visibleNotice( QWidget& window, const QString& name )
+{
+    for ( auto* box : window.findChildren<QMessageBox*>( name ) ) {
+        if ( box->isVisible() ) {
+            return box;
+        }
+    }
+    return nullptr;
+}
+
+QJsonObject e15Entry( const QString& version, const QString& url, const QByteArray& package )
+{
+    return { { "id", "org.test.e15" },
+             { "name", "E15 fixture" },
+             { "version", version },
+             { "protocol_version", 1 },
+             { "os", "any" },
+             { "arch", "any" },
+             { "url", url },
+             { "sha256", QString::fromLatin1(
+                             QCryptographicHash::hash( package, QCryptographicHash::Sha256 )
+                                 .toHex() ) } };
+}
+} // namespace
+
+TEST_CASE( "Plugin updates show in the Plugins menu and in one notice per version",
+           "[ui][workbench][E15]" )
+{
+#ifndef CILOGG_TEST_HTTPS_SERVER
+    WARN( "This Qt build has no TLS server" );
+    return;
+#else
+    testhttps::CatalogServer server;
+    if ( !server.listening() ) {
+        WARN( "No TLS backend is available" );
+        return;
+    }
+    QTemporaryDir temp;
+    QJsonArray entries;
+    const auto publish = [ & ]( const QString& version ) {
+        const auto package = fixtureZip( temp.path(), version );
+        const auto path = QString( "/tools/%1.zip" ).arg( version );
+        server.route( path, { 200, package, "application/zip", 0 } );
+        entries.append( e15Entry( version, server.url( path ), package ) );
+        server.route( "/tools/plugins.json",
+                      { 200,
+                        QJsonDocument( QJsonObject{ { "schema_version", 1 },
+                                                    { "plugins", entries } } )
+                            .toJson(),
+                        "application/json", 0 } );
+    };
+    publish( "1.0.0" );
+    testhttps::TrustingNetwork network;
+    PluginManager manager( QDir( temp.path() ).filePath( "data" ),
+                           QDir( temp.path() ).filePath( "none" ), nullptr, &network );
+    const auto finish = [ & ]( const cilogg::plugins::Result& started ) {
+        REQUIRE( started.ok() );
+        const auto id = started.payload.value( "jobId" ).toString();
+        REQUIRE( QTest::qWaitFor(
+            [ & ] {
+                const auto state = manager.job( id ).payload.value( "state" ).toString();
+                return state == "completed" || state == "failed";
+            },
+            15000 ) );
+        REQUIRE( manager.job( id ).payload.value( "state" ) == "completed" );
+    };
+    REQUIRE( manager.manage( "repository_remove", {}, { { "repository", "default" } } ).ok() );
+    REQUIRE( manager
+                 .manage( "repository_add", {},
+                          { { "name", "Tools" }, { "url", server.url( "/tools/plugins.json" ) } } )
+                 .ok() );
+    finish( manager.manage( "catalog", {}, {} ) );
+    finish( manager.manage( "install", "org.test.e15", {} ) );
+    const auto executor = [ &manager ]( const CommanderRequest& request ) {
+        const auto result
+            = manager.manage( request.pluginOperation, request.pluginId, request.pluginArguments );
+        return result.ok() ? commanderSuccess( {}, result.payload )
+                           : commanderFailure( CommanderResultCode::ExecutionFailed, result.error );
+    };
+    PluginUpdateNotices notices( &manager );
+    auto session = std::make_shared<Session>();
+    MainWindow window( WindowSession{ session, "PluginUpdatesE15c", 0 } );
+    window.setPluginManager( manager, executor );
+    window.show();
+    auto* updates = window.findChild<QAction*>( "pluginUpdatesAction" );
+    REQUIRE( updates );
+    REQUIRE_FALSE( updates->isVisible() );
+
+    // A new version: one non-modal notice and Plugins > Updates (1).
+    publish( "1.1.0" );
+    finish( manager.manage( "check_updates", {}, {} ) );
+    REQUIRE( QTest::qWaitFor( [ & ] { return visibleNotice( window, "pluginUpdateNotice" ); },
+                              5000 ) );
+    auto* notice = visibleNotice( window, "pluginUpdateNotice" );
+    REQUIRE( notice->windowModality() == Qt::NonModal );
+    REQUIRE( notice->text().contains( "E15 fixture 1.1.0" ) );
+    REQUIRE( notice->text().contains( "\"Tools\"" ) );
+    REQUIRE( QTest::qWaitFor( [ & ] { return updates->isVisible(); }, 3000 ) );
+    REQUIRE( updates->text() == "Updates (1)…" );
+    REQUIRE( window.findChild<QMenu*>( "pluginsMenu" )->actions().contains( updates ) );
+    // Skip This Version: the count drops, the State column still names the version.
+    notice->findChild<QPushButton*>( "pluginUpdateNoticeSkip" )->click();
+    REQUIRE( QTest::qWaitFor( [ & ] { return !updates->isVisible(); }, 3000 ) );
+    REQUIRE( manager.availableUpdates().first().toMap()[ "skipped" ] == true );
+    updates->setVisible( true ); // the menu entry itself opens the Installed tab
+    updates->trigger();
+    auto* dialog = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
+    REQUIRE( dialog );
+    auto* tabs = dialog->findChild<QTabWidget*>( "pluginsAndPacksTabs" );
+    REQUIRE( tabs->currentIndex() == 0 );
+    auto* installed = dialog->findChild<QTableWidget*>( "pluginManagerTable" );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] {
+            const auto at = rowOf( installed, 0, "E15 fixture" );
+            return at >= 0 && installed->item( at, 4 )->text().contains( "Update to 1.1.0 (skipped)" );
+        },
+        3000 ) );
+    REQUIRE( dialog->findChild<QPushButton*>( "pluginManage_update" )->text() == "Update" );
+    REQUIRE( dialog->findChild<QPushButton*>( "pluginManage_skipUpdate" ) );
+    REQUIRE( dialog->findChild<QPushButton*>( "pluginCheckUpdates" ) );
+
+    // Auto-update is a check box per repository; a check then installs 1.2.0 by itself.
+    tabs->setCurrentIndex( 2 );
+    auto* repositories = dialog->findChild<QTableWidget*>( "pluginRepositoriesTable" );
+    REQUIRE( repositories->horizontalHeaderItem( 7 )->text() == "Auto-update" );
+    REQUIRE( repositories->item( 0, 7 )->checkState() == Qt::Unchecked );
+    repositories->item( 0, 7 )->setCheckState( Qt::Checked );
+    REQUIRE( QTest::qWaitFor(
+        [ & ] { return manager.repositories()[ 0 ].toMap()[ "autoUpdate" ].toBool(); }, 3000 ) );
+    publish( "1.2.0" );
+    finish( manager.manage( "check_updates", {}, {} ) );
+    REQUIRE( QTest::qWaitFor( [ & ] { return visibleNotice( window, "pluginAutoUpdateNotice" ); },
+                              15000 ) );
+    REQUIRE( visibleNotice( window, "pluginAutoUpdateNotice" )
+                 ->text()
+                 .contains( "updated automatically from 1.0.0 to 1.2.0" ) );
+    REQUIRE( manager.availableUpdates().isEmpty() );
+    const auto journal = cilogg::diagnostics::ActivityJournal::entries();
+    REQUIRE( std::any_of( journal.cbegin(), journal.cend(), []( const auto& entry ) {
+        return entry.category == "plugin" && entry.text.contains( "to 1.2.0" )
+               && entry.data.value( "plugin" ) == "org.test.e15";
+    } ) );
+    visibleNotice( window, "pluginAutoUpdateNotice" )->close();
+
+    // A new major version is announced, never installed; Open Plugins opens the window.
+    dialog->close();
+    QCoreApplication::sendPostedEvents( nullptr, QEvent::DeferredDelete );
+    publish( "2.0.0" );
+    finish( manager.manage( "check_updates", {}, {} ) );
+    REQUIRE( QTest::qWaitFor( [ & ] { return visibleNotice( window, "pluginUpdateNotice" ); },
+                              5000 ) );
+    notice = visibleNotice( window, "pluginUpdateNotice" );
+    REQUIRE( notice->text().contains( "new major version" ) );
+    notice->findChild<QPushButton*>( "pluginUpdateNoticeOpen" )->click();
+    REQUIRE( QTest::qWaitFor(
+        [ & ] {
+            auto* reopened = window.findChild<QDialog*>( "pluginsAndPacksDialog" );
+            return reopened && reopened->isVisible();
+        },
+        3000 ) );
+    REQUIRE( manager.availableUpdates().first().toMap()[ "majorChange" ] == true );
+    window.findChild<QDialog*>( "pluginsAndPacksDialog" )->close();
 #endif
 }

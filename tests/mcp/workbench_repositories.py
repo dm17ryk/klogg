@@ -49,6 +49,13 @@ def catalog_states(job):
             for item in job.get("result", {}).get("repositories", [])]
 
 
+def update_check(job):
+    """What every surface must agree on for a check_updates job (E15c)."""
+    result = job.get("result", {})
+    return {"state": job.get("state"), "updates": result.get("updates"),
+            "checked": result.get("checked")}
+
+
 class Surfaces:
     def __init__(self, cli, command, artifacts):
         self.cli = cli
@@ -185,6 +192,22 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
         raise ParityError(f"gui_available_groups: {headers}")
     report["gui"].append({"objectName": "pluginCatalogTable", "groups": headers})
 
+    # E15c: check_updates answers the same on every surface. Every repository fails, so the job
+    # fails, lists no update and names the repositories it checked.
+    expected_check = {"state": "failed", "updates": [], "checked": ["parity-cli", "parity-mcp"]}
+    for name, through_mcp in (("cli", False), ("mcp", True)):
+        manage = surfaces.manage_mcp if through_mcp else surfaces.manage_cli
+        job = surfaces.finished(manage("check_updates")["jobId"], through_mcp)
+        compare_json(expected_check, update_check(job), f"$.check_updates.{name}")
+    # The Installed tab's Check for Updates reports the same failure in words.
+    command("set_ui", {"window_index": 0, "object_name": "pluginsAndPacksTabs",
+                       "definition": {"currentIndex": 0}})
+    command("activate_ui", {"window_index": 0, "object_name": "pluginCheckUpdates"})
+    wait_until(lambda: "Could not check for updates" in str(
+        (ui_object(command, "pluginInstalledStatus") or {}).get("properties", {}).get("text", "")),
+        60, "gui_check_updates_status_missing")
+    report["gui"].append({"objectName": "pluginCheckUpdates", "state": "failed"})
+
     # Python: klogg.app.command reaches the same operations.
     python = run_python([("e15a_repositories", {"closed": CLOSED})])[0]
     if python.get("errors"):
@@ -197,6 +220,8 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
                  python["catalog"], "$.python.catalog")
     compare_json("failed", python["catalogState"], "$.python.catalogState")
     compare_json(True, python["refusedHttp"], "$.python.refusedHttp")
+    compare_json({"state": "failed", "updates": [], "checked": ["parity-python"]},
+                 python["checkUpdates"], "$.python.checkUpdates")
     # Clean up through the CLI; removed IDs are never given again.
     for repository in ("parity-python", "parity-cli", "parity-mcp"):
         surfaces.manage_cli("repository_remove", {"repository": repository})

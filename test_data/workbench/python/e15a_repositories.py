@@ -47,6 +47,11 @@ def main():
         report["catalog"] = [{"repository": item["repository"], "state": item["state"],
                               "entries": item["entries"]}
                              for item in job.get("result", {}).get("repositories", [])]
+        # E15c: an update check of the same repository.
+        checked = finished(manage("check_updates", repository=identifier)["jobId"])
+        result = checked.get("result", {})
+        report["checkUpdates"] = {"state": checked["state"], "updates": result.get("updates"),
+                                  "checked": result.get("checked")}
         report["repositories"] = manage("repositories")["repositories"]
     except Exception as error:  # reported to the parity driver, which fails the case
         report["errors"].append(f"{type(error).__name__}: {error}")

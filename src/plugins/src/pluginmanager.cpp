@@ -105,6 +105,7 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     if ( !persistSettings().isEmpty() ) {
         LOG_WARNING << "Plugin repositories could not be persisted.";
     }
+    loadCatalogCache();
     // Tokens of repositories removed earlier whose deletion did not work are tried again.
     QTimer::singleShot( 0, this, [ this ] { deletePendingTokens(); } );
     auto limits = storage_.limits();
@@ -240,6 +241,9 @@ QVariantList PluginManager::plugins() const
         value[ "directory" ] = entry->manifest.directory;
         value[ "kind" ] = packageKind( entry->manifest.json );
         value[ "source" ] = sourceInfo( id, *entry );
+        // The newest version from the source repository, if it is newer (design 3.8).
+        const auto update = updateInfo( id, *entry );
+        value[ "update" ] = update.isEmpty() ? QVariant() : QVariant( update );
         value[ "enabled" ] = settings_.value( configurationKey( id ) + "enabled", false ).toBool();
         value[ "state" ] = entry->process ? entry->process->state() : "stopped";
         value[ "error" ] = !entry->manifest.error.isEmpty() ? entry->manifest.error
@@ -556,6 +560,14 @@ QString PluginManager::addJob( const QString& pluginId, const QString& action,
               << " job=" << id.toStdString() << " action=" << action.toStdString();
     return id;
 }
+bool PluginManager::managementRunning( const QString& id ) const
+{
+    return std::any_of( jobs_.cbegin(), jobs_.cend(), [ &id ]( const auto& pair ) {
+        const auto& j = pair.second;
+        return !j.invocation && j.pluginId == id && pending( j.state )
+               && packageOperation( j.action );
+    } );
+}
 Result PluginManager::job( const QString& id ) const
 {
     const auto it = jobs_.find( id );
@@ -575,6 +587,14 @@ void PluginManager::finishJob( const QString& id, const QString& error, const QV
     LOG_DEBUG << "Plugin job finished plugin=" << j.pluginId.toStdString()
               << " job=" << id.toStdString() << " state=" << j.state.toStdString()
               << " error=" << error.toStdString();
+    if ( j.context.value( "automatic" ).toBool() ) {
+        const auto finished = j; // the signals it emits may add jobs and drop finished ones
+        autoUpdateFinished( finished );
+    }
+    else if ( j.action == QLatin1String( "check_updates" )
+              && j.state == QLatin1String( "cancelled" ) ) {
+        updateCheckCancelled( id );
+    }
     Q_EMIT changed();
 }
 
@@ -868,6 +888,18 @@ void PluginManager::processStopped( const QString& id )
                         [ &id ]( const OpenMessage& message ) { return message.pluginId == id; } ),
         messages_.end() );
     Q_EMIT pluginStopped( id );
+    // An automatic update waits for its plugin to stop (design 3.7); install it now. Later, so
+    // the process that just stopped has finished its own signal handling. Between the two the
+    // commit is no longer listed: a cancel or an exit in that moment is still seen by
+    // commitWhenStopped (cancelRequested, shuttingDown_), which then removes the staged folder.
+    const auto waiting = waitingCommits_.find( id );
+    if ( waiting != waitingCommits_.end() ) {
+        const auto commit = waiting->second;
+        waitingCommits_.erase( waiting );
+        QTimer::singleShot( 0, this, [ this, commit ] {
+            commitWhenStopped( commit.staged, commit.jobId, commit.source );
+        } );
+    }
     Q_EMIT changed();
 }
 
@@ -963,6 +995,13 @@ void PluginManager::closeWindow( const QString& windowId )
 void PluginManager::shutdown()
 {
     shuttingDown_ = true;
+    // Automatic updates still waiting for their plugin are dropped; the next start's check
+    // downloads them again.
+    for ( const auto& [ id, commit ] : waitingCommits_ ) {
+        Q_UNUSED( id );
+        QDir( commit.staged.directory ).removeRecursively();
+    }
+    waitingCommits_.clear();
     for ( auto& [ id, entry ] : entries_ ) {
         Q_UNUSED( id );
         if ( entry->process ) {
@@ -1156,6 +1195,15 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( operation == "catalog" ) {
         return startCatalog( options, origin );
     }
+    if ( operation == "check_updates" ) {
+        if ( !id.isEmpty() ) {
+            return { "check_updates takes no plugin ID; name a repository instead.", {} };
+        }
+        return checkUpdates( options, origin );
+    }
+    if ( operation == "skip_update" ) {
+        return skipUpdate( id, options );
+    }
     const auto installRoot = QDir( dataRoot_ ).filePath( "plugins" );
     // A catalog install or update first resolves its entry, so a call that names only the
     // entry still knows its plugin ID.
@@ -1175,13 +1223,24 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             = operation == "install" && options.contains( "path" ) && target.isEmpty();
         for ( const auto& [ jobId, j ] : jobs_ ) {
             Q_UNUSED( jobId );
+            // An automatic update gives way to an operation the user starts (below).
             if ( !j.invocation && pending( j.state ) && packageOperation( j.action )
+                 && !j.context.value( "automatic" ).toBool()
                  && ( unscopedInstall || ( j.action == "install" && j.pluginId.isEmpty() )
                       || ( !target.isEmpty() && j.pluginId == target ) ) ) {
                 LOG_DEBUG << "Plugin management overlap rejected plugin=" << target.toStdString()
                           << " active_job=" << j.id.toStdString();
                 return { "A plugin management operation is already running.", {} };
             }
+        }
+        // The user's operation replaces an automatic update of the same plugin (of every plugin
+        // for a package whose ID is known only after staging). A restart does not: the waiting
+        // update is installed while the plugin is stopped.
+        if ( unscopedInstall ) {
+            cancelAutoUpdate( {} );
+        }
+        else if ( !target.isEmpty() && operation != "restart" ) {
+            cancelAutoUpdate( target );
         }
     }
     if ( operation == "install" && options.contains( "path" ) ) {
@@ -1243,6 +1302,7 @@ Result PluginManager::manage( const QString& operation, const QString& id,
             }
             settings_.setValue( configurationKey( id ) + "enabled", false );
             repositories_.clearSource( id );
+            forgetUpdates( id );
             entries_.erase( it );
             discover();
         }
@@ -1342,6 +1402,7 @@ void PluginManager::completeManagement( const QString& operation, const QString&
         if ( error.isEmpty() ) {
             settings_.setValue( configurationKey( id ) + "enabled", false );
             repositories_.clearSource( id );
+            forgetUpdates( id );
             entries_.erase( entry );
             discover();
         }
@@ -1407,6 +1468,17 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     const auto existing = entries_.find( staged.manifest.id );
     if ( existing != entries_.end() && existing->second->process
          && existing->second->process->isRunning() ) {
+        // An automatic update never stops a running plugin: it is installed when the plugin
+        // stops (processStopped), and dropped if CILogg exits first (design 3.7).
+        if ( jobIt->second.context.value( "automatic" ).toBool() ) {
+            LOG_INFO << "Plugin automatic update waits for the plugin to stop id="
+                     << staged.manifest.id.toStdString();
+            discardWaitingCommit( staged.manifest.id );
+            waitingCommits_[ staged.manifest.id ] = WaitingCommit{ staged, jobId, source };
+            jobIt->second.result = { { "waiting", true } };
+            Q_EMIT changed();
+            return;
+        }
         if ( existing->second->process->state() != "stopping" ) {
             existing->second->process->stop();
         }
@@ -1424,6 +1496,9 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         // is installed at this point, so a settings write failure is a warning, not a failure:
         // retrying would only install the same package again.
         repositories_.setSource( staged.manifest.id, source );
+        if ( !jobIt->second.context.value( "automatic" ).toBool() ) {
+            clearAutoUpdateFailure( staged.manifest.id ); // reported again if it fails again
+        }
         if ( !persistSettings().isEmpty() ) {
             LOG_WARNING << "Plugin installed but its source record could not be saved id="
                         << staged.manifest.id.toStdString();

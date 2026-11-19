@@ -280,6 +280,16 @@ class Configuration final : public Persistable<Configuration> {
         enableVersionChecking_ = enabled;
     }
 
+    // The silent daily check of the plugin repositories (docs/plugin-repositories.md 3.7).
+    bool pluginUpdateCheckingEnabled() const
+    {
+        return enablePluginUpdateChecking_;
+    }
+    void setPluginUpdateCheckingEnabled( bool enabled )
+    {
+        enablePluginUpdateChecking_ = enabled;
+    }
+
     UpdateChannel updateChannel() const
     {
         return updateChannel_;
@@ -741,6 +751,7 @@ class Configuration final : public Persistable<Configuration> {
     int loggingLevel_ = 4;
 
     bool enableVersionChecking_ = true;
+    bool enablePluginUpdateChecking_ = true;
     UpdateChannel updateChannel_ = UpdateChannel::Stable;
     UpdateFrequency updateFrequency_ = UpdateFrequency::Weekly;
     UpdateAction updateAction_ = UpdateAction::Notify;

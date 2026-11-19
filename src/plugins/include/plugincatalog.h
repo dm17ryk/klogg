@@ -32,6 +32,8 @@ bool supportedKind( const QString& kind );
 QString catalogEntryId( const QJsonObject& entry, const QString& repositoryId );
 // Orders host versions such as 26.04.2.1078 (`min_host_version`); nullopt for unreadable text.
 std::optional<int> compareHostVersions( const QString& a, const QString& b );
+// The newest entry by Semantic Versioning; the first one listed wins a tie. Empty for no entries.
+QJsonObject newestEntry( const QList<QJsonObject>& entries );
 
 CatalogRead readCatalog( const QByteArray& bytes, const QString& repositoryId,
                          const QString& hostVersion, const QString& os = platformName(),

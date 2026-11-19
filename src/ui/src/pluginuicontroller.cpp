@@ -32,6 +32,7 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidgetAction>
+#include <algorithm>
 
 namespace {
 // The action form. With `source`, its first row is the shared source picker (U15b).
@@ -229,6 +230,16 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
     browse->setToolTip( tr( "Browse the plugins of your plugin repositories" ) );
     menu_->addAction( manage );
     menu_->addAction( browse );
+    // Plugins with a new version from their repository (design 3.7); hidden when there is none.
+    updatesAction_ = new QAction( window->style()->standardIcon( QStyle::SP_BrowserReload ),
+                                  tr( "Updates" ), this );
+    updatesAction_->setObjectName( "pluginUpdatesAction" );
+    updatesAction_->setToolTip( tr( "Plugins with a new version in the repository they were "
+                                    "installed from" ) );
+    updatesAction_->setVisible( false );
+    menu_->addAction( updatesAction_ );
+    connect( updatesAction_, &QAction::triggered, this,
+             [ this ] { openPluginsWindow( PluginsTab::Installed ); } );
     menu_->addSeparator();
     // U15b: the source the plugin actions of this menu and the toolbar run on.
     auto* sourceRow = new QWidget( window );
@@ -361,11 +372,33 @@ void PluginUiController::report( const CommanderResult& result )
         QMessageBox::warning( window_, tr( "Plugins" ), result.message );
     }
 }
+int PluginUiController::pendingUpdateCount() const
+{
+    if ( !manager_ ) {
+        return 0;
+    }
+    const auto updates = manager_->availableUpdates();
+    return int( std::count_if( updates.cbegin(), updates.cend(), []( const QVariant& value ) {
+        return !value.toMap().value( "skipped" ).toBool();
+    } ) );
+}
+
+void PluginUiController::refreshUpdates()
+{
+    if ( !updatesAction_ ) {
+        return;
+    }
+    const auto count = pendingUpdateCount();
+    updatesAction_->setText( tr( "Updates (%1)…" ).arg( count ) );
+    updatesAction_->setVisible( count > 0 );
+}
+
 void PluginUiController::refreshActions()
 {
     if ( !window_ || !manager_ ) {
         return;
     }
+    refreshUpdates();
     QJsonArray descriptions;
     const auto plugins = manager_->plugins();
     for ( const auto& value : plugins ) {
@@ -656,34 +689,25 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                   : p.value( "state" ) == "failed"   ? tr( "Failed" )
                   : p.value( "enabled" ).toBool()    ? tr( "Enabled" )
                                                      : tr( "Disabled" );
-            // An update only from the install source; other repositories are only mentioned.
-            QString update;
+            // An update only from the install source (get_plugins `update`); other repositories
+            // are only mentioned.
             QStringList others;
             for ( const auto& item : catalog ) {
                 const auto entry = item.toMap();
-                if ( entry.value( "id" ) != id ) {
-                    continue;
-                }
-                if ( source.value( "type" ) == "repository"
-                     && entry.value( "repository" ) == source.value( "repository" ) ) {
-                    const auto version = entry.value( "version" ).toString();
-                    if ( cilogg::plugins::compareSemanticVersions( version,
-                                                                   p.value( "version" ).toString() )
-                                 .value_or( 0 )
-                             > 0
-                         && ( update.isEmpty()
-                              || cilogg::plugins::compareSemanticVersions( version, update )
-                                         .value_or( 0 )
-                                     > 0 ) ) {
-                        update = version;
-                    }
-                }
-                else if ( !others.contains( entry.value( "repositoryName" ).toString() ) ) {
+                if ( entry.value( "id" ) == id
+                     && !( source.value( "type" ) == "repository"
+                           && entry.value( "repository" ) == source.value( "repository" ) )
+                     && !others.contains( entry.value( "repositoryName" ).toString() ) ) {
                     others.append( entry.value( "repositoryName" ).toString() );
                 }
             }
+            const auto update = p.value( "update" ).toMap();
             if ( !update.isEmpty() ) {
-                state += QStringLiteral( " · " ) + tr( "Update to %1" ).arg( update );
+                state += QStringLiteral( " · " )
+                         + ( update.value( "skipped" ).toBool()
+                                 ? tr( "Update to %1 (skipped)" )
+                                 : tr( "Update to %1" ) )
+                               .arg( update.value( "version" ).toString() );
             }
             if ( !others.isEmpty() ) {
                 state += QStringLiteral( " · " )
@@ -786,6 +810,79 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                     } );
             } );
     } );
+    // Skip this version: no notice and no automatic update until a newer one (design 3.7).
+    auto* skipButton = addButton( row, tr( "Skip This Version" ), "pluginManage_skipUpdate" );
+    skipButton->setToolTip( tr( "Hide the selected plugin's new version until a newer one "
+                                "appears" ) );
+    connect( skipButton, &QPushButton::clicked, tab, [ this, status, selectedId ] {
+        const auto id = selectedId();
+        if ( id.isEmpty() || !manager_ ) {
+            return;
+        }
+        QString version;
+        QString name = id;
+        for ( const auto& value : manager_->plugins() ) {
+            const auto p = value.toMap();
+            if ( p.value( "id" ) == id ) {
+                version = p.value( "update" ).toMap().value( "version" ).toString();
+                name = p.value( "name", id ).toString();
+            }
+        }
+        if ( version.isEmpty() ) {
+            status->setText( tr( "%1 has no new version to skip." ).arg( name ) );
+            return;
+        }
+        CommanderRequest request;
+        request.action = CommanderAction::PluginManage;
+        request.origin = CommanderOriginGui;
+        request.pluginOperation = "skip_update";
+        request.pluginId = id;
+        request.pluginArguments = { { "version", version } };
+        const auto result = executor_( request );
+        status->setText( result.ok()
+                             ? tr( "%1 %2 is skipped until a newer version appears." )
+                                   .arg( name, version )
+                             : result.message );
+    } );
+    auto* checkButton = addButton( row, tr( "Check for Updates" ), "pluginCheckUpdates" );
+    checkButton->setToolTip( tr( "Check every enabled repository for new versions now" ) );
+    connect( checkButton, &QPushButton::clicked, tab, [ this, self, tab, status ] {
+        if ( !manager_ ) {
+            return;
+        }
+        CommanderRequest request;
+        request.action = CommanderAction::PluginManage;
+        request.origin = CommanderOriginGui;
+        request.pluginOperation = "check_updates";
+        const auto started = executor_( request );
+        if ( !started.ok() ) {
+            status->setText( started.message );
+            return;
+        }
+        status->setText( tr( "Checking the repositories for updates…" ) );
+        pluginsui::followJob(
+            tab, manager_, started.payload.value( "jobId" ).toString(),
+            [ self, status ]( const QVariantMap& checked ) {
+                if ( !self ) {
+                    return;
+                }
+                if ( checked.value( "state" ) != "completed" ) {
+                    status->setText( tr( "Could not check for updates: %1" )
+                                         .arg( checked.value( "error" ).toString() ) );
+                    return;
+                }
+                const auto updates = checked.value( "result" ).toMap().value( "updates" ).toList();
+                status->setText( updates.isEmpty()
+                                     ? tr( "The plugins from repositories are up to date." )
+                                     : tr( "Updates available: %1." ).arg( updates.size() ) );
+            } );
+    } );
+    const auto refreshUpdateButton = [ self, updateButton ] {
+        if ( self ) {
+            const auto count = self->pendingUpdateCount();
+            updateButton->setText( count > 0 ? tr( "Update (%1)" ).arg( count ) : tr( "Update" ) );
+        }
+    };
     const QList<QPair<QString, QString>> operations{ { "enable", tr( "Enable" ) },
                                                      { "disable", tr( "Disable" ) },
                                                      { "configure", tr( "Configure…" ) },
@@ -892,8 +989,10 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
     auto* timer = new QTimer( tab );
     timer->setInterval( 1000 );
     connect( timer, &QTimer::timeout, tab, refresh );
+    connect( timer, &QTimer::timeout, tab, refreshUpdateButton );
     timer->start();
     refresh();
+    refreshUpdateButton();
     return tab;
 }
 

@@ -4,8 +4,9 @@
 [docs/workbench/decisions.md](workbench/decisions.md)). Slice E15a (public repositories, the
 Plugins and Packs window, the merged catalog, install-source pinning, `build_catalog.py` and the
 in-app guide) is merged (PR https://github.com/dm17ryk/klogg/pull/122); slice E15b (Azure DevOps
-sign-in, the token store, credential scope and redirects, request origin) is implemented in PR
-https://github.com/dm17ryk/klogg/pull/124; E15c and E16 are not. The tasks are
+sign-in, the token store, credential scope and redirects, request origin) is merged (PR
+https://github.com/dm17ryk/klogg/pull/124); slice E15c (update checks, notices, Skip this version,
+auto-update) is implemented on branch `feat/e15c-plugin-update-checks`; E16 is not. The tasks are
 [E15](../plans/cilogg-workbench-2026-10-21/tasks/E15.md) (plugin repositories), which may start
 ahead of G02/G03, and then [E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (configuration
 packs).
@@ -389,6 +390,28 @@ checks.
   retried at the next check.
 - **Packs with local edits** are auto-updated only when the merge has no conflicts (section 4.6);
   otherwise they show "Update needs a merge" and wait for the user.
+- **As built (E15c).** `PluginUpdateChecker` runs the check 60 s after the start of an interactive
+  GUI process and then every hour; each run fetches only the enabled repositories whose last
+  successful check is 24 hours old (or that have no saved catalog) and that the check has not
+  tried in the last 24 hours, so a failing repository is tried once a day. The setting is
+  **Options > Update > Check plugin repositories for plugin updates once a day**
+  (`versionchecker.plugins`, on by default). The last catalog of each repository is kept as
+  published in `<plugin data>/catalog-cache/<id>-<address hash>.json` and read again at start for
+  the running CILogg version. Per plugin, the plugin settings keep `skippedUpdate` (Skip this
+  version hides that version and older ones), `announcedUpdate` (the newest version shown in a
+  notice, so each version gets one notice across restarts; it only goes up) and
+  `autoUpdateFailed` (the version whose failure was reported); removing the plugin clears all
+  three, and an install or update by the user clears the failure. Auto-update installs the newest
+  version within the installed major version even when a newer major version exists, and
+  announces the major version; skipping the major version does not stop it (for auto-update a
+  skip covers older versions of the skipped version's own major version only). It never stops a
+  running plugin: the staged package waits until the plugin stops (Disable, Restart, a crash),
+  and is dropped if CILogg exits first; the next start's check installs it again. An install,
+  update or remove the user starts replaces a pending automatic update of the same plugin
+  (the update is tried again at the next check if the user's operation does not install it);
+  cancelling a waiting update removes its staged package. A version announced while no notice
+  can be shown (automation mode) is not announced again, but it is listed under Updates (n).
+  More than three new versions at once give one notice that lists them.
 
 ### 3.8 Commander, CLI, native MCP and Python
 
@@ -412,11 +435,13 @@ use the same Commander implementation:
 | `pack_export_changes` | `plugin`, `output` | Writes a patch of the local changes in the pack's file formats. |
 | `pack_propose` | `plugin`, `confirm: true`, optional `title` and `description` | Proposes the local changes as a pull request (section 4.8). Refused without `confirm: true`. Returns the pull request address, or why it could not be created. |
 | `pack_export` | item selectors by kind and name or ID, `id`, `name`, `version`, `description`, `output` (folder or `.zip`) | Writes the pack; returns its path and contents. |
-| `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id`. |
+| `check_updates` | optional `repository` | A job listing `id`, `installed`, `available`, `repository`, `entry_id` (as built also `name`, `repositoryName`, `skipped`, `majorChange`, `automatic`), with the per-repository results. It fetches the repositories whatever their last check, announces new versions and starts automatic updates like the silent check. |
+| `skip_update` | plugin ID and `version` | Skip this version (added in E15c): hides that version, and older ones, from notices and auto-update until a newer one appears. Update still installs it. |
 
 `get_plugins` adds `kind`, `contents` (packs), `source` (`repository`, `local` or `shipped`, the
 repository ID and the installed version), `update` (the newest version from the source, if any) and
-`localEdits` (the number of locally edited items of a pack).
+`localEdits` (the number of locally edited items of a pack). As built, `update` is `null` or an
+object with `version`, `entry_id`, `repository`, `repositoryName`, `skipped` and `majorChange`.
 
 ### 3.9 In-app guide: pack a plugin, create a repository, use it
 

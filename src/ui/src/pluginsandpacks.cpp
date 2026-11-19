@@ -95,6 +95,7 @@ enum RepositoryColumn {
     SignInColumn,
     StateColumn,
     LastCheckColumn,
+    AutoUpdateColumn, // design 3.7: off by default
     RepositoryColumnCount
 };
 
@@ -703,7 +704,8 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
     auto* layout = new QVBoxLayout( tab );
     auto* table = createTable( tab, "pluginRepositoriesTable",
                                { tr( "#" ), tr( "Enabled" ), tr( "Name" ), tr( "Address" ),
-                                 tr( "Sign-in" ), tr( "State" ), tr( "Last check" ) } );
+                                 tr( "Sign-in" ), tr( "State" ), tr( "Last check" ),
+                                 tr( "Auto-update" ) } );
     table->setAccessibleName( tr( "Plugin repositories" ) );
     layout->addWidget( table );
     auto* note = new QLabel(
@@ -768,7 +770,8 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
                                      repository.value( "url" ).toString(),
                                      signInText( repository ),
                                      repositoryStateText( repository ),
-                                     lastCheckText( repository.value( "lastCheck" ).toString() ) };
+                                     lastCheckText( repository.value( "lastCheck" ).toString() ),
+                                     QString{} };
             const auto state = repository.value( "state" ).toString();
             for ( int column = 0; column < cells.size(); ++column ) {
                 auto* cell = new QTableWidgetItem( cells.at( column ) );
@@ -791,6 +794,16 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
                     cell->setData( Qt::AccessibleTextRole, repository.value( "enabled" ).toBool()
                                                                ? tr( "Enabled" )
                                                                : tr( "Disabled" ) );
+                }
+                if ( column == AutoUpdateColumn ) {
+                    const bool automatic = repository.value( "autoUpdate" ).toBool();
+                    cell->setFlags( Qt::ItemIsEnabled | Qt::ItemIsSelectable
+                                    | Qt::ItemIsUserCheckable );
+                    cell->setCheckState( automatic ? Qt::Checked : Qt::Unchecked );
+                    cell->setData( Qt::AccessibleTextRole,
+                                   automatic ? tr( "Auto-update on" ) : tr( "Auto-update off" ) );
+                    cell->setToolTip( tr( "Install new versions within the installed major "
+                                          "version of plugins installed from this repository" ) );
                 }
                 table->setItem( index, column, cell );
             }
@@ -816,15 +829,19 @@ QWidget* createRepositoriesTab( QWidget* parent, cilogg::plugins::PluginManager*
     QObject::connect( table, &QTableWidget::itemSelectionChanged, tab, updateButtons );
     QObject::connect( table, &QTableWidget::itemChanged, tab,
                       [ tab, run, selectedId ]( QTableWidgetItem* item ) {
-                          if ( item->column() != EnabledColumn ) {
+                          if ( item->column() != EnabledColumn
+                               && item->column() != AutoUpdateColumn ) {
                               return;
                           }
                           const auto id = item->data( IdRole ).toString();
-                          const bool enabled = item->checkState() == Qt::Checked;
+                          const bool checked = item->checkState() == Qt::Checked;
+                          const auto option = item->column() == EnabledColumn
+                                                  ? QStringLiteral( "enabled" )
+                                                  : QStringLiteral( "auto_update" );
                           // The table is rebuilt afterwards: not inside its own signal.
-                          QTimer::singleShot( 0, tab, [ run, selectedId, id, enabled ] {
-                              run( "repository_update",
-                                   { { "repository", id }, { "enabled", enabled } }, selectedId() );
+                          QTimer::singleShot( 0, tab, [ run, selectedId, id, option, checked ] {
+                              run( "repository_update", { { "repository", id }, { option, checked } },
+                                   selectedId() );
                           } );
                       } );
     QObject::connect( manager, &cilogg::plugins::PluginManager::changed, tab,
