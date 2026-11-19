@@ -6,7 +6,8 @@ Plugins and Packs window, the merged catalog, install-source pinning, `build_cat
 in-app guide) is merged (PR https://github.com/dm17ryk/klogg/pull/122); slice E15b (Azure DevOps
 sign-in, the token store, credential scope and redirects, request origin) is merged (PR
 https://github.com/dm17ryk/klogg/pull/124); slice E15c (update checks, notices, Skip this version,
-auto-update) is implemented in PR https://github.com/dm17ryk/klogg/pull/125; E16 is not. The tasks are
+auto-update) is merged (PR https://github.com/dm17ryk/klogg/pull/125), so E15 is complete; E16 is not
+implemented yet. The tasks are
 [E15](../plans/cilogg-workbench-2026-10-21/tasks/E15.md) (plugin repositories), which may start
 ahead of G02/G03, and then [E16](../plans/cilogg-workbench-2026-10-21/tasks/E16.md) (configuration
 packs).
