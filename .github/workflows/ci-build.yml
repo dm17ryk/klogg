@@ -3,6 +3,10 @@ name: "CI Build"
 on:
   push:
     branches: [ master ]
+    # Changes that only touch these paths skip the build (decision D18 in
+    # docs/workbench/decisions.md). DOCUMENTATION.md and MCP.md are NOT listed:
+    # DOCUMENTATION.md is compiled into the app and MCP.md is installed with it.
+    # Keep this list in sync with pull_request below and with codeql-analysis.yml.
     paths-ignore:
       - 'website/**'
       - BUILD.md
@@ -11,6 +15,15 @@ on:
       - README.md
       - latest.json
       - .gitignore
+      - 'docs/**'
+      - 'plans/**'
+      - 'doc/**'
+      - 'screenshots/**'
+      - CHANGELOG.md
+      - SECURITY.md
+      - CONFIGURATION_EXPORTS.md
+      - AGENTS.md
+      - CLAUDE.md
   pull_request:
     branches: [ master ]
     paths-ignore:
@@ -21,6 +34,15 @@ on:
       - README.md
       - latest.json
       - .gitignore
+      - 'docs/**'
+      - 'plans/**'
+      - 'doc/**'
+      - 'screenshots/**'
+      - CHANGELOG.md
+      - SECURITY.md
+      - CONFIGURATION_EXPORTS.md
+      - AGENTS.md
+      - CLAUDE.md
   workflow_dispatch:
 
 jobs:
