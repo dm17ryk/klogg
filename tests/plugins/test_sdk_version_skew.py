@@ -62,6 +62,8 @@ class PinnedSdkOnTheNewHost(unittest.TestCase):
         root = host.wait_for("view/update", lambda params: "root" in params)["root"]
         self.assertEqual(root["children"][0], {"type": "label", "id": "status", "text": "ready",
                                                "tooltip": "Status"})
+        # E17c adds `valid` to field `changed` events: an additive key both copies ignore.
+        host.change_field("main", "status", "typed", valid=False)
         host.view_event("main", "go", "clicked")
         patch = host.wait_for("view/update", lambda params: "patch" in params)
         self.assertEqual(patch["patch"], [{"id": "status", "set": {"text": "clicked"}}])
@@ -124,10 +126,12 @@ class ManifestsLoadInThePreviousHost(unittest.TestCase):
 
     def test_e17_keys_only_add_to_the_previous_manifest(self):
         """E17a adds `handles`, `requires` and `icon_ref`, E17b `menus` and `shortcut` on
-        actions and views: keys the previous CILogg ignores. The ui-gallery manifest without
-        them gets the same verdict, and every E17b form loads in the previous CILogg."""
+        actions and views: keys the previous CILogg ignores. E17c adds no manifest key, only
+        `field/complete` in `handles`. The ui-gallery manifest without them gets the same
+        verdict, and every E17b form loads in the previous CILogg."""
         gallery = json.loads((ROOT / "plugins/examples/ui-gallery/plugin.json").read_text(encoding="utf-8"))
         self.assertTrue({"handles", "menus"} <= set(gallery))
+        self.assertIn("field/complete", gallery["handles"])
         stripped = {key: value for key, value in gallery.items() if key not in E17_MANIFEST_KEYS}
         for key in ("actions", "views"):
             if key in stripped:
@@ -138,7 +142,8 @@ class ManifestsLoadInThePreviousHost(unittest.TestCase):
 
         manifest = json.loads((FIXTURE / "plugin.json").read_text(encoding="utf-8"))
         manifest.update(handles=gallery["handles"], menus=gallery["menus"],
-                        requires={"host_features": ["menus>=1", "shortcuts"]})
+                        requires={"host_features": ["menus>=1", "shortcuts", "choices",
+                                                    "toggles", "field_kinds", "validation>=1"]})
         manifest["views"][0].update(shortcut="Ctrl+Alt+V", icon_ref="builtin:play")
         manifest["actions"][0].update(shortcut=["Ctrl+Alt+E", "F9"], icon_ref={"light": "a.svg",
                                                                               "dark": "b.svg"})

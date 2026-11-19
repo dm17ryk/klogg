@@ -63,6 +63,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintooltips.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginicons.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginicons.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginchoicewidgets.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginchoicewidgets.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenuhost.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmenus.cpp

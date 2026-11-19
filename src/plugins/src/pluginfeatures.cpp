@@ -81,7 +81,9 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "views" ), 2 },   { QStringLiteral( "view_edit" ), 1 },
         { QStringLiteral( "queries" ), 1 }, { QStringLiteral( "tooltips" ), 1 },
         { QStringLiteral( "icons" ), 1 },   { QStringLiteral( "menus" ), 1 },
-        { QStringLiteral( "shortcuts" ), 1 },
+        { QStringLiteral( "shortcuts" ), 1 }, { QStringLiteral( "choices" ), 1 },
+        { QStringLiteral( "toggles" ), 1 }, { QStringLiteral( "field_kinds" ), 1 },
+        { QStringLiteral( "validation" ), 1 },
     };
     return features;
 }
@@ -278,6 +280,38 @@ QString validateIconReference( const QJsonValue& reference )
         }
     }
     return {};
+}
+
+QJsonObject sanitizeCompletion( const QJsonValue& answer, QString* error )
+{
+    if ( answer.isNull() || answer.isUndefined() ) {
+        return {};
+    }
+    const auto items = answer.isArray() ? answer.toArray() : answer.toObject().value( "items" );
+    if ( !items.isArray() ) {
+        *error = QStringLiteral( "A field/complete answer is {items: [...]}." );
+        return {};
+    }
+    QJsonArray kept;
+    for ( const auto& value : items.toArray() ) {
+        if ( kept.size() >= MaxCompletionItems ) {
+            break;
+        }
+        const auto item = value.toObject();
+        if ( !value.isObject() || !item.value( "value" ).isString() ) {
+            *error = QStringLiteral( "A completion item needs a string value." );
+            return {};
+        }
+        QJsonObject entry{ { "value", item.value( "value" ).toString().left( 65536 ) } };
+        if ( item.value( "label" ).isString() ) {
+            entry.insert( "label", item.value( "label" ).toString().left( MaxViewTextChars ) );
+        }
+        if ( item.contains( "icon" ) && validateIconReference( item.value( "icon" ) ).isEmpty() ) {
+            entry.insert( "icon", item.value( "icon" ) );
+        }
+        kept.append( entry );
+    }
+    return { { "items", kept } };
 }
 
 QJsonObject sanitizeTooltip( const QJsonValue& answer, QString* error )

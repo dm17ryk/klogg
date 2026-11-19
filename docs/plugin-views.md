@@ -142,6 +142,15 @@ Common properties: `id` (unique within the view), `enabled`, `visible`, `tooltip
 - Row `tone` is one of `normal`, `ok`, `warn`, `error`, `muted` or `accent` (blue, `#1565c0`).
 - Text is always plain text, never HTML. This includes tooltips.
 
+Since E17c ([advanced plugin SDK](plugin-sdk-advanced.md), sections 8 and 26), choices may be
+objects with icons, tooltips and disabled entries, with separators and section titles between
+them. Fields gain `indicator`, `style` (inline radio buttons or check boxes), `searchable`,
+`editable` and `completion` (the `field/complete` query), the kinds `multiline`, `secret`,
+`integer`, `slider`, `color`, `date`, `time` and `datetime`, and the validation keys `required`,
+`pattern`, `min`, `max`, `min_length`, `max_length` and `error`. The elements `checkbox`,
+`radio_group` and `check_group` are new, and a button with `requires_valid` waits for valid fields.
+The host announces these as `choices`, `toggles`, `field_kinds` and `validation`.
+
 #### `multichoice` fields
 
 A `multichoice` field is a check-dropdown built from the same `choices` as a `choice` field. Its
@@ -279,6 +288,14 @@ click does (an action runs without its form). Native MCP and Python use the same
 (`location`, `plugin_id`, `menu_id`, `item_id`, `lines`, `checked`). Menus and their entries
 have the object names `pluginMenu_<plugin>_<menu>[_<item>]` and
 `pluginMenuItem_<plugin>_<menu>_<item>`.
+
+Since E17c, the new controls are standard Qt widgets reached the same way. Inside an element they
+are named `<element>_choice_<n>` (radio buttons and check boxes), `<element>_all` and
+`<element>_none` (the links of a check group), `<element>_search` (the filter line of an inline
+list), `<element>_value` (a slider's value), `<element>_pick` (a color's **Pick…** button) and
+`<element>_error` (the validation message). `set_ui` sets `value` on spin boxes and sliders,
+`date`, `time` and `dateTime` on the date fields and `checked` on check boxes and radio buttons.
+`get_ui` shows a secret field's text as `<redacted>`.
 
 ## 6. Related small host changes
 

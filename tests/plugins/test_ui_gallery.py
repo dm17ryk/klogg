@@ -56,7 +56,9 @@ class UiGallery(unittest.TestCase):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
         self.assertFalse(manifest.get("enabled_by_default", False))
         self.assertEqual(manifest["handles"],
-                         ["tooltip/resolve", "menu/populate", "ui/command", "query/cancel"])
+                         ["tooltip/resolve", "menu/populate", "field/complete", "ui/command",
+                          "query/cancel"])
+        self.assertEqual(manifest["version"], "1.0.0")
         self.assertEqual([(view["id"], view["kind"]) for view in manifest["views"]], [("gallery", "dock")])
 
     def test_manifest_declares_its_menus(self):
@@ -179,7 +181,8 @@ class UiGallery(unittest.TestCase):
         host = self.host
         result = host.initialize()
         self.assertEqual(result["features"],
-                         ["menu/populate", "query/cancel", "tooltip/resolve", "ui/command"])
+                         ["field/complete", "menu/populate", "query/cancel", "tooltip/resolve",
+                          "ui/command"])
         self.assertEqual(result["sdk"]["version"], "2.0.0")
         tree = self.open_gallery()
         icons = host.wait_for("ui/icons")  # registered when the view first opens
@@ -249,6 +252,119 @@ class UiGallery(unittest.TestCase):
         self.assertEqual(host.notifications("tooltip/invalidate"), [])
         self.assertEqual(host.notifications("menu/update"), [])
         self.assertEqual(host.errors, [])
+
+    def test_choices_group_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        tree = self.open_gallery()
+        self.assertIn("Apply needs", tree["choices_note"]["text"])
+        speed = tree["speed"]
+        self.assertEqual([item.get("type", "choice") for item in speed["choices"]],
+                         ["choice", "separator", "section", "choice", "choice", "choice"])
+        self.assertEqual(speed["choices"][0]["icon"], "builtin:refresh")
+        self.assertFalse(speed["choices"][-1]["enabled"])
+        self.assertEqual(tree["parity"]["indicator"], "radio")
+        self.assertEqual((tree["direction"]["style"], tree["direction"]["orientation"]),
+                         ("radio", "horizontal"))
+        self.assertEqual((tree["channels"]["kind"], tree["channels"]["style"],
+                          tree["channels"]["columns"]), ("multichoice", "checkboxes", 2))
+        self.assertTrue(tree["firmware"]["searchable"])
+        self.assertTrue(tree["target_board"]["editable"] and tree["target_board"]["completion"])
+        self.assertEqual(tree["target_board"]["choices"], ["Board 1", "Board 2", "Board 3"])
+        self.assertEqual((tree["verbose"]["type"], tree["verbose"]["value"],
+                          tree["verbose"]["tristate"]), ("checkbox", None, True))
+        self.assertEqual((tree["mode"]["type"], tree["mode"]["value"]), ("radio_group", "auto"))
+        self.assertEqual((tree["logs"]["type"], tree["logs"]["value"], tree["logs"]["all_none"]),
+                         ("check_group", ["boot"], True))
+        kinds = {element_id: tree[element_id]["kind"] for element_id in (
+            "notes", "token", "retries", "level", "led_color", "start_date", "start_time",
+            "start_at")}
+        self.assertEqual(sorted(kinds.values()), ["color", "date", "datetime", "integer",
+                                                  "multiline", "secret", "slider", "time"])
+        self.assertEqual((tree["notes"]["rows"], tree["notes"]["monospace"]), (3, True))
+        self.assertEqual((tree["board_label"]["required"], tree["board_label"]["pattern"]),
+                         (True, "[A-Za-z0-9_-]+"))
+        self.assertEqual((tree["retries"]["min"], tree["retries"]["max"]), (0, 10))
+        self.assertEqual(tree["apply"]["requires_valid"], ["board_label", "retries"])
+        self.assertTrue(tree["apply"]["event"])
+        self.assertEqual(tree["choices_status"]["text"], "Change a control: its event shows here.")
+
+        # Completion: board names that start with the typed text, any case.
+        self.assertEqual(host.complete_field("gallery", "target_board", "board 2"), {"items": [
+            {"value": "Board 2", "label": "Board 2 (idle)", "icon": "status:warn"}]})
+        self.assertEqual([item["value"] for item in
+                          host.complete_field("gallery", "target_board", "Bo")["items"]],
+                         ["Board 1", "Board 2", "Board 3"])
+        self.assertEqual(host.complete_field("gallery", "target_board", "x"), {"items": []})
+        self.assertIsNone(host.complete_field("gallery", "board_label", "x"))
+
+        # The status label shows the last changed event or the Apply click.
+        host.change_field("gallery", "board_label", "bad name", valid=False)
+        self.assertEqual(self.next_patch(), [{"id": "choices_status", "set": {
+            "text": "changed board_label=bad name valid=false"}}])
+        for element_id, value, valid, text in (
+                ("board_label", "board_7", True, "changed board_label=board_7 valid=true"),
+                ("retries", 11, False, "changed retries=11 valid=false"),
+                ("verbose", True, None, "changed verbose=true valid=true"),
+                ("logs", ["boot", "radio"], None, 'changed logs=["boot", "radio"] valid=true'),
+                ("mode", "manual", None, "changed mode=manual valid=true")):
+            host.change_field("gallery", element_id, value, valid=valid)
+            self.assertEqual(self.next_patch()[0]["set"]["text"], text, element_id)
+        host.view_event("gallery", "apply", "clicked",
+                        inputs={"board_label": "board_7", "retries": 3})
+        self.assertEqual(self.next_patch()[0]["set"]["text"],
+                         "clicked apply board_label=board_7 retries=3")
+        tree = self.open_gallery("w2")  # a new window shows the last event
+        self.assertEqual(tree["choices_status"]["text"], "clicked apply board_label=board_7 retries=3")
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def check_choices_on_an_older_host(self):
+        """An E17b or E14 host gets the fields it knows: no check box or radio elements, no new
+        field kinds, no choice icons, separators or sections, no validation keys."""
+        e14_kinds = {"text", "number", "choice", "multichoice", "boolean", "file_open",
+                     "file_save", "directory"}
+        host = self.host
+        tree = self.open_gallery()
+        self.assertIn("need a newer CILogg", tree["choices_note"]["text"])
+        for element_id, element in tree.items():
+            self.assertIn(element["type"], ("column", "row", "group", "label", "field", "button",
+                                            "table"), element_id)
+            self.assertNotIn("requires_valid", element)
+            if element["type"] != "field":
+                continue
+            self.assertIn(element["kind"], e14_kinds, element_id)
+            for key in ("indicator", "style", "searchable", "editable", "completion",
+                        "orientation", "columns", "rows", "monospace", "step", "min", "max",
+                        "required", "pattern"):
+                self.assertNotIn(key, element, element_id)
+            for item in element.get("choices", []):
+                self.assertTrue(not isinstance(item, dict) or set(item) == {"value", "label"},
+                                (element_id, item))
+        self.assertEqual(tree["verbose"], {"type": "field", "id": "verbose", "kind": "boolean",
+                                           "label": "Verbose logging", "value": False,
+                                           "tooltip": "Partly checked: some boards log verbosely."})
+        self.assertEqual((tree["mode"]["kind"], tree["mode"]["label"]), ("choice", "Mode"))
+        self.assertEqual((tree["logs"]["kind"], tree["logs"]["value"]), ("multichoice", ["boot"]))
+        self.assertEqual([tree[element_id]["kind"] for element_id in ("retries", "level", "notes")],
+                         ["number", "number", "text"])
+        self.assertEqual([item["value"] if isinstance(item, dict) else item
+                          for item in tree["speed"]["choices"]], ["auto", 115200, 57600, 9600])
+        host.change_field("gallery", "board_label", "x y")  # an older host sends no `valid`
+        self.assertEqual(self.next_patch(), [{"id": "choices_status", "set": {
+            "text": "changed board_label=x y valid=true"}}])
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+
+    def test_choices_group_on_an_e17b_host(self):
+        self.host.initialize(host_features=self.testing.E17B_HOST_FEATURES,
+                             host_feature_versions=self.testing.E17B_HOST_FEATURE_VERSIONS)
+        self.check_choices_on_an_older_host()
+
+    def test_choices_group_on_an_e14_host(self):
+        self.host.initialize_older_host()
+        self.check_choices_on_an_older_host()
 
     def test_e17a_host_gets_tooltips_but_no_menu_updates(self):
         host = self.host

@@ -2,16 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pluginview.h"
 #include "checkcombobox.h"
+#include "pluginchoicewidgets.h"
 #include "pluginfeatures.h"
 #include "plugintablemodel.h"
 #include "log.h"
 #include <QAbstractTableModel>
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
+#include <QDateTimeEdit>
 #include <QDoubleValidator>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontDatabase>
+#include <QPlainTextEdit>
+#include <QRegularExpressionValidator>
+#include <QSlider>
+#include <QSpinBox>
 #include <QGuiApplication>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -36,6 +44,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -48,10 +57,22 @@ static_assert( PluginView::MaxTextChars == cilogg::plugins::MaxViewTextChars );
 
 namespace {
 const QStringList ContainerTypes{ "column", "row", "group" };
-const QStringList ElementTypes{ "column", "row",    "group",    "label", "badge",
-                                "field",  "button", "progress", "table" };
-const QStringList FieldKinds{ "text",      "number",    "choice",   "boolean",
-                              "file_open", "file_save", "directory", "multichoice" };
+const QStringList ElementTypes{ "column",   "row",      "group",       "label",
+                                "badge",    "field",    "button",      "progress",
+                                "table",    "checkbox", "radio_group", "check_group" };
+// E17c adds the kinds after multichoice (docs/plugin-sdk-advanced.md section 8.5).
+const QStringList FieldKinds{ "text",      "number",   "choice",  "boolean", "file_open",
+                              "file_save", "directory", "multichoice", "multiline", "secret",
+                              "integer",   "slider",   "color",   "date",    "time",
+                              "datetime" };
+// Field keys that change a field's widgets: a root that changes them rebuilds the field.
+const QStringList FieldStructureKeys{ "kind", "style", "editable", "searchable", "indicator",
+                                      "completion" };
+constexpr int DefaultSliderMinimum = 0;
+constexpr int DefaultSliderMaximum = 100;
+const QString DateFormat = QStringLiteral( "yyyy-MM-dd" );
+const QString TimeFormat = QStringLiteral( "HH:mm:ss" );
+const QString DateTimeFormat = QStringLiteral( "yyyy-MM-dd'T'HH:mm:ss" );
 // E17a adds advanced tooltips and accessibility overrides to every element
 // (docs/plugin-sdk-advanced.md sections 9 and 12.4).
 const QStringList CommonKeys{ "id",
@@ -82,13 +103,25 @@ QStringList knownKeys( const QString& type )
         return { "text", "tone" };
     }
     if ( type == "field" ) {
-        return { "kind", "label", "value", "choices", "filter", "placeholder" };
+        // E17c: choice styles, field kinds and validation (section 8).
+        return { "kind",       "label",      "value",     "choices",    "filter",
+                 "placeholder", "indicator", "style",     "orientation", "columns",
+                 "searchable", "editable",   "completion", "rows",      "monospace",
+                 "min",        "max",        "step",      "required",   "pattern",
+                 "min_length", "max_length", "error",     "completion_timeout_ms" };
     }
     if ( type == "button" ) {
-        return { "label", "tone", "action", "arguments", "event", "confirm", "save_dialog" };
+        return { "label", "tone",        "action",        "arguments",
+                 "event", "confirm",     "save_dialog",   "requires_valid" };
     }
     if ( type == "progress" ) {
         return { "value", "busy", "text" };
+    }
+    if ( type == "checkbox" ) {
+        return { "text", "value", "tristate", "tone" };
+    }
+    if ( type == "radio_group" || type == "check_group" ) {
+        return { "title", "choices", "value", "orientation", "columns", "all_none" };
     }
     return { "columns", "rows", "sortable", "filter_box", "selection" };
 }
@@ -118,6 +151,21 @@ QJsonObject defaultsFor( const QString& type )
         defaults.insert( "placeholder", "" );
         defaults.insert( "choices", QJsonArray{} );
         defaults.insert( "filter", "" );
+        defaults.insert( "required", false );
+        defaults.insert( "pattern", "" );
+        defaults.insert( "error", "" );
+    }
+    else if ( type == "checkbox" ) {
+        defaults.insert( "text", "" );
+        defaults.insert( "tone", "normal" );
+        defaults.insert( "tristate", false );
+    }
+    else if ( type == "radio_group" || type == "check_group" ) {
+        defaults.insert( "title", "" );
+        defaults.insert( "choices", QJsonArray{} );
+        defaults.insert( "orientation", "vertical" );
+        defaults.insert( "columns", 0 );
+        defaults.insert( "all_none", false );
     }
     else if ( type == "button" ) {
         defaults.insert( "label", "" );
@@ -170,6 +218,8 @@ struct PluginView::Node {
     QPointer<QWidget> widget; // the element itself (object name base)
     QPointer<QWidget> outer;  // what sits in the parent layout
     QPointer<QWidget> content;
+    QPointer<QLabel> error;  // E17c: the validation message below a field
+    QString invalid;         // the message shown (empty: valid)
     QPointer<QTimer> debounce;
     QJsonObject props;
     QJsonValue pluginValue;
@@ -238,6 +288,24 @@ PluginViewDialogs PluginViewDialogs::native()
               return pickFile( parent, objectName, title, {}, {}, QFileDialog::AcceptOpen,
                                QFileDialog::Directory );
           };
+    dialogs.color = []( QWidget* parent, const QString& objectName, const QString& title,
+                        const QString& current ) {
+#if QT_VERSION >= QT_VERSION_CHECK( 6, 4, 0 )
+        auto* dialog = new QColorDialog( QColor::fromString( current ), parent );
+#else
+        auto* dialog = new QColorDialog( QColor( current ), parent );
+#endif
+        dialog->setObjectName( objectName );
+        dialog->setWindowTitle( title );
+        if ( !runDialog( dialog ) ) {
+            return QString{};
+        }
+        const auto chosen = dialog->result() == QDialog::Accepted
+                                ? dialog->selectedColor().name( QColor::HexRgb )
+                                : QString{};
+        delete dialog;
+        return chosen;
+    };
     return dialogs;
 }
 
@@ -261,6 +329,7 @@ PluginView::PluginView( const QString& pluginId, const QString& viewId, PluginVi
 
 void PluginView::setQueries( PluginViewQueries queries )
 {
+    queries_ = queries; // completion and choice icons (E17c)
     tooltips_->setQueries( std::move( queries ) );
 }
 
@@ -501,8 +570,10 @@ namespace {
 QString shapeOf( const QJsonObject& element )
 {
     QString shape = element.value( "type" ).toString().left( 64 ) + ':'
-                    + element.value( "id" ).toString().left( 128 ) + ':'
-                    + element.value( "kind" ).toString().left( 64 );
+                    + element.value( "id" ).toString().left( 128 );
+    for ( const auto& key : FieldStructureKeys ) {
+        shape += ':' + element.value( key ).toVariant().toString().left( 64 );
+    }
     if ( ContainerTypes.contains( element.value( "type" ).toString() ) ) {
         shape += '[';
         for ( const auto& child : element.value( "children" ).toArray() ) {
@@ -564,6 +635,7 @@ void PluginView::setRoot( const QJsonObject& root )
         scroll_->setWidget( body );
         setProperty( "pluginShape", shapeOf( root ) );
     }
+    refreshValidity();
     ++renders_;
     LOG_DEBUG << "Plugin view rendered plugin=" << pluginId_.toStdString()
               << " view=" << viewId_.toStdString() << " elements=" << nodes_.size()
@@ -674,6 +746,9 @@ QWidget* PluginView::build( const QJsonObject& element, QWidget* parent, const Q
     else if ( type == "field" ) {
         outer = buildField( *node, element, parent );
     }
+    else if ( type == "checkbox" || type == "radio_group" || type == "check_group" ) {
+        outer = buildToggle( *node, element, parent );
+    }
     else if ( type == "button" ) {
         auto* button = new QPushButton( parent );
         connect( button, &QPushButton::clicked, this, [ this, id ] { pressButton( id ); } );
@@ -711,7 +786,13 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
         kind = "text";
     }
     node.kind = kind;
-    auto* row = new QWidget( parent );
+    // The field row, with its validation message below it (E17c, section 8.6).
+    auto* outer = new QWidget( parent );
+    auto* column = new QVBoxLayout( outer );
+    column->setContentsMargins( 0, 0, 0, 0 );
+    column->setSpacing( 2 );
+    auto* row = new QWidget( outer );
+    column->addWidget( row );
     auto* layout = new QHBoxLayout( row );
     layout->setContentsMargins( 0, 0, 0, 0 );
     auto* caption = new QLabel( row );
@@ -720,15 +801,83 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
     caption->setVisible( false );
     layout->addWidget( caption );
     node.content = caption;
+    auto* error = new QLabel( outer );
+    error->setObjectName( nameFor( id ) + "_error" );
+    error->setTextFormat( Qt::PlainText );
+    error->setWordWrap( true );
+    error->setStyleSheet( QStringLiteral( "color: #c62828;" ) );
+    error->setVisible( false );
+    column->addWidget( error );
+    node.error = error;
     const auto changedSoon = [ this, id ] {
         const auto found = nodes_.value( id );
         if ( !applying_ && found && found->debounce ) {
             found->debounce->start( debounceMs_ );
         }
     };
+    const auto changedNow = [ this, id ] {
+        const auto found = nodes_.value( id );
+        if ( !applying_ && found ) {
+            emitEvent( id, "changed", fieldValue( *found ) );
+        }
+    };
+    buildFieldWidget( node, element, row, changedSoon, changedNow );
+    return outer;
+}
+
+QWidget* PluginView::buildFieldWidget( Node& node, const QJsonObject& element, QWidget* row,
+                                       const std::function<void()>& changedSoon,
+                                       const std::function<void()>& changedNow )
+{
+    const auto id = node.id;
+    const auto kind = node.kind;
+    auto* layout = qobject_cast<QHBoxLayout*>( row->layout() );
+    const auto debounced = [ this, id, &node ]( QObject* owner ) {
+        node.debounce = new QTimer( owner );
+        node.debounce->setSingleShot( true );
+        connect( node.debounce, &QTimer::timeout, this, [ this, id ] {
+            if ( const auto found = nodes_.value( id ) ) {
+                emitEvent( id, "changed", fieldValue( *found ) );
+            }
+        } );
+    };
+    const auto style = element.value( "style" ).toString();
+    const auto group = [ & ]( bool exclusive ) {
+        // Inline radio buttons or check boxes (style radio / checkboxes).
+        auto* box = new QWidget( row );
+        auto* boxLayout = new QVBoxLayout( box );
+        boxLayout->setContentsMargins( 0, 0, 0, 0 );
+        auto* choices = new ChoiceGroup( exclusive, nameFor( id ), box );
+        if ( element.value( "searchable" ).toBool() ) {
+            auto* search = new QLineEdit( box );
+            search->setObjectName( nameFor( id ) + "_search" );
+            search->setPlaceholderText( tr( "Filter" ) );
+            const auto caption = text( element, "label" );
+            search->setAccessibleName( caption.isEmpty() ? tr( "Filter" )
+                                                         : tr( "Filter %1" ).arg( caption ) );
+            search->setClearButtonEnabled( true );
+            search->setMaxLength( MaxTextChars );
+            connect( search, &QLineEdit::textChanged, choices, &ChoiceGroup::filter );
+            boxLayout->addWidget( search );
+        }
+        boxLayout->addWidget( choices );
+        connect( choices, &ChoiceGroup::changed, this, changedNow );
+        layout->addWidget( box, 1 );
+        node.widget = choices;
+        return row;
+    };
+    if ( kind == "multichoice" && style == QLatin1String( "checkboxes" ) ) {
+        return group( false );
+    }
+    if ( kind == "choice" && style == QLatin1String( "radio" ) ) {
+        return group( true );
+    }
     if ( kind == "multichoice" ) {
         // Skips the text-field debounce path on purpose: no typing, every toggle is final.
         auto* box = new CheckComboBox( row );
+        if ( element.value( "searchable" ).toBool() ) {
+            box->makeSearchable();
+        }
         connect( box, &CheckComboBox::checkedChanged, this, [ this, id ] {
             const auto found = nodes_.value( id );
             if ( !applying_ && found ) {
@@ -751,14 +900,72 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
     }
     else if ( kind == "choice" ) {
         auto* combo = new QComboBox( row );
-        connect( combo, qOverload<int>( &QComboBox::currentIndexChanged ), this, [ this, id ] {
-            const auto found = nodes_.value( id );
-            if ( !applying_ && found ) {
-                emitEvent( id, "changed", fieldValue( *found ) );
+        const bool editable = element.value( "editable" ).toBool();
+        if ( editable ) {
+            pluginchoices::makeEditable( combo ); // typing filters the list too
+        }
+        else if ( element.value( "searchable" ).toBool() ) {
+            pluginchoices::makeSearchable( combo );
+        }
+        if ( !editable ) {
+            connect( combo, qOverload<int>( &QComboBox::currentIndexChanged ), this, changedNow );
+        }
+        else {
+            // The value is the text: typed or picked, it is reported like text, debounced, once.
+            debounced( combo );
+            connect( combo, &QComboBox::editTextChanged, this, changedSoon );
+            if ( element.value( "completion" ).toBool() ) {
+                combo->setCompleter( nullptr ); // the plugin's answers replace the list filter
+                attachCompletion( node, combo->lineEdit() );
             }
-        } );
+        }
         layout->addWidget( combo, 1 );
         node.widget = combo;
+    }
+    else if ( kind == "multiline" ) {
+        auto* edit = new QPlainTextEdit( row );
+        edit->setTabChangesFocus( true );
+        debounced( edit );
+        connect( edit, &QPlainTextEdit::textChanged, this, changedSoon );
+        layout->addWidget( edit, 1 );
+        node.widget = edit;
+    }
+    else if ( kind == "integer" ) {
+        auto* spin = new QSpinBox( row );
+        spin->setRange( -std::numeric_limits<int>::max(), std::numeric_limits<int>::max() );
+        debounced( spin );
+        connect( spin, qOverload<int>( &QSpinBox::valueChanged ), this, changedSoon );
+        layout->addWidget( spin, 1 );
+        node.widget = spin;
+    }
+    else if ( kind == "slider" ) {
+        auto* slider = new QSlider( Qt::Horizontal, row );
+        slider->setRange( DefaultSliderMinimum, DefaultSliderMaximum );
+        auto* shown = new QLabel( row );
+        shown->setObjectName( nameFor( id ) + "_value" );
+        shown->setMinimumWidth( shown->fontMetrics().horizontalAdvance( QStringLiteral( "-0000000" ) ) );
+        connect( slider, &QSlider::valueChanged, shown,
+                 [ shown ]( int value ) { shown->setNum( value ); } );
+        shown->setNum( slider->value() );
+        debounced( slider );
+        connect( slider, &QSlider::valueChanged, this, changedSoon );
+        layout->addWidget( slider, 1 );
+        layout->addWidget( shown );
+        node.widget = slider;
+    }
+    else if ( kind == "date" || kind == "time" || kind == "datetime" ) {
+        QDateTimeEdit* edit = kind == "date"   ? new QDateEdit( QDate::currentDate(), row )
+                              : kind == "time" ? static_cast<QDateTimeEdit*>(
+                                    new QTimeEdit( QTime( 0, 0 ), row ) )
+                                               : new QDateTimeEdit( QDateTime::currentDateTime(), row );
+        edit->setDisplayFormat( kind == "date"   ? DateFormat
+                                : kind == "time" ? TimeFormat
+                                                 : DateTimeFormat );
+        edit->setCalendarPopup( kind != "time" );
+        debounced( edit );
+        connect( edit, &QDateTimeEdit::dateTimeChanged, this, changedSoon );
+        layout->addWidget( edit, 1 );
+        node.widget = edit;
     }
     else {
         auto* edit = new QLineEdit( row );
@@ -769,16 +976,26 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
             validator->setNotation( QDoubleValidator::ScientificNotation );
             edit->setValidator( validator );
         }
-        node.debounce = new QTimer( edit );
-        node.debounce->setSingleShot( true );
-        connect( node.debounce, &QTimer::timeout, this, [ this, id ] {
-            if ( const auto found = nodes_.value( id ) ) {
-                emitEvent( id, "changed", fieldValue( *found ) );
-            }
-        } );
+        else if ( kind == "secret" ) {
+            edit->setEchoMode( QLineEdit::Password );
+        }
+        else if ( kind == "color" ) {
+            edit->setValidator( new QRegularExpressionValidator(
+                QRegularExpression( QStringLiteral( "#[0-9a-fA-F]{0,6}" ) ), edit ) );
+        }
+        debounced( edit );
         connect( edit, &QLineEdit::textChanged, this, changedSoon );
         layout->addWidget( edit, 1 );
         node.widget = edit;
+        if ( kind == "text" && element.value( "completion" ).toBool() ) {
+            attachCompletion( node, edit );
+        }
+        if ( kind == "color" ) {
+            auto* pick = new QPushButton( tr( "Choose…" ), row );
+            pick->setObjectName( nameFor( id ) + "_pick" );
+            layout->addWidget( pick );
+            connect( pick, &QPushButton::clicked, this, [ this, id ] { pickColor( id ); } );
+        }
         if ( kind == "file_open" || kind == "file_save" || kind == "directory" ) {
             auto* button = new QPushButton( tr( "Browse…" ), row );
             button->setObjectName( nameFor( id ) + "_browse" );
@@ -788,6 +1005,106 @@ QWidget* PluginView::buildField( Node& node, const QJsonObject& element, QWidget
         }
     }
     return row;
+}
+
+QWidget* PluginView::buildToggle( Node& node, const QJsonObject& element, QWidget* parent )
+{
+    Q_UNUSED( element );
+    const auto id = node.id;
+    const auto changedNow = [ this, id ] {
+        const auto found = nodes_.value( id );
+        if ( !applying_ && found ) {
+            emitEvent( id, "changed", fieldValue( *found ) );
+        }
+    };
+    if ( node.type == "checkbox" ) {
+        auto* box = new QCheckBox( parent );
+#if QT_VERSION >= QT_VERSION_CHECK( 6, 7, 0 )
+        connect( box, &QCheckBox::checkStateChanged, this, changedNow );
+#else
+        connect( box, &QCheckBox::stateChanged, this, changedNow );
+#endif
+        node.widget = box;
+        return box;
+    }
+    auto* group = new ChoiceGroup( node.type == "radio_group", nameFor( id ), parent );
+    connect( group, &ChoiceGroup::changed, this, changedNow );
+    node.widget = group;
+    return group;
+}
+
+void PluginView::attachCompletion( Node& node, QLineEdit* edit )
+{
+    if ( !queries_.complete ) {
+        return; // no host to ask
+    }
+    const auto id = node.id;
+    const QPointer<PluginView> guard( this );
+    new FieldCompleter(
+        edit,
+        [ guard, id ]( const QString& typed, int cursor,
+                       std::function<void( const QJsonArray& )> done ) {
+            if ( !guard || !guard->isEnabled() || !guard->queries_.complete ) {
+                done( {} );
+                return;
+            }
+            // `completion_timeout_ms` (design 5.1); the manager bounds it.
+            const auto field = guard->nodes_.value( id );
+            const auto timeoutMs
+                = field ? field->props.value( "completion_timeout_ms" ).toInt() : 0;
+            const auto sent = guard->queries_.complete(
+                { { "element_id", id },
+                  { "text", typed.left( MaxFieldValueChars ) },
+                  { "cursor", cursor } },
+                timeoutMs, done );
+            if ( sent.isEmpty() ) {
+                done( {} ); // not sent: the plugin is stopped, busy or does not complete
+            }
+        },
+        [ guard ]( const QJsonValue& reference ) {
+            return guard ? guard->iconFor( reference ) : QIcon{};
+        } );
+}
+
+QIcon PluginView::iconFor( const QJsonValue& reference ) const
+{
+    return queries_.icon ? queries_.icon( reference ) : QIcon{};
+}
+
+void PluginView::pickColor( const QString& id )
+{
+    const auto node = nodes_.value( id );
+    auto* edit = node ? qobject_cast<QLineEdit*>( node->widget.data() ) : nullptr;
+    if ( !edit || !dialogs_.color ) {
+        return;
+    }
+    const QPointer<PluginView> guard( this );
+    const std::weak_ptr<Node> weak = node;
+    const auto generation = generation_;
+    const auto title = text( node->props, "label" ).isEmpty() ? id : text( node->props, "label" );
+    const auto dialogName = nameFor( id ) + "_dialog";
+    activeDialogs_.insert( dialogName );
+    const auto color = dialogs_.color( dialogParent(), dialogName, title, edit->text() );
+    if ( guard ) {
+        guard->activeDialogs_.remove( dialogName );
+    }
+    // The dialog's event loop may have rebuilt or deleted the view: re-check everything.
+    if ( color.isEmpty() || !stillCurrent( guard, weak, generation ) ) {
+        return;
+    }
+    const auto current = weak.lock();
+    auto* currentEdit = qobject_cast<QLineEdit*>( current->widget.data() );
+    if ( !currentEdit ) {
+        return;
+    }
+    {
+        QScopedValueRollback<bool> rollback( applying_, true );
+        currentEdit->setText( color );
+    }
+    if ( current->debounce ) {
+        current->debounce->stop();
+    }
+    emitEvent( id, "changed", color );
 }
 
 bool PluginView::stillCurrent( const QPointer<PluginView>& guard, const std::weak_ptr<Node>& node,
@@ -874,6 +1191,11 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
     // editor), so tables without editable columns stay read-only.
     table->setEditTriggers( QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed );
     auto* delegate = new PluginCellDelegate( table );
+    const auto icons = [ guard = QPointer<PluginView>( this ) ]( const QJsonValue& reference ) {
+        return guard ? guard->iconFor( reference ) : QIcon{};
+    };
+    delegate->iconFor = icons; // E17c: choice icons in cell editors and committed cells
+    node.model->iconFor = icons;
     delegate->onUnknownKind = [ guard = QPointer<PluginView>( this ), id ]( const QString& kind ) {
         if ( guard ) {
             guard->warnOnce( "editor-kind:" + kind.left( 64 ),
@@ -1039,37 +1361,110 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
             if ( auto* edit = qobject_cast<QLineEdit*>( node.widget.data() ) ) {
                 edit->setPlaceholderText( text( props, "placeholder" ) );
             }
+            else if ( auto* plain = qobject_cast<QPlainTextEdit*>( node.widget.data() ) ) {
+                plain->setPlaceholderText( text( props, "placeholder" ) );
+            }
+            else if ( auto* editable = qobject_cast<QComboBox*>( node.widget.data() );
+                      editable && editable->lineEdit() ) {
+                editable->lineEdit()->setPlaceholderText( text( props, "placeholder" ) );
+            }
         }
+        const auto icons = [ this ]( const QJsonValue& reference ) { return iconFor( reference ); };
         if ( props.contains( "choices" ) && !unchanged( "choices" ) ) {
-            if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
-                checks->setChoices( props.value( "choices" ).toArray() );
+            // E17c: choice objects with icons, tooltips, disabled entries, separators and sections.
+            const auto choices = pluginchoices::parse( props.value( "choices" ).toArray(), MaxElements );
+            if ( auto* group = qobject_cast<ChoiceGroup*>( node.widget.data() ) ) {
+                group->setChoices( choices, icons );
+            }
+            else if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+                checks->setChoices( props.value( "choices" ).toArray(), icons );
             }
             else if ( auto* combo = qobject_cast<QComboBox*>( node.widget.data() ) ) {
-                const auto current = combo->currentData();
-                combo->clear();
-                for ( const auto& choice : props.value( "choices" ).toArray() ) {
-                    if ( combo->count() >= MaxElements ) {
-                        break;
-                    }
-                    const auto object = choice.toObject();
-                    auto value = choice.isObject() ? object.value( "value" ) : choice;
-                    if ( value.isString() ) {
-                        value = value.toString().left( MaxFieldValueChars );
-                    }
-                    combo->addItem( object.contains( "label" ) ? text( object, "label" )
-                                                               : cellText( value ),
-                                    value.toVariant() );
-                }
-                combo->setCurrentIndex( qMax( 0, combo->findData( current ) ) );
+                pluginchoices::fillCombo( combo, choices, icons,
+                                          node.props.value( "indicator" ) == "radio" );
             }
         }
-        if ( props.contains( "value" )
-             && ( !fromRoot || props.value( "value" ) != node.pluginValue ) ) {
-            node.pluginValue = props.value( "value" );
-            setFieldValue( node, node.pluginValue );
+        if ( auto* group = qobject_cast<ChoiceGroup*>( node.widget.data() );
+             group && ( props.contains( "orientation" ) || props.contains( "columns" ) ) ) {
+            group->setShape( node.props.value( "orientation" ).toString(),
+                             node.props.value( "columns" ).toInt() );
+        }
+        if ( auto* plain = qobject_cast<QPlainTextEdit*>( node.widget.data() ) ) {
+            if ( props.contains( "monospace" ) ) {
+                plain->setFont( props.value( "monospace" ).toBool()
+                                    ? QFontDatabase::systemFont( QFontDatabase::FixedFont )
+                                    : QFont() );
+            }
+            if ( props.contains( "rows" ) || props.contains( "monospace" ) ) {
+                const auto rows = qBound( 1, node.props.value( "rows" ).toInt( 4 ), 50 );
+                plain->setFixedHeight( plain->fontMetrics().lineSpacing() * rows
+                                       + 2 * plain->frameWidth()
+                                       + static_cast<int>( plain->document()->documentMargin() * 2 ) );
+            }
+        }
+        // integer and slider bounds; validation reports a typed value out of them (section 8.5).
+        // A bound that is not given is the kind's own: any int for integer, 0 and 100 for slider.
+        const auto setBounds = [ & ]( auto* range, int lowest, int highest ) {
+            if ( props.contains( "min" ) || props.contains( "max" ) ) {
+                const auto limit = static_cast<double>( std::numeric_limits<int>::max() );
+                const auto bound = [ & ]( const char* key, int fallback ) {
+                    const auto given = node.props.value( QLatin1String( key ) );
+                    return given.isDouble()
+                               ? static_cast<int>( qBound( -limit, given.toDouble(), limit ) )
+                               : fallback;
+                };
+                const auto low = bound( "min", lowest );
+                range->setRange( low, qMax( low, bound( "max", highest ) ) );
+            }
+            if ( props.contains( "step" ) ) {
+                range->setSingleStep( qMax( 1, props.value( "step" ).toInt( 1 ) ) );
+            }
+        };
+        if ( auto* spin = qobject_cast<QSpinBox*>( node.widget.data() ) ) {
+            setBounds( spin, -std::numeric_limits<int>::max(), std::numeric_limits<int>::max() );
+        }
+        else if ( auto* slider = qobject_cast<QSlider*>( node.widget.data() ) ) {
+            setBounds( slider, DefaultSliderMinimum, DefaultSliderMaximum );
+            slider->setPageStep( slider->singleStep() );
         }
     }
-    else if ( type == "button" ) {
+    else if ( type == "checkbox" ) {
+        auto* box = qobject_cast<QCheckBox*>( node.widget.data() );
+        if ( props.contains( "text" ) ) {
+            box->setText( text( props, "text" ).replace( QLatin1Char( '&' ), QStringLiteral( "&&" ) ) );
+        }
+        if ( props.contains( "tristate" ) ) {
+            box->setTristate( props.value( "tristate" ).toBool() );
+        }
+        if ( props.contains( "tone" ) ) {
+            setTone( box, props.value( "tone" ).toString( "normal" ).left( 16 ), false );
+        }
+    }
+    else if ( type == "radio_group" || type == "check_group" ) {
+        auto* group = qobject_cast<ChoiceGroup*>( node.widget.data() );
+        if ( props.contains( "title" ) ) {
+            group->setTitle( text( props, "title" ) );
+        }
+        if ( props.contains( "choices" ) && !unchanged( "choices" ) ) {
+            group->setChoices( pluginchoices::parse( props.value( "choices" ).toArray(), MaxElements ),
+                               [ this ]( const QJsonValue& reference ) { return iconFor( reference ); } );
+        }
+        if ( props.contains( "orientation" ) || props.contains( "columns" ) ) {
+            group->setShape( node.props.value( "orientation" ).toString(),
+                             node.props.value( "columns" ).toInt() );
+        }
+        if ( props.contains( "all_none" ) ) {
+            group->setAllNone( props.value( "all_none" ).toBool() );
+        }
+    }
+    // Values after the choices they name (fields and E17c toggles).
+    if ( ( type == "field" || type == "checkbox" || type == "radio_group" || type == "check_group" )
+         && props.contains( "value" )
+         && ( !fromRoot || props.value( "value" ) != node.pluginValue ) ) {
+        node.pluginValue = props.value( "value" );
+        setFieldValue( node, node.pluginValue );
+    }
+    if ( type == "button" ) {
         auto* button = qobject_cast<QPushButton*>( node.widget.data() );
         if ( props.contains( "label" ) ) {
             button->setText( text( props, "label" ) );
@@ -1159,6 +1554,12 @@ void PluginView::updateAccessibility( Node& node )
     if ( node.type == "field" ) {
         caption = text( node.props, "label" );
     }
+    else if ( node.type == "checkbox" ) {
+        caption = text( node.props, "text" );
+    }
+    else if ( node.type == "radio_group" || node.type == "check_group" ) {
+        caption = text( node.props, "title" );
+    }
     else if ( node.type == "button" ) {
         caption = text( node.props, "label" );
     }
@@ -1172,10 +1573,11 @@ void PluginView::updateAccessibility( Node& node )
     node.widget->setAccessibleName( !name.isEmpty()      ? name
                                      : !caption.isEmpty() ? caption.left( 256 )
                                                           : node.id );
+    // The validation message describes an invalid field (section 8.6).
     const auto description = text( node.props, "accessible_description" );
-    node.widget->setAccessibleDescription( !description.isEmpty()
-                                               ? description
-                                               : text( node.props, "tooltip" ) );
+    node.widget->setAccessibleDescription( !description.isEmpty() ? description
+                                           : !node.invalid.isEmpty() ? node.invalid
+                                                                     : text( node.props, "tooltip" ) );
 }
 
 void PluginView::applyTableOperation( Node& node, const QJsonObject& entry )
@@ -1297,10 +1699,15 @@ void PluginView::applyPatch( const QJsonArray& patch )
         }
         if ( entry.value( "set" ).isObject() ) {
             auto set = entry.value( "set" ).toObject();
-            if ( set.contains( "children" ) || set.contains( "kind" ) ) {
-                warnOnce( "structure:" + id, "patches cannot change children or field kinds" );
-                set.remove( "children" );
-                set.remove( "kind" );
+            bool structural = set.contains( "children" );
+            set.remove( "children" );
+            for ( const auto& key : FieldStructureKeys ) {
+                structural = structural || set.contains( key );
+                set.remove( key );
+            }
+            if ( structural ) {
+                warnOnce( "structure:" + id,
+                          "patches cannot change children, field kinds or field styles" );
             }
             apply( *node, set, false );
         }
@@ -1308,21 +1715,53 @@ void PluginView::applyPatch( const QJsonArray& patch )
             applyTableOperation( *node, entry );
         }
     }
+    refreshValidity();
     ++renders_;
 }
 
 QJsonValue PluginView::fieldValue( const Node& node ) const
 {
-    if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+    auto* widget = node.widget.data();
+    if ( auto* group = qobject_cast<ChoiceGroup*>( widget ) ) {
+        return group->value();
+    }
+    if ( auto* checks = qobject_cast<CheckComboBox*>( widget ) ) {
         return checks->checkedValues();
     }
-    if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() ) ) {
+    if ( auto* box = qobject_cast<QCheckBox*>( widget ) ) {
+        if ( box->isTristate() && box->checkState() == Qt::PartiallyChecked ) {
+            return QJsonValue::Null;
+        }
         return box->isChecked();
     }
-    if ( auto* combo = qobject_cast<QComboBox*>( node.widget.data() ) ) {
+    if ( auto* combo = qobject_cast<QComboBox*>( widget ) ) {
+        if ( node.props.value( "editable" ).toBool() && combo->isEditable() ) {
+            // A typed value, or the choice whose label it is.
+            const auto index = pluginchoices::findLabel( combo, combo->currentText() );
+            return index >= 0 ? QJsonValue::fromVariant( combo->itemData( index ) )
+                              : QJsonValue( combo->currentText().left( MaxFieldValueChars ) );
+        }
         return QJsonValue::fromVariant( combo->currentData() );
     }
-    auto* edit = qobject_cast<QLineEdit*>( node.widget.data() );
+    if ( auto* plain = qobject_cast<QPlainTextEdit*>( widget ) ) {
+        return plain->toPlainText().left( MaxFieldValueChars );
+    }
+    if ( auto* spin = qobject_cast<QSpinBox*>( widget ) ) {
+        return spin->value();
+    }
+    if ( auto* slider = qobject_cast<QSlider*>( widget ) ) {
+        return slider->value();
+    }
+    if ( auto* dateTime = qobject_cast<QDateTimeEdit*>( widget ) ) {
+        if ( node.kind == "date" ) {
+            return dateTime->date().toString( DateFormat );
+        }
+        if ( node.kind == "time" ) {
+            return dateTime->time().toString( TimeFormat );
+        }
+        return dateTime->dateTime().toString( DateTimeFormat );
+    }
+    auto* edit = qobject_cast<QLineEdit*>( widget );
     if ( !edit ) {
         return {};
     }
@@ -1340,24 +1779,141 @@ void PluginView::setFieldValue( Node& node, const QJsonValue& value )
     if ( node.debounce ) {
         node.debounce->stop();
     }
-    if ( auto* checks = qobject_cast<CheckComboBox*>( node.widget.data() ) ) {
+    auto* widget = node.widget.data();
+    if ( auto* group = qobject_cast<ChoiceGroup*>( widget ) ) {
+        group->setValue( value );
+        return;
+    }
+    if ( auto* checks = qobject_cast<CheckComboBox*>( widget ) ) {
         checks->setCheckedValues( value.toArray() );
         return;
     }
-    if ( auto* box = qobject_cast<QCheckBox*>( node.widget.data() ) ) {
-        box->setChecked( value.toBool() );
+    if ( auto* box = qobject_cast<QCheckBox*>( widget ) ) {
+        if ( box->isTristate() && value.isNull() ) {
+            box->setCheckState( Qt::PartiallyChecked );
+        }
+        else {
+            box->setChecked( value.toBool() );
+        }
     }
-    else if ( auto* combo = qobject_cast<QComboBox*>( node.widget.data() ) ) {
+    else if ( auto* combo = qobject_cast<QComboBox*>( widget ) ) {
         const auto index = combo->findData( value.toVariant() );
         if ( index >= 0 ) {
             combo->setCurrentIndex( index );
         }
+        else if ( node.props.value( "editable" ).toBool() && combo->isEditable() ) {
+            combo->setEditText( cellText( value, MaxFieldValueChars ) );
+        }
     }
-    else if ( auto* edit = qobject_cast<QLineEdit*>( node.widget.data() ) ) {
+    else if ( auto* plain = qobject_cast<QPlainTextEdit*>( widget ) ) {
+        const auto text = cellText( value, MaxFieldValueChars );
+        if ( plain->toPlainText() != text ) {
+            plain->setPlainText( text );
+        }
+    }
+    else if ( auto* spin = qobject_cast<QSpinBox*>( widget ) ) {
+        spin->setValue( static_cast<int>( qBound( double( spin->minimum() ), value.toDouble(),
+                                                  double( spin->maximum() ) ) ) );
+    }
+    else if ( auto* slider = qobject_cast<QSlider*>( widget ) ) {
+        slider->setValue( static_cast<int>( qBound( double( slider->minimum() ), value.toDouble(),
+                                                    double( slider->maximum() ) ) ) );
+    }
+    else if ( auto* dateTime = qobject_cast<QDateTimeEdit*>( widget ) ) {
+        const auto text = value.toString();
+        if ( node.kind == "date" ) {
+            const auto date = QDate::fromString( text, DateFormat );
+            if ( date.isValid() ) {
+                dateTime->setDate( date );
+            }
+        }
+        else if ( node.kind == "time" ) {
+            const auto time = QTime::fromString( text, TimeFormat );
+            if ( time.isValid() ) {
+                dateTime->setTime( time );
+            }
+        }
+        else {
+            const auto moment = QDateTime::fromString( text.left( 19 ), DateTimeFormat );
+            if ( moment.isValid() ) {
+                dateTime->setDateTime( moment );
+            }
+        }
+    }
+    else if ( auto* edit = qobject_cast<QLineEdit*>( widget ) ) {
         const auto text = value.isDouble() ? QString::number( value.toDouble(), 'g', 15 )
                                            : cellText( value, MaxFieldValueChars );
         if ( edit->text() != text ) {
             edit->setText( text );
+        }
+    }
+}
+
+bool PluginView::fieldValid( const Node& node ) const
+{
+    // As of the last refreshValidity(), which runs after each root, patch and change: the rules
+    // (a pattern among them) are checked once per change, not once per reader.
+    return node.invalid.isEmpty();
+}
+
+void PluginView::focusFirstInvalid()
+{
+    for ( const auto& id : order_ ) {
+        const auto node = nodes_.value( id );
+        if ( node && node->type == "field" && !node->invalid.isEmpty() && node->widget ) {
+            node->widget->setFocus( Qt::OtherFocusReason );
+            return;
+        }
+    }
+}
+
+bool PluginView::fieldsValid( const QJsonValue& requirement ) const
+{
+    // `true`: every field of the view; a list: those fields; otherwise nothing is required.
+    if ( requirement.isBool() && requirement.toBool() ) {
+        return std::all_of( nodes_.begin(), nodes_.end(), [ this ]( const auto& node ) {
+            return node->type != "field" || fieldValid( *node );
+        } );
+    }
+    for ( const auto& id : requirement.toArray() ) {
+        const auto node = nodes_.value( id.toString() );
+        if ( node && node->type == "field" && !fieldValid( *node ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void PluginView::refreshValidity()
+{
+    for ( const auto& node : std::as_const( nodes_ ) ) {
+        if ( node->type != "field" || !node->error || !node->widget ) {
+            continue;
+        }
+        const auto message = pluginfields::validates( node->props )
+                                 ? pluginfields::validationError( node->props, fieldValue( *node ) )
+                                 : QString{};
+        if ( message == node->invalid ) {
+            continue;
+        }
+        node->invalid = message;
+        node->error->setText( message );
+        node->error->setVisible( !message.isEmpty() );
+        // A red frame on the field itself, without restyling anything inside it.
+        const auto* className = node->widget->metaObject()->className();
+        node->widget->setStyleSheet(
+            message.isEmpty() ? QString{}
+                              : QStringLiteral( "%1 { border: 1px solid #c62828; }" )
+                                    .arg( QLatin1String( className ) ) );
+        node->widget->setProperty( "pluginInvalid", !message.isEmpty() );
+        updateAccessibility( *node );
+    }
+    // Buttons with `requires_valid` follow their fields; every button is set, so one whose later
+    // root dropped `requires_valid` gets its own `enabled` back.
+    for ( const auto& node : std::as_const( nodes_ ) ) {
+        if ( node->type == "button" && node->outer ) {
+            node->outer->setEnabled( node->props.value( "enabled" ).toBool( true )
+                                     && fieldsValid( node->props.value( "requires_valid" ) ) );
         }
     }
 }
@@ -1369,9 +1925,10 @@ QJsonObject PluginView::inputs( bool* truncated ) const
     QJsonObject values;
     qsizetype budget = MaxInputsBytes;
     bool shortened = false;
+    static const QStringList InputTypes{ "field", "checkbox", "radio_group", "check_group" };
     for ( const auto& id : order_ ) {
         const auto node = nodes_.value( id );
-        if ( !node || node->type != "field" ) {
+        if ( !node || !InputTypes.contains( node->type ) ) {
             continue;
         }
         auto value = fieldValue( *node );
@@ -1430,6 +1987,15 @@ bool PluginView::emitEvent( const QString& id, const QString& type, const QJsonV
     if ( truncated ) {
         event.insert( "truncated", true );
     }
+    if ( type == QLatin1String( "changed" ) ) {
+        // E17c: the changed event of a field with validation says whether it is valid
+        // (section 8.6); other events keep the shape they had before E17.
+        refreshValidity();
+        if ( const auto node = nodes_.value( id );
+             node && node->type == "field" && pluginfields::validates( node->props ) ) {
+            event.insert( "valid", fieldValid( *node ) );
+        }
+    }
     eventDropped_ = false;
     const QPointer<PluginView> guard( this );
     Q_EMIT eventRaised( event );
@@ -1440,6 +2006,20 @@ void PluginView::pressButton( const QString& id )
 {
     const auto node = nodes_.value( id );
     if ( !node || !isEnabled() ) {
+        return;
+    }
+    refreshValidity(); // a typed change may still be waiting for its debounce
+    if ( !fieldsValid( node->props.value( "requires_valid" ) ) ) {
+        LOG_DEBUG << "Plugin view button ignored: required fields are not valid element="
+                  << id.toStdString();
+        return;
+    }
+    // An action never starts with invalid fields (section 8.6): refused before any confirm or
+    // save dialog, with the focus on the first invalid field.
+    if ( !node->props.value( "event" ).toBool() && !node->props.value( "action" ).toString().isEmpty()
+         && !fieldsValid( true ) ) {
+        focusFirstInvalid();
+        LOG_DEBUG << "Plugin view action not started: invalid fields element=" << id.toStdString();
         return;
     }
     const QPointer<PluginView> guard( this );
@@ -1495,6 +2075,13 @@ void PluginView::pressButton( const QString& id )
     if ( current.value( "event" ).toBool() || action.isEmpty() ) {
         emitEvent( id, "clicked",
                    savePath.isEmpty() ? QJsonValue( QJsonValue::Null ) : QJsonValue( savePath ) );
+        return;
+    }
+    // Again after the dialogs, which may have let a patch change the fields.
+    refreshValidity();
+    if ( !fieldsValid( true ) ) {
+        focusFirstInvalid();
+        LOG_DEBUG << "Plugin view action not started: invalid fields element=" << id.toStdString();
         return;
     }
     bool truncated = false;
