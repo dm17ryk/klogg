@@ -166,13 +166,14 @@ void PreviewPackRegistry::refresh()
     PreviewManager::instance().setPackPreviews( previews );
 }
 
-QString PreviewPackRegistry::copyPreview( const QString& name )
+QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
 {
     const auto origin = PreviewManager::instance().packOrigin( name );
-    const auto error = PreviewManager::instance().copyPackPreview( name );
+    const auto error = PreviewManager::instance().copyPackPreview( name, copyName );
     if ( !error.isEmpty() || !origin ) {
         return error;
     }
+    const auto target = copyName.isEmpty() ? name : copyName;
     // The copy has no link to the pack, so it keeps decoding without it: the pack's route
     // becomes the user's.
     for ( const auto& pack : applied_ ) {
@@ -182,10 +183,10 @@ QString PreviewPackRegistry::copyPreview( const QString& name )
         auto& settings = PreviewDecoderSettings::instance();
         auto configuration = settings.configuration();
         auto routes = configuration.value( "previewRoutes" ).toMap();
-        if ( routes.contains( name ) ) {
+        if ( routes.contains( target ) ) {
             return {};
         }
-        routes.insert( name, pack.previewRoutes.value( name ) );
+        routes.insert( target, pack.previewRoutes.value( name ) );
         configuration[ "previewRoutes" ] = routes;
         QString reason;
         if ( !settings.setConfiguration( configuration, &reason ) ) {

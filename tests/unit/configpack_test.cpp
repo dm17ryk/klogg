@@ -473,17 +473,33 @@ TEST_CASE( "The previews dialog lists pack previews after the user's and copies 
     CHECK( table->model()->index( 1, 0 ).data().toString() == "Pack frame" );
     CHECK( table->model()->index( 1, 3 ).data().toString() == "Example pack" );
 
-    // The user's row: Remove, no Copy.
+    // Edit... shows only with an editor to open (the main window gives the plugin controller's).
+    auto* edit = dialog.findChild<QToolButton*>( "editPackPreviewButton" );
+    REQUIRE( edit );
+    CHECK_FALSE( edit->isVisible() );
+    QStringList opened;
+    dialog.setPackItemEditor( [ &opened ]( QWidget*, const QString& packId, const QString& path ) {
+        opened << packId << path;
+    } );
+    CHECK( edit->isVisible() );
+
+    // The user's row: Remove, no Copy or Edit.
     table->selectRow( 0 );
     table->setCurrentIndex( table->model()->index( 0, 0 ) );
     CHECK( remove->isEnabled() );
     CHECK_FALSE( copy->isEnabled() );
-    // The pack's row: Copy, but neither Remove nor Move.
+    CHECK_FALSE( edit->isEnabled() );
+    // The pack's row: Copy and Edit, but neither Remove nor Move.
     table->selectRow( 1 );
     table->setCurrentIndex( table->model()->index( 1, 0 ) );
     CHECK( copy->isEnabled() );
+    CHECK( edit->isEnabled() );
     CHECK_FALSE( remove->isEnabled() );
     CHECK_FALSE( moveUp->isEnabled() );
+
+    // Edit... opens the pack item's store path (design 4.6).
+    QTest::mouseClick( edit, Qt::LeftButton );
+    CHECK( opened == QStringList{ PackId, "previews/%50ack%20frame.json" } );
 
     QTest::mouseClick( copy, Qt::LeftButton );
     REQUIRE( manager.findByName( "Pack frame" ) );

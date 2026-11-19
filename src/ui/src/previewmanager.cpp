@@ -416,10 +416,13 @@ QMap<QString, PreviewFieldSpec> PreviewManager::effectiveBlocks() const
     return result;
 }
 
-QString PreviewManager::copyPackPreview( const QString& name )
+QString PreviewManager::copyPackPreview( const QString& name, const QString& copyName )
 {
-    if ( findByName( name ) ) {
-        return tr( "You already have a preview named \"%1\"." ).arg( name );
+    // The copy keeps the pack preview's name (and so replaces it), or takes `copyName` (Keep
+    // Both in the merge window: "<name> (mine)").
+    const auto target = copyName.isEmpty() ? name : copyName;
+    if ( findByName( target ) ) {
+        return tr( "You already have a preview named \"%1\"." ).arg( target );
     }
     const auto origin = packOrigin( name );
     if ( !origin ) {
@@ -455,6 +458,7 @@ QString PreviewManager::copyPackPreview( const QString& name )
         return reaches ? reference + suffix : reference;
     };
     auto copy = *original;
+    copy.name = target;
     const auto current = std::find_if(
         packPreviews_.cbegin(), packPreviews_.cend(),
         [ &name ]( const auto& preview ) { return preview.name == name; } );

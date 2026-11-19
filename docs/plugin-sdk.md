@@ -378,4 +378,39 @@ packs](plugin-repositories.md) section 4). The example is
   until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
   validated as files and loaded by a later slice (E16c).
 - `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
-  pack. Catalog entries of packs use `os: any` and `arch: any`.
+  pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
+  Catalog entries of packs use `os: any` and `arch: any`.
+
+### Local edits and updates
+
+Users edit pack items in place; each pack has a local store (a Git repository kept by the bundled
+libgit2, never shown to users) whose `upstream` branch holds the versions as shipped and whose
+`local` branch holds the edits. Items are stored one per file: `previews/<name>.json`,
+`blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json` and
+`files/<path>` for Lua and Python, names percent-encoded outside `[a-z0-9._-]`. An install or
+update merges the new version with the edits: an item not edited takes the new version, fields
+changed on one side merge, the same new value on both sides is no conflict, and the same field
+changed differently, or deleted on one side and changed on the other, is a conflict. Preview
+`fields` merge by `name`. Lua and Python files merge as text, like `git merge-file`.
+
+`plugin_manage` operations for packs (GUI, CLI, native MCP and Python alike):
+
+| Operation | Options | Result |
+|---|---|---|
+| `pack_files` / `pack_edits` | none | `files`: `path`, `kind`, `item`, `state` (`pack`, `edited`, `added`, `deleted`); `pack_edits` lists the changed ones |
+| `pack_read` | `path` | `content`, `edited` |
+| `pack_edit` | `path`, `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
+| `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit |
+
+`install` and `update` of a pack take `strategy` (`fail`, the default; `keep_mine`;
+`take_theirs`) and `resolutions`: `{path, field, value}` or `{path, field, remove: true}` for a
+preview or block field (an empty `field` replaces the whole item), `{path, text}` or
+`{path, remove: true}` for a file. With conflicts left open the job fails with `needsMerge: true`,
+`conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
+text) and `items` (each conflicting item whole), and the installed version stays. Resolutions
+name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
+within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
+it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the
+pack's history), and an enabled pack's merge result passes the same pack check as the new
+version.

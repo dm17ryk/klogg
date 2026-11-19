@@ -338,6 +338,9 @@ private:
     void forgetUpdates( const QString& id );
     // Configuration pack stores (pluginmanagerpacks.cpp, design 4.6).
     QString packStoreRoot() const;
+    // Rebuilds a damaged store from the installed pack, keeping the local edits; with `create`,
+    // also gives a pack installed before its store existed one. Empty when the store is usable.
+    QString ensurePackStore( const QString& id, const Manifest& installed, bool create ) const;
     // Before a pack is installed over an installed one: the merge with the local edits. Fails,
     // with the conflicts in `result`, when the strategy leaves conflicts unresolved.
     QString preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,

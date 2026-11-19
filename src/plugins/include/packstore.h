@@ -9,6 +9,7 @@
 #include <memory>
 
 struct git_repository;
+struct git_oid;
 
 // The local store of one configuration pack (docs/plugin-repositories.md 4.6, decisions 8 and 9):
 // a bare Git repository `<root>/<pack-id>.git` kept by libgit2, in the canonical form of
@@ -27,6 +28,7 @@ struct PackCommit {
 struct PackUpdatePlan {
     PackFiles merged;                // the merge result, conflicts resolved as the strategy says
     QVector<PackConflict> conflicts; // what needs the user (or was resolved by the strategy)
+    QString error;                   // the store could not be read: nothing was merged
 };
 
 class PackStore {
@@ -37,8 +39,18 @@ public:
     PackStore& operator=( const PackStore& ) = delete;
 
     bool exists() const;
+    // The repository folder is on disk (readable or not).
+    bool hasRepository() const;
+    // The store is on disk but cannot be read: the repository does not open or lacks a branch.
+    bool damaged() const;
     // The folder with the effective content in the pack's layout; empty when there is no store.
     QString contentDirectory() const;
+    // Rebuilds a damaged store from the installed version (design 4.6): the damaged repository is
+    // kept aside as `<pack-id>.git.damaged-<time>`, the new store gets `installed` on `upstream`,
+    // and the content folder's files (the edits the old store had applied) come back as one
+    // `local` commit.
+    QString rebuild( const PackFiles& installed, const QJsonObject& manifest,
+                     const QString& version );
 
     // The first install, or an install that replaces the pack without merging (the edits are
     // kept in history, not applied): `upstream` and `local` both get the version.
@@ -66,6 +78,14 @@ public:
     QString restore( const QString& storePath, const QString& commitId, const QString& message );
     // Removes the store (the pack was removed).
     QString remove();
+    // Writes `files` in the pack's own layout into `folder` (replaced): plugin.json, the
+    // previews document and exactly the files the manifest lists. The content folder is written
+    // this way, and so is a merge result that is checked before it is installed.
+    static QString writeFolder( const QString& folder, const PackFiles& files,
+                                const QJsonObject& manifest );
+    // Writes the effective content again when its folder is missing (a write that failed after
+    // its commit).
+    QString repairContent();
 
     QString error() const
     {
@@ -74,10 +94,20 @@ public:
 
 private:
     bool open( bool create ) const;
+    // `<root>/<pack-id>.git`, or on Windows a short folder of the user's when that path is too
+    // deep for libgit2.
+    QString repositoryPath() const;
+    // A commit on `branch` (its tip is the first parent); with `moveBranch` false the branch
+    // stays where it is, so several commits can be published together.
     QString commit( const char* branch, const PackFiles& files, const QString& message,
-                    const QStringList& extraParents = {} );
-    PackFiles filesAt( const QString& reference ) const;
+                    const QStringList& extraParents = {}, git_oid* created = nullptr,
+                    bool moveBranch = true );
+    // The files of a commit or branch; `complete` is false when the tree could not be read
+    // whole (nothing is returned then).
+    PackFiles filesAt( const QString& reference, bool* complete = nullptr ) const;
     QString writeContent( const PackFiles& files, const QJsonObject& manifest ) const;
+    // Writes the content folder for committed files (with their manifest).
+    QString publish( const PackFiles& stored ) const;
 
     QString root_;
     QString packId_;

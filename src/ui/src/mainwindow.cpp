@@ -3002,6 +3002,15 @@ void MainWindow::editPredefinedFilters( const QString& newFilter )
 void MainWindow::openImportPreviewsDialog()
 {
     ImportPreviewsDialog dialog( this );
+    // Pack previews are edited in place through the plugin controller (design 4.6).
+    if ( pluginController_ ) {
+        dialog.setPackItemEditor(
+            [ this ]( QWidget* parent, const QString& packId, const QString& path ) {
+                if ( pluginController_ ) {
+                    pluginController_->editPackItem( parent, packId, path );
+                }
+            } );
+    }
     dialog.exec();
 }
 

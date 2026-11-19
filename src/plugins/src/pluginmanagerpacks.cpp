@@ -8,6 +8,9 @@
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSet>
+#include <algorithm>
+#include <initializer_list>
 
 namespace cilogg::plugins {
 namespace {
@@ -41,12 +44,13 @@ QVariantMap conflictInfo( const PackConflict& conflict )
 
 // A resolution chosen in the merge window, or given by automation: {path, field, value} or
 // {path, field, remove: true} for a structured item, {path, text} or {path, remove: true} for a
-// file. Returns false when it cannot be applied.
-bool applyResolution( PackFiles* merged, const QVariantMap& resolution )
+// file. Only items of the pack (`known`: installed, edited or new version) in their canonical
+// spelling can be resolved. Returns false when it cannot be applied.
+bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known )
 {
     const auto path = resolution.value( "path" ).toString();
     const auto kind = packcanonical::kindOf( path );
-    if ( kind.isEmpty() ) {
+    if ( kind.isEmpty() || !known.contains( path ) || !packcanonical::isCanonical( path ) ) {
         return false;
     }
     const bool remove = resolution.value( "remove" ).toBool();
@@ -77,7 +81,10 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution )
         value = QJsonValue::fromVariant( resolution.value( "value" ) );
     }
     if ( field.isEmpty() ) {
-        if ( value && value->isObject() ) {
+        // A whole preview or block keeps the name its path stands for.
+        if ( value && value->isObject()
+             && ( ( kind != QLatin1String( "preview" ) && kind != QLatin1String( "block" ) )
+                  || value->toObject().value( "name" ).toString() == packcanonical::itemOf( path ) ) ) {
             merged->insert( path, packcanonical::itemBytes( value->toObject() ) );
         }
         else if ( !value ) {
@@ -88,9 +95,30 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution )
         }
         return true;
     }
+    // The name is the item's identity: a field resolution never renames it.
+    if ( field == QLatin1String( "name" ) ) {
+        return false;
+    }
     const auto changed = packmerge::withField( current, field, value );
     merged->insert( path, packcanonical::itemBytes( changed.toObject() ) );
     return true;
+}
+
+// The files of a merge result are exactly those the new version's manifest lists: a file it
+// dropped goes (also when kept by keep_mine), and a listed file is never missing.
+void followManifest( PackFiles* merged, const PackFiles& shipped, const QJsonObject& manifest )
+{
+    const auto listed = packcanonical::listedFiles( manifest );
+    for ( auto it = merged->begin(); it != merged->end(); ) {
+        it = packcanonical::kindOf( it.key() ) == QLatin1String( "file" ) && !listed.contains( it.key() )
+                 ? merged->erase( it )
+                 : std::next( it );
+    }
+    for ( const auto& path : listed ) {
+        if ( !merged->contains( path ) ) {
+            merged->insert( path, shipped.value( path ) );
+        }
+    }
 }
 } // namespace
 
@@ -106,6 +134,34 @@ QString PluginManager::packContentDirectory( const QString& pluginId ) const
     return content.isEmpty() ? pluginDirectory( pluginId ) : content;
 }
 
+QString PluginManager::ensurePackStore( const QString& id, const Manifest& installed,
+                                        bool create ) const
+{
+    PackStore store( packStoreRoot(), id );
+    // A content folder without its repository (moved, or deleted by hand) still holds the
+    // edits: that is rebuilt like a damaged store, never replaced by the installed version.
+    const bool damaged
+        = store.damaged() || ( !store.hasRepository() && !store.contentDirectory().isEmpty() );
+    if ( !damaged && store.exists() ) {
+        // A content folder lost after its commit (a failed swap) is written again.
+        return store.repairContent();
+    }
+    if ( !damaged && !create ) {
+        return {};
+    }
+    QString error;
+    const auto files = packcanonical::fromPackFolder( installed.json, installed.directory, &error );
+    if ( error.isEmpty() ) {
+        error = damaged ? store.rebuild( files, installed.json, installed.version )
+                        : store.install( files, installed.json, installed.version,
+                                         QStringLiteral( "the installed folder" ) );
+    }
+    if ( !error.isEmpty() ) {
+        LOG_WARNING << "Pack store not usable id=" << id.toStdString() << " damaged=" << damaged;
+    }
+    return error;
+}
+
 QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,
                                            PackFiles* shipped, std::optional<PackFiles>* merged,
                                            QVariantMap* result ) const
@@ -116,42 +172,104 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     if ( !error.isEmpty() ) {
         return error;
     }
+    // A damaged store is rebuilt first, so the update still merges with the local edits.
+    const auto installed = entries_.find( staged.manifest.id );
+    if ( installed != entries_.end() && isConfigPack( installed->second->manifest.json )
+         && installed->second->manifest.valid() ) {
+        error = ensurePackStore( staged.manifest.id, installed->second->manifest, false );
+        if ( !error.isEmpty() ) {
+            return QStringLiteral( "The pack's local store is damaged and could not be rebuilt: %1" )
+                .arg( error );
+        }
+    }
     const PackStore store( packStoreRoot(), staged.manifest.id );
     if ( !store.exists() ) {
         return {}; // a first install: nothing to merge
     }
     const auto strategy = strategyOf( context.value( "strategy" ) ).value_or( MergeStrategy::Fail );
     auto plan = store.planUpdate( *shipped, strategy );
+    if ( !plan.error.isEmpty() ) {
+        return plan.error;
+    }
+    const auto mine = store.files();
+    const auto base = store.upstreamFiles();
+    QSet<QString> known;
+    for ( const auto* side :
+          std::initializer_list<const PackFiles*>{ &plan.merged, shipped, &mine, &base } ) {
+        for ( auto it = side->cbegin(); it != side->cend(); ++it ) {
+            known.insert( it.key() );
+        }
+    }
+    // A file the new version's manifest no longer lists goes whatever was edited: no conflict.
+    const auto listed = packcanonical::listedFiles( staged.manifest.json );
+    plan.conflicts.erase( std::remove_if( plan.conflicts.begin(), plan.conflicts.end(),
+                                          [ &listed ]( const PackConflict& conflict ) {
+                                              return conflict.kind == QLatin1String( "file" )
+                                                     && !listed.contains( conflict.path );
+                                          } ),
+                          plan.conflicts.end() );
     // Resolutions from the merge window (or automation) settle conflicts one by one.
     const auto resolutions = context.value( "resolutions" ).toList();
     QVector<PackConflict> open;
     for ( const auto& conflict : plan.conflicts ) {
+        // A resolution without a field settles every conflict of its item (Keep Both).
         const auto resolved = std::any_of(
             resolutions.cbegin(), resolutions.cend(), [ &conflict ]( const QVariant& item ) {
                 const auto resolution = item.toMap();
+                const auto field = resolution.value( "field" ).toString();
                 return resolution.value( "path" ).toString() == conflict.path
-                       && resolution.value( "field" ).toString() == conflict.field;
+                       && ( field.isEmpty() || field == conflict.field );
             } );
         if ( !resolved ) {
             open.append( conflict );
         }
     }
     for ( const auto& item : resolutions ) {
-        if ( !applyResolution( &plan.merged, item.toMap() ) ) {
+        if ( !applyResolution( &plan.merged, item.toMap(), known ) ) {
             return QStringLiteral( "Invalid merge resolution for %1." )
                 .arg( item.toMap().value( "path" ).toString().left( 128 ) );
         }
     }
+    // Edited files the new version no longer has go with it; the user is told, and the edits
+    // stay in the pack's history.
+    QStringList dropped;
+    for ( auto it = mine.cbegin(); it != mine.cend(); ++it ) {
+        if ( packcanonical::kindOf( it.key() ) == QLatin1String( "file" ) && !listed.contains( it.key() )
+             && base.value( it.key() ) != it.value() ) {
+            dropped.append( packcanonical::itemOf( it.key() ) );
+        }
+    }
+    if ( !dropped.isEmpty() ) {
+        ( *result )[ "droppedEdits" ] = dropped;
+        ( *result )[ "warning" ] = QStringLiteral( "The new version no longer has %1; your edits of "
+                                                   "it stay in the pack's history." )
+                                       .arg( dropped.join( ", " ).left( 256 ) );
+    }
+    followManifest( &plan.merged, *shipped, staged.manifest.json );
+    for ( auto it = plan.merged.cbegin(); it != plan.merged.cend(); ++it ) {
+        if ( it.value().size() > MaxPackFileBytes ) {
+            return QStringLiteral( "The merged %1 is larger than 1 MiB." )
+                .arg( packcanonical::itemOf( it.key() ).left( 128 ) );
+        }
+    }
     QVariantList conflicts;
+    QVariantMap items;
     for ( const auto& conflict : plan.conflicts ) {
         conflicts.append( conflictInfo( conflict ) );
+        // Each conflicting item whole, for the merge window (Keep Both, the text merge).
+        items.insert( conflict.path,
+                      QVariantMap{ { "mine", QString::fromUtf8( mine.value( conflict.path ) ) },
+                                   { "theirs", QString::fromUtf8( shipped->value( conflict.path ) ) },
+                                   { "inMine", mine.contains( conflict.path ) },
+                                   { "inTheirs", shipped->contains( conflict.path ) } } );
     }
     ( *result )[ "conflicts" ] = conflicts;
+    ( *result )[ "items" ] = items;
     if ( strategy == MergeStrategy::Fail && !open.isEmpty() ) {
-        QStringList items;
+        QStringList names;
         for ( const auto& conflict : open ) {
-            if ( !items.contains( conflict.item ) && items.size() < MaxConflictsListed ) {
-                items.append( conflict.item );
+            if ( !names.contains( conflict.item ) && names.size() < MaxConflictsListed ) {
+                names.append( conflict.item );
             }
         }
         ( *result )[ "needsMerge" ] = true;
@@ -160,7 +278,7 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                                "take_theirs." )
             .arg( open.size() == 1 ? QStringLiteral( "an item" )
                                    : QStringLiteral( "%1 places" ).arg( open.size() ),
-                  items.join( ", " ) );
+                  names.join( ", " ) );
     }
     *merged = plan.merged;
     return {};
@@ -221,20 +339,26 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     if ( !isConfigPack( manifest.json ) || !manifest.valid() ) {
         return { "Pack operations apply to valid configuration packs only.", {} };
     }
-    PackStore store( packStoreRoot(), id );
-    // A pack installed before its store existed gets one now, from its installed folder.
-    if ( !store.exists() ) {
-        QString error;
-        const auto files
-            = packcanonical::fromPackFolder( manifest.json, manifest.directory, &error );
-        if ( error.isEmpty() ) {
-            error = store.install( files, manifest.json, manifest.version,
-                                   QStringLiteral( "the installed folder" ) );
-        }
-        if ( !error.isEmpty() ) {
-            return { error, {} };
+    // The options each operation takes; anything else is a mistake of the caller's.
+    const QStringList known = operation == "pack_edit"    ? QStringList{ "path", "content", "remove",
+                                                                          "message" }
+                              : operation == "pack_reset" ? QStringList{ "path", "commit" }
+                              : operation == "pack_read" || operation == "pack_history"
+                                  ? QStringList{ "path" }
+                                  : QStringList{};
+    for ( auto option = options.cbegin(); option != options.cend(); ++option ) {
+        if ( !known.contains( option.key() ) ) {
+            return { QStringLiteral( "Unknown %1 option: %2." )
+                         .arg( operation, option.key().left( 64 ) ),
+                     {} };
         }
     }
+    // A pack installed before its store existed gets one now, from its installed folder; a
+    // damaged store is rebuilt with the local edits.
+    if ( const auto error = ensurePackStore( id, manifest, true ); !error.isEmpty() ) {
+        return { error, {} };
+    }
+    PackStore store( packStoreRoot(), id );
     const auto path = options.value( "path" ).toString();
     const auto listing = [ &store ] {
         const auto edits = store.localEdits();
@@ -282,6 +406,9 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                    { "edited", store.localEdits().contains( path ) } } };
     }
     if ( operation == "pack_history" ) {
+        if ( !path.isEmpty() && !packcanonical::isCanonical( path ) ) {
+            return { "Not an item of the pack.", {} };
+        }
         QVariantList commits;
         for ( const auto& commit : store.history( path ) ) {
             commits.append( QVariantMap{ { "commit", commit.id },
@@ -297,13 +424,18 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         const bool remove = options.value( "remove" ).toBool();
         const auto content = options.value( "content" ).toString().toUtf8();
         const auto files = store.files();
-        if ( kind.isEmpty() || kind == QLatin1String( "meta" ) ) {
+        if ( kind.isEmpty() || kind == QLatin1String( "meta" ) || !packcanonical::isCanonical( path ) ) {
             return { "Not an item of the pack.", {} };
         }
-        // Lua and Python files are the ones the manifest lists: they can change, not appear.
-        if ( ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" ) )
-             && !files.contains( path ) && !store.upstreamFiles().contains( path ) ) {
-            return { "The pack does not list that file.", {} };
+        // Items of the pack are edited in place: they can change or go, not appear (your own
+        // items come from Copy to My Previews).
+        if ( !files.contains( path ) && !store.upstreamFiles().contains( path ) ) {
+            return { "No such item in the pack.", {} };
+        }
+        // The manifest lists the Lua and Python files a pack has; they and the preview order
+        // are edited, never deleted.
+        if ( remove && ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" ) ) ) {
+            return { "Pack files and the preview order can be edited, not deleted.", {} };
         }
         if ( !remove && content.size() > MaxPackFileBytes ) {
             return { "The item is larger than 1 MiB.", {} };
@@ -338,6 +470,9 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         error = store.commitEdit( path, bytes, message );
     }
     else if ( operation == "pack_reset" ) {
+        if ( !path.isEmpty() && !packcanonical::isCanonical( path ) ) {
+            return { "Not an item of the pack.", {} };
+        }
         const auto commit = options.value( "commit" ).toString();
         const auto what = path.isEmpty() ? QStringLiteral( "the pack" ) : packcanonical::itemOf( path );
         error = store.restore( path, commit,
@@ -345,14 +480,17 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                                    ? QStringLiteral( "Reset %1 to the pack version" ).arg( what )
                                    : QStringLiteral( "Revert %1 to %2" ).arg( what, commit.left( 12 ) ) );
     }
+    // The store can have changed even when its files could not be written afterwards, so the
+    // summary and listeners follow it in both cases.
+    const auto content = store.contentDirectory();
+    it->second->pack = packSummary( manifest.json, content.isEmpty() ? manifest.directory : content );
+    it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
+    LOG_INFO << "Pack " << operation.toStdString() << " id=" << id.toStdString()
+             << " path=" << path.toStdString() << " ok=" << error.isEmpty();
+    Q_EMIT changed();
     if ( !error.isEmpty() ) {
         return { error, {} };
     }
-    it->second->pack = packSummary( manifest.json, store.contentDirectory() );
-    it->second->pack[ "localEdits" ] = static_cast<int>( store.localEdits().size() );
-    LOG_INFO << "Pack " << operation.toStdString() << " id=" << id.toStdString()
-             << " path=" << path.toStdString();
-    Q_EMIT changed();
     return { {}, { { "plugin", id }, { "files", listing() } } };
 }
 } // namespace cilogg::plugins

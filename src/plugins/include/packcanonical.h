@@ -39,6 +39,12 @@ PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
                           QString* error = nullptr );
 // The store-relative path of a pack file such as "lua/common.lua".
 QString filePath( const QString& packRelative );
+// The store paths of the Lua and Python files a (valid) manifest lists: exactly the files of the
+// pack, so the files of a merge result follow the new version's manifest.
+QStringList listedFiles( const QJsonObject& manifest );
+// True for a store path in its one canonical spelling: a known kind, an item name encoded as
+// encodeName() writes it, a file path that is relative, clean and stays inside the pack.
+bool isCanonical( const QString& storePath );
 // The kind of a store path: "preview", "block", "order", "meta", "file" or "" (not content).
 QString kindOf( const QString& storePath );
 // The item name or pack-relative file path a store path stands for.

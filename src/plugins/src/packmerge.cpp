@@ -250,7 +250,10 @@ TextMerge mergeText( const QByteArray& base, const QByteArray& mine, const QByte
 {
     ensureLibgit2();
     const auto input = []( const QByteArray& bytes ) {
-        git_merge_file_input file = GIT_MERGE_FILE_INPUT_INIT;
+        // The init functions, not the INIT macros: those leave fields to zero-initialization,
+        // which -Wmissing-field-initializers reports on the Unix builds.
+        git_merge_file_input file{};
+        git_merge_file_input_init( &file, GIT_MERGE_FILE_INPUT_VERSION );
         file.ptr = bytes.constData();
         file.size = static_cast<size_t>( bytes.size() );
         file.mode = 0100644;
@@ -259,7 +262,8 @@ TextMerge mergeText( const QByteArray& base, const QByteArray& mine, const QByte
     const auto ancestor = input( base );
     const auto ours = input( mine );
     const auto other = input( theirs );
-    git_merge_file_options options = GIT_MERGE_FILE_OPTIONS_INIT;
+    git_merge_file_options options{};
+    git_merge_file_options_init( &options, GIT_MERGE_FILE_OPTIONS_VERSION );
     options.ancestor_label = "installed version";
     options.our_label = "your edit";
     options.their_label = "new version";

@@ -61,6 +61,9 @@ PACK_ID = "org.cilogg.example.protocol-pack"
 PACK_FOLDER = Path(__file__).resolve().parents[2] / "plugins/examples/protocol-pack"
 PACK_FIELDS = ("id", "kind", "version", "enabled", "error", "contents", "previews", "luaFiles",
                "pythonDecoders")
+# E16a2: the example pack's preview in the store's canonical form ("Demo frame", encoded).
+PACK_PREVIEW = "previews/%44emo%20frame.json"
+PACK_EDITED = [{"path": PACK_PREVIEW, "kind": "preview", "item": "Demo frame", "state": "edited"}]
 
 
 def pack_fields(plugins, pack_id=PACK_ID):
@@ -89,6 +92,21 @@ class Surfaces:
 
     def manage_mcp(self, operation, options=None):
         request = {"plugin_operation": operation}
+        if options is not None:
+            request["definition"] = options
+        return self.command("plugin_manage", request)
+
+    def pack_cli(self, operation, options=None):
+        arguments = ["plugin_manage", "--plugin-operation", operation, "--plugin-id", PACK_ID]
+        if options is not None:
+            self.files += 1
+            path = self.artifacts / f"e16a2-{self.files}-{operation}.json"
+            path.write_text(json.dumps(options), encoding="utf-8")
+            arguments += ["--json-file", str(path)]
+        return self.cli(*arguments)
+
+    def pack_mcp(self, operation, options=None):
+        request = {"plugin_operation": operation, "plugin_id": PACK_ID}
         if options is not None:
             request["definition"] = options
         return self.command("plugin_manage", request)
@@ -251,6 +269,43 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
     compare_json("Previewers", pack_row[1], "$.pack.gui.kind")
     report["gui"].append({"objectName": "pluginManagerTable", "pack": pack_row[1]})
 
+    # E16a2: pack items are edited in place through the same operations on every surface, and
+    # the Installed tab shows the edit.
+    files = surfaces.pack_cli("pack_files")["files"]
+    compare_json(files, surfaces.pack_mcp("pack_files")["files"], "$.pack.files.mcp")
+    if not any(item["path"] == PACK_PREVIEW and item["state"] == "pack" for item in files):
+        raise ParityError(f"pack_preview_not_listed: {PACK_PREVIEW}")
+    item = json.loads(surfaces.pack_mcp("pack_read", {"path": PACK_PREVIEW})["content"])
+    item["regex"] = item["regex"].replace("^DEMO ", "^DEMO2 ")
+    surfaces.pack_cli("pack_edit", {"path": PACK_PREVIEW, "content": json.dumps(item, indent=2)})
+    compare_json(PACK_EDITED, surfaces.pack_mcp("pack_edits")["files"], "$.pack.edits.mcp")
+    compare_json(PACK_EDITED, surfaces.pack_cli("pack_edits")["files"], "$.pack.edits.cli")
+    history = surfaces.pack_mcp("pack_history", {"path": PACK_PREVIEW})["commits"]
+    compare_json(["Edit preview 'Demo frame'", "Install 1.0.0 from a local package"],
+                 [commit["message"] for commit in history], "$.pack.history")
+    compare_json([False, True], [commit["packVersion"] for commit in history],
+                 "$.pack.history.packVersion")
+    # An option an operation does not take is refused, not ignored, on every surface.
+    unknown = {"path": PACK_PREVIEW, "version": "upstream"}
+    unknown_file = artifacts / "e16a2-unknown-option.json"
+    unknown_file.write_text(json.dumps(unknown), encoding="utf-8")
+    for name, refused in (
+            ("cli", cli("plugin_manage", "--plugin-operation", "pack_read", "--plugin-id", PACK_ID,
+                        "--json-file", str(unknown_file), success=False)),
+            ("mcp", command("plugin_manage", {"plugin_operation": "pack_read", "plugin_id": PACK_ID,
+                                              "definition": unknown}, success=False))):
+        if not refused:
+            raise ParityError(f"pack_unknown_option_not_refused: {name}")
+    wait_until(lambda: any(row[0] == "Example protocol pack" and "Edited locally (1)" in row[4]
+                           for row in (ui_object(command, "pluginManagerTable") or {}).get(
+                               "items", [])), 20, "gui_pack_edit_state_missing")
+    pack_files_button = wait_until(lambda: ui_object(command, "pluginManage_packFiles"), 20,
+                                   "gui_pack_files_button_missing")
+    if not pack_files_button.get("accessibleName"):
+        raise ParityError("gui_control_unnamed: pluginManage_packFiles")
+    report["gui"].append({"objectName": "pluginManage_packFiles",
+                          "accessibleName": pack_files_button["accessibleName"]})
+
     # Python: klogg.app.command reaches the same operations.
     python = run_python([("e15a_repositories", {"closed": CLOSED})])[0]
     if python.get("errors"):
@@ -267,6 +322,10 @@ def exercise_repositories(cli, command, catalog, artifacts, run_python):
                  python["checkUpdates"], "$.python.checkUpdates")
     compare_json(expected_pack, pack_fields(python["plugins"]), "$.python.pack")
     compare_json(True, python["packRestartRefused"], "$.python.packRestartRefused")
+    # E16a2: Python sees the CLI's edit and resets the pack to its version as shipped.
+    compare_json(PACK_EDITED, python["packEdits"], "$.python.packEdits")
+    compare_json([], python["packEditsAfterReset"], "$.python.packEditsAfterReset")
+    compare_json([], surfaces.pack_cli("pack_edits")["files"], "$.pack.edits.afterReset")
     cli("plugin_manage", "--plugin-operation", "disable", "--plugin-id", PACK_ID)
     cli("plugin_manage", "--plugin-operation", "remove", "--plugin-id", PACK_ID)
     if pack_fields(cli("get_plugins")["plugins"]) is not None:

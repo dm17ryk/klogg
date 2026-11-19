@@ -26,6 +26,8 @@ public:
     }
     // The source the Plugins menu's actions run on (U15b): focused, all, tab:<id> or file:<path>.
     QString actionSource() const;
+    // The text editor of one item of a configuration pack (design 4.6).
+    void editPackItem( QWidget* parent, const QString& packId, const QString& path );
 
 private:
     // The tabs of the Plugins and Packs window (docs/plugin-repositories.md 3.3).

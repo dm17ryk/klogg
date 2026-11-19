@@ -48,7 +48,7 @@ public:
                               const QJsonObject& manifest );
     // Copy to My Previews: PreviewManager::copyPackPreview, and the pack's route for the preview
     // becomes one of the user's, unless the user has one. Returns the error.
-    QString copyPreview( const QString& name );
+    QString copyPreview( const QString& name, const QString& copyName = {} );
     // The applied contributions, in pack ID order.
     const QVector<Contribution>& contributions() const
     {

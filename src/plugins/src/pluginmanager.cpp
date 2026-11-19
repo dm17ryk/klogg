@@ -199,7 +199,11 @@ void PluginManager::discover()
         auto entry = std::make_unique<Entry>();
         entry->manifest = std::move( manifest );
         if ( isConfigPack( entry->manifest.json ) ) {
-            // The counts of the effective content (with the local edits, design 4.6).
+            // The counts of the effective content (with the local edits, design 4.6); a damaged
+            // store is rebuilt here, before anything reads the pack.
+            if ( entry->manifest.valid() ) {
+                ensurePackStore( id, entry->manifest, false );
+            }
             const PackStore store( packStoreRoot(), id );
             const auto content = store.exists() ? store.contentDirectory() : QString{};
             entry->pack = packSummary( entry->manifest.json,
@@ -1556,14 +1560,30 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
                                             &packMerged, &result )
                       : QString{};
     if ( result.value( "needsMerge" ).toBool() ) {
+        // Shown as "Update to X needs a merge" until an install or update of the pack succeeds.
         settings_.setValue( configurationKey( staged.manifest.id ) + "needsMerge",
                             staged.manifest.version );
+        if ( !persistSettings().isEmpty() ) {
+            LOG_WARNING << "Pack merge state could not be saved id="
+                        << staged.manifest.id.toStdString();
+        }
     }
     // A new version of an enabled pack must still fit with the user's items and the other
     // enabled packs; otherwise the installed version stays (design 4.2).
     if ( error.isEmpty() && pack && packCheck_
          && settings_.value( configurationKey( staged.manifest.id ) + "enabled", false ).toBool() ) {
         error = packCheck_( staged.manifest.id, staged.manifest.directory, staged.manifest.json );
+        // What loads is the merge with the user's edits: that is checked too (design 4.6).
+        if ( error.isEmpty() && packMerged && *packMerged != packShipped ) {
+            // Inside the pack's own store folder, so no other pack's name can meet it.
+            const auto folder
+                = QDir( packStoreRoot() ).filePath( staged.manifest.id + QStringLiteral( "/check" ) );
+            error = PackStore::writeFolder( folder, *packMerged, staged.manifest.json );
+            if ( error.isEmpty() ) {
+                error = packCheck_( staged.manifest.id, folder, staged.manifest.json );
+            }
+            QDir( folder ).removeRecursively();
+        }
     }
     if ( error.isEmpty() ) {
         error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );

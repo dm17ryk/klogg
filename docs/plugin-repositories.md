@@ -638,7 +638,7 @@ TShark sessions. Pack files are checked again whenever the pack is read, and a f
 folder reached through a link or junction is refused. A user preview with a pack preview's name
 replaces it together with its route; **Copy to My Previews** also copies the pack's route into the
 user's routes, and a renamed copy (`<block> (<pack name>)`) keeps the generic `_block` fallback.
-Pack items are replaced whole on update until E16a2 adds edit in place and merge. A pack preview's
+E16a2 adds edit in place and merge (section 4.6). A pack preview's
 on/off choice is kept in the user's settings (`previewPacks/enabled`). Every GUI path asks before
 pack Lua can run (`pluginsui::confirmPackLua`): Enable, and an install or update that replaces an
 enabled pack with a version that has Lua (Installed tab Update, Available tab Install / Update and
@@ -763,6 +763,55 @@ default), `keep_mine` or `take_theirs`; merges without conflicts apply as in the
 conflicts. Otherwise the pack shows "Update needs a merge" and a notice offers to open the merge.
 
 **Export as Pack** of an edited pack item exports its current content (section 4.7).
+
+**As built (E16a2), for previews, blocks and Lua or Python files.** libgit2 1.9.1 is built by CPM
+without network, SSH or HTTPS support (`klogg_libgit2`, linked by `klogg_plugins` only).
+`PackStore` (`src/plugins/packstore.*`) keeps a bare repository `pack-store/<pack-id>.git` with
+the branches `upstream` and `local`, and writes the effective content to
+`pack-store/<pack-id>/current` in the pack's own layout (staged in `current.new`, then renamed);
+`PreviewPackRegistry` reads packs from there through `PluginManager::packContentDirectory`.
+Commits are built from an in-memory index, so the store has no work tree. `packcanonical`
+converts between the pack layout and the canonical form: `previews/<name>.json`,
+`blocks/<name>.json`, `previews/order.txt` (evaluation order), `previews/meta.json` and
+`files/<path>`, names percent-encoded outside `[a-z0-9._-]`, JSON indented with sorted keys.
+The merge is done in process by `PackStore::planUpdate` with `packmerge` (`mergeJson` field by
+field with `fields/@name/...` element paths, `mergeText` with `git_merge_file` in diff3 style
+labelled "your edit", "installed version" and "new version") rather than through
+`.gitattributes` and a registered merge driver: the outcome is the same, and the merge commit on
+`local` has the new `upstream` commit as its second parent. Both commits are made before either
+branch moves, so an update is in the store whole or not at all. A merge result has exactly the
+files the new manifest lists (a file it dropped goes, also with Keep Mine; the job result names
+dropped edited files in `droppedEdits` and a warning), and an enabled pack's
+merge result passes the pack check, written to a temporary folder, before it is installed.
+Edits change or delete the pack's own previews and blocks and change its listed files and
+preview order; they add no items. Resolutions name only the pack's items in their canonical
+spelling, and the content folder is written only with relative paths inside it. A whole-pack
+Revert stays within the installed version (items revert one by one across versions), and a
+Revert names a commit from the pack's history. A tree that cannot be read whole is never
+committed; it marks the store as damaged. `commitWhenStopped` merges before the
+package commit (`preparePackInstall`) and updates the store after it (`finishPackInstall`); with
+conflicts left open the job fails with `needsMerge`, `conflicts` and `items`, the installed
+version stays, and `plugins/<id>/needsMerge` keeps the version for the Installed tab. The GUI
+(`src/ui/packeditors.*`) runs install and update through `runPackAwareInstall`, which opens the
+merge window and runs the request again with `resolutions`; Keep Both copies the user's preview
+as "<name> (mine)" before the whole-item resolution takes the new version. An automatic update
+that needs a merge is reported by its own notice and retried at the next check. A damaged store
+(a repository libgit2 cannot read, a missing branch or object; a file the system refuses to open
+is not damage) is rebuilt when CILogg reads the pack, before a pack operation and before an
+update merges: the damaged repository is kept aside as `<pack-id>.git.damaged-<time>` (instead of
+exporting a patch, which arrives with E16d), and the content folder's files come back as one
+`local` commit; the content folder is replaced only after both commits. A content folder whose
+repository is gone is rebuilt the same way, never reset to the installed version. libgit2 keeps
+paths inside a repository under MAX_PATH on Windows whatever `core.longpaths` says, so when
+`pack-store/<pack-id>.git` would be longer than 180 characters (a deep portable folder) the
+repository goes to `%LOCALAPPDATA%\cilogg-pack-stores\<hash of the data folder and pack>.git`;
+the content folder stays in the data folder. A content folder that
+could not be written after its commit is written again the next time the pack is read. libgit2's
+owner check is off for this private store. The external merge tool starts from the merge with
+its conflict markers, as git mergetool does, so a tool that fails or returns without saving gives
+a result that is refused. Pack operations refuse options they do
+not take. Removing a pack removes its store. The external merge tool command is an application
+setting (`packs/mergeTool`), asked for on first use.
 
 ### 4.7 Export as Pack
 

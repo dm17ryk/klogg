@@ -3,6 +3,7 @@
 #include <catch2/catch.hpp>
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -13,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <algorithm>
 
 #include "packcanonical.h"
 #include "packmerge.h"
@@ -123,6 +125,10 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
     CHECK( packcanonical::encodeName( ".." ) == "%2E%2E" );
     const auto unicode = QString::fromUtf8( "\xce\x94 frame/1" );
     CHECK( packcanonical::decodeName( packcanonical::encodeName( unicode ) ) == unicode );
+    // A character outside the BMP (two QChars) is encoded whole, as its four UTF-8 bytes.
+    const auto astral = QString::fromUtf8( "Frame \xf0\x9f\x93\xa1" );
+    CHECK( packcanonical::encodeName( astral ) == "%46rame%20%F0%9F%93%A1" );
+    CHECK( packcanonical::decodeName( packcanonical::encodeName( astral ) ) == astral );
     CHECK( packcanonical::encodeName( "A" ) != packcanonical::encodeName( "a" ) );
 
     QString error;
@@ -353,6 +359,17 @@ TEST_CASE( "The pack store keeps versions, edits, history and merges", "[packmer
     CHECK( store.files().value( first ).contains( "^A2$" ) );
     CHECK( readFile( content + "/lua/a.lua" ) == "-- a, version 2\n" );
     CHECK( store.localEdits() == QStringList{ second } );
+    // Both branches moved together: the merge commit's second parent is the new version.
+    CHECK( store.history().first().message == "Merge 1.1.0" );
+
+    // Only commits of the pack's own history, and a whole earlier state only within this version.
+    CHECK( store.restore( {}, "refs/heads/upstream", "Revert" )
+           == "That version of the pack is not in its store." );
+    CHECK( store.restore( {}, store.history().last().id, "Revert" ).contains( "another version" ) );
+    // Restoring what is already there adds nothing to the history.
+    const auto commitsBefore = store.history().size();
+    CHECK( store.restore( packcanonical::filePath( "lua/a.lua" ), {}, "Reset" ).isEmpty() );
+    CHECK( store.history().size() == commitsBefore );
 
     // A version that changes the edited field conflicts.
     auto clash = next;
@@ -379,6 +396,115 @@ TEST_CASE( "The pack store keeps versions, edits, history and merges", "[packmer
     REQUIRE( store.remove().isEmpty() );
     CHECK( !QFileInfo::exists( root.filePath( "org.example.pack.git" ) ) );
     CHECK( !QFileInfo::exists( content ) );
+}
+
+TEST_CASE( "A damaged pack store is rebuilt with the local edits", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    {
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+        auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+        edited[ "regex" ] = "^EDITED$";
+        REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+        CHECK( !store.damaged() );
+    }
+    const auto repository = root.filePath( "org.example.pack.git" );
+    SECTION( "a branch is missing" )
+    {
+        REQUIRE( QFile::remove( repository + "/refs/heads/local" ) );
+    }
+    SECTION( "the repository does not open" )
+    {
+        REQUIRE( QDir( repository + "/objects" ).removeRecursively() );
+    }
+    SECTION( "an object of a branch is missing" )
+    {
+        // Every object belongs to the tree of one branch, so any one missing breaks a read.
+        QDirIterator objects( repository + "/objects", QDir::Files, QDirIterator::Subdirectories );
+        REQUIRE( objects.hasNext() );
+        const auto object = objects.next();
+        QFile::setPermissions( object, QFile::ReadOwner | QFile::WriteOwner );
+        REQUIRE( QFile::remove( object ) );
+    }
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.damaged() );
+    const auto rebuilt = store.rebuild( packFiles(), packManifest(), "1.0.0" );
+    INFO( rebuilt.toStdString() );
+    REQUIRE( rebuilt.isEmpty() );
+    CHECK( !store.damaged() );
+    CHECK( store.upstreamFiles() == packFiles() );
+    CHECK( store.localEdits() == QStringList{ second } );
+    CHECK( store.files().value( second ).contains( "^EDITED$" ) );
+    CHECK( readFile( store.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+    // The damaged repository is kept aside, never deleted.
+    CHECK( QDir( root.path() )
+               .entryList( { "org.example.pack.git.damaged-*" }, QDir::Dirs | QDir::NoDotAndDotDot )
+               .size()
+           == 1 );
+}
+
+TEST_CASE( "A pack store works under a data folder too deep for libgit2", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    // Over 200 characters: libgit2 refuses repository paths that leave it under 68 characters
+    // of MAX_PATH on Windows; elsewhere the repository simply stays in the data folder.
+    auto deep = root.path();
+    while ( deep.size() < 210 ) {
+        deep += QStringLiteral( "/deep-data-folder" );
+    }
+    REQUIRE( QDir().mkpath( deep ) );
+    PackStore store( deep, "org.example.pack" );
+    const auto installed = store.install( packFiles(), packManifest(), "1.0.0", "Team packs" );
+    INFO( installed.toStdString() );
+    REQUIRE( installed.isEmpty() );
+    CHECK( store.files() == packFiles() );
+    CHECK( store.contentDirectory().startsWith( deep ) );
+#ifdef Q_OS_WIN
+    CHECK( !QFileInfo::exists( deep + "/org.example.pack.git" ) );
+#endif
+    REQUIRE( store.remove().isEmpty() );
+    CHECK( !store.hasRepository() );
+}
+
+TEST_CASE( "An update that drops an edited file says so and keeps the pack valid",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto lua = packcanonical::filePath( "lua/a.lua" );
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", lua }, { "content", "-- mine\n" } } ).ok() );
+
+    // Version 2.0.0 has no Lua at all.
+    auto manifest = packManifest( "2.0.0" );
+    manifest[ "content" ] = QJsonObject{ { "previews", "previews.json" } };
+    const auto v2 = root.filePath( "v2" );
+    REQUIRE( QDir().mkpath( v2 ) );
+    for ( const auto& [ name, bytes ] :
+          { std::pair{ QStringLiteral( "plugin.json" ), QJsonDocument( manifest ).toJson() },
+            std::pair{ QStringLiteral( "previews.json" ), QByteArray( Previews ) } } ) {
+        QFile file( v2 + '/' + name );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( bytes );
+    }
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( job[ "state" ] == "completed" );
+    CHECK( job[ "result" ].toMap()[ "droppedEdits" ].toStringList() == QStringList{ "lua/a.lua" } );
+    CHECK( job[ "result" ].toMap()[ "warning" ].toString().contains( "lua/a.lua" ) );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( !QFileInfo::exists( content + "/lua/a.lua" ) );
+    const auto files = manager.manage( "pack_files", id, {} ).payload[ "files" ].toList();
+    CHECK( std::none_of( files.cbegin(), files.cend(), []( const QVariant& file ) {
+        return file.toMap()[ "kind" ] == "file";
+    } ) );
 }
 
 TEST_CASE( "Packs install, edit and update through their local store", "[packmerge][E16]" )
@@ -418,6 +544,36 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
                 .ok() );
     CHECK( manager.manage( "pack_history", id, { { "path", second } } ).payload[ "commits" ].toList().size()
            == 2 );
+    // Items are edited in place: no new item, no deleted Lua file, one spelling per item.
+    CHECK( manager.manage( "pack_edit", id,
+                           { { "path", "previews/%4Eew.json" },
+                             { "content", R"({ "name": "New", "regex": "^N$" })" } } )
+               .error
+           == "No such item in the pack." );
+    CHECK( !manager.manage( "pack_edit", id,
+                            { { "path", packcanonical::filePath( "lua/a.lua" ) }, { "remove", true } } )
+                .ok() );
+    CHECK( manager.manage( "pack_edit", id, { { "path", "previews/Second.json" }, { "content", "{}" } } )
+               .error
+           == "Not an item of the pack." );
+    CHECK( !manager.manage( "pack_reset", id, { { "path", "files/../outside.lua" } } ).ok() );
+    CHECK( !manager.manage( "pack_reset", id, { { "commit", "refs/heads/upstream" } } ).ok() );
+
+    // A content folder whose repository is gone still holds the edit: it is rebuilt, not reset.
+    REQUIRE( QDir( root.filePath( "data/pack-store/org.example.pack.git" ) ).removeRecursively() );
+    const auto kept = manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList();
+    REQUIRE( kept.size() == 1 );
+    CHECK( kept.first().toMap()[ "path" ] == second );
+    CHECK( previewRegex( content, "Second" ) == "^MINE$" );
+
+    // Options an operation does not take are refused, not ignored.
+    CHECK( manager.manage( "pack_read", id, { { "path", second }, { "version", "upstream" } } ).error
+           == "Unknown pack_read option: version." );
+    CHECK( !manager.manage( "pack_edit", id, { { "path", second }, { "text", "{}" } } ).ok() );
+    CHECK( !manager.manage( "pack_files", id, { { "path", second } } ).ok() );
+
+    // A damaged store is rebuilt before the next update merges, with the edit kept.
+    REQUIRE( QFile::remove( root.filePath( "data/pack-store/org.example.pack.git/refs/heads/local" ) ) );
 
     // A version that changes other things merges with the edit.
     auto v2Previews = QJsonDocument::fromJson( Previews ).object();
@@ -433,6 +589,10 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
     CHECK( previewRegex( content, "Second" ) == "^MINE$" );
     CHECK( previewRegex( content, "First Frame" ) == "^A2$" );
     CHECK( readFile( content + "/lua/a.lua" ) == "-- a, 2\n" );
+    CHECK( QDir( root.filePath( "data/pack-store" ) )
+               .entryList( { "org.example.pack.git.damaged-*" }, QDir::Dirs | QDir::NoDotAndDotDot )
+               .size()
+           == 1 );
 
     // A version that changes the edited field: refused from automation, with the conflict.
     auto second3 = previews[ 0 ].toObject();
@@ -477,6 +637,26 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
                      [ "state" ]
                  == "completed" );
         CHECK( previewRegex( content, "Second" ) == "^CHOSEN$" );
+    }
+    SECTION( "resolutions only for the pack's own items" )
+    {
+        // A path outside the pack, a file the manifest does not list and a renamed whole item
+        // are refused; nothing is written outside the store.
+        for ( const auto& resolution :
+              { QVariantMap{ { "path", "files/../../escaped.lua" }, { "text", "x" } },
+                QVariantMap{ { "path", "files/lua/other.lua" }, { "text", "x" } },
+                QVariantMap{ { "path", second },
+                             { "field", QString{} },
+                             { "value", QVariantMap{ { "name", "Other" } } } },
+                QVariantMap{ { "path", second }, { "field", "name" }, { "value", "Other" } } } ) {
+            const auto job = finished(
+                manager, manager.manage( "install", {},
+                                         { { "path", v3 }, { "resolutions", QVariantList{ resolution } } } ) );
+            CHECK( job[ "state" ] == "failed" );
+            CHECK( job[ "error" ].toString().startsWith( "Invalid merge resolution" ) );
+        }
+        CHECK( !QFileInfo::exists( root.filePath( "data/escaped.lua" ) ) );
+        CHECK( previewRegex( content, "Second" ) == "^MINE$" );
     }
     CHECK( !manager.manage( "install", {}, { { "path", v3 }, { "strategy", "both" } } ).ok() );
 

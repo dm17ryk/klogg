@@ -38,17 +38,17 @@ QByteArray readFile( const QString& path, QString* error )
 
 QString encodeName( const QString& name )
 {
+    // Byte by byte of the UTF-8 form, so characters outside the BMP (two QChars) stay whole.
     QString encoded;
-    for ( const auto character : name ) {
-        if ( plain( character ) ) {
+    for ( const auto byte : name.toUtf8() ) {
+        const auto character = QChar::fromLatin1( byte );
+        if ( static_cast<unsigned char>( byte ) < 0x80 && plain( character ) ) {
             encoded.append( character );
             continue;
         }
-        for ( const auto byte : QString( character ).toUtf8() ) {
-            encoded.append( QStringLiteral( "%%1" )
-                                .arg( static_cast<unsigned char>( byte ), 2, 16, QChar( '0' ) )
-                                .toUpper() );
-        }
+        encoded.append( QStringLiteral( "%%1" )
+                            .arg( static_cast<unsigned char>( byte ), 2, 16, QChar( '0' ) )
+                            .toUpper() );
     }
     // "." and ".." are not file names.
     if ( encoded == "." || encoded == ".." || encoded.isEmpty() ) {
@@ -145,6 +145,41 @@ QString filePath( const QString& packRelative )
     return FilesDir + QDir::cleanPath( packRelative );
 }
 
+QStringList listedFiles( const QJsonObject& manifest )
+{
+    PackContent content;
+    if ( !validatePackManifest( manifest, &content ).isEmpty() ) {
+        return {};
+    }
+    // The manifest check keeps these paths relative and inside the pack.
+    QStringList paths;
+    for ( const auto& file : content.luaLoad ) {
+        paths.append( filePath( content.luaFolder + '/' + file ) );
+    }
+    for ( const auto& decoder : content.pythonDecoders ) {
+        paths.append( filePath( decoder.module ) );
+    }
+    return paths;
+}
+
+bool isCanonical( const QString& storePath )
+{
+    const auto kind = kindOf( storePath );
+    if ( kind == QLatin1String( "preview" ) ) {
+        return storePath == PreviewsDir + encodeName( itemOf( storePath ) ) + JsonSuffix;
+    }
+    if ( kind == QLatin1String( "block" ) ) {
+        return storePath == BlocksDir + encodeName( itemOf( storePath ) ) + JsonSuffix;
+    }
+    if ( kind == QLatin1String( "file" ) ) {
+        const auto relative = itemOf( storePath );
+        return !relative.isEmpty() && !QDir::isAbsolutePath( relative ) && !relative.contains( ':' )
+               && !relative.contains( '\\' ) && filePath( relative ) == storePath
+               && !relative.startsWith( QStringLiteral( "../" ) ) && relative != QLatin1String( ".." );
+    }
+    return !kind.isEmpty();
+}
+
 PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory, QString* error )
 {
     PackContent content;
@@ -161,16 +196,9 @@ PackFiles fromPackFolder( const QJsonObject& manifest, const QString& directory,
         files = fromPreviews( readFile( QDir( directory ).filePath( content.previews ), &readError ),
                               &readError );
     }
-    QStringList relatives;
-    for ( const auto& file : content.luaLoad ) {
-        relatives.append( content.luaFolder + '/' + file );
-    }
-    for ( const auto& decoder : content.pythonDecoders ) {
-        relatives.append( decoder.module );
-    }
-    for ( const auto& relative : relatives ) {
-        files.insert( filePath( relative ),
-                      readFile( QDir( directory ).filePath( relative ), &readError ) );
+    for ( const auto& storePath : listedFiles( manifest ) ) {
+        files.insert( storePath,
+                      readFile( QDir( directory ).filePath( itemOf( storePath ) ), &readError ) );
     }
     if ( !readError.isEmpty() ) {
         if ( error ) {
