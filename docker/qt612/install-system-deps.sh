@@ -7,7 +7,7 @@ case "$ID" in
     apt-get -o Acquire::Retries=3 update
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
       build-essential python3 python3-venv libboost-dev libicu-dev \
-      libssl-dev libcurl4-openssl-dev libglib2.0-dev libdbus-1-dev \
+      libssl-dev libcurl4-openssl-dev libglib2.0-dev libdbus-1-dev libsecret-1-dev \
       libgtk-3-dev libwayland-egl1 \
       libfontconfig1 libfreetype6 libgl1-mesa-dev libglu1-mesa-dev \
       libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 \
@@ -25,7 +25,7 @@ case "$ID" in
     dnf config-manager --set-enabled crb
     dnf install -y --setopt=install_weak_deps=False \
       gcc gcc-c++ make python3 python3-pip rpm-build \
-      openssl-devel libcurl-devel libicu-devel glib2-devel dbus-devel \
+      openssl-devel libcurl-devel libicu-devel glib2-devel dbus-devel libsecret-devel \
       fontconfig freetype mesa-libGL-devel gtk3 libwayland-egl \
       libxkbcommon-x11 xcb-util-wm xcb-util-keysyms xcb-util-renderutil xcb-util-cursor \
       ninja-build zlib-devel git pkgconf-pkg-config wget ca-certificates file which
@@ -35,7 +35,7 @@ case "$ID" in
     zypper --non-interactive refresh
     zypper --non-interactive install --no-recommends \
       gcc15 gcc15-c++ make python3 python3-pip python3-virtualenv rpm-build \
-      boost-devel libopenssl-devel libcurl-devel libicu-devel glib2-devel dbus-1-devel \
+      boost-devel libopenssl-devel libcurl-devel libicu-devel glib2-devel dbus-1-devel libsecret-devel \
       fontconfig freetype2 Mesa-libGL-devel libglvnd-devel libGLU1 libxkbcommon-x11-0 \
       libgtk-3-0 libwayland-egl1 \
       libxcb-icccm4 libxcb-keysyms1 libxcb-render-util0 libxcb-cursor0 \

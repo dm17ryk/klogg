@@ -51,8 +51,10 @@ using CredentialPtr = std::shared_ptr<const Credential>;
 
 // Runs `git credential fill|approve|reject` for an Azure DevOps repository (design 3.5): Git by
 // an absolute path, `-c core.askPass=`, arguments as a list, GIT_TERMINAL_PROMPT=0, no askpass
-// variables, and GCM_INTERACTIVE=never unless the operation was started in the GUI. Standard error
-// is discarded; only the outcome is reported.
+// variables, and GCM_INTERACTIVE=never unless the operation was started in the GUI. Each run
+// starts in a new, empty folder of its own under the temporary folder, removed afterwards, so no
+// repository config can name a credential helper. Standard error is discarded; only the outcome
+// is reported.
 class GitCredentialHelper {
 public:
     static constexpr int SilentTimeoutMs = 15000;
@@ -66,9 +68,8 @@ public:
     // The configured path when it is an absolute, existing, executable file; otherwise the
     // absolute path QStandardPaths finds for "git"; empty when there is none.
     static QString resolveGit( const QString& configured );
-    // The folder Git runs in: the temporary folder, never a repository (see environment()).
-    static QString workingDirectory();
-    static QProcessEnvironment environment( bool interactive );
+    // The environment of a run in `workingDirectory`: repository discovery stops there.
+    static QProcessEnvironment environment( bool interactive, const QString& workingDirectory );
     static QByteArray fillRequest( const AzureDevOpsLocation& location );
     static QString outcomeText( Outcome outcome );
 
@@ -83,7 +84,8 @@ public:
 };
 
 // Where personal access tokens are kept (design 3.5): the operating system credential store, or
-// this session's memory when there is none. Keyed by repository ID.
+// this session's memory when there is none. Keyed by PluginManager::tokenKey(), which names the
+// CILogg profile, the repository ID and its address.
 class PatStore {
 public:
     struct Status {
@@ -94,21 +96,21 @@ public:
     using Done = std::function<void( Status status )>;
 
     virtual ~PatStore() = default;
-    virtual void read( const QString& repository, ReadDone done ) = 0;
-    virtual void write( const QString& repository, const QByteArray& token, Done done ) = 0;
-    virtual void remove( const QString& repository, Done done ) = 0;
+    virtual void read( const QString& key, ReadDone done ) = 0;
+    virtual void write( const QString& key, const QByteArray& token, Done done ) = 0;
+    virtual void remove( const QString& key, Done done ) = 0;
     // The name the token is stored under in the operating system store.
-    static QString storeName( const QString& repository );
+    static QString storeName( const QString& key );
 };
 
 // Tokens in memory for this session. Also the store used by tests.
 class MemoryPatStore : public PatStore {
 public:
     ~MemoryPatStore() override;
-    void read( const QString& repository, ReadDone done ) override;
-    void write( const QString& repository, const QByteArray& token, Done done ) override;
-    void remove( const QString& repository, Done done ) override;
-    bool contains( const QString& repository ) const;
+    void read( const QString& key, ReadDone done ) override;
+    void write( const QString& key, const QByteArray& token, Done done ) override;
+    void remove( const QString& key, Done done ) override;
+    bool contains( const QString& key ) const;
 
 private:
     QHash<QString, QByteArray> tokens_;

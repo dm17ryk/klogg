@@ -105,6 +105,8 @@ PluginManager::PluginManager( const QString& dataRoot, const QString& shippedRoo
     if ( !persistSettings().isEmpty() ) {
         LOG_WARNING << "Plugin repositories could not be persisted.";
     }
+    // Tokens of repositories removed earlier whose deletion did not work are tried again.
+    QTimer::singleShot( 0, this, [ this ] { deletePendingTokens(); } );
     auto limits = storage_.limits();
     for ( auto it = limits.begin(); it != limits.end(); ++it ) {
         bool valid = false;

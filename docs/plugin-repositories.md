@@ -149,7 +149,12 @@ Rules:
   address never update from the new one without the explicit source switch (section 3.4). Name,
   `enabled`, `autoUpdate` and `credentialSource` can be edited.
 - **Removing a repository** also deletes its stored PAT, so no token is left orphaned in the
-  credential store.
+  credential store. The deletion is listed in the plugin settings in the same write that removes the
+  repository (`pendingTokenDeletions`, store keys only); a deletion the store refuses, or one cut off
+  by an exit, is tried again at the next repository operation and the next start.
+- **Changing `credentialSource`** of a checked repository sets its state to "Sign-in needed": the
+  last check used the other source, so the repository counts as signed in only after a check with
+  the new one.
 - **Migration:** the first start with E15 turns the existing `catalogUrl` into the repository
   `default` (name "CILogg examples (GitHub)", sign-in `none`, enabled). An address the user had
   changed is kept. `catalogUrl` stays readable so an older CILogg copy that shares the folder keeps
@@ -286,9 +291,10 @@ and the scope always use one host.
    settings), never a bare `git` that Windows could resolve from the current folder. The command is
    `git -c core.askPass= credential fill`, with arguments as a list, never a shell command line, and
    with `GIT_TERMINAL_PROMPT=0` set and `GIT_ASKPASS` and `SSH_ASKPASS` removed, so Git can neither
-   wait on a console nor start another prompt program. Git runs in the temporary folder with
-   `GIT_CEILING_DIRECTORIES` set to its parent, so the configuration of a repository that CILogg
-   happens to be started in cannot name another credential helper. Its standard input is `protocol=https`,
+   wait on a console nor start another prompt program. Each run starts in a new, empty folder of
+   its own under the temporary folder (removed afterwards) with `GIT_CEILING_DIRECTORIES` set to its
+   parent, so neither a repository that CILogg happens to be started in nor a `.git` placed in the
+   temporary folder can name another credential helper. Its standard input is `protocol=https`,
    `host=dev.azure.com`, `path=<organization>/<project>/_git/<repository>` and
    `capability[]=authtype`: the request Git makes when it clones that repository. A user who
    already cloned the repository is signed in without a prompt. An interactive sign-in is the credential
@@ -303,12 +309,17 @@ and the scope always use one host.
    `git credential reject` deletes the credential that Git itself uses, so CILogg runs it only after
    a 401 from an address inside the repository's scope, during an operation the user started in the
    GUI, with the complete `fill` output, and then asks once more with `fill` (the credential manager
-   shows its sign-in window). Silent checks and CLI/MCP/Python operations never reject; they mark
-   the repository "Sign-in needed".
+   shows its sign-in window). The same rule applies to a catalog and to a package download. Silent
+   checks and CLI/MCP/Python operations never reject; they mark the repository "Sign-in needed".
 3. **Personal access token (fallback).** When Git is not installed, the credential manager is
    missing or the user prefers it, **Sign In** asks for a PAT with the Code (Read) scope. It is
    stored in the operating system credential store through QtKeychain (Windows Credential Manager,
-   macOS Keychain, Secret Service on Linux) under `CILogg plugin repository <id>`. Without a usable
+   macOS Keychain, Secret Service or KWallet on Linux; the Linux builds include the libsecret
+   headers for the Secret Service) under `CILogg plugin repository <profile>/<id>/<address>`, where
+   `<profile>` and `<address>` are short SHA-256 hashes of the plugin data folder and of the
+   repository's organization, project, repository, branch and path. An installed and a portable
+   copy, or two portable copies, that give the same ID to a repository therefore never share or
+   overwrite a token, and neither does a later repository with another address. Without a usable
    store the PAT is kept in memory for the session only, and the dialog says so. It is sent as
    `Authorization: Basic` with an empty user name, as Azure DevOps documents.
 

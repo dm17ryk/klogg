@@ -232,7 +232,10 @@ repository and pipeline layout. Users need only Read access to that repository.
   operating system credential store (Windows Credential Manager, macOS Keychain, Secret Service
   or KWallet on Linux), never in its settings. Without a usable store the token is kept until
   CILogg exits, and the window says so. **Sign Out** deletes it; removing the repository deletes
-  it too.
+  it too (if the store refuses, CILogg tries again later). Each CILogg copy, installed or
+  portable, keeps its own tokens.
+- Changing the credential source in **Edit…** shows "Sign-in needed" until you sign in with
+  the new one.
 - The credential is sent only to addresses of the repository's organization on
   `dev.azure.com`, never to other hosts, other organizations or after a redirect leaves them.
   It never appears in logs, settings, job results or problem reports.

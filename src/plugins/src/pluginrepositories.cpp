@@ -387,6 +387,7 @@ QString PluginRepositories::update( const QString& id, const QVariantMap& option
                                    "repository with the other address and remove this one." );
         }
     }
+    const auto previousSource = record->credentialSource;
     auto error
         = unknownOption( options, { "name", "enabled", "auto_update", "credential_source" } );
     if ( error.isEmpty() && options.contains( "credential_source" ) ) {
@@ -417,6 +418,14 @@ QString PluginRepositories::update( const QString& id, const QVariantMap& option
     settings_.setValue( key( id, "autoUpdate" ), record->autoUpdate );
     if ( record->isAzureDevOps() ) {
         settings_.setValue( key( id, "credentialSource" ), record->credentialSource );
+        // The last check used the other source and says nothing about this one: the repository
+        // is not signed in until it is checked with the new source.
+        if ( record->credentialSource != previousSource && !record->lastState.isEmpty() ) {
+            record->lastState = SignInRequiredState;
+            record->lastError = QStringLiteral( "The credential source changed. Sign in again." );
+            settings_.setValue( key( id, "lastState" ), record->lastState );
+            settings_.setValue( key( id, "lastError" ), record->lastError );
+        }
     }
     if ( updated ) {
         *updated = *record;

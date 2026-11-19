@@ -542,19 +542,23 @@ TEST_CASE( "Azure DevOps repositories are added, signed in and signed out in the
                               15000 ) );
     REQUIRE( *passwordField );
     const auto id = manager.repositories()[ row ].toMap()[ "id" ].toString();
-    REQUIRE( tokens->contains( id ) );
+    const auto key = manager.tokenKey( id );
+    REQUIRE( tokens->contains( key ) );
     REQUIRE( server.requests.last().headers.value( "authorization" )
              == "Basic " + QByteArray( ":ui-pat" ).toBase64() );
-    QFile settingsFile( QDir( data ).filePath( "settings.ini" ) );
-    REQUIRE( settingsFile.open( QIODevice::ReadOnly ) );
-    REQUIRE_FALSE( settingsFile.readAll().contains( "ui-pat" ) );
+    {
+        // Closed again at once: on Windows an open handle makes the next settings save fail.
+        QFile settingsFile( QDir( data ).filePath( "settings.ini" ) );
+        REQUIRE( settingsFile.open( QIODevice::ReadOnly ) );
+        REQUIRE_FALSE( settingsFile.readAll().contains( "ui-pat" ) );
+    }
 
     // Sign Out deletes it.
     repositories->selectRow( row );
     dialog->findChild<QPushButton*>( "pluginRepositorySignOut" )->click();
     REQUIRE( QTest::qWaitFor( [ & ] { return status->text() == "Signed out of \"Team\"."; },
                               5000 ) );
-    REQUIRE_FALSE( tokens->contains( id ) );
+    REQUIRE_FALSE( tokens->contains( key ) );
     REQUIRE( repositories->item( row, 5 )->text() == "Sign-in needed" );
     dialog->close();
 #endif

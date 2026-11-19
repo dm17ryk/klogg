@@ -12,7 +12,7 @@ RUN rm -rf /var/lib/apt/lists/* && \
     apt-get -o Acquire::Retries=3 install --no-install-recommends \
         build-essential python3 python-is-python3 python3-pip python3-venv \
         libboost-dev libssl-dev libicu-dev libcurl4-openssl-dev \
-        libglib2.0-dev \
+        libglib2.0-dev libsecret-1-dev \
         libdbus-1-dev libgtk-3-dev libwayland-egl1 libwayland-cursor0 \
         libfbclient2 \
         libtiff5 \

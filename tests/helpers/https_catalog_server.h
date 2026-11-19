@@ -91,7 +91,9 @@ struct Route {
     QByteArray body;
     QByteArray contentType = "application/json";
     int delayMs = 0;
-    QList<QPair<QByteArray, QByteArray>> headers; // extra response headers, e.g. Location
+    // Extra response headers, e.g. Location. The initializer lets routes leave it out without
+    // -Wmissing-field-initializers (GCC and Clang -Wextra).
+    QList<QPair<QByteArray, QByteArray>> headers = {};
 };
 
 struct RecordedRequest {

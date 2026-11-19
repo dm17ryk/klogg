@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTimer>
 
 namespace cilogg::plugins {
@@ -46,14 +47,23 @@ void runGit( const QString& git, const char* verb, const QByteArray& input, bool
         QTimer::singleShot( 0, context, [ done ] { done( Outcome::GitNotFound, {} ); } );
         return;
     }
+    // Never inside a repository: a .git or a repository config in the folder Git starts in could
+    // name a credential helper that would then receive the credential. Each run gets a new, empty
+    // folder of its own, and GIT_CEILING_DIRECTORIES (its parent) stops the search above it.
+    auto folder = std::make_shared<QTemporaryDir>(
+        QDir( QDir::tempPath() ).filePath( QStringLiteral( "cilogg-git-XXXXXX" ) ) );
+    const auto directory
+        = folder->isValid() ? QFileInfo( folder->path() ).canonicalFilePath() : QString{};
+    if ( directory.isEmpty() ) {
+        QTimer::singleShot( 0, context, [ done ] { done( Outcome::Failed, {} ); } );
+        return;
+    }
     auto* process = new QProcess( context );
     process->setProgram( git );
-    // Never inside a repository: its .git/config could name a credential helper that would then
-    // receive the credential (GIT_CEILING_DIRECTORIES stops the search above this folder).
-    process->setWorkingDirectory( GitCredentialHelper::workingDirectory() );
+    process->setWorkingDirectory( directory );
     process->setArguments( { QStringLiteral( "-c" ), QStringLiteral( "core.askPass=" ),
                              QStringLiteral( "credential" ), QString::fromLatin1( verb ) } );
-    process->setProcessEnvironment( GitCredentialHelper::environment( interactive ) );
+    process->setProcessEnvironment( GitCredentialHelper::environment( interactive, directory ) );
     // Messages from Git or the credential manager are never logged (design 3.6).
     process->setStandardErrorFile( QProcess::nullDevice() );
 
@@ -61,11 +71,12 @@ void runGit( const QString& git, const char* verb, const QByteArray& input, bool
     auto overflow = std::make_shared<bool>( false );
     auto timedOut = std::make_shared<bool>( false );
     auto completed = std::make_shared<bool>( false );
-    const auto complete = [ process, answer, completed, done ]( Outcome outcome ) {
+    const auto complete = [ process, folder, answer, completed, done ]( Outcome outcome ) {
         if ( *completed ) {
             return;
         }
         *completed = true;
+        folder->remove();
         process->deleteLater();
         done( outcome, outcome == Outcome::Ok ? *answer : QByteArray{} );
         wipeSecret( *answer );
@@ -146,12 +157,8 @@ QString GitCredentialHelper::resolveGit( const QString& configured )
     return !found.isEmpty() && usable( found ) ? QFileInfo( found ).absoluteFilePath() : QString{};
 }
 
-QString GitCredentialHelper::workingDirectory()
-{
-    return QDir::cleanPath( QDir::tempPath() );
-}
-
-QProcessEnvironment GitCredentialHelper::environment( bool interactive )
+QProcessEnvironment GitCredentialHelper::environment( bool interactive,
+                                                     const QString& workingDirectory )
 {
     auto environment = QProcessEnvironment::systemEnvironment();
     for ( const auto& key : environment.keys() ) {
@@ -161,7 +168,7 @@ QProcessEnvironment GitCredentialHelper::environment( bool interactive )
     }
     // Repository discovery stops at the working directory: no repository config is read.
     environment.insert( QStringLiteral( "GIT_CEILING_DIRECTORIES" ),
-                        QFileInfo( workingDirectory() ).absolutePath() );
+                        QDir::toNativeSeparators( QFileInfo( workingDirectory ).absolutePath() ) );
     environment.remove( QStringLiteral( "GIT_DIR" ) );
     environment.remove( QStringLiteral( "GIT_WORK_TREE" ) );
     environment.insert( QStringLiteral( "GIT_TERMINAL_PROMPT" ), QStringLiteral( "0" ) );

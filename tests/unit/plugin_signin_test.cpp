@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QScopeGuard>
 #include <QSysInfo>
 #include <QTemporaryDir>
 #include <QThread>
@@ -464,6 +465,23 @@ TEST_CASE( "Packages of an Azure DevOps catalog get the credential only inside t
     REQUIRE( outsideRequests.size() == 1 );
     CHECK_FALSE( outsideRequests.at( 0 ).headers.contains( "authorization" ) );
     CHECK_FALSE( serialized( fixture.manager->jobs() ).contains( "package-token" ) );
+
+    // A package that answers 401: as for a catalog, only the GUI rejects the credential manager
+    // credential and asks once more (the catalog stays cached; the package now gets 401).
+    REQUIRE( waitUntil( [ & ] { return git.verbs().count( "approve" ) == 2; } ) );
+    fixture.server.route( CatalogPath, { 401, "denied", "text/plain" } );
+    auto before = git.verbs().size();
+    const auto silent = finishedJob(
+        *fixture.manager, fixture.manager->manage( "install", "org.test.inside", {}, "mcp" ) );
+    CHECK( silent.value( "error" ).toString().contains( "Sign-in needed" ) );
+    CHECK( git.verbs().mid( before ) == QStringList{ "fill" } );
+    before = git.verbs().size();
+    const auto interactive
+        = finishedJob( *fixture.manager,
+                       fixture.manager->manage( "install", "org.test.inside", {}, RequestOriginGui ) );
+    CHECK( interactive.value( "error" ).toString().contains( "Sign-in needed" ) );
+    CHECK( git.verbs().mid( before ) == QStringList{ "fill", "reject", "fill" } );
+    CHECK( git.calls().at( before + 2 ).value( "GCM_INTERACTIVE" ).toString() == "<unset>" );
 #endif
 }
 
@@ -482,6 +500,8 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
     FakeGit git( "fail" );
     fixture.server.route( CatalogPath, { 200, emptyCatalog() } );
     const auto id = fixture.add( { { "credential_source", "personal-access-token" } } );
+    const auto key = fixture.manager->tokenKey( id );
+    REQUIRE_FALSE( key.isEmpty() );
     const QVariantMap withToken{ { "repository", id },
                                  { "method", "personal-access-token" },
                                  { "token", "secret-pat" } };
@@ -498,7 +518,7 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
                            { "token", "secret-pat" } },
                          RequestOriginCli )
                .error.contains( "only to method personal-access-token" ) );
-    CHECK_FALSE( fixture.tokens->contains( id ) );
+    CHECK_FALSE( fixture.tokens->contains( key ) );
 
     const auto signedIn = finishedJob(
         *fixture.manager,
@@ -507,7 +527,7 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
     REQUIRE( signedIn.value( "state" ) == "completed" );
     CHECK( signedIn.value( "result" ).toMap().value( "signedIn" ) == true );
     CHECK( signedIn.value( "result" ).toMap().value( "sessionOnly" ) == true );
-    CHECK( fixture.tokens->contains( id ) );
+    CHECK( fixture.tokens->contains( key ) );
     CHECK( requestsTo( fixture.server, CatalogPath ).last().headers.value( "authorization" )
            == "Basic " + QByteArray( ":secret-pat" ).toBase64() );
     CHECK( fixture.repository( id ).value( "signedIn" ) == true );
@@ -528,7 +548,7 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
         *fixture.manager,
         fixture.manager->manage( "repository_sign_out", {}, { { "repository", id } }, "mcp" ) );
     CHECK( signedOut.value( "result" ).toMap().value( "signedOut" ) == true );
-    CHECK_FALSE( fixture.tokens->contains( id ) );
+    CHECK_FALSE( fixture.tokens->contains( key ) );
     CHECK( fixture.repository( id ).value( "signedIn" ) == false );
     CHECK( fixture.fetch( id, "mcp" ).value( "error" ).toString().contains( "Sign-in needed" ) );
     CHECK( requestsTo( fixture.server, CatalogPath ).size() == requestCount );
@@ -539,16 +559,68 @@ TEST_CASE( "A personal access token comes only from the GUI or the CLI and is ke
         *fixture.manager,
         fixture.manager->manage( "repository_sign_in", {}, withToken, RequestOriginGui ) );
     CHECK( refused.value( "result" ).toMap().value( "signedIn" ) == false );
-    CHECK_FALSE( fixture.tokens->contains( id ) );
+    CHECK_FALSE( fixture.tokens->contains( key ) );
 
     // Removing the repository deletes its token.
     fixture.server.route( CatalogPath, { 200, emptyCatalog() } );
     finishedJob( *fixture.manager,
                  fixture.manager->manage( "repository_sign_in", {}, withToken, RequestOriginGui ) );
-    REQUIRE( fixture.tokens->contains( id ) );
+    REQUIRE( fixture.tokens->contains( key ) );
+    REQUIRE( fixture.repository( id ).value( "signedIn" ) == true );
+
+    // Another credential source is not signed in until it is checked.
+    const auto switched = fixture.manager->manage(
+        "repository_update", {},
+        { { "repository", id }, { "credential_source", "git-credential-manager" } } );
+    REQUIRE( switched.ok() );
+    CHECK( switched.payload.value( "repository" ).toMap().value( "signedIn" ) == false );
+    CHECK( fixture.repository( id ).value( "signedIn" ) == false );
+    CHECK( fixture.repository( id ).value( "state" ) == "sign_in_required" );
+
     REQUIRE( fixture.manager->manage( "repository_remove", {}, { { "repository", id } } ).ok() );
-    CHECK_FALSE( fixture.tokens->contains( id ) );
+    CHECK_FALSE( fixture.tokens->contains( key ) );
+    CHECK_FALSE( fixture.settingsText().contains( "pendingTokenDeletions" ) );
 #endif
+}
+
+TEST_CASE( "A token key names the CILogg profile, the repository ID and its address",
+           "[plugins][workbench][E15]" )
+{
+    QTemporaryDir temp;
+    const auto manager = [ & ]( const QString& profile ) {
+        auto created = std::make_unique<PluginManager>(
+            QDir( temp.path() ).filePath( profile ), QDir( temp.path() ).filePath( "none" ) );
+        created->setPatStore( std::make_unique<MemoryPatStore>() );
+        return created;
+    };
+    const QVariantMap options{ { "name", "Team" },
+                               { "url", RepositoryAddress },
+                               { "sign_in", "azure-devops" } };
+    auto installed = manager( "installed" );
+    auto portable = manager( "portable" );
+    const auto first = installed->manage( "repository_add", {}, options );
+    const auto second = portable->manage( "repository_add", {}, options );
+    REQUIRE( first.ok() );
+    REQUIRE( second.ok() );
+    const auto id = first.payload.value( "repository" ).toMap().value( "id" ).toString();
+    // Two copies give the same ID to the same repository, yet never share a token.
+    REQUIRE( second.payload.value( "repository" ).toMap().value( "id" ).toString() == id );
+    const auto key = installed->tokenKey( id );
+    CHECK( key.contains( '/' + id + '/' ) );
+    CHECK( key != portable->tokenKey( id ) );
+    CHECK( key == installed->tokenKey( id ) );
+
+    // Another address in the same profile has another key.
+    auto other = options;
+    other.insert( "url", QStringLiteral( "https://dev.azure.com/contoso/Other/_git/catalog" ) );
+    const auto added = installed->manage( "repository_add", {}, other );
+    REQUIRE( added.ok() );
+    const auto otherKey
+        = installed->tokenKey( added.payload.value( "repository" ).toMap().value( "id" ).toString() );
+    CHECK( otherKey != key );
+    CHECK( otherKey.section( '/', 0, 0 ) == key.section( '/', 0, 0 ) );
+    CHECK( installed->tokenKey( "default" ).isEmpty() ); // a public repository has no token
+    CHECK( installed->tokenKey( "missing" ).isEmpty() );
 }
 
 TEST_CASE( "A token is not kept for a removed repository or when the store refuses it",
@@ -575,13 +647,14 @@ TEST_CASE( "A token is not kept for a removed repository or when the store refus
     {
         fixture.server.route( CatalogPath, { 200, emptyCatalog(), "application/json", 800 } );
         const auto id = fixture.add();
+        const auto key = fixture.manager->tokenKey( id );
         const auto started = signIn( id );
         REQUIRE( started.ok() );
         REQUIRE( fixture.manager->manage( "repository_remove", {}, { { "repository", id } } ).ok() );
         const auto job = finishedJob( *fixture.manager, started );
         CHECK( job.value( "state" ) == "failed" );
         CHECK( job.value( "error" ).toString().contains( "removed" ) );
-        CHECK_FALSE( fixture.tokens->contains( id ) );
+        CHECK_FALSE( fixture.tokens->contains( key ) );
     }
     SECTION( "the credential store refuses the token" )
     {
@@ -602,6 +675,86 @@ TEST_CASE( "A token is not kept for a removed repository or when the store refus
         CHECK( fixture.repository( id ).value( "signedIn" ) == false );
         CHECK( fixture.repository( id ).value( "state" ) == "sign_in_required" );
         CHECK( fixture.repository( id ).value( "credentialSource" ) == "git-credential-manager" );
+    }
+    SECTION( "a sign-in whose settings cannot be saved fails and says so" )
+    {
+        fixture.server.route( CatalogPath, { 200, emptyCatalog() } );
+        const auto id = fixture.add();
+        const auto key = fixture.manager->tokenKey( id );
+        const auto settingsPath = QDir( fixture.data ).filePath( "settings.ini" );
+        const auto fileMode = QFile::permissions( settingsPath );
+        const auto folderMode = QFile::permissions( fixture.data );
+        const auto readOnly = QFileDevice::ReadOwner | QFileDevice::ReadUser
+                              | QFileDevice::ReadGroup | QFileDevice::ReadOther;
+        REQUIRE( QFile::setPermissions( settingsPath, readOnly ) );
+        QFile::setPermissions( fixture.data, readOnly | QFileDevice::ExeOwner | QFileDevice::ExeUser
+                                                 | QFileDevice::ExeGroup | QFileDevice::ExeOther );
+        const auto restore = qScopeGuard( [ & ] {
+            QFile::setPermissions( fixture.data, folderMode );
+            QFile::setPermissions( settingsPath, fileMode );
+        } );
+        QFile settingsProbe( settingsPath );
+        QFile folderProbe( QDir( fixture.data ).filePath( "probe.tmp" ) );
+#ifdef Q_OS_WIN
+        const bool writable = settingsProbe.open( QIODevice::Append );
+#else
+        const bool writable = settingsProbe.open( QIODevice::Append )
+                              || folderProbe.open( QIODevice::WriteOnly );
+#endif
+        if ( writable ) {
+            settingsProbe.close();
+            folderProbe.remove();
+            WARN( "The plugin settings cannot be made read-only here (running as root?)" );
+            return;
+        }
+        const auto job = finishedJob( *fixture.manager, signIn( id ) );
+        CHECK( job.value( "state" ) == "failed" );
+        CHECK( job.value( "error" ).toString().contains( "Cannot persist plugin settings" ) );
+        CHECK( job.value( "error" ).toString().contains( "token is kept until Sign Out or Remove" ) );
+        CHECK( fixture.tokens->contains( key ) );
+        CHECK_FALSE( job.value( "error" ).toString().contains( "late-pat" ) );
+    }
+    SECTION( "a token whose deletion fails is deleted at the next repository operation" )
+    {
+        class FlakyStore : public MemoryPatStore {
+        public:
+            bool refuseRemove = true;
+            void remove( const QString& key, Done done ) override
+            {
+                if ( refuseRemove ) {
+                    done( { QStringLiteral( "The credential store did not delete the token." ),
+                            false } );
+                    return;
+                }
+                MemoryPatStore::remove( key, std::move( done ) );
+            }
+        };
+        auto store = std::make_unique<FlakyStore>();
+        auto* flaky = store.get();
+        fixture.manager->setPatStore( std::move( store ) );
+        fixture.server.route( CatalogPath, { 200, emptyCatalog() } );
+        const auto id = fixture.add();
+        const auto key = fixture.manager->tokenKey( id );
+        REQUIRE( finishedJob( *fixture.manager, signIn( id ) ).value( "state" ) == "completed" );
+        REQUIRE( flaky->contains( key ) );
+
+        // The repository is removed at once; its token stays listed for deletion.
+        REQUIRE( fixture.manager->manage( "repository_remove", {}, { { "repository", id } } ).ok() );
+        CHECK( fixture.repository( id ).isEmpty() );
+        CHECK( flaky->contains( key ) );
+        CHECK( fixture.settingsText().contains( "pendingTokenDeletions" ) );
+        CHECK_FALSE( fixture.settingsText().contains( "late-pat" ) );
+
+        // The listing the window repeats does not ask the store; the next change does.
+        flaky->refuseRemove = false;
+        REQUIRE( fixture.manager->manage( "repositories", {}, {} ).ok() );
+        CHECK( flaky->contains( key ) );
+        REQUIRE( fixture.manager
+                     ->manage( "repository_update", {},
+                               { { "repository", "default" }, { "enabled", true } } )
+                     .ok() );
+        CHECK_FALSE( flaky->contains( key ) );
+        CHECK_FALSE( fixture.settingsText().contains( "pendingTokenDeletions" ) );
     }
 #endif
 }

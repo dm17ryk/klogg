@@ -95,15 +95,15 @@ public:
     static QString normalizedAddress( const QString& url );
     // Empty when `url` is an acceptable public catalog address.
     static QString addressError( const QString& url );
+    // What two repositories are compared by to refuse a duplicate: the normalized address, or
+    // the Azure DevOps organization, project, repository, branch and path.
+    static QString identity( const RepositoryRecord& record );
 
 private:
     QStringList order() const;
     QStringList retired() const;
     void setOrder( const QStringList& ids );
     QString newId( const QString& name ) const;
-    // What two repositories are compared by to refuse a duplicate: the normalized address, or
-    // the Azure DevOps organization, project, repository, branch and path.
-    static QString identity( const RepositoryRecord& record );
     static QString key( const QString& id, const char* field );
     QSettings& settings_;
 };

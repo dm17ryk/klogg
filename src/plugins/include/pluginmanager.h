@@ -45,6 +45,11 @@ public:
                    const QString& origin = {} );
     // Where personal access tokens are kept (default: the operating system credential store).
     void setPatStore( std::unique_ptr<PatStore> store );
+    // The key the personal access token of an Azure DevOps repository is kept under: the CILogg
+    // profile (the plugin data folder), the repository ID and its address, so neither another
+    // CILogg copy nor a later repository with another address can read it. Empty when there is
+    // no such repository.
+    QString tokenKey( const QString& repositoryId ) const;
     Result invoke( const QString& pluginId, const QString& action, const QVariantMap& arguments,
                    const QVariantMap& context );
     Result job( const QString& id ) const;
@@ -210,9 +215,11 @@ private:
     // HTTPS GET within `limit` bytes and 30 s. The handler runs later on this thread, and not
     // at all once the job is cancelled or CILogg shuts down. With a credential, redirects are
     // followed here (at most 5, HTTPS, each checked against the scope; the credential is dropped
-    // once a hop leaves it), each hop with a fresh 30 s timer and the same limit.
+    // once a hop leaves it), each hop with a fresh 30 s timer and the same limit. `auth` has no
+    // default argument: GCC and Clang refuse one whose type is a nested struct with member
+    // initializers, which is not complete inside its enclosing class.
     void download( const QString& url, qint64 limit, const QString& jobId, DownloadHandler handler,
-                   DownloadAuth auth = {} );
+                   DownloadAuth auth );
     void downloadHop( const QUrl& target, const std::shared_ptr<DownloadState>& state );
     QString gitExecutable() const;
     void acquireCredential( const RepositoryRecord& record, const AzureDevOpsLocation& location,
@@ -222,9 +229,22 @@ private:
     void fetchRepositoryCatalog( const RepositoryRecord& record, const QString& jobId,
                                  const SignInRequest& request, DownloadHandler done,
                                  bool retried = false );
-    void fetchPackage( const QJsonObject& entry, const QString& jobId, bool interactive );
+    // A package, with the repository's credential inside its scope. As with a catalog, a credential
+    // manager credential refused with 401 is rejected and asked for once more only when
+    // interactive.
+    void fetchPackage( const QJsonObject& entry, const QString& jobId, bool interactive,
+                       bool retried = false );
     void downloadPackage( const QJsonObject& entry, const QString& jobId, const QString& url,
                           DownloadAuth auth );
+    void stagePackage( const QJsonObject& entry, const QString& jobId, const QByteArray& bytes );
+    QString tokenKeyFor( const RepositoryRecord& record ) const;
+    // Tokens of removed repositories: listTokenDeletion() lists a key in the settings (the caller
+    // persists them), deletePendingTokens() asks the store to delete every listed key that is not
+    // already being deleted and deleteToken() asks for one key. A key stays listed until its
+    // deletion works and is tried again at the next repository change and the next start.
+    void listTokenDeletion( const QString& key );
+    void deletePendingTokens();
+    void deleteToken( const QString& key );
     Result manageRepositories( const QString& operation, const QVariantMap& options,
                                const QString& origin );
     Result signIn( const QVariantMap& options, const QString& origin );
@@ -271,6 +291,7 @@ private:
     std::shared_ptr<CatalogRun> catalogRun_;
     QString hostVersion_;
     std::unique_ptr<PatStore> patStore_ = createSystemPatStore();
+    QStringList deletingTokens_; // token deletions the store is working on
     bool storageScanActive_ = false;
     int storageTicks_ = 0;
     quint64 storageScanGeneration_ = 0;

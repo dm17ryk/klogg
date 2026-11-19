@@ -373,14 +373,23 @@ TEST_CASE( "git credential fill runs with the credential rules", "[plugins][E15]
         CHECK( calls.at( 0 ).value( "GCM_INTERACTIVE" ).toString() == "never" );
         CHECK( calls.at( 0 ).value( "GIT_ASKPASS" ).toString() == "<unset>" );
         CHECK( calls.at( 0 ).value( "SSH_ASKPASS" ).toString() == "<unset>" );
-        // Never inside a repository whose config could name another credential helper.
-        CHECK( QDir::cleanPath( calls.at( 0 ).value( "cwd" ).toString() )
-                   .compare( GitCredentialHelper::workingDirectory(), Qt::CaseInsensitive )
+        // Never inside a repository whose config could name another credential helper: a new,
+        // empty folder of its own under the temporary folder, removed afterwards, with the
+        // repository search stopped at its parent.
+        const auto cwd = QDir::cleanPath( calls.at( 0 ).value( "cwd" ).toString() );
+        CHECK( QFileInfo( cwd ).fileName().startsWith( "cilogg-git-" ) );
+        CHECK( QFileInfo( cwd ).absolutePath().compare(
+                   QFileInfo( QDir::tempPath() ).canonicalFilePath(), Qt::CaseInsensitive )
                == 0 );
-        CHECK( QDir::cleanPath( calls.at( 0 ).value( "GIT_CEILING_DIRECTORIES" ).toString() )
-                   .compare( QFileInfo( GitCredentialHelper::workingDirectory() ).absolutePath(),
-                             Qt::CaseInsensitive )
+        CHECK( calls.at( 0 ).value( "cwdEntries" ).toInt( -1 ) == 0 );
+        CHECK_FALSE( QFileInfo::exists( cwd ) );
+        CHECK( QDir::cleanPath( QDir::fromNativeSeparators(
+                                    calls.at( 0 ).value( "GIT_CEILING_DIRECTORIES" ).toString() ) )
+                   .compare( QFileInfo( cwd ).absolutePath(), Qt::CaseInsensitive )
                == 0 );
+        // Each run gets its own folder.
+        REQUIRE( runFill( FakeGit::path(), location, false ).credential );
+        CHECK( QDir::cleanPath( git.calls().at( 1 ).value( "cwd" ).toString() ) != cwd );
     }
     SECTION( "an interactive fill lets the credential manager show its window" )
     {

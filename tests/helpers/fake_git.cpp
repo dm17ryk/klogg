@@ -93,7 +93,12 @@ int main( int argc, char** argv )
                 { "SSH_ASKPASS", QString::fromUtf8( environmentValue( "SSH_ASKPASS" ) ) },
                 { "GIT_CEILING_DIRECTORIES",
                   QString::fromUtf8( environmentValue( "GIT_CEILING_DIRECTORIES" ) ) },
-                { "cwd", QDir::currentPath() } };
+                { "cwd", QDir::currentPath() },
+                { "cwdEntries",
+                  int( QDir::current()
+                           .entryList( QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden
+                                       | QDir::System )
+                           .size() ) } };
             record.write( QJsonDocument( line ).toJson( QJsonDocument::Compact ) + '\n' );
         }
     }
