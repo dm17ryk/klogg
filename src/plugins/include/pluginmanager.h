@@ -109,6 +109,20 @@ public:
     void setMessageRateLimit( int count, int windowMs );
     // Process state of a plugin ("stopped" when it has no process); empty when unknown.
     QString pluginState( const QString& pluginId ) const;
+    // Configuration packs (design 4.2-4.3): the application's check of a pack against the
+    // user's items and the other enabled packs (name collisions, merged limits). It gets the
+    // pack's ID, folder and manifest and returns the refusal, or an empty string. It runs when a
+    // pack is enabled and before an update of an enabled pack is installed.
+    using PackCheck = std::function<QString( const QString& id, const QString& directory,
+                                             const QJsonObject& manifest )>;
+    void setPackCheck( PackCheck check );
+    // The plugin.json of an installed plugin as read, without the `get_plugins` fields; empty
+    // when unknown.
+    QJsonObject manifest( const QString& pluginId ) const;
+    // The folder of an installed plugin; empty when unknown.
+    QString pluginDirectory( const QString& pluginId ) const;
+    // The valid configuration packs the user enabled, in ID order. Cheaper than plugins().
+    QStringList enabledPacks() const;
 
 Q_SIGNALS:
     void changed();
@@ -138,6 +152,8 @@ private:
         Manifest manifest;
         std::unique_ptr<PluginProcess> process;
         QString diagnostics;
+        // `get_plugins` pack fields, read once at discovery (configpack.h packSummary).
+        QVariantMap pack;
     };
     struct Job {
         QString id;
@@ -344,6 +360,7 @@ private:
     QNetworkAccessManager network_;
     QNetworkAccessManager* networkAccess_;
     std::map<QString, std::unique_ptr<Entry>> entries_;
+    PackCheck packCheck_;
     std::map<QString, Job> jobs_;
     std::map<QString, Stream> streams_;
     std::vector<OpenView> openViews_;

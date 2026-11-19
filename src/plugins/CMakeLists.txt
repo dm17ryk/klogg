@@ -1,5 +1,6 @@
 add_library(klogg_plugins STATIC
   include/azuredevops.h src/azuredevops.cpp
+  include/configpack.h src/configpack.cpp
   include/pluginmanifest.h src/pluginmanifest.cpp
   include/plugincatalog.h src/plugincatalog.cpp
   include/pluginprocess.h src/pluginprocess.cpp

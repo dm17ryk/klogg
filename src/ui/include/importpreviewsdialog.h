@@ -19,6 +19,7 @@ private Q_SLOTS:
     void moveSelectedPreviewDown();
     void removeSelectedPreview();
     void clearAllPreviews();
+    void copySelectedPreview();
     void refreshTable();
 
 private:
@@ -33,5 +34,6 @@ private:
     QToolButton* moveDownButton_ = nullptr;
     QToolButton* removeButton_ = nullptr;
     QToolButton* clearButton_ = nullptr;
+    QToolButton* copyButton_ = nullptr;
     int pendingSelectionRow_ = -1;
 };

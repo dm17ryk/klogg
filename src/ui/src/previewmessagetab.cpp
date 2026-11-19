@@ -642,34 +642,6 @@ struct BlockResolution {
 // block is not present. Add an entry here to enable fallback for a new
 // protocol/role without touching the lookup logic below.
 //
-// This is intentionally a code-level table rather than runtime config: the
-// fallback names are tied to blocks that ship with the preview definitions,
-// so the two are versioned together. If/when block specs gain their own
-// optional "fallback" field in the preview config (see PreviewFieldSpec),
-// this table can be replaced by reading that field.
-struct BlockFallbackRule {
-    const char* prefix;
-    const char* fallback;
-};
-
-constexpr BlockFallbackRule kBlockFallbackRules[] = {
-    { "at_command_", "at_command_generic_args_block" },
-    { "at_response_", "at_response_generic_args_block" },
-};
-
-QString fallbackBlockName( const QString& resolvedName )
-{
-    if ( !resolvedName.endsWith( "_block" ) ) {
-        return {};
-    }
-    for ( const auto& rule : kBlockFallbackRules ) {
-        if ( resolvedName.startsWith( QLatin1String( rule.prefix ) ) ) {
-            return QLatin1String( rule.fallback );
-        }
-    }
-    return {};
-}
-
 BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseContext& context )
 {
     BlockResolution result;
@@ -692,8 +664,7 @@ BlockResolution resolveBlockReference( const PreviewFieldSpec& field, ParseConte
     const auto it = context.blocks->find( result.resolvedName );
     if ( it == context.blocks->end() ) {
         if ( missing.isEmpty() ) {
-            const auto fallbackName = fallbackBlockName( result.resolvedName );
-            if ( !fallbackName.isEmpty() ) {
+            for ( const auto& fallbackName : previewFallbackBlockNames( result.resolvedName ) ) {
                 const auto fallbackIt = context.blocks->find( fallbackName );
                 if ( fallbackIt != context.blocks->end() ) {
                     result.resolvedName = fallbackName;
@@ -1679,7 +1650,7 @@ void PreviewMessageTab::refreshPreviewList()
     previewTypeCombo_->addItem( tr( "Auto" ), QString() );
 
     auto* model = qobject_cast<QStandardItemModel*>( previewTypeCombo_->model() );
-    const auto& previews = PreviewManager::instance().all();
+    const auto previews = PreviewManager::instance().effective();
     for ( const auto& preview : previews ) {
         previewTypeCombo_->addItem( preview.name, preview.name );
         if ( model ) {

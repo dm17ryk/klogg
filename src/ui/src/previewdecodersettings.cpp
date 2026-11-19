@@ -11,6 +11,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QUuid>
+#include <utility>
 
 namespace {
 QStringList configuredFiles( const QVariantMap& configuration )
@@ -232,7 +233,48 @@ QString PreviewDecoderSettings::revision() const
 }
 PreviewDecoderSnapshot PreviewDecoderSettings::snapshot() const
 {
-    return { configuration_, revision_ };
+    auto effective = configuration_;
+    // Pack routes sit below the user's: a user route with the same key wins, and the merged
+    // lists keep the decoder's limits (the pack check refuses packs that would exceed them).
+    for ( const auto& [ key, limit ] :
+          { std::pair<const char*, int>{ "previewRoutes", PreviewRouteLimit },
+            std::pair<const char*, int>{ "protocolRoutes", ProtocolRouteLimit } } ) {
+        auto merged = configuration_.value( key ).toMap();
+        const auto& packRoutes = QLatin1String( key ) == QLatin1String( "previewRoutes" )
+                                     ? packs_.previewRoutes
+                                     : packs_.protocolRoutes;
+        const bool previewKeys = QLatin1String( key ) == QLatin1String( "previewRoutes" );
+        for ( auto route = packRoutes.cbegin(); route != packRoutes.cend(); ++route ) {
+            // A preview of the user's with the pack preview's name replaces it, route included.
+            if ( previewKeys && PreviewManager::instance().findByName( route.key() ) ) {
+                continue;
+            }
+            if ( !merged.contains( route.key() ) && merged.size() < limit ) {
+                merged.insert( route.key(), route.value() );
+            }
+            else if ( !merged.contains( route.key() ) ) {
+                LOG_DEBUG << "Preview decoder pack route left out at the limit key="
+                          << route.key().toStdString();
+            }
+        }
+        effective[ key ] = merged;
+    }
+    effective[ "packLua" ] = packs_.lua;
+    return { effective, revision_ };
+}
+PreviewDecoderPacks PreviewDecoderSettings::packs() const
+{
+    return packs_;
+}
+void PreviewDecoderSettings::setPacks( const PreviewDecoderPacks& packs )
+{
+    if ( packs == packs_ )
+        return;
+    packs_ = packs;
+    LOG_INFO << "Preview decoder pack contributions changed packs=" << packs_.lua.size()
+             << " preview_routes=" << packs_.previewRoutes.size()
+             << " protocol_routes=" << packs_.protocolRoutes.size();
+    invalidate();
 }
 bool PreviewDecoderSettings::setConfiguration( const QVariantMap& value, QString* error )
 {

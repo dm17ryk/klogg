@@ -1,0 +1,16 @@
+{
+  "id": "org.cilogg.example.protocol-pack",
+  "name": "Example protocol pack",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "kind": "config-pack",
+  "pack_format": 1,
+  "description": "A configuration pack for a synthetic demo protocol: a JSON preview, a Lua dissector for TShark and the route between them.",
+  "content": {
+    "previews": "previews.json",
+    "lua": { "folder": "lua", "load": ["common.lua", "demo.lua"] },
+    "decoder_routes": {
+      "previewRoutes": { "Demo frame": { "dissector": "cilogg_demo" } }
+    }
+  }
+}

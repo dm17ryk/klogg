@@ -2464,7 +2464,8 @@ void AbstractLogView::updatePreviewMenu()
     connect( autoAction, &QAction::triggered, this,
              [ this ]( auto ) { Q_EMIT sendSelectionToPreview( QString() ); } );
 
-    const auto previews = PreviewManager::instance().enabled();
+    // The user's previews and the enabled configuration packs' previews.
+    const auto previews = PreviewManager::instance().effectiveEnabled();
     for ( const auto& preview : previews ) {
         auto* action = sendToPreviewMenu_->addAction( preview.name );
         connect( action, &QAction::triggered, this,

@@ -33,6 +33,8 @@ private:
     void refreshActions();
     // Plugins > Updates (n): the updates not skipped (design 3.7).
     int pendingUpdateCount() const;
+    // Asks before a configuration pack with Lua is enabled; true for anything else.
+    bool confirmPackLua( QWidget* parent, const QString& id ) const;
     void refreshUpdates();
     QIcon iconFor( const QVariantMap& plugin, const QJsonObject& item,
                    QStyle::StandardPixmap fallback );

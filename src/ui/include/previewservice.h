@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <QByteArray>
+#include <QMap>
 #include <QString>
 #include <QVariantMap>
+#include <QVector>
 #include <functional>
+
+#include "previewconfig.h"
 
 class QObject;
 class QProcess;
@@ -24,7 +28,14 @@ struct PreviewEvaluationRequest {
 class PreviewService {
 public:
     using Completion = std::function<void( QVariantMap )>;
+    // The definitions evaluation uses: the user's previews and the enabled packs' previews
+    // (PreviewManager::effective()). Empty when they exceed the service's limits.
     static QByteArray definitions();
+    // The same serialization and limits for any set of previews and blocks: 128 previews, 4,096
+    // blocks, the text, entry and depth bounds and 1 MiB. Empty when a limit is exceeded.
+    static QByteArray definitionsFor( const QVector<PreviewDefinition>& previews,
+                                      const QMap<QString, PreviewFieldSpec>& blocks,
+                                      const QString& revision = {} );
     static QProcess* evaluate( QObject* owner, PreviewEvaluationRequest request, Completion done );
     static QVariantMap evaluateAndWait( PreviewEvaluationRequest request,
                                         QObject* cancellationOwner = nullptr );
