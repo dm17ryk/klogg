@@ -3,6 +3,7 @@
 #include "log.h"
 #include "mainwindow.h"
 #include "pluginicons.h"
+#include "pluginmenus.h"
 #include "pluginsandpacks.h"
 #include "pluginviewhost.h"
 #include "semanticversion.h"
@@ -348,6 +349,17 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
         [ window = QPointer<MainWindow>( window ) ]( const QString& source, QString* error ) {
             return window ? window->pluginContextForSource( source, error ) : QVariantMap{};
         } );
+    // E17b: plugin menus, context menu sections and shortcuts of this window.
+    menus_ = new PluginMenus(
+        window, manager, viewHost_,
+        [ this ]( const QString& pluginId, const QJsonObject& action,
+                  const PluginMenuContext& context, const QVariantMap& menu,
+                  const QJsonObject& arguments, bool interactive ) {
+            return runMenuAction( pluginId, action, context, menu, arguments, interactive );
+        },
+        [ owner = QPointer<MainWindow>( window ) ]( const QString& location ) {
+            return owner ? owner->pluginMenuContext( location ) : PluginMenuContext{};
+        } );
     refreshActions();
     connect( window, &MainWindow::windowClosed, this, [ this ] {
         if ( viewHost_ ) {
@@ -420,6 +432,10 @@ void PluginUiController::refreshActions()
                 { "directory", p.value( "directory" ).toString() },
                 { "actions", QJsonArray::fromVariantList( p.value( "actions" ).toList() ) },
                 { "views", QJsonArray::fromVariantList( p.value( "views" ).toList() ) },
+                // E17b: declared menus and the locations the user hides.
+                { "menus", QJsonArray::fromVariantList( p.value( "menus" ).toList() ) },
+                { "hidden", QJsonArray::fromStringList(
+                                p.value( "hiddenMenuLocations" ).toStringList() ) },
                 { "icons", iconFiles( p ) },
                 // Registered images (image:<id> in icon_ref) change without a manifest change.
                 { "images", static_cast<qint64>( PluginIconRegistry::instance().generation(
@@ -439,6 +455,14 @@ void PluginUiController::refreshActions()
         action->deleteLater();
     }
     actions_.clear();
+    for ( const auto& own : ownMenus_ ) {
+        if ( own ) {
+            menu_->removeAction( own->menuAction() );
+            window_->menuBar()->removeAction( own->menuAction() );
+            own->deleteLater();
+        }
+    }
+    ownMenus_.clear();
     for ( const auto& value : plugins ) {
         const auto plugin = value.toMap();
         if ( !plugin.value( "enabled" ).toBool()
@@ -446,11 +470,14 @@ void PluginUiController::refreshActions()
             continue;
         }
         const auto id = plugin.value( "id" ).toString();
+        // E17b: a plugin with a `plugins` menu (or a menu bar menu moved back under Plugins) gets
+        // its own submenu instead of flat entries (docs/plugin-sdk-advanced.md 7.7).
+        const bool ownMenu = addOwnMenus( plugin, false );
         // Views: a Plugins menu entry (menu, default true) and/or a toolbar button (toolbar, default
         // false) that open or raise the view in this window.
         for ( const auto& item : plugin.value( "views" ).toList() ) {
             const auto view = QJsonObject::fromVariantMap( item.toMap() );
-            const bool inMenu = view.value( "menu" ).toBool( true );
+            const bool inMenu = view.value( "menu" ).toBool( true ) && !ownMenu;
             const bool inToolbar = view.value( "toolbar" ).toBool( false );
             if ( !inMenu && !inToolbar ) {
                 continue;
@@ -480,7 +507,7 @@ void PluginUiController::refreshActions()
         }
         for ( const auto& item : plugin.value( "actions" ).toList() ) {
             const auto definition = QJsonObject::fromVariantMap( item.toMap() );
-            const bool inMenu = definition.value( "menu" ).toBool( true );
+            const bool inMenu = definition.value( "menu" ).toBool( true ) && !ownMenu;
             const bool inToolbar = definition.value( "toolbar" ).toBool( true );
             if ( !inMenu && !inToolbar ) {
                 continue; // still callable from Commander, CLI and MCP
@@ -509,6 +536,121 @@ void PluginUiController::refreshActions()
                      [ this, id, definition ] { invoke( id, definition ); } );
         }
     }
+    // Menu bar menus after Plugins, in plugin order.
+    for ( const auto& value : plugins ) {
+        const auto plugin = value.toMap();
+        if ( plugin.value( "enabled" ).toBool() && plugin.value( "error" ).toString().isEmpty() ) {
+            addOwnMenus( plugin, true );
+        }
+    }
+    window_->updatePluginShortcuts();
+}
+
+bool PluginUiController::addOwnMenus( const QVariantMap& plugin, bool menubar )
+{
+    const auto id = plugin.value( "id" ).toString();
+    const auto hidden = plugin.value( "hiddenMenuLocations" ).toStringList();
+    bool added = false;
+    for ( const auto& value : plugin.value( "menus" ).toList() ) {
+        const auto definition = QJsonObject::fromVariantMap( value.toMap() );
+        const auto location = definition.value( "location" ).toString();
+        // A hidden menu bar menu moves back under Plugins (open question 1).
+        const bool underPlugins
+            = ( location == QLatin1String( "plugins" ) && !hidden.contains( location ) )
+              || ( location == QLatin1String( "menubar" ) && hidden.contains( location ) );
+        const bool inMenuBar = location == QLatin1String( "menubar" ) && !hidden.contains( location );
+        if ( menubar ? !inMenuBar : !underPlugins ) {
+            continue;
+        }
+        const auto menuId = definition.value( "id" ).toString();
+        auto* own = new QMenu( PluginMenus::menuText( definition.value( "title" ).toString(
+                                   plugin.value( "name" ).toString() ) ),
+                               window_ );
+        own->setObjectName( PluginMenus::menuObjectName( id, menuId ) );
+        own->setToolTipsVisible( true );
+        if ( definition.contains( "icon" ) ) {
+            own->setIcon( PluginIconRegistry::instance().icon(
+                id, plugin.value( "directory" ).toString(), definition.value( "icon" ) ) );
+        }
+        if ( menubar ) {
+            // Right after Plugins (and after the plugin menus placed there before).
+            const auto actions = window_->menuBar()->actions();
+            auto at = actions.indexOf( menu_->menuAction() );
+            while ( at + 1 < actions.size() && actions.at( at + 1 )->menu() != nullptr
+                    && actions.at( at + 1 )->menu()->objectName().startsWith( "pluginMenu_" ) ) {
+                ++at;
+            }
+            window_->menuBar()->insertMenu( at + 1 < actions.size() ? actions.at( at + 1 ) : nullptr,
+                                            own );
+        }
+        else {
+            menu_->addMenu( own );
+        }
+        ownMenus_.append( own );
+        added = true;
+        const QPointer<QMenu> guarded( own );
+        connect( own, &QMenu::aboutToShow, this, [ this, guarded, id, definition, location ] {
+            if ( !guarded || !menus_ || !manager_ || !window_ ) {
+                return;
+            }
+            for ( const auto& source : manager_->menuSources() ) {
+                if ( source.id == id ) {
+                    menus_->fillOwnMenu( guarded, source, definition,
+                                         window_->pluginMenuContext( location ) );
+                }
+            }
+        } );
+    }
+    return added;
+}
+
+CommanderResult PluginUiController::runMenuAction( const QString& pluginId,
+                                                   const QJsonObject& action,
+                                                   const PluginMenuContext& context,
+                                                   const QVariantMap& menu,
+                                                   const QJsonObject& arguments, bool interactive )
+{
+    if ( !window_ ) {
+        return commanderFailure( CommanderResultCode::ExecutionFailed, tr( "The window closed." ) );
+    }
+    if ( action.isEmpty() ) {
+        return commanderFailure( CommanderResultCode::NotFound,
+                                 tr( "The plugin declares no such action." ) );
+    }
+    auto values = arguments;
+    const bool converter = action.value( "capability" ) == "converter";
+    if ( converter && !values.contains( "input_path" ) && !context.filePath.isEmpty() ) {
+        values.insert( "input_path", context.filePath );
+    }
+    // The context's tab, or another source chosen in the form.
+    const auto contextSource
+        = context.tabId.isEmpty() ? QStringLiteral( "focused" ) : QStringLiteral( "tab:" ) + context.tabId;
+    auto source = contextSource;
+    const auto fields = action.value( "fields" ).toArray();
+    if ( interactive && !fields.isEmpty()
+         && !editValues( window_, action.value( "label" ).toString( "Plugin action" ), fields,
+                         &values, &source, [ window = window_ ] {
+                             return window ? window->toolSources() : QVariantList{};
+                         } ) ) {
+        return commanderSuccess( {}, { { "cancelled", true } } );
+    }
+    CommanderRequest request;
+    request.action = CommanderAction::InvokePlugin;
+    request.pluginId = pluginId;
+    request.pluginAction = action.value( "id" ).toString();
+    request.pluginMenuContext = menu;
+    if ( source == contextSource ) {
+        request.windowIndex = context.windowIndex;
+        request.tabId = context.tabId;
+    }
+    else {
+        request.source = source;
+    }
+    request.pluginArguments = values.toVariantMap();
+    LOG_DEBUG << "Plugin action from a menu entry plugin=" << pluginId.toStdString()
+              << " action=" << request.pluginAction.toStdString()
+              << " location=" << context.location.toStdString();
+    return executor_( request );
 }
 
 QIcon PluginUiController::iconFor( const QVariantMap& plugin, const QJsonObject& item,
@@ -719,6 +861,15 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                     state += tr( "; %1 paused until %2" )
                                  .arg( query.toMap().value( "method" ).toString(),
                                        until.toLocalTime().toString( "HH:mm:ss" ) );
+                }
+            }
+            // E17b: plugin shortcuts that CILogg or another plugin already uses (question 6).
+            for ( const auto& shortcut : p.value( "shortcuts" ).toList() ) {
+                const auto entry = shortcut.toMap();
+                if ( entry.value( "state" ) == "refused" ) {
+                    state += tr( "; shortcut of %1 refused (%2)" )
+                                 .arg( entry.value( "title" ).toString(),
+                                       entry.value( "reason" ).toString() );
                 }
             }
             // An update only from the install source (get_plugins `update`); other repositories
@@ -1009,6 +1160,46 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
             request.pluginArguments = { { "storage_limits", values.toVariantMap() } };
             report( executor_( request ) );
         }
+    } );
+    // E17b: where the selected plugin's menu entries appear (questions 1 and 3).
+    auto* locations = addButton( secondRow, tr( "Menu Locations…" ), "pluginManage_menus" );
+    locations->setToolTip( tr( "Choose where the selected plugin's menu entries appear" ) );
+    connect( locations, &QPushButton::clicked, tab, [ this, tab, status, selectedId ] {
+        const auto id = selectedId();
+        if ( id.isEmpty() || !manager_ ) {
+            return;
+        }
+        const auto hidden = manager_->hiddenMenuLocations( id );
+        const std::vector<std::pair<QString, QString>> labels{
+            { "plugins", tr( "Its own submenu in the Plugins menu" ) },
+            { "menubar", tr( "Its menu in the menu bar (otherwise under Plugins)" ) },
+            { "tab", tr( "Tab context menus" ) },
+            { "pane", tr( "Pane menus" ) },
+            { "log", tr( "Log view context menus" ) } };
+        QJsonArray fields;
+        QJsonObject values;
+        for ( const auto& [ location, label ] : labels ) {
+            fields.append( QJsonObject{ { "id", location }, { "type", "boolean" }, { "label", label } } );
+            values.insert( location, !hidden.contains( location ) );
+        }
+        if ( !editValues( tab, tr( "Menu Locations" ), fields, &values ) ) {
+            return;
+        }
+        QVariantList hide;
+        for ( const auto& [ location, label ] : labels ) {
+            Q_UNUSED( label );
+            if ( !values.value( location ).toBool() ) {
+                hide.append( location );
+            }
+        }
+        CommanderRequest request;
+        request.action = CommanderAction::PluginManage;
+        request.origin = CommanderOriginGui;
+        request.pluginOperation = "menus";
+        request.pluginId = id;
+        request.pluginArguments = { { "hidden_locations", hide } };
+        const auto result = executor_( request );
+        status->setText( result.ok() ? tr( "Menu locations saved." ) : result.message );
     } );
     auto* captures = addButton( secondRow, tr( "Open Captures Folder" ), "pluginCapturesFolder" );
     connect( captures, &QPushButton::clicked, tab, [ this ] {

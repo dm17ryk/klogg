@@ -269,6 +269,17 @@ same path as a hover:
 `no_cache`). It returns `source` (`static`, `cache` or `plugin`), `tooltip`, `html`,
 `staticTooltip` and `latencyMs`.
 
+Since E17b, plugin menus are readable and usable the same way
+([advanced plugin SDK](plugin-sdk-advanced.md), sections 7 and 25):
+`command --action get_plugin_menus --location <plugins|menubar|tab|pane|log> [--plugin-id <id>]
+[--lines 10-20,30] [tab selector]` lists the entries of a location with their state, conditions
+and shortcuts, and `command --action trigger_plugin_menu --plugin-id <id> --menu-id <menu>
+--item-id <entry> [--lines <ranges>] [--checked <true|false>] [tab selector]` picks one as a
+click does (an action runs without its form). Native MCP and Python use the same names
+(`location`, `plugin_id`, `menu_id`, `item_id`, `lines`, `checked`). Menus and their entries
+have the object names `pluginMenu_<plugin>_<menu>[_<item>]` and
+`pluginMenuItem_<plugin>_<menu>_<item>`.
+
 ## 6. Related small host changes
 
 - **Executable path for plugins.** Pass `CILOGG_EXECUTABLE` (the running `cilogg.exe`) and

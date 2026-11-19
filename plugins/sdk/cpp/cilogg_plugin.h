@@ -158,6 +158,26 @@ public:
         }
         notify( "tooltip/invalidate", withWindow( params, windowId ) );
     }
+    // Menus (docs/plugin-sdk-advanced.md section 7). `ui/command` arrives when the user picks an
+    // `event` menu entry or presses its shortcut; the handler gets its params (origin, menu_id,
+    // item_id, location, window_id, checked, context) on the protocol reader thread, so keep it
+    // short. Registering one announces `ui/command` in `features` (list it in `handles` too).
+    // `menu/populate` is a query: onQuery( "menu/populate", ... ) answers {items, cache_ms}.
+    using CommandHandler = std::function<void( const QJsonObject& params )>;
+    void onCommand( CommandHandler handler )
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        command_ = std::move( handler );
+    }
+    // menu/update: changes declared entries ([{id, set: {title, icon, tooltip, enabled, visible,
+    // checked}}]) in every window. Does nothing on a host without the `menus` feature.
+    void updateMenu( const QString& menuId, const QJsonArray& items )
+    {
+        if ( !supports( "menus" ) ) {
+            return;
+        }
+        notify( "menu/update", { { "menu_id", menuId }, { "items", items } } );
+    }
     // ui/icons: registers images ({"<id>": {"png": "<base64>"} or {"svg": "<text>"}}) for
     // `image:<id>` icon references. Does nothing on a host without the `icons` feature.
     void registerIcons( const QJsonObject& icons, const QJsonArray& remove = {} )
@@ -397,6 +417,11 @@ private:
         std::lock_guard<std::mutex> guard( queryMutex_ );
         return lanes_.count( method ) > 0;
     }
+    CommandHandler commandHandler()
+    {
+        std::lock_guard<std::mutex> guard( queryMutex_ );
+        return command_;
+    }
     QJsonArray queryFeatures()
     {
         std::lock_guard<std::mutex> guard( queryMutex_ );
@@ -406,6 +431,9 @@ private:
         }
         if ( !features.isEmpty() ) {
             features.append( QStringLiteral( "query/cancel" ) );
+        }
+        if ( command_ ) {
+            features.append( QStringLiteral( "ui/command" ) );
         }
         return features;
     }
@@ -569,6 +597,15 @@ private:
         else if ( !request && method == "query/cancel" ) {
             cancelQuery( params.value( "id" ).toString() );
         }
+        else if ( !request && method == "ui/command" && commandHandler() ) {
+            try {
+                commandHandler()( params );
+            } catch ( const std::exception& error ) {
+                std::cerr << "Plugin command handler failed: " << error.what() << std::endl;
+            } catch ( ... ) {
+                std::cerr << "Plugin command handler failed" << std::endl;
+            }
+        }
         else if ( !request && ( method.startsWith( "view/" ) || method.startsWith( "ui/" ) ) ) {
             if ( notification_ ) {
                 notification_( method, params );
@@ -623,6 +660,7 @@ private:
     std::mutex queryMutex_;
     std::condition_variable queryCondition_;
     Notification notification_;
+    CommandHandler command_; // guarded by queryMutex_
     std::map<QString, Action> actions_;
     std::map<QString, std::shared_ptr<Job>> jobs_;
     std::map<QString, StreamState> streams_;

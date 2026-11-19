@@ -106,6 +106,9 @@ enum class CommanderAction {
     MoveTab,
     // Advanced plugin SDK (E17a).
     GetPluginTooltip,
+    // Plugin menus (E17b).
+    GetPluginMenus,
+    TriggerPluginMenu,
 };
 
 enum class CommanderResultCode {
@@ -175,6 +178,9 @@ struct CommanderRequest {
     // tab selector (tabId, or windowIndex with tabIndex) wins over it.
     QString source;
     QVariantMap pluginArguments;
+    // E17b: the `menu` key of a plugin job's context when a menu entry or its shortcut runs the
+    // action (docs/plugin-sdk-advanced.md 7.5). Set by the GUI and trigger_plugin_menu only.
+    QVariantMap pluginMenuContext;
     QVariantMap analysisArguments;
     std::optional<int> windowIndex;
     std::optional<int> tabIndex;

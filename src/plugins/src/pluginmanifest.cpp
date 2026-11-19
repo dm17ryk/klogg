@@ -3,6 +3,7 @@
 #include "log.h"
 #include "plugincatalog.h"
 #include "pluginfeatures.h"
+#include "pluginmenuspec.h"
 #include "semanticversion.h"
 #include <QDir>
 #include <QFile>
@@ -303,6 +304,27 @@ Manifest Manifest::parse( const QByteArray& bytes, const QString& directory )
     const auto handlesError = validateHandles( m.json.value( "handles" ) );
     if ( !handlesError.isEmpty() ) {
         m.error = handlesError;
+    }
+    // E17b: menus, context menus and keyboard shortcuts (docs/plugin-sdk-advanced.md section 7).
+    const auto menuError
+        = validateMenus( m.json.value( "menus" ), declaredIds( m.json.value( "actions" ) ),
+                         declaredIds( m.json.value( "views" ) ) );
+    if ( !menuError.isEmpty() ) {
+        m.error = menuError;
+    }
+    for ( const auto* key : { "actions", "views" } ) {
+        for ( const auto& item : m.json.value( QLatin1String( key ) ).toArray() ) {
+            const auto shortcut = item.toObject().value( "shortcut" );
+            const auto error = shortcut.isUndefined() ? QString{} : validateShortcut( shortcut );
+            if ( !error.isEmpty() ) {
+                m.error = QStringLiteral( "%1 (%2)" ).arg(
+                    error, item.toObject().value( "id" ).toString().left( 128 ) );
+            }
+        }
+    }
+    const auto shortcutCountError = validateShortcutCount( m.json );
+    if ( !shortcutCountError.isEmpty() ) {
+        m.error = shortcutCountError;
     }
     const auto requiresError = validateRequires( m.json.value( "requires" ), &m.missingFeatures );
     if ( !requiresError.isEmpty() ) {

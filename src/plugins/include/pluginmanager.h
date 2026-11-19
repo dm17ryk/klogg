@@ -133,6 +133,30 @@ public:
         return *queries_;
     }
 
+    // An enabled plugin with a valid manifest, for menus and shortcuts.
+    struct MenuSource {
+        QString id;
+        QString name;
+        QString directory;
+        QJsonObject manifest;
+        QStringList hidden; // menu locations the user hides
+    };
+    // Every enabled, valid plugin, in name order (the order of menu sections and shortcuts).
+    std::vector<MenuSource> menuSources() const;
+    // Plugin menus (docs/plugin-sdk-advanced.md section 7). Starts a stopped plugin, as clicking
+    // one of its actions does (a dynamic submenu opening).
+    Result startPlugin( const QString& pluginId );
+    // Sends `ui/command`, starting the plugin when needed; at most MaxQueuedCommands wait for a
+    // plugin that is starting. Refused when plugin.json `handles` lacks `ui/command`.
+    Result sendCommand( const QString& pluginId, const QJsonObject& params );
+    // The menu locations whose entries of this plugin the user hides (plugin_manage `menus`).
+    QStringList hiddenMenuLocations( const QString& pluginId ) const;
+    // The shortcuts the windows assigned to each plugin, for get_plugins and the Plugins and
+    // Packs window: `key`, `title`, `declared`, `keys`, `state`, `reason`, `userSet`.
+    void setShortcutReport( const std::map<QString, QVariantList>& report );
+    // Whether `path` is a capture a plugin stream wrote (tab kind `plugin_stream`).
+    bool isPluginCapture( const QString& path ) const;
+
 Q_SIGNALS:
     void changed();
     void fileReady( const QString& path, bool follow, const QVariantMap& context );
@@ -148,6 +172,9 @@ Q_SIGNALS:
     void protocolFrame( const QString& pluginId, bool outgoing, const QJsonObject& frame );
     // The plugin was disabled or removed: close its views without a result.
     void viewsRevoked( const QString& pluginId );
+    // menu/update from a plugin, checked against its declared menu: `changes` are
+    // `[{id, set: {title, icon, tooltip, enabled, visible, checked}}]`.
+    void menuUpdated( const QString& pluginId, const QString& menuId, const QJsonArray& changes );
     // New versions that an update check found, each announced once and never when skipped
     // (availableUpdates() fields).
     void updatesFound( const QVariantList& updates );
@@ -246,6 +273,10 @@ private:
     using CredentialDone = std::function<void( CredentialPtr credential, const QString& error )>;
     void handleUiMessage( const QString& pluginId, const QString& method,
                           const QJsonObject& params );
+    void handleMenuUpdate( const QString& pluginId, const QJsonObject& params );
+    // Why a plugin cannot take a menu command now (missing, invalid, disabled, failed).
+    Result usablePlugin( const QString& pluginId ) const;
+    bool deliverCommand( const QString& pluginId, const QJsonObject& params );
     Result cancelJob( const QString& id, bool grace );
     void rejectMessage( const QString& pluginId, const QString& messageId, const QString& error );
     void sendViewOpened( PluginProcess* process, const OpenView& view );
@@ -403,5 +434,7 @@ private:
     bool shuttingDown_ = false;
     std::unique_ptr<PluginQueries> queries_;
     mutable QSet<QString> featureWarnings_; // plugin|method listed in handles or features only
+    std::map<QString, std::vector<QJsonObject>> pendingCommands_; // ui/command until ready
+    std::map<QString, QVariantList> shortcutReport_;
 };
 } // namespace cilogg::plugins

@@ -61,6 +61,11 @@ public:
                   QWidget* parent = nullptr );
     ~FilteredView() override;
 
+    QString pluginViewKind() const override
+    {
+        return QStringLiteral( "filtered" );
+    }
+
     // What is visible in the view.
     using Visibility = LogFilteredData::Visibility;
     void setVisibility( Visibility visi );

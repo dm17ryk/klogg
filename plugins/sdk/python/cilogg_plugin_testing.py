@@ -1,6 +1,6 @@
 """A fake CILogg host for testing process plugins without CILogg. Python standard library only.
 
-    from cilogg_plugin_testing import FakeHost
+    from cilogg_plugin_testing import FakeHost, log_selection
 
     with FakeHost.start_package("path/to/my-plugin") as host:   # or FakeHost.in_process(plugin)
         host.initialize()                                       # a current host; see initialize_older_host()
@@ -8,6 +8,8 @@
         host.open_view("main")
         tree = host.wait_for("view/update")["root"]
         assert host.resolve_tooltip("main", "devices", row_id="r1", column_id="state") is not None
+        assert host.populate_menu("main", "recent")["items"]       # a dynamic submenu opens
+        host.send_command("lines", "explain", "log", selection=log_selection([(10, 12)]))
 
 The host records every frame in both directions (`frames`), answers stream/open and
 stream/data like CILogg, and checks the plugin's JSON-RPC envelopes (`errors`). See
@@ -34,13 +36,18 @@ Predicate = Callable[[JsonObject], bool]
 PathLike = Union[str, "os.PathLike[str]"]
 
 # What the current CILogg announces in initialize (docs/plugin-sdk-advanced.md, section 4.1).
-HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons")
+HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons", "menus", "shortcuts")
 HOST_FEATURE_VERSIONS: Mapping[str, int] = {
-    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1}
+    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1, "menus": 1,
+    "shortcuts": 1}
 HOST_LIMITS: Mapping[str, int] = {
     "max_elements": 512, "max_table_cells": 50000, "max_text_chars": 4096,
     "max_message_bytes": 1048576}
 HOST_VERSION = "0.0.0-fakehost"
+# What CILogg announced with E17a: queries, tooltips and icons, no menus or shortcuts.
+E17A_HOST_FEATURES = ("views", "view_edit", "queries", "tooltips", "icons")
+E17A_HOST_FEATURE_VERSIONS: Mapping[str, int] = {
+    "views": 2, "view_edit": 1, "queries": 1, "tooltips": 1, "icons": 1}
 # What CILogg announced before E17 (E13/E14): only host_features.
 E14_HOST_FEATURES = ("views", "view_edit")
 QUERY_DEFAULT_TIMEOUT_MS: Mapping[str, int] = {
@@ -227,6 +234,23 @@ class _InProcessTransport:
 
     def stderr(self) -> str:
         return ""
+
+
+def log_selection(ranges: Sequence[Sequence[int]], *, count: Optional[int] = None,
+                  text: Optional[str] = None, truncated: Optional[bool] = None) -> JsonObject:
+    """The `context.selection` of a log menu entry: 1-based [first, last] line ranges, the
+    selected line count (default: the lines of `ranges`) and, for a picked entry, the selected
+    text and whether the host cut it at 64 KiB."""
+    pairs = [[int(first), int(last)] for first, last in ranges]
+    selection: JsonObject = {
+        "ranges": pairs,
+        "count": count if count is not None else sum(last - first + 1 for first, last in pairs)}
+    if text is not None:
+        selection["text"] = text
+        selection["truncated"] = bool(truncated)
+    elif truncated is not None:
+        selection["truncated"] = truncated
+    return selection
 
 
 def _envelope_error(message: Any) -> Optional[str]:
@@ -494,6 +518,39 @@ class FakeHost:
         if result is not None and not isinstance(result, dict):
             raise RpcError(-32603, "A tooltip answer is null or an object")
         return result
+
+    # Menus.
+    def populate_menu(self, menu_id: str, item_id: str, location: str = "plugins",
+                      context: Optional[Mapping[str, Any]] = None, timeout_ms: int = 1000, *,
+                      window_id: str = "w1", timeout: Optional[float] = None
+                      ) -> Optional[JsonObject]:
+        """Ask menu/populate, as when the dynamic entry item_id of menu_id is about to show;
+        returns the answer ({items, cache_ms}) or None. For a log menu, put
+        log_selection(...) without text in context["selection"]."""
+        params: JsonObject = {"menu_id": menu_id, "item_id": item_id, "location": location,
+                              "window_id": window_id}
+        result = self.query("menu/populate", params, timeout_ms=timeout_ms, timeout=timeout,
+                            context=context)
+        if result is not None and not isinstance(result, dict):
+            raise RpcError(-32603, "A menu/populate answer is null or an object")
+        return result
+
+    def send_command(self, menu_id: str, item_id: str, location: str = "plugins", *,
+                     origin: str = "menu", window_id: str = "w1", checked: Optional[bool] = None,
+                     context: Optional[Mapping[str, Any]] = None,
+                     selection: Optional[Mapping[str, Any]] = None) -> None:
+        """Send ui/command, as when the user picks the `event` entry item_id of menu_id
+        (origin "shortcut": presses its shortcut). `checked` is the new state of a checkable
+        entry; `selection` (see log_selection()) goes into context["selection"]."""
+        command_context = dict(context or {})
+        if selection is not None:
+            command_context["selection"] = dict(selection)
+        params: JsonObject = {"origin": origin, "menu_id": menu_id, "item_id": item_id,
+                              "location": location, "window_id": window_id}
+        if checked is not None:
+            params["checked"] = checked
+        params["context"] = command_context
+        self.notify("ui/command", params)
 
     # Receiving.
     def wait_response(self, identifier: str, timeout: Optional[float] = None) -> JsonObject:

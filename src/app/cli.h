@@ -358,6 +358,14 @@ private:
             "    The tooltip of an element or a table cell of an open plugin view, through the "
             "same path as a hover: its source (static, cache or plugin), the tooltip and the "
             "latency.\n"
+            "  get_plugin_menus --location <plugins|menubar|tab|pane|log> [--plugin-id <id>] "
+            "[--lines <ranges>] [tab selector]\n"
+            "    The plugin menu entries of a location with their state, conditions and "
+            "shortcuts, for the focused tab or the tab selector.\n"
+            "  trigger_plugin_menu --plugin-id <id> --menu-id <menu> --item-id <entry> "
+            "[--lines <ranges>] [--checked <true|false>] [tab selector]\n"
+            "    Runs a plugin menu entry like a click (an action runs without its form); "
+            "--lines selects file lines for log entries, e.g. 10-20,30.\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
             "  list_reports [--pretty]  (diagnostic report bundles, newest first)\n"
@@ -1578,6 +1586,25 @@ private:
         const QCommandLineOption noCacheOption(
             QStringLiteral( "no-cache" ),
             QStringLiteral( "get_plugin_tooltip: ask the plugin even when a cached answer exists." ) );
+        // get_plugin_menus and trigger_plugin_menu (E17b).
+        const QCommandLineOption menuLocationOption(
+            QStringLiteral( "location" ),
+            QStringLiteral( "Plugin menu location: plugins, menubar, tab, pane or log." ),
+            QStringLiteral( "location" ) );
+        const QCommandLineOption menuIdOption( QStringLiteral( "menu-id" ),
+                                               QStringLiteral( "Plugin menu id." ),
+                                               QStringLiteral( "id" ) );
+        const QCommandLineOption itemIdOption( QStringLiteral( "item-id" ),
+                                               QStringLiteral( "Plugin menu entry id." ),
+                                               QStringLiteral( "id" ) );
+        const QCommandLineOption linesOption(
+            QStringLiteral( "lines" ),
+            QStringLiteral( "Selected file lines for log menu entries, e.g. 10-20,30." ),
+            QStringLiteral( "ranges" ) );
+        const QCommandLineOption checkedOption(
+            QStringLiteral( "checked" ),
+            QStringLiteral( "trigger_plugin_menu: the check mark to set (true or false)." ),
+            QStringLiteral( "state" ) );
         const QCommandLineOption predefinedOption(
             QStringLiteral( "predefined" ),
             QStringLiteral( "Use predefined filters instead of search-history filters." ) );
@@ -1730,6 +1757,11 @@ private:
         parser.addOption( columnIdOption );
         parser.addOption( nodeIdOption );
         parser.addOption( noCacheOption );
+        parser.addOption( menuLocationOption );
+        parser.addOption( menuIdOption );
+        parser.addOption( itemIdOption );
+        parser.addOption( linesOption );
+        parser.addOption( checkedOption );
         parser.addOption( predefinedOption );
         parser.addOption( windowIndexOption );
         parser.addOption( tabIndexOption );
@@ -1861,6 +1893,18 @@ private:
             if ( parser.isSet( *option ) && request.action != CommanderAction::GetPluginTooltip ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral( "--%1 is only supported by get_plugin_tooltip." )
+                                .arg( option->names().constFirst() ) );
+                return result;
+            }
+        }
+        const bool menuOperation = request.action == CommanderAction::GetPluginMenus
+                                   || request.action == CommanderAction::TriggerPluginMenu;
+        for ( const auto* option :
+              { &menuLocationOption, &menuIdOption, &itemIdOption, &linesOption, &checkedOption } ) {
+            if ( parser.isSet( *option ) && !menuOperation ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--%1 is only supported by get_plugin_menus and "
+                                            "trigger_plugin_menu." )
                                 .arg( option->names().constFirst() ) );
                 return result;
             }
@@ -2310,6 +2354,49 @@ private:
                 return result;
             }
             break;
+        case CommanderAction::GetPluginMenus:
+        case CommanderAction::TriggerPluginMenu: {
+            request.pluginId = parser.value( "plugin-id" ).trimmed();
+            const bool get = *action == CommanderAction::GetPluginMenus;
+            if ( get ) {
+                request.pluginArguments.insert( "location", parser.value( menuLocationOption ).trimmed() );
+            }
+            else {
+                request.pluginArguments.insert( "menuId", parser.value( menuIdOption ).trimmed() );
+                request.pluginArguments.insert( "itemId", parser.value( itemIdOption ).trimmed() );
+            }
+            if ( parser.isSet( linesOption ) ) {
+                request.pluginArguments.insert( "lines", parser.value( linesOption ).trimmed() );
+            }
+            if ( parser.isSet( checkedOption ) ) {
+                const auto state = parser.value( checkedOption ).trimmed().toLower();
+                if ( get || ( state != "true" && state != "false" ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--checked is true or false, for trigger_plugin_menu." ) );
+                    return result;
+                }
+                request.pluginArguments.insert( "checked", state == "true" );
+            }
+            if ( get ? request.pluginArguments.value( "location" ).toString().isEmpty()
+                     : request.pluginId.isEmpty()
+                           || request.pluginArguments.value( "menuId" ).toString().isEmpty()
+                           || request.pluginArguments.value( "itemId" ).toString().isEmpty() ) {
+                result.output_message = formatParserError(
+                    parser, get ? QStringLiteral( "get_plugin_menus requires --location." )
+                                : QStringLiteral( "trigger_plugin_menu requires --plugin-id, "
+                                                  "--menu-id and --item-id." ) );
+                return result;
+            }
+            if ( parser.isSet( menuIdOption ) && get ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "get_plugin_menus takes --location, not --menu-id." ) );
+                return result;
+            }
+            if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) {
+                return result;
+            }
+            break;
+        }
         case CommanderAction::OpenFile:
         case CommanderAction::CloseFile:
             request.filePath = normalizeCommanderFilePath( parser.value( fileOption ) );

@@ -2,6 +2,7 @@
 #include "klogg_version.h"
 #include "log.h"
 #include "pluginfeatures.h"
+#include "pluginmenuspec.h"
 #include "pythonruntime.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -267,6 +268,12 @@ QVariantList PluginManager::plugins() const
         value[ "features" ] = QStringList{};
         value[ "sdk" ] = QVariantMap{};
         value[ "queries" ] = queries_->statistics( id );
+        // E17b: menu locations the user hides and the plugin's shortcuts as the windows assigned
+        // them (refused ones with the reason).
+        value[ "hiddenMenuLocations" ] = hiddenMenuLocations( id );
+        const auto shortcuts = shortcutReport_.find( id );
+        value[ "shortcuts" ]
+            = shortcuts == shortcutReport_.end() ? QVariantList{} : shortcuts->second;
         if ( entry->process ) {
             value[ "pid" ] = entry->process->pid();
             const auto descriptor = entry->process->descriptor();
@@ -670,6 +677,17 @@ PluginProcess* PluginManager::ensureProcess( Entry& entry )
                     sendViewOpened( readyProcess, view );
                 }
             }
+            // E17b: menu commands that started the plugin.
+            const auto commands = pendingCommands_.find( id );
+            if ( commands != pendingCommands_.end() ) {
+                const auto queued = std::move( commands->second );
+                pendingCommands_.erase( commands );
+                for ( const auto& command : queued ) {
+                    if ( readyProcess->state() == "ready" ) {
+                        deliverCommand( id, command );
+                    }
+                }
+            }
             Q_EMIT pluginReady( id );
         }
     } );
@@ -897,6 +915,12 @@ void PluginManager::processStopped( const QString& id )
     }
     // Pending host queries end at once; their targets fall back (design 5.2).
     queries_->dropPlugin( id );
+    const auto commands = pendingCommands_.find( id );
+    if ( commands != pendingCommands_.end() ) {
+        LOG_WARNING << "Plugin stopped before its menu commands were delivered plugin="
+                    << id.toStdString() << " commands=" << commands->second.size();
+        pendingCommands_.erase( commands );
+    }
     for ( auto& [ key, j ] : jobs_ ) {
         if ( j.pluginId == id ) {
             j.outputSupervised = false;
@@ -1191,6 +1215,9 @@ void PluginManager::handleMessage( const QString& pluginId, const QJsonObject& f
                    || method == "tooltip/invalidate" || method == "ui/icons" ) ) {
         handleUiMessage( pluginId, method, params );
     }
+    else if ( !frame.contains( "id" ) && method == "menu/update" ) {
+        handleMenuUpdate( pluginId, params );
+    }
     else {
         LOG_WARNING << "Plugin unknown message id=" << pluginId.toStdString()
                     << " method=" << method.toStdString();
@@ -1376,6 +1403,24 @@ Result PluginManager::manage( const QString& operation, const QString& id,
         if ( e.process && e.process->state() == "ready" ) {
             e.process->notify( "configure", { { "configuration", config } } );
         }
+    }
+    else if ( operation == "menus" ) {
+        // E17b: the menu locations whose plugin entries the user hides (design 7.7); a hidden
+        // menubar menu moves back under Plugins.
+        QStringList hidden;
+        for ( const auto& value : options.value( "hidden_locations" ).toList() ) {
+            const auto location = value.toString();
+            if ( !renderedMenuLocations().contains( location ) ) {
+                return { QStringLiteral( "Unknown menu location: %1." ).arg( location.left( 64 ) ),
+                         {} };
+            }
+            if ( !hidden.contains( location ) ) {
+                hidden.append( location );
+            }
+        }
+        settings_.setValue( configurationKey( id ) + "menus/hidden", hidden );
+        LOG_DEBUG << "Plugin menu locations hidden plugin=" << id.toStdString()
+                  << " locations=" << hidden.join( ',' ).toStdString();
     }
     else {
         return { "Unknown plugin management operation.", {} };
@@ -2068,6 +2113,15 @@ QString PluginManager::query( const QString& pluginId, const QString& method,
             return sanitizeTooltip( result, error );
         };
     }
+    else if ( method == QLatin1String( "menu/populate" ) ) {
+        // Entries may name only the actions and views the manifest declares (design 7.4).
+        const auto& manifest = entries_.at( pluginId )->manifest.json;
+        validator = [ actions = declaredIds( manifest.value( "actions" ) ),
+                      views = declaredIds( manifest.value( "views" ) ) ](
+                        const QJsonValue& result, QString* error ) -> QJsonValue {
+            return sanitizeMenuPopulate( result, actions, views, error );
+        };
+    }
     PluginQueries::Request request;
     request.pluginId = pluginId;
     request.method = method;
@@ -2081,5 +2135,154 @@ QString PluginManager::query( const QString& pluginId, const QString& method,
 void PluginManager::cancelQuery( const QString& id )
 {
     queries_->cancel( id );
+}
+
+Result PluginManager::usablePlugin( const QString& pluginId ) const
+{
+    if ( shuttingDown_ ) {
+        return { "CILogg is shutting down.", {} };
+    }
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() ) {
+        return { "Plugin not found.", {} };
+    }
+    const auto& e = *it->second;
+    if ( !e.manifest.valid() ) {
+        return { e.manifest.error, {} };
+    }
+    if ( !settings_.value( configurationKey( pluginId ) + "enabled", false ).toBool() ) {
+        return { "Plugin is disabled.", {} };
+    }
+    if ( e.process && ( e.process->state() == "failed" || e.process->state() == "stopping" ) ) {
+        return { "Plugin failed or is stopping; restart it explicitly.", {} };
+    }
+    return {};
+}
+
+std::vector<PluginManager::MenuSource> PluginManager::menuSources() const
+{
+    std::vector<MenuSource> sources;
+    for ( const auto& [ id, entry ] : entries_ ) {
+        if ( !entry->manifest.valid()
+             || !settings_.value( configurationKey( id ) + "enabled", false ).toBool() ) {
+            continue;
+        }
+        sources.push_back( { id, entry->manifest.name, entry->manifest.directory,
+                             entry->manifest.json, hiddenMenuLocations( id ) } );
+    }
+    std::sort( sources.begin(), sources.end(), []( const MenuSource& a, const MenuSource& b ) {
+        const auto order = QString::compare( a.name, b.name, Qt::CaseInsensitive );
+        return order != 0 ? order < 0 : a.id < b.id;
+    } );
+    return sources;
+}
+
+Result PluginManager::startPlugin( const QString& pluginId )
+{
+    const auto usable = usablePlugin( pluginId );
+    if ( !usable.ok() ) {
+        return usable;
+    }
+    auto* process = ensureProcess( *entries_.at( pluginId ) );
+    if ( process->state() == "failed" ) {
+        return { terminalError( process->error() ), {} };
+    }
+    return { {}, { { "state", process->state() } } };
+}
+
+Result PluginManager::sendCommand( const QString& pluginId, const QJsonObject& params )
+{
+    const auto usable = usablePlugin( pluginId );
+    if ( !usable.ok() ) {
+        return usable;
+    }
+    if ( !declaresHandler( pluginId, QStringLiteral( "ui/command" ) ) ) {
+        return { "This plugin needs a newer SDK (ui/command is not in handles).", {} };
+    }
+    if ( QJsonDocument( params ).toJson( QJsonDocument::Compact ).size() + 128 > MaxEventBytes ) {
+        return { "The menu command is too large.", {} };
+    }
+    auto* process = ensureProcess( *entries_.at( pluginId ) );
+    if ( process->state() == "failed" ) {
+        return { terminalError( process->error() ), {} };
+    }
+    if ( process->state() != "ready" ) {
+        // Delivered when the plugin is ready (design 7.5), a few at most.
+        auto& waiting = pendingCommands_[ pluginId ];
+        if ( static_cast<int>( waiting.size() ) >= MaxQueuedCommands ) {
+            return { "Too many menu commands are waiting for the plugin to start.", {} };
+        }
+        waiting.push_back( params );
+        LOG_DEBUG << "Plugin menu command queued until ready plugin=" << pluginId.toStdString()
+                  << " item=" << params.value( "item_id" ).toString().left( 128 ).toStdString();
+        return { {}, { { "state", process->state() }, { "queued", true } } };
+    }
+    if ( !deliverCommand( pluginId, params ) ) {
+        return { "The plugin is not reading its input.", {} };
+    }
+    return { {}, { { "state", process->state() }, { "queued", false } } };
+}
+
+bool PluginManager::deliverCommand( const QString& pluginId, const QJsonObject& params )
+{
+    auto* process = entries_.at( pluginId )->process.get();
+    const auto size = QJsonDocument( params ).toJson( QJsonDocument::Compact ).size() + 128;
+    if ( process->pendingOutputBytes() + size > MaxPendingBytes / 2 ) {
+        LOG_WARNING << "Plugin menu command dropped: plugin input backlog plugin="
+                    << pluginId.toStdString();
+        return false;
+    }
+    // Ids and sizes only: the selected text never enters the log.
+    LOG_DEBUG << "Plugin menu command plugin=" << pluginId.toStdString()
+              << " origin=" << params.value( "origin" ).toString().left( 16 ).toStdString()
+              << " menu=" << params.value( "menu_id" ).toString().left( 128 ).toStdString()
+              << " item=" << params.value( "item_id" ).toString().left( 128 ).toStdString()
+              << " bytes=" << size;
+    process->notify( "ui/command", params );
+    return true;
+}
+
+void PluginManager::handleMenuUpdate( const QString& pluginId, const QJsonObject& params )
+{
+    const auto it = entries_.find( pluginId );
+    if ( it == entries_.end() ) {
+        return;
+    }
+    QString error;
+    const auto changes = sanitizeMenuUpdate( it->second->manifest.json, params, &error );
+    if ( changes.isEmpty() ) {
+        LOG_WARNING << "Plugin menu/update ignored plugin=" << pluginId.toStdString()
+                    << " menu=" << params.value( "menu_id" ).toString().left( 128 ).toStdString()
+                    << " reason=" << error.toStdString();
+        return;
+    }
+    LOG_DEBUG << "Plugin menu update plugin=" << pluginId.toStdString()
+              << " menu=" << params.value( "menu_id" ).toString().toStdString()
+              << " entries=" << changes.size();
+    Q_EMIT menuUpdated( pluginId, params.value( "menu_id" ).toString(), changes );
+}
+
+QStringList PluginManager::hiddenMenuLocations( const QString& pluginId ) const
+{
+    return settings_.value( configurationKey( pluginId ) + "menus/hidden" ).toStringList();
+}
+
+void PluginManager::setShortcutReport( const std::map<QString, QVariantList>& report )
+{
+    if ( report == shortcutReport_ ) {
+        return;
+    }
+    shortcutReport_ = report;
+    Q_EMIT changed();
+}
+
+bool PluginManager::isPluginCapture( const QString& path ) const
+{
+    if ( path.isEmpty() || dataRoot_.isEmpty() ) {
+        return false;
+    }
+    const auto captures = QDir::cleanPath( QDir( dataRoot_ ).absoluteFilePath( "captures" ) ) + '/';
+    return QDir::cleanPath( QFileInfo( path ).absoluteFilePath() )
+        .startsWith( captures, Qt::CaseInsensitive );
 }
 } // namespace cilogg::plugins

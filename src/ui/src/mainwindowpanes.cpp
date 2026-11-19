@@ -200,9 +200,11 @@ void MainWindow::populateMoveToPaneMenu( QMenu* menu, const QString& tabId )
 
 void MainWindow::extendTabContextMenu( QMenu& menu, LogPane* pane, int index )
 {
+    const auto tabId = pane->tabs()->tabIdAt( index );
+    // E17b: plugin entries of location `tab`, before the pane commands (design 7.7).
+    addPluginMenuSection( menu, QStringLiteral( "tab" ), tabId, pane );
     menu.addSeparator();
-    addPaneCommands( menu, pane, pane->tabs()->tabIdAt( index ),
-                     QStringLiteral( "tabMoveToPaneMenu" ) );
+    addPaneCommands( menu, pane, tabId, QStringLiteral( "tabMoveToPaneMenu" ) );
 }
 
 void MainWindow::addPaneCommands( QMenu& menu, LogPane* pane, const QString& tabId,
@@ -251,6 +253,9 @@ void MainWindow::addPaneCommands( QMenu& menu, LogPane* pane, const QString& tab
     merge->setObjectName( QStringLiteral( "paneMenuMergeAction" ) );
     merge->setEnabled( severalPanes );
     connect( merge, &QAction::triggered, this, [ this ] { mergeAllPanes(); } );
+    // E17b: plugin entries of location `pane` (the tab menu, the log views' Panes submenu and
+    // the menu of an empty pane).
+    addPluginMenuSection( menu, QStringLiteral( "pane" ), tabId, pane );
 }
 
 void MainWindow::populatePaneMenu( QMenu& menu, QWidget* origin )

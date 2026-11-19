@@ -90,9 +90,10 @@ class Negotiation(SdkCase):
         self.host(plugin)
         self.assertTrue(plugin.supports("views", 2))
         self.assertFalse(plugin.supports("views", 3))
-        for feature in ("view_edit", "queries", "tooltips", "icons"):
+        for feature in ("view_edit", "queries", "tooltips", "icons", "menus", "shortcuts"):
             self.assertTrue(plugin.supports(feature), feature)
-        self.assertFalse(plugin.supports("menus"))
+        self.assertFalse(plugin.supports("menus", 2))
+        self.assertFalse(plugin.supports("tree"))
         self.assertEqual(plugin.host_limits, dict(self.testing.HOST_LIMITS))
         self.assertEqual(plugin.host_version, self.testing.HOST_VERSION)
         self.assertEqual(plugin.host_feature_versions, dict(self.testing.HOST_FEATURE_VERSIONS))
