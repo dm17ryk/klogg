@@ -792,6 +792,7 @@ QString PackStore::remove()
     // content folder, and the other way round. What stays is set aside by the next install.
     const bool content = QDir( QDir( root_ ).filePath( packId_ ) ).removeRecursively();
     const bool repository = QDir( repositoryPath() ).removeRecursively();
+    endUpdate(); // a journal of an update of the store removed means nothing any more
     return content && repository ? QString{} : QStringLiteral( "Cannot remove the pack store." );
 }
 
@@ -813,69 +814,62 @@ QString PackStore::setAside()
                 .arg( QDir::toNativeSeparators( path ) );
         }
     }
+    endUpdate();
     LOG_WARNING << "Pack store of an earlier install set aside pack=" << packId_.toStdString();
     return {};
 }
 
-QString PackStore::recoverInterruptedUpdate( const QString& installedVersion )
+QString PackStore::journalPath() const
 {
-    git_oid upstream;
-    git_oid local;
-    if ( !open( false ) || git_reference_name_to_id( &upstream, repository_, "refs/heads/upstream" ) != 0
-         || git_reference_name_to_id( &local, repository_, "refs/heads/local" ) != 0 ) {
-        return {}; // no store, or a damaged one: damaged() and rebuild() handle it
+    return QDir( root_ ).filePath( packId_ + QStringLiteral( ".update.json" ) );
+}
+
+QString PackStore::beginUpdate( const PackTips& before )
+{
+    if ( !safePackId( packId_ ) || !QDir().mkpath( root_ ) ) {
+        return QStringLiteral( "Cannot prepare the pack store." );
     }
-    const auto parentOf = [ this ]( const git_oid& id, unsigned int index, git_oid* parent ) {
-        Commit commit;
-        if ( git_commit_lookup( &commit.pointer, repository_, &id ) != 0
-             || git_commit_parentcount( commit.pointer ) <= index ) {
-            return false;
-        }
-        git_oid_cpy( parent, git_commit_parent_id( commit.pointer, index ) );
-        return true;
-    };
-    const auto descends = [ this ]( const git_oid& commit, const git_oid& ancestor ) {
-        return git_oid_equal( &commit, &ancestor )
-               || git_graph_descendant_of( repository_, &commit, &ancestor ) == 1;
-    };
-    const auto versionAt = [ this ]( const git_oid& id ) {
-        return QJsonDocument::fromJson( filesAt( oidText( id ) ).value( ManifestPath ) )
-            .object()
-            .value( "version" )
-            .toString();
-    };
-    const auto move = [ this ]( const char* branch, const git_oid& id ) {
-        Reference reference;
-        return git_reference_create( &reference.pointer, repository_, branch, &id, 1,
-                                     "Put back an update that stopped part-way" )
-               == 0;
-    };
-    // `local` always descends from `upstream` (an update moves `upstream` first): if not, CILogg
-    // ended between the two, and `upstream` goes back to the version `local` was merged with.
-    git_oid previous;
-    if ( !descends( local, upstream ) ) {
-        if ( !parentOf( upstream, 0, &previous ) || !descends( local, previous )
-             || !move( "refs/heads/upstream", previous ) ) {
-            return lastError( QStringLiteral( "The pack's store is inconsistent and cannot be put back" ) );
-        }
-        git_oid_cpy( &upstream, &previous );
-        LOG_WARNING << "Pack store update undone (local not moved) pack=" << packId_.toStdString();
+    const QJsonObject journal{ { "existed", before.existed },
+                               { "upstream", before.upstream },
+                               { "local", before.local } };
+    QSaveFile file( journalPath() );
+    if ( !file.open( QIODevice::WriteOnly ) || file.write( QJsonDocument( journal ).toJson() ) < 0
+         || !file.commit() ) {
+        return QStringLiteral( "Cannot write the journal of the pack store update." );
     }
-    // Both moved but the package folder still has the earlier version: the update's merge (whose
-    // second parent is the new `upstream`) is undone, and `upstream` goes back with it.
-    if ( !installedVersion.isEmpty() && versionAt( upstream ) != installedVersion ) {
-        git_oid merged;
-        git_oid before;
-        if ( parentOf( local, 1, &merged ) && git_oid_equal( &merged, &upstream )
-             && parentOf( local, 0, &before ) && parentOf( upstream, 0, &previous )
-             && versionAt( previous ) == installedVersion ) {
-            if ( !move( "refs/heads/local", before ) || !move( "refs/heads/upstream", previous ) ) {
-                return lastError( QStringLiteral( "The pack's store cannot be put back" ) );
-            }
-            LOG_WARNING << "Pack store update undone (package not replaced) pack="
-                        << packId_.toStdString();
-        }
+    return {};
+}
+
+void PackStore::endUpdate()
+{
+    if ( safePackId( packId_ ) && QFileInfo::exists( journalPath() ) && !QFile::remove( journalPath() ) ) {
+        LOG_WARNING << "Pack store update journal not removed pack=" << packId_.toStdString();
     }
+}
+
+QString PackStore::recoverInterruptedUpdate()
+{
+    if ( !safePackId( packId_ ) || !QFileInfo::exists( journalPath() ) ) {
+        return {};
+    }
+    QFile file( journalPath() );
+    const auto journal = file.open( QIODevice::ReadOnly )
+                             ? QJsonDocument::fromJson( file.read( 64 * 1024 ) ).object()
+                             : QJsonObject{};
+    file.close();
+    const PackTips before{ journal.value( "existed" ).toBool(), journal.value( "upstream" ).toString(),
+                           journal.value( "local" ).toString() };
+    if ( journal.isEmpty() || ( before.existed && ( before.upstream.isEmpty() || before.local.isEmpty() ) ) ) {
+        return QStringLiteral( "The journal of an unfinished update of the pack cannot be read: %1" )
+            .arg( QDir::toNativeSeparators( journalPath() ) );
+    }
+    // The tips before the update (or no store, for a first install): an update that stopped
+    // part-way has its commits undone, and one that never moved the store is left as it is.
+    if ( const auto error = rollback( before ); !error.isEmpty() ) {
+        return QStringLiteral( "An unfinished update of the pack could not be undone: %1" ).arg( error );
+    }
+    LOG_WARNING << "Pack store update that stopped part-way undone pack=" << packId_.toStdString();
+    endUpdate();
     return {};
 }
 

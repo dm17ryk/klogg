@@ -270,16 +270,17 @@ QString PluginManager::ensurePackStore( const QString& id, const Manifest& insta
                                         bool create ) const
 {
     PackStore store( packStoreRoot(), id );
+    // An update whose journal is still there stopped part-way (CILogg ended in the middle): the
+    // store is put back to the installed version first.
+    if ( const auto error = store.recoverInterruptedUpdate(); !error.isEmpty() ) {
+        return error;
+    }
     // A content folder without its repository (moved, or deleted by hand) still holds the
     // edits: that is rebuilt like a damaged store, never replaced by the installed version.
     const bool damaged
         = store.damaged() || ( !store.hasRepository() && !store.contentDirectory().isEmpty() );
     if ( !damaged && store.exists() ) {
-        // An update that stopped part-way (CILogg ended in the middle) is put back to the installed
-        // version, and a content folder lost or left behind after its commit is written again.
-        if ( const auto error = store.recoverInterruptedUpdate( installed.version ); !error.isEmpty() ) {
-            return error;
-        }
+        // A content folder lost or left behind after its commit is written again.
         return store.repairContent();
     }
     if ( !damaged && !create ) {
@@ -321,8 +322,14 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
         }
     }
     PackStore store( packStoreRoot(), staged.manifest.id );
-    // A store without its pack is what an earlier removal could not delete: it is set aside, so
-    // its edits do not come back into a new install.
+    // A store without its pack is a first install that stopped part-way (its journal removes it)
+    // or what an earlier removal could not delete: that is set aside, so its edits do not come
+    // back into a new install.
+    if ( !packInstalled ) {
+        if ( const auto interrupted = store.recoverInterruptedUpdate(); !interrupted.isEmpty() ) {
+            return interrupted;
+        }
+    }
     if ( !packInstalled && ( store.hasRepository() || !store.contentDirectory().isEmpty() ) ) {
         if ( const auto aside = store.setAside(); !aside.isEmpty() ) {
             return aside;

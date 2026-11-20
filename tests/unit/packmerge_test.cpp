@@ -480,19 +480,28 @@ TEST_CASE( "A damaged pack store is rebuilt with the local edits", "[packmerge][
            == 1 );
 }
 
-TEST_CASE( "An update that stopped part-way is put back to the installed version",
-           "[packmerge][E16]" )
+TEST_CASE( "An update that stopped part-way is put back by its journal", "[packmerge][E16]" )
 {
     QTemporaryDir root;
     REQUIRE( root.isValid() );
     const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto journal = root.filePath( "org.example.pack.update.json" );
     PackStore store( root.path(), "org.example.pack" );
     REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
     auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
     edited[ "regex" ] = "^EDITED$";
     REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
     const auto before = store.localTip();
-    // Version 1.1.0 changes another preview; the merge keeps the edit.
+    // A finished update leaves no journal, and nothing is put back.
+    REQUIRE( store.beginUpdate( store.tips() ).isEmpty() );
+    CHECK( QFileInfo::exists( journal ) );
+    store.endUpdate();
+    CHECK( !QFileInfo::exists( journal ) );
+    REQUIRE( store.recoverInterruptedUpdate().isEmpty() );
+    CHECK( store.localTip() == before );
+
+    // The same version again with other content (a reinstall): another preview changes, the
+    // merge keeps the edit. CILogg ends before the journal is removed.
     auto v2Previews = QJsonDocument::fromJson( Previews ).object();
     auto previews = v2Previews[ "previews" ].toArray();
     auto frame = previews[ 1 ].toObject();
@@ -502,31 +511,25 @@ TEST_CASE( "An update that stopped part-way is put back to the installed version
     const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
     const auto plan = store.planUpdate( v2, MergeStrategy::Fail );
     REQUIRE( plan.conflicts.isEmpty() );
-    REQUIRE( store.applyUpdate( v2, plan.merged, packManifest( "1.1.0" ), "1.1.0", "Team packs" ).isEmpty() );
-    const auto after = store.localTip();
-    REQUIRE( after != before );
-    // Nothing to put back when the package folder has the store's version.
-    REQUIRE( store.recoverInterruptedUpdate( "1.1.0" ).isEmpty() );
-    CHECK( store.localTip() == after );
+    REQUIRE( store.beginUpdate( store.tips() ).isEmpty() );
+    REQUIRE( store.applyUpdate( v2, plan.merged, packManifest( "1.0.0" ), "1.0.0", "Team packs" ).isEmpty() );
+    REQUIRE( store.localTip() != before );
 
     SECTION( "CILogg ended before the package folder was replaced" )
     {
-        REQUIRE( store.recoverInterruptedUpdate( "1.0.0" ).isEmpty() );
     }
     SECTION( "CILogg ended between moving upstream and local" )
     {
         QFile local( root.filePath( "org.example.pack.git/refs/heads/local" ) );
         REQUIRE( local.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
         local.write( before.toLatin1() + '\n' );
-        local.close();
-        PackStore reopened( root.path(), "org.example.pack" );
-        REQUIRE( reopened.recoverInterruptedUpdate( "1.0.0" ).isEmpty() );
     }
     PackStore recovered( root.path(), "org.example.pack" );
+    REQUIRE( recovered.recoverInterruptedUpdate().isEmpty() );
+    CHECK( !QFileInfo::exists( journal ) );
     CHECK( recovered.localTip() == before );
     CHECK( recovered.upstreamFiles() == packFiles() );
     CHECK( recovered.localEdits() == QStringList{ second } );
-    REQUIRE( recovered.repairContent().isEmpty() );
     CHECK( readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
     CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
 }
@@ -1068,6 +1071,8 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
     CHECK( previewRegex( content, "Second" ) == "^MINE$" );
     CHECK( previewRegex( content, "First Frame" ) == "^A2$" );
     CHECK( readFile( content + "/lua/a.lua" ) == "-- a, 2\n" );
+    // The update finished: its journal is gone.
+    CHECK( !QFileInfo::exists( root.filePath( "data/pack-store/org.example.pack.update.json" ) ) );
     CHECK( QDir( root.filePath( "data/pack-store" ) )
                .entryList( { "org.example.pack.git.damaged-*" }, QDir::Dirs | QDir::NoDotAndDotDot )
                .size()

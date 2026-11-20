@@ -808,11 +808,13 @@ listed as one whole-item conflict. Resolutions come back with the result's `revi
 they are dropped and the merge is asked for again, so a stale choice never overwrites a newer
 edit, and the GUI then drops the earlier merge's Keep Both too (the new merge's choices
 replace it). The merge window sends a whole side as `take` only when a whole-side button chose
-it (the editor shows CRLF as LF), and a text result of a CRLF file keeps CRLF. An update that
-stopped part-way (CILogg ended between moving `upstream` and `local`, which never otherwise
-leaves `local` outside `upstream`'s descendants, or before the package folder was replaced, so
-`upstream`'s version is not the installed one) is put back when the pack is next read: the
-update's merge and its `upstream` commit are undone, and a later update merges anew. Removing a
+it (the editor shows CRLF as LF), and a text result of a CRLF file keeps CRLF. Every install
+or update writes a journal first (`<pack-id>.update.json`: the branch tips before it) and
+removes it once the package folder is replaced or the store put back; a journal still there
+when the pack is next read (at startup too) means CILogg ended part-way, between the branch
+moves or before the package swap, whatever the versions, and the store is put back to those
+tips, so a later update merges anew. Keep Both is for a preview as a whole: a field choice of
+one of its rows takes the item out of it. Removing a
 pack removes the repository and the content folder each on its own; a store still on disk when
 the pack is installed again (a removal that could not finish) is set aside as
 `<name>.orphaned-<time>`, never merged into the new install. `pack_edit` takes exactly one

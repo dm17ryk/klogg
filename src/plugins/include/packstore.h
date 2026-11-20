@@ -105,11 +105,16 @@ public:
     // Writes the effective content again when its folder is missing or holds another commit (a
     // write that failed after its commit).
     QString repairContent();
-    // Puts back an update that stopped part-way (CILogg ended between moving `upstream` and
-    // `local`, or before the package folder of `installedVersion` was replaced), so the store
-    // matches the installed package again; a later update merges anew. Empty when nothing was
-    // wrong or it was put back.
-    QString recoverInterruptedUpdate( const QString& installedVersion );
+    // The journal of an install or update in progress: the branch tips before it, written before
+    // the store moves and removed (endUpdate) once the package folder is replaced or the store is
+    // put back. Found later, it means CILogg ended part-way, whatever the versions.
+    QString beginUpdate( const PackTips& before );
+    void endUpdate();
+    // Puts back an install or update whose journal is still there (CILogg ended between moving
+    // `upstream` and `local`, or before the package folder was replaced), so the store matches
+    // the installed package again; a later update merges anew. Empty when there was nothing to
+    // put back or it was put back; the journal stays when it could not be.
+    QString recoverInterruptedUpdate();
     // Sets an earlier install's store aside as `<name>.orphaned-<time>` (kept, never deleted):
     // a pack installed again starts a store of its own.
     QString setAside();
@@ -124,6 +129,8 @@ private:
     // `<root>/<pack-id>.git`, or on Windows a short folder of the user's when that path is too
     // deep for libgit2.
     QString repositoryPath() const;
+    // `<root>/<pack-id>.update.json`: the journal of an install or update in progress.
+    QString journalPath() const;
     // A commit on `branch` (its tip is the first parent); with `moveBranch` false the branch
     // stays where it is, so several commits can be published together.
     QString commit( const char* branch, const PackFiles& files, const QString& message,

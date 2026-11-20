@@ -1664,28 +1664,41 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     }
     // A pack's store moves before the package folder: it can be put back, the folder swap
     // cannot. A store that fails leaves the installed version as it is, and a package that
-    // fails puts the store back, so the version and the content never disagree.
+    // fails puts the store back, so the version and the content never disagree. The journal
+    // written first covers CILogg ending in between: the next read of the pack puts it back.
     PackTips packBefore;
+    bool journal = false;
+    const auto putBack = [ this, &staged, &packBefore ] {
+        const auto restored = PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
+        if ( !restored.isEmpty() ) {
+            LOG_WARNING << "Pack store not put back id=" << staged.manifest.id.toStdString();
+        }
+        return restored.isEmpty();
+    };
     if ( error.isEmpty() && pack ) {
-        packBefore = PackStore( packStoreRoot(), staged.manifest.id ).tips();
-        error = finishPackInstall( staged, packShipped, packMerged, source );
+        PackStore store( packStoreRoot(), staged.manifest.id );
+        packBefore = store.tips();
+        error = store.beginUpdate( packBefore );
+        journal = error.isEmpty();
+        if ( journal ) {
+            error = finishPackInstall( staged, packShipped, packMerged, source );
+        }
         if ( !error.isEmpty() ) {
             error = QStringLiteral( "The pack's local store could not be updated, so the "
                                     "installed version stays: %1" )
                         .arg( error );
             // Partly written: put it back (a store that moved nothing is unchanged anyway).
-            PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
+            journal = journal && !putBack();
         }
     }
     if ( error.isEmpty() ) {
         error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
-        if ( !error.isEmpty() && pack ) {
-            const auto restored
-                = PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
-            if ( !restored.isEmpty() ) {
-                LOG_WARNING << "Pack store not put back id=" << staged.manifest.id.toStdString();
-            }
-        }
+        journal = journal && !error.isEmpty() && pack && !putBack();
+    }
+    // Done, or put back: the journal goes. One that stays (a store not put back) is put back
+    // by the next read of the pack.
+    if ( pack && !journal ) {
+        PackStore( packStoreRoot(), staged.manifest.id ).endUpdate();
     }
     if ( error.isEmpty() && pack ) {
         // Installed with its store: no update waits for a merge any more.

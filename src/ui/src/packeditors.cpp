@@ -859,8 +859,21 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         }
         return rows;
     };
+    // Keep Both is for a preview as a whole: a field choice of one of its rows takes the whole
+    // item out of it, the other rows back to Keep Mine (never a "both" row with no value, which
+    // Apply would send as a removal).
+    const auto leaveBoth = [ & ]( QTreeWidgetItem* row ) {
+        auto* item = row->parent() ? row->parent() : row;
+        for ( int child = 0; child < item->childCount(); ++child ) {
+            auto* field = item->child( child );
+            if ( field->data( 0, ChoiceRole ).toString() == QLatin1String( "both" ) ) {
+                setChoice( field, "mine", field->data( 0, ConflictRole ).toMap().value( "mine" ).toString() );
+            }
+        }
+    };
     const auto choose = [ & ]( const QList<QTreeWidgetItem*>& rows, bool mine ) {
         for ( auto* row : rows ) {
+            leaveBoth( row );
             const auto conflict = row->data( 0, ConflictRole ).toMap();
             setChoice( row, mine ? "mine" : "theirs",
                        conflict.value( mine ? "mine" : "theirs" ).toString() );
@@ -888,6 +901,7 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             QMessageBox::warning( &dialog, tr( "Edit Result" ), tr( "That is not one JSON value." ) );
             return;
         }
+        leaveBoth( row );
         setChoice( row, "edit", text.trimmed() );
     } );
     QObject::connect( keepBoth, &QPushButton::clicked, &dialog, [ & ] {
@@ -952,8 +966,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         for ( int top = 0; top < tree->topLevelItemCount(); ++top ) {
             auto* parentRow = tree->topLevelItem( top );
             const auto path = parentRow->data( 0, ConflictRole ).toMap().value( "path" ).toString();
-            if ( parentRow->childCount() > 0
-                 && parentRow->child( 0 )->data( 0, ChoiceRole ).toString() == "both" ) {
+            // Keep Both only when every row of the item has it (a field choice takes it out).
+            bool both = parentRow->childCount() > 0;
+            for ( int child = 0; both && child < parentRow->childCount(); ++child ) {
+                both = parentRow->child( child )->data( 0, ChoiceRole ).toString() == QLatin1String( "both" );
+            }
+            if ( both ) {
                 // The pack item becomes the new version as a whole; yours is copied first.
                 const auto whole = items.value( path ).toMap();
                 keepBothPreviews.append( parentRow->child( 0 )

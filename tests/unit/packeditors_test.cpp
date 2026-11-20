@@ -319,6 +319,35 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
                == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
                                { "take", "mine" } } );
     }
+    SECTION( "a field choice takes a preview out of Keep Both" )
+    {
+        auto job = conflictJob();
+        auto result = job[ "result" ].toMap();
+        auto conflicts = result[ "conflicts" ].toList();
+        conflicts.insert( 1, QVariantMap{ { "path", SecondPath }, { "kind", "preview" }, { "item", "Second" },
+                                          { "field", "format" }, { "base", "\"fields\"" },
+                                          { "mine", "\"mine-format\"" }, { "theirs", "\"theirs-format\"" } } );
+        result[ "conflicts" ] = conflicts;
+        job[ "result" ] = result;
+        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+            auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+            REQUIRE( tree );
+            tree->setCurrentItem( tree->topLevelItem( 0 ) );
+            buttonIn( dialog, "packMergeKeepBoth" )->click();
+            // Then one field taken from the new version: the other goes back to yours.
+            tree->setCurrentItem( tree->topLevelItem( 0 )->child( 0 ) );
+            buttonIn( dialog, "packMergeTakeTheirs" )->click();
+            CHECK( tree->topLevelItem( 0 )->child( 1 )->text( 4 ) == "\"mine-format\"" );
+            buttonIn( dialog, "packMergeWholeMine" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        REQUIRE( applied.size() == 3 );
+        CHECK( applied.at( 1 ).toMap()
+               == QVariantMap{ { "path", SecondPath }, { "field", "regex" }, { "value", "^THEIRS$" } } );
+        CHECK( applied.at( 2 ).toMap()
+               == QVariantMap{ { "path", SecondPath }, { "field", "format" }, { "value", "mine-format" } } );
+    }
     SECTION( "a file with CRLF line endings keeps them" )
     {
         auto job = conflictJob();
