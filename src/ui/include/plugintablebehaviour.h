@@ -61,6 +61,8 @@ public:
         // Kept columns (section 10.5).
         std::function<QJsonObject()> loadState;
         std::function<void( const QJsonObject& state )> saveState;
+        // The selection changed while it was held (see holdsSelection()): send `selected` now.
+        std::function<void()> selectionSettled;
     };
 
     PluginTableBehaviour( QTableView* table, pluginview::PluginTableModel* model,
@@ -71,8 +73,20 @@ public:
     {
         return options_;
     }
-    // After the plugin set the columns: hidden columns, minimum widths, then the kept state.
+    // Before the plugin's new columns reset the model: a pending column change is saved with the
+    // columns it was made on, and nothing the reset itself changes is saved.
+    void beginColumnsChange();
+    // The new columns were refused: nothing changed.
+    void abortColumnsChange();
+    // After the plugin set the columns: hidden columns, minimum widths, then the kept state; the
+    // sort follows its column by id (or goes when that column is gone).
     void columnsChanged();
+    // While a press on a selected row may start a drag, selection changes send no `selected`:
+    // a drag restores the selection before the press, a release without a drag reports once.
+    bool holdsSelection() const
+    {
+        return holdSelection_;
+    }
     // The selection patch (section 10.2); the view applies it without a `selected` event.
     void select( const QJsonValue& ids, const QJsonValue& current, const QJsonValue& scrollTo );
     QString currentRowId() const;
@@ -119,6 +133,9 @@ private:
     QString rowIdAt( const QModelIndex& index ) const;
     QModelIndex indexOfRow( const QString& rowId ) const;
     bool isCheckCell( const QModelIndex& index ) const; // a proxy index in a `check` column
+    // Ends a hold of the selection; with `report`, sends `selected` when the selection is no
+    // longer the one before the press.
+    void releaseSelection( bool report );
 
     QPointer<QTableView> table_;
     pluginview::PluginTableModel* model_;
@@ -134,5 +151,8 @@ private:
     QString pressRow_;
     QItemSelection pressSelection_; // the selection when the drag's press came (ranges)
     bool pressWasSelected_ = false; // whether the pressed row was in it
+    bool holdSelection_ = false;    // see holdsSelection()
     bool restoring_ = false;
+    QString sortedColumn_; // the sorted column's id while new columns come (beginColumnsChange)
+    Qt::SortOrder sortedOrder_ = Qt::AscendingOrder;
 };

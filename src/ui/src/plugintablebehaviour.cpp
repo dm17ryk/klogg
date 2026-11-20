@@ -158,6 +158,23 @@ void PluginTableBehaviour::setOptions( const Options& options )
     table_->viewport()->setAcceptDrops( options.reorderable );
 }
 
+void PluginTableBehaviour::beginColumnsChange()
+{
+    // Saved now, with the columns the change was made on: the reset would save the old sort
+    // index (and widths) under the new columns.
+    flushPendingSave();
+    restoring_ = true;
+    const auto sorted = proxy_->sortColumn();
+    sortedColumn_ = sorted >= 0 ? model_->columnId( sorted ) : QString{};
+    sortedOrder_ = proxy_->sortOrder();
+}
+
+void PluginTableBehaviour::abortColumnsChange()
+{
+    restoring_ = false;
+    sortedColumn_.clear();
+}
+
 void PluginTableBehaviour::columnsChanged()
 {
     if ( !table_ ) {
@@ -167,12 +184,23 @@ void PluginTableBehaviour::columnsChanged()
     flushPendingSave();
     hiddenWidths_.clear();
     restoring_ = true;
+    // The proxy's sort index belongs to the old columns: it goes, and the sort comes back by
+    // column id below when that column is still there.
+    const auto sortedId = std::exchange( sortedColumn_, {} );
+    if ( table_->isSortingEnabled() ) {
+        table_->horizontalHeader()->setSortIndicator( -1, Qt::AscendingOrder );
+    }
+    proxy_->sort( -1 );
     for ( int column = 0; column < model_->columnCount(); ++column ) {
         table_->setColumnHidden( column, model_->column( column ).hidden );
         enforceMinimumWidth( column, table_->horizontalHeader()->sectionSize( column ) );
     }
     if ( options_.keepColumns && hooks_.loadState ) {
         restoreState( hooks_.loadState() );
+    }
+    else if ( const auto column = model_->columnOf( sortedId );
+              column >= 0 && table_->isSortingEnabled() && model_->column( column ).sortable ) {
+        table_->sortByColumn( column, sortedOrder_ );
     }
     // Never every column hidden (the header would have nothing to right-click).
     if ( shownColumns().isEmpty() && model_->columnCount() > 0 ) {
@@ -728,17 +756,42 @@ QStringList PluginTableBehaviour::draggedRows() const
     return pluginview::boundedIds( ids );
 }
 
+void PluginTableBehaviour::releaseSelection( bool report )
+{
+    if ( !std::exchange( holdSelection_, false ) || !report || !table_ ) {
+        return;
+    }
+    // The rows of a selection, in order: the press changed the selection when they differ.
+    const auto rowsOf = []( const QItemSelection& selection ) {
+        std::vector<int> rows;
+        for ( const auto& range : selection ) {
+            for ( int row = range.top(); range.isValid() && row <= range.bottom(); ++row ) {
+                rows.push_back( row );
+            }
+        }
+        std::sort( rows.begin(), rows.end() );
+        rows.erase( std::unique( rows.begin(), rows.end() ), rows.end() );
+        return rows;
+    };
+    if ( rowsOf( table_->selectionModel()->selection() ) != rowsOf( pressSelection_ )
+         && hooks_.selectionSettled ) {
+        hooks_.selectionSettled();
+    }
+}
+
 void PluginTableBehaviour::startDrag()
 {
     const auto ids = draggedRows();
-    const auto before = std::exchange( pressSelection_, {} );
     const bool wasSelected = std::exchange( pressWasSelected_, false );
     pressRow_.clear();
     if ( wasSelected ) {
-        // The press changed the selection (a toggle table deselected the row, others kept only
-        // it): the selection before the press comes back, as Qt's own drags defer the change.
-        table_->selectionModel()->select( before, QItemSelectionModel::ClearAndSelect );
+        // The press changed the selection (a toggle table deselected the row): the selection
+        // before the press comes back, as Qt's own drags defer the change. It is still held, so
+        // the plugin hears neither change.
+        table_->selectionModel()->select( pressSelection_, QItemSelectionModel::ClearAndSelect );
     }
+    releaseSelection( true ); // the selection is the one before the press: nothing to report
+    pressSelection_.clear();
     auto* mime = new QMimeData;
     mime->setData( RowsMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) ).toJson(
                                      QJsonDocument::Compact ) );
@@ -804,6 +857,7 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
         const auto* mouse = static_cast<QMouseEvent*>( event );
         const auto position = mouse->position().toPoint();
         const auto index = table_->indexAt( position );
+        releaseSelection( true ); // a release this behaviour never saw
         pressRow_.clear();
         pressSelection_.clear();
         pressWasSelected_ = false;
@@ -835,6 +889,9 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
                 pressSelection_ = table_->selectionModel()->selection();
                 pressWasSelected_ = table_->selectionModel()->isRowSelected( index.row(),
                                                                              index.parent() );
+                // The press may toggle this row off for a moment: the plugin hears nothing until
+                // the release, and nothing at all when a drag puts the selection back.
+                holdSelection_ = pressWasSelected_;
             }
         }
         return false;
@@ -850,7 +907,9 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
         return false;
     }
     case QEvent::MouseButtonRelease:
-        // No drag started: the snapshot of the selection goes.
+        // No drag started: a held selection change is reported once, and the snapshot goes. (A
+        // change the view still makes on the release itself is no longer held.)
+        releaseSelection( true );
         pressRow_.clear();
         pressSelection_.clear();
         pressWasSelected_ = false;

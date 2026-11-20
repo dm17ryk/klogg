@@ -29,6 +29,9 @@ constexpr int EditorRole = Qt::UserRole + 2; // the cell's editor spec; empty wh
 constexpr int PendingValueRole = Qt::UserRole + 3;
 // E17d: a cell's progress (a double, 0..1) drawn behind its text; invalid otherwise.
 constexpr int ProgressRole = Qt::UserRole + 4;
+// E17d: the text sort_as "text" and "natural" compare: the cell's `sort` value as text, else the
+// text as it is (SortRole turns numeric-looking text into numbers).
+constexpr int SortTextRole = Qt::UserRole + 5;
 // E17d: at most this many ids in a selection patch, an element menu context, `checked` and
 // `moved` events (docs/plugin-sdk-advanced.md section 10).
 constexpr int MaxTableIds = 1000;
