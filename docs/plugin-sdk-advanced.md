@@ -1432,7 +1432,9 @@ a choice open, E17c decided as follows.
   filters the list. `changed` is debounced like text, whether
   the text was typed or picked, and new `choices` never replace typed text.
 - **`completion`.** After 150 ms without typing, the host asks `field/complete`
-  `{element_id, text, cursor}` (one per view: a newer one cancels the older one) and shows up to
+  `{element_id, text, cursor}` (`cursor` counts characters, Unicode code points, as Python's
+  `len()` does: an emoji before it counts once; one per view: a newer one cancels the older one)
+  and shows up to
   100 items in a list under the field; picking one puts its `value` into the field. Each edit
   drops the answer still in flight, so only an answer for the current text is shown.
   `completion_timeout_ms` changes the 500 ms timeout, up to 2,000 ms. The answer is `{items}`, a
@@ -1448,7 +1450,9 @@ a choice open, E17c decided as follows.
   one). `columns` is 1 to 12; without it the buttons form one column or one row.
 - **Field kinds.**
   - `multiline`: `rows` (1 to 50, default 4) sets the height and `monospace` the system fixed
-    font; Tab moves the focus on.
+    font (a later root without them returns to four rows and the default font); Tab moves the
+    focus on. Like a line field it holds at most 65,536 characters: a longer paste is cut in
+    the editor.
   - `secret`: masked; UI inspection never shows its text.
   - `integer` (a spin box) and `slider` (its value shows in `<element>_value`): `min`, `max` and
     `step` are whole numbers; a bound that is not given is any `int` for a spin box, and 0 or 100
@@ -1462,7 +1466,8 @@ a choice open, E17c decided as follows.
     the whole text; a pattern that does not compile checks nothing. Patterns run in the GUI, so
     each is compiled once, a value longer than 1,024 characters is left to the plugin, and a
     pattern that backtracks past PCRE2's match limit counts as no match. `min_length` and
-    `max_length` (whole numbers of at least 0) count characters, `min` and `max` compare numbers.
+    `max_length` (whole numbers of at least 0) count characters (Unicode code points: an emoji
+    is one), `min` and `max` compare numbers.
     A non-empty `error` makes the field invalid with that message.
   - The messages are the host's own ("Required", "At least 3 characters", "Not in the expected
     form", "At most 10") unless the plugin sets `error`.
