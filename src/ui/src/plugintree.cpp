@@ -427,11 +427,34 @@ void PluginTreeModel::setCheckboxes( bool checkboxes )
         return;
     }
     checkboxes_ = checkboxes;
-    forEach( [ this ]( const Node& node, int ) {
-        const auto changed = indexOfNode( &node );
-        Q_EMIT dataChanged( changed, changed, { Qt::CheckStateRole } );
-    } );
+    // Every box appears or goes: one signal per parent, not one per node.
+    QList<Node*> all;
+    forEach( [ this, &all ]( const Node& node, int ) { all.append( find( node.id ) ); } );
+    emitCheckChanges( all );
     recomputeChecks();
+}
+
+void PluginTreeModel::emitCheckChanges( const QList<Node*>& nodes )
+{
+    QHash<Node*, std::pair<int, int>> ranges; // parent -> first and last row
+    for ( auto* node : nodes ) {
+        if ( node == nullptr || node->parent == nullptr ) {
+            continue;
+        }
+        auto found = ranges.find( node->parent );
+        if ( found == ranges.end() ) {
+            ranges.insert( node->parent, { node->row, node->row } );
+        }
+        else {
+            found->first = qMin( found->first, node->row );
+            found->second = qMax( found->second, node->row );
+        }
+    }
+    for ( auto it = ranges.cbegin(); it != ranges.cend(); ++it ) {
+        const auto parent = indexOfNode( it.key() );
+        Q_EMIT dataChanged( index( it->first, 0, parent ), index( it->second, 0, parent ),
+                            { Qt::CheckStateRole } );
+    }
 }
 
 void PluginTreeModel::setAutoTristate( bool autoTristate )
@@ -590,9 +613,15 @@ bool PluginTreeModel::isWithin( const QString& id, const QString& ancestor ) con
 
 std::vector<std::unique_ptr<Node>> PluginTreeModel::parseNodes( const QJsonArray& nodes,
                                                                 Node* parent, int depth,
-                                                                QSet<QString>* seen,
+                                                                const QSet<QString>* replaced,
+                                                                QSet<QString>* fresh,
                                                                 bool inheritCheck )
 {
+    // No copy of the whole id index per operation: an id is taken when the tree keeps it.
+    const auto taken = [ & ]( const QString& id ) {
+        return fresh->contains( id )
+               || ( index_.contains( id ) && !( replaced && replaced->contains( id ) ) );
+    };
     std::vector<std::unique_ptr<Node>> parsed;
     for ( const auto& value : nodes ) {
         if ( !value.isObject() ) {
@@ -610,7 +639,7 @@ std::vector<std::unique_ptr<Node>> PluginTreeModel::parseNodes( const QJsonArray
             }
             continue;
         }
-        if ( id.isEmpty() || seen->contains( id ) ) {
+        if ( id.isEmpty() || taken( id ) ) {
             if ( warn ) {
                 warn( QStringLiteral( "tree-id:" ) + id.left( 128 ),
                       QStringLiteral( "tree node without an id or with a repeated id skipped: " )
@@ -618,7 +647,7 @@ std::vector<std::unique_ptr<Node>> PluginTreeModel::parseNodes( const QJsonArray
             }
             continue;
         }
-        seen->insert( id );
+        fresh->insert( id );
         noteExpand( object );
         auto node = std::make_unique<Node>();
         node->parent = parent;
@@ -631,7 +660,7 @@ std::vector<std::unique_ptr<Node>> PluginTreeModel::parseNodes( const QJsonArray
         }
         if ( object.value( "children" ).isArray() ) {
             node->children = parseNodes( object.value( "children" ).toArray(), node.get(),
-                                         depth + 1, seen, inheritCheck );
+                                         depth + 1, replaced, fresh, inheritCheck );
             renumber( *node );
         }
         parsed.push_back( std::move( node ) );
@@ -708,11 +737,9 @@ bool PluginTreeModel::replace( const QJsonArray& nodes, const QString& parentId,
     if ( changed ) {
         changed->append( old );
     }
-    auto taken = QSet<QString>( index_.keyBegin(), index_.keyEnd() );
-    for ( const auto& id : std::as_const( old ) ) {
-        taken.remove( id );
-    }
-    auto parsed = parseNodes( nodes, parent, depthOf( parentId ) + 1, &taken, false );
+    const QSet<QString> replaced( old.cbegin(), old.cend() );
+    QSet<QString> fresh;
+    auto parsed = parseNodes( nodes, parent, depthOf( parentId ) + 1, &replaced, &fresh, false );
     if ( parent == &root_ ) {
         // A whole new tree: one reset (the behaviour keeps expansion and selection by id).
         beginResetModel();
@@ -737,6 +764,8 @@ bool PluginTreeModel::replace( const QJsonArray& nodes, const QString& parentId,
 bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringList* changed )
 {
     bool ok = true;
+    // The parents' check states follow once, after every node changed.
+    ++deferChecks_;
     for ( const auto& value : nodes ) {
         const auto object = value.toObject();
         const auto id = object.value( "id" ).toString().left( PluginView::MaxTextChars );
@@ -765,9 +794,10 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
         if ( autoTristate_ && object.value( "checked" ).isBool() && node->checked != before ) {
             QStringList descendants;
             collectIds( *node, &descendants );
-            setChecked( descendants, node->checked == Qt::Checked );
+            applyChecked( descendants, node->checked == Qt::Checked, nullptr, false );
         }
     }
+    --deferChecks_;
     recomputeChecks();
     return ok;
 }
@@ -790,8 +820,8 @@ bool PluginTreeModel::insert( const QJsonArray& nodes, const QString& parentId,
         parent->load = Load::None;
         parent->hasChildren = false;
     }
-    auto taken = QSet<QString>( index_.keyBegin(), index_.keyEnd() );
-    auto parsed = parseNodes( nodes, parent, depthOf( parentId ) + 1, &taken, false );
+    QSet<QString> fresh;
+    auto parsed = parseNodes( nodes, parent, depthOf( parentId ) + 1, nullptr, &fresh, false );
     if ( parsed.empty() ) {
         return true;
     }
@@ -801,14 +831,15 @@ bool PluginTreeModel::insert( const QJsonArray& nodes, const QString& parentId,
     }
     beginInsertRows( indexOfNode( parent ), position,
                      position + static_cast<int>( parsed.size() ) - 1 );
-    auto at = parent->children.begin() + position;
     for ( auto& node : parsed ) {
-        auto* raw = node.get();
-        at = parent->children.insert( at, std::move( node ) ) + 1;
-        index_.insert( raw->id, raw );
+        index_.insert( node->id, node.get() );
         ++nodeCount_;
-        addToIndex( *raw );
+        addToIndex( *node );
     }
+    // One insertion of the whole range: no shifting per node.
+    parent->children.insert( parent->children.begin() + position,
+                             std::make_move_iterator( parsed.begin() ),
+                             std::make_move_iterator( parsed.end() ) );
     renumber( *parent );
     endInsertRows();
     recomputeChecks();
@@ -818,6 +849,43 @@ bool PluginTreeModel::insert( const QJsonArray& nodes, const QString& parentId,
 QStringList PluginTreeModel::remove( const QJsonArray& ids )
 {
     QStringList removed;
+    if ( ids.size() > LargeRemoval ) {
+        // Many nodes: one reset and one pass per parent instead of a shift per node (the
+        // behaviour keeps expansion and selection by id).
+        QHash<Node*, QSet<Node*>> byParent;
+        for ( const auto& value : ids ) {
+            auto* node = find( value.toString() );
+            if ( node != nullptr ) {
+                byParent[ node->parent ].insert( node );
+            }
+        }
+        if ( byParent.isEmpty() ) {
+            return removed;
+        }
+        beginResetModel();
+        for ( auto it = byParent.begin(); it != byParent.end(); ++it ) {
+            auto& children = it.key()->children;
+            for ( auto* node : std::as_const( it.value() ) ) {
+                if ( !index_.contains( node->id ) ) {
+                    continue; // already gone with an ancestor
+                }
+                removed.append( node->id );
+                collectIds( *node, &removed );
+                index_.remove( node->id );
+                --nodeCount_;
+                removeFromIndex( *node );
+            }
+            children.erase( std::remove_if( children.begin(), children.end(),
+                                            [ &it ]( const std::unique_ptr<Node>& child ) {
+                                                return it.value().contains( child.get() );
+                                            } ),
+                            children.end() );
+            renumber( *it.key() );
+        }
+        endResetModel();
+        recomputeChecks();
+        return removed;
+    }
     for ( const auto& value : ids ) {
         auto* node = find( value.toString() );
         if ( node == nullptr ) {

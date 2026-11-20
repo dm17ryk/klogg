@@ -15,6 +15,7 @@
 #include <QStringList>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class QMenu;
@@ -150,11 +151,13 @@ private:
     Node* find( const QString& id ) const;
     Node* nodeOf( const QModelIndex& index ) const;
     QModelIndex indexOfNode( const Node* node, int column = 0 ) const;
-    int rowOf( const Node* node ) const;
-    // Parses nodes below `parent` at `depth` (1: top level); skips duplicates, nodes without an
-    // id and nodes deeper than MaxTreeDepth. `budget` counts the nodes still allowed.
+    // Parses nodes below `parent` at `depth` (1: top level); skips nodes without an id, nodes
+    // deeper than MaxTreeDepth and repeated ids: an id is taken when the tree has it (unless it
+    // is in `replaced`, the nodes this operation removes) or this operation already used it
+    // (`fresh`).
     std::vector<std::unique_ptr<Node>> parseNodes( const QJsonArray& nodes, Node* parent, int depth,
-                                                   QSet<QString>* seen, bool inheritCheck );
+                                                   const QSet<QString>* replaced,
+                                                   QSet<QString>* fresh, bool inheritCheck );
     void parseInto( Node& node, const QJsonObject& object, bool whole ) const;
     void addToIndex( Node& node );      // adds the node's descendants to the id index
     void removeFromIndex( Node& node ); // removes them
@@ -162,8 +165,16 @@ private:
     void setChildren( Node* parent, std::vector<std::unique_ptr<Node>> children );
     static int countNodes( const QJsonArray& nodes, int depth );
     int countLoaded( const Node& node ) const;
-    void recomputeChecks(); // auto_tristate: parents follow their checkable children
-    Qt::CheckState derive( Node& node, QList<Node*>* changed );
+    // auto_tristate: parents follow their checkable children; `previous` receives the state each
+    // changed node had before (unless it holds one already).
+    void recomputeChecks( QHash<QString, Qt::CheckState>* previous = nullptr );
+    Qt::CheckState derive( Node& node, QList<Node*>* changed,
+                           QHash<QString, Qt::CheckState>* previous );
+    // One dataChanged per parent for the check boxes of `nodes`: a view resolves each signal
+    // separately, which is slow for thousands of single rows.
+    void emitCheckChanges( const QList<Node*>& nodes );
+    QStringList applyChecked( const QStringList& ids, bool checked,
+                              QHash<QString, Qt::CheckState>* previous, bool recompute );
     int cellLimit() const;
     void undoEdit( const QString& nodeId, int column, const QString& display,
                    const QString& shown, const std::optional<Pending>& earlier );
@@ -225,9 +236,10 @@ public:
     {
         return options_;
     }
-    // Around a model operation that may reset it: expansion, selection, current node and scroll
-    // position are kept by id.
-    void rememberView();
+    // Around a model operation: selection and current node, and with `expansion` (an operation
+    // that resets the model or replaces children) the expanded nodes and the scroll position, are
+    // kept by id. Without it the view keeps them itself; only removed selected nodes are reported.
+    void rememberView( bool expansion = true );
     void restoreView();
     // After a model operation: `expanded` keys of the nodes, and loading for expanded lazy nodes.
     void applyExpandRequests();
