@@ -399,9 +399,34 @@ TEST_CASE( "E17d ranges, menus, Copy and sorting at their edges", "[ui][workbenc
         View natural( oneColumn( "natural", { "item 10", zeros, "item 1" } ), nullptr );
         natural.table()->sortByColumn( 0, Qt::AscendingOrder );
         REQUIRE( texts( natural.table() ) == QStringList{ "item 1", zeros, "item 10" } );
-        View number( oneColumn( "number", { "x", "nan", "2", "1" } ), nullptr );
+        View number( oneColumn( "number", { "x", "nan", "2", "inf", "1" } ), nullptr );
         number.table()->sortByColumn( 0, Qt::AscendingOrder );
-        REQUIRE( texts( number.table() ) == QStringList{ "1", "2", "nan", "x" } );
+        REQUIRE( texts( number.table() ) == QStringList{ "1", "2", "inf", "nan", "x" } );
+        // Descending: the numbers reverse, text that is no number stays last.
+        number.table()->sortByColumn( 0, Qt::DescendingOrder );
+        REQUIRE( texts( number.table() ) == QStringList{ "2", "1", "x", "nan", "inf" } );
+    }
+    SECTION( "an element menu context keeps its ids within the byte budget" )
+    {
+        // 300 selected rows with ids of about 4,000 characters: the context stays far below the
+        // 1 MiB frame limit, and selected_count stays the full count.
+        QJsonArray rows;
+        for ( int at = 0; at < 300; ++at ) {
+            rows.append( QJsonObject{
+                { "id", QString( 4000, QLatin1Char( 'a' ) ) + QString::number( at ) },
+                { "cells", QJsonArray{ QString::number( at ) } } } );
+        }
+        View big( QJsonObject{ { "type", "table" }, { "id", "t" }, { "selection", "multi" },
+                               { "columns", QJsonArray{ "v" } }, { "rows", rows } },
+                  nullptr );
+        big.table()->selectAll();
+        const auto target = big.behaviour()->menuTarget( {}, {} );
+        REQUIRE( target.value( "selected_count" ) == 300 );
+        const auto ids = target.value( "selected_ids" ).toArray();
+        REQUIRE( ids.size() > 50 );
+        REQUIRE( ids.size() < 300 );
+        REQUIRE( QJsonDocument( ids ).toJson( QJsonDocument::Compact ).size()
+                 <= pluginview::MaxIdBytes + 2 );
     }
     SECTION( "a Shift check range over the id limit keeps the clicked row" )
     {
@@ -493,11 +518,33 @@ TEST_CASE( "E17d plugin icons are resolved once until the plugin's images change
     // A stopped plugin may be updated on disk: its icons are resolved anew.
     registry.clear( plugin );
     REQUIRE( registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull() );
+    // More references than the cache holds: the least recently used go first, so an icon still
+    // in use (the shown rows) is never read again (here it could not be: the file is gone).
+    REQUIRE( image.save( path ) );
+    registry.clear( plugin ); // the missing file's null icon was cached above
+    REQUIRE_FALSE( registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull() );
+    REQUIRE( QFile::remove( path ) );
+    bool kept = true;
+    for ( int at = 0; at < 600; ++at ) {
+        registry.icon( plugin, temp.path(), QJsonValue( QString( "other%1.png" ).arg( at ) ) );
+        kept = kept && !registry.icon( plugin, temp.path(), QJsonValue( "row.png" ) ).isNull();
+    }
+    REQUIRE( kept );
+    registry.clear( plugin );
 }
 
 namespace {
-QJsonObject e17dManifest( const QString& executable, bool withHandles )
+QJsonObject e17dManifest( const QString& executable, bool withHandles, bool dynamicEntry = false )
 {
+    QJsonArray items{ QJsonObject{ { "id", "restart" }, { "title", "Restart" }, { "event", true } },
+                      QJsonObject{ { "id", "forget" },
+                                   { "title", "Forget" },
+                                   { "event", true },
+                                   { "when", QJsonObject{ { "selection", "any" } } } } };
+    if ( dynamicEntry ) {
+        // The fixture answers the "cached" entry with cache_ms 60000 and a counted title.
+        items.append( QJsonObject{ { "id", "cached" }, { "title", "Cached" }, { "dynamic", true } } );
+    }
     QJsonObject json{
         { "id", PluginId },
         { "name", "E17d fixture" },
@@ -509,16 +556,10 @@ QJsonObject e17dManifest( const QString& executable, bool withHandles )
         { "views", QJsonArray{ QJsonObject{ { "id", "tables" }, { "title", "Tables" } } } },
         { "menus",
           QJsonArray{ QJsonObject{
-              { "id", "rows_menu" },
-              { "location", "element" },
-              { "items",
-                QJsonArray{ QJsonObject{ { "id", "restart" }, { "title", "Restart" }, { "event", true } },
-                            QJsonObject{ { "id", "forget" },
-                                         { "title", "Forget" },
-                                         { "event", true },
-                                         { "when", QJsonObject{ { "selection", "any" } } } } } } } } } };
+              { "id", "rows_menu" }, { "location", "element" }, { "items", items } } } } };
     if ( withHandles ) {
-        json.insert( "handles", QJsonArray{ "ui/command" } );
+        json.insert( "handles", dynamicEntry ? QJsonArray{ "ui/command", "menu/populate", "query/cancel" }
+                                             : QJsonArray{ "ui/command" } );
     }
     return json;
 }
@@ -546,7 +587,7 @@ struct TablesWindow {
     std::unique_ptr<PluginManager> manager;
     std::unique_ptr<MainWindow> window;
 
-    explicit TablesWindow( bool withHandles = true )
+    explicit TablesWindow( bool withHandles = true, bool dynamicEntry = false )
     {
         PluginMenuRegistry::instance().forgetPlugin( PluginId );
         const auto shipped = QDir( temp.path() ).filePath( "shipped" );
@@ -555,7 +596,7 @@ struct TablesWindow {
         const auto executable = QFileInfo( QString::fromUtf8( PLUGIN_FIXTURE_PATH ) ).fileName();
         QFile file( QDir( folder ).filePath( "plugin.json" ) );
         REQUIRE( file.open( QIODevice::WriteOnly ) );
-        file.write( QJsonDocument( e17dManifest( executable, withHandles ) ).toJson() );
+        file.write( QJsonDocument( e17dManifest( executable, withHandles, dynamicEntry ) ).toJson() );
         file.close();
         REQUIRE( QFile::copy( QString::fromUtf8( PLUGIN_FIXTURE_PATH ),
                               QDir( folder ).filePath( executable ) ) );
@@ -715,4 +756,38 @@ TEST_CASE( "E17d without handles a plugin view gets no extended events", "[ui][w
 {
     TablesWindow fixture( false );
     REQUIRE_FALSE( fixture.view()->extendedEvents() );
+}
+
+TEST_CASE( "E17d a dynamic element entry's cached answer belongs to its row and selection",
+           "[ui][workbench][E17]" )
+{
+    TablesWindow fixture( true, true );
+    auto* table = fixture.table();
+    const auto row = [ & ]( const QString& id ) {
+        for ( int index = 0; index < table->model()->rowCount(); ++index ) {
+            if ( table->model()->index( index, 0 ).data( pluginview::RowIdRole ) == id ) {
+                return table->visualRect( table->model()->index( index, 0 ) ).center();
+            }
+        }
+        return QPoint{};
+    };
+    // The title of the dynamic submenu's first entry after a right-click on a row.
+    const auto open = [ & ]( const QString& rowId ) {
+        std::unique_ptr<QMenu> menu( fixture.view()->buildElementMenu( "boards", row( rowId ) ) );
+        REQUIRE( menu );
+        auto* cached = menu->findChild<QMenu*>( "pluginMenu_" + PluginId + "_rows_menu_cached" );
+        REQUIRE( cached );
+        Q_EMIT cached->aboutToShow();
+        QString title;
+        REQUIRE( waitFor( [ & ] {
+            const auto* first = cached->findChild<QAction*>( "pluginMenuItem_" + PluginId
+                                                             + "_rows_menu_cached_r1" );
+            title = first ? first->text() : QString{};
+            return first != nullptr;
+        } ) );
+        return title;
+    };
+    const auto first = open( "r1" );
+    REQUIRE( open( "r1" ) == first ); // the same row and selection: the cached answer
+    REQUIRE( open( "r2" ) != first ); // another row asks the plugin again
 }

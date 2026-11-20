@@ -31,6 +31,11 @@ constexpr int ProgressRole = Qt::UserRole + 4;
 // E17d: at most this many ids in a selection patch, an element menu context, `checked` and
 // `moved` events (docs/plugin-sdk-advanced.md section 10).
 constexpr int MaxTableIds = 1000;
+// The ids of a menu context or an event stay within this many bytes of JSON, so a frame never
+// reaches the 1 MiB message limit (ids may be 4,096 characters each); the count stays complete.
+constexpr qsizetype MaxIdBytes = 256 * 1024;
+// The leading ids that fit in `budget` bytes of JSON.
+QStringList boundedIds( const QStringList& ids, qsizetype budget = MaxIdBytes );
 // Marks the widgets PluginCellDelegate creates (direct children of a table's viewport).
 constexpr char CellEditorProperty[] = "pluginCellEditor";
 

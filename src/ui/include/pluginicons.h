@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QHash>
+#include <utility>
 #include <QIcon>
 #include <QImage>
 #include <QJsonObject>
@@ -89,8 +90,13 @@ private:
     QHash<QString, PluginImages> images_;
     // Resolved icons per plugin (null ones too), keyed by directory, reference and palette:
     // tables ask for icons on every paint, and a file icon would otherwise be read and checked
-    // each time. Dropped when the plugin's images change or it stops; at most MaxResolved each.
-    QHash<QString, QHash<QString, QIcon>> resolved_;
+    // each time. Dropped when the plugin's images change or it stops; at most MaxResolved each,
+    // the least recently used going first, so the icons of the shown rows stay.
+    struct ResolvedIcons {
+        QHash<QString, std::pair<QIcon, quint64>> icons; // the icon and when it was last used
+        quint64 clock = 0;
+    };
+    QHash<QString, ResolvedIcons> resolved_;
     static constexpr int MaxResolved = 512;
     QSet<QString> warned_;
     QSet<QObject*> attached_;

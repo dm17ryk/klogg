@@ -11,6 +11,7 @@
 #include <QEvent>
 #include <QFont>
 #include <QGuiApplication>
+#include <QJsonDocument>
 #include <QLineEdit>
 #include <QLocale>
 #include <QPainter>
@@ -236,6 +237,20 @@ bool sameValue( const QJsonValue& left, const QJsonValue& right )
     return a.size() == b.size() && std::all_of( a.begin(), a.end(), [ &b ]( const QJsonValue& value ) {
                return b.contains( value );
            } );
+}
+
+QStringList boundedIds( const QStringList& ids, qsizetype budget )
+{
+    QStringList kept;
+    for ( const auto& id : ids ) {
+        // The id as a JSON string with its separator (escapes included).
+        budget -= QJsonDocument( QJsonArray{ id } ).toJson( QJsonDocument::Compact ).size() - 1;
+        if ( budget < 0 ) {
+            break;
+        }
+        kept.append( id );
+    }
+    return kept;
 }
 
 QString plainToolTip( const QString& tip )
@@ -851,8 +866,10 @@ bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& rig
     const auto a = left.data( SortRole );
     const auto b = right.data( SortRole );
     if ( sortAs == QLatin1String( "number" ) ) {
-        // Text that is no finite number ("nan" and "inf" included) sorts after every number, so
-        // the order stays a strict weak ordering.
+        // Text that is no finite number ("nan" and "inf" included) sorts after every number, in
+        // both orders: the proxy reverses lessThan for a descending sort, so the answer for a
+        // number against text follows the order. Within one order this stays a strict weak
+        // ordering. (This file is built without fast-math: std::isfinite must see NaN.)
         bool leftNumeric = false;
         bool rightNumeric = false;
         const auto x = a.toString().toDouble( &leftNumeric );
@@ -860,7 +877,7 @@ bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& rig
         leftNumeric = leftNumeric && std::isfinite( x );
         rightNumeric = rightNumeric && std::isfinite( y );
         if ( leftNumeric != rightNumeric ) {
-            return leftNumeric;
+            return sortOrder() == Qt::AscendingOrder ? leftNumeric : rightNumeric;
         }
         return leftNumeric ? x < y : a.toString().compare( b.toString(), Qt::CaseInsensitive ) < 0;
     }

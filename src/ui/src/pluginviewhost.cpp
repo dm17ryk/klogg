@@ -557,16 +557,19 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
 
     connect( view, &PluginView::eventRaised, this,
              [ this, pluginId, viewId, key, view ]( const QJsonObject& event ) {
-                 if ( !manager_ || manager_->sendViewEvent( pluginId, viewId, windowId_, event )
-                      || event.value( "type" ) != "edited" ) {
+                 if ( manager_ && manager_->sendViewEvent( pluginId, viewId, windowId_, event ) ) {
                      return;
                  }
                  // Not delivered (the plugin is stopping, not reading its input, or the event is
-                 // too large): the plugin will never answer, so the cell must not stay pending.
+                 // too large): the plugin will never answer, so an edited cell must not stay
+                 // pending and changed check boxes go back (E17d). Every event reports it.
                  view->markEventDropped();
+                 const auto type = event.value( "type" ).toString();
                  const auto it = open_.find( key );
-                 if ( it != open_.end() && !std::exchange( it->second->editDropLogged, true ) ) {
-                     LOG_WARNING << "Plugin view edit not delivered, cell set back plugin="
+                 if ( ( type == QLatin1String( "edited" ) || type == QLatin1String( "checked" ) )
+                      && it != open_.end() && !std::exchange( it->second->editDropLogged, true ) ) {
+                     LOG_WARNING << "Plugin view " << type.toStdString()
+                                 << " event not delivered, set back plugin="
                                  << pluginId.toStdString() << " view=" << viewId.toStdString();
                  }
              } );

@@ -37,6 +37,19 @@ qint64 nowMs()
     return QDateTime::currentMSecsSinceEpoch();
 }
 
+// The cache key of a dynamic submenu's answer (cache_ms). An element menu's answer is about its
+// target: another window, view, element, row, column or selection asks the plugin again.
+QString populateKey( const QString& pluginId, const QString& menuId, const QString& itemId,
+                     const PluginMenuContext& context )
+{
+    auto key = menuKey( { pluginId, menuId, itemId, context.location, context.tabId } );
+    if ( context.location == QLatin1String( "element" ) ) {
+        key += menuKey( { context.windowId, context.viewId, context.elementId, context.rowId,
+                          context.columnId, context.selectedIds.join( QChar( 0x1f ) ) } );
+    }
+    return key;
+}
+
 void collectEntries( const QJsonArray& items, QList<QJsonObject>* entries )
 {
     for ( const auto& value : items ) {
@@ -741,7 +754,7 @@ void PluginMenus::populate( QPointer<QMenu> menu, const Source& plugin,
     }
     clearMenu( menu );
     const auto menuId = definition.value( "id" ).toString();
-    const auto key = menuKey( { plugin.id, menuId, itemId, context.location, context.tabId } );
+    const auto key = populateKey( plugin.id, menuId, itemId, context );
     auto& registry = PluginMenuRegistry::instance();
     const auto generation = ++populateGeneration_;
     menu->setProperty( "pluginPopulateGeneration", generation );
@@ -784,7 +797,7 @@ void PluginMenus::sendPopulate( QPointer<QMenu> menu, const Source& plugin,
         return;
     }
     const auto menuId = definition.value( "id" ).toString();
-    const auto key = menuKey( { plugin.id, menuId, itemId, context.location, context.tabId } );
+    const auto key = populateKey( plugin.id, menuId, itemId, context );
     const QPointer<PluginMenus> self( this );
     const auto current = [ menu, generation ] {
         return menu && menu->property( "pluginPopulateGeneration" ).toULongLong() == generation;
