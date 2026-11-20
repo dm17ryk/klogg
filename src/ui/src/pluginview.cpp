@@ -485,7 +485,19 @@ bool PluginView::resolveTooltip( const QString& elementId, const QString& rowId,
 PluginView::~PluginView()
 {
     cancelDialogs();
+    flushKeptColumns();
     detachTables();
+}
+
+// A column change still waiting for its save is written while this view and its queries are
+// whole: the tables are deleted later, with the widgets.
+void PluginView::flushKeptColumns()
+{
+    for ( const auto& node : std::as_const( nodes_ ) ) {
+        if ( node && node->behaviour ) {
+            node->behaviour->flushPendingSave();
+        }
+    }
 }
 
 // Table models call back into the view. The widget teardown after the destructor can still commit
@@ -613,6 +625,7 @@ bool PluginView::sameShape( const QJsonObject& element ) const
 void PluginView::clear()
 {
     cancelDialogs();
+    flushKeptColumns();
     detachTables();
     if ( auto* old = scroll_->takeWidget() ) {
         old->deleteLater();

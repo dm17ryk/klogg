@@ -373,6 +373,53 @@ TEST_CASE( "E17d kept columns and reordering", "[ui][workbench][E17]" )
     REQUIRE( table->model()->index( 0, 0 ).data().toString() == "board 10" ); // natural, desc
 }
 
+TEST_CASE( "E17d hidden widths, minimum widths when shown, focus without selection, save on close",
+           "[ui][workbench][E17]" )
+{
+    std::map<QString, QJsonObject> store;
+    const auto base = PluginView::objectNameFor( PluginId, "main", "t" );
+    {
+        // The note column (hidden at first) has a minimum width above its default width.
+        auto element = boardsTable();
+        auto columns = element.value( "columns" ).toArray();
+        auto note = columns.at( 3 ).toObject();
+        note.insert( "min_width", 333 );
+        columns.replace( 3, note );
+        element.insert( "columns", columns );
+        View fixture( element, &store );
+        auto* table = fixture.table();
+        auto* header = table->horizontalHeader();
+        // Shown from the header menu, it is at least its minimum width at once.
+        std::unique_ptr<QMenu> show( fixture.behaviour()->buildHeaderMenu() );
+        show->findChild<QAction*>( base + "_column_note" )->trigger();
+        REQUIRE_FALSE( table->isColumnHidden( 3 ) );
+        REQUIRE( header->sectionSize( 3 ) >= 333 );
+        // A resized column that is then hidden keeps its width in the kept state.
+        header->resizeSection( 0, 222 );
+        std::unique_ptr<QMenu> hide( fixture.behaviour()->buildHeaderMenu() );
+        hide->findChild<QAction*>( base + "_column_name" )->trigger();
+        REQUIRE( table->isColumnHidden( 0 ) );
+        const auto name = fixture.behaviour()->state().value( "columns" ).toArray().at( 0 ).toObject();
+        REQUIRE( name.value( "hidden" ) == true );
+        REQUIRE( name.value( "width" ) == 222 );
+        // The view closes within the save delay: the change is written all the same.
+    }
+    const auto saved = store[ "t" ].value( "columns" ).toArray().at( 0 ).toObject();
+    REQUIRE( saved.value( "hidden" ) == true );
+    REQUIRE( saved.value( "width" ) == 222 );
+    // Showing it again in a new view gives back that width.
+    {
+        View again( boardsTable(), &store );
+        std::unique_ptr<QMenu> show( again.behaviour()->buildHeaderMenu() );
+        show->findChild<QAction*>( base + "_column_name" )->trigger();
+        REQUIRE( again.table()->horizontalHeader()->sectionSize( 0 ) == 222 );
+    }
+    // `current` sets the keyboard focus in a table without selection too.
+    View plain( boardsTable( { { "selection", "none" } } ), nullptr );
+    plain.view.applyPatch( { QJsonObject{ { "id", "t" }, { "current", "r2" } } } );
+    REQUIRE( plain.behaviour()->currentRowId() == "r2" );
+}
+
 TEST_CASE( "E17d ranges, menus, Copy and sorting at their edges", "[ui][workbench][E17]" )
 {
     const auto texts = [ & ]( QTableView* view ) {

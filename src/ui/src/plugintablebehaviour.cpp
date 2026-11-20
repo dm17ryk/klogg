@@ -96,8 +96,12 @@ PluginTableBehaviour::PluginTableBehaviour( QTableView* table, pluginview::Plugi
             menu->deleteLater();
         }
     } );
-    connect( header, &QHeaderView::sectionResized, this,
-             [ this ]( int logical, int, int size ) { enforceMinimumWidth( logical, size ); } );
+    connect( header, &QHeaderView::sectionResized, this, [ this ]( int logical, int, int size ) {
+        enforceMinimumWidth( logical, size );
+        if ( size > 0 ) {
+            hiddenWidths_.remove( logical ); // shown again: its own width counts
+        }
+    } );
     // A column that is not sortable keeps the previous sort (PluginTableProxy::sort); the
     // indicator follows the proxy.
     connect( header, &QHeaderView::sortIndicatorChanged, this, [ this ] {
@@ -143,12 +147,8 @@ void PluginTableBehaviour::columnsChanged()
         return;
     }
     // A user change still waiting to be saved is saved first, so the restore below gets it.
-    if ( saveTimer_->isActive() ) {
-        saveTimer_->stop();
-        if ( options_.keepColumns && hooks_.saveState ) {
-            hooks_.saveState( pendingState_ );
-        }
-    }
+    flushPendingSave();
+    hiddenWidths_.clear();
     restoring_ = true;
     for ( int column = 0; column < model_->columnCount(); ++column ) {
         table_->setColumnHidden( column, model_->column( column ).hidden );
@@ -175,11 +175,17 @@ void PluginTableBehaviour::restoreState( const QJsonObject& state )
         if ( logical < 0 ) {
             continue; // a column the plugin no longer has
         }
-        table_->setColumnHidden( logical, entry.value( "hidden" ).toBool() );
+        const bool hidden = entry.value( "hidden" ).toBool();
         const auto width = entry.value( "width" ).toInt();
-        if ( width > 0 ) {
+        if ( width > 0 && hidden ) {
+            // Kept for when the user shows the column again (a hidden section has no size).
+            hiddenWidths_.insert( logical, qBound( 10, width, 2000 ) );
+        }
+        else if ( width > 0 ) {
+            table_->setColumnHidden( logical, false );
             header->resizeSection( logical, qBound( 10, width, 2000 ) );
         }
+        table_->setColumnHidden( logical, hidden );
         if ( entry.value( "visual" ).isDouble() ) {
             order.append( { entry.value( "visual" ).toInt(), logical } );
         }
@@ -218,6 +224,9 @@ QJsonObject PluginTableBehaviour::state() const
         if ( !header->isSectionHidden( logical ) ) {
             entry.insert( "width", header->sectionSize( logical ) );
         }
+        else if ( hiddenWidths_.contains( logical ) ) {
+            entry.insert( "width", hiddenWidths_.value( logical ) ); // the width before hiding
+        }
         columns.append( entry );
     }
     state.insert( "columns", columns );
@@ -228,6 +237,16 @@ QJsonObject PluginTableBehaviour::state() const
                                                           : "asc" } } );
     }
     return state;
+}
+
+void PluginTableBehaviour::flushPendingSave()
+{
+    if ( saveTimer_->isActive() ) {
+        saveTimer_->stop();
+        if ( options_.keepColumns && hooks_.saveState ) {
+            hooks_.saveState( pendingState_ );
+        }
+    }
 }
 
 void PluginTableBehaviour::scheduleSave()
@@ -310,7 +329,8 @@ void PluginTableBehaviour::select( const QJsonValue& ids, const QJsonValue& curr
         }
         selection->select( chosen, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows );
     }
-    if ( current.isString() && selectable ) {
+    // The keyboard focus works without selection too (Enter then activates the row).
+    if ( current.isString() ) {
         const auto index = indexOfRow( current.toString() );
         if ( index.isValid() ) {
             selection->setCurrentIndex( index, QItemSelectionModel::NoUpdate );
@@ -450,10 +470,27 @@ QMenu* PluginTableBehaviour::buildHeaderMenu()
         // The last shown column stays.
         action->setEnabled( !( shown.size() == 1 && shown.first() == logical ) );
         connect( action, &QAction::toggled, this, [ this, logical ]( bool checked ) {
-            if ( table_ ) {
-                table_->setColumnHidden( logical, !checked );
-                scheduleSave();
+            if ( !table_ ) {
+                return;
             }
+            auto* section = table_->horizontalHeader();
+            if ( !checked ) {
+                // Its width is kept while hidden, so the saved state still holds it.
+                if ( section->sectionSize( logical ) > 0 ) {
+                    hiddenWidths_.insert( logical, section->sectionSize( logical ) );
+                }
+                table_->setColumnHidden( logical, true );
+            }
+            else {
+                const auto kept = hiddenWidths_.take( logical );
+                table_->setColumnHidden( logical, false );
+                if ( kept > 0 ) {
+                    section->resizeSection( logical, kept );
+                }
+                // Showing a section does not always report a resize: the minimum applies now.
+                enforceMinimumWidth( logical, section->sectionSize( logical ) );
+            }
+            scheduleSave();
         } );
     }
     return menu;

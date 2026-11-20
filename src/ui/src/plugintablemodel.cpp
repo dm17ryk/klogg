@@ -5,6 +5,7 @@
 #include "checkcombobox.h"
 #include "pluginchoicewidgets.h"
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleValidator>
@@ -17,6 +18,7 @@
 #include <QPainter>
 #include <QPointer>
 #include <QSet>
+#include <QStyle>
 #include <QTextDocument>
 #include <QTimer>
 #include <QStringView>
@@ -944,16 +946,27 @@ void PluginTableModel::reindex()
 void PluginCellDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option,
                                 const QModelIndex& index ) const
 {
-    // E17d: a cell's progress, a bar behind its text (section 10.1).
+    // E17d: a cell's progress, a bar behind its text (section 10.1). The item's background comes
+    // first (some styles paint alternate rows there), then the bar, then the item without its
+    // background, so the bar shows on every row.
     const auto progress = index.data( ProgressRole );
-    if ( progress.isValid() && !( option.state & QStyle::State_Selected ) ) {
-        auto bar = option.rect.adjusted( 1, 2, -1, -2 );
-        bar.setWidth( static_cast<int>( bar.width() * qBound( 0.0, progress.toDouble(), 1.0 ) ) );
-        auto color = option.palette.color( QPalette::Highlight );
-        color.setAlpha( 70 );
-        painter->fillRect( bar, color );
+    if ( !progress.isValid() || ( option.state & QStyle::State_Selected ) ) {
+        QStyledItemDelegate::paint( painter, option, index );
+        return;
     }
-    QStyledItemDelegate::paint( painter, option, index );
+    QStyleOptionViewItem item = option;
+    initStyleOption( &item, index );
+    const auto* widget = item.widget;
+    auto* style = widget ? widget->style() : QApplication::style();
+    style->drawPrimitive( QStyle::PE_PanelItemViewItem, &item, painter, widget );
+    auto bar = item.rect.adjusted( 1, 2, -1, -2 );
+    bar.setWidth( static_cast<int>( bar.width() * qBound( 0.0, progress.toDouble(), 1.0 ) ) );
+    auto color = item.palette.color( QPalette::Highlight );
+    color.setAlpha( 70 );
+    painter->fillRect( bar, color );
+    item.backgroundBrush = Qt::NoBrush;
+    item.features &= ~QStyleOptionViewItem::Alternate;
+    style->drawControl( QStyle::CE_ItemViewItem, &item, painter, widget );
 }
 
 QWidget* PluginCellDelegate::createEditor( QWidget* parent, const QStyleOptionViewItem& option,

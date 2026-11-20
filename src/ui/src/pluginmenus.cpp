@@ -44,8 +44,10 @@ QString populateKey( const QString& pluginId, const QString& menuId, const QStri
 {
     auto key = menuKey( { pluginId, menuId, itemId, context.location, context.tabId } );
     if ( context.location == QLatin1String( "element" ) ) {
+        // The count too: ids are bounded, so two selections can share them but not their size.
         key += menuKey( { context.windowId, context.viewId, context.elementId, context.rowId,
-                          context.columnId, context.selectedIds.join( QChar( 0x1f ) ) } );
+                          context.columnId, context.selectedIds.join( QChar( 0x1f ) ),
+                          QString::number( context.selectedLines ) } );
     }
     return key;
 }

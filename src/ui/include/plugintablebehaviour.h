@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <QHash>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
@@ -94,6 +95,8 @@ public:
     bool reorderAllowed() const;
     // The kept state of the columns now.
     QJsonObject state() const;
+    // Writes a column change still waiting for its save (the view closes, or new columns come).
+    void flushPendingSave();
 
 protected:
     bool eventFilter( QObject* watched, QEvent* event ) override;
@@ -118,6 +121,7 @@ private:
     Options options_;
     QTimer* saveTimer_ = nullptr;
     QJsonObject pendingState_; // the state a scheduled save writes
+    QHash<int, int> hiddenWidths_; // logical column -> its width before it was hidden
     QString checkAnchor_;      // the row of the last check box click (Shift ranges)
     QString selectionAnchor_;  // the row of the last click (toggle selection ranges)
     QPoint pressPosition_;

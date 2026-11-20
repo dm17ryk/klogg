@@ -152,6 +152,7 @@ private:
     bool sameShape( const QJsonObject& element ) const;
     void applyInPlace( const QJsonObject& element, const QString& path );
     void clear();
+    void flushKeptColumns();
     void detachTables();
     // False when nothing reached the plugin: the view is disabled, or a slot called markEventDropped().
     bool emitEvent( const QString& id, const QString& type, const QJsonValue& value,
