@@ -788,8 +788,9 @@ also has `revision` (the pack's edits and the new version the conflicts are for)
 `resolutions` need it back (they are refused without it), and if the pack was edited since, or
 the package is another one (a local folder changed meanwhile), they are not applied and nothing
 is installed (with `needsMerge` again when there are conflicts). The previews document as CILogg
-writes it (one member per line) must stay within 1 MiB: a package, merge or edit that would pass
-it is refused. Resolutions
+writes it (one member per line) must stay within 1 MiB, and within 128 previews and 4,096
+blocks: a package, merge result (checked once its conflicts are settled) or edit that would pass
+them is refused. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the

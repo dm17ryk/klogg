@@ -22,6 +22,10 @@ namespace cilogg::plugins {
 using PackFiles = QMap<QString, QByteArray>; // store-relative path -> bytes
 
 namespace packcanonical {
+// The preview limits (docs/plugin-repositories.md 4.2) that a pack must fit to be enabled at all.
+constexpr qsizetype MaxPackPreviewItems = 128;
+constexpr qsizetype MaxPackBlockItems = 4096;
+
 QString encodeName( const QString& name );
 QString decodeName( const QString& encoded );
 // Canonical JSON text of one item (sorted keys, indented, LF line ends).

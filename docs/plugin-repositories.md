@@ -827,10 +827,15 @@ large to show as a whole side instead of refusing it. The previews document as w
 member per line) must stay within 1 MiB: a package, merge result or edit that would pass it is
 refused, as a minified document just under the limit grows when it is written again. A copy into the user's previews (Copy to My Previews, Keep Both after an
 update) that would take them and the enabled packs past the preview limits is refused before it
-is saved, as the service would otherwise drop the packs' previews. Such a copy takes the pack's
-decoder route for the preview as the user's; the route is checked first, so a copy whose route
-cannot be added (the user's preview routes at their limit of 128) is not made, never left
-without its route, and Keep Both checks the routes of all its copies at Apply. A previews document over the
+is saved, as the service would otherwise drop the packs' previews. Such a copy takes the decoder
+route the preview decodes with (the user's own route for it, else the pack's) as the user's
+route for the copy; the route is checked first, so a copy whose route cannot be added (the
+user's preview routes at their limit of 128, or another route of the user's already under the
+copy's name, which it would decode with) is not made, never left with a wrong route, and Keep
+Both checks the routes of all its copies at Apply. A merge result must also stay within the
+preview limits (128 previews, 4,096 blocks): keeping an edited preview the new version removes,
+beside the version's own, can pass them. It is checked once the conflicts are settled (an open
+conflict holds the user's side), also for a disabled pack. A previews document over the
 preview limits (128 previews, 4,096 blocks), which could never be enabled, is refused at
 install, and item names are checked with a hash set. Keep Both is for a preview as a whole: a field choice of
 one of its rows takes the item out of it. Removing a

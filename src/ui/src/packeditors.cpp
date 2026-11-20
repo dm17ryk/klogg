@@ -101,8 +101,7 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
     const auto routes = PreviewPackRegistry::instance().checkCopyRoutes( pack, copies );
     if ( !routes.isEmpty() ) {
         return routes + QLatin1Char( ' ' )
-               + tr( "Remove one of your preview routes first, or choose Keep Mine or Take "
-                     "Theirs." );
+               + tr( "Change your preview routes first, or choose Keep Mine or Take Theirs." );
     }
     return {};
 }

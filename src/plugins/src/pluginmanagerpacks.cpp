@@ -45,9 +45,24 @@ constexpr qsizetype MaxConflictTextBytes = 4 * 1024 * 1024;
 
 // The previews document as the store writes it (one member per line) must stay within the 1 MiB
 // of a pack file, or the content folder would not load: a minified document just under the limit
-// grows when it is written again. Empty when it fits.
+// grows when it is written again. Its items stay within the preview limits too, which a merge can
+// pass (an edited preview the new version removed, kept beside the version's own) also for a
+// disabled pack, whose content is not checked by enabling it. Empty when it fits.
 QString previewsTooLarge( const PackFiles& files )
 {
+    qsizetype previews = 0;
+    qsizetype blocks = 0;
+    for ( auto file = files.cbegin(); file != files.cend(); ++file ) {
+        const auto kind = packcanonical::kindOf( file.key() );
+        previews += kind == QLatin1String( "preview" ) ? 1 : 0;
+        blocks += kind == QLatin1String( "block" ) ? 1 : 0;
+    }
+    if ( previews > packcanonical::MaxPackPreviewItems || blocks > packcanonical::MaxPackBlockItems ) {
+        return QStringLiteral( "The pack's previews would be more than %1 previews or %2 blocks, "
+                               "the most a pack can have." )
+            .arg( packcanonical::MaxPackPreviewItems )
+            .arg( packcanonical::MaxPackBlockItems );
+    }
     return packcanonical::toPreviews( files ).size() > MaxPackFileBytes
                ? QStringLiteral( "The pack's previews are larger than 1 MiB as CILogg writes them "
                                  "(one member per line)." )
@@ -451,15 +466,6 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                                        .arg( dropped.join( ", " ).left( 256 ) );
     }
     followManifest( &plan.merged, *shipped, staged.manifest.json );
-    for ( auto it = plan.merged.cbegin(); it != plan.merged.cend(); ++it ) {
-        if ( it.value().size() > MaxPackFileBytes ) {
-            return QStringLiteral( "The merged %1 is larger than 1 MiB." )
-                .arg( packcanonical::itemOf( it.key() ).left( 128 ) );
-        }
-    }
-    if ( const auto tooLarge = previewsTooLarge( plan.merged ); !tooLarge.isEmpty() ) {
-        return tooLarge;
-    }
     // Each conflicting item whole too, for the merge window (Keep Both, the text merge). No window
     // opens for an automatic update (its notice runs the update again), so it keeps no texts.
     QVariantList conflicts;
@@ -492,6 +498,18 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             .arg( open.size() == 1 ? QStringLiteral( "an item" )
                                    : QStringLiteral( "%1 places" ).arg( open.size() ),
                   names.join( ", " ) );
+    }
+    // What would be installed must load: checked once the conflicts are settled, so a merge whose
+    // open conflicts hold your side (an edited preview the new version removes, beside its own)
+    // still offers the merge window instead of failing here.
+    for ( auto it = plan.merged.cbegin(); it != plan.merged.cend(); ++it ) {
+        if ( it.value().size() > MaxPackFileBytes ) {
+            return QStringLiteral( "The merged %1 is larger than 1 MiB." )
+                .arg( packcanonical::itemOf( it.key() ).left( 128 ) );
+        }
+    }
+    if ( const auto tooLarge = previewsTooLarge( plan.merged ); !tooLarge.isEmpty() ) {
+        return tooLarge;
     }
     *merged = plan.merged;
     return {};

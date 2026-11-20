@@ -1043,6 +1043,68 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
     CHECK( padded( second, 500 * 1000 ).error.contains( "larger than 1 MiB" ) );
 }
 
+TEST_CASE( "A merge result stays within the preview limits", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    // 128 previews, the most a pack can have: `first`, then P1 ... P127.
+    const auto previews = []( const QString& first ) {
+        QJsonArray items;
+        for ( int index = 0; index < 128; ++index ) {
+            items.append( QJsonObject{
+                { "name", index == 0 ? first : QStringLiteral( "P%1" ).arg( index ) },
+                { "regex", "^x$" },
+                { "format", "fields" },
+                { "fields", QJsonArray{} } } );
+        }
+        return QJsonDocument( QJsonObject{ { "version", 1 }, { "previews", items } } ).toJson();
+    };
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", previews( "P0" ), "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    // P0 is edited; the new version removes it and has Q instead, 128 again.
+    const auto p0 = QStringLiteral( "previews/%1.json" ).arg( packcanonical::encodeName( "P0" ) );
+    auto item = QJsonDocument::fromJson(
+                    manager.manage( "pack_read", id, { { "path", p0 } } ).payload[ "content" ].toString().toUtf8() )
+                    .object();
+    item[ "regex" ] = "^mine$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", p0 },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", previews( "Q" ), "-- a\n" );
+    // The open conflict holds your P0 beside the 128: the merge is still offered.
+    const auto asked = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( asked[ "state" ] == "failed" );
+    REQUIRE( asked[ "result" ].toMap()[ "needsMerge" ].toBool() );
+    const auto revision = asked[ "result" ].toMap()[ "revision" ].toString();
+    const auto settle = [ &manager, &v2, &p0, &revision ]( const QString& side ) {
+        return finished( manager,
+                         manager.manage( "install", {},
+                                         { { "path", v2 },
+                                           { "resolutions",
+                                             QVariantList{ QVariantMap{ { "path", p0 }, { "take", side } } } },
+                                           { "revision", revision } } ) );
+    };
+    // Keeping it would make 129 previews: refused, and nothing changes. No pack check runs here
+    // (as for a disabled pack), so the merge itself must refuse it.
+    const auto kept = settle( "mine" );
+    CHECK( kept[ "state" ] == "failed" );
+    CHECK( kept[ "error" ].toString().contains( "more than 128 previews" ) );
+    CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( previewRegex( content, "P0" ) == "^mine$" );
+    CHECK( previewRegex( content, "Q" ).isEmpty() );
+    // With the new version's side the update goes ahead.
+    const auto taken = settle( "theirs" );
+    INFO( taken[ "error" ].toString().toStdString() );
+    CHECK( taken[ "state" ] == "completed" );
+    CHECK( previewRegex( content, "P0" ).isEmpty() );
+    CHECK( previewRegex( content, "Q" ) == "^x$" );
+}
+
 TEST_CASE( "An enabled pack's update and reset are checked as they would load",
            "[packmerge][E16]" )
 {

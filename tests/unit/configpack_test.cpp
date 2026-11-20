@@ -815,24 +815,44 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
         CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
         CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
                    .contains( "128" ) );
-        // A route of the user's for the copy's name is kept: nothing to add, so it is copied.
-        auto own = userRoutes;
-        own.remove( "Route 0" );
-        own.insert( "Pack frame (mine)", QVariantMap{ { "dissector", "mine" } } );
-        full[ "previewRoutes" ] = own;
+        // Another route of the user's under the copy's name (left from a deleted preview): the
+        // copy would decode with it, not as the preview does, so it is not made either.
+        const auto routeOf = [ &settings ]( const QString& name ) {
+            return settings.configuration()
+                .value( "previewRoutes" )
+                .toMap()
+                .value( name )
+                .toMap()
+                .value( "dissector" )
+                .toString();
+        };
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame (mine)", QVariantMap{ { "dissector", "stale" } } } };
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .contains( "another decoder route named \"Pack frame (mine)\"" ) );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .contains( "was not copied" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( routeOf( "Pack frame (mine)" ) == "stale" );
+        // The same route as the preview's under that name: nothing to add, the copy is made.
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame (mine)", QVariantMap{ { "dissector", "packproto" } } } };
         REQUIRE( settings.setConfiguration( full ) );
         CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
                    .isEmpty() );
         CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
                    .isEmpty() );
         CHECK( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
-        CHECK( settings.configuration()
-                   .value( "previewRoutes" )
-                   .toMap()
-                   .value( "Pack frame (mine)" )
-                   .toMap()
-                   .value( "dissector" )
-               == "mine" );
+        REQUIRE( PreviewManager::instance().clearAll() );
+        // The preview decodes with the user's own route for it (it wins over the pack's): the copy
+        // takes that one.
+        full[ "previewRoutes" ]
+            = QVariantMap{ { "Pack frame", QVariantMap{ { "dissector", "users" } } } };
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .isEmpty() );
+        CHECK( routeOf( "Pack frame (mine)" ) == "users" );
         REQUIRE( settings.setConfiguration( original ) );
         REQUIRE( PreviewManager::instance().clearAll() );
     }

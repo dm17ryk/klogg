@@ -17,8 +17,6 @@ constexpr char FilesDir[] = "files/";
 constexpr char OrderFile[] = "previews/order.txt";
 constexpr char MetaFile[] = "previews/meta.json";
 constexpr char JsonSuffix[] = ".json";
-constexpr qsizetype MaxPackPreviewItems = 128;
-constexpr qsizetype MaxPackBlockItems = 4096;
 
 bool plain( QChar character )
 {
