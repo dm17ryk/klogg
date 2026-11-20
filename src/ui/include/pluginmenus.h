@@ -40,6 +40,14 @@ struct PluginMenuContext {
     std::function<QString()> text;  // log: the selected text, read only when an entry is picked
     QString pickedText;             // the text read when the entry was picked
     bool textRead = false;
+    // element (E17d, section 10.4): the view element whose context menu opened. `selectedLines`
+    // counts its selected rows, so `when` conditions on the selection apply to rows.
+    QString viewId;
+    QString elementId;
+    QString elementMenuId; // the element's `context_menu`: the only menu its entries come from
+    QString rowId;         // the clicked row; empty when the click was not on a row
+    QString columnId;
+    QStringList selectedIds; // at most pluginview::MaxTableIds
 
     cilogg::plugins::MenuConditionContext conditions() const;
     // The `context` of menu/populate and ui/command. The selected text is added only with
@@ -71,9 +79,22 @@ public:
     void forgetPlugin( const QString& pluginId );
 
     // Dynamic answers by entry and context. A valid cached answer, or with `lastAnswer` the last
-    // one of this session (native menu bars that cannot change while open).
-    std::optional<QJsonArray> answer( const QString& key, bool lastAnswer ) const;
-    void storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs );
+    // one of this session (native menu bars that cannot change while open); an expired answer
+    // that is not such a last answer is dropped when it is looked up.
+    std::optional<QJsonArray> answer( const QString& key, bool lastAnswer );
+    // Kept for `cacheMs` (an answer with no cache time only with `keepLast`), within 1,024
+    // answers and 16 MiB in all; the oldest go first.
+    void storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs,
+                      bool keepLast = false );
+    // The bytes the kept answers take (tests).
+    qint64 answerBytes() const
+    {
+        return answerBytes_;
+    }
+    size_t answerCount() const
+    {
+        return answers_.size();
+    }
 
     // Shortcut assignment (section 7.6) for every enabled plugin; `host` are CILogg's keys with
     // what owns them, `user` the user's choices. Stable: a shortcut stays with the plugin that got
@@ -102,10 +123,15 @@ private:
     struct Answer {
         QJsonArray items;
         qint64 expires = 0; // milliseconds since the epoch
+        qint64 bytes = 0;   // its JSON and key, for the cache budget
+        quint64 stored = 0; // when it was stored (the oldest go first)
+        bool keepLast = false; // a native menu bar's last answer: kept after it expires
     };
     QSet<cilogg::plugins::PluginManager*> attached_;
     std::map<QString, QJsonObject> overrides_; // plugin|menu|item -> changed keys
     std::map<QString, Answer> answers_;
+    qint64 answerBytes_ = 0;
+    quint64 answerSequence_ = 0;
     std::vector<cilogg::plugins::PluginShortcut> shortcuts_;
     std::vector<cilogg::plugins::ShortcutAssignment> assignments_;
     std::map<QString, QString> holders_; // keys -> shortcut key that held them
@@ -138,6 +164,11 @@ public:
     // Fills a plugin's own `plugins` or `menubar` menu each time it opens.
     void fillOwnMenu( QMenu* menu, const Source& plugin, const QJsonObject& definition,
                       const PluginMenuContext& context );
+    // E17d: adds the entries of a plugin's `element` menu `menuId` to an element's context menu,
+    // after a separator when the menu already has entries. Nothing when the plugin hides its
+    // `element` entries or the menu is not an `element` menu.
+    void addElementMenu( QMenu* menu, const QString& pluginId, const QString& menuId,
+                         const PluginMenuContext& context );
 
     // get_plugin_menus: the resolved entries of a location with their state and conditions.
     QVariantList resolve( const QString& location, const PluginMenuContext& context,
@@ -161,6 +192,10 @@ public:
                                     const QString& itemId );
     static QString menuObjectName( const QString& pluginId, const QString& menuId,
                                    const QString& itemId = {} );
+    // The cache key of a dynamic submenu's answer (cache_ms): the entry and the whole `context`
+    // menu/populate sends, so an answer is reused only where the plugin would get the same request.
+    static QString populateKey( const QString& pluginId, const QString& menuId,
+                                const QString& itemId, const PluginMenuContext& context );
 
     // Removes a section addSection() added and deletes it (submenus included).
     static void removeSection( QMenu* menu, const QList<QAction*>& actions );

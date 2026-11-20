@@ -14,7 +14,9 @@
 
 class QLabel;
 class QMainWindow;
+class QMenu;
 class QMessageBox;
+struct PluginMenuContext;
 namespace cilogg::plugins {
 class PluginManager;
 }
@@ -66,6 +68,20 @@ public:
     void setDialogs( PluginViewDialogs dialogs );
     void windowClosing();
 
+    // E17d element context menus (docs/plugin-sdk-advanced.md 10.4): adds a plugin's entries of
+    // `menuId` to a table's context menu. Set by the window's PluginMenus.
+    using ElementMenuFiller = std::function<void( QMenu* menu, const QString& pluginId,
+                                                  const QString& menuId,
+                                                  const PluginMenuContext& context )>;
+    void setElementMenuFiller( ElementMenuFiller filler )
+    {
+        elementMenuFiller_ = std::move( filler );
+    }
+    // The menu context of an element's entries: this window, the view and element, and
+    // `target` ({row_id, column_id, selected_ids, selected_count}).
+    PluginMenuContext elementMenuContext( const QString& viewId, const QString& elementId,
+                                          const QString& menuId, const QJsonObject& target ) const;
+
 private:
     struct Open;
     struct Message;
@@ -96,6 +112,7 @@ private:
     QPointer<cilogg::plugins::PluginManager> manager_;
     Executor executor_;
     PluginViewDialogs dialogs_;
+    ElementMenuFiller elementMenuFiller_;
     std::map<QString, std::unique_ptr<Open>> open_;
     std::map<QString, std::unique_ptr<Message>> messages_;
     QTimer renderTimer_;

@@ -67,6 +67,8 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginicons.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginchoicewidgets.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginchoicewidgets.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintablebehaviour.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintablebehaviour.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenuhost.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmenus.cpp
@@ -252,6 +254,11 @@ set_property(
 if(KLOGG_USE_LTO)
   set_property(TARGET klogg_ui PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
+
+# Plugin view tables sort text that is no finite number ("nan", "inf") last, and number fields
+# refuse it: std::isfinite must see NaN and infinities, which -ffast-math folds away.
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/plugintablemodel.cpp")
+set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/src/pluginview.cpp")
 
 target_include_directories(klogg_ui
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"

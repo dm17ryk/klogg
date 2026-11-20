@@ -17,7 +17,9 @@
 #include <QPixmap>
 #include <QRegularExpression>
 #include <QStyle>
+#include <algorithm>
 #include <optional>
+#include <utility>
 
 namespace {
 // Built-in icons that the platform style provides.
@@ -290,6 +292,7 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
     }
     if ( changedAny ) {
         ++images.generation;
+        resolved_.remove( pluginId );
         Q_EMIT changed( pluginId );
     }
     return refused;
@@ -297,6 +300,7 @@ QStringList PluginIconRegistry::apply( const QString& pluginId, const QJsonObjec
 
 void PluginIconRegistry::clear( const QString& pluginId )
 {
+    resolved_.remove( pluginId ); // also file icons: a stopped plugin may be updated on disk
     const auto found = images_.find( pluginId );
     if ( found == images_.end() ) {
         return;
@@ -379,6 +383,32 @@ QIcon PluginIconRegistry::statusDot( const QString& tone )
 
 QIcon PluginIconRegistry::resolve( const QString& pluginId, const QString& directory,
                                    const QString& reference )
+{
+    // The palette is part of the key: masks are recoloured and built-in icons follow the style.
+    const auto key = directory + QLatin1Char( '\n' ) + reference + QLatin1Char( '\n' )
+                     + QApplication::palette().color( QPalette::WindowText ).name( QColor::HexArgb )
+                     + ( darkTheme() ? QLatin1Char( 'd' ) : QLatin1Char( 'l' ) );
+    auto& cache = resolved_[ pluginId ];
+    const auto used = ++cache.clock;
+    if ( const auto found = cache.icons.find( key ); found != cache.icons.end() ) {
+        found->second = used;
+        return found->first;
+    }
+    if ( cache.icons.size() >= MaxResolved ) {
+        // The least recently used one: a table with more icon references than this keeps the
+        // icons of the rows it paints instead of loading them all again.
+        const auto oldest = std::min_element(
+            cache.icons.begin(), cache.icons.end(),
+            []( const auto& left, const auto& right ) { return left.second < right.second; } );
+        cache.icons.erase( oldest );
+    }
+    const auto loaded = load( pluginId, directory, reference );
+    cache.icons.insert( key, { loaded, used } );
+    return loaded;
+}
+
+QIcon PluginIconRegistry::load( const QString& pluginId, const QString& directory,
+                                const QString& reference )
 {
     if ( reference.startsWith( QLatin1String( "builtin:" ) ) ) {
         const auto name = reference.mid( 8 );

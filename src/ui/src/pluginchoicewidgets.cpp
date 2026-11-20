@@ -97,8 +97,12 @@ void fillCombo( QComboBox* combo, const QList<Choice>& choices, const IconResolv
     const auto current = combo->currentData();
     // An editable choice's value is its text: new choices never replace what the user typed,
     // an empty text included once the field has shown choices (before that there is no text).
+    // "Has shown choices" is remembered on the combo box: an empty choices list in between
+    // leaves no items, but the empty text is still the user's.
+    static constexpr char ShownProperty[] = "pluginChoicesShown";
     const auto typed = combo->isEditable() ? combo->currentText() : QString{};
-    const bool keepText = combo->isEditable() && ( combo->count() > 0 || !typed.isEmpty() );
+    const bool keepText
+        = combo->isEditable() && ( combo->property( ShownProperty ).toBool() || !typed.isEmpty() );
     const QSignalBlocker blocker( combo );
     combo->clear();
     auto* model = qobject_cast<QStandardItemModel*>( combo->model() );
@@ -131,6 +135,9 @@ void fillCombo( QComboBox* combo, const QList<Choice>& choices, const IconResolv
     }
     if ( radio && dynamic_cast<RadioIndicatorDelegate*>( combo->itemDelegate() ) == nullptr ) {
         combo->setItemDelegate( new RadioIndicatorDelegate( combo ) );
+    }
+    if ( combo->count() > 0 ) {
+        combo->setProperty( ShownProperty, true );
     }
     if ( keepText ) {
         const auto found = typed.isEmpty() ? -1 : findLabel( combo, typed );
