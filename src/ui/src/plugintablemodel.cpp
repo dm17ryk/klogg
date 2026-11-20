@@ -218,9 +218,27 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
     if ( role == Qt::DecorationRole && iconFor ) {
         // E17c: a committed choice with an icon shows it in the cell (section 8.4).
         const auto editor = editorFor( index );
-        // The first choice whose label is the cell text, as when the editor opens; separators and
-        // section titles are no choices.
+        // Labels can repeat: the choice of the edit not confirmed yet, else of the editor's
+        // starting value, as when the editor opens, as long as the cell shows its label; else the
+        // first choice whose label is the cell text. Separators and section titles are no choices.
         if ( editor.value( "kind" ) == "choice" ) {
+            const auto pending = row.pending.constFind( index.column() );
+            const auto chosen
+                = pending != row.pending.cend() ? pending->value : editor.value( "value" );
+            if ( !chosen.isUndefined() && !chosen.isNull() && !chosen.isArray()
+                 && !chosen.isObject() ) {
+                for ( const auto& choice : editor.value( "choices" ).toArray() ) {
+                    const auto object = choice.toObject();
+                    if ( object.contains( "type" ) || choiceValue( choice ) != chosen
+                         || choiceLabel( choice ) != value ) {
+                        continue;
+                    }
+                    if ( !object.contains( "icon" ) ) {
+                        return {};
+                    }
+                    return iconFor( object.value( "icon" ) );
+                }
+            }
             for ( const auto& choice : editor.value( "choices" ).toArray() ) {
                 const auto object = choice.toObject();
                 if ( object.contains( "type" ) || choiceLabel( choice ) != value ) {
