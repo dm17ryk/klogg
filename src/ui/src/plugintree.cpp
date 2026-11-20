@@ -1676,13 +1676,32 @@ void PluginTreeBehaviour::failLoading()
     loading_.clear();
 }
 
+QStringList PluginTreeBehaviour::draggedNodes() const
+{
+    if ( pressNode_.isEmpty() ) {
+        return {};
+    }
+    // The selection as it was before the press: a toggle-selection tree has already deselected
+    // the pressed node, which still moves with the others (as Qt's own drags defer the toggle).
+    return pressSelection_.contains( pressNode_ ) ? pressSelection_ : QStringList{ pressNode_ };
+}
+
 void PluginTreeBehaviour::startDrag()
 {
-    auto ids = selectedNodeIds( pluginview::MaxTableIds );
-    if ( !ids.contains( pressNode_ ) ) {
-        ids = QStringList{ pressNode_ };
+    const auto ids = draggedNodes();
+    const bool wasSelected = pressSelection_.contains( pressNode_ );
+    const auto dragged = std::exchange( pressNode_, {} );
+    pressSelection_.clear();
+    if ( wasSelected && tree_->selectionMode() == QAbstractItemView::MultiSelection ) {
+        // The press toggled the dragged node off: it is selected again, with the nodes it moves
+        // with.
+        if ( const auto index = model_->indexOf( dragged );
+             index.isValid()
+             && !tree_->selectionModel()->isRowSelected( index.row(), index.parent() ) ) {
+            tree_->selectionModel()->select( index, QItemSelectionModel::Select
+                                                        | QItemSelectionModel::Rows );
+        }
     }
-    pressNode_.clear();
     auto* mime = new QMimeData;
     mime->setData( NodesMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) )
                                       .toJson( QJsonDocument::Compact ) );
@@ -1787,6 +1806,8 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
                  && ( !hooks_.canAct || hooks_.canAct() ) ) {
                 pressPosition_ = position;
                 pressNode_ = nodeId;
+                // Before the view handles the press, which toggles the node in a toggle tree.
+                pressSelection_ = selectedNodeIds( pluginview::MaxTableIds );
             }
         }
         return false;

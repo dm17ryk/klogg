@@ -7,6 +7,7 @@
 #include "pluginicons.h"
 #include "pluginmanager.h"
 #include "pluginmenus.h"
+#include "plugintablemodel.h"
 #include <QAbstractButton>
 #include <QDateTime>
 #include <QDialog>
@@ -490,9 +491,10 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
         const auto scope = cilogg::plugins::PluginManager::viewScope( host->windowId_, viewId );
         return host->manager_->query(
             pluginId, QStringLiteral( "tree/children" ), full, 0,
+            // Length-prefixed ids: two nodes never share a key, whatever characters they hold.
             QStringLiteral( "tree:" ) + scope + QLatin1Char( '/' )
-                + params.value( "element_id" ).toString() + QChar( 0x1f )
-                + params.value( "node_id" ).toString(),
+                + pluginview::joinedKey( { params.value( "element_id" ).toString(),
+                                           params.value( "node_id" ).toString() } ),
             scope,
             [ answered = std::move( done ), pluginId, viewId,
               params ]( const cilogg::plugins::PluginQueries::Outcome& outcome ) {

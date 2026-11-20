@@ -478,8 +478,7 @@ PluginTooltips::Target PluginView::treeTooltipTarget( const Node& node,
     // The cache key holds every key that applies; the query gets the most specific one: the
     // cell's, the node's, the column's, the tree's.
     const auto elementKey = target.key;
-    target.key = QStringList{ elementKey, item->tooltipKey, info.tooltipKey, cellKey }.join(
-        QChar( 0x1f ) );
+    target.key = joinedKey( { elementKey, item->tooltipKey, info.tooltipKey, cellKey } );
     for ( const auto& candidate : { cellKey, item->tooltipKey, info.tooltipKey, elementKey } ) {
         if ( !candidate.isEmpty() ) {
             target.tooltipKey = candidate;
