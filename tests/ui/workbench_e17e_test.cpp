@@ -505,6 +505,51 @@ TEST_CASE( "E17e tree patches keep expansion and selection by id", "[ui][workben
     REQUIRE( fixture.view.tooltips()->cachedCount() == 0 );
 }
 
+TEST_CASE( "E17e drags end when nodes change under the press", "[ui][workbench][E17]" )
+{
+    // A toggle tree: the press deselects its node; nodes inserted before the drag call the drag
+    // off, and the plugin hears the press's change once the patch is done.
+    View toggle( boardsTree( { { "toggle_selection", true }, { "reorderable", true } } ) );
+    auto* viewport = toggle.tree()->viewport();
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "bench", 1 ) );
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "b2", 1 ) );
+    const auto clicks = toggle.countOf( "selected" );
+    const auto at = toggle.center( "b2", 1 );
+    QTest::mousePress( viewport, Qt::LeftButton, {}, at );
+    REQUIRE( toggle.behaviour()->draggedNodes() == QStringList{ "bench", "b2" } );
+    toggle.patch( QJsonObject{
+        { "id", "tr" },
+        { "parent", "bench" },
+        { "insert_nodes", QJsonArray{ QJsonObject{ { "id", "bx" }, { "text", "Board x" } } } },
+        { "before", "b2" } } );
+    REQUIRE( toggle.behaviour()->draggedNodes().isEmpty() );
+    REQUIRE( waitFor( [ & ] { return toggle.countOf( "selected" ) == clicks + 1; } ) );
+    REQUIRE( toggle.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ "bench" } );
+    QTest::mouseRelease( viewport, Qt::LeftButton, {}, at );
+    QTest::qWait( 20 );
+    REQUIRE( toggle.countOf( "selected" ) == clicks + 1 ); // nothing more on the release
+
+    // An extended tree: a press on a selected node changes nothing, so a change of the nodes
+    // under it sends nothing either.
+    View extended( boardsTree( { { "reorderable", true } } ) );
+    auto* plain = extended.tree()->viewport();
+    QTest::mouseClick( plain, Qt::LeftButton, {}, extended.center( "b1", 1 ) );
+    const auto before = extended.countOf( "selected" );
+    QTest::mousePress( plain, Qt::LeftButton, {}, extended.center( "b1", 1 ) );
+    REQUIRE( extended.behaviour()->holdsSelection() );
+    extended.patch( QJsonObject{
+        { "id", "tr" },
+        { "parent", "bench" },
+        { "insert_nodes", QJsonArray{ QJsonObject{ { "id", "b0" }, { "text", "Board 0" } } } },
+        { "before", "b1" } } );
+    REQUIRE_FALSE( extended.behaviour()->holdsSelection() );
+    REQUIRE( extended.behaviour()->draggedNodes().isEmpty() );
+    QTest::mouseRelease( plain, Qt::LeftButton, {}, extended.center( "b1", 1 ) );
+    QTest::qWait( 20 );
+    REQUIRE( extended.countOf( "selected" ) == before );
+    REQUIRE( extended.behaviour()->selectedNodeIds( 10 ) == QStringList{ "b1" } );
+}
+
 TEST_CASE( "E17e tree selection, toggle selection, activated, edited and moved",
            "[ui][workbench][E17]" )
 {

@@ -1167,6 +1167,14 @@ PluginTreeBehaviour::PluginTreeBehaviour( QTreeView* tree, PluginTreeModel* mode
              [ this ]( const QModelIndex& index ) { expandedChanged( index, true ); } );
     connect( tree, &QTreeView::collapsed, this,
              [ this ]( const QModelIndex& index ) { expandedChanged( index, false ); } );
+    // Nodes inserted, removed, moved or re-laid out under a press that may start a drag: the
+    // press is called off before the change, while its selection ranges still name its nodes.
+    const auto cancel = [ this ] { cancelPress(); };
+    connect( model_, &QAbstractItemModel::rowsAboutToBeInserted, this, cancel );
+    connect( model_, &QAbstractItemModel::rowsAboutToBeRemoved, this, cancel );
+    connect( model_, &QAbstractItemModel::rowsAboutToBeMoved, this, cancel );
+    connect( model_, &QAbstractItemModel::modelAboutToBeReset, this, cancel );
+    connect( model_, &QAbstractItemModel::layoutAboutToBeChanged, this, cancel );
 }
 
 void PluginTreeBehaviour::setOptions( const Options& options )
@@ -1252,8 +1260,8 @@ void PluginTreeBehaviour::restoreView( bool reportRemoved )
             }
         } );
     }
-    if ( reportRemoved && restored < keptSelected_.size() && hooks_.selectionChanged ) {
-        hooks_.selectionChanged(); // the plugin removed selected nodes
+    if ( reportRemoved && restored < keptSelected_.size() ) {
+        reportSelection(); // the plugin removed selected nodes
     }
     keptExpanded_.clear();
     keptSelected_.clear();
@@ -1740,6 +1748,46 @@ void PluginTreeBehaviour::releaseSelection( bool report )
     if ( !std::exchange( holdSelection_, false ) || !report || !tree_ ) {
         return;
     }
+    if ( pressChangedSelection() ) {
+        reportSelection();
+    }
+}
+
+void PluginTreeBehaviour::cancelPress()
+{
+    if ( pressNode_.isEmpty() && !holdSelection_ ) {
+        return;
+    }
+    // Compared before the change, while the press's ranges still name the nodes they did.
+    const bool changed = holdSelection_ && tree_ && pressChangedSelection();
+    holdSelection_ = false;
+    pressNode_.clear();
+    pressSelection_.clear();
+    pressWasSelected_ = false;
+    if ( changed && !std::exchange( reportPending_, true ) ) {
+        // A patch is still being applied: the plugin hears the selection once it is done (and
+        // only once when the patch reports it itself).
+        QTimer::singleShot( 0, this, [ this ] {
+            if ( reportPending_ ) {
+                reportSelection();
+            }
+        } );
+    }
+}
+
+void PluginTreeBehaviour::reportSelection()
+{
+    reportPending_ = false;
+    if ( hooks_.selectionChanged ) {
+        hooks_.selectionChanged();
+    }
+}
+
+bool PluginTreeBehaviour::pressChangedSelection() const
+{
+    if ( !tree_ ) {
+        return false;
+    }
     // The nodes of a selection (by their model pointers), in order: the press changed the
     // selection when they differ.
     const auto nodesOf = [ this ]( const QItemSelection& selection ) {
@@ -1753,10 +1801,7 @@ void PluginTreeBehaviour::releaseSelection( bool report )
         nodes.erase( std::unique( nodes.begin(), nodes.end() ), nodes.end() );
         return nodes;
     };
-    if ( nodesOf( tree_->selectionModel()->selection() ) != nodesOf( pressSelection_ )
-         && hooks_.selectionChanged ) {
-        hooks_.selectionChanged();
-    }
+    return nodesOf( tree_->selectionModel()->selection() ) != nodesOf( pressSelection_ );
 }
 
 void PluginTreeBehaviour::startDrag()
