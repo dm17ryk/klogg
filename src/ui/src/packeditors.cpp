@@ -81,8 +81,10 @@ QString keepBothName( const QString& name )
 
 // Keep Both copies the user's previews from `pack` (the pack as it is before the update) once
 // the update is installed; checked at Apply, so a copy that could not be made stops it there:
-// the copies' names, and their decoder routes all together.
-QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStringList& names )
+// the copies' names (also against `incoming`, the new version's previews), and their decoder
+// routes all together.
+QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStringList& names,
+                       const QStringList& incoming )
 {
     QMap<QString, QString> copies;
     for ( const auto& name : names ) {
@@ -97,11 +99,13 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
                        "choose Keep Mine or Take Theirs." )
                 .arg( keepBothName( name ) );
         }
-        // A copy with the name of a pack's preview would replace that preview (yours win).
+        // A copy with the name of a pack's preview, now or in the new version, would replace
+        // that preview (yours win).
         if ( std::any_of( previews.cbegin(), previews.cend(),
                           [ &name ]( const auto& preview ) {
                               return preview.name == keepBothName( name );
                           } )
+             || incoming.contains( keepBothName( name ) )
              || PreviewManager::instance().packOrigin( keepBothName( name ) ) ) {
             return tr( "A pack has a preview named \"%1\", which the copy would replace. Choose "
                        "Keep Mine or Take Theirs." )
@@ -1053,7 +1057,8 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             QString error;
             const auto snapshot = PreviewPackRegistry::instance().snapshotOfPack( packId, &error );
             if ( snapshot ) {
-                error = checkKeepBoth( *snapshot, keepBothPreviews );
+                error = checkKeepBoth( *snapshot, keepBothPreviews,
+                                       result.value( "incomingPreviews" ).toStringList() );
             }
             else if ( error.isEmpty() ) {
                 error = tr( "The pack is not available." );

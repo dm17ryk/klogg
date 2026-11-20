@@ -274,6 +274,16 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     if ( nameField || !fieldPathFits( field ) || !merged->contains( path ) ) {
         return false;
     }
+    // The field's parent is in the item, and is an object for a member or an array for an element
+    // (`@name`): a path through a text field, set or removed, would replace that field.
+    const auto split = field.lastIndexOf( '/' );
+    const auto parentPath = split < 0 ? QString{} : field.left( split );
+    const auto parent = parentPath.isEmpty() ? std::optional<QJsonValue>( current )
+                                             : packmerge::field( current, parentPath );
+    const bool element = field.mid( split + 1 ).startsWith( '@' );
+    if ( !parent || ( element ? !parent->isArray() : !parent->isObject() ) ) {
+        return false;
+    }
     const auto changed = packmerge::withField( current, field, value );
     // The item stays an object with its name, and the field reads back as the value chosen (or
     // is gone): a path that does not fit the item's structure (an element of an object, the item
@@ -415,8 +425,9 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
         }
     }
     if ( !store.exists() ) {
-        // A first install merges nothing: choices made for a merge are not ignored but refused.
-        if ( !context.value( "resolutions" ).toList().isEmpty() || context.contains( "revision" ) ) {
+        // A first install merges nothing: choices made for a merge are not ignored but refused
+        // (given at all, an empty list too).
+        if ( context.contains( "resolutions" ) || context.contains( "revision" ) ) {
             return QStringLiteral( "The pack has no local edits to merge, so the resolutions and "
                                    "revision of a merge do not apply. Install it without them." );
         }
@@ -460,6 +471,15 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     const auto revision = QStringLiteral( "%1:%2" ).arg(
         store.localTip(), QString::fromLatin1( incoming.result().toHex().left( 24 ) ) );
     ( *result )[ "revision" ] = revision;
+    // The new version's preview names (at most 128): Keep Both never names its copy after one,
+    // which the copy would replace once the pack is enabled.
+    QStringList incomingPreviews;
+    for ( auto it = shipped->cbegin(); it != shipped->cend(); ++it ) {
+        if ( packcanonical::kindOf( it.key() ) == QLatin1String( "preview" ) ) {
+            incomingPreviews.append( packcanonical::itemOf( it.key() ) );
+        }
+    }
+    ( *result )[ "incomingPreviews" ] = incomingPreviews;
     if ( !context.value( "resolutions" ).toList().isEmpty() && !context.contains( "revision" ) ) {
         return QStringLiteral( "resolutions need the revision of the failed update's result: they "
                                "are applied only to the edits they were chosen for." );

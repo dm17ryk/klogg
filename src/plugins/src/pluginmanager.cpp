@@ -1659,8 +1659,7 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
     // A plugin that is not a pack merges nothing: choices made for a pack merge are refused, not
     // ignored (a strategy is only a policy and has nothing to act on).
     const auto& context = jobIt->second.context;
-    const bool mergeChoices
-        = !context.value( "resolutions" ).toList().isEmpty() || context.contains( "revision" );
+    const bool mergeChoices = context.contains( "resolutions" ) || context.contains( "revision" );
     auto error = pack           ? preparePackInstall( staged, context, &packShipped, &packMerged, &result )
                  : mergeChoices ? QStringLiteral( "Resolutions and a merge revision apply only to "
                                                   "configuration packs." )

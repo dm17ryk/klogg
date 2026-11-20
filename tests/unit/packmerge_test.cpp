@@ -1191,6 +1191,11 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
                                    { "revision", "stale" } } ) );
     CHECK( first[ "state" ] == "failed" );
     CHECK( first[ "error" ].toString().contains( "no local edits to merge" ) );
+    // Given at all, an empty list too.
+    const auto empty = finished( manager, manager.manage( "install", {},
+                                                           { { "path", v1 }, { "resolutions", QVariantList{} } } ) );
+    CHECK( empty[ "state" ] == "failed" );
+    CHECK( empty[ "error" ].toString().contains( "no local edits to merge" ) );
     CHECK( manager.plugins().isEmpty() );
     REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
              == "completed" );
@@ -1248,6 +1253,12 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
         CHECK( misfit[ "state" ] == "failed" );
         CHECK( misfit[ "error" ].toString().contains( "Invalid merge resolution" ) );
     }
+    // Removing under a text field would turn the text into an object.
+    const auto throughText = attempt(
+        { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } },
+          QVariantMap{ { "path", second }, { "field", "format/x" }, { "remove", true } } } );
+    CHECK( throughText[ "state" ] == "failed" );
+    CHECK( throughText[ "error" ].toString().contains( "Invalid merge resolution" ) );
     CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
     // Whole sides and fields of present items go ahead.
     const auto applied = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } } } );

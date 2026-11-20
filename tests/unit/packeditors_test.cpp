@@ -521,6 +521,27 @@ TEST_CASE( "Keep Both copies your preview only once the update is installed", "[
     CHECK( stillOpen );
     CHECK( refusal.contains( "already have a preview named \"Second (mine)\"" ) );
     REQUIRE( PreviewManager::instance().clearAll() );
+
+    // Nor when the new version has a preview named like the copy, which the copy would replace.
+    auto incoming = job;
+    auto incomingResult = incoming[ "result" ].toMap();
+    incomingResult[ "incomingPreviews" ] = QStringList{ "Second", "Second (mine)" };
+    incoming[ "result" ] = incomingResult;
+    QString clash;
+    whenOpen( "packMergeDialog", [ &clash ]( QWidget* dialog ) {
+        closeNextMessageBox( &clash );
+        auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+        tree->setCurrentItem( tree->topLevelItem( 0 ) );
+        buttonIn( dialog, "packMergeKeepBoth" )->click();
+        buttonIn( dialog, "packMergeWholeMine" )->click();
+        buttonIn( dialog, "packMergeApply" )->click();
+        buttonIn( dialog, "packMergeCancel" )->click();
+    } );
+    CHECK_FALSE( pluginsui::openPackMerge( nullptr, "Example pack", incoming,
+                                           []( const QVariantList&, const pluginsui::AfterPackMerge& ) {
+                                               FAIL( "applied with a copy named like a new preview" );
+                                           } ) );
+    CHECK( clash.contains( "A pack has a preview named \"Second (mine)\"" ) );
     registry.attach( nullptr );
 }
 
