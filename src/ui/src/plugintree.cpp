@@ -1469,17 +1469,32 @@ QString PluginTreeBehaviour::copyText( bool all ) const
         return {};
     }
     const auto columns = shownColumns();
+    // At most MaxCopyChars, whole lines only (as tables): 50,000 nodes can be hundreds of
+    // megabytes of text.
     QString text;
+    bool cut = false;
     const auto line = [ & ]( const std::function<QString( int column )>& field ) {
+        if ( cut ) {
+            return false;
+        }
+        QString row;
+        for ( qsizetype at = 0; at < columns.size(); ++at ) {
+            if ( at > 0 ) {
+                row += QLatin1Char( '\t' );
+            }
+            row += pluginview::tsvField( field( columns.at( at ) ) );
+        }
+        if ( text.size() + row.size() + ( text.isEmpty() ? 0 : 1 ) > pluginview::MaxCopyChars ) {
+            cut = true;
+            LOG_WARNING << "Plugin tree copy cut at " << pluginview::MaxCopyChars
+                        << " characters (whole lines)";
+            return false;
+        }
         if ( !text.isEmpty() ) {
             text += QLatin1Char( '\n' );
         }
-        for ( qsizetype at = 0; at < columns.size(); ++at ) {
-            if ( at > 0 ) {
-                text += QLatin1Char( '\t' );
-            }
-            text += pluginview::tsvField( field( columns.at( at ) ) );
-        }
+        text += row;
+        return true;
     };
     const auto cellOf = []( const PluginTreeModel::Node& node, int column ) {
         return column < node.cells.size() ? node.cells.at( column ) : QString{};
@@ -1506,8 +1521,8 @@ QString PluginTreeBehaviour::copyText( bool all ) const
     }
     for ( const auto& id : std::as_const( ids ) ) {
         const auto* node = model_->nodeAt( model_->indexOf( id ) );
-        if ( node != nullptr ) {
-            line( [ & ]( int column ) { return cellOf( *node, column ); } );
+        if ( node != nullptr && !line( [ & ]( int column ) { return cellOf( *node, column ); } ) ) {
+            break;
         }
     }
     return text;
@@ -1806,8 +1821,10 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
                  && ( !hooks_.canAct || hooks_.canAct() ) ) {
                 pressPosition_ = position;
                 pressNode_ = nodeId;
-                // Before the view handles the press, which toggles the node in a toggle tree.
-                pressSelection_ = selectedNodeIds( pluginview::MaxTableIds );
+                // Before the view handles the press, which toggles the node in a toggle tree. The
+                // whole selection: whether the pressed node is in it decides what moves; `moved`
+                // bounds the ids it sends.
+                pressSelection_ = selectedNodeIds( std::numeric_limits<int>::max() );
             }
         }
         return false;

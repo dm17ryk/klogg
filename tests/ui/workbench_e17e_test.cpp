@@ -594,6 +594,20 @@ TEST_CASE( "E17e tree context menu, Copy, Copy All and Export CSV", "[ui][workbe
     REQUIRE( target.value( "node_id" ) == "b1" );
     REQUIRE_FALSE( fixture.view.elementMenu( "tr", {}, "ghost", &menuId, &target, &error ) );
     REQUIRE_FALSE( fixture.view.elementMenu( "tr", "row", {}, &menuId, &target, &error ) );
+    // Copied text is formula-safe, and Copy All stops at whole lines before 1 MiB: 300 nodes of
+    // 4,000 characters would be 1.2 million.
+    QJsonArray nodes{ QJsonObject{ { "id", "f" }, { "text", "=HYPERLINK(1)" } } };
+    for ( int index = 0; index < 300; ++index ) {
+        nodes.append( QJsonObject{ { "id", QString( "n%1" ).arg( index ) },
+                                   { "text", QString( "%1" ).arg( index, 3, 10, QChar( '0' ) )
+                                                 + QString( 3997, 'x' ) } } );
+    }
+    View big( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "nodes", nodes } } );
+    const auto all = big.behaviour()->copyText( true );
+    REQUIRE( all.startsWith( "'=HYPERLINK(1)\n" ) );
+    REQUIRE( all.size() <= 1024 * 1024 );
+    REQUIRE( all.size() > 1000 * 1000 );
+    REQUIRE( all.split( QLatin1Char( '\n' ) ).back().size() == 4000 ); // whole lines only
 }
 
 TEST_CASE( "E17e tree tooltips carry the node, the column and the most specific key",

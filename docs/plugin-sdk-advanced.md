@@ -1543,9 +1543,11 @@ E17d decided as follows.
   themselves does nothing. The host never moves the rows.
 - **Context menus.** Copy, Copy All and Export CSV… come first, then a separator and the plugin's
   entries. Copy takes the selected rows, or the current row, of the shown columns in shown order;
-  Copy All adds a header line. Ctrl+C with no selected or current row leaves the clipboard alone.
-  Export writes RFC 4180 CSV (UTF-8, CRLF) row by row through the host save dialog; text that a spreadsheet would run as a formula (`=`, `+`, `@`, or `-` not followed by a
-  number) gets a leading apostrophe. The header menu (`<element>_columns`) shows and hides
+  Copy All adds a header line. Both stop at whole rows before 1 MiB of text (a warning is logged).
+  Ctrl+C with no selected or current row leaves the clipboard alone. Export writes RFC 4180 CSV
+  (UTF-8, CRLF) row by row through the host save dialog. In copied text and in CSV, text that a
+  spreadsheet would run as a formula (`=`, `+`, `@`, or `-` not followed by a number) gets a
+  leading apostrophe. The header menu (`<element>_columns`) shows and hides
   columns; the last shown column stays. Object names: `<element>_menu`, `_copy`, `_copy_all`,
   `_export`, `_column_<id>`.
 - **Element menus.** Only the menu that `context_menu` names, and only if its location is
@@ -1643,8 +1645,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Context menus.** Copy (the selected nodes, or the current one, as tab-separated text of the
   shown columns), Copy All (a header line and every loaded node in tree order, the first column
   indented by two spaces per level) and, with `export`, Export CSV… (RFC 4180 as for tables, with a
-  leading `level` column), then the plugin's `element` entries. Object names: `<element>_menu`,
-  `_copy`, `_copy_all`, `_export`.
+  leading `level` column), then the plugin's `element` entries. As in tables, Copy and Copy All
+  stop at whole lines before 1 MiB of text and copied text is formula-safe. Object names:
+  `<element>_menu`, `_copy`, `_copy_all`, `_export`.
 - **Tooltips.** A node's `tooltip` (else its text) is the static tooltip of its cells; a cell
   object's tooltip wins. With `tooltip_provider` on the tree, `tooltip/resolve` carries `node_id`,
   `column_id` and the most specific `tooltip_key` (the cell's, the node's, the column's, the
@@ -1674,7 +1677,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
   a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
   paths and the row highlight only marks the current item.
-- **Context menus and tooltips.** Copy Path (the selected paths, one per line) then the plugin's
+- **Context menus and tooltips.** Copy Path (the selected paths, one per line, whole paths up to
+  1 MiB of text) then the plugin's
   `element` entries, whose context has `node_id` (the clicked path) and `selected_ids` (the selected
   paths). An item's static tooltip is its path; with `tooltip_provider`, `tooltip/resolve`
   carries the path as `node_id`.

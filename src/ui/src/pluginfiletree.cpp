@@ -1044,11 +1044,21 @@ QString PluginFileTreeBehaviour::copyText() const
     if ( paths.isEmpty() && tree_ && tree_->currentIndex().isValid() ) {
         paths.append( pathAt( tree_->currentIndex() ) );
     }
-    QStringList shown;
+    // Whole paths only, at most MaxCopyChars (as tables and trees).
+    QString text;
     for ( const auto& path : std::as_const( paths ) ) {
-        shown.append( QDir::toNativeSeparators( path ) );
+        const auto shown = QDir::toNativeSeparators( path );
+        if ( text.size() + shown.size() + ( text.isEmpty() ? 0 : 1 ) > pluginview::MaxCopyChars ) {
+            LOG_WARNING << "Plugin file tree copy cut at " << pluginview::MaxCopyChars
+                        << " characters (whole paths)";
+            break;
+        }
+        if ( !text.isEmpty() ) {
+            text += QLatin1Char( '\n' );
+        }
+        text += shown;
     }
-    return shown.join( QLatin1Char( '\n' ) );
+    return text;
 }
 
 QMenu* PluginFileTreeBehaviour::buildMenu( const QPoint& position )

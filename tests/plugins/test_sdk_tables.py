@@ -3,6 +3,7 @@ keys, the selection patch, their downgrades on older hosts, the table events, el
 commands and the fake host's helpers (docs/plugin-sdk-advanced.md, sections 7.2 and 10)."""
 import copy
 import importlib.util
+import json
 import pathlib
 import queue
 import unittest
@@ -372,6 +373,37 @@ class Events(TableCase):
                                        "inputs": {}})
         self.assertEqual(received[2]["window_id"], "w2")
         self.assertEqual(self.sdk.TABLE_EVENTS, ("activated", "checked", "moved"))
+
+    def test_the_fake_host_sends_activated_only_to_plugins_with_handles(self):
+        host, events = self.received(handles=None)
+        self.assertFalse(host.activate_cell("main", "t", "r2", "state"))
+        host.check_rows("main", "t", "r1")
+        self.assertEqual(events.get(timeout=2)["type"], "checked")  # nothing came before it
+
+    def test_the_fake_host_bounds_ids_by_their_size_as_cilogg_does(self):
+        testing = self.testing
+        long_ids = [f"{index:04}" + "x" * 1096 for index in range(1000)]  # ~1.1 MB of ids
+        sent = testing.bounded_ids(long_ids)
+        self.assertLess(len(sent), len(long_ids))
+        self.assertEqual(sent, long_ids[:len(sent)])
+        self.assertLessEqual(len(json.dumps(sent).encode("utf-8")), testing.MAX_ID_BYTES)
+        self.assertEqual(testing.bounded_ids(["a", "b"]), ["a", "b"])
+        self.assertEqual(len(testing.bounded_ids([str(n) for n in range(1500)])),
+                         testing.MAX_TABLE_IDS)
+        # Every helper stays below the 1 MiB frame limit, so the plugin keeps running.
+        host, events = self.received()
+        host.select_rows("main", "t", long_ids)
+        host.check_rows("main", "t", long_ids)
+        host.move_rows("main", "t", long_ids)
+        selected, checked, moved = (events.get(timeout=5) for _ in range(3))
+        self.assertEqual(selected["value"], sent)
+        self.assertTrue(selected["truncated"])
+        self.assertEqual(selected["selected_count"], 1000)
+        self.assertEqual(checked["value"]["row_ids"], sent)
+        self.assertEqual(moved["value"]["row_ids"], sent)
+        self.assertEqual(testing.element_context("main", "t", selected_ids=long_ids)["selected_ids"],
+                         sent)
+        self.assertEqual(host.errors, [])
         for call in (lambda: host.check_rows("main", "t", []), lambda: host.move_rows("main", "t", [])):
             with self.assertRaises(ValueError):
                 call()

@@ -328,6 +328,12 @@ TEST_CASE( "E17d context and header menus, Copy, Copy All and Export CSV",
     REQUIRE( content.contains( "board 10,50%,,'=SUM(1),e1\r\n" ) );
     REQUIRE( content.contains( "\"two, words\"" ) );
     REQUIRE( content.contains( ",'-dash," ) );
+    // Copied text is formula-safe as well: a paste into a spreadsheet never runs plugin text.
+    menu->findChild<QAction*>( base + "_copy_all" )->trigger();
+    const auto copied = QApplication::clipboard()->text();
+    REQUIRE( copied.contains( "\t'=SUM(1)\t" ) );
+    REQUIRE( copied.contains( "\t'-dash\t" ) );
+    REQUIRE( copied.contains( "\t100%\t" ) ); // numbers stay as they are
     // The header menu hides and shows columns; the last shown column stays.
     std::unique_ptr<QMenu> columns( fixture.behaviour()->buildHeaderMenu() );
     REQUIRE( columns );
@@ -336,6 +342,26 @@ TEST_CASE( "E17d context and header menus, Copy, Copy All and Export CSV",
     // Without copy, export and context_menu there is no menu at all.
     View plain( boardsTable( { { "copy", false } } ), nullptr );
     REQUIRE( plain.view.buildElementMenu( "t", plain.center( "r1", 0 ) ) == nullptr );
+    // Copy All stops at whole rows before 1 MiB of text: 300 rows of 4,000 characters would be
+    // 1.2 million.
+    QJsonArray rows;
+    for ( int row = 0; row < 300; ++row ) {
+        rows.append( QJsonObject{
+            { "id", QString( "big%1" ).arg( row ) },
+            { "cells", QJsonArray{ QString( "%1" ).arg( row, 3, 10, QChar( '0' ) ) + QString( 3997, 'x' ) } } } );
+    }
+    View big( QJsonObject{ { "type", "table" },
+                           { "id", "t" },
+                           { "columns", QJsonArray{ QJsonObject{ { "id", "text" }, { "title", "Text" } } } },
+                           { "rows", rows } },
+              nullptr );
+    const auto all = big.behaviour()->copyText( true );
+    REQUIRE( all.size() <= 1024 * 1024 );
+    REQUIRE( all.size() > 1000 * 1000 );
+    const auto lines = all.split( QLatin1Char( '\n' ) );
+    REQUIRE( lines.front() == "Text" );
+    REQUIRE( lines.size() < 301 );
+    REQUIRE( lines.back().size() == 4000 ); // the last row is whole
 }
 
 TEST_CASE( "E17d kept columns and reordering", "[ui][workbench][E17]" )
@@ -440,6 +466,33 @@ TEST_CASE( "E17d drags move the selection, bars show on alternate rows, a new ro
         QTest::mousePress( viewport, Qt::LeftButton, {}, toggle.center( "r3", 0 ) );
         REQUIRE( toggle.behaviour()->draggedRows() == QStringList{ "r3" } );
         QTest::mouseRelease( viewport, Qt::LeftButton, {}, toggle.center( "r3", 0 ) );
+    }
+    // The whole selection decides, not only its first 1,000 ids: a press on the 1,051st of
+    // 1,100 selected rows moves them all (`moved` then bounds the ids it sends).
+    {
+        QJsonArray many;
+        for ( int row = 0; row < 1100; ++row ) {
+            many.append( QJsonObject{ { "id", QString( "m%1" ).arg( row ) },
+                                      { "cells", QJsonArray{ QString( "row %1" ).arg( row ) } } } );
+        }
+        View lots( QJsonObject{ { "type", "table" },
+                                { "id", "t" },
+                                { "selection", "multi" },
+                                { "toggle_selection", true },
+                                { "reorderable", true },
+                                { "columns", QJsonArray{ QJsonObject{ { "id", "name" } } } },
+                                { "rows", many } },
+                   nullptr );
+        auto* table = lots.table();
+        table->selectAll();
+        const auto target = lots.index( "m1050", 0 );
+        table->scrollTo( target );
+        const auto at = table->visualRect( target ).center();
+        QTest::mousePress( table->viewport(), Qt::LeftButton, {}, at );
+        const auto dragged = lots.behaviour()->draggedRows();
+        REQUIRE( dragged.size() == 1100 );
+        REQUIRE( dragged.contains( "m1050" ) );
+        QTest::mouseRelease( table->viewport(), Qt::LeftButton, {}, at );
     }
     // A full bar on an alternate row is not covered by the row's background.
     {
