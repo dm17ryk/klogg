@@ -817,7 +817,12 @@ otherwise CILogg ended part-way (between the branch moves or before the package 
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field is never taken as "there was no store", which
 would remove it), and a store that is on disk but does not open now (another program holds a
-file) stops the operation instead of being taken as missing. A previews document over the
+file) stops the operation instead of being taken as missing, while the pack keeps loading its
+content folder (never the installed folder, which lacks the edits). A merge's `revision` covers
+the edits and the incoming package (its files and manifest), so choices are not applied to
+another package either. A copy into the user's previews (Copy to My Previews, Keep Both after an
+update) that would take them and the enabled packs past the preview limits is refused before it
+is saved, as the service would otherwise drop the packs' previews. A previews document over the
 preview limits (128 previews, 4,096 blocks), which could never be enabled, is refused at
 install, and item names are checked with a hash set. Keep Both is for a preview as a whole: a field choice of
 one of its rows takes the item out of it. Removing a

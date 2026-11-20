@@ -981,11 +981,21 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
                                                              { "resolutions", takeTheirs },
                                                              { "revision", revision } } ) );
     REQUIRE( stale[ "state" ] == "failed" );
-    CHECK( stale[ "error" ].toString().contains( "edited after the merge was shown" ) );
+    CHECK( stale[ "error" ].toString().contains( "changed after the merge was shown" ) );
     CHECK( stale[ "result" ].toMap()[ "needsMerge" ].toBool() );
     const auto current = stale[ "result" ].toMap()[ "revision" ].toString();
     CHECK( current != revision );
     const auto content = manager.packContentDirectory( id );
+    CHECK( readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
+
+    // The same edits but another package (a local folder changed meanwhile): not applied either.
+    const auto v3 = writePackage( root.filePath( "v3" ), "1.1.0", previewsWith( "third" ), "-- a\n" );
+    const auto otherPackage = finished( manager, manager.manage( "install", {},
+                                                                  { { "path", v3 },
+                                                                    { "resolutions", takeTheirs },
+                                                                    { "revision", current } } ) );
+    REQUIRE( otherPackage[ "state" ] == "failed" );
+    CHECK( otherPackage[ "error" ].toString().contains( "changed after the merge was shown" ) );
     CHECK( readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
 
     // With the current revision the whole-item choice settles all 40 fields.

@@ -762,6 +762,32 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
     REQUIRE( settings.setConfiguration( original ) );
     REQUIRE( PreviewManager::instance().clearAll() );
 
+    // A copy that would take your previews and the enabled packs past the preview limits is
+    // refused (the service would drop the packs' previews): 127 of yours and the pack's one.
+    {
+        QJsonArray mine;
+        for ( int index = 0; index < 127; ++index ) {
+            mine.append( QJsonObject{
+                { "name", QStringLiteral( "Mine %1" ).arg( index ) },
+                { "regex", "^MINE (?<payload>.*)$" },
+                { "type", "string" },
+                { "format", "fields" },
+                { "bufferCapture", "payload" },
+                { "fields", QJsonArray{ QJsonObject{ { "name", "raw" },
+                                                     { "source", "capture" },
+                                                     { "capture", "payload" },
+                                                     { "format", "string" } } } } } );
+        }
+        importUserPreviews( QJsonDocument( QJsonObject{ { "version", 1 }, { "previews", mine } } ).toJson() );
+        REQUIRE( PreviewManager::instance().all().size() == 127 );
+        const auto refused = registry.copyPreview( "Pack frame", "Pack frame (mine)" );
+        CHECK( refused.contains( "preview limits" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( PreviewManager::instance().all().size() == 127 );
+        REQUIRE( settings.setConfiguration( original ) );
+        REQUIRE( PreviewManager::instance().clearAll() );
+    }
+
     REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
     CHECK( registry.contributions().isEmpty() );
     CHECK( !findIn( PreviewManager::instance().effective(), "Pack frame" ) );

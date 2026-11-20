@@ -211,10 +211,16 @@ void PluginManager::discover()
             // The counts of the effective content (with the local edits, design 4.6); a damaged
             // store is rebuilt here, before anything reads the pack.
             if ( entry->manifest.valid() ) {
-                ensurePackStore( id, entry->manifest, false );
+                if ( const auto storeError = ensurePackStore( id, entry->manifest, false );
+                     !storeError.isEmpty() ) {
+                    LOG_WARNING << "Pack store not ready id=" << id.toStdString() << ": "
+                                << storeError.toStdString();
+                }
             }
+            // The effective content folder whenever there is one, also while its repository
+            // does not open: the installed folder would lose the edits for this session.
             const PackStore store( packStoreRoot(), id );
-            const auto content = store.exists() ? store.contentDirectory() : QString{};
+            const auto content = store.contentDirectory();
             entry->pack = packSummary( entry->manifest.json,
                                        content.isEmpty() ? entry->manifest.directory : content );
             entry->pack[ "localEdits" ]

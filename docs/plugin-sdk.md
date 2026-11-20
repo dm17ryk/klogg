@@ -784,9 +784,10 @@ The texts stay within 4 MiB per job, previews and blocks first: an item past tha
 `omitted: true` and no texts (resolve it with `take`), and an automatic update's job keeps none.
 An item with more than 32 conflicting fields (or any item once 1,024 conflicts are listed) is
 listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
-also has `revision` (the pack's edits the conflicts are for): `resolutions` need it back (they
-are refused without it), and if the pack was edited since, they are not applied and the update
-fails with `needsMerge` again. Resolutions
+also has `revision` (the pack's edits and the new version the conflicts are for):
+`resolutions` need it back (they are refused without it), and if the pack was edited since, or
+the package is another one (a local folder changed meanwhile), they are not applied and the
+update fails with `needsMerge` again. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the

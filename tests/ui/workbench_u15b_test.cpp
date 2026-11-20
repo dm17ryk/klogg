@@ -5,6 +5,7 @@
 #include <catch2/catch.hpp>
 
 #include <functional>
+#include <memory>
 
 #include <QAction>
 #include <QApplication>
@@ -489,6 +490,46 @@ TEST_CASE( "script_runner_on_chosen_com_tabs: scripts start on the chosen COM ta
     stop.action = CommanderAction::StopScript;
     stop.allEntities = true;
     supervisor.stopScript( stop );
+}
+
+TEST_CASE( "a script supervisor destroyed while its scripts run stops them",
+           "[ui][workbench][U15]" )
+{
+    QTemporaryDir directory;
+    REQUIRE( directory.isValid() );
+    const auto script = directory.filePath( "wait.py" );
+    {
+        QFile file( script );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( "import time\ntime.sleep(60)\n" );
+    }
+    const QVariantMap tab{ { "tabId", "c1" },
+                           { "tabIndex", 0 },
+                           { "filePath", directory.filePath( "c1.log" ) },
+                           { "displayName", "c1" },
+                           { "sourceType", "com" },
+                           { "com", QVariantMap{ { "portName", "CILOGG_TEST_c1" } } } };
+    const QVariantMap info{ { "windows", QVariantList{ QVariantMap{ { "windowIndex", 0 },
+                                                                    { "windowId", "w0" },
+                                                                    { "isActiveWindow", true },
+                                                                    { "currentTabId", "c1" },
+                                                                    { "tabs", QVariantList{ tab } } } } } };
+    auto supervisor = std::make_unique<ScriptSupervisor>();
+    supervisor->setCommanderExecutor( [ &info ]( const CommanderRequest& request ) {
+        return request.action == CommanderAction::GetInfo ? commanderSuccess( {}, info )
+                                                          : commanderSuccess();
+    } );
+    CommanderRequest request;
+    request.action = CommanderAction::RunScript;
+    request.scriptFilePath = script;
+    request.source = "focused";
+    const auto started = supervisor->runScript( request );
+    INFO( started.message.toStdString() );
+    REQUIRE( started.ok() );
+    // Destroyed at once, with the script still running: it is stopped, and its process's last
+    // signals reach no handler of the supervisor being destroyed (this crashed before).
+    supervisor.reset();
+    SUCCEED( "destroyed while a script ran" );
 }
 
 #ifndef Q_OS_MACOS

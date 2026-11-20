@@ -8,6 +8,7 @@
 #include "log.h"
 #include "persistentinfo.h"
 #include "previewdecodeutils.h"
+#include "previewservice.h"
 
 namespace {
 // The user's on/off choice for pack previews, per `<pack-id>/<name>`: user state, not pack
@@ -479,6 +480,16 @@ QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QS
         blocks_.insert( block + suffix, suffix.isEmpty()
                                             ? pack.blocks.value( block )
                                             : rewriteBlock( pack.blocks.value( block ), rename ) );
+    }
+    // The preview service gives up above its limits, and then drops the packs' previews: a copy
+    // that would take your previews and the enabled packs past them is refused before anything
+    // is saved (Keep Both copies after an update too).
+    if ( PreviewService::definitionsFor( effective(), effectiveBlocks() ).isEmpty() ) {
+        previews_ = previousPreviews;
+        blocks_ = previousBlocks;
+        return tr( "Copying \"%1\" would take your previews and the enabled packs past the preview "
+                   "limits (128 previews, 4,096 blocks, 1 MiB of definitions)." )
+            .arg( target );
     }
     if ( !repository_.save( previews_, blocks_ ) ) {
         previews_ = previousPreviews;

@@ -5,6 +5,7 @@
 #include "configpack.h"
 #include "log.h"
 #include "packstore.h"
+#include <QCryptographicHash>
 #include <QDir>
 #include <QHash>
 #include <QJsonArray>
@@ -256,8 +257,9 @@ QString PluginManager::packStoreRoot() const
 
 QString PluginManager::packContentDirectory( const QString& pluginId ) const
 {
-    const PackStore store( packStoreRoot(), pluginId );
-    const auto content = store.exists() ? store.contentDirectory() : QString{};
+    // The effective content wherever its folder is, also while the repository does not open
+    // (another program holds a file of it): the installed folder only when there is none.
+    const auto content = PackStore( packStoreRoot(), pluginId ).contentDirectory();
     return content.isEmpty() ? pluginDirectory( pluginId ) : content;
 }
 
@@ -383,7 +385,17 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     // chosen for the edits as they were then (`revision`, the `local` commit the merge was shown
     // for): after another edit they could overwrite it, so they are dropped and the merge is
     // asked for again.
-    const auto revision = store.localTip();
+    // Both sides of the merge: the edits (the `local` commit) and the version being installed (its
+    // files and manifest), so choices made for another package, a local folder changed meanwhile
+    // for one, are not applied either.
+    QCryptographicHash incoming( QCryptographicHash::Sha256 );
+    for ( auto it = shipped->cbegin(); it != shipped->cend(); ++it ) {
+        incoming.addData( it.key().toUtf8() + '\n' + QByteArray::number( it.value().size() ) + '\n' );
+        incoming.addData( it.value() );
+    }
+    incoming.addData( QJsonDocument( staged.manifest.json ).toJson( QJsonDocument::Compact ) );
+    const auto revision = QStringLiteral( "%1:%2" ).arg(
+        store.localTip(), QString::fromLatin1( incoming.result().toHex().left( 24 ) ) );
     ( *result )[ "revision" ] = revision;
     if ( !context.value( "resolutions" ).toList().isEmpty() && !context.contains( "revision" ) ) {
         return QStringLiteral( "resolutions need the revision of the failed update's result: they "
@@ -450,8 +462,9 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             }
         }
         ( *result )[ "needsMerge" ] = true;
-        const auto again = stale ? QStringLiteral( "The pack was edited after the merge was shown, so "
-                                                   "its choices were not applied. " )
+        const auto again = stale ? QStringLiteral( "The pack's edits or the new version changed after "
+                                                   "the merge was shown, so its choices were not "
+                                                   "applied. " )
                                  : QString{};
         return again
                + QStringLiteral( "The new version changes %1 that you edited (%2). Merge it in the "
