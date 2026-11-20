@@ -23,6 +23,8 @@
 #include "packeditors.h"
 #include "pluginmanager.h"
 #include "pluginupdatenotices.h"
+#include "previewmanager.h"
+#include "previewpackregistry.h"
 
 using namespace cilogg::plugins;
 
@@ -198,19 +200,33 @@ TEST_CASE( "The pack item editor saves an edit through Commander", "[packeditors
                .toString()
                .contains( "^EDITED$" ) );
 
-    // Pack Files lists the items with their state.
+    // Pack Files lists the items with their state; the previews settings (version) are listed
+    // but not edited (the pack operations refuse them).
     QStringList rows;
-    whenOpen( "packFilesDialog", [ &rows ]( QWidget* dialog ) {
+    bool settingsEditable = true;
+    bool itemEditable = false;
+    whenOpen( "packFilesDialog", [ &rows, &settingsEditable, &itemEditable ]( QWidget* dialog ) {
         auto* table = dialog->findChild<QTableWidget*>( "packFilesTable" );
         REQUIRE( table );
         for ( int row = 0; row < table->rowCount(); ++row ) {
             rows << table->item( row, 0 )->text() + '=' + table->item( row, 2 )->text();
+            table->setCurrentCell( row, 0 );
+            const bool enabled = buttonIn( dialog, "packFilesEdit" )->isEnabled();
+            if ( table->item( row, 1 )->text() == "Previews settings" ) {
+                settingsEditable = enabled;
+            }
+            if ( table->item( row, 0 )->text() == "Second" ) {
+                itemEditable = enabled;
+            }
         }
         buttonIn( dialog, "packFilesClose" )->click();
     } );
     pluginsui::openPackFiles( nullptr, executor, PackId, "Example pack" );
     CHECK( rows.contains( "Second=Edited" ) );
     CHECK( rows.contains( "lua/a.lua=As in the pack" ) );
+    REQUIRE( rows.contains( "previews/meta.json=As in the pack" ) );
+    CHECK_FALSE( settingsEditable );
+    CHECK( itemEditable );
 }
 
 TEST_CASE( "The merge window resolves fields and files before anything changes",
@@ -218,9 +234,11 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
 {
     QVariantList applied;
     bool called = false;
-    const auto apply = [ &applied, &called ]( const QVariantList& resolutions ) {
+    const auto apply = [ &applied, &called ]( const QVariantList& resolutions,
+                                              const pluginsui::AfterPackMerge& afterInstall ) {
         applied = resolutions;
         called = true;
+        CHECK_FALSE( afterInstall ); // no Keep Both: nothing to do after the update
     };
     CHECK( pluginsui::needsPackMerge( conflictJob() ) );
 
@@ -288,22 +306,84 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
                == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
                                { "take", "theirs" } } );
     }
-    SECTION( "Keep Mine for All and a removed file" )
+    SECTION( "Keep Mine for All; a file the manifest lists is never removed" )
     {
-        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+        bool removable = true;
+        whenOpen( "packMergeDialog", [ &removable ]( QWidget* dialog ) {
             buttonIn( dialog, "packMergeAllTheirs" )->click();
             buttonIn( dialog, "packMergeAllMine" )->click();
-            auto* remove = dialog->findChild<QCheckBox*>( "packMergeRemove" );
-            REQUIRE( remove );
-            remove->setChecked( true );
+            removable = dialog->findChild<QCheckBox*>( "packMergeRemove" ) != nullptr;
+            buttonIn( dialog, "packMergeWholeTheirs" )->click();
             buttonIn( dialog, "packMergeApply" )->click();
         } );
         REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", conflictJob(), apply ) );
+        CHECK_FALSE( removable );
         REQUIRE( applied.size() == 2 );
         CHECK( applied.at( 0 ).toMap()
-               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "remove", true } } );
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "take", "theirs" } } );
         CHECK( applied.at( 1 ).toMap().value( "value" ) == "^MINE$" );
     }
+}
+
+TEST_CASE( "Keep Both copies your preview only once the update is installed", "[packeditors][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    installPack( manager, root.filePath( "package" ) );
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    REQUIRE( PreviewManager::instance().clearAll() );
+    auto job = conflictJob();
+    job[ "pluginId" ] = PackId;
+    const auto keepBoth = []( QWidget* dialog ) {
+        auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+        REQUIRE( tree );
+        tree->setCurrentItem( tree->topLevelItem( 0 ) );
+        buttonIn( dialog, "packMergeKeepBoth" )->click();
+        buttonIn( dialog, "packMergeWholeMine" )->click();
+        buttonIn( dialog, "packMergeApply" )->click();
+    };
+
+    pluginsui::AfterPackMerge afterInstall;
+    whenOpen( "packMergeDialog", keepBoth );
+    REQUIRE( pluginsui::openPackMerge(
+        nullptr, "Example pack", job,
+        [ &afterInstall ]( const QVariantList& resolutions, const pluginsui::AfterPackMerge& after ) {
+            // The pack's preview becomes the new version as a whole.
+            CHECK( resolutions.at( 1 ).toMap().value( "path" ) == SecondPath );
+            CHECK( resolutions.at( 1 ).toMap().value( "field" ).toString().isEmpty() );
+            afterInstall = after;
+        } ) );
+    REQUIRE( afterInstall );
+    // Nothing is copied before the update is installed: a failed update leaves no copy.
+    CHECK_FALSE( PreviewManager::instance().findByName( "Second (mine)" ) );
+    CHECK( afterInstall().isEmpty() );
+    const auto* copy = PreviewManager::instance().findByName( "Second (mine)" );
+    REQUIRE( copy );
+    CHECK( copy->regex == "^B$" ); // yours, as it was when Apply was pressed
+
+    // A copy that could not be made stops Apply, before anything changes.
+    QString refusal;
+    bool stillOpen = false;
+    whenOpen( "packMergeDialog", [ &refusal, &stillOpen ]( QWidget* dialog ) {
+        closeNextMessageBox( &refusal );
+        auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+        tree->setCurrentItem( tree->topLevelItem( 0 ) );
+        buttonIn( dialog, "packMergeKeepBoth" )->click();
+        buttonIn( dialog, "packMergeWholeMine" )->click();
+        buttonIn( dialog, "packMergeApply" )->click();
+        stillOpen = dialog->isVisible();
+        buttonIn( dialog, "packMergeCancel" )->click();
+    } );
+    CHECK_FALSE( pluginsui::openPackMerge( nullptr, "Example pack", job,
+                                           []( const QVariantList&, const pluginsui::AfterPackMerge& ) {
+                                               FAIL( "applied with a copy that cannot be made" );
+                                           } ) );
+    CHECK( stillOpen );
+    CHECK( refusal.contains( "already have a preview named \"Second (mine)\"" ) );
+    REQUIRE( PreviewManager::instance().clearAll() );
+    registry.attach( nullptr );
 }
 
 TEST_CASE( "The external merge tool's result is read back and checked", "[packeditors][E16]" )

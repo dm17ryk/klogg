@@ -187,22 +187,30 @@ QString PreviewPackRegistry::copyPreview( const QString& name, const QString& co
     return {};
 }
 
-QString PreviewPackRegistry::copyPreviewOfPack( const QString& packId, const QString& name,
-                                                const QString& copyName )
+std::optional<PreviewPackRegistry::Contribution>
+PreviewPackRegistry::snapshotOfPack( const QString& packId, QString* error ) const
 {
-    const auto origin = PreviewManager::instance().packOrigin( name );
-    if ( origin && origin->packId == packId ) {
-        return copyPreview( name, copyName ); // enabled: as applied
+    for ( const auto& pack : applied_ ) {
+        if ( pack.id == packId && pack.error.isEmpty() ) {
+            return pack; // enabled: as applied
+        }
     }
     if ( !manager_ ) {
-        return tr( "The pack is not available." );
+        *error = tr( "The pack is not available." );
+        return std::nullopt;
     }
     // A disabled pack (or one not applied yet): read as it is now, with the local edits.
-    const auto pack = read( packId, manager_->packContentDirectory( packId ),
-                            manager_->manifest( packId ) );
+    auto pack = read( packId, manager_->packContentDirectory( packId ), manager_->manifest( packId ) );
     if ( !pack.error.isEmpty() ) {
-        return pack.error;
+        *error = pack.error;
+        return std::nullopt;
     }
+    return pack;
+}
+
+QString PreviewPackRegistry::copyPreviewOfSnapshot( const Contribution& pack, const QString& name,
+                                                    const QString& copyName )
+{
     const auto error = PreviewManager::instance().copyPreviewFrom( pack.previews, name, copyName );
     return error.isEmpty() ? copyRoute( pack, name, copyName.isEmpty() ? name : copyName ) : error;
 }

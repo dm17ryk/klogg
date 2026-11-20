@@ -221,8 +221,8 @@ to Pack Version**. The Installed tab shows "Edited locally (n)". Your edits surv
 new version is merged with them, and only when the new version changes the same field you changed
 does CILogg ask. The **merge window** lists each conflicting field with the installed value,
 yours and the new one; choose **Keep Mine**, **Take Theirs**, **Edit…** or, for a preview,
-**Keep Both** (the new version stays the pack's, and yours is copied to your own previews as
-"<name> (mine)"), or decide for all rows at once. Lua and Python files get a three-pane merge
+**Keep Both** (the new version stays the pack's, and once it is installed yours is copied to
+your own previews as "<name> (mine)"), or decide for all rows at once. Lua and Python files get a three-pane merge
 with an editable result, per-conflict buttons and **Open in External Merge Tool…** (Beyond
 Compare, KDiff3, WinMerge, Meld, P4Merge or any command with `$BASE`, `$LOCAL`, `$REMOTE` and
 `$MERGED`). Nothing changes until **Apply**; **Cancel** keeps the installed version and your

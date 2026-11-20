@@ -5,7 +5,6 @@
 #include "persistentinfo.h"
 #include "previewpackregistry.h"
 #include <QApplication>
-#include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -38,6 +37,7 @@
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <memory>
 
 namespace pluginsui {
@@ -72,6 +72,53 @@ QPushButton* button( QBoxLayout* row, QWidget* parent, const QString& text, cons
     pushButton->setAccessibleName( QString( text ).remove( QChar( 0x2026 ) ).trimmed() );
     row->addWidget( pushButton );
     return pushButton;
+}
+
+QString keepBothName( const QString& name )
+{
+    return tr( "%1 (mine)" ).arg( name );
+}
+
+// Keep Both copies the user's previews from `pack` (the pack as it is before the update) once
+// the update is installed; checked at Apply, so a copy that could not be made stops it there.
+QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStringList& names )
+{
+    for ( const auto& name : names ) {
+        const auto& previews = pack.previews.previews;
+        if ( std::none_of( previews.cbegin(), previews.cend(),
+                           [ &name ]( const auto& preview ) { return preview.name == name; } ) ) {
+            return tr( "\"%1\" is not a preview of the pack." ).arg( name );
+        }
+        if ( PreviewManager::instance().findByName( keepBothName( name ) ) ) {
+            return tr( "You already have a preview named \"%1\". Rename or delete it first, or "
+                       "choose Keep Mine or Take Theirs." )
+                .arg( keepBothName( name ) );
+        }
+    }
+    return {};
+}
+
+// The job of an update a merge settled: once it is installed, the merge's Keep Both copies are
+// made; a copy that fails becomes a warning of the job (the update stays installed).
+QVariantMap afterPackMerge( const QVariantMap& job, const AfterPackMerge& afterInstall )
+{
+    if ( !afterInstall || job.value( "state" ) != "completed" ) {
+        return job;
+    }
+    const auto error = afterInstall();
+    if ( error.isEmpty() ) {
+        return job;
+    }
+    LOG_WARNING << "Keep Both copies not made after a pack update: " << error.toStdString();
+    auto finished = job;
+    auto result = finished.value( "result" ).toMap();
+    const auto earlier = result.value( "warning" ).toString();
+    result[ "warning" ] = ( earlier.isEmpty() ? QString{} : earlier + QLatin1Char( ' ' ) )
+                          + tr( "Keep Both could not copy your previews: %1 Your versions stay "
+                                "in the pack's history." )
+                                .arg( error );
+    finished[ "result" ] = result;
+    return finished;
 }
 
 QFont fixedFont()
@@ -210,10 +257,14 @@ void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManag
                    // The installed version stays until Apply; Cancel reports the refusal.
                    const bool applied = openPackMerge(
                        parent, name, job,
-                       [ parent, manager, executor, request, name, done ]( const QVariantList& resolutions ) {
+                       [ parent, manager, executor, request, name,
+                         done ]( const QVariantList& resolutions, const AfterPackMerge& afterInstall ) {
                            auto again = request;
                            again.pluginArguments.insert( "resolutions", resolutions );
-                           runPackAwareInstall( parent, manager, executor, again, name, done );
+                           runPackAwareInstall( parent, manager, executor, again, name,
+                                                [ done, afterInstall ]( const QVariantMap& finished ) {
+                                                    done( afterPackMerge( finished, afterInstall ) );
+                                                } );
                        } );
                    if ( !applied ) {
                        done( job );
@@ -402,7 +453,17 @@ void openPackItemEditor( QWidget* parent, Executor executor, const QString& pack
             QMessageBox::warning( &dialog, title, tr( "Cannot read the edited file (at most 1 MiB)." ) );
             return;
         }
-        text->setPlainText( QString::fromUtf8( file.readAll() ) );
+        // Saved in another encoding, the text would be loaded with replacement characters and
+        // Save would store them: refused, and the editor keeps what it has.
+        auto decoder = QStringDecoder( QStringDecoder::Utf8 );
+        const QString edited = decoder( file.readAll() );
+        if ( decoder.hasError() ) {
+            QMessageBox::warning( &dialog, title,
+                                  tr( "The edited file is not UTF-8 text. Save it as UTF-8 in the "
+                                      "editor and reload it." ) );
+            return;
+        }
+        text->setPlainText( edited );
     } );
     QObject::connect( history, &QPushButton::clicked, &dialog, [ & ] {
         showHistory( &dialog, executor, packId, path, tr( "History of %1" ).arg( path ),
@@ -470,6 +531,16 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                                                { "order", tr( "Preview order" ) },
                                                { "meta", tr( "Previews settings" ) },
                                                { "file", tr( "File" ) } };
+    const auto selected = [ table ]( int role ) {
+        const auto* cell = table->currentRow() >= 0 ? table->item( table->currentRow(), 0 ) : nullptr;
+        return cell ? cell->data( role ).toString() : QString{};
+    };
+    // A deleted item has nothing to edit, and the previews settings (version, $schema) are not an
+    // item: they come with the pack and are not edited here.
+    const auto editable = [ &selected ] {
+        return !selected( Qt::UserRole ).isEmpty() && selected( Qt::UserRole + 1 ) != "deleted"
+               && selected( Qt::UserRole + 2 ) != "meta";
+    };
     const auto refresh = [ & ] {
         const auto files = executor( packRequest( "pack_files", packId ) );
         if ( !files.ok() ) {
@@ -488,21 +559,20 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                 auto* cell = new QTableWidgetItem( texts.at( column ) );
                 cell->setData( Qt::UserRole, file.value( "path" ) );
                 cell->setData( Qt::UserRole + 1, file.value( "state" ) );
+                cell->setData( Qt::UserRole + 2, file.value( "kind" ) );
                 table->setItem( index, column, cell );
             }
             ++index;
         }
+        edit->setEnabled( editable() );
     };
-    const auto selected = [ table ]( int role ) {
-        const auto* cell = table->currentRow() >= 0 ? table->item( table->currentRow(), 0 ) : nullptr;
-        return cell ? cell->data( role ).toString() : QString{};
-    };
+    QObject::connect( table, &QTableWidget::currentCellChanged, &dialog,
+                      [ & ] { edit->setEnabled( editable() ); } );
     QObject::connect( edit, &QPushButton::clicked, &dialog, [ & ] {
-        const auto path = selected( Qt::UserRole );
-        if ( path.isEmpty() || selected( Qt::UserRole + 1 ) == "deleted" ) {
+        if ( !editable() ) {
             return;
         }
-        openPackItemEditor( &dialog, executor, packId, packName, path );
+        openPackItemEditor( &dialog, executor, packId, packName, selected( Qt::UserRole ) );
         refresh();
     } );
     QObject::connect( history, &QPushButton::clicked, &dialog, [ & ] {
@@ -543,7 +613,7 @@ void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
 }
 
 bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap& job,
-                    const std::function<void( const QVariantList& )>& apply )
+                    const std::function<void( const QVariantList&, const AfterPackMerge& )>& apply )
 {
     const auto result = job.value( "result" ).toMap();
     const auto conflicts = result.value( "conflicts" ).toList();
@@ -591,11 +661,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         row->setText( 4, choice == "both" ? tr( "Keep Both" ) : display( value ) );
     };
     QMap<QString, QTreeWidgetItem*> parents;
+    // A Lua or Python file the manifest lists, or the preview order: resolved to a text, never
+    // removed (the pack needs it).
     struct TextConflict {
         QString path;
         QString item;
         QPlainTextEdit* result;
-        QCheckBox* remove;
         QString mine;
         QString theirs;
         bool utf8 = true;
@@ -648,10 +719,6 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             auto* wholeTheirs
                 = button( textButtons, page, tr( "Use New Version (Whole File)" ), "packMergeWholeTheirs" );
             auto* tool = button( textButtons, page, tr( "Open in External Merge Tool…" ), "packMergeTool" );
-            auto* remove = new QCheckBox( tr( "Remove the file" ), page );
-            remove->setObjectName( "packMergeRemove" );
-            remove->setChecked( !whole.value( "inMine" ).toBool() );
-            textButtons->addWidget( remove );
             textButtons->addStretch( 1 );
             const auto mineText = whole.value( "mine" ).toString();
             const auto theirsText = whole.value( "theirs" ).toString();
@@ -662,15 +729,10 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             QObject::connect( useTheirs, &QPushButton::clicked, page, [ resultEdit ] {
                 resultEdit->setPlainText( takeFirstConflict( resultEdit->toPlainText(), false ) );
             } );
-            QObject::connect( wholeMine, &QPushButton::clicked, page, [ resultEdit, remove, mineText, whole ] {
-                resultEdit->setPlainText( mineText );
-                remove->setChecked( !whole.value( "inMine" ).toBool() );
-            } );
+            QObject::connect( wholeMine, &QPushButton::clicked, page,
+                              [ resultEdit, mineText ] { resultEdit->setPlainText( mineText ); } );
             QObject::connect( wholeTheirs, &QPushButton::clicked, page,
-                              [ resultEdit, remove, theirsText, whole ] {
-                                  resultEdit->setPlainText( theirsText );
-                                  remove->setChecked( !whole.value( "inTheirs" ).toBool() );
-                              } );
+                              [ resultEdit, theirsText ] { resultEdit->setPlainText( theirsText ); } );
             QObject::connect( tool, &QPushButton::clicked, page,
                               [ page, resultEdit, baseText, mineText, theirsText, path ] {
                                   QString error;
@@ -697,8 +759,8 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                 encoding->setObjectName( "packMergeNotUtf8" );
                 pageLayout->addWidget( encoding );
             }
-            textConflicts->append( { path, conflict.value( "item" ).toString(), resultEdit, remove,
-                                     mineText, theirsText, utf8 } );
+            textConflicts->append(
+                { path, conflict.value( "item" ).toString(), resultEdit, mineText, theirsText, utf8 } );
             tabs->addTab( page, conflict.value( "item" ).toString() );
             continue;
         }
@@ -811,23 +873,22 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     QObject::connect( buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject );
     QVariantList resolutions;
     QStringList keepBothPreviews;
+    AfterPackMerge afterInstall;
     QObject::connect( buttons, &QDialogButtonBox::accepted, &dialog, [ & ] {
         resolutions.clear();
         keepBothPreviews.clear();
+        afterInstall = {};
         for ( const auto& text : *textConflicts ) {
-            if ( !text.remove->isChecked() && hasMarkers( text.result->toPlainText() ) ) {
+            const auto value = text.result->toPlainText();
+            if ( hasMarkers( value ) ) {
                 tabs->setCurrentWidget( text.result->parentWidget() );
                 QMessageBox::warning( &dialog, dialog.windowTitle(),
                                       tr( "%1 still has conflict markers." ).arg( text.item ) );
                 return;
             }
-            const auto value = text.result->toPlainText();
             QVariantMap resolution{ { "path", text.path } };
-            if ( text.remove->isChecked() ) {
-                resolution.insert( "remove", true );
-            }
             // A whole side goes byte for byte: what the panes show is only its UTF-8 reading.
-            else if ( value == text.mine ) {
+            if ( value == text.mine ) {
                 resolution.insert( "take", "mine" );
             }
             else if ( value == text.theirs ) {
@@ -879,16 +940,34 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                 resolutions.append( resolution );
             }
         }
-        // The pack's current content (yours), enabled or not.
-        const auto resultPack = result.value( "pluginId" ).toString();
-        const auto packId = resultPack.isEmpty() ? job.value( "pluginId" ).toString() : resultPack;
-        for ( const auto& name : keepBothPreviews ) {
-            const auto error = PreviewPackRegistry::instance().copyPreviewOfPack(
-                packId, name, tr( "%1 (mine)" ).arg( name ) );
+        if ( !keepBothPreviews.isEmpty() ) {
+            // Yours as it is now, enabled or not: the update replaces those previews, so the
+            // copies are made from this snapshot, and only once the update is installed.
+            const auto resultPack = result.value( "pluginId" ).toString();
+            const auto packId = resultPack.isEmpty() ? job.value( "pluginId" ).toString() : resultPack;
+            QString error;
+            const auto snapshot = PreviewPackRegistry::instance().snapshotOfPack( packId, &error );
+            if ( snapshot ) {
+                error = checkKeepBoth( *snapshot, keepBothPreviews );
+            }
+            else if ( error.isEmpty() ) {
+                error = tr( "The pack is not available." );
+            }
             if ( !error.isEmpty() ) {
                 QMessageBox::warning( &dialog, tr( "Keep Both" ), error );
                 return;
             }
+            afterInstall = [ pack = *snapshot, names = keepBothPreviews ] {
+                QStringList errors;
+                for ( const auto& name : names ) {
+                    const auto copyError = PreviewPackRegistry::instance().copyPreviewOfSnapshot(
+                        pack, name, keepBothName( name ) );
+                    if ( !copyError.isEmpty() ) {
+                        errors.append( copyError );
+                    }
+                }
+                return errors.join( QLatin1Char( ' ' ) );
+            };
         }
         dialog.accept();
     } );
@@ -898,7 +977,7 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     }
     LOG_INFO << "Pack merge applied resolutions=" << resolutions.size()
              << " keep_both=" << keepBothPreviews.size();
-    apply( resolutions );
+    apply( resolutions, afterInstall );
     return true;
 }
 } // namespace pluginsui

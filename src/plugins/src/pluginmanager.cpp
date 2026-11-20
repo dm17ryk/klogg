@@ -1648,21 +1648,15 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         }
     }
     // A new version of an enabled pack must still fit with the user's items and the other
-    // enabled packs; otherwise the installed version stays (design 4.2).
+    // enabled packs; otherwise the installed version stays (design 4.2). What loads is checked:
+    // the merge with the user's edits when there is one (design 4.6), which may lack an item the
+    // new version ships and an edit deleted, or else the new version as shipped.
     if ( error.isEmpty() && pack && packCheck_
          && settings_.value( configurationKey( staged.manifest.id ) + "enabled", false ).toBool() ) {
-        error = packCheck_( staged.manifest.id, staged.manifest.directory, staged.manifest.json );
-        // What loads is the merge with the user's edits: that is checked too (design 4.6).
-        if ( error.isEmpty() && packMerged && *packMerged != packShipped ) {
-            // Inside the pack's own store folder, so no other pack's name can meet it.
-            const auto folder
-                = QDir( packStoreRoot() ).filePath( staged.manifest.id + QStringLiteral( "/check" ) );
-            error = PackStore::writeFolder( folder, *packMerged, staged.manifest.json );
-            if ( error.isEmpty() ) {
-                error = packCheck_( staged.manifest.id, folder, staged.manifest.json );
-            }
-            QDir( folder ).removeRecursively();
-        }
+        error = packMerged && *packMerged != packShipped
+                    ? checkPackFiles( staged.manifest.id, *packMerged, staged.manifest.json )
+                    : packCheck_( staged.manifest.id, staged.manifest.directory,
+                                  staged.manifest.json );
     }
     // A pack's store moves before the package folder: it can be put back, the folder swap
     // cannot. A store that fails leaves the installed version as it is, and a package that

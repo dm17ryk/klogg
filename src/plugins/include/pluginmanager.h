@@ -410,6 +410,10 @@ private:
     // (and put back with PackStore::rollback when that fails).
     QString finishPackInstall( const StagedPlugin& staged, const PackFiles& shipped,
                                const std::optional<PackFiles>& merged, const InstallSource& source );
+    // The pack check on content an enabled pack would load (an update's merge, an edit, a
+    // reset), written in the pack's layout into its store's check folder: the refusal, or "".
+    QString checkPackFiles( const QString& id, const PackFiles& files,
+                            const QJsonObject& manifest ) const;
     void removePackStore( const QString& pluginId );
     int packLocalEdits( const QString& pluginId ) const;
     static bool packOperation( const QString& operation );

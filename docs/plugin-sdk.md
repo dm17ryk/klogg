@@ -764,18 +764,19 @@ changed differently, or deleted on one side and changed on the other, is a confl
 | `pack_read` | `path` | `content`, `edited` |
 | `pack_edit` | `path`, `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
-| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit |
+| `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
 `install` and `update` of a pack take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, field, value}` or `{path, field, remove: true}` for a
-preview or block field (an empty `field` replaces the whole item), `{path, text}`,
-`{path, take: "mine"|"theirs"}` (a whole side, byte for byte) or `{path, remove: true}` for a
-file. A file that is not UTF-8 text is resolved with `take` only, and `pack_read` refuses it
-(editing it as text would change its bytes). With conflicts left open the job fails with `needsMerge: true`,
+preview or block field (an empty `field` replaces the whole item), and `{path, text}` or
+`{path, take: "mine"|"theirs"}` (a whole side, byte for byte) for a file or the preview order,
+which are never removed (the new manifest lists the files). A file that is not UTF-8 text is
+resolved with `take` only, and `pack_read` refuses it (editing it as text would change its
+bytes). With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text) and `items` (each conflicting item whole), and the installed version stays. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the
-pack's history), and an enabled pack's merge result passes the same pack check as the new
-version.
+pack's history). For an enabled pack the pack check runs on what would load: the merge result
+when there are local edits (an item an edit deleted stays deleted), otherwise the new version.

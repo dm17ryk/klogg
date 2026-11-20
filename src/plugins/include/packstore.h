@@ -86,6 +86,10 @@ public:
     // A new `local` commit restoring a store path (all paths when empty) as it was in `commitId`
     // (the installed version when empty): Revert and Reset to Pack Version.
     QString restore( const QString& storePath, const QString& commitId, const QString& message );
+    // The effective files that restore would leave, without committing them (an enabled pack's
+    // reset is checked first); `changes` is false when it would leave them as they are.
+    QString planRestore( const QString& storePath, const QString& commitId, PackFiles* stored,
+                         bool* changes ) const;
     // Removes the store (the pack was removed).
     QString remove();
     // The branch tips now, and putting them back: an install or update whose package commit

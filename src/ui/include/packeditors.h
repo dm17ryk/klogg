@@ -18,13 +18,17 @@ void openPackItemEditor( QWidget* parent, Executor executor, const QString& pack
 void openPackFiles( QWidget* parent, Executor executor, const QString& packId,
                     const QString& packName );
 
+// Run once the update with a merge's resolutions is installed: Keep Both's copies of the user's
+// previews. Returns the error, or "".
+using AfterPackMerge = std::function<QString()>;
 // The merge window for an update that failed with `needsMerge`: the conflicts of the failed
 // job's result, Keep Mine / Take Theirs / Edit / Keep Both per row, for all rows, and a
 // three-pane text merge for Lua and Python. On Apply `apply` gets the resolutions for the update
-// option `resolutions`; Keep Both first copies the user's version of a preview into their own
-// previews as "<name> (mine)". Returns true when applied.
+// option `resolutions` and what to run once that update is installed: Keep Both copies the
+// user's version of a preview, taken now, into their own previews as "<name> (mine)" then, so a
+// failed update leaves no copy behind. Returns true when applied.
 bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap& job,
-                    const std::function<void( const QVariantList& )>& apply );
+                    const std::function<void( const QVariantList&, const AfterPackMerge& )>& apply );
 
 // The external merge tool, configured like git mergetool: a command with $BASE, $LOCAL, $REMOTE
 // and $MERGED.
@@ -42,8 +46,9 @@ bool needsPackMerge( const QVariantMap& job );
 // install and update path appends it to its status text.
 QString jobWarningSuffix( const QVariantMap& job );
 // Runs an install or update request from the GUI and follows its job. When the job needs a pack
-// merge, opens the merge window and, on Apply, runs the request again with the resolutions.
-// `done` gets the final job (the failed one when the merge was cancelled).
+// merge, opens the merge window and, on Apply, runs the request again with the resolutions (and,
+// once that is installed, the merge's Keep Both copies; one that fails adds a warning). `done`
+// gets the final job (the failed one when the merge was cancelled).
 void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManager> manager,
                           Executor executor, const CommanderRequest& request, const QString& name,
                           const std::function<void( const QVariantMap& )>& done );

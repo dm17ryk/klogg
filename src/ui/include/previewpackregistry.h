@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <QVector>
+#include <optional>
 
 #include "previewmanager.h"
 
@@ -49,10 +50,13 @@ public:
     // Copy to My Previews: PreviewManager::copyPackPreview, and the pack's route for the preview
     // becomes one of the user's, unless the user has one. Returns the error.
     QString copyPreview( const QString& name, const QString& copyName = {} );
-    // The same for a preview of pack `packId` as it is now (with the local edits), whether the
-    // pack is enabled or not: Keep Both in the merge window. Returns the error.
-    QString copyPreviewOfPack( const QString& packId, const QString& name,
-                               const QString& copyName );
+    // Pack `packId` as it is now (with the local edits), whether it is enabled or not: Keep Both
+    // in the merge window takes it before the update replaces those previews.
+    std::optional<Contribution> snapshotOfPack( const QString& packId, QString* error ) const;
+    // Copy to My Previews from such a snapshot, with the pack's route for the preview, once the
+    // update is installed. Returns the error.
+    QString copyPreviewOfSnapshot( const Contribution& pack, const QString& name,
+                                   const QString& copyName );
     // The applied contributions, in pack ID order.
     const QVector<Contribution>& contributions() const
     {

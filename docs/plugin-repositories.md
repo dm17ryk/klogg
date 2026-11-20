@@ -783,16 +783,22 @@ branch moves, so an update is in the store whole or not at all. The store moves 
 package folder is replaced: a store that fails leaves the installed version, and a package commit
 that fails puts the store back (`PackStore::rollback`), so the installed version and the
 effective content never disagree. Enabling a pack checks its effective content (with the edits),
-and an edit of an enabled pack passes the same check before it is committed; the registry keys
+and an edit, Revert or Reset of an enabled pack passes the same check before it is committed
+(`PackStore::planRestore` gives what a reset would leave); the registry keys
 each pack on the store's `local` commit as well as its files, so every edit reloads it. The
 store carries every file the manifest lists, also actions, highlights and filters (as files
 until E16c), and refuses a previews document with unnamed, duplicate or malformed items instead
 of cleaning it up. A file that is not UTF-8 text is never edited as text: `pack_read` refuses
-it and a conflict on it is resolved with `take` (a whole side, byte for byte). Keep Both copies
-the user's preview from the pack's effective content, so it works for disabled packs too. A merge result has exactly the
+it and a conflict on it is resolved with `take` (a whole side, byte for byte); text from the
+external editor that is not UTF-8 is refused. Keep Both copies the user's preview from the
+pack's effective content, so it works for disabled packs too. A merge result has exactly the
 files the new manifest lists (a file it dropped goes, also with Keep Mine; the job result names
-dropped edited files in `droppedEdits` and a warning), and an enabled pack's
-merge result passes the pack check, written to a temporary folder, before it is installed.
+dropped edited files in `droppedEdits` and a warning), so a resolution never removes a listed
+file or the preview order, and the merge window offers no removal for them. For an enabled pack
+the pack check runs on what would load: the merge result, written to the store's check folder,
+when there are edits (an item an edit deleted stays deleted, so another pack may use its name),
+otherwise the new version as shipped. The previews settings (`previews/meta.json`) are listed in
+Pack Files but not edited.
 Edits change or delete the pack's own previews and blocks and change its listed files and
 preview order; they add no items. Resolutions name only the pack's items in their canonical
 spelling, and the content folder is written only with relative paths inside it. A whole-pack
@@ -803,8 +809,10 @@ package commit (`preparePackInstall`) and updates the store just before it (`fin
 conflicts left open the job fails with `needsMerge`, `conflicts` and `items`, the installed
 version stays, and `plugins/<id>/needsMerge` keeps the version for the Installed tab. The GUI
 (`src/ui/packeditors.*`) runs install and update through `runPackAwareInstall`, which opens the
-merge window and runs the request again with `resolutions`; Keep Both copies the user's preview
-as "<name> (mine)" before the whole-item resolution takes the new version. An automatic update
+merge window and runs the request again with `resolutions`; Keep Both takes the user's preview
+as it is at Apply (the copy's name must be free then) and copies it as "<name> (mine)" only once
+that update is installed, so a failed update leaves no copy behind (a copy that fails after it is
+a warning; the version stays in the pack's history). An automatic update
 that needs a merge is reported by its own notice and retried at the next check. A damaged store
 (a repository libgit2 cannot read, a missing branch or object; a file the system refuses to open
 is not damage) is rebuilt when CILogg reads the pack, before a pack operation and before an

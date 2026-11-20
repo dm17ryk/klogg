@@ -608,6 +608,15 @@ TEST_CASE( "Pack checks, encodings, revisions and removal follow the effective c
                                    { "resolutions",
                                      QVariantList{ QVariantMap{ { "path", lua }, { "text", "x\n" } } } } } ) );
     CHECK( asText[ "state" ] == "failed" );
+    // A file the new version's manifest lists cannot be removed by a resolution: refused, not
+    // put back behind the user's back.
+    const auto removed = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions",
+                                     QVariantList{ QVariantMap{ { "path", lua }, { "remove", true } } } } } ) );
+    CHECK( removed[ "state" ] == "failed" );
+    CHECK( removed[ "error" ].toString().contains( "Invalid merge resolution" ) );
     const auto whole = finished(
         manager, manager.manage( "install", {},
                                  { { "path", v2 },
@@ -622,6 +631,58 @@ TEST_CASE( "Pack checks, encodings, revisions and removal follow the effective c
     REQUIRE( QFileInfo::exists( contentFolder ) );
     REQUIRE( manager.manage( "remove", id, {} ).ok() );
     CHECK( !QFileInfo::exists( contentFolder ) );
+}
+
+TEST_CASE( "An enabled pack's update and reset are checked as they would load",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto content = manager.packContentDirectory( id );
+    // The user deletes the pack's "Second"; another enabled pack has a "Second" of its own, so
+    // the check refuses any content of this pack that has one.
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", second }, { "remove", true } } ).ok() );
+    QStringList checked;
+    const QString refusal = QStringLiteral( "Another pack has a preview named \"Second\"." );
+    manager.setPackCheck( [ &checked, &refusal ]( const QString&, const QString& directory,
+                                                  const QJsonObject& ) {
+        checked << directory;
+        return previewRegex( directory, "Second" ).isEmpty() ? QString{} : refusal;
+    } );
+    REQUIRE( manager.manage( "enable", id, {} ).ok() );
+
+    // A new version that still ships "Second": what loads is the merge, without it.
+    auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+    auto previews = v2Previews[ "previews" ].toArray();
+    auto firstFrame = previews[ 1 ].toObject();
+    firstFrame[ "regex" ] = "^A2$";
+    previews[ 1 ] = firstFrame;
+    v2Previews[ "previews" ] = previews;
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", QJsonDocument( v2Previews ).toJson(),
+                                  "-- a\n" );
+    checked.clear();
+    const auto updated = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    INFO( updated[ "error" ].toString().toStdString() );
+    REQUIRE( updated[ "state" ] == "completed" );
+    CHECK( checked.size() == 1 );
+    CHECK( previewRegex( content, "First Frame" ) == "^A2$" );
+    CHECK( previewRegex( content, "Second" ).isEmpty() );
+
+    // A reset brings "Second" back, so it is checked first and refused like an edit.
+    CHECK( manager.manage( "pack_reset", id, { { "path", second } } ).error == refusal );
+    CHECK( manager.manage( "pack_reset", id, {} ).error == refusal );
+    CHECK( previewRegex( content, "Second" ).isEmpty() );
+    CHECK( manager.manage( "pack_edits", id, {} ).payload[ "files" ].toList().size() == 1 );
+    // Once the pack is disabled nothing loads it, and the reset goes through.
+    REQUIRE( manager.manage( "disable", id, {} ).ok() );
+    REQUIRE( manager.manage( "pack_reset", id, { { "path", second } } ).ok() );
+    CHECK( previewRegex( content, "Second" ) == "^B$" );
 }
 
 TEST_CASE( "Packs install, edit and update through their local store", "[packmerge][E16]" )

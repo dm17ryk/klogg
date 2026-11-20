@@ -679,6 +679,22 @@ QVector<PackCommit> PackStore::history( const QString& storePath ) const
 QString PackStore::restore( const QString& storePath, const QString& commitId,
                             const QString& message )
 {
+    PackFiles stored;
+    bool changes = false;
+    if ( const auto error = planRestore( storePath, commitId, &stored, &changes ); !error.isEmpty() ) {
+        return error;
+    }
+    if ( !changes ) {
+        return {}; // nothing to restore: no empty commit in the history
+    }
+    const auto error = commit( Local, stored, message );
+    return error.isEmpty() ? publish( stored ) : error;
+}
+
+QString PackStore::planRestore( const QString& storePath, const QString& commitId,
+                                PackFiles* stored, bool* changes ) const
+{
+    *changes = false;
     // Only a commit of this pack's own history (as History lists it), never another revision.
     if ( !commitId.isEmpty() ) {
         const auto commits = history();
@@ -695,7 +711,7 @@ QString PackStore::restore( const QString& storePath, const QString& commitId,
     if ( !targetRead || !storedRead || !current.contains( ManifestPath ) ) {
         return QStringLiteral( "The pack's store cannot be read." );
     }
-    auto stored = current;
+    *stored = current;
     const auto kind = packcanonical::kindOf( storePath );
     if ( storePath.isEmpty() ) {
         // A whole earlier state only within the installed version: another version's items need
@@ -704,10 +720,10 @@ QString PackStore::restore( const QString& storePath, const QString& commitId,
             return QStringLiteral( "That state belongs to another version of the pack: revert its "
                                    "items one by one." );
         }
-        stored = target;
+        *stored = target;
     }
     else if ( target.contains( storePath ) ) {
-        stored.insert( storePath, target.value( storePath ) );
+        stored->insert( storePath, target.value( storePath ) );
     }
     else if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" )
               || kind == QLatin1String( "meta" ) ) {
@@ -718,13 +734,10 @@ QString PackStore::restore( const QString& storePath, const QString& commitId,
         }
     }
     else {
-        stored.remove( storePath );
+        stored->remove( storePath );
     }
-    if ( stored == current ) {
-        return {}; // nothing to restore: no empty commit in the history
-    }
-    const auto error = commit( Local, stored, message );
-    return error.isEmpty() ? publish( stored ) : error;
+    *changes = *stored != current;
+    return {};
 }
 
 QString PackStore::remove()

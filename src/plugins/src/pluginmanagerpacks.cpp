@@ -49,9 +49,9 @@ QVariantMap conflictInfo( const PackConflict& conflict )
 }
 
 // A resolution chosen in the merge window, or given by automation: {path, field, value} or
-// {path, field, remove: true} for a structured item, {path, text} or {path, remove: true} for a
-// file. Only items of the pack (`known`: installed, edited or new version) in their canonical
-// spelling can be resolved. Returns false when it cannot be applied.
+// {path, field, remove: true} for a structured item, {path, text} or {path, take} for a file or
+// the preview order. Only items of the pack (`known`: installed, edited or new version) in their
+// canonical spelling can be resolved. Returns false when it cannot be applied.
 bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known,
                       const PackFiles& mine, const PackFiles& theirs )
 {
@@ -74,25 +74,22 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
             }
             return true;
         }
-        if ( remove ) {
-            merged->remove( path );
-        }
-        else if ( resolution.contains( "text" ) ) {
-            // Merged text is UTF-8: a file in another encoding is resolved by `take` only, or
-            // its bytes would change.
-            if ( !utf8Text( mine.value( path ) ) || !utf8Text( theirs.value( path ) ) ) {
-                return false;
-            }
-            const auto text = resolution.value( "text" ).toString().toUtf8();
-            // A resolved file has no conflict markers left.
-            if ( text.contains( "\n<<<<<<< " ) || text.startsWith( "<<<<<<< " ) ) {
-                return false;
-            }
-            merged->insert( path, text );
-        }
-        else {
+        // The new version's manifest lists the files it has (followManifest puts a listed one
+        // back) and the preview order is edited, never deleted: a removal could not be honoured.
+        if ( remove || !resolution.contains( "text" ) ) {
             return false;
         }
+        // Merged text is UTF-8: a file in another encoding is resolved by `take` only, or its
+        // bytes would change.
+        if ( !utf8Text( mine.value( path ) ) || !utf8Text( theirs.value( path ) ) ) {
+            return false;
+        }
+        const auto text = resolution.value( "text" ).toString().toUtf8();
+        // A resolved file has no conflict markers left.
+        if ( text.contains( "\n<<<<<<< " ) || text.startsWith( "<<<<<<< " ) ) {
+            return false;
+        }
+        merged->insert( path, text );
         return true;
     }
     const auto field = resolution.value( "field" ).toString();
@@ -334,6 +331,22 @@ QString PluginManager::finishPackInstall( const StagedPlugin& staged, const Pack
     return error;
 }
 
+QString PluginManager::checkPackFiles( const QString& id, const PackFiles& files,
+                                       const QJsonObject& manifest ) const
+{
+    if ( !packCheck_ ) {
+        return {};
+    }
+    // Inside the pack's own store folder, so no other pack's name can meet it.
+    const auto folder = QDir( packStoreRoot() ).filePath( id + QStringLiteral( "/check" ) );
+    auto refusal = PackStore::writeFolder( folder, files, manifest );
+    if ( refusal.isEmpty() ) {
+        refusal = packCheck_( id, folder, manifest );
+    }
+    QDir( folder ).removeRecursively();
+    return refusal;
+}
+
 void PluginManager::removePackStore( const QString& pluginId )
 {
     PackStore store( packStoreRoot(), pluginId );
@@ -394,6 +407,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
     }
     PackStore store( packStoreRoot(), id );
     const auto path = options.value( "path" ).toString();
+    const bool enabled = settings_.value( configurationKey( id ) + "enabled", false ).toBool();
     const auto listing = [ &store ] {
         const auto edits = store.localEdits();
         const auto current = store.files();
@@ -498,7 +512,7 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
             }
         }
         // An enabled pack loads the edit at once: it must pass the same check as enabling it.
-        if ( packCheck_ && settings_.value( configurationKey( id ) + "enabled", false ).toBool() ) {
+        if ( enabled ) {
             auto candidate = files;
             if ( bytes ) {
                 candidate.insert( path, *bytes );
@@ -506,13 +520,8 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
             else {
                 candidate.remove( path );
             }
-            const auto folder = QDir( packStoreRoot() ).filePath( id + QStringLiteral( "/check" ) );
-            auto refusal = PackStore::writeFolder( folder, candidate, manifest.json );
-            if ( refusal.isEmpty() ) {
-                refusal = packCheck_( id, folder, manifest.json );
-            }
-            QDir( folder ).removeRecursively();
-            if ( !refusal.isEmpty() ) {
+            if ( const auto refusal = checkPackFiles( id, candidate, manifest.json );
+                 !refusal.isEmpty() ) {
                 return { refusal, {} };
             }
         }
@@ -533,6 +542,19 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
             return { "Not an item of the pack.", {} };
         }
         const auto commit = options.value( "commit" ).toString();
+        // A reset brings back what an edit removed: an enabled pack loads it at once, so it
+        // passes the same check as an edit.
+        if ( enabled ) {
+            PackFiles candidate;
+            bool changes = false;
+            auto refusal = store.planRestore( path, commit, &candidate, &changes );
+            if ( refusal.isEmpty() && changes ) {
+                refusal = checkPackFiles( id, candidate, manifest.json );
+            }
+            if ( !refusal.isEmpty() ) {
+                return { refusal, {} };
+            }
+        }
         const auto what = path.isEmpty() ? QStringLiteral( "the pack" ) : packcanonical::itemOf( path );
         error = store.restore( path, commit,
                                commit.isEmpty()
