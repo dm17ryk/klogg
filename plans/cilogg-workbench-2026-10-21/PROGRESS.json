@@ -2324,7 +2324,8 @@
         "2026-11-20: #136 (E17d) failed on every Linux job: GCC and Clang build with -ffast-math, which folds std::isfinite, so 'nan' sorted as a number; plugintablemodel.cpp and pluginview.cpp now build with exact floating point, and the 5 Codex findings on #136 are fixed with tests (commit 5ae99b3e), after master (#135) was merged into the branch.",
         "2026-11-20: the 2 later Codex findings on #135 (merged) are fixed with tests on https://github.com/dm17ryk/klogg/pull/136 (commit 916db3e2).",
         "2026-11-20: the Windows 'examples' job on #136 failed once on a rounding error in a test of a query's time left; the test now bounds it by its exact budget (commit 7c97d3fe).",
-        "2026-11-20: the 6 findings of the second Codex review of #136 are fixed with a test (commit 1e125535)."
+        "2026-11-20: the 6 findings of the second Codex review of #136 are fixed with a test (commit 1e125535).",
+        "2026-11-20: the Codex review bot of #136 is over its usage limit, so a local Codex CLI review (gpt-5.6-sol, high) stands in, as Dmitry decided; its 4 P2 and 3 P3 findings are fixed with tests (commit b978152f)."
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
