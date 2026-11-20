@@ -2331,7 +2331,8 @@
         "2026-11-20: the local Codex review of #136 head a8601f8e (round 7) found 5 P2 issues; they are fixed with tests (commit 199db5ee).",
         "2026-11-20: the local Codex review of #136 head 209922fc (round 8) found 1 P1 and 2 P2 issues; they are fixed with tests (commit 1165d4f6).",
         "2026-11-20: the local Codex review of #136 head 785a32a5 (round 9) found 2 P2 issues; they are fixed with tests (commit ea666a62).",
-        "2026-11-20: the E17e gate on a1a2977f (stacked on #136 head bcc58f70) passed: the MSVC /W4 /WX build of klogg, klogg_portable, cilogg_tests and cilogg_itests; the unit suite (450 cases); every E17 UI case one by one (57); the UI suite (245 cases); the Python SDK and plugin tests (402, 48 skipped); mypy --strict; the MCP tests (127, 1 skipped); the workbench parity harness for E17 (5 cases) and the isolated host integration."
+        "2026-11-20: the E17e gate on a1a2977f (stacked on #136 head bcc58f70) passed: the MSVC /W4 /WX build of klogg, klogg_portable, cilogg_tests and cilogg_itests; the unit suite (450 cases); every E17 UI case one by one (57); the UI suite (245 cases); the Python SDK and plugin tests (402, 48 skipped); mypy --strict; the MCP tests (127, 1 skipped); the workbench parity harness for E17 (5 cases) and the isolated host integration.",
+        "2026-11-21: the local Codex review of #137 head 8d27db47 (round 1) found 1 P1 and 7 P2 issues; seven are fixed with tests and one is fixed in part and answered (commit abf45a06)."
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
