@@ -782,8 +782,9 @@ text; a file's conflict has only `base`, its sides are in `items`) and `items` (
 item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.
 The texts stay within 4 MiB per job, previews and blocks first: an item past that has
 `omitted: true` and no texts (resolve it with `take`), and an automatic update's job keeps none.
-An item with more than 32 conflicting fields (or any item once 1,024 conflicts are listed) is
-listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
+An item with more than 32 conflicting fields (or any item once 1,024 conflicts are listed, or a
+conflict on a field path past 4,096 characters or 128 segments, the most a resolution's `field`
+may have) is listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
 also has `revision` (the pack's edits and the new version the conflicts are for):
 `resolutions` need it back (they are refused without it), and if the pack was edited since, or
 the package is another one (a local folder changed meanwhile), they are not applied and nothing

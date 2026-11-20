@@ -859,18 +859,6 @@ QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,
     if ( !hasJournal() ) {
         return {};
     }
-    // The package folder already holds what `upstream` holds: the update finished, only the
-    // journal's removal did not.
-    if ( installed ) {
-        bool complete = false;
-        const auto upstream = filesAt( QStringLiteral( "refs/heads/upstream" ), &complete );
-        if ( complete && withoutManifest( upstream ) == *installed
-             && QJsonDocument::fromJson( upstream.value( ManifestPath ) ).object() == installedManifest ) {
-            LOG_INFO << "Pack store update had finished; its journal goes pack=" << packId_.toStdString();
-            endUpdate();
-            return {};
-        }
-    }
     QFile file( journalPath() );
     const auto journal = file.open( QIODevice::ReadOnly )
                              ? QJsonDocument::fromJson( file.read( 64 * 1024 ) ).object()
@@ -885,6 +873,20 @@ QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,
                        && ( before.existed ? commitId.match( before.upstream ).hasMatch()
                                                  && commitId.match( before.local ).hasMatch()
                                            : before.upstream.isEmpty() && before.local.isEmpty() );
+    // The package folder already holds what `upstream` holds, and `upstream` moved on from the
+    // tip the journal recorded: the update finished, only the journal's removal did not. An update
+    // moves `upstream` first and an undo puts it back last, so `upstream` still (or again) at that
+    // tip means the update or its undo stopped part-way, with `local` perhaps elsewhere.
+    if ( installed && ( !valid || tips().upstream != before.upstream ) ) {
+        bool complete = false;
+        const auto upstream = filesAt( QStringLiteral( "refs/heads/upstream" ), &complete );
+        if ( complete && withoutManifest( upstream ) == *installed
+             && QJsonDocument::fromJson( upstream.value( ManifestPath ) ).object() == installedManifest ) {
+            LOG_INFO << "Pack store update had finished; its journal goes pack=" << packId_.toStdString();
+            endUpdate();
+            return {};
+        }
+    }
     if ( !valid ) {
         return QStringLiteral( "The journal of an unfinished update of the pack cannot be read: %1" )
             .arg( QDir::toNativeSeparators( journalPath() ) );
@@ -927,8 +929,11 @@ QString PackStore::rollback( const PackTips& tips )
     if ( !open( false ) ) {
         return error_;
     }
-    for ( const auto& [ branch, id ] : { std::pair{ "refs/heads/upstream", tips.upstream },
-                                         std::pair{ "refs/heads/local", tips.local } } ) {
+    // `local` first, `upstream` last (an update moves them the other way round): while `upstream`
+    // is still on the new version the journal is not taken as a finished update, so an undo that
+    // stops between the two is done again.
+    for ( const auto& [ branch, id ] : { std::pair{ "refs/heads/local", tips.local },
+                                         std::pair{ "refs/heads/upstream", tips.upstream } } ) {
         git_oid oid;
         Reference reference;
         if ( id.isEmpty() || git_oid_fromstr( &oid, id.toLatin1().constData() ) != 0

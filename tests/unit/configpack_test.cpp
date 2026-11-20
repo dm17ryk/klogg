@@ -446,6 +446,27 @@ TEST_CASE( "Pack previews are namespaced, preceded by the user's and never saved
         CHECK( manager.replacedByUser( "Pack frame" ) );
         CHECK( !manager.copyPackPreview( "Pack frame" ).isEmpty() );
     }
+    SECTION( "a copied block never takes the name of another enabled pack's block" )
+    {
+        // Pack A has a block literally named "b.pack/frame_header_block", which is also what
+        // pack B's own frame_header_block is called once applied.
+        const auto a = parsedPack( "a.pack", "Pack A",
+                                   QString::fromUtf8( packPreviews( "A frame" ) )
+                                       .replace( "frame_header_block", "b.pack/frame_header_block" )
+                                       .replace( "^(?<kind>", "^A(?<kind>" )
+                                       .toUtf8() );
+        const auto b = parsedPack( "b.pack", "Pack B", packPreviews( "B frame" ) );
+        manager.setPackPreviews( { a, b } );
+        REQUIRE( manager.effectiveBlocks().contains( "b.pack/frame_header_block" ) );
+        CHECK( manager.copyPackPreview( "A frame" ).isEmpty() );
+        const auto* copy = manager.findByName( "A frame" );
+        REQUIRE( copy );
+        const auto header = copy->fields.first().blockTemplate;
+        CHECK( header == "b.pack/frame_header_block (Pack A)" );
+        CHECK( !manager.blocks().contains( "b.pack/frame_header_block" ) );
+        // The copy runs pack A's block, not pack B's.
+        CHECK( manager.effectiveBlocks().value( header ).regex.startsWith( "^A" ) );
+    }
     SECTION( "the on/off choice of a pack preview is user state" )
     {
         manager.setPackPreviews( { pack } );
@@ -784,6 +805,8 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
         CHECK( refused.contains( "preview limits" ) );
         CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
         CHECK( PreviewManager::instance().all().size() == 127 );
+        // Its route, saved before the copy, is taken back.
+        CHECK( settings.configuration() == original );
         REQUIRE( settings.setConfiguration( original ) );
         REQUIRE( PreviewManager::instance().clearAll() );
     }

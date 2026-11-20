@@ -443,10 +443,12 @@ QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QS
     }
     const auto closure = blockClosure( original->fields, pack.blocks );
     // Blocks whose names the user already uses are renamed, with their references
-    // (design 4.2): "<block> (<pack name>)", then a number.
+    // (design 4.2): "<block> (<pack name>)", then a number. So are names an enabled pack's block
+    // has (a pack block literally named "<other-pack-id>/<name>"): that pack's block would replace
+    // the copy's in effectiveBlocks().
     const auto collides = [ this, &closure ]( const QString& suffix ) {
         return std::any_of( closure.cbegin(), closure.cend(), [ this, &suffix ]( const auto& block ) {
-            return blocks_.contains( block + suffix );
+            return blocks_.contains( block + suffix ) || packBlocks_.contains( block + suffix );
         } );
     };
     QString suffix;

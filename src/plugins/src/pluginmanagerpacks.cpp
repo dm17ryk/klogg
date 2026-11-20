@@ -79,6 +79,17 @@ bool textKind( const QString& kind )
 constexpr qsizetype MaxFieldConflictsPerItem = 32;
 constexpr qsizetype MaxConflictEntries = 1024;
 
+// A field path (packmerge::fieldPath) a field resolution may name: packmerge::withField walks it
+// level by level, so a path of thousands of segments from automation would cost quadratic time and
+// a deep recursion. A conflict on a field past this is listed as a whole-item conflict.
+constexpr qsizetype MaxFieldPathChars = 4096;
+constexpr qsizetype MaxFieldPathSegments = 128;
+
+bool fieldPathFits( const QString& field )
+{
+    return field.size() <= MaxFieldPathChars && field.count( '/' ) < MaxFieldPathSegments;
+}
+
 // The conflicts and conflicting items of a merge for its job result, bounded in number and size.
 // An item with more conflicting fields than MaxFieldConflictsPerItem, or once the list holds
 // MaxConflictEntries, is listed as one whole-item conflict (field ""), which a whole-item
@@ -101,9 +112,14 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
     QSet<QString> whole;
     qsizetype entries = 0;
     for ( const auto& path : order ) {
-        const auto count = byItem.value( path ).size();
-        const bool collapse = !textKind( byItem.value( path ).first()->kind )
-                              && ( count > MaxFieldConflictsPerItem || entries + count > MaxConflictEntries );
+        const auto& list = byItem.value( path );
+        const auto count = list.size();
+        const bool tooDeep = std::any_of( list.cbegin(), list.cend(), []( const PackConflict* conflict ) {
+            return !fieldPathFits( conflict->field );
+        } );
+        const bool collapse = !textKind( list.first()->kind )
+                              && ( count > MaxFieldConflictsPerItem || entries + count > MaxConflictEntries
+                                   || tooDeep );
         if ( collapse ) {
             whole.insert( path );
         }
@@ -248,7 +264,7 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         return true;
     }
     // The name is the item's identity: a field resolution never renames it.
-    if ( field == QLatin1String( "name" ) ) {
+    if ( field == QLatin1String( "name" ) || !fieldPathFits( field ) ) {
         return false;
     }
     const auto changed = packmerge::withField( current, field, value );

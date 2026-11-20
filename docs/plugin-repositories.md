@@ -812,7 +812,9 @@ it (the editor shows CRLF as LF), and a text result of a CRLF file keeps CRLF. E
 or update writes a journal first (`<pack-id>.update.json`: the branch tips before it) and
 removes it once the package folder is replaced or the store put back; a journal still there
 when the pack is next read (at startup too) is finished: if the package folder already holds
-what the store's `upstream` holds, the update had completed and only the journal goes;
+what the store's `upstream` holds and `upstream` moved on from the journal's tip, the update had
+completed and only the journal goes (an update moves `upstream` first and an undo puts it back
+last, `local` first, so an undo that stopped part-way is done again);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
 is read strictly (a missing or malformed field is never taken as "there was no store", which
@@ -829,10 +831,14 @@ refused, as a minified document just under the limit grows when it is written ag
 update) that would take them and the enabled packs past the preview limits is refused before it
 is saved, as the service would otherwise drop the packs' previews. Such a copy takes the decoder
 route the preview decodes with (the user's own route for it, else the pack's) as the user's
-route for the copy; the route is checked first, so a copy whose route cannot be added (the
-user's preview routes at their limit of 128, or another route of the user's already under the
-copy's name, which it would decode with) is not made, never left with a wrong route, and Keep
-Both checks the routes of all its copies at Apply. A merge result must also stay within the
+route for the copy; the route is saved first (a route under a name no preview has decodes
+nothing) and taken back if the copy fails, so a copy whose route cannot be added (the user's
+preview routes at their limit of 128, or another route of the user's already under the copy's
+name, which it would decode with) is not made, never left with a wrong route, and Keep Both
+checks the routes of all its copies at Apply. A copied block is renamed also when an enabled
+pack's block has its name (a pack block literally named `<other-pack-id>/<name>`), which would
+replace it. A field resolution's path stays within 4,096 characters and 128 segments; a conflict
+on a deeper field is listed as a whole-item conflict. A merge result must also stay within the
 preview limits (128 previews, 4,096 blocks): keeping an edited preview the new version removes,
 beside the version's own, can pass them. It is checked once the conflicts are settled (an open
 conflict holds the user's side), also for a disabled pack. A previews document over the

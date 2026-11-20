@@ -300,14 +300,17 @@ QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QStr
                                             const QString& target,
                                             const std::function<QString()>& copy )
 {
-    // The copy has no link to the pack, so it keeps decoding without it: the pack's route
-    // becomes the user's.
+    // The copy has no link to the pack, so it keeps decoding without it: the route the preview
+    // decodes with becomes the user's route for the copy. The route is saved first: a route under
+    // a name no preview has decodes nothing, while a copy without its route would decode wrongly.
+    // A copy that then fails takes its route back.
     auto& settings = PreviewDecoderSettings::instance();
-    auto configuration = settings.configuration();
+    const auto previous = settings.configuration();
+    auto configuration = previous;
     QString reason;
     const auto route = addCopyRoute( pack, name, target, &configuration );
     if ( route == CopyRoute::Taken
-         || ( route == CopyRoute::Added && !settings.check( configuration, &reason ) ) ) {
+         || ( route == CopyRoute::Added && !settings.setConfiguration( configuration, &reason ) ) ) {
         LOG_WARNING << "Pack preview not copied, its route cannot be added name="
                     << name.toStdString() << " reason="
                     << ( route == CopyRoute::Taken ? std::string( "taken" ) : reason.toStdString() );
@@ -315,20 +318,13 @@ QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QStr
             .arg( target, route == CopyRoute::Taken ? routeTaken( target ) : routeRefusal( reason ) );
     }
     const auto error = copy();
-    if ( !error.isEmpty() ) {
-        return error;
+    if ( !error.isEmpty() && route == CopyRoute::Added
+         && !settings.setConfiguration( previous, &reason ) ) {
+        // Left in place it decodes nothing, and another try finds the same route there.
+        LOG_WARNING << "Route of a pack preview that was not copied stays name="
+                    << name.toStdString() << " reason=" << reason.toStdString();
     }
-    // Read again: the configuration the route is added to is the one saved now.
-    configuration = settings.configuration();
-    if ( addCopyRoute( pack, name, target, &configuration ) == CopyRoute::Added
-         && !settings.setConfiguration( configuration, &reason ) ) {
-        LOG_WARNING << "Copied pack preview route not added name=" << name.toStdString()
-                    << " reason=" << reason.toStdString();
-        return tr( "The preview was copied, but its decoder route could not be added to "
-                   "your routes: %1." )
-            .arg( routeRefusal( reason ) );
-    }
-    return {};
+    return error;
 }
 
 QString PreviewPackRegistry::check( const QString& id, const QString& directory,

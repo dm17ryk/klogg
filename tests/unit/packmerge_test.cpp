@@ -578,6 +578,37 @@ TEST_CASE( "A journal is acted on only when it is sure", "[packmerge][E16]" )
         CHECK( !QFileInfo::exists( journal ) );
         CHECK( store.localTip() == after );
     }
+    SECTION( "an undo that stopped part-way is done again, not taken as a finished update" )
+    {
+        auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+        auto previews = v2Previews[ "previews" ].toArray();
+        auto frame = previews[ 1 ].toObject();
+        frame[ "regex" ] = "^A2$";
+        previews[ 1 ] = frame;
+        v2Previews[ "previews" ] = previews;
+        const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
+        const auto before = store.tips();
+        REQUIRE( store.beginUpdate( before ).isEmpty() );
+        REQUIRE( store.applyUpdate( v2, store.planUpdate( v2, MergeStrategy::Fail ).merged,
+                                    packManifest( "1.1.0" ), "1.1.0", "Team packs" )
+                     .isEmpty() );
+        REQUIRE( store.localTip() != tip );
+        // The package was not replaced, and the undo put `upstream` back but not `local`: the
+        // installed folder (the old version) matches `upstream`, yet the store is not as it was.
+        {
+            QFile upstream( root.filePath( "org.example.pack.git/refs/heads/upstream" ) );
+            REQUIRE( upstream.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+            upstream.write( before.upstream.toLatin1() + '\n' );
+        }
+        PackStore recovered( root.path(), "org.example.pack" );
+        const auto installed = packFiles();
+        REQUIRE( recovered.recoverInterruptedUpdate( &installed, packManifest() ).isEmpty() );
+        CHECK( !QFileInfo::exists( journal ) );
+        CHECK( recovered.localTip() == tip );
+        CHECK( recovered.tips().upstream == before.upstream );
+        CHECK( readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+        CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
+    }
     SECTION( "a journal that cannot be read changes nothing" )
     {
         // No "existed": never taken as "there was no store", which would remove it.
@@ -976,6 +1007,26 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
         { "path", second },
         { "field", QString{} },
         { "value", QJsonDocument::fromJson( sides[ "theirs" ].toString().toUtf8() ).object().toVariantMap() } } };
+
+    // A field path deeper than any item's (automation could send thousands of segments, which
+    // would be walked level by level) is refused, and nothing is installed.
+    {
+        QString deep = QStringLiteral( "p0" );
+        for ( int level = 0; level < 200; ++level ) {
+            deep += QStringLiteral( "/x" );
+        }
+        const auto refused = finished(
+            manager, manager.manage( "install", {},
+                                     { { "path", v2 },
+                                       { "strategy", "keep_mine" },
+                                       { "resolutions",
+                                         QVariantList{ QVariantMap{
+                                             { "path", second }, { "field", deep }, { "value", 1 } } } },
+                                       { "revision", revision } } ) );
+        CHECK( refused[ "state" ] == "failed" );
+        CHECK( refused[ "error" ].toString().startsWith( "Invalid merge resolution" ) );
+        CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
+    }
 
     // Edited again after the merge was shown: the choices are not applied, the merge is asked
     // for again with the new revision.
