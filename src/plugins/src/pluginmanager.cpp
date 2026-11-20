@@ -1278,6 +1278,17 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( options.contains( "token" ) && operation != "repository_sign_in" ) {
         return { "token applies only to repository_sign_in.", {} };
     }
+    // How a pack install or update merges with the local edits: refused elsewhere rather than
+    // ignored, so a call never reports success without the merge it asked for.
+    if ( operation != "install" && operation != "update" ) {
+        for ( const auto* key : { "strategy", "resolutions", "revision" } ) {
+            if ( options.contains( QLatin1String( key ) ) ) {
+                return { QStringLiteral( "%1 applies only to install and update." )
+                             .arg( QLatin1String( key ) ),
+                         {} };
+            }
+        }
+    }
     if ( repositoryOperation( operation ) ) {
         return manageRepositories( operation, options, origin );
     }

@@ -1259,6 +1259,20 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
         CHECK( previewRegex( content, "Second" ) == "^MINE$" );
     }
     CHECK( !manager.manage( "install", {}, { { "path", v3 }, { "strategy", "both" } } ).ok() );
+    // Merge options belong to install and update: any other operation refuses them instead of
+    // reporting success without the merge it asked for.
+    for ( const auto& [ operation, option ] :
+          { std::pair<QString, QString>{ "disable", "strategy" },
+            std::pair<QString, QString>{ "pack_reset", "resolutions" },
+            std::pair<QString, QString>{ "remove", "revision" } } ) {
+        INFO( operation.toStdString() << " " << option.toStdString() );
+        const auto refusal = manager.manage(
+            operation, id,
+            { { option, option == "resolutions" ? QVariant( QVariantList{} ) : QVariant( "fail" ) } } );
+        CHECK( !refusal.ok() );
+        CHECK( refusal.error == option + " applies only to install and update." );
+    }
+    REQUIRE( manager.plugins().size() == 1 ); // the refused remove left it installed
 
     // Reset to Pack Version, then removing the pack removes its store.
     REQUIRE( manager.manage( "pack_reset", id, {} ).ok() );

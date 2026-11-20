@@ -770,7 +770,7 @@ changed differently, or deleted on one side and changed on the other, is a confl
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
 | `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
-`install` and `update` of a pack take `strategy` (`fail`, the default; `keep_mine`;
+`install` and `update` of a pack (and no other operation, which refuses them) take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
 byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview or
 block field (an empty `field` replaces the whole item), and `{path, text}` for a file or the

@@ -3,11 +3,13 @@
 
 #include <QHash>
 #include <QJsonObject>
+#include <QMap>
 #include <QObject>
 #include <QPointer>
 #include <QStringList>
 #include <QVariantMap>
 #include <QVector>
+#include <functional>
 #include <optional>
 
 #include "previewmanager.h"
@@ -48,15 +50,19 @@ public:
     static Contribution read( const QString& id, const QString& directory,
                               const QJsonObject& manifest );
     // Copy to My Previews: PreviewManager::copyPackPreview, and the pack's route for the preview
-    // becomes one of the user's, unless the user has one. Returns the error.
+    // becomes one of the user's, unless the user has one. A copy whose route cannot be added is
+    // not made. Returns the error.
     QString copyPreview( const QString& name, const QString& copyName = {} );
     // Pack `packId` as it is now (with the local edits), whether it is enabled or not: Keep Both
     // in the merge window takes it before the update replaces those previews.
     std::optional<Contribution> snapshotOfPack( const QString& packId, QString* error ) const;
     // Copy to My Previews from such a snapshot, with the pack's route for the preview, once the
-    // update is installed. Returns the error.
+    // update is installed; like copyPreview, made with its route or not at all. Returns the error.
     QString copyPreviewOfSnapshot( const Contribution& pack, const QString& name,
                                    const QString& copyName );
+    // Whether the routes of copies of `pack`'s previews (preview name -> the copy's name) can all
+    // be added to the user's routes: the refusal, or an empty string. Keep Both checks it at Apply.
+    QString checkCopyRoutes( const Contribution& pack, const QMap<QString, QString>& copies ) const;
     // The applied contributions, in pack ID order.
     const QVector<Contribution>& contributions() const
     {
@@ -65,8 +71,11 @@ public:
 
 private:
     PreviewPackRegistry() = default;
-    // The pack's route for `name` becomes the user's route for `target`, unless they have one.
-    QString copyRoute( const Contribution& pack, const QString& name, const QString& target );
+    // Makes the copy `target` of `name` with `copy`, and the pack's route for `name` becomes the
+    // user's route for `target`, unless they have one. The route is checked before the copy is
+    // made, so a copy does not end up without its route (its name stays free for another try).
+    static QString copyWithRoute( const Contribution& pack, const QString& name,
+                                  const QString& target, const std::function<QString()>& copy );
     QPointer<cilogg::plugins::PluginManager> manager_;
     QVector<Contribution> applied_;
     QHash<QString, Contribution> cache_;

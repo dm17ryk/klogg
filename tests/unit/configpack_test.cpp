@@ -788,6 +788,55 @@ TEST_CASE( "The pack check refuses shared names and merged limits", "[previewdec
         REQUIRE( PreviewManager::instance().clearAll() );
     }
 
+    // A copy whose decoder route cannot be added (the user's preview routes at their limit) is
+    // not made at all, so it never lacks its route and its name stays free; Keep Both checks
+    // the routes at Apply.
+    {
+        auto full = original;
+        QVariantMap userRoutes;
+        for ( int index = 0; index < PreviewDecoderSettings::PreviewRouteLimit; ++index ) {
+            userRoutes.insert( QStringLiteral( "Route %1" ).arg( index ),
+                               QVariantMap{ { "dissector", "data" } } );
+        }
+        full[ "previewRoutes" ] = userRoutes;
+        REQUIRE( settings.setConfiguration( full ) );
+        const auto saved = settings.configuration();
+        const auto refused = registry.copyPreview( "Pack frame", "Pack frame (mine)" );
+        CHECK( refused.contains( "was not copied" ) );
+        CHECK( refused.contains( "128" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( settings.configuration() == saved );
+
+        QString error;
+        const auto snapshot = registry.snapshotOfPack( "a.pack", &error );
+        REQUIRE( snapshot );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .contains( "was not copied" ) );
+        CHECK_FALSE( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .contains( "128" ) );
+        // A route of the user's for the copy's name is kept: nothing to add, so it is copied.
+        auto own = userRoutes;
+        own.remove( "Route 0" );
+        own.insert( "Pack frame (mine)", QVariantMap{ { "dissector", "mine" } } );
+        full[ "previewRoutes" ] = own;
+        REQUIRE( settings.setConfiguration( full ) );
+        CHECK( registry.checkCopyRoutes( *snapshot, { { "Pack frame", "Pack frame (mine)" } } )
+                   .isEmpty() );
+        CHECK( registry.copyPreviewOfSnapshot( *snapshot, "Pack frame", "Pack frame (mine)" )
+                   .isEmpty() );
+        CHECK( PreviewManager::instance().findByName( "Pack frame (mine)" ) );
+        CHECK( settings.configuration()
+                   .value( "previewRoutes" )
+                   .toMap()
+                   .value( "Pack frame (mine)" )
+                   .toMap()
+                   .value( "dissector" )
+               == "mine" );
+        REQUIRE( settings.setConfiguration( original ) );
+        REQUIRE( PreviewManager::instance().clearAll() );
+    }
+
     REQUIRE( manager.manage( "disable", "a.pack", {} ).ok() );
     CHECK( registry.contributions().isEmpty() );
     CHECK( !findIn( PreviewManager::instance().effective(), "Pack frame" ) );

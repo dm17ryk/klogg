@@ -31,6 +31,37 @@ QString packLabel( const PreviewPackRegistry::Contribution& pack )
 {
     return pack.name.isEmpty() ? pack.id : pack.name;
 }
+
+// Adds the pack's route for its preview `name` to `configuration` (the user's) as the route of
+// the copy `target`; false when there is none to add: the pack has no route for the preview, or
+// the user already has a route for `target`.
+bool addCopyRoute( const PreviewPackRegistry::Contribution& pack, const QString& name,
+                   const QString& target, QVariantMap* configuration )
+{
+    if ( !pack.previewRoutes.contains( name ) ) {
+        return false;
+    }
+    auto routes = configuration->value( "previewRoutes" ).toMap();
+    if ( routes.contains( target ) ) {
+        return false;
+    }
+    routes.insert( target, pack.previewRoutes.value( name ) );
+    ( *configuration )[ "previewRoutes" ] = routes;
+    return true;
+}
+
+// Why the decoder settings refused the user's routes, for a message.
+QString routeRefusal( const QString& reason )
+{
+    if ( reason == QLatin1String( "route_limit" ) ) {
+        return PreviewPackRegistry::tr( "you already have %1 preview routes, the most there can be" )
+            .arg( PreviewDecoderSettings::PreviewRouteLimit );
+    }
+    if ( reason == QLatin1String( "configuration_limit" ) ) {
+        return PreviewPackRegistry::tr( "the decoder settings would pass 64 KiB" );
+    }
+    return reason;
+}
 } // namespace
 
 PreviewPackRegistry& PreviewPackRegistry::instance()
@@ -173,18 +204,18 @@ void PreviewPackRegistry::refresh()
 
 QString PreviewPackRegistry::copyPreview( const QString& name, const QString& copyName )
 {
-    const auto origin = PreviewManager::instance().packOrigin( name );
-    const auto error = PreviewManager::instance().copyPackPreview( name, copyName );
-    if ( !error.isEmpty() || !origin ) {
-        return error;
-    }
-    const auto target = copyName.isEmpty() ? name : copyName;
-    for ( const auto& pack : applied_ ) {
-        if ( pack.id == origin->packId ) {
-            return copyRoute( pack, name, target );
+    const auto copy = [ &name, &copyName ] {
+        return PreviewManager::instance().copyPackPreview( name, copyName );
+    };
+    if ( const auto origin = PreviewManager::instance().packOrigin( name ) ) {
+        for ( const auto& pack : applied_ ) {
+            if ( pack.id == origin->packId ) {
+                return copyWithRoute( pack, name, copyName.isEmpty() ? name : copyName, copy );
+            }
         }
     }
-    return {};
+    // Not a preview of an enabled pack: copyPackPreview says so.
+    return copy();
 }
 
 std::optional<PreviewPackRegistry::Contribution>
@@ -211,33 +242,59 @@ PreviewPackRegistry::snapshotOfPack( const QString& packId, QString* error ) con
 QString PreviewPackRegistry::copyPreviewOfSnapshot( const Contribution& pack, const QString& name,
                                                     const QString& copyName )
 {
-    const auto error = PreviewManager::instance().copyPreviewFrom( pack.previews, name, copyName );
-    return error.isEmpty() ? copyRoute( pack, name, copyName.isEmpty() ? name : copyName ) : error;
+    return copyWithRoute( pack, name, copyName.isEmpty() ? name : copyName,
+                          [ &pack, &name, &copyName ] {
+                              return PreviewManager::instance().copyPreviewFrom( pack.previews,
+                                                                                 name, copyName );
+                          } );
 }
 
-QString PreviewPackRegistry::copyRoute( const Contribution& pack, const QString& name,
-                                        const QString& target )
+QString PreviewPackRegistry::checkCopyRoutes( const Contribution& pack,
+                                              const QMap<QString, QString>& copies ) const
+{
+    auto& settings = PreviewDecoderSettings::instance();
+    auto configuration = settings.configuration();
+    bool added = false;
+    for ( auto copy = copies.cbegin(); copy != copies.cend(); ++copy ) {
+        added = addCopyRoute( pack, copy.key(), copy.value(), &configuration ) || added;
+    }
+    QString reason;
+    if ( added && !settings.check( configuration, &reason ) ) {
+        return tr( "The decoder routes of the copies cannot be added to your routes: %1." )
+            .arg( routeRefusal( reason ) );
+    }
+    return {};
+}
+
+QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QString& name,
+                                            const QString& target,
+                                            const std::function<QString()>& copy )
 {
     // The copy has no link to the pack, so it keeps decoding without it: the pack's route
     // becomes the user's.
-    if ( !pack.previewRoutes.contains( name ) ) {
-        return {};
-    }
     auto& settings = PreviewDecoderSettings::instance();
     auto configuration = settings.configuration();
-    auto routes = configuration.value( "previewRoutes" ).toMap();
-    if ( routes.contains( target ) ) {
-        return {};
-    }
-    routes.insert( target, pack.previewRoutes.value( name ) );
-    configuration[ "previewRoutes" ] = routes;
     QString reason;
-    if ( !settings.setConfiguration( configuration, &reason ) ) {
+    if ( addCopyRoute( pack, name, target, &configuration )
+         && !settings.check( configuration, &reason ) ) {
+        LOG_WARNING << "Pack preview not copied, its route cannot be added name="
+                    << name.toStdString() << " reason=" << reason.toStdString();
+        return tr( "\"%1\" was not copied: its decoder route cannot be added to your routes: %2." )
+            .arg( target, routeRefusal( reason ) );
+    }
+    const auto error = copy();
+    if ( !error.isEmpty() ) {
+        return error;
+    }
+    // Read again: the configuration the route is added to is the one saved now.
+    configuration = settings.configuration();
+    if ( addCopyRoute( pack, name, target, &configuration )
+         && !settings.setConfiguration( configuration, &reason ) ) {
         LOG_WARNING << "Copied pack preview route not added name=" << name.toStdString()
                     << " reason=" << reason.toStdString();
         return tr( "The preview was copied, but its decoder route could not be added to "
-                   "your routes (%1)." )
-            .arg( reason );
+                   "your routes: %1." )
+            .arg( routeRefusal( reason ) );
     }
     return {};
 }

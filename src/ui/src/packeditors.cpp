@@ -80,10 +80,13 @@ QString keepBothName( const QString& name )
 }
 
 // Keep Both copies the user's previews from `pack` (the pack as it is before the update) once
-// the update is installed; checked at Apply, so a copy that could not be made stops it there.
+// the update is installed; checked at Apply, so a copy that could not be made stops it there:
+// the copies' names, and their decoder routes all together.
 QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStringList& names )
 {
+    QMap<QString, QString> copies;
     for ( const auto& name : names ) {
+        copies.insert( name, keepBothName( name ) );
         const auto& previews = pack.previews.previews;
         if ( std::none_of( previews.cbegin(), previews.cend(),
                            [ &name ]( const auto& preview ) { return preview.name == name; } ) ) {
@@ -94,6 +97,12 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
                        "choose Keep Mine or Take Theirs." )
                 .arg( keepBothName( name ) );
         }
+    }
+    const auto routes = PreviewPackRegistry::instance().checkCopyRoutes( pack, copies );
+    if ( !routes.isEmpty() ) {
+        return routes + QLatin1Char( ' ' )
+               + tr( "Remove one of your preview routes first, or choose Keep Mine or Take "
+                     "Theirs." );
     }
     return {};
 }
