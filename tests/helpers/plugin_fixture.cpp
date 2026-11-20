@@ -104,6 +104,132 @@ int main( int argc, char** argv )
         return 0;
     }
     cilogg_plugin::Server plugin;
+    // E17a host queries (docs/plugin-sdk-advanced.md sections 5 and 9): the answer depends on the
+    // element. "no-queries" registers no handler, so the initialize result lists no features.
+    std::atomic<int> counted{ 0 };
+    std::atomic<int> populated{ 0 };
+    if ( mode != "no-queries" ) {
+        plugin.onQuery( "tooltip/resolve", [ & ]( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto params = query.params;
+            const auto element = params.value( "element_id" ).toString();
+            if ( element == "nulltip" ) {
+                return QJsonValue::Null;
+            }
+            if ( element == "errortip" ) {
+                throw std::runtime_error( "tooltip failed" );
+            }
+            if ( element == "invalidtip" ) {
+                return QJsonArray{ 1, 2 };
+            }
+            if ( element == "undefinedtip" ) {
+                return params.value( "no-such-key" ); // undefined: the SDK answers null
+            }
+            if ( element == "throwtip" ) {
+                throw 42; // not a std::exception: the SDK answers an error, never terminates
+            }
+            if ( element == "slowtip" ) {
+                for ( int tick = 0; tick < 3000 && !query.expired(); ++tick ) {
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+                }
+                return QJsonObject{ { "text", "slow" } };
+            }
+            if ( element == "latetip" ) {
+                // Ignores the cancellation: answers after the host stopped waiting.
+                while ( !query.expired() ) {
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+                }
+                std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+                std::cout << QJsonDocument( QJsonObject{ { "jsonrpc", "2.0" },
+                                                         { "id", query.id },
+                                                         { "result",
+                                                           QJsonObject{ { "text", "late" } } } } )
+                                 .toJson( QJsonDocument::Compact )
+                                 .constData()
+                          << '\n'
+                          << std::flush;
+                return QJsonValue::Null;
+            }
+            if ( element == "counttip" ) {
+                return QJsonObject{ { "text", QString( "count %1" ).arg( ++counted ) },
+                                    { "ttl_ms", 60000 } };
+            }
+            if ( element == "rows" ) {
+                return QJsonObject{ { "text", QString( "cell %1/%2 key %3" )
+                                                  .arg( params.value( "row_id" ).toString(),
+                                                        params.value( "column_id" ).toString(),
+                                                        params.value( "tooltip_key" ).toString() ) } };
+            }
+            // QJsonArray{ QJsonArray{ ... } } would copy the inner array instead of nesting it.
+            QJsonArray rows;
+            rows.append( QJsonArray{ "Firmware", "3.2.1" } );
+            return QJsonObject{ { "title", "Title <b>bold</b>" },
+                                { "text", "First line\nSecond <i>line</i>" },
+                                { "rows", rows },
+                                { "tone", "warn" },
+                                { "icon", "image:dot" },
+                                { "footer", "Updated" },
+                                { "ttl_ms", 60000 } };
+        } );
+        // E17b dynamic submenus (docs/plugin-sdk-advanced.md 7.4), by entry id.
+        plugin.onQuery( "menu/populate", [ & ]( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto item = query.params.value( "item_id" ).toString();
+            if ( item == "slowmenu" ) {
+                while ( !query.expired() ) {
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 2 ) );
+                }
+                return QJsonValue::Null;
+            }
+            if ( item == "badmenu" ) {
+                return QJsonObject{ { "items", QJsonArray{ QJsonObject{ { "id", "x" } } } } };
+            }
+            const auto context = query.params.value( "context" ).toObject();
+            QJsonArray items;
+            items.append( QJsonObject{ { "id", "r1" },
+                                       { "title", QString( "First %1" ).arg( ++populated ) },
+                                       { "event", true } } );
+            items.append( QJsonObject{ { "type", "separator" } } );
+            items.append( QJsonObject{
+                { "id", "r2" },
+                { "title", "Tab " + context.value( "tab_id" ).toString().left( 8 ) },
+                { "event", true } } );
+            return QJsonObject{ { "items", items },
+                                { "cache_ms", item == "cached" ? 60000 : 0 } };
+        } );
+        // E17c completion (docs/plugin-sdk-advanced.md 8.2): names starting with the text.
+        plugin.onQuery( "field/complete", []( const cilogg_plugin::Query& query ) -> QJsonValue {
+            const auto typed = query.params.value( "text" ).toString();
+            if ( typed == "bad" ) {
+                return QJsonArray{ QJsonObject{ { "label", "no value" } } };
+            }
+            QJsonArray items;
+            for ( const auto* name : { "alpha", "alps", "beta" } ) {
+                if ( QString::fromLatin1( name ).startsWith( typed ) ) {
+                    items.append( QJsonObject{ { "value", QString::fromLatin1( name ) },
+                                               { "label", QString::fromLatin1( name ).toUpper() } } );
+                }
+            }
+            return QJsonObject{ { "items", items } };
+        } );
+        // ui/command: recorded, and "rename" changes the entry through menu/update.
+        plugin.onCommand( [ &plugin ]( const QJsonObject& params ) {
+            QFile log( "host-messages.jsonl" );
+            if ( log.open( QIODevice::WriteOnly | QIODevice::Append ) ) {
+                log.write( QJsonDocument( QJsonObject{ { "method", "ui/command" },
+                                                       { "params", params } } )
+                               .toJson( QJsonDocument::Compact ) );
+                log.write( "\n" );
+            }
+            if ( params.value( "item_id" ).toString() == "rename" ) {
+                plugin.updateMenu(
+                    params.value( "menu_id" ).toString(),
+                    QJsonArray{ QJsonObject{
+                        { "id", "rename" },
+                        { "set", QJsonObject{ { "title", "Renamed" }, { "enabled", true } } } },
+                                QJsonObject{ { "id", "toggle" },
+                                             { "set", QJsonObject{ { "enabled", false } } } } } );
+            }
+        } );
+    }
     // Plugin views: record every view/ui notification and answer like a small view plugin.
     const auto record = []( const QString& method, const QJsonObject& params ) {
         QFile log( "host-messages.jsonl" );
@@ -113,7 +239,59 @@ int main( int argc, char** argv )
             log.write( "\n" );
         }
     };
-    const auto rootFor = []( const QString& viewId ) {
+    // E17a: elements with static and advanced tooltips and accessibility overrides.
+    const auto tipsRoot = [] {
+        const auto label = []( const QString& id, const QJsonObject& extra ) {
+            QJsonObject element{ { "type", "label" }, { "id", id }, { "text", id } };
+            for ( auto it = extra.begin(); it != extra.end(); ++it ) {
+                element.insert( it.key(), it.value() );
+            }
+            return element;
+        };
+        const QJsonObject provider{ { "tooltip_provider", true } };
+        return QJsonObject{
+            { "type", "column" },
+            { "id", "body" },
+            { "children",
+              QJsonArray{
+                  label( "status", { { "text", "ready tips" } } ),
+                  label( "tip", { { "tooltip_provider", true }, { "tooltip", "static tip" } } ),
+                  label( "nulltip", { { "tooltip_provider", true }, { "tooltip", "static null" } } ),
+                  label( "errortip", provider ),
+                  label( "invalidtip", provider ),
+                  label( "slowtip", { { "tooltip_provider", true }, { "tooltip_timeout_ms", 200 } } ),
+                  label( "counttip", { { "tooltip_provider", true }, { "tooltip_key", "k1" } } ),
+                  label( "plain", { { "tooltip", "<b>not bold</b>" },
+                                    { "accessible_description", "described" } } ),
+                  label( "named", { { "accessible_name", "Custom name" } } ),
+                  QJsonObject{ { "type", "button" }, { "id", "go" }, { "label", "Go" }, { "event", true },
+                               { "tooltip", "Runs it" } },
+                  QJsonObject{ { "type", "field" }, { "id", "name" }, { "kind", "text" },
+                               { "label", "Name" }, { "value", "" } },
+                  QJsonObject{ { "type", "group" }, { "id", "box" }, { "title", "Box" },
+                               { "children", QJsonArray{} } },
+                  QJsonObject{
+                      { "type", "table" },
+                      { "id", "rows" },
+                      { "columns",
+                        QJsonArray{ QJsonObject{ { "id", "c" },
+                                                 { "title", "C" },
+                                                 { "tooltip", "<b>Column C</b>" },
+                                                 { "tooltip_provider", true },
+                                                 { "tooltip_key", "ck" } },
+                                    QJsonObject{ { "id", "d" }, { "title", "D" } } } },
+                      { "rows",
+                        QJsonArray{ QJsonObject{ { "id", "r1" },
+                                                 { "cells", QJsonArray{ "1", "x" } },
+                                                 { "tooltip_key", "rk1" } },
+                                    QJsonObject{ { "id", "r2" },
+                                                 { "cells", QJsonArray{ "2", "y" } } } } } } } }
+        };
+    };
+    const auto rootFor = [ tipsRoot ]( const QString& viewId ) {
+        if ( viewId == "tips" ) {
+            return tipsRoot();
+        }
         return QJsonObject{
             { "type", "column" },
             { "id", "body" },
@@ -285,6 +463,38 @@ int main( int argc, char** argv )
             std::this_thread::sleep_for( std::chrono::milliseconds( 50 ) );
             return QJsonObject{};
         } );
+    // E17a: a raw answer with a chosen id (as if this plugin answered another plugin's query),
+    // registered icons and a tooltip invalidation.
+    plugin.action( "respond", []( cilogg_plugin::Job&, const QJsonObject& args ) {
+        std::cout << QJsonDocument( QJsonObject{ { "jsonrpc", "2.0" },
+                                                 { "id", args.value( "id" ).toString() },
+                                                 { "result", QJsonObject{ { "text", "foreign" } } } } )
+                         .toJson( QJsonDocument::Compact )
+                         .constData()
+                  << '\n'
+                  << std::flush;
+        return QJsonObject{};
+    } );
+    plugin.action( "icons", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+        // A 1x1 PNG, a safe SVG and an SVG that refers to a remote file (refused by the host).
+        const auto png = QByteArray::fromBase64(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" );
+        plugin.registerIcons(
+            { { "dot", QJsonObject{ { "png", QString::fromLatin1( png.toBase64() ) } } },
+              { "shape",
+                QJsonObject{ { "svg", "<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'>"
+                                      "<rect width='8' height='8' fill='#00aa00'/></svg>" },
+                             { "mask", true } } },
+              { "remote",
+                QJsonObject{ { "svg", "<svg xmlns='http://www.w3.org/2000/svg' "
+                                      "xmlns:xlink='http://www.w3.org/1999/xlink'><image "
+                                      "xlink:href='https://example.test/x.png'/></svg>" } } } } );
+        return QJsonObject{};
+    } );
+    plugin.action( "invalidate", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
+        plugin.invalidateTooltips( "tips", "counttip" );
+        return QJsonObject{};
+    } );
     plugin.action( "ask", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& ) {
         // Message boxes need no declared view.
         plugin.message( { { "message_id", "job-ask" },
@@ -338,6 +548,15 @@ int main( int argc, char** argv )
             }
         }
         return QJsonObject{ { "converted", true } };
+    } );
+    // What the C++ SDK's supports() says about the host this run was initialized by.
+    plugin.action( "supports", [ &plugin ]( cilogg_plugin::Job&, const QJsonObject& arguments ) {
+        QJsonObject result;
+        for ( const auto& name : arguments.value( "features" ).toArray() ) {
+            result.insert( name.toString(), plugin.supports( name.toString() ) );
+            result.insert( name.toString() + "@2", plugin.supports( name.toString(), 2 ) );
+        }
+        return result;
     } );
     plugin.action( "summary", [ &plugin ]( cilogg_plugin::Job& job, const QJsonObject& ) {
         plugin.progress( job, 0.5 );

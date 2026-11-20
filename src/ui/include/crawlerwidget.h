@@ -381,6 +381,13 @@ private:
         bool autoRefreshRequested_;
     };
 
+public:
+    // E17b plugin menus: the log view a plugin shortcut acts on (the filtered view when it has the
+    // focus, else the main view) and the main view, which shows every file line.
+    AbstractLogView* pluginLogView() const;
+    AbstractLogView* mainLogView() const;
+
+private:
     // Private functions
     void setup();
     void setShortcuts();

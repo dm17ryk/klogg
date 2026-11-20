@@ -1,0 +1,55 @@
+{
+  "id": "org.cilogg.ui-gallery",
+  "name": "UI Gallery",
+  "version": "1.0.0",
+  "protocol_version": 1,
+  "capabilities": ["tool"],
+  "executable": "python",
+  "arguments": ["main.py"],
+  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation and completion.",
+  "handles": ["tooltip/resolve", "menu/populate", "field/complete", "ui/command", "query/cancel"],
+  "views": [
+    {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520}
+  ],
+  "menus": [
+    {
+      "id": "main",
+      "location": "plugins",
+      "title": "UI Gallery",
+      "icon": "builtin:chip",
+      "items": [
+        {"id": "open_gallery", "title": "Open gallery", "view": "gallery", "icon": "builtin:open",
+         "shortcut": "Ctrl+Alt+Shift+G", "tooltip": "Opens the UI Gallery view."},
+        {"type": "separator"},
+        {"id": "highlight_offline", "title": "Highlight offline boards", "event": true,
+         "checkable": true, "checked": false,
+         "tooltip": "Mutes the other boards in the gallery table."},
+        {"type": "section", "title": "Sort boards"},
+        {"id": "sort_name", "title": "Sort by name", "event": true, "checkable": true,
+         "group": "sort", "checked": true},
+        {"id": "sort_state", "title": "Sort by state", "event": true, "checkable": true,
+         "group": "sort", "tooltip": "Offline boards first."},
+        {"type": "separator"},
+        {"id": "boards", "title": "Boards", "icon": "builtin:device", "dynamic": true,
+         "tooltip": "Filled by the plugin each time it opens."}
+      ]
+    },
+    {
+      "id": "lines",
+      "location": "log",
+      "items": [
+        {"id": "count_lines", "title": "Count selected lines", "icon": "builtin:search",
+         "event": true, "when": {"selection": "lines"},
+         "tooltip": "Shows the count in the UI Gallery status label."}
+      ]
+    },
+    {
+      "id": "tabs",
+      "location": "tab",
+      "items": [
+        {"id": "describe_tab", "title": "Describe tab", "icon": "builtin:info", "event": true,
+         "tooltip": "Shows the tab in the UI Gallery status label."}
+      ]
+    }
+  ]
+}

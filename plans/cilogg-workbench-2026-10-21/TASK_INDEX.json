@@ -1654,13 +1654,13 @@
       "dependencies": [
         "E14"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "requirements": [
         "ECO23",
         "ECO24",
         "ECO25"
       ],
-      "task_body_chars": 10478,
+      "task_body_chars": 10605,
       "taskFile": "tasks/E17.md"
     },
     {
@@ -2952,7 +2952,10 @@
     "2026-11-17 (later): the user asked for repository handling of highlighters, actions, responses, previewers and filters like plugins, and for merging local edits on update. E15a gains one Plugins and Packs window (Installed, Available with a Kind filter, Repositories); E16a and E16c gain local edits as an overlay with a three-way merge; the new slice E16d brings Export as Pack. Dependencies are unchanged.",
     "2026-11-17 (later): the user decided the pack editing model (edit in place with merge) and the merge UI (item merge window, three-pane text merge, optional external merge tool), and asked to use Git internally and to let users send changes back. E16a and E16c gain a local Git store per pack, E16d View Changes and Export Changes, and the new slice E16e Propose Changes. Dependencies are unchanged.",
     "2026-11-17 (later): the user accepted the D16 design and approved all eleven recommended decisions. E15 is authorized ahead of G02/G03 and listed in PROGRESS.json.runnableTasks; E16 follows E15. Both stay planned and not started. Dependencies are unchanged.",
-    "2026-11-19: decision D17 proposes E17 (advanced plugin SDK: plugin menus and context menus with shortcuts, drop-downs with icons, check boxes or radio marks in forms and table cells, check box and radio elements, table icons and cell tooltips, plugin-filled advanced tooltips through host queries with timeouts, Shift/Ctrl selection in tables, trees and a file tree, capability negotiation and window integration) for the user's request of 2026-11-19. Design only: implementation starts after the user approves it, so E17 is not in PROGRESS.json.runnableTasks. E17 depends on E14 (completed); R04 depends on E17. E01 absorbs the versioned host features later (coordination, no hard edge)."
+    "2026-11-19: decision D17 proposes E17 (advanced plugin SDK: plugin menus and context menus with shortcuts, drop-downs with icons, check boxes or radio marks in forms and table cells, check box and radio elements, table icons and cell tooltips, plugin-filled advanced tooltips through host queries with timeouts, Shift/Ctrl selection in tables, trees and a file tree, capability negotiation and window integration) for the user's request of 2026-11-19. Design only: implementation starts after the user approves it, so E17 is not in PROGRESS.json.runnableTasks. E17 depends on E14 (completed); R04 depends on E17. E01 absorbs the versioned host features later (coordination, no hard edge).",
+    "2026-11-19: the user accepted decision D17 after the design merged (PR https://github.com/dm17ryk/klogg/pull/127): every recommended answer of section 23, a separate yes to question 13 (E17i built last) and the slices in order, each its own branch and pull request. E17 is in progress and runnable; slice E17a (negotiation, host queries, tooltips, icons, accessible names, table model extraction, SDKs, golden-frame and version-skew tests) is the first.",
+    "2026-11-19: slice E17b (plugin menus, context menus in the tab, pane and log locations, dynamic submenus, ui/command, shortcuts with conflict refusal and rebinding in Options, get_plugin_menus and trigger_plugin_menu) is stacked on E17a as its own pull request.",
+    "2026-11-19: slice E17c (choice entries with icons, separators and sections, radio and check box styles, searchable, editable and completing drop-downs, checkbox, radio_group and check_group, new field kinds, validation and requires_valid, cell editor choices) is stacked on E17b as its own pull request."
   ],
   "reconciledDate": "2026-11-04"
 }

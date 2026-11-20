@@ -515,7 +515,7 @@ The full card is [tasks/E16.md](tasks/E16.md).
 
 ### E17 — Advanced plugin SDK: menus, rich elements, tooltips with handlers and window integration
 
-**Integrated hard dependencies:** E14. Proposed under [decision D17](../../docs/workbench/decisions.md) on 2026-11-19; design only, awaiting the user's approval, so it is not runnable yet. R04 depends on E17.
+**Integrated hard dependencies:** E14. Proposed under [decision D17](../../docs/workbench/decisions.md) on 2026-11-19 and accepted the same day; E17 is runnable and in progress, starting with slice E17a. R04 depends on E17.
 
 **Outcome:** plugins add their own menus and submenus under Plugins and to the tab, pane and log context menus, with shortcuts; drop-downs with icons, check boxes or radio marks in forms and table cells; check box and radio elements; tables with icons, per-cell and plugin-filled advanced tooltips and Shift/Ctrl selection; a tree and a file tree browser; plus capability negotiation, host queries with timeouts, layout and content elements, toolbars, status items, notifications, drag and drop, state, theme, settings pages and typed SDKs with a test harness. The protocol version stays 1.
 

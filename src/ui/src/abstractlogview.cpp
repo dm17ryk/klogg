@@ -668,8 +668,20 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
                      &AbstractLogView::clearColorLabels );
         }
         updatePaneMenu();
+        // E17b: the plugin entries of location `log`, before the Panes submenu.
+        QList<QAction*> pluginEntries;
+        QPointer<QWidget> menuHostWindow = window();
+        if ( auto* pluginHost = dynamic_cast<PluginMenuHost*>( menuHostWindow.data() );
+             pluginHost != nullptr && pluginHost->hasPluginLogEntries() ) {
+            pluginEntries = pluginHost->addPluginLogEntries(
+                *popupMenu_, paneMenu_ ? paneMenu_->menuAction() : nullptr, this,
+                pluginSelection( line ) );
+        }
         // Display the popup (blocking)
         popupMenu_->exec( QCursor::pos( activeScreen( this ) ) );
+        if ( auto* pluginHost = dynamic_cast<PluginMenuHost*>( menuHostWindow.data() ) ) {
+            pluginHost->removePluginLogEntries( *popupMenu_, pluginEntries );
+        }
 
         highlightersMenu_->clearHighlightersMenu();
         colorLablesActionGroup->deleteLater();
@@ -2438,6 +2450,100 @@ void AbstractLogView::createMenu()
     // Split, move, close and merge panes, as in the View menu; filled when the menu opens.
     paneMenu_ = popupMenu_->addMenu( tr( "Panes" ) );
     paneMenu_->setObjectName( QStringLiteral( "logViewPaneMenu" ) );
+}
+
+PluginMenuHost::LogSelection AbstractLogView::pluginSelection( OptionalLineNumber pointer ) const
+{
+    static constexpr int MaxRanges = 64; // docs/plugin-sdk-advanced.md 7.2
+    PluginMenuHost::LogSelection result;
+    result.view = pluginViewKind();
+    if ( pointer && *pointer < logData_->getNbLine() ) {
+        result.line = static_cast<qint64>( displayLineNumber( *pointer ).get() );
+    }
+    result.portion = selection_.isPortion();
+    bool full = false;
+    const auto addLine = [ &result, &full ]( qint64 first, qint64 last ) {
+        if ( !result.ranges.isEmpty() && result.ranges.back().second + 1 == first ) {
+            result.ranges.back().second = last;
+        }
+        else if ( result.ranges.size() < MaxRanges ) {
+            result.ranges.append( { first, last } );
+        }
+        else {
+            full = true;
+        }
+    };
+    // A part of one line is that line once (getLineRanges() lists it too).
+    if ( result.portion ) {
+        const auto lines = selection_.getLines();
+        if ( !lines.empty() ) {
+            const auto fileLine = static_cast<qint64>( displayLineNumber( lines.front() ).get() );
+            addLine( fileLine, fileLine );
+            result.count = 1;
+        }
+    }
+    const bool everyLine = pluginViewKind() == QLatin1String( "main" );
+    // A filtered view shows scattered file lines, mapped one at a time: at most this many, so a
+    // right-click on a huge selection stays fast (the count stays exact).
+    static constexpr LineNumber::UnderlyingType MaxMappedRows = 100000;
+    LineNumber::UnderlyingType mapped = 0;
+    auto ranges = selection_.getLineRanges();
+    if ( result.portion ) {
+        ranges.clear();
+    }
+    for ( const auto& [ first, size ] : ranges ) {
+        result.count += static_cast<qint64>( size.get() );
+        if ( everyLine ) {
+            const auto firstLine = static_cast<qint64>( first.get() ) + 1;
+            addLine( firstLine, firstLine + static_cast<qint64>( size.get() ) - 1 );
+            continue;
+        }
+        for ( LineNumber::UnderlyingType offset = 0;
+              offset < size.get() && !full && mapped < MaxMappedRows; ++offset, ++mapped ) {
+            const auto fileLine = static_cast<qint64>(
+                displayLineNumber( LineNumber( first.get() + offset ) ).get() );
+            addLine( fileLine, fileLine );
+        }
+    }
+    const QPointer<const AbstractLogView> view( this );
+    result.text = [ view ]() -> QString {
+        if ( !view ) {
+            return {};
+        }
+        if ( view->selection_.isPortion() ) {
+            return view->getSelectedText();
+        }
+        // Whole lines, read only up to a little over the 64 KiB a plugin can get.
+        static constexpr int MaxChars = 64 * 1024 + 1;
+        QStringList lines;
+        int chars = 0;
+        for ( const auto& [ first, size ] : view->selection_.getLineRanges() ) {
+            for ( LineNumber::UnderlyingType offset = 0; offset < size.get() && chars < MaxChars;
+                  ++offset ) {
+                lines.append( view->logData_->getLineString( LineNumber( first.get() + offset ) ) );
+                chars += static_cast<int>( lines.back().size() ) + 1;
+            }
+        }
+        return lines.join( QLatin1Char( '\n' ) );
+    };
+    return result;
+}
+
+QString AbstractLogView::pluginLinesText( const QList<QPair<qint64, qint64>>& fileRanges,
+                                          int maxChars ) const
+{
+    QStringList lines;
+    int chars = 0;
+    const auto total = static_cast<qint64>( logData_->getNbLine().get() );
+    for ( const auto& range : fileRanges ) {
+        for ( auto fileLine = qMax( qint64( 1 ), range.first );
+              fileLine <= qMin( range.second, total ) && chars < maxChars; ++fileLine ) {
+            lines.append( logData_->getLineString(
+                LineNumber( static_cast<LineNumber::UnderlyingType>( fileLine - 1 ) ) ) );
+            chars += static_cast<int>( lines.back().size() ) + 1;
+        }
+    }
+    return lines.join( QLatin1Char( '\n' ) );
 }
 
 void AbstractLogView::updatePaneMenu()

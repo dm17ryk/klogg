@@ -1,10 +1,11 @@
-# Advanced plugin SDK (E17): menus, rich elements, tooltips with handlers and window integration — proposed design
+# Advanced plugin SDK (E17): menus, rich elements, tooltips with handlers and window integration — design
 
-**Status:** proposed on 2026-11-19 for the user's approval (decision D17 in
+**Status:** accepted on 2026-11-19 (decision D17 in
 [docs/workbench/decisions.md](workbench/decisions.md), task
-[E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). Design only: nothing here is implemented.
-Section 23 lists the open questions, each with a recommended answer. Implementation starts after
-approval, one branch and pull request per slice (section 21).
+[E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
+answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
+slices in order, one branch and pull request each (section 21). **E17a, E17b and E17c are
+implemented** (sections 24 to 26); E17d to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1266,3 +1267,224 @@ the user says otherwise.
     of its actions does, with "Loading…" until the answer (10 seconds in all); tooltips, completion
     and every other query never start a plugin, and a stopped plugin's targets show their static
     content.
+
+## 24. E17a as built
+
+E17a implements sections 4 to 6, 9 (static and advanced tooltips on the existing elements, table
+column headers and table cells), 12.4, the `get_plugin_tooltip` operation of section 15 and the
+SDK parts of section 16 that do not depend on later slices. Where the design left a choice open,
+E17a decided as follows.
+
+- **Feature versions.** `views` is version 2: version 2 adds the element properties
+  `accessible_name` and `accessible_description`. `view_edit`, `queries`, `tooltips` and `icons` are
+  version 1. A plugin uses a feature only when `host_features` lists it (`supports()` in both
+  SDKs); an older host that sends only `host_features` has version 1 of each feature it lists.
+- **Where the code is.** `src/plugins/src/pluginfeatures.cpp` (feature table, limits, `handles`,
+  `requires`, icon references, the tooltip answer check), `src/plugins/src/pluginqueries.cpp` (host
+  queries), `src/ui/src/plugintablemodel.cpp` (the table model and cell delegate, moved out of
+  `pluginview.cpp` without behaviour change), `src/ui/src/plugintooltips.cpp` (hover, cache,
+  rendering) and `src/ui/src/pluginicons.cpp` (icon references and registered images).
+- **Why a query is not sent.** `PluginManager::query` returns no id and a reason: `not ready` (the
+  plugin is not running, or not reading its input), `not handled` (the method is missing from
+  `handles` or from `features`), `paused` (circuit breaker), `busy` (eight outstanding) or `not a
+  query method`. The target then falls back at once.
+- **One tooltip query per view.** The exclusive key is the view in its window, so a new hover in
+  the same view replaces the old query. `get_plugin_tooltip` uses the same path with its own key,
+  so a hover never cancels it.
+- **Images.** Besides the limits of section 6, the decoded images of one plugin (icons and
+  pictures together) stay within 128 MiB, since a 1 MiB PNG can decode to 64 MiB. An SVG, whether
+  registered or a plugin file, may embed only raster `data:` images (`image/png`, `image/jpeg`,
+  `image/gif`) and fragments of itself; an embedded SVG is refused because it would be decoded
+  without this check. `ui/icons` is applied once, whatever the number of windows.
+- **Cache generations.** An answer that arrives after an invalidation of its target is shown but
+  not kept, so a late answer never brings back stale content.
+- **C++ SDK robustness.** A handler that returns an undefined value answers `null`, a handler
+  that throws anything answers a JSON-RPC error, and at shutdown every pending query reports
+  `expired()`, so handlers that poll it return at once.
+- **What a tooltip query carries.** `view_id`, `window_id`, `element_id`, for a table cell
+  `row_id` and `column_id`, the most specific `tooltip_key` (the row's, else the column's, else the
+  element's), `timeout_ms` and the view's `context`. The cache key holds every key that applies.
+- **Built-in icons** use the platform style's standard icons where one exists (for example
+  `play`, `folder`, `warning`) and a symbol drawn in the palette's text colour otherwise, so all of
+  them follow the theme. `record` is a red status dot.
+- **Accessible names** of labels, badges and progress bars now come from their text (before E17a
+  they used the element id), as section 12.4 asks.
+- **Status in the Plugins and Packs window.** A plugin with unmet `requires` shows "Requires a newer
+  CILogg (missing: …)"; a method paused by the circuit breaker adds "; tooltip/resolve paused until
+  HH:MM:SS".
+- **Journal.** Each finished tooltip query adds one activity journal entry with the plugin, view,
+  element, row, column and latency, never the answer.
+- **`get_plugin_tooltip`** returns `source` (`static`, `cache` or `plugin`), `tooltip` (the checked
+  answer, or null), `html` (the rendered, escaped answer), `staticTooltip` and `latencyMs`.
+  `--node-id` is refused until E17e adds trees.
+- **Frames.** `PluginProcess` emits every frame it sends and reads (`PluginManager::protocolFrame`);
+  the golden-frame test uses it now and the protocol log of E17h will.
+- **Left for later slices.** The C++ fake host (`cilogg_plugin_testing.h`) and the C++ view example
+  come with E17h; the Python fake host is in E17a. `ui-gallery` shows E17a's tooltips, icons and
+  accessible names and grows with each slice.
+
+## 25. E17b as built
+
+E17b implements section 7 (menus, context menus, dynamic submenus, `ui/command`, shortcuts) and
+the `get_plugin_menus` and `trigger_plugin_menu` operations of section 15. Where the design left a
+choice open, E17b decided as follows.
+
+- **Feature versions.** `menus` and `shortcuts` are version 1.
+- **Where the code is.** `src/plugins/src/pluginmenuspec.cpp` (manifest rules, `when`, the
+  `menu/populate` and `menu/update` checks, shortcut assignment), `src/ui/src/pluginmenus.cpp` (the
+  process-wide menu state, each window's menus, dynamic submenus, picked entries, shortcuts) and
+  `src/ui/include/pluginmenuhost.h` (how a log view asks its window for plugin entries). The hooks
+  are `PluginUiController::refreshActions` (Plugins menu and menu bar),
+  `MainWindow::extendTabContextMenu` (location `tab`), `MainWindow::addPaneCommands` (location
+  `pane`: the tab menu, the Panes submenu of the log views and the menu of an empty pane) and
+  `AbstractLogView`'s context menu (location `log`).
+- **Locations.** This host shows `plugins`, `menubar`, `tab`, `pane` and `log`. A manifest may
+  name any other lowercase location (`element` and `toolbar` come with E17d and E17g); such a menu
+  is checked like the others and not shown, so an older host never shows it out of place.
+- **Entries.** A menu entry's `icon` takes every icon reference of section 6 (menus are a new key,
+  so an older host never reads them). Separators and sections have no id. Menu and entry ids have
+  no `/`, and no menu is called `action` or `view`, because ids name shortcuts. Titles are plain
+  text: `&` shows as written (no mnemonic) and tabs and control characters show as spaces;
+  tooltips are plain text like element tooltips. A shortcut is one key combination with Ctrl, Alt
+  or Meta, or a function key; a list of two gives two combinations.
+- **Conditions.** `views` holds only in the log views, `tab_kinds` and `file_patterns` only with a
+  tab (the glob is matched against the file name, case-insensitively), and outside the log views
+  there is no selection (`selection: none` holds). Tab kinds: `serial` for a COM capture,
+  `plugin_stream` for a capture in the plugin data folder, `file` otherwise.
+- **Plugins menu.** A plugin's submenus take the place of its flat entries where those used to
+  be (plugin id order, as before). Its toolbar buttons stay.
+- **Run-time state.** `menu/update` changes last until the plugin stops; check marks, whether set
+  by the user or by `menu/update`, last for the session. A picked check box or radio entry changes
+  its mark only when the command was sent or the action started (not after a refusal or a
+  cancelled form). Disabling or removing a plugin forgets its menu state.
+- **Dynamic submenus.** An answer is cached per entry, location and tab for its `cache_ms`. A
+  `null` answer is an empty list and shows "No entries"; an error, a timeout or an invalid answer
+  shows "Not available". There is one `menu/populate` at a time per window (the exclusive key of
+  section 5.2). An entry of an answer sends its own id as `item_id`; its object name appends that
+  id to the dynamic entry's.
+- **`ui/command`.** It needs `ui/command` in `handles`. Up to 16 commands wait for a plugin that is
+  starting; a plugin that stops before it is ready drops them with a warning in the log.
+- **Selections.** Ranges hold file line numbers. The selection is described only when some
+  enabled plugin shows `log` entries. A filtered view maps its rows to file lines one at a time,
+  until the 64 ranges are full or 100,000 rows were mapped; `count` is always the total. The text
+  is read when the entry is picked: whole lines joined with line feeds, or the selected part of
+  one line, at most 64 KiB of UTF-8 with `truncated`.
+- **Shortcuts.** Each window registers the assigned shortcuts as window shortcuts; the menu entries
+  show their keys. A shortcut whose keys CILogg uses (its shortcut list, the window's actions and
+  shortcuts, the reserved keys) is refused; with two combinations only the refused one is dropped.
+  Between plugins the holder of a key keeps it while CILogg runs; at start the order is plugin
+  name order. A menu entry's shortcut acts like a click with the current context: nothing when
+  the entry is hidden or disabled there, the action's form when it has fields, `origin`
+  `shortcut` in `ui/command`, and a message when it fails. Options > Shortcuts lists the plugin
+  entries as "Plugins: <plugin>: <entry>" and stores a plugin shortcut only when the user changes
+  it, so a plugin update can change its default. It offers each key once, and never a key that
+  CILogg or another plugin holds (that would block the dialog as a duplicate); the row's tooltip
+  says why a default was refused.
+- **Hiding.** `plugin_manage --plugin-operation menus` with `{"hidden_locations": [...]}` (the
+  Plugins and Packs window's "Menu Locations…" button) hides a plugin's entries per location;
+  hiding `menubar` moves the menu back under Plugins. Shortcuts stay active.
+- **`get_plugins`** gains `hiddenMenuLocations` and `shortcuts` (each with `key`, `title`,
+  `declared`, `keys`, `state` (`active`, `refused`, `cleared` or `none`), `reason` and `userSet`).
+  The Plugins and Packs window adds refused shortcuts to the plugin's state.
+- **`get_plugin_menus`** returns `location`, `windowIndex`, `tabId`, the `context` a plugin would
+  get (without the selected text) and `entries`: `pluginId`, `menuId`, `itemId`, `kind`, `title`,
+  `path` (the submenu titles above it), `enabled`, `visible`, `checkable`, `checked`, `group`,
+  `when`, `conditionsHold`, `shown`, `unavailable`, `shortcut` and `declaredShortcut`.
+- **`trigger_plugin_menu`** acts like a click on a declared entry: it refuses a hidden, disabled or
+  submenu entry, toggles a check box, checks a radio entry (`--checked true|false` sets the mark)
+  and runs an action without its form (the entry's `arguments` and the field defaults). With
+  `--lines` a `log` entry gets those file lines as its selection, clamped to the file, sorted and
+  merged; `--lines` that names no line of the file is refused. A tab selector picks the window
+  that holds the tab.
+- **SDKs.** The C++ SDK gains `onCommand` (on the protocol reader thread, like `onNotification`)
+  and `updateMenu`; `menu/populate` is an `onQuery` handler. The Python SDK gains
+  `@plugin.menu_populate`, `@plugin.on_command`, `update_menu`, menu builders and `FakeHost`
+  helpers (`populate_menu`, `send_command`). Both stay at SDK version 2.0.0: E17a and E17b ship
+  together as the first E17 release.
+
+## 26. E17c as built
+
+E17c implements section 8 (choice entries, drop-down styles, check box and radio button elements,
+more field kinds, validation) and the `field/complete` query of section 5.1. Where the design left
+a choice open, E17c decided as follows.
+
+- **Feature versions.** `choices`, `toggles`, `field_kinds` and `validation` are version 1.
+- **Where the code is.** `src/ui/src/pluginchoicewidgets.cpp` (choice entries, filling a
+  drop-down, the inline radio and check groups that fields and elements share, completion, the
+  validation rules), `src/ui/src/pluginview.cpp` (the new kinds and elements, validity),
+  `src/ui/src/checkcombobox.cpp` (choice entries and filtering in check-dropdowns),
+  `src/ui/src/plugintablemodel.cpp` (cell editors and their icons),
+  `src/plugins/src/pluginfeatures.cpp` (`sanitizeCompletion`) and
+  `src/ui/src/pluginviewhost.cpp` (the `field/complete` query).
+- **Choice entries.** A label is plain text; without one the value shows. Icons take every
+  reference of section 6, tooltips are plain text. A disabled choice shows but cannot be picked.
+  Separators and sections are never a value, and a check-dropdown's `All` summary does not count
+  them. A list holds at most 512 entries.
+- **Drop-down styles.** `indicator: "radio"` draws a radio mark before each entry, in fields and
+  in cell editors. In a `searchable` drop-down (`choice` or `multichoice`, field or cell editor),
+  typing while the list is open filters it by any part of a label, case-insensitively; the
+  filter shows above the list, Backspace removes a character, and separators and sections hide
+  while it is set. The keyboard selection moves to the first shown choice, and closing the list
+  clears the filter. In a check-dropdown Space still toggles. Inline lists (`style` `radio` or
+  `checkboxes`) get a filter line, `<element>_search`, above the buttons.
+- **`editable`.** The typed text is the value, unless it equals the label of a choice that can
+  be chosen, which gives that choice's value (a disabled entry's label stays text). Typing also
+  filters the list. `changed` is debounced like text, whether
+  the text was typed or picked, and new `choices` never replace typed text.
+- **`completion`.** After 150 ms without typing, the host asks `field/complete`
+  `{element_id, text, cursor}` (one per view: a newer one cancels the older one) and shows up to
+  100 items in a list under the field; picking one puts its `value` into the field. Each edit
+  drops the answer still in flight, so only an answer for the current text is shown.
+  `completion_timeout_ms` changes the 500 ms timeout, up to 2,000 ms. The answer is `{items}`, a
+  bare list or `null`; an item needs a string `value`, its `label` is plain text, and an unusable
+  `icon` is dropped. A timeout, an error or an invalid answer shows no list.
+- **Patches.** `kind`, `style`, `editable`, `searchable`, `indicator` and `completion` decide which
+  widgets a field gets: a root that changes one rebuilds the field, and a patch that changes one is
+  refused with a warning, as for `children`.
+- **Toggles.** A `checkbox`'s `text` is plain text (`&` shows as written); with `tristate`, `null`
+  is partly checked. `radio_group` and `check_group` share the widget of the inline field styles:
+  their buttons are `<element>_choice_<n>`, the All and None links `<element>_all` and
+  `<element>_none` (accessible names "Check all" and "Uncheck all", with the title when there is
+  one). `columns` is 1 to 12; without it the buttons form one column or one row.
+- **Field kinds.**
+  - `multiline`: `rows` (1 to 50, default 4) sets the height and `monospace` the system fixed
+    font; Tab moves the focus on.
+  - `secret`: masked; UI inspection never shows its text.
+  - `integer` (a spin box) and `slider` (its value shows in `<element>_value`): `min`, `max` and
+    `step` are whole numbers; a bound that is not given is any `int` for a spin box, and 0 or 100
+    for a slider.
+  - `color`: a text line that takes `#rrggbb`, with a **Pick…** button (`<element>_pick`) that
+    opens the color dialog.
+  - `date` (`yyyy-MM-dd`), `time` (`HH:mm:ss`) and `datetime` (`yyyy-MM-ddTHH:mm:ss`, local time
+    without a zone): the value is that text.
+- **Validation.**
+  - `required` treats `null`, an empty string and an empty list as missing. `pattern` must match
+    the whole text; a pattern that does not compile checks nothing. Patterns run in the GUI, so
+    each is compiled once, a value longer than 1,024 characters is left to the plugin, and a
+    pattern that backtracks past PCRE2's match limit counts as no match. `min_length` and
+    `max_length` (whole numbers of at least 0) count characters, `min` and `max` compare numbers.
+    A non-empty `error` makes the field invalid with that message.
+  - The messages are the host's own ("Required", "At least 3 characters", "Not in the expected
+    form", "At most 10") unless the plugin sets `error`.
+  - Validity is checked after each root, patch and change, and when a button is pressed. A rule
+    counts by its value (`required: false` or an empty `pattern` is none, which is also what a
+    later root that drops a rule leaves). `valid` is added only to the `changed` events of fields
+    that have a rule, so a plugin without rules gets the frames it got before. A `color` field's
+    own form is such a rule: it is blank or `#rrggbb`, a shorter `#abc` is only an editing state
+    that is marked "Not a color (#rrggbb)", and its `changed` events always carry `valid`.
+  - A same-shaped root that drops `min`, `max` or `step` returns the integer field or slider to
+    the kind's default range (any int; 0 to 100) or a step of 1.
+  - `requires_valid: true` means every field of the view. A button that starts an action never
+    starts it while any field of the view is invalid: it is refused before its confirmation or
+    save dialog, and the first invalid field gets the focus. An `event` button sends `clicked`
+    unless its own `requires_valid` fails.
+- **Cell editors.** `choice` and `multichoice` cell editors take the same entries and
+  `searchable`, and a `choice` editor takes `indicator`. A committed choice's icon shows in the
+  cell unless the cell sets its own.
+- **Automation.** The new widgets are standard Qt widgets with object names, so `get_ui`,
+  `set_ui` and `activate_ui` reach them (`value` for spin boxes and sliders, `date`, `time` and
+  `dateTime` for the date edits, `checked` for check boxes and radio buttons).
+- **SDKs.** The C++ SDK needs nothing new: `field/complete` is an `onQuery` handler. The Python SDK
+  gains the choice, toggle and completion builders, the new `field` and `button` keywords,
+  `@plugin.complete` and `FakeHost` helpers (`complete_field`, `change_field`); its builders
+  downgrade a view for a host without these features. The SDK version stays 2.0.0.

@@ -118,6 +118,45 @@ def exercise(cases, cli, command, finish, rows, normalized, catalog, artifacts):
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             continue
+        if case.get("kind") == "e17-tooltips":
+            from workbench_sources import run_fixtures
+            from workbench_tooltips import exercise_tooltips
+
+            result = exercise_tooltips(
+                cli, command, catalog, artifacts,
+                lambda fixtures: run_fixtures(cli, artifacts, fixtures),
+            )
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
+        if case.get("kind") == "e17-menus":
+            from workbench_menus import exercise_menus
+            from workbench_sources import run_fixtures
+
+            result = exercise_menus(
+                cli, command, catalog, artifacts,
+                lambda fixtures: run_fixtures(cli, artifacts, fixtures),
+            )
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
+        if case.get("kind") == "e17-choices":
+            from workbench_choices import exercise_choices
+            from workbench_sources import run_fixtures
+
+            result = exercise_choices(
+                cli, command, catalog, artifacts,
+                lambda fixtures: run_fixtures(cli, artifacts, fixtures),
+            )
+            results.append(dict(result, id=name))
+            (artifacts / "case-results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            continue
         if case.get("kind") == "pane-operations":
             from workbench_panes import exercise_panes
 
@@ -228,7 +267,7 @@ def main(arguments=None):
         setup_payload = None
         kinds = {case.get("kind") for case in cases}
         if kinds & {"plugin-views", "pane-operations", "u15-docks", "u15b-sources",
-                    "e15a-repositories"}:
+                    "e15a-repositories", "e17-tooltips", "e17-menus", "e17-choices"}:
             import os
 
             # Plugin views, the pane case's Python API script and the U15 and E15 Python
@@ -239,10 +278,15 @@ def main(arguments=None):
             from workbench_plugin_views import install_view_demo
 
             steps.append(install_view_demo)
-        if kinds & {"u15-docks", "u15b-sources", "e15a-repositories"}:
+        if kinds & {"u15-docks", "u15b-sources", "e15a-repositories", "e17-tooltips", "e17-menus",
+                    "e17-choices"}:
             from workbench_sources import install_python_runtime
 
             steps.append(install_python_runtime)
+        if kinds & {"e17-tooltips", "e17-menus", "e17-choices"}:
+            from workbench_tooltips import install_ui_gallery
+
+            steps.append(install_ui_gallery)
         if steps:
 
             def setup_payload(payload):

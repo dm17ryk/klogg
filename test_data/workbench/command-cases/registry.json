@@ -12,9 +12,28 @@
     "E13": ["plugin-views"],
     "U15": ["u15_python_source_parity", "u15b_sources"],
     "U16": ["pane_operations_parity"],
-    "E15": ["e15a_repositories"]
+    "E15": ["e15a_repositories"],
+    "E17": ["e17_tooltips", "e17_menus", "e17_choices"]
   },
   "cases": [
+    {
+      "id": "e17_choices",
+      "kind": "e17-choices",
+      "action": "set_ui",
+      "operations": ["plugin_manage", "get_plugins", "open_plugin_view", "get_ui", "set_ui", "activate_ui", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
+    {
+      "id": "e17_menus",
+      "kind": "e17-menus",
+      "action": "get_plugin_menus",
+      "operations": ["plugin_manage", "get_plugins", "get_plugin_menus", "trigger_plugin_menu", "get_ui", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
+    {
+      "id": "e17_tooltips",
+      "kind": "e17-tooltips",
+      "action": "get_plugin_tooltip",
+      "operations": ["plugin_manage", "get_plugins", "open_plugin_view", "get_plugin_tooltip", "get_ui", "activate_ui", "run_global_script", "get_global_script_status", "stop_global_script"]
+    },
     {
       "id": "e15a_repositories",
       "kind": "e15a-repositories",

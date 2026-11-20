@@ -629,6 +629,29 @@ class KloggApp : public QApplication {
             // U15b: a source picks the tab(s); "all" invokes once per open tab, staged.
             return pluginSourceRuns_.invoke( request );
         }
+        if ( request.action == CommanderAction::GetPluginTooltip
+             || request.action == CommanderAction::GetPluginMenus
+             || request.action == CommanderAction::TriggerPluginMenu ) {
+            // E17a: a tooltip of a view open in this window (docs/plugin-sdk-advanced.md 9.5).
+            // E17b: the plugin menus of a window and a tab (section 15).
+            auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
+                                               : activeWindowIfAny();
+            if ( request.action != CommanderAction::GetPluginTooltip && !request.windowIndex
+                 && !request.tabId.isEmpty() ) {
+                // A tab of another window: that window's menus.
+                for ( const auto& [ windowSession, candidate ] : mainWindows_ ) {
+                    Q_UNUSED( windowSession );
+                    if ( candidate != nullptr && candidate->hasTab( request.tabId ) ) {
+                        window = candidate;
+                    }
+                }
+            }
+            if ( window == nullptr ) {
+                return commanderFailure( CommanderResultCode::NotFound,
+                                         QStringLiteral( "Requested window was not found." ) );
+            }
+            return window->executeCommanderRequest( request );
+        }
         if ( request.action == CommanderAction::OpenPluginView ) {
             auto* window = request.windowIndex ? windowByIndex( *request.windowIndex )
                                                : activeWindowOrCreate();
@@ -1391,6 +1414,9 @@ class KloggApp : public QApplication {
         if ( context.isEmpty() ) {
             return commanderFailure( CommanderResultCode::NotFound,
                                      "Plugin target window/tab not found." );
+        }
+        if ( !request.pluginMenuContext.isEmpty() ) {
+            context.insert( "menu", request.pluginMenuContext ); // E17b, design 7.5
         }
         const auto result = pluginManager_.invoke( request.pluginId, request.pluginAction,
                                                    request.pluginArguments, context );

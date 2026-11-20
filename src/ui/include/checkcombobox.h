@@ -3,7 +3,9 @@
 #pragma once
 
 #include <QComboBox>
+#include <QIcon>
 #include <QJsonArray>
+#include <functional>
 
 class QStandardItem;
 class QStandardItemModel;
@@ -17,12 +19,18 @@ class CheckComboBox : public QComboBox {
   public:
     explicit CheckComboBox( QWidget* parent = nullptr );
     // Checked values that are not in the new list are dropped, without emitting checkedChanged.
-    void setChoices( const QJsonArray& choices );
+    // Plain values or choice objects: icons through `icons`, tooltips, disabled entries,
+    // separators and section titles (docs/plugin-sdk-advanced.md section 8.1).
+    void setChoices( const QJsonArray& choices,
+                     const std::function<QIcon( const QJsonValue& )>& icons = {} );
     // Emits checkedChanged only when the checked set changes. While the popup is open, the new set
     // is also what Esc restores.
     void setCheckedValues( const QJsonArray& values );
     QJsonArray checkedValues() const;
     QString summary() const;
+    // E17c `searchable`: typing filters the open list (pluginchoices::PopupFilter); Space still
+    // toggles.
+    void makeSearchable();
     void showPopup() override;
     void hidePopup() override;
 

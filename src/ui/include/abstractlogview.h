@@ -67,6 +67,7 @@
 #include "abstractlogdata.h"
 #include "linetypes.h"
 #include "overviewwidget.h"
+#include "pluginmenuhost.h"
 #include "quickfind.h"
 #include "quickfindmux.h"
 #include "regularexpressionpattern.h"
@@ -175,6 +176,23 @@ public:
     void clearLinePreview();
     void trackLinePreview( quint64 serial, QProcess* process, std::function<bool()> valid );
     void presentLinePreview( quint64 serial, const QVariantMap& result );
+
+    // E17b plugin menus (docs/plugin-sdk-advanced.md 7.2): "main" or "filtered".
+    virtual QString pluginViewKind() const
+    {
+        return QStringLiteral( "main" );
+    }
+    // The selection with file line numbers (1-based, at most 64 ranges) and the line under the
+    // pointer; the text is read only when a plugin entry is picked.
+    PluginMenuHost::LogSelection pluginSelection( OptionalLineNumber pointer ) const;
+    // The text of file lines (1-based ranges) of a view that shows every line, cut after about
+    // `maxChars` characters.
+    QString pluginLinesText( const QList<QPair<qint64, qint64>>& fileRanges, int maxChars ) const;
+    // The lines of the data this view shows (file lines in the main view).
+    qint64 pluginLineCount() const
+    {
+        return static_cast<qint64>( logData_->getNbLine().get() );
+    }
 
 protected:
     bool isWrappedLayoutPending() const;
