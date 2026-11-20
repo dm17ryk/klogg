@@ -126,6 +126,8 @@ public:
     // folder (the installed version with the user's edits, design 4.6), or the installed folder
     // while the pack has no store.
     QString packContentDirectory( const QString& pluginId ) const;
+    // The store commit that content comes from ("" without a store): a revision for caches.
+    QString packRevision( const QString& pluginId ) const;
     // The valid configuration packs the user enabled, in ID order. Cheaper than plugins().
     QStringList enabledPacks() const;
 
@@ -346,6 +348,8 @@ private:
     QString preparePackInstall( const StagedPlugin& staged, const QVariantMap& context,
                                 PackFiles* shipped, std::optional<PackFiles>* merged,
                                 QVariantMap* result ) const;
+    // The store's part of an install or update, made before the package folder is replaced
+    // (and put back with PackStore::rollback when that fails).
     QString finishPackInstall( const StagedPlugin& staged, const PackFiles& shipped,
                                const std::optional<PackFiles>& merged, const InstallSource& source );
     void removePackStore( const QString& pluginId );

@@ -258,10 +258,35 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
         REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", conflictJob(), apply ) );
         CHECK( markers.contains( "conflict markers" ) );
         REQUIRE( applied.size() == 2 );
+        // The result is your whole file: sent as a side, byte for byte, not as text.
         CHECK( applied.at( 0 ).toMap()
-               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "text", "2\n" } } );
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "take", "mine" } } );
         CHECK( applied.at( 1 ).toMap()
                == QVariantMap{ { "path", SecondPath }, { "field", "regex" }, { "value", "^THEIRS$" } } );
+    }
+    SECTION( "a file that is not UTF-8 is resolved whole" )
+    {
+        auto job = conflictJob();
+        auto result = job[ "result" ].toMap();
+        auto items = result[ "items" ].toMap();
+        auto lua = items[ packcanonical::filePath( "lua/a.lua" ) ].toMap();
+        lua[ "utf8" ] = false;
+        items[ packcanonical::filePath( "lua/a.lua" ) ] = lua;
+        result[ "items" ] = items;
+        job[ "result" ] = result;
+        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+            auto* text = dialog->findChild<QPlainTextEdit*>( "packMergeResult" );
+            REQUIRE( text );
+            CHECK( text->isReadOnly() );
+            CHECK_FALSE( buttonIn( dialog, "packMergeUseMine" )->isEnabled() );
+            CHECK_FALSE( buttonIn( dialog, "packMergeTool" )->isEnabled() );
+            buttonIn( dialog, "packMergeWholeTheirs" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( applied.at( 0 ).toMap()
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
+                               { "take", "theirs" } } );
     }
     SECTION( "Keep Mine for All and a removed file" )
     {

@@ -861,10 +861,11 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                         status->setText(
                             update.value( "state" ) == "completed"
                                 ? tr( "Updated %1 to %2." )
-                                      .arg( name, update.value( "result" )
-                                                      .toMap()
-                                                      .value( "version" )
-                                                      .toString() )
+                                          .arg( name, update.value( "result" )
+                                                          .toMap()
+                                                          .value( "version" )
+                                                          .toString() )
+                                      + pluginsui::jobWarningSuffix( update )
                                 : tr( "Could not update %1: %2" )
                                       .arg( name, update.value( "error" ).toString() ) );
                     } );
@@ -1059,6 +1060,7 @@ QWidget* PluginUiController::createInstalledTab( QWidget* parent )
                     tab, manager_, executor_, r, name, [ status, name ]( const QVariantMap& job ) {
                         status->setText( job.value( "state" ) == "completed"
                                              ? tr( "Installed %1." ).arg( name )
+                                                   + pluginsui::jobWarningSuffix( job )
                                              : tr( "Could not install %1: %2" )
                                                    .arg( name, job.value( "error" ).toString() ) );
                     } );

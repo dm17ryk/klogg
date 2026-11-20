@@ -180,6 +180,12 @@ void showHistory( QWidget* parent, Executor executor, const QString& packId, con
 }
 } // namespace
 
+QString jobWarningSuffix( const QVariantMap& job )
+{
+    const auto warning = job.value( "result" ).toMap().value( "warning" ).toString();
+    return warning.isEmpty() ? QString{} : QLatin1Char( ' ' ) + warning;
+}
+
 bool needsPackMerge( const QVariantMap& job )
 {
     return job.value( "state" ) == "failed"
@@ -590,6 +596,9 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         QString item;
         QPlainTextEdit* result;
         QCheckBox* remove;
+        QString mine;
+        QString theirs;
+        bool utf8 = true;
     };
     auto textConflicts = std::make_shared<QVector<TextConflict>>();
     for ( const auto& value : conflicts ) {
@@ -674,7 +683,22 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                       QMessageBox::warning( page, tr( "External Merge Tool" ), error );
                                   }
                               } );
-            textConflicts->append( { path, conflict.value( "item" ).toString(), resultEdit, remove } );
+            const bool utf8 = whole.value( "utf8", true ).toBool();
+            if ( !utf8 ) {
+                // Not UTF-8 text: only a whole side, kept byte for byte; the panes show a reading.
+                resultEdit->setReadOnly( true );
+                resultEdit->setPlainText( mineText );
+                for ( auto* textOnly : { useMine, useTheirs, tool } ) {
+                    textOnly->setEnabled( false );
+                }
+                auto* encoding = new QLabel( tr( "This file is not UTF-8 text: keep yours or take "
+                                                 "the new version as a whole." ),
+                                             page );
+                encoding->setObjectName( "packMergeNotUtf8" );
+                pageLayout->addWidget( encoding );
+            }
+            textConflicts->append( { path, conflict.value( "item" ).toString(), resultEdit, remove,
+                                     mineText, theirsText, utf8 } );
             tabs->addTab( page, conflict.value( "item" ).toString() );
             continue;
         }
@@ -765,6 +789,14 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                       tr( "Keep Both applies to previews." ) );
             return;
         }
+        // Your version must exist to be kept: a preview you deleted has nothing to copy.
+        const auto itemPath = parentRow->data( 0, ConflictRole ).toMap().value( "path" ).toString();
+        if ( !items.value( itemPath ).toMap().value( "inMine" ).toBool() ) {
+            QMessageBox::information( &dialog, tr( "Keep Both" ),
+                                      tr( "You deleted this preview, so there is no version of "
+                                          "yours to keep. Choose Take Theirs or Keep Mine." ) );
+            return;
+        }
         for ( int child = 0; child < parentRow->childCount(); ++child ) {
             setChoice( parentRow->child( child ), "both", {} );
         }
@@ -789,10 +821,22 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                       tr( "%1 still has conflict markers." ).arg( text.item ) );
                 return;
             }
-            resolutions.append( text.remove->isChecked()
-                                    ? QVariantMap{ { "path", text.path }, { "remove", true } }
-                                    : QVariantMap{ { "path", text.path },
-                                                   { "text", text.result->toPlainText() } } );
+            const auto value = text.result->toPlainText();
+            QVariantMap resolution{ { "path", text.path } };
+            if ( text.remove->isChecked() ) {
+                resolution.insert( "remove", true );
+            }
+            // A whole side goes byte for byte: what the panes show is only its UTF-8 reading.
+            else if ( value == text.mine ) {
+                resolution.insert( "take", "mine" );
+            }
+            else if ( value == text.theirs ) {
+                resolution.insert( "take", "theirs" );
+            }
+            else {
+                resolution.insert( "text", value );
+            }
+            resolutions.append( resolution );
         }
         for ( int top = 0; top < tree->topLevelItemCount(); ++top ) {
             auto* parentRow = tree->topLevelItem( top );
@@ -835,9 +879,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                 resolutions.append( resolution );
             }
         }
+        // The pack's current content (yours), enabled or not.
+        const auto resultPack = result.value( "pluginId" ).toString();
+        const auto packId = resultPack.isEmpty() ? job.value( "pluginId" ).toString() : resultPack;
         for ( const auto& name : keepBothPreviews ) {
-            const auto error = PreviewPackRegistry::instance().copyPreview(
-                name, tr( "%1 (mine)" ).arg( name ) );
+            const auto error = PreviewPackRegistry::instance().copyPreviewOfPack(
+                packId, name, tr( "%1 (mine)" ).arg( name ) );
             if ( !error.isEmpty() ) {
                 QMessageBox::warning( &dialog, tr( "Keep Both" ), error );
                 return;

@@ -38,6 +38,9 @@ std::optional<QString> runMergeTool( QWidget* parent, const QString& base, const
                                      QString* error );
 // True when a failed plugin_manage update or install needs the merge window.
 bool needsPackMerge( const QVariantMap& job );
+// " <warning>" of a finished job (for example edits a new version dropped), or nothing: every
+// install and update path appends it to its status text.
+QString jobWarningSuffix( const QVariantMap& job );
 // Runs an install or update request from the GUI and follows its job. When the job needs a pack
 // merge, opens the merge window and, on Apply, runs the request again with the resolutions.
 // `done` gets the final job (the failed one when the merge was cancelled).

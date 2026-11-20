@@ -779,7 +779,17 @@ field with `fields/@name/...` element paths, `mergeText` with `git_merge_file` i
 labelled "your edit", "installed version" and "new version") rather than through
 `.gitattributes` and a registered merge driver: the outcome is the same, and the merge commit on
 `local` has the new `upstream` commit as its second parent. Both commits are made before either
-branch moves, so an update is in the store whole or not at all. A merge result has exactly the
+branch moves, so an update is in the store whole or not at all. The store moves before the
+package folder is replaced: a store that fails leaves the installed version, and a package commit
+that fails puts the store back (`PackStore::rollback`), so the installed version and the
+effective content never disagree. Enabling a pack checks its effective content (with the edits),
+and an edit of an enabled pack passes the same check before it is committed; the registry keys
+each pack on the store's `local` commit as well as its files, so every edit reloads it. The
+store carries every file the manifest lists, also actions, highlights and filters (as files
+until E16c), and refuses a previews document with unnamed, duplicate or malformed items instead
+of cleaning it up. A file that is not UTF-8 text is never edited as text: `pack_read` refuses
+it and a conflict on it is resolved with `take` (a whole side, byte for byte). Keep Both copies
+the user's preview from the pack's effective content, so it works for disabled packs too. A merge result has exactly the
 files the new manifest lists (a file it dropped goes, also with Keep Mine; the job result names
 dropped edited files in `droppedEdits` and a warning), and an enabled pack's
 merge result passes the pack check, written to a temporary folder, before it is installed.
@@ -789,7 +799,7 @@ spelling, and the content folder is written only with relative paths inside it. 
 Revert stays within the installed version (items revert one by one across versions), and a
 Revert names a commit from the pack's history. A tree that cannot be read whole is never
 committed; it marks the store as damaged. `commitWhenStopped` merges before the
-package commit (`preparePackInstall`) and updates the store after it (`finishPackInstall`); with
+package commit (`preparePackInstall`) and updates the store just before it (`finishPackInstall`); with
 conflicts left open the job fails with `needsMerge`, `conflicts` and `items`, the installed
 version stays, and `plugins/<id>/needsMerge` keeps the version for the Installed tab. The GUI
 (`src/ui/packeditors.*`) runs install and update through `runPackAwareInstall`, which opens the

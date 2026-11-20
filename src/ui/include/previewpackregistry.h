@@ -49,6 +49,10 @@ public:
     // Copy to My Previews: PreviewManager::copyPackPreview, and the pack's route for the preview
     // becomes one of the user's, unless the user has one. Returns the error.
     QString copyPreview( const QString& name, const QString& copyName = {} );
+    // The same for a preview of pack `packId` as it is now (with the local edits), whether the
+    // pack is enabled or not: Keep Both in the merge window. Returns the error.
+    QString copyPreviewOfPack( const QString& packId, const QString& name,
+                               const QString& copyName );
     // The applied contributions, in pack ID order.
     const QVector<Contribution>& contributions() const
     {
@@ -57,6 +61,8 @@ public:
 
 private:
     PreviewPackRegistry() = default;
+    // The pack's route for `name` becomes the user's route for `target`, unless they have one.
+    QString copyRoute( const Contribution& pack, const QString& name, const QString& target );
     QPointer<cilogg::plugins::PluginManager> manager_;
     QVector<Contribution> applied_;
     QHash<QString, Contribution> cache_;

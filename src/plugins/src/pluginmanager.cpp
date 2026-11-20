@@ -1330,7 +1330,11 @@ Result PluginManager::manage( const QString& operation, const QString& id,
                  {} };
     }
     if ( pack && operation == "enable" && e.manifest.valid() && packCheck_ ) {
-        const auto refusal = packCheck_( id, e.manifest.directory, e.manifest.json );
+        // What loads is the effective content, with the local edits (design 4.6).
+        if ( const auto storeError = ensurePackStore( id, e.manifest, false ); !storeError.isEmpty() ) {
+            return { storeError, {} };
+        }
+        const auto refusal = packCheck_( id, packContentDirectory( id ), e.manifest.json );
         if ( !refusal.isEmpty() ) {
             LOG_INFO << "Configuration pack enable refused id=" << id.toStdString();
             return { refusal, {} };
@@ -1585,16 +1589,34 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
             QDir( folder ).removeRecursively();
         }
     }
+    // A pack's store moves before the package folder: it can be put back, the folder swap
+    // cannot. A store that fails leaves the installed version as it is, and a package that
+    // fails puts the store back, so the version and the content never disagree.
+    PackTips packBefore;
+    if ( error.isEmpty() && pack ) {
+        packBefore = PackStore( packStoreRoot(), staged.manifest.id ).tips();
+        error = finishPackInstall( staged, packShipped, packMerged, source );
+        if ( !error.isEmpty() ) {
+            error = QStringLiteral( "The pack's local store could not be updated, so the "
+                                    "installed version stays: %1" )
+                        .arg( error );
+            // Partly written: put it back (a store that moved nothing is unchanged anyway).
+            PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
+        }
+    }
     if ( error.isEmpty() ) {
         error = PluginRepository::commit( staged, QDir( dataRoot_ ).filePath( "plugins" ) );
+        if ( !error.isEmpty() && pack ) {
+            const auto restored
+                = PackStore( packStoreRoot(), staged.manifest.id ).rollback( packBefore );
+            if ( !restored.isEmpty() ) {
+                LOG_WARNING << "Pack store not put back id=" << staged.manifest.id.toStdString();
+            }
+        }
     }
     if ( error.isEmpty() && pack ) {
-        const auto storeError = finishPackInstall( staged, packShipped, packMerged, source );
-        if ( !storeError.isEmpty() ) {
-            result[ "warning" ] = QStringLiteral( "The pack was installed, but its local store "
-                                                  "could not be updated: %1" )
-                                      .arg( storeError );
-        }
+        // Installed with its store: no update waits for a merge any more.
+        settings_.remove( configurationKey( staged.manifest.id ) + "needsMerge" );
     }
     if ( error.isEmpty() ) {
         // The install source lives in the plugin settings, not in the plugin folder. The plugin
@@ -1607,9 +1629,12 @@ void PluginManager::commitWhenStopped( const StagedPlugin& staged, const QString
         if ( !persistSettings().isEmpty() ) {
             LOG_WARNING << "Plugin installed but its source record could not be saved id="
                         << staged.manifest.id.toStdString();
+            // Added to a warning the install may already have (dropped pack edits).
+            const auto earlier = result.value( "warning" ).toString();
             result[ "warning" ]
-                = QStringLiteral( "The plugin was installed, but its source repository could not "
-                                  "be saved in the plugin settings." );
+                = ( earlier.isEmpty() ? QString{} : earlier + QLatin1Char( ' ' ) )
+                  + QStringLiteral( "The plugin was installed, but its source repository could "
+                                    "not be saved in the plugin settings." );
         }
         entries_.erase( staged.manifest.id );
         discover();

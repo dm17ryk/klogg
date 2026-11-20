@@ -31,6 +31,12 @@ std::optional<MergeStrategy> strategyOf( const QVariant& value )
     return std::nullopt;
 }
 
+// True for bytes that are UTF-8 text (they survive a round trip through QString).
+bool utf8Text( const QByteArray& bytes )
+{
+    return QString::fromUtf8( bytes ).toUtf8() == bytes;
+}
+
 QVariantMap conflictInfo( const PackConflict& conflict )
 {
     return { { "path", conflict.path },
@@ -46,7 +52,8 @@ QVariantMap conflictInfo( const PackConflict& conflict )
 // {path, field, remove: true} for a structured item, {path, text} or {path, remove: true} for a
 // file. Only items of the pack (`known`: installed, edited or new version) in their canonical
 // spelling can be resolved. Returns false when it cannot be applied.
-bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known )
+bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known,
+                      const PackFiles& mine, const PackFiles& theirs )
 {
     const auto path = resolution.value( "path" ).toString();
     const auto kind = packcanonical::kindOf( path );
@@ -55,10 +62,27 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
     }
     const bool remove = resolution.value( "remove" ).toBool();
     if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" ) ) {
+        // A whole side, byte for byte (any encoding).
+        const auto take = resolution.value( "take" ).toString();
+        if ( take == QLatin1String( "mine" ) || take == QLatin1String( "theirs" ) ) {
+            const auto& side = take == QLatin1String( "mine" ) ? mine : theirs;
+            if ( side.contains( path ) ) {
+                merged->insert( path, side.value( path ) );
+            }
+            else {
+                merged->remove( path );
+            }
+            return true;
+        }
         if ( remove ) {
             merged->remove( path );
         }
         else if ( resolution.contains( "text" ) ) {
+            // Merged text is UTF-8: a file in another encoding is resolved by `take` only, or
+            // its bytes would change.
+            if ( !utf8Text( mine.value( path ) ) || !utf8Text( theirs.value( path ) ) ) {
+                return false;
+            }
             const auto text = resolution.value( "text" ).toString().toUtf8();
             // A resolved file has no conflict markers left.
             if ( text.contains( "\n<<<<<<< " ) || text.startsWith( "<<<<<<< " ) ) {
@@ -132,6 +156,11 @@ QString PluginManager::packContentDirectory( const QString& pluginId ) const
     const PackStore store( packStoreRoot(), pluginId );
     const auto content = store.exists() ? store.contentDirectory() : QString{};
     return content.isEmpty() ? pluginDirectory( pluginId ) : content;
+}
+
+QString PluginManager::packRevision( const QString& pluginId ) const
+{
+    return PackStore( packStoreRoot(), pluginId ).localTip();
 }
 
 QString PluginManager::ensurePackStore( const QString& id, const Manifest& installed,
@@ -225,7 +254,7 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
         }
     }
     for ( const auto& item : resolutions ) {
-        if ( !applyResolution( &plan.merged, item.toMap(), known ) ) {
+        if ( !applyResolution( &plan.merged, item.toMap(), known, mine, *shipped ) ) {
             return QStringLiteral( "Invalid merge resolution for %1." )
                 .arg( item.toMap().value( "path" ).toString().left( 128 ) );
         }
@@ -261,7 +290,11 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                       QVariantMap{ { "mine", QString::fromUtf8( mine.value( conflict.path ) ) },
                                    { "theirs", QString::fromUtf8( shipped->value( conflict.path ) ) },
                                    { "inMine", mine.contains( conflict.path ) },
-                                   { "inTheirs", shipped->contains( conflict.path ) } } );
+                                   { "inTheirs", shipped->contains( conflict.path ) },
+                                   // Not UTF-8: shown, but resolved only with `take`.
+                                   { "utf8", utf8Text( mine.value( conflict.path ) )
+                                                 && utf8Text( shipped->value( conflict.path ) )
+                                                 && utf8Text( base.value( conflict.path ) ) } } );
     }
     ( *result )[ "conflicts" ] = conflicts;
     ( *result )[ "items" ] = items;
@@ -295,7 +328,6 @@ QString PluginManager::finishPackInstall( const StagedPlugin& staged, const Pack
                                                    staged.manifest.version, from )
                               : store.install( shipped, staged.manifest.json,
                                                staged.manifest.version, from );
-    settings_.remove( configurationKey( staged.manifest.id ) + "needsMerge" );
     LOG_INFO << "Pack store updated id=" << staged.manifest.id.toStdString()
              << " version=" << staged.manifest.version.toStdString() << " merged=" << bool( merged )
              << " error=" << error.toStdString();
@@ -305,7 +337,9 @@ QString PluginManager::finishPackInstall( const StagedPlugin& staged, const Pack
 void PluginManager::removePackStore( const QString& pluginId )
 {
     PackStore store( packStoreRoot(), pluginId );
-    if ( store.exists() ) {
+    // By what is on disk, not by whether the repository opens: a damaged store's content folder
+    // would otherwise come back as edits when the pack is installed again.
+    if ( store.hasRepository() || !store.contentDirectory().isEmpty() ) {
         const auto error = store.remove();
         if ( !error.isEmpty() ) {
             LOG_WARNING << "Pack store not removed id=" << pluginId.toStdString();
@@ -399,6 +433,12 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         if ( !files.contains( path ) ) {
             return { "No such item in the pack.", {} };
         }
+        // Edited as text, a file in another encoding would come back changed.
+        if ( !utf8Text( files.value( path ) ) ) {
+            return { "The file is not UTF-8 text, so it cannot be edited in CILogg; change it in "
+                     "the pack's source instead.",
+                     {} };
+        }
         return { {},
                  { { "plugin", id },
                    { "path", path },
@@ -455,6 +495,25 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                     return { "The item's name must stay the same (copy it to rename it).", {} };
                 }
                 bytes = packcanonical::itemBytes( document.object() );
+            }
+        }
+        // An enabled pack loads the edit at once: it must pass the same check as enabling it.
+        if ( packCheck_ && settings_.value( configurationKey( id ) + "enabled", false ).toBool() ) {
+            auto candidate = files;
+            if ( bytes ) {
+                candidate.insert( path, *bytes );
+            }
+            else {
+                candidate.remove( path );
+            }
+            const auto folder = QDir( packStoreRoot() ).filePath( id + QStringLiteral( "/check" ) );
+            auto refusal = PackStore::writeFolder( folder, candidate, manifest.json );
+            if ( refusal.isEmpty() ) {
+                refusal = packCheck_( id, folder, manifest.json );
+            }
+            QDir( folder ).removeRecursively();
+            if ( !refusal.isEmpty() ) {
+                return { refusal, {} };
             }
         }
         // A readable message, such as "Edit preview 'Frame'" (design 4.6).

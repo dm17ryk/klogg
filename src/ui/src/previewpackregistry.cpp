@@ -105,11 +105,16 @@ void PreviewPackRegistry::refresh()
             const auto manifest = manager_->manifest( id );
             // The effective content: the installed version with the user's edits (design 4.6).
             const auto directory = manager_->packContentDirectory( id );
-            const auto key = contributionKey( directory, manifest );
+            // The store commit makes every edit and reset a new contribution, also when it
+            // lands within the file system's time resolution.
+            const auto key = contributionKey( directory, manifest ) + QLatin1Char( '|' )
+                             + manager_->packRevision( id );
             const auto cached = cache_.find( id );
-            packs.append( cached != cache_.end() && cached->key == key
-                              ? cached.value()
-                              : read( id, directory, manifest ) );
+            auto contribution = cached != cache_.end() && cached->key == key
+                                    ? cached.value()
+                                    : read( id, directory, manifest );
+            contribution.key = key;
+            packs.append( contribution );
         }
     }
     std::sort( packs.begin(), packs.end(),
@@ -174,28 +179,57 @@ QString PreviewPackRegistry::copyPreview( const QString& name, const QString& co
         return error;
     }
     const auto target = copyName.isEmpty() ? name : copyName;
+    for ( const auto& pack : applied_ ) {
+        if ( pack.id == origin->packId ) {
+            return copyRoute( pack, name, target );
+        }
+    }
+    return {};
+}
+
+QString PreviewPackRegistry::copyPreviewOfPack( const QString& packId, const QString& name,
+                                                const QString& copyName )
+{
+    const auto origin = PreviewManager::instance().packOrigin( name );
+    if ( origin && origin->packId == packId ) {
+        return copyPreview( name, copyName ); // enabled: as applied
+    }
+    if ( !manager_ ) {
+        return tr( "The pack is not available." );
+    }
+    // A disabled pack (or one not applied yet): read as it is now, with the local edits.
+    const auto pack = read( packId, manager_->packContentDirectory( packId ),
+                            manager_->manifest( packId ) );
+    if ( !pack.error.isEmpty() ) {
+        return pack.error;
+    }
+    const auto error = PreviewManager::instance().copyPreviewFrom( pack.previews, name, copyName );
+    return error.isEmpty() ? copyRoute( pack, name, copyName.isEmpty() ? name : copyName ) : error;
+}
+
+QString PreviewPackRegistry::copyRoute( const Contribution& pack, const QString& name,
+                                        const QString& target )
+{
     // The copy has no link to the pack, so it keeps decoding without it: the pack's route
     // becomes the user's.
-    for ( const auto& pack : applied_ ) {
-        if ( pack.id != origin->packId || !pack.previewRoutes.contains( name ) ) {
-            continue;
-        }
-        auto& settings = PreviewDecoderSettings::instance();
-        auto configuration = settings.configuration();
-        auto routes = configuration.value( "previewRoutes" ).toMap();
-        if ( routes.contains( target ) ) {
-            return {};
-        }
-        routes.insert( target, pack.previewRoutes.value( name ) );
-        configuration[ "previewRoutes" ] = routes;
-        QString reason;
-        if ( !settings.setConfiguration( configuration, &reason ) ) {
-            LOG_WARNING << "Copied pack preview route not added name=" << name.toStdString()
-                        << " reason=" << reason.toStdString();
-            return tr( "The preview was copied, but its decoder route could not be added to "
-                       "your routes (%1)." )
-                .arg( reason );
-        }
+    if ( !pack.previewRoutes.contains( name ) ) {
+        return {};
+    }
+    auto& settings = PreviewDecoderSettings::instance();
+    auto configuration = settings.configuration();
+    auto routes = configuration.value( "previewRoutes" ).toMap();
+    if ( routes.contains( target ) ) {
+        return {};
+    }
+    routes.insert( target, pack.previewRoutes.value( name ) );
+    configuration[ "previewRoutes" ] = routes;
+    QString reason;
+    if ( !settings.setConfiguration( configuration, &reason ) ) {
+        LOG_WARNING << "Copied pack preview route not added name=" << name.toStdString()
+                    << " reason=" << reason.toStdString();
+        return tr( "The preview was copied, but its decoder route could not be added to "
+                   "your routes (%1)." )
+            .arg( reason );
     }
     return {};
 }

@@ -25,6 +25,13 @@ struct PackCommit {
     bool upstream = false; // a version as shipped (not a local edit)
 };
 
+// Where a store's branches were, to put them back (PackStore::rollback).
+struct PackTips {
+    bool existed = false;
+    QString upstream;
+    QString local;
+};
+
 struct PackUpdatePlan {
     PackFiles merged;                // the merge result, conflicts resolved as the strategy says
     QVector<PackConflict> conflicts; // what needs the user (or was resolved by the strategy)
@@ -41,6 +48,9 @@ public:
     bool exists() const;
     // The repository folder is on disk (readable or not).
     bool hasRepository() const;
+    // The commit of `local` (the effective content), or "" without a readable store: changes
+    // with every edit, reset and update, unlike file times.
+    QString localTip() const;
     // The store is on disk but cannot be read: the repository does not open or lacks a branch.
     bool damaged() const;
     // The folder with the effective content in the pack's layout; empty when there is no store.
@@ -78,6 +88,11 @@ public:
     QString restore( const QString& storePath, const QString& commitId, const QString& message );
     // Removes the store (the pack was removed).
     QString remove();
+    // The branch tips now, and putting them back: an install or update whose package commit
+    // failed after the store moved returns the store (and its content folder) to `tips`, or
+    // removes a store that did not exist then.
+    PackTips tips() const;
+    QString rollback( const PackTips& tips );
     // Writes `files` in the pack's own layout into `folder` (replaced): plugin.json, the
     // previews document and exactly the files the manifest lists. The content folder is written
     // this way, and so is a merge result that is checked before it is installed.

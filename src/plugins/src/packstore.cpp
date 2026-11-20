@@ -169,6 +169,15 @@ bool PackStore::exists() const
     return open( false );
 }
 
+QString PackStore::localTip() const
+{
+    git_oid tip;
+    if ( !open( false ) || git_reference_name_to_id( &tip, repository_, "refs/heads/local" ) != 0 ) {
+        return {};
+    }
+    return oidText( tip );
+}
+
 bool PackStore::hasRepository() const
 {
     return safePackId( packId_ ) && QFileInfo::exists( repositoryPath() );
@@ -730,6 +739,48 @@ QString PackStore::remove()
     const bool removed = QDir( repositoryPath() ).removeRecursively()
                          && QDir( QDir( root_ ).filePath( packId_ ) ).removeRecursively();
     return removed ? QString{} : QStringLiteral( "Cannot remove the pack store." );
+}
+
+PackTips PackStore::tips() const
+{
+    PackTips tips;
+    git_oid oid;
+    if ( !open( false ) ) {
+        return tips;
+    }
+    tips.existed = true;
+    if ( git_reference_name_to_id( &oid, repository_, "refs/heads/upstream" ) == 0 ) {
+        tips.upstream = oidText( oid );
+    }
+    if ( git_reference_name_to_id( &oid, repository_, "refs/heads/local" ) == 0 ) {
+        tips.local = oidText( oid );
+    }
+    return tips;
+}
+
+QString PackStore::rollback( const PackTips& tips )
+{
+    if ( !tips.existed ) {
+        return remove();
+    }
+    if ( !open( false ) ) {
+        return error_;
+    }
+    for ( const auto& [ branch, id ] : { std::pair{ "refs/heads/upstream", tips.upstream },
+                                         std::pair{ "refs/heads/local", tips.local } } ) {
+        git_oid oid;
+        Reference reference;
+        if ( id.isEmpty() || git_oid_fromstr( &oid, id.toLatin1().constData() ) != 0
+             || git_reference_create( &reference.pointer, repository_, branch, &oid, 1,
+                                      "Undo an install whose package was not installed" )
+                    != 0 ) {
+            return lastError( QStringLiteral( "Cannot put the pack store back" ) );
+        }
+    }
+    bool complete = false;
+    const auto stored = filesAt( QStringLiteral( "refs/heads/local" ), &complete );
+    LOG_WARNING << "Pack store put back after a failed install pack=" << packId_.toStdString();
+    return complete ? publish( stored ) : QStringLiteral( "The pack's store cannot be read." );
 }
 
 QString PackStore::repositoryPath() const

@@ -420,20 +420,25 @@ QString PreviewManager::copyPackPreview( const QString& name, const QString& cop
 {
     // The copy keeps the pack preview's name (and so replaces it), or takes `copyName` (Keep
     // Both in the merge window: "<name> (mine)").
-    const auto target = copyName.isEmpty() ? name : copyName;
-    if ( findByName( target ) ) {
-        return tr( "You already have a preview named \"%1\"." ).arg( target );
-    }
     const auto origin = packOrigin( name );
     if ( !origin ) {
         return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
     }
-    const auto& pack = packSources_[ origin->packId ];
+    return copyPreviewFrom( packSources_[ origin->packId ], name, copyName );
+}
+
+QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QString& name,
+                                         const QString& copyName )
+{
+    const auto target = copyName.isEmpty() ? name : copyName;
+    if ( findByName( target ) ) {
+        return tr( "You already have a preview named \"%1\"." ).arg( target );
+    }
     const auto original
         = std::find_if( pack.previews.cbegin(), pack.previews.cend(),
                         [ &name ]( const auto& preview ) { return preview.name == name; } );
     if ( original == pack.previews.cend() ) {
-        return tr( "\"%1\" is not a preview of an enabled pack." ).arg( name );
+        return tr( "\"%1\" is not a preview of the pack." ).arg( name );
     }
     const auto closure = blockClosure( original->fields, pack.blocks );
     // Blocks whose names the user already uses are renamed, with their references
@@ -445,8 +450,8 @@ QString PreviewManager::copyPackPreview( const QString& name, const QString& cop
     };
     QString suffix;
     for ( int number = 1; collides( suffix ); ++number ) {
-        suffix = number == 1 ? QStringLiteral( " (%1)" ).arg( origin->packName )
-                             : QStringLiteral( " (%1 %2)" ).arg( origin->packName ).arg( number );
+        suffix = number == 1 ? QStringLiteral( " (%1)" ).arg( pack.packName )
+                             : QStringLiteral( " (%1 %2)" ).arg( pack.packName ).arg( number );
     }
     // Only references that reach a copied block follow its new name; any other reference (to a
     // block the pack does not have) is left as it is.
@@ -481,7 +486,7 @@ QString PreviewManager::copyPackPreview( const QString& name, const QString& cop
         return tr( "Failed to save previews configuration." );
     }
     LOG_INFO << "Pack preview copied name=" << name.toStdString()
-             << " pack=" << origin->packId.toStdString() << " blocks=" << closure.size()
+             << " pack=" << pack.packId.toStdString() << " blocks=" << closure.size()
              << " renamed=" << !suffix.isEmpty();
     Q_EMIT previewsChanged();
     return {};

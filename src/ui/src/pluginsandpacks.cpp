@@ -685,11 +685,9 @@ QWidget* createAvailableTab( QWidget* parent, cilogg::plugins::PluginManager* ma
                                options, id ),
                 name, [ setStatus, render, name, version ]( const QVariantMap& job ) {
                            render( false );
-                           const auto warning
-                               = job.value( "result" ).toMap().value( "warning" ).toString();
                            setStatus( job.value( "state" ) == "completed"
                                           ? tr( "Installed %1 %2." ).arg( name, version )
-                                                + ( warning.isEmpty() ? QString{} : ' ' + warning )
+                                                + jobWarningSuffix( job )
                                           : tr( "Could not install %1: %2" )
                                                 .arg( name, job.value( "error" ).toString() ) );
                        } );

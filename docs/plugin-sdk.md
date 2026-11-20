@@ -405,8 +405,10 @@ changed differently, or deleted on one side and changed on the other, is a confl
 
 `install` and `update` of a pack take `strategy` (`fail`, the default; `keep_mine`;
 `take_theirs`) and `resolutions`: `{path, field, value}` or `{path, field, remove: true}` for a
-preview or block field (an empty `field` replaces the whole item), `{path, text}` or
-`{path, remove: true}` for a file. With conflicts left open the job fails with `needsMerge: true`,
+preview or block field (an empty `field` replaces the whole item), `{path, text}`,
+`{path, take: "mine"|"theirs"}` (a whole side, byte for byte) or `{path, remove: true}` for a
+file. A file that is not UTF-8 text is resolved with `take` only, and `pack_read` refuses it
+(editing it as text would change its bytes). With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text) and `items` (each conflicting item whole), and the installed version stays. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay

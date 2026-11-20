@@ -81,24 +81,54 @@ PackFiles fromPreviews( const QByteArray& previewsJson, QString* error )
         return {};
     }
     auto meta = document.isObject() ? document.object() : QJsonObject{};
+    // The document as it is, or an error: never a quietly cleaned-up copy (a disabled pack is
+    // installed without the full preview check, so this is where a malformed one is caught).
+    const auto reject = [ error ]( const QString& why ) {
+        if ( error ) {
+            *error = QStringLiteral( "The pack's previews document is not valid: %1" ).arg( why );
+        }
+        return PackFiles{};
+    };
+    if ( document.isObject()
+         && ( !meta.value( "previews" ).isArray()
+              || ( meta.contains( "blocks" ) && !meta.value( "blocks" ).isArray() ) ) ) {
+        return reject( QStringLiteral( "it needs a \"previews\" list (and \"blocks\", if any, "
+                                       "must be a list)." ) );
+    }
     const auto previews = document.isArray() ? document.array() : meta.take( "previews" ).toArray();
     const auto blocks = meta.take( "blocks" ).toArray();
+    // One item per name: a name is the item's identity and its file name.
+    const auto named = [ &reject ]( const QJsonValue& value, const QString& what,
+                                    const QStringList& seen, QString* name ) {
+        *name = value.toObject().value( "name" ).toString();
+        if ( !value.isObject() || name->isEmpty() || name->contains( '\n' )
+             || name->contains( '\r' ) ) {
+            reject( QStringLiteral( "a %1 without a name." ).arg( what ) );
+            return false;
+        }
+        if ( seen.contains( *name ) ) {
+            reject( QStringLiteral( "two %1s named \"%2\"." ).arg( what, name->left( 64 ) ) );
+            return false;
+        }
+        return true;
+    };
     QStringList order;
     for ( const auto& value : previews ) {
-        const auto preview = value.toObject();
-        const auto name = preview.value( "name" ).toString();
-        if ( name.isEmpty() ) {
-            continue;
+        QString name;
+        if ( !named( value, QStringLiteral( "preview" ), order, &name ) ) {
+            return {};
         }
         order.append( name );
-        files.insert( PreviewsDir + encodeName( name ) + JsonSuffix, itemBytes( preview ) );
+        files.insert( PreviewsDir + encodeName( name ) + JsonSuffix, itemBytes( value.toObject() ) );
     }
+    QStringList blockNames;
     for ( const auto& value : blocks ) {
-        const auto block = value.toObject();
-        const auto name = block.value( "name" ).toString();
-        if ( !name.isEmpty() ) {
-            files.insert( BlocksDir + encodeName( name ) + JsonSuffix, itemBytes( block ) );
+        QString name;
+        if ( !named( value, QStringLiteral( "block" ), blockNames, &name ) ) {
+            return {};
         }
+        blockNames.append( name );
+        files.insert( BlocksDir + encodeName( name ) + JsonSuffix, itemBytes( value.toObject() ) );
     }
     files.insert( OrderFile, order.isEmpty() ? QByteArray{} : ( order.join( '\n' ) + '\n' ).toUtf8() );
     if ( !meta.isEmpty() ) {
@@ -151,13 +181,19 @@ QStringList listedFiles( const QJsonObject& manifest )
     if ( !validatePackManifest( manifest, &content ).isEmpty() ) {
         return {};
     }
-    // The manifest check keeps these paths relative and inside the pack.
+    // The manifest check keeps these paths relative and inside the pack. Actions, highlights and
+    // filters are carried as files until E16c gives them a canonical form of their own.
     QStringList paths;
     for ( const auto& file : content.luaLoad ) {
         paths.append( filePath( content.luaFolder + '/' + file ) );
     }
     for ( const auto& decoder : content.pythonDecoders ) {
         paths.append( filePath( decoder.module ) );
+    }
+    for ( const auto* other : { &content.actions, &content.highlights, &content.filters } ) {
+        if ( !other->isEmpty() && !paths.contains( filePath( *other ) ) ) {
+            paths.append( filePath( *other ) );
+        }
     }
     return paths;
 }

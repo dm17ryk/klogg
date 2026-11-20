@@ -472,6 +472,12 @@ if(libgit2_ADDED)
   target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
   target_include_directories(klogg_libgit2 SYSTEM INTERFACE ${libgit2_SOURCE_DIR}/include)
 endif()
+# libgit2's CMakeLists sets CMAKE_C_STANDARD (90) and CMAKE_C_EXTENSIONS (OFF) as cache
+# variables, which would make every later C target of CILogg strict ISO C90 (whereami then fails
+# with GCC and Clang; MSVC has no C90 switch). libgit2's targets keep the standard they were
+# created with; the rest of the build gets the compiler defaults back.
+unset(CMAKE_C_STANDARD CACHE)
+unset(CMAKE_C_EXTENSIONS CACHE)
 
 
 cpmaddpackage(

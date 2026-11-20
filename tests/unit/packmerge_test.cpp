@@ -131,6 +131,26 @@ TEST_CASE( "Pack items have a canonical one-item-per-file form", "[packmerge][E1
     CHECK( packcanonical::decodeName( packcanonical::encodeName( astral ) ) == astral );
     CHECK( packcanonical::encodeName( "A" ) != packcanonical::encodeName( "a" ) );
 
+    // A malformed previews document is refused, never cleaned up quietly.
+    for ( const auto* bad :
+          { R"({ "version": 1 })", R"({ "previews": {} })", R"({ "previews": [ 3 ] })",
+            R"({ "previews": [ { "regex": "x" } ] })",
+            R"({ "previews": [ { "name": "A" }, { "name": "A" } ] })",
+            R"({ "previews": [], "blocks": [ { "name": "B" }, { "name": "B" } ] })",
+            R"({ "previews": [], "blocks": {} })" } ) {
+        QString why;
+        INFO( bad );
+        CHECK( packcanonical::fromPreviews( bad, &why ).isEmpty() );
+        CHECK( why.startsWith( "The pack's previews document is not valid" ) );
+    }
+    // Every file the manifest lists is carried, also actions, highlights and filters.
+    auto withFilters = packManifest();
+    auto declared = withFilters[ "content" ].toObject();
+    declared[ "filters" ] = "filters/predefined.json";
+    withFilters[ "content" ] = declared;
+    CHECK( packcanonical::listedFiles( withFilters )
+           == QStringList{ "files/lua/a.lua", "files/filters/predefined.json" } );
+
     QString error;
     const auto files = packcanonical::fromPreviews( Previews, &error );
     REQUIRE( error.isEmpty() );
@@ -366,6 +386,20 @@ TEST_CASE( "The pack store keeps versions, edits, history and merges", "[packmer
     CHECK( store.restore( {}, "refs/heads/upstream", "Revert" )
            == "That version of the pack is not in its store." );
     CHECK( store.restore( {}, store.history().last().id, "Revert" ).contains( "another version" ) );
+    // An install whose package then fails is put back: both branches and the content folder.
+    const auto before = store.tips();
+    const auto filesBefore = store.files();
+    auto later = next;
+    later.insert( packcanonical::filePath( "lua/a.lua" ), "-- a, version 3\n" );
+    REQUIRE( store.applyUpdate( later, later, packManifest( "1.2.0" ), "1.2.0", "Team packs" )
+                 .isEmpty() );
+    CHECK( readFile( content + "/lua/a.lua" ) == "-- a, version 3\n" );
+    REQUIRE( store.rollback( before ).isEmpty() );
+    CHECK( store.tips().local == before.local );
+    CHECK( store.tips().upstream == before.upstream );
+    CHECK( store.files() == filesBefore );
+    CHECK( readFile( content + "/lua/a.lua" ) == "-- a, version 2\n" );
+
     // Restoring what is already there adds nothing to the history.
     const auto commitsBefore = store.history().size();
     CHECK( store.restore( packcanonical::filePath( "lua/a.lua" ), {}, "Reset" ).isEmpty() );
@@ -505,6 +539,89 @@ TEST_CASE( "An update that drops an edited file says so and keeps the pack valid
     CHECK( std::none_of( files.cbegin(), files.cend(), []( const QVariant& file ) {
         return file.toMap()[ "kind" ] == "file";
     } ) );
+}
+
+TEST_CASE( "Pack checks, encodings, revisions and removal follow the effective content",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    // A Lua file in Latin-1 (valid Lua, not UTF-8).
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- caf\xe9\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto lua = packcanonical::filePath( "lua/a.lua" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+
+    // Editing it as text would change its bytes: refused.
+    CHECK( manager.manage( "pack_read", id, { { "path", lua } } ).error.contains( "not UTF-8" ) );
+
+    // Every edit is a new revision of the content, also within one file-time tick.
+    const auto revision = manager.packRevision( id );
+    CHECK( !revision.isEmpty() );
+    auto item = QJsonDocument::fromJson( manager.manage( "pack_read", id, { { "path", second } } )
+                                             .payload[ "content" ]
+                                             .toString()
+                                             .toUtf8() )
+                    .object();
+    item[ "regex" ] = "^MINE$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", second },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    CHECK( manager.packRevision( id ) != revision );
+
+    // Enabling checks the content as edited, and an enabled pack's edits pass the same check.
+    QStringList checked;
+    QString refusal;
+    manager.setPackCheck( [ &checked, &refusal ]( const QString&, const QString& directory,
+                                                  const QJsonObject& ) {
+        checked << directory;
+        return refusal;
+    } );
+    REQUIRE( manager.manage( "enable", id, {} ).ok() );
+    REQUIRE( !checked.isEmpty() );
+    CHECK( checked.last() == manager.packContentDirectory( id ) );
+    refusal = QStringLiteral( "Refused by the pack check." );
+    item[ "regex" ] = "^AGAIN$";
+    CHECK( manager.manage( "pack_edit", id,
+                           { { "path", second },
+                             { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+               .error
+           == refusal );
+    CHECK( previewRegex( manager.packContentDirectory( id ), "Second" ) == "^MINE$" );
+    refusal.clear();
+    REQUIRE( manager.manage( "disable", id, {} ).ok() );
+
+    // A new version that changes the Latin-1 file while yours changed it too: a conflict that
+    // only a whole side resolves, byte for byte.
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", lua }, { "content", "-- mine\n" } } ).ok() );
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", Previews, "-- caf\xe9, 2\n" );
+    const auto conflicted = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( conflicted[ "state" ] == "failed" );
+    CHECK( !conflicted[ "result" ].toMap()[ "items" ].toMap()[ lua ].toMap()[ "utf8" ].toBool() );
+    const auto asText = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions",
+                                     QVariantList{ QVariantMap{ { "path", lua }, { "text", "x\n" } } } } } ) );
+    CHECK( asText[ "state" ] == "failed" );
+    const auto whole = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions",
+                                     QVariantList{ QVariantMap{ { "path", lua }, { "take", "theirs" } } } } } ) );
+    REQUIRE( whole[ "state" ] == "completed" );
+    CHECK( readFile( manager.packContentDirectory( id ) + "/lua/a.lua" ) == "-- caf\xe9, 2\n" );
+
+    // Removing the pack removes its content folder too when the repository is gone.
+    const auto contentFolder = root.filePath( "data/pack-store/org.example.pack" );
+    REQUIRE( QDir( root.filePath( "data/pack-store/org.example.pack.git" ) ).removeRecursively() );
+    REQUIRE( QFileInfo::exists( contentFolder ) );
+    REQUIRE( manager.manage( "remove", id, {} ).ok() );
+    CHECK( !QFileInfo::exists( contentFolder ) );
 }
 
 TEST_CASE( "Packs install, edit and update through their local store", "[packmerge][E16]" )
