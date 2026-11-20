@@ -77,6 +77,7 @@ QUERY_DEFAULT_TIMEOUT_MS: Mapping[str, int] = {
 MAX_MESSAGE = 1024 * 1024
 MAX_PENDING = 8 * MAX_MESSAGE
 MAX_TABLE_IDS = 1000  # selected and checked ids in one event or menu context
+MAX_ID_BYTES = 256 * 1024  # ... and the JSON of those ids, so a frame stays below MAX_MESSAGE
 TO_PLUGIN = "to_plugin"
 FROM_PLUGIN = "from_plugin"
 
@@ -281,13 +282,28 @@ def element_context(view_id: str, element_id: str, *, row_id: Optional[str] = No
                     selected_count: Optional[int] = None, window_id: str = "w1") -> JsonObject:
     """The `context` of an element menu entry (location "element"): the view and element, the
     clicked row and column (None: the click was not on a cell), the selected row ids (CILogg
-    sends at most 1000) and their count (default: the number of ids)."""
+    sends at most 1000, and at most MAX_ID_BYTES of them) and their count (default: the number
+    of ids)."""
     if isinstance(selected_ids, str):
         raise ValueError("selected_ids is a list of row ids")
     ids = [str(row) for row in selected_ids]
     return {"window_id": window_id, "view_id": view_id, "element_id": element_id,
-            "row_id": row_id, "column_id": column_id, "selected_ids": ids[:MAX_TABLE_IDS],
+            "row_id": row_id, "column_id": column_id, "selected_ids": bounded_ids(ids),
             "selected_count": len(ids) if selected_count is None else selected_count}
+
+
+def bounded_ids(ids: Sequence[str]) -> List[str]:
+    """The leading ids CILogg sends in one event or menu context: at most MAX_TABLE_IDS, and only
+    as many as fit in MAX_ID_BYTES of JSON (ids may be 4,096 characters each)."""
+    kept: List[str] = []
+    budget = MAX_ID_BYTES
+    for identifier in ids[:MAX_TABLE_IDS]:
+        # The id as a JSON string with its separator, as the host counts it.
+        budget -= len(json.dumps(identifier, ensure_ascii=False).encode("utf-8")) + 1
+        if budget < 0:
+            break
+        kept.append(identifier)
+    return kept
 
 
 def _row_ids(row_ids: Union[str, Sequence[str]]) -> List[str]:
@@ -528,47 +544,52 @@ class FakeHost:
                     current: Optional[str] = None, selected_count: Optional[int] = None,
                     window_id: str = "w1") -> None:
         """Send a table's `selected` event, as when the user selects rows: the ids (at most
-        1000 go out, with `truncated` when more were selected), `selected_count` (default: the
-        number of ids) and, when the plugin's manifest declares `handles` (as CILogg checks),
-        `current`, the row with the keyboard focus (None: no row)."""
+        1000 and MAX_ID_BYTES of them go out, with `truncated` when more were selected),
+        `selected_count` (default: the number of ids) and, when the plugin's manifest declares
+        `handles` (as CILogg checks), `current`, the row with the keyboard focus (None: no row)."""
         ids = _row_ids(row_ids)
+        sent = bounded_ids(ids)
         extra: JsonObject = {"selected_count": len(ids) if selected_count is None else selected_count}
-        if len(ids) > MAX_TABLE_IDS or extra["selected_count"] > len(ids):
+        if len(sent) < len(ids) or extra["selected_count"] > len(ids):
             extra["truncated"] = True
         if self._declares_handles():
             extra["current"] = current
-        self.view_event(view_id, element_id, "selected", ids[:MAX_TABLE_IDS],
-                        window_id=window_id, **extra)
+        self.view_event(view_id, element_id, "selected", sent, window_id=window_id, **extra)
 
     def activate_cell(self, view_id: str, element_id: str, row_id: str, column_id: str, *,
-                      window_id: str = "w1") -> None:
+                      window_id: str = "w1") -> bool:
         """Send a table's `activated` event, as on a double-click or Enter on a cell that is not
-        editable. CILogg sends it only to plugins whose manifest declares `handles`."""
+        editable. Like CILogg, only to a plugin whose manifest declares `handles`: otherwise
+        nothing is sent and the result is False."""
+        if not self._declares_handles():
+            return False
         self.view_event(view_id, element_id, "activated",
                         {"row_id": row_id, "column_id": column_id}, window_id=window_id)
+        return True
 
     def check_rows(self, view_id: str, element_id: str, row_ids: Union[str, Sequence[str]],
                    checked: bool = True, *, row_id: Optional[str] = None,
                    window_id: str = "w1") -> None:
         """Send a table's `checked` event, as when the user changes a row's check box (or a
-        Shift+click range): `row_ids` every row that changed, `row_id` the clicked row
-        (default: the first of row_ids)."""
+        Shift+click range): `row_ids` every row that changed (bounded like CILogg's, see
+        bounded_ids()), `row_id` the clicked row (default: the first of row_ids)."""
         ids = _row_ids(row_ids)
         if not ids:
             raise ValueError("check_rows needs at least one row id")
         self.view_event(view_id, element_id, "checked",
-                        {"row_id": ids[0] if row_id is None else row_id, "row_ids": ids,
-                         "checked": checked}, window_id=window_id)
+                        {"row_id": ids[0] if row_id is None else row_id,
+                         "row_ids": bounded_ids(ids), "checked": checked}, window_id=window_id)
 
     def move_rows(self, view_id: str, element_id: str, row_ids: Union[str, Sequence[str]],
                   before: Optional[str] = None, *, window_id: str = "w1") -> None:
         """Send a reorderable table's `moved` event, as when the user drops the rows (in shown
-        order) before the row `before` (None: at the end)."""
+        order, bounded like CILogg's, see bounded_ids()) before the row `before` (None: at the
+        end)."""
         ids = _row_ids(row_ids)
         if not ids:
             raise ValueError("move_rows needs at least one row id")
-        self.view_event(view_id, element_id, "moved", {"row_ids": ids, "before": before},
-                        window_id=window_id)
+        self.view_event(view_id, element_id, "moved",
+                        {"row_ids": bounded_ids(ids), "before": before}, window_id=window_id)
 
     def message_result(self, message_id: str, button: str, timed_out: bool = False) -> None:
         self.notify("ui/message_result", {"message_id": message_id, "button": button,

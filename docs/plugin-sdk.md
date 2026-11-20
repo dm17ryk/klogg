@@ -674,9 +674,12 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   for a field with validation keys, as CILogg does).
 - Table events: `select_rows(view_id, element_id, row_ids, current=None, selected_count=None)`
   sends `selected` (with `current` only when the plugin's manifest declares `handles`, and
-  `truncated` beyond 1000 ids), `activate_cell(view_id, element_id, row_id, column_id)` sends
-  `activated`, `check_rows(view_id, element_id, row_ids, checked=True, row_id=None)` sends
-  `checked` and `move_rows(view_id, element_id, row_ids, before=None)` sends `moved`.
+  `truncated` beyond the ids that go out), `activate_cell(view_id, element_id, row_id,
+  column_id)` sends `activated` (only to a plugin whose manifest declares `handles`; it returns
+  False otherwise), `check_rows(view_id, element_id, row_ids, checked=True, row_id=None)` sends
+  `checked` and `move_rows(view_id, element_id, row_ids, before=None)` sends `moved`. Like
+  CILogg, these helpers and `element_context()` send at most 1000 ids and only as many as fit in
+  `MAX_ID_BYTES` (256 KiB) of JSON: `bounded_ids(ids)` gives the ids that go out.
   `send_element_command(menu_id, item_id, view_id, element_id, row_id=None, column_id=None,
   selected_ids=(), selected_count=None)` picks an `event` entry of an element menu;
   `element_context(...)` builds the same `context` for `populate_menu(..., "element",

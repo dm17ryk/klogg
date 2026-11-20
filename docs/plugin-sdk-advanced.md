@@ -1543,9 +1543,11 @@ E17d decided as follows.
   themselves does nothing. The host never moves the rows.
 - **Context menus.** Copy, Copy All and Export CSV… come first, then a separator and the plugin's
   entries. Copy takes the selected rows, or the current row, of the shown columns in shown order;
-  Copy All adds a header line. Ctrl+C with no selected or current row leaves the clipboard alone.
-  Export writes RFC 4180 CSV (UTF-8, CRLF) row by row through the host save dialog; text that a spreadsheet would run as a formula (`=`, `+`, `@`, or `-` not followed by a
-  number) gets a leading apostrophe. The header menu (`<element>_columns`) shows and hides
+  Copy All adds a header line. Both stop at whole rows before 1 MiB of text (a warning is logged).
+  Ctrl+C with no selected or current row leaves the clipboard alone. Export writes RFC 4180 CSV
+  (UTF-8, CRLF) row by row through the host save dialog. In copied text and in CSV, text that a
+  spreadsheet would run as a formula (`=`, `+`, `@`, or `-` not followed by a number) gets a
+  leading apostrophe. The header menu (`<element>_columns`) shows and hides
   columns; the last shown column stays. Object names: `<element>_menu`, `_copy`, `_copy_all`,
   `_export`, `_column_<id>`.
 - **Element menus.** Only the menu that `context_menu` names, and only if its location is

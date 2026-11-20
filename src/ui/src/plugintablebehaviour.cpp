@@ -23,23 +23,18 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace {
 constexpr int SaveDelayMs = 500;
+// Copy and Copy All stop at whole rows before this much text (the clipboard limit of section 29).
+constexpr qsizetype MaxCopyChars = 1024 * 1024;
 
-// A cell in tab-separated text: tabs and line breaks become spaces.
-QString tsvField( QString text )
-{
-    for ( const auto separator : { QLatin1Char( '\t' ), QLatin1Char( '\r' ), QLatin1Char( '\n' ) } ) {
-        text.replace( separator, QLatin1Char( ' ' ) );
-    }
-    return text;
-}
-
-// A cell in CSV (RFC 4180). Text a spreadsheet would run as a formula (=, +, @, or - not
-// followed by a number) gets a leading apostrophe: plugin data is never a formula.
-QString csvField( QString text )
+// Text a spreadsheet would run as a formula (=, +, @, or - not followed by a number; a leading
+// tab or carriage return) gets a leading apostrophe: plugin data is never a formula, whether it
+// is pasted or opened as CSV.
+QString formulaSafe( QString text )
 {
     bool number = false;
     text.toDouble( &number );
@@ -50,6 +45,23 @@ QString csvField( QString text )
               || ( text.startsWith( QLatin1Char( '-' ) ) && !number ) ) ) {
         text.prepend( QLatin1Char( '\'' ) );
     }
+    return text;
+}
+
+// A cell in tab-separated text (Copy): formula-safe, tabs and line breaks become spaces.
+QString tsvField( QString text )
+{
+    text = formulaSafe( std::move( text ) );
+    for ( const auto separator : { QLatin1Char( '\t' ), QLatin1Char( '\r' ), QLatin1Char( '\n' ) } ) {
+        text.replace( separator, QLatin1Char( ' ' ) );
+    }
+    return text;
+}
+
+// A cell in CSV (RFC 4180), formula-safe.
+QString csvField( QString text )
+{
+    text = formulaSafe( std::move( text ) );
     if ( text.contains( QLatin1Char( ',' ) ) || text.contains( QLatin1Char( '"' ) )
          || text.contains( QLatin1Char( '\n' ) ) || text.contains( QLatin1Char( '\r' ) ) ) {
         text.replace( QStringLiteral( "\"" ), QStringLiteral( "\"\"" ) );
@@ -502,21 +514,31 @@ QString PluginTableBehaviour::copyText( bool all ) const
         return {};
     }
     const auto columns = shownColumns();
-    // One string, built in place: a whole table can be large (no list of lines to join).
+    // At most MaxCopyChars, whole rows only: a table of 50,000 cells of 4,096 characters would
+    // be hundreds of megabytes.
     QString text;
+    bool cut = false;
     const auto line = [ & ]( const std::function<QString( int column )>& field ) {
+        QString row;
+        for ( qsizetype at = 0; at < columns.size(); ++at ) {
+            if ( at > 0 ) {
+                row += QLatin1Char( '\t' );
+            }
+            row += tsvField( field( columns.at( at ) ) );
+        }
+        const auto needed = row.size() + ( text.isEmpty() ? 0 : 1 );
+        if ( text.size() + needed > MaxCopyChars ) {
+            cut = true;
+            return false;
+        }
         if ( !text.isEmpty() ) {
             text += QLatin1Char( '\n' );
         }
-        for ( qsizetype at = 0; at < columns.size(); ++at ) {
-            if ( at > 0 ) {
-                text += QLatin1Char( '\t' );
-            }
-            text += tsvField( field( columns.at( at ) ) );
-        }
+        text += row;
+        return true;
     };
     const auto cells = [ & ]( int proxyRow ) {
-        line( [ & ]( int column ) {
+        return line( [ & ]( int column ) {
             return proxy_->index( proxyRow, column ).data( Qt::DisplayRole ).toString();
         } );
     };
@@ -525,7 +547,9 @@ QString PluginTableBehaviour::copyText( bool all ) const
             return model_->headerData( column, Qt::Horizontal, Qt::DisplayRole ).toString();
         } );
         for ( int row = 0; row < proxy_->rowCount(); ++row ) {
-            cells( row );
+            if ( !cells( row ) ) {
+                break;
+            }
         }
     }
     else {
@@ -536,8 +560,13 @@ QString PluginTableBehaviour::copyText( bool all ) const
         std::sort( rows.begin(), rows.end(),
                    []( const QModelIndex& a, const QModelIndex& b ) { return a.row() < b.row(); } );
         for ( const auto& index : std::as_const( rows ) ) {
-            cells( index.row() );
+            if ( !cells( index.row() ) ) {
+                break;
+            }
         }
+    }
+    if ( cut ) {
+        LOG_WARNING << "Plugin table copy cut at " << MaxCopyChars << " characters (whole rows)";
     }
     return text;
 }
@@ -777,8 +806,10 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
             if ( mouse->modifiers() == Qt::NoModifier && reorderAllowed() ) {
                 pressPosition_ = position;
                 pressRow_ = rowIdAt( index );
-                // Before the view handles the press, which toggles the row in a toggle table.
-                pressSelection_ = selectedRowIds( pluginview::MaxTableIds );
+                // Before the view handles the press, which toggles the row in a toggle table. The
+                // whole selection: whether the pressed row is in it decides what moves; `moved`
+                // bounds the ids it sends.
+                pressSelection_ = selectedRowIds( std::numeric_limits<int>::max() );
             }
         }
         return false;
