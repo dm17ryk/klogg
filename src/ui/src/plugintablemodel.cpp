@@ -343,6 +343,9 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
         const auto number = value.toDouble( &numeric );
         return numeric ? QVariant( number ) : QVariant( value );
     }
+    if ( role == SortTextRole ) { // sort_as text and natural: never turned into a number
+        return style && style->sort.isValid() ? style->sort.toString() : value;
+    }
     if ( role == RowIdRole ) {
         return row.id;
     }
@@ -899,10 +902,13 @@ bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& rig
         }
         return leftNumeric ? x < y : a.toString().compare( b.toString(), Qt::CaseInsensitive ) < 0;
     }
+    // Text and natural order compare the text itself: "02" stays "02", not the number 2.
+    const auto leftText = left.data( SortTextRole ).toString();
+    const auto rightText = right.data( SortTextRole ).toString();
     if ( sortAs == QLatin1String( "natural" ) ) {
-        return naturalCompare( a.toString(), b.toString() ) < 0;
+        return naturalCompare( leftText, rightText ) < 0;
     }
-    return a.toString().compare( b.toString(), Qt::CaseInsensitive ) < 0;
+    return leftText.compare( rightText, Qt::CaseInsensitive ) < 0;
 }
 
 void PluginTableModel::undoEdit( const QString& rowId, int column, const QString& display,

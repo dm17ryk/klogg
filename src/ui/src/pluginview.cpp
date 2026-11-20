@@ -1295,7 +1295,9 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
     connect( filter, &QLineEdit::textChanged, node.proxy,
              &QSortFilterProxyModel::setFilterFixedString );
     connect( table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [ this, id ] {
-        if ( !applying_ ) {
+        // Not while a press that may start a drag holds the selection (the behaviour reports it).
+        const auto found = nodes_.value( id );
+        if ( !applying_ && !( found && found->behaviour && found->behaviour->holdsSelection() ) ) {
             emitSelection( id );
         }
     } );
@@ -1343,6 +1345,11 @@ QWidget* PluginView::buildTable( Node& node, const QJsonObject& element, QWidget
             guard->queries_.saveState( id, state );
         }
     };
+    hooks.selectionSettled = [ guard, id ] {
+        if ( guard && !guard->applying_ ) {
+            guard->emitSelection( id );
+        }
+    };
     table->setObjectName( nameFor( id ) );
     node.behaviour = new PluginTableBehaviour( table, node.model, proxy, std::move( hooks ) );
     return box;
@@ -1355,18 +1362,17 @@ void PluginView::emitSelection( const QString& id )
     if ( !table ) {
         return;
     }
-    // Bounded: at most MaxSelectedIds ids (and MaxInputsBytes of them); the count is complete.
+    // Bounded: at most MaxSelectedIds ids, and MaxIdBytes of them measured as encoded JSON (a
+    // control character takes six bytes there); the count is complete.
     const auto rows = table->selectionModel()->selectedRows();
-    QJsonArray ids;
-    qsizetype bytes = 0;
+    QStringList leading;
     for ( const auto& index : rows ) {
-        const auto rowId = index.data( Qt::UserRole + 1 ).toString();
-        bytes += rowId.size() + 4;
-        if ( ids.size() >= MaxSelectedIds || bytes > MaxInputsBytes ) {
+        if ( leading.size() >= MaxSelectedIds ) {
             break;
         }
-        ids.append( rowId );
+        leading.append( index.data( Qt::UserRole + 1 ).toString() );
     }
+    const auto ids = QJsonArray::fromStringList( pluginview::boundedIds( leading ) );
     QJsonObject extra{ { "selected_count", static_cast<int>( rows.size() ) } };
     if ( ids.size() < rows.size() ) {
         extra.insert( "truncated", true );
@@ -1621,8 +1627,14 @@ void PluginView::apply( Node& node, const QJsonObject& incoming, bool fromRoot )
         bool columnsSet = false;
         if ( props.contains( "columns" ) && !unchanged( "columns" ) ) {
             const auto columns = props.value( "columns" ).toArray();
+            if ( node.behaviour ) {
+                node.behaviour->beginColumnsChange(); // before the model resets
+            }
             if ( columns.size() > MaxTableColumns || !node.model->setColumns( columns ) ) {
                 warnOnce( "columns:" + node.id, "table columns rejected for " + node.id );
+                if ( node.behaviour ) {
+                    node.behaviour->abortColumnsChange();
+                }
             }
             else {
                 columnsSet = true;
@@ -1807,8 +1819,9 @@ void PluginView::applyTableOperation( Node& node, const QJsonObject& entry )
             table->verticalScrollBar()->setValue( scroll );
         }
     } );
-    if ( restored < selected.size() ) {
-        // The plugin removed selected rows: tell it what is still selected.
+    // The plugin removed selected rows: tell it what is still selected, unless the same entry sets
+    // the selection itself (a selection patch is never echoed, nor anything in between).
+    if ( restored < selected.size() && !entry.contains( "select" ) ) {
         QScopedValueRollback<bool> rollback( applying_, false );
         emitSelection( node.id );
     }

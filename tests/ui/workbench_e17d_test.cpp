@@ -446,6 +446,103 @@ TEST_CASE( "E17d hidden widths, minimum widths when shown, focus without selecti
     REQUIRE( plain.behaviour()->currentRowId() == "r2" );
 }
 
+TEST_CASE( "E17d selection events stay bounded and unechoed, text sorts as text, columns keep sorts",
+           "[ui][workbench][E17]" )
+{
+    // The ids of `selected` are bounded by their encoded JSON: a control character takes six bytes.
+    {
+        QJsonArray rows;
+        for ( int row = 0; row < 63; ++row ) {
+            rows.append( QJsonObject{
+                { "id", QString( "%1" ).arg( row, 2, 10, QChar( '0' ) ) + QString( 4090, QChar( 0x01 ) ) },
+                { "cells", QJsonArray{ "x" } } } );
+        }
+        View controls( QJsonObject{ { "type", "table" },
+                                    { "id", "t" },
+                                    { "selection", "multi" },
+                                    { "columns", QJsonArray{ QJsonObject{ { "id", "a" } } } },
+                                    { "rows", rows } },
+                       nullptr );
+        controls.table()->selectAll();
+        const auto selected = controls.lastOf( "selected" );
+        const auto ids = selected.value( "value" ).toArray();
+        REQUIRE_FALSE( ids.isEmpty() );
+        REQUIRE( ids.size() < 63 );
+        REQUIRE( QJsonDocument( ids ).toJson( QJsonDocument::Compact ).size() <= pluginview::MaxIdBytes );
+        REQUIRE( selected.value( "selected_count" ) == 63 );
+        REQUIRE( selected.value( "truncated" ) == true );
+    }
+    // A patch entry that replaces the rows and sets the selection sends no `selected` at all.
+    {
+        View fixture( boardsTable(), nullptr );
+        auto* table = fixture.table();
+        table->selectionModel()->select( fixture.index( "r1", 0 ), QItemSelectionModel::ClearAndSelect
+                                                                       | QItemSelectionModel::Rows );
+        const auto before = fixture.countOf( "selected" );
+        fixture.view.applyPatch( { QJsonObject{
+            { "id", "t" },
+            { "replace_rows", QJsonArray{ QJsonObject{ { "id", "r9" }, { "cells", QJsonArray{ "nine" } } } } },
+            { "select", QJsonArray{ "r9" } } } } );
+        REQUIRE( fixture.countOf( "selected" ) == before );
+        REQUIRE( fixture.behaviour()->selectedRowIds( 10 ) == QStringList{ "r9" } );
+    }
+    // sort_as "text" compares the text itself: "02" is no number 2 there.
+    {
+        View texts( QJsonObject{
+                        { "type", "table" },
+                        { "id", "t" },
+                        { "sortable", true },
+                        { "columns", QJsonArray{ QJsonObject{ { "id", "a" }, { "sort_as", "text" } } } },
+                        { "rows", QJsonArray{ QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "1" } } },
+                                              QJsonObject{ { "id", "r10" }, { "cells", QJsonArray{ "10" } } },
+                                              QJsonObject{ { "id", "r02" }, { "cells", QJsonArray{ "02" } } } } } },
+                    nullptr );
+        texts.table()->sortByColumn( 0, Qt::AscendingOrder );
+        const auto* model = texts.table()->model();
+        REQUIRE( model->index( 0, 0 ).data().toString() == "02" );
+        REQUIRE( model->index( 1, 0 ).data().toString() == "1" );
+        REQUIRE( model->index( 2, 0 ).data().toString() == "10" );
+    }
+    // New columns: a pending sort is saved with its own column, and the sort index of a column
+    // that is gone does not sort another one.
+    std::map<QString, QJsonObject> store;
+    const auto columnsOf = []( const QStringList& ids ) {
+        QJsonArray columns;
+        for ( const auto& id : ids ) {
+            columns.append( QJsonObject{ { "id", id }, { "title", id.toUpper() } } );
+        }
+        return columns;
+    };
+    View sorted( QJsonObject{ { "type", "table" },
+                              { "id", "t" },
+                              { "sortable", true },
+                              { "columns", columnsOf( { "a", "b" } ) },
+                              { "rows", QJsonArray{ QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "2", "x" } } },
+                                                    QJsonObject{ { "id", "r2" }, { "cells", QJsonArray{ "1", "y" } } } } } },
+                 &store );
+    auto* table = sorted.table();
+    table->sortByColumn( 0, Qt::AscendingOrder );
+    QTest::mouseRelease( table->horizontalHeader()->viewport(), Qt::LeftButton ); // schedules a save
+    REQUIRE( table->model()->index( 0, 0 ).data( pluginview::RowIdRole ) == "r2" );
+    sorted.view.applyPatch( { QJsonObject{ { "id", "t" }, { "set", QJsonObject{ { "columns", columnsOf( { "b", "c" } ) } } } } } );
+    REQUIRE( store[ "t" ].value( "sort" ).toObject().value( "column" ) == "a" );
+    REQUIRE( table->horizontalHeader()->sortIndicatorSection() == -1 );
+    REQUIRE( table->model()->index( 0, 0 ).data( pluginview::RowIdRole ) == "r1" ); // unsorted
+    QTest::qWait( 700 );
+    REQUIRE( store[ "t" ].value( "sort" ).toObject().value( "column" ) != "b" );
+    // A press on a selected row of a toggle table holds its `selected` until the release.
+    View toggle( boardsTable( { { "reorderable", true }, { "toggle_selection", true } } ), nullptr );
+    auto* viewport = toggle.table()->viewport();
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r2", 0 ) );
+    const auto clicks = toggle.countOf( "selected" );
+    QTest::mousePress( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+    REQUIRE( toggle.countOf( "selected" ) == clicks ); // the press toggled r1 off, silently
+    QTest::mouseRelease( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+    REQUIRE( toggle.countOf( "selected" ) == clicks + 1 ); // no drag: one event, after the release
+    REQUIRE( toggle.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ "r2" } );
+}
+
 TEST_CASE( "E17d drags move the selection, bars show on alternate rows, a new root saves first",
            "[ui][workbench][E17]" )
 {
