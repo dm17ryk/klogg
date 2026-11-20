@@ -13,6 +13,7 @@
 #include <QStyledItemDelegate>
 #include <QVector>
 #include <functional>
+#include <initializer_list>
 #include <optional>
 
 class QComboBox;
@@ -51,12 +52,16 @@ QJsonArray editorChoices( const QJsonObject& editor );
 bool sameValue( const QJsonValue& left, const QJsonValue& right );
 // Tooltips are plain text: Qt would render text that looks like HTML as rich text.
 QString plainToolTip( const QString& tip );
+// Parts joined so that no two different lists give the same key (each part is length-prefixed):
+// tooltip keys and ids may contain any character.
+QString joinedKey( std::initializer_list<QString> parts );
 
 // What an advanced tooltip on a table cell asks for (docs/plugin-sdk-advanced.md section 9.2).
 struct CellTooltipTarget {
     QString rowId;
     QString columnId;
-    QString key; // the row's and the column's tooltip_key
+    QString key;        // the cache key part: the table's, row's, column's and cell's tooltip_key
+    QString tooltipKey; // the one the query carries: the most specific that is set
     bool provider = false;
 };
 

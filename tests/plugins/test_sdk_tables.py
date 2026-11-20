@@ -121,6 +121,10 @@ class Builders(TableCase):
         self.assertIsNot(row["cells"][1], state)  # cell objects and drag are copied
         self.assertIsNot(row["drag"], drag)
         self.assertEqual(sdk.table_row("r", ["a"], drag=True)["drag"], True)
+        # A mapping is a cell object when it has a cell key; any other mapping is text, as
+        # before rich tables.
+        self.assertEqual(sdk.table_row("r", [{"status": "ok"}, {"icon": "status:ok"}, {}])["cells"],
+                         ["{'status': 'ok'}", {"icon": "status:ok"}, "{}"])
 
     def test_table_keeps_its_signature_and_takes_the_new_keys(self):
         sdk = self.sdk

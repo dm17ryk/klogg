@@ -980,9 +980,16 @@ def table_column(id: str, title: Optional[str] = None, width: Optional[int] = No
     return column_object
 
 
+CELL_KEYS = frozenset({"text", "icon", "tooltip", "tooltip_key", "tone", "bold", "progress",
+                       "sort"})
+
+
 def _row_cell(value: Any) -> Any:
-    """A cell object stays a (copied) dict; any other value becomes its str()."""
-    return dict(value) if isinstance(value, collections.abc.Mapping) else str(value)
+    """A cell object (a mapping with at least one cell key, as cell() makes) stays a (copied)
+    dict; any other value, other mappings included, becomes its str()."""
+    if isinstance(value, collections.abc.Mapping) and not CELL_KEYS.isdisjoint(value.keys()):
+        return dict(value)
+    return str(value)
 
 
 def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
@@ -991,9 +998,10 @@ def table_row(id: str, cells: Sequence[Any], tone: Optional[str] = None,
               tooltip_key: Optional[str] = None, *, icon: Optional[IconRef] = None,
               checked: Optional[bool] = None,
               drag: Union[bool, Mapping[str, Any], None] = None) -> JsonObject:
-    """A table row (TableRow). Cells are strings (other values are converted with str()) or
-    cell() objects. `tooltip_key` (at most 128 characters) is part of the host's tooltip cache
-    key: change it when the row's advanced tooltips change.
+    """A table row (TableRow). Cells are strings or cell() objects (mappings with at least one
+    of CELL_KEYS); other values, other mappings included, are converted with str().
+    `tooltip_key` (at most 128 characters) is part of the host's tooltip cache key: change it
+    when the row's advanced tooltips change.
 
     Keys of the host feature rich_tables (update() and patch() remove them, and send cell
     objects as their text, on an older host): `icon` (in the first column), `checked` (shown

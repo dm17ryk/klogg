@@ -32,6 +32,16 @@ QString menuKey( std::initializer_list<QString> parts )
     return key;
 }
 
+// A list of ids, each length-prefixed as well: no separator can make two lists equal.
+QString listKey( const QStringList& ids )
+{
+    QString key = QString::number( ids.size() ) + QLatin1Char( ';' );
+    for ( const auto& id : ids ) {
+        key += QString::number( id.size() ) + QLatin1Char( ':' ) + id;
+    }
+    return key;
+}
+
 qint64 nowMs()
 {
     return QDateTime::currentMSecsSinceEpoch();
@@ -46,7 +56,7 @@ QString populateKey( const QString& pluginId, const QString& menuId, const QStri
     if ( context.location == QLatin1String( "element" ) ) {
         // The count too: ids are bounded, so two selections can share them but not their size.
         key += menuKey( { context.windowId, context.viewId, context.elementId, context.rowId,
-                          context.columnId, context.selectedIds.join( QChar( 0x1f ) ),
+                          context.columnId, listKey( context.selectedIds ),
                           QString::number( context.selectedLines ) } );
     }
     return key;

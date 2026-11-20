@@ -98,6 +98,10 @@ public:
     // Writes a column change still waiting for its save (the view closes, or new columns come).
     void flushPendingSave();
 
+    // The rows a drag that starts now moves: the selection before the press when the pressed row
+    // was in it, else the pressed row alone; empty without a press that may start a drag.
+    QStringList draggedRows() const;
+
 protected:
     bool eventFilter( QObject* watched, QEvent* event ) override;
 
@@ -126,5 +130,6 @@ private:
     QString selectionAnchor_;  // the row of the last click (toggle selection ranges)
     QPoint pressPosition_;
     QString pressRow_;
+    QStringList pressSelection_; // the selected rows when the drag's press came
     bool restoring_ = false;
 };

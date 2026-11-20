@@ -260,6 +260,15 @@ QString plainToolTip( const QString& tip )
     return Qt::mightBeRichText( tip ) ? Qt::convertFromPlainText( tip, Qt::WhiteSpaceNormal ) : tip;
 }
 
+QString joinedKey( std::initializer_list<QString> parts )
+{
+    QString key;
+    for ( const auto& part : parts ) {
+        key += QString::number( part.size() ) + QLatin1Char( ':' ) + part;
+    }
+    return key;
+}
+
 // PluginTableModel
 
 PluginTableModel::PluginTableModel( QObject* parent )
@@ -796,7 +805,14 @@ CellTooltipTarget PluginTableModel::tooltipTarget( const QModelIndex& index, boo
     // E17d: a cell object's tooltip_key is the most specific part.
     const auto cellKey
         = index.column() < row.styles.size() ? row.styles.at( index.column() ).tooltipKey : QString{};
-    target.key = tableKey + '\x1f' + row.tooltipKey + '\x1f' + column.tooltipKey + '\x1f' + cellKey;
+    target.key = joinedKey( { tableKey, row.tooltipKey, column.tooltipKey, cellKey } );
+    // The query gets the cell's, else the row's, else the column's, else the table's.
+    for ( const auto* candidate : { &cellKey, &row.tooltipKey, &column.tooltipKey, &tableKey } ) {
+        if ( !candidate->isEmpty() ) {
+            target.tooltipKey = *candidate;
+            break;
+        }
+    }
     return target;
 }
 

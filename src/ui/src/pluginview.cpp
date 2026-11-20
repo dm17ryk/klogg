@@ -413,13 +413,7 @@ PluginTooltips::Target PluginView::tooltipTarget( const QString& elementId, cons
     target.rect = table ? table->visualRect( proxied ) : QRect{};
     // The most specific key goes into the query: the cell's (E17d), else the row's, else the
     // column's, else the table's.
-    const auto parts = cell.key.split( QChar( 0x1f ) );
-    for ( const auto part : { 3, 1, 2, 0 } ) {
-        if ( !parts.value( part ).isEmpty() || part == 0 ) {
-            target.tooltipKey = parts.value( part );
-            break;
-        }
-    }
+    target.tooltipKey = cell.tooltipKey;
     return target;
 }
 

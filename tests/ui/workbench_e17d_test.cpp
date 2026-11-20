@@ -420,6 +420,73 @@ TEST_CASE( "E17d hidden widths, minimum widths when shown, focus without selecti
     REQUIRE( plain.behaviour()->currentRowId() == "r2" );
 }
 
+TEST_CASE( "E17d drags move the selection, bars show on alternate rows, a new root saves first",
+           "[ui][workbench][E17]" )
+{
+    // A press in a toggle-selection table deselects its row at once; a drag it starts still moves
+    // the rows selected before the press.
+    {
+        View toggle( boardsTable( { { "reorderable", true }, { "toggle_selection", true } } ), nullptr );
+        auto* viewport = toggle.table()->viewport();
+        QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+        QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r2", 0 ) );
+        REQUIRE( toggle.behaviour()->selectedRowIds( 10 ) == QStringList{ "r1", "r2" } );
+        QTest::mousePress( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+        REQUIRE( toggle.behaviour()->selectedRowIds( 10 ) == QStringList{ "r2" } );
+        REQUIRE( toggle.behaviour()->draggedRows() == QStringList{ "r1", "r2" } );
+        QTest::mouseRelease( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+        REQUIRE( toggle.behaviour()->draggedRows().isEmpty() );
+        // A row that was not selected moves alone.
+        QTest::mousePress( viewport, Qt::LeftButton, {}, toggle.center( "r3", 0 ) );
+        REQUIRE( toggle.behaviour()->draggedRows() == QStringList{ "r3" } );
+        QTest::mouseRelease( viewport, Qt::LeftButton, {}, toggle.center( "r3", 0 ) );
+    }
+    // A full bar on an alternate row is not covered by the row's background.
+    {
+        auto bars = boardsTable( { { "selection", "none" }, { "sortable", false } } );
+        QJsonArray rows;
+        for ( int row = 0; row < 4; ++row ) {
+            const auto filled = row == 1; // rows 1 and 3 are alternate rows
+            rows.append( QJsonObject{
+                { "id", QString( "p%1" ).arg( row ) },
+                { "cells", QJsonArray{ filled ? QJsonValue( cell( "", { { "progress", 1.0 } } ) )
+                                              : QJsonValue( "" ),
+                                       "", "", "", "" } } } );
+        }
+        bars.insert( "rows", rows );
+        View fixture( bars, nullptr );
+        auto* table = fixture.table();
+        table->clearSelection();
+        table->setCurrentIndex( {} );
+        const auto image = table->viewport()->grab().toImage();
+        const auto pixel = [ & ]( const QString& rowId ) {
+            return image.pixelColor( fixture.center( rowId, 0 ) * image.devicePixelRatio() );
+        };
+        REQUIRE( pixel( "p1" ) != pixel( "p3" ) );
+    }
+    // A root of another shape replaces the tables: their column changes are saved first, for
+    // every table of the view.
+    std::map<QString, QJsonObject> store;
+    View fixture( QJsonObject{ { "type", "column" },
+                               { "id", "tables" },
+                               { "children", QJsonArray{ boardsTable(), boardsTable( { { "id", "t2" } } ) } } },
+                  &store );
+    auto* second = qobject_cast<QTableView*>( fixture.view.element( "t2" ) );
+    REQUIRE( second );
+    // A user's resize ends with a release on the header, which schedules the save.
+    fixture.table()->horizontalHeader()->resizeSection( 0, 211 );
+    QTest::mouseRelease( fixture.table()->horizontalHeader()->viewport(), Qt::LeftButton );
+    second->horizontalHeader()->resizeSection( 0, 212 );
+    QTest::mouseRelease( second->horizontalHeader()->viewport(), Qt::LeftButton );
+    REQUIRE( store[ "t" ].value( "columns" ).toArray().at( 0 ).toObject().value( "width" ) != 211 );
+    fixture.view.setRoot( QJsonObject{
+        { "type", "column" },
+        { "id", "body" },
+        { "children", QJsonArray{ QJsonObject{ { "type", "label" }, { "id", "done" }, { "text", "Done" } } } } } );
+    REQUIRE( store[ "t" ].value( "columns" ).toArray().at( 0 ).toObject().value( "width" ) == 211 );
+    REQUIRE( store[ "t2" ].value( "columns" ).toArray().at( 0 ).toObject().value( "width" ) == 212 );
+}
+
 TEST_CASE( "E17d ranges, menus, Copy and sorting at their edges", "[ui][workbench][E17]" )
 {
     const auto texts = [ & ]( QTableView* view ) {
@@ -837,4 +904,45 @@ TEST_CASE( "E17d a dynamic element entry's cached answer belongs to its row and 
     const auto first = open( "r1" );
     REQUIRE( open( "r1" ) == first ); // the same row and selection: the cached answer
     REQUIRE( open( "r2" ) != first ); // another row asks the plugin again
+
+    // Selections are told apart by every id, whatever characters the ids hold, and by their size
+    // when the ids they carry are bounded.
+    const auto setRows = [ & ]( const QStringList& ids ) {
+        QJsonArray rows;
+        for ( const auto& id : ids ) {
+            rows.append( QJsonObject{ { "id", id }, { "cells", QJsonArray{ "row" } } } );
+        }
+        fixture.view()->applyPatch( { QJsonObject{ { "id", "boards" }, { "replace_rows", rows } } } );
+        REQUIRE( table->model()->rowCount() == ids.size() );
+    };
+    const auto select = [ & ]( const QStringList& ids ) {
+        QItemSelection chosen;
+        for ( int index = 0; index < table->model()->rowCount(); ++index ) {
+            const auto cellIndex = table->model()->index( index, 0 );
+            if ( ids.contains( cellIndex.data( pluginview::RowIdRole ).toString() ) ) {
+                chosen.select( cellIndex, cellIndex );
+            }
+        }
+        table->selectionModel()->select( chosen, QItemSelectionModel::ClearAndSelect
+                                                     | QItemSelectionModel::Rows );
+    };
+    const QString unit( QChar( 0x1f ) );
+    setRows( { "x", "a" + unit + "b", "c", "a", "b" + unit + "c" } );
+    select( { "x", "a" + unit + "b", "c" } );
+    const auto joined = open( "x" );
+    REQUIRE( open( "x" ) == joined );
+    select( { "x", "a", "b" + unit + "c" } ); // the same ids joined by the separator
+    REQUIRE( open( "x" ) != joined );
+    // Ids of 4,000 characters: only about 65 fit in the menu context, so 66 and 67 selected rows
+    // carry the same ids and differ by their count alone.
+    QStringList longIds;
+    for ( int index = 0; index < 70; ++index ) {
+        longIds.append( QString( "%1" ).arg( index, 3, 10, QChar( '0' ) ) + QString( 3997, 'x' ) );
+    }
+    setRows( longIds );
+    select( longIds.mid( 0, 66 ) );
+    const auto sixtySix = open( longIds.front() );
+    REQUIRE( open( longIds.front() ) == sixtySix );
+    select( longIds.mid( 0, 67 ) );
+    REQUIRE( open( longIds.front() ) != sixtySix );
 }

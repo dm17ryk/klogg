@@ -68,7 +68,9 @@ TEST_CASE( "E17d table cells, rows and columns", "[plugins][E17]" )
     REQUIRE( first.data().toString() == "item 10" );
     REQUIRE( first.data( pluginview::ProgressRole ).toDouble() == 1.0 );
     REQUIRE( model.index( 1, 0 ).data( pluginview::ProgressRole ).isNull() );
-    REQUIRE( model.tooltipTarget( first, false, "t" ).key.endsWith( "\x1f" "k10" ) );
+    const auto target = model.tooltipTarget( first, false, "t" );
+    REQUIRE( target.key == pluginview::joinedKey( { "t", "", "", "k10" } ) );
+    REQUIRE( target.tooltipKey == "k10" );
     // Check boxes: only in check columns, from the row's `checked`.
     REQUIRE( model.index( 0, 2 ).data( Qt::CheckStateRole ) == Qt::Checked );
     REQUIRE( model.index( 1, 2 ).data( Qt::CheckStateRole ) == Qt::Unchecked );
@@ -158,4 +160,35 @@ TEST_CASE( "E17d element menus get no window shortcuts", "[plugins][E17]" )
     const auto shortcuts = manifestShortcuts( "org.p", "P", manifest );
     REQUIRE( shortcuts.size() == 1 );
     REQUIRE( shortcuts.front().menuId == "main" );
+}
+
+TEST_CASE( "E17d cell tooltip keys keep every character and never share a cache key",
+           "[plugins][E17]" )
+{
+    const QString unit( QChar( 0x1f ) );
+    PluginTableModel model( nullptr );
+    REQUIRE( model.setColumns( QJsonArray{
+        QJsonObject{ { "id", "a" }, { "tooltip_key", "c" } },
+        QJsonObject{ { "id", "b" }, { "tooltip_key", "b" + unit + "c" } } } ) );
+    REQUIRE( model.replace( QJsonArray{
+        // The cell's key holds the separator the host once split on.
+        QJsonObject{ { "id", "r1" },
+                     { "cells", QJsonArray{ QJsonObject{ { "text", "x" },
+                                                         { "tooltip_key", "left" + unit + "right" } },
+                                            "y" } } },
+        // Row "a<US>b" in column "c" and row "a" in column "b<US>c" once joined to one key.
+        QJsonObject{ { "id", "r2" }, { "tooltip_key", "a" + unit + "b" }, { "cells", QJsonArray{ "x", "y" } } },
+        QJsonObject{ { "id", "r3" }, { "tooltip_key", "a" }, { "cells", QJsonArray{ "x", "y" } } } } ) );
+    // The whole cell key reaches the query.
+    REQUIRE( model.tooltipTarget( model.index( 0, 0 ), false, "table" ).tooltipKey
+             == "left" + unit + "right" );
+    // The most specific key that is set: the cell's, the row's, the column's, the table's.
+    REQUIRE( model.tooltipTarget( model.index( 2, 1 ), false, "table" ).tooltipKey == "a" );
+    REQUIRE( model.tooltipTarget( model.index( 1, 0 ), false, "table" ).tooltipKey == "a" + unit + "b" );
+    REQUIRE( model.tooltipTarget( model.index( 0, 1 ), false, "table" ).tooltipKey == "b" + unit + "c" );
+    // Different parts never make the same cache key part.
+    REQUIRE( model.tooltipTarget( model.index( 1, 0 ), false, {} ).key
+             != model.tooltipTarget( model.index( 2, 1 ), false, {} ).key );
+    REQUIRE( pluginview::joinedKey( { "a" + unit + "b", "c" } )
+             != pluginview::joinedKey( { "a", "b" + unit + "c" } ) );
 }

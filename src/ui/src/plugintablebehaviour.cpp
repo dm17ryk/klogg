@@ -665,13 +665,30 @@ void PluginTableBehaviour::activate( const QModelIndex& index )
                                    { "column_id", model_->columnId( source.column() ) } } );
 }
 
+QStringList PluginTableBehaviour::draggedRows() const
+{
+    if ( pressRow_.isEmpty() ) {
+        return {};
+    }
+    // The selection as it was before the press: a toggle-selection table has already deselected
+    // the pressed row, which still moves with the others (as Qt's own drags defer the toggle).
+    return pressSelection_.contains( pressRow_ ) ? pressSelection_ : QStringList{ pressRow_ };
+}
+
 void PluginTableBehaviour::startDrag()
 {
-    auto ids = selectedRowIds( pluginview::MaxTableIds );
-    if ( !ids.contains( pressRow_ ) ) {
-        ids = QStringList{ pressRow_ };
+    const auto ids = draggedRows();
+    const bool wasSelected = pressSelection_.contains( pressRow_ );
+    const auto dragged = std::exchange( pressRow_, {} );
+    pressSelection_.clear();
+    if ( wasSelected && table_->selectionMode() == QAbstractItemView::MultiSelection ) {
+        // The press toggled the dragged row off: it is selected again, with the rows it moves with.
+        if ( const auto row = indexOfRow( dragged );
+             row.isValid() && !table_->selectionModel()->isRowSelected( row.row(), {} ) ) {
+            table_->selectionModel()->select( row, QItemSelectionModel::Select
+                                                       | QItemSelectionModel::Rows );
+        }
     }
-    pressRow_.clear();
     auto* mime = new QMimeData;
     mime->setData( RowsMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) ).toJson(
                                      QJsonDocument::Compact ) );
@@ -760,6 +777,8 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
             if ( mouse->modifiers() == Qt::NoModifier && reorderAllowed() ) {
                 pressPosition_ = position;
                 pressRow_ = rowIdAt( index );
+                // Before the view handles the press, which toggles the row in a toggle table.
+                pressSelection_ = selectedRowIds( pluginview::MaxTableIds );
             }
         }
         return false;

@@ -538,7 +538,8 @@ them for an older host and reads the new events and menu contexts:
   tone=None, bold=None, progress=None, sort=None)` (`TableCell`). `tooltip` is the cell's plain
   tooltip and wins over the row's; `tone` (`CELL_TONES`) wins over the row's tone; `progress`
   (0 to 1) draws a bar behind the text; `sort` is the value a sortable table sorts by instead
-  of the text. `table_row` keeps cell objects and turns other values into text, as before.
+  of the text. `table_row` keeps cell objects (mappings with at least one of `CELL_KEYS`, as
+  `cell()` makes) and turns other values, other mappings included, into text, as before.
 - **Rows, columns and tables.** New keyword-only keys:
   - `table_row(..., icon=None, checked=None, drag=None)` (`TableRow`): an icon in the first
     column, the state of the check columns (a row without `checked` is unchecked), and `drag`
