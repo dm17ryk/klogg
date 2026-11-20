@@ -38,14 +38,17 @@ qint64 nowMs()
 }
 
 // The cache key of a dynamic submenu's answer (cache_ms). An element menu's answer is about its
-// target: another window, view, element, row, column or selection asks the plugin again.
+// target: another window, view, element, row, node, column or selection asks the plugin again.
 QString populateKey( const QString& pluginId, const QString& menuId, const QString& itemId,
                      const PluginMenuContext& context )
 {
     auto key = menuKey( { pluginId, menuId, itemId, context.location, context.tabId } );
     if ( context.location == QLatin1String( "element" ) ) {
+        // The count too: ids are bounded, so two selections can share them but not their size.
         key += menuKey( { context.windowId, context.viewId, context.elementId, context.rowId,
-                          context.columnId, context.selectedIds.join( QChar( 0x1f ) ) } );
+                          context.nodeId, context.columnId,
+                          context.selectedIds.join( QChar( 0x1f ) ),
+                          QString::number( context.selectedLines ) } );
     }
     return key;
 }

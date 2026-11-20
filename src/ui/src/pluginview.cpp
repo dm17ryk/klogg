@@ -536,7 +536,19 @@ PluginView::~PluginView()
 {
     cancelDialogs();
     cancelAllChildren();
+    flushKeptColumns();
     detachTables();
+}
+
+// A column change still waiting for its save is written while this view and its queries are
+// whole: the tables are deleted later, with the widgets.
+void PluginView::flushKeptColumns()
+{
+    for ( const auto& node : std::as_const( nodes_ ) ) {
+        if ( node && node->behaviour ) {
+            node->behaviour->flushPendingSave();
+        }
+    }
 }
 
 // Table and tree models call back into the view. The widget teardown after the destructor can
@@ -673,6 +685,7 @@ void PluginView::clear()
 {
     cancelDialogs();
     cancelAllChildren();
+    flushKeptColumns();
     detachTables();
     if ( auto* old = scroll_->takeWidget() ) {
         old->deleteLater();
