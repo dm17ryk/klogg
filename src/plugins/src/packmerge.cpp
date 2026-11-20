@@ -1,10 +1,12 @@
 #include "packmerge.h"
 
 #include "packcanonical.h"
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+#include <algorithm>
 #include <git2.h>
 
 namespace cilogg::plugins::packmerge {
@@ -179,23 +181,74 @@ QJsonValue withField( const QJsonValue& root, const QString& path,
     return object;
 }
 
-JsonMerge mergeJson( const std::optional<QJsonValue>& base, const std::optional<QJsonValue>& mine,
-                     const std::optional<QJsonValue>& theirs, MergeStrategy strategy,
-                     const QString& path )
+namespace {
+// Field conflicts kept for one merged value: one with more is a single conflict of the whole
+// value (as a job lists such an item), so a large item never holds thousands of field paths.
+constexpr qsizetype MaxFieldConflicts = 32;
+
+// Where the merge is, from the merged value down. It becomes a field path only for a conflict:
+// a 1 MiB item can have tens of thousands of leaves under long keys.
+struct PathLink {
+    const PathLink* parent = nullptr;
+    const QString* segment = nullptr;
+    bool element = false;
+};
+
+struct MergeState {
+    MergeStrategy strategy = MergeStrategy::Fail;
+    QString root;
+    QStringList conflicts;
+    bool overflow = false;
+};
+
+QString materialize( const QString& root, const PathLink* link )
+{
+    QStringList parts;
+    for ( ; link; link = link->parent ) {
+        parts.append( fieldPath( {}, *link->segment, link->element ) );
+    }
+    std::reverse( parts.begin(), parts.end() );
+    if ( !root.isEmpty() ) {
+        parts.prepend( root );
+    }
+    return parts.join( '/' );
+}
+
+// Each element of an array of named elements by its name.
+QHash<QString, qsizetype> byName( const QJsonArray& array )
+{
+    QHash<QString, qsizetype> index;
+    index.reserve( array.size() );
+    for ( qsizetype at = 0; at < array.size(); ++at ) {
+        index.insert( array.at( at ).toObject().value( "name" ).toString(), at );
+    }
+    return index;
+}
+
+std::optional<QJsonValue> elementNamed( const QJsonArray& array,
+                                        const QHash<QString, qsizetype>& index, const QString& name )
+{
+    const auto at = index.constFind( name );
+    return at == index.cend() ? std::nullopt : std::optional<QJsonValue>( array.at( *at ) );
+}
+
+std::optional<QJsonValue> mergeValue( const std::optional<QJsonValue>& base,
+                                      const std::optional<QJsonValue>& mine,
+                                      const std::optional<QJsonValue>& theirs, const PathLink* at,
+                                      MergeState& state )
 {
     // Not edited locally: the new version. Edited only locally: the edit. The same change on
     // both sides: no conflict.
     if ( same( mine, base ) ) {
-        return { theirs, {} };
+        return theirs;
     }
     if ( same( theirs, base ) || same( mine, theirs ) ) {
-        return { mine, {} };
+        return mine;
     }
     // Changed on both sides: objects merge member by member, arrays of named elements element
     // by element (an item added on both sides merges against nothing).
     if ( mine && theirs && mine->isObject() && theirs->isObject()
          && ( !base || base->isObject() ) ) {
-        JsonMerge merged{ QJsonObject{}, {} };
         QStringList keys = mine->toObject().keys() + theirs->toObject().keys();
         if ( base ) {
             keys += base->toObject().keys();
@@ -203,46 +256,65 @@ JsonMerge mergeJson( const std::optional<QJsonValue>& base, const std::optional<
         keys.removeDuplicates();
         QJsonObject object;
         for ( const auto& key : keys ) {
-            const auto part = mergeJson( member( base, key ), member( mine, key ),
-                                         member( theirs, key ), strategy,
-                                         fieldPath( path, key ) );
-            merged.conflicts += part.conflicts;
-            if ( part.value ) {
-                object.insert( key, *part.value );
+            const PathLink link{ at, &key, false };
+            const auto part = mergeValue( member( base, key ), member( mine, key ),
+                                          member( theirs, key ), &link, state );
+            if ( part ) {
+                object.insert( key, *part );
             }
         }
-        merged.value = object;
-        return merged;
+        return object;
     }
     if ( mine && theirs && mine->isArray() && theirs->isArray() && named( mine->toArray() )
          && named( theirs->toArray() ) && ( !base || ( base->isArray() && named( base->toArray() ) ) ) ) {
-        JsonMerge merged;
-        QJsonArray array;
+        const auto baseItems = base ? base->toArray() : QJsonArray{};
+        const auto mineItems = mine->toArray();
+        const auto theirItems = theirs->toArray();
+        const auto baseIndex = byName( baseItems );
+        const auto mineIndex = byName( mineItems );
+        const auto theirIndex = byName( theirItems );
         // The local order, then elements new in the new version in its order.
         QStringList names;
-        for ( const auto& item : mine->toArray() ) {
+        for ( const auto& item : mineItems ) {
             names.append( item.toObject().value( "name" ).toString() );
         }
-        for ( const auto& item : theirs->toArray() ) {
+        for ( const auto& item : theirItems ) {
             const auto name = item.toObject().value( "name" ).toString();
-            if ( !names.contains( name ) ) {
+            if ( !mineIndex.contains( name ) ) {
                 names.append( name );
             }
         }
+        QJsonArray array;
         for ( const auto& name : names ) {
-            const auto part = mergeJson( element( base, name ), element( mine, name ),
-                                         element( theirs, name ), strategy,
-                                         fieldPath( path, name, true ) );
-            merged.conflicts += part.conflicts;
-            if ( part.value ) {
-                array.append( *part.value );
+            const PathLink link{ at, &name, true };
+            const auto part = mergeValue( base ? elementNamed( baseItems, baseIndex, name ) : std::nullopt,
+                                          elementNamed( mineItems, mineIndex, name ),
+                                          elementNamed( theirItems, theirIndex, name ), &link, state );
+            if ( part ) {
+                array.append( *part );
             }
         }
-        merged.value = array;
-        return merged;
+        return array;
     }
     // The same value changed differently, or deleted on one side and changed on the other.
-    return { strategy == MergeStrategy::TakeTheirs ? theirs : mine, { path } };
+    if ( state.conflicts.size() < MaxFieldConflicts ) {
+        state.conflicts.append( materialize( state.root, at ) );
+    }
+    else {
+        state.overflow = true;
+    }
+    return state.strategy == MergeStrategy::TakeTheirs ? theirs : mine;
+}
+} // namespace
+
+JsonMerge mergeJson( const std::optional<QJsonValue>& base, const std::optional<QJsonValue>& mine,
+                     const std::optional<QJsonValue>& theirs, MergeStrategy strategy,
+                     const QString& path )
+{
+    MergeState state{ strategy, path, {}, false };
+    auto value = mergeValue( base, mine, theirs, nullptr, state );
+    // More conflicting fields than are kept: the value is one conflict, settled as a whole.
+    return { std::move( value ), state.overflow ? QStringList{ path } : state.conflicts };
 }
 
 TextMerge mergeText( const QByteArray& base, const QByteArray& mine, const QByteArray& theirs,

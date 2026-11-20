@@ -609,6 +609,18 @@ TEST_CASE( "A journal is acted on only when it is sure", "[packmerge][E16]" )
         CHECK( readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
         CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
     }
+    SECTION( "a journal without its tips is never taken as \"there was no store\"" )
+    {
+        // Only `existed: false`: acting on it would remove the store with its edits.
+        QFile file( journal );
+        REQUIRE( file.open( QIODevice::WriteOnly ) );
+        file.write( QJsonDocument( QJsonObject{ { "existed", false } } ).toJson() );
+        file.close();
+        CHECK( store.recoverInterruptedUpdate().contains( "cannot be read" ) );
+        CHECK( store.hasRepository() );
+        CHECK( store.localTip() == tip );
+        CHECK( readFile( store.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+    }
     SECTION( "a journal that cannot be read changes nothing" )
     {
         // No "existed": never taken as "there was no store", which would remove it.
@@ -1092,6 +1104,103 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
     };
     REQUIRE( padded( "previews/%46irst%20%46rame.json", 600 * 1000 ).ok() );
     CHECK( padded( second, 500 * 1000 ).error.contains( "larger than 1 MiB" ) );
+}
+
+TEST_CASE( "A large item merges fast and lists few conflicts", "[packmerge][E16]" )
+{
+    // 20,000 named fields under a long key, each changed differently on both sides.
+    const QString longKey( 4000, 'k' );
+    QJsonArray base;
+    QJsonArray mine;
+    QJsonArray theirs;
+    for ( int index = 0; index < 20000; ++index ) {
+        const auto name = QStringLiteral( "f%1" ).arg( index );
+        base.append( QJsonObject{ { "name", name }, { "v", 0 } } );
+        mine.append( QJsonObject{ { "name", name }, { "v", 1 } } );
+        theirs.append( QJsonObject{ { "name", name }, { "v", 2 } } );
+    }
+    const auto item = [ &longKey ]( const QJsonArray& fields ) {
+        return QJsonValue( QJsonObject{ { "name", "P" }, { longKey, QJsonObject{ { "fields", fields } } } } );
+    };
+    QElapsedTimer timer;
+    timer.start();
+    const auto merged = packmerge::mergeJson( item( base ), item( mine ), item( theirs ),
+                                              MergeStrategy::Fail );
+    CHECK( timer.elapsed() < 10000 );
+    // Past the fields a merge keeps, the item is one conflict, as a job lists it.
+    CHECK( merged.conflicts == QStringList{ QString{} } );
+    REQUIRE( merged.value );
+    const auto fields
+        = merged.value->toObject().value( longKey ).toObject().value( "fields" ).toArray();
+    REQUIRE( fields.size() == 20000 );
+    CHECK( fields.last().toObject().value( "v" ).toInt() == 1 ); // yours where both changed
+    // A few conflicts are listed field by field.
+    const auto few = packmerge::mergeJson( QJsonValue( object( R"({"a":1,"b":1})" ) ),
+                                           QJsonValue( object( R"({"a":2,"b":2})" ) ),
+                                           QJsonValue( object( R"({"a":3,"b":3})" ) ),
+                                           MergeStrategy::Fail );
+    CHECK( few.conflicts == QStringList{ "a", "b" } );
+}
+
+TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    const auto firstFrame = QStringLiteral( "previews/%46irst%20%46rame.json" );
+    const auto lua = packcanonical::filePath( "lua/a.lua" );
+    // Version 1 has a Lua file in Latin-1.
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- caf\xe9\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    // Yours: "First Frame" deleted, "Second" and the Lua file (now UTF-8) changed.
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", firstFrame }, { "remove", true } } ).ok() );
+    auto item = QJsonDocument::fromJson( Previews ).object()[ "previews" ].toArray()[ 0 ].toObject();
+    item[ "regex" ] = "^MINE$";
+    REQUIRE( manager.manage( "pack_edit", id,
+                             { { "path", second },
+                               { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                 .ok() );
+    REQUIRE( manager.manage( "pack_edit", id, { { "path", lua }, { "content", "-- mine\n" } } ).ok() );
+    // Version 2 removes "First Frame" too and changes "Second" and the Lua file otherwise.
+    auto document = QJsonDocument::fromJson( Previews ).object();
+    auto theirs = document[ "previews" ].toArray()[ 0 ].toObject();
+    theirs[ "regex" ] = "^THEIRS$";
+    document[ "previews" ] = QJsonArray{ theirs };
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", QJsonDocument( document ).toJson(),
+                                  "-- theirs\n" );
+    const auto asked = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( asked[ "state" ] == "failed" );
+    REQUIRE( asked[ "result" ].toMap()[ "needsMerge" ].toBool() );
+    // The Lua file's base is not UTF-8: listed so, and resolved only as a whole side.
+    CHECK_FALSE( asked[ "result" ].toMap()[ "items" ].toMap()[ lua ].toMap()[ "utf8" ].toBool() );
+    const auto revision = asked[ "result" ].toMap()[ "revision" ].toString();
+    const QVariantMap secondChoice{ { "path", second }, { "field", "regex" }, { "value", "^B$" } };
+    const auto attempt = [ &manager, &v2, &revision ]( const QVariantList& resolutions ) {
+        return finished( manager, manager.manage( "install", {},
+                                                  { { "path", v2 },
+                                                    { "resolutions", resolutions },
+                                                    { "revision", revision } } ) );
+    };
+    const auto text = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "text", "-- merged\n" } } } );
+    CHECK( text[ "state" ] == "failed" );
+    CHECK( text[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    // A field of an item the merge result does not have is never written back as a nameless item.
+    const auto revived = attempt( { secondChoice,
+                                    QVariantMap{ { "path", lua }, { "take", "theirs" } },
+                                    QVariantMap{ { "path", firstFrame }, { "field", "regex" }, { "value", "^x$" } } } );
+    CHECK( revived[ "state" ] == "failed" );
+    CHECK( revived[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
+    // Whole sides and fields of present items go ahead.
+    const auto applied = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } } } );
+    INFO( applied[ "error" ].toString().toStdString() );
+    CHECK( applied[ "state" ] == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( previewRegex( content, "Second" ) == "^B$" );
+    CHECK( previewRegex( content, "First Frame" ).isEmpty() );
 }
 
 TEST_CASE( "A merge result stays within the preview limits", "[packmerge][E16]" )

@@ -47,15 +47,17 @@ enum class CopyRoute {
     Taken,   // the user has another route under the copy's name: the copy would decode with it
 };
 
-// The route of the copy `target` of the pack's preview `name`: the route `name` decodes with now
-// (the user's own route for it, which wins, or else the pack's), added to `configuration` (the
-// user's).
+// The route of the copy `target` of the pack's preview `name`: the route `name` decodes with in
+// `before` (the user's own route for it, which wins, or else the pack's), added to
+// `configuration` (the user's; `before` as it was, ahead of other copies made with this one).
 CopyRoute addCopyRoute( const PreviewPackRegistry::Contribution& pack, const QString& name,
-                        const QString& target, QVariantMap* configuration )
+                        const QString& target, const QVariantMap& before,
+                        QVariantMap* configuration )
 {
+    const auto userRoutes = before.value( "previewRoutes" ).toMap();
+    const auto source = userRoutes.contains( name ) ? userRoutes.value( name )
+                                                    : pack.previewRoutes.value( name );
     auto routes = configuration->value( "previewRoutes" ).toMap();
-    const auto source = routes.contains( name ) ? routes.value( name )
-                                                : pack.previewRoutes.value( name );
     if ( routes.contains( target ) ) {
         return source.isValid() && sameRoute( routes.value( target ), source ) ? CopyRoute::Nothing
                                                                                : CopyRoute::Taken;
@@ -278,10 +280,11 @@ QString PreviewPackRegistry::checkCopyRoutes( const Contribution& pack,
                                               const QMap<QString, QString>& copies ) const
 {
     auto& settings = PreviewDecoderSettings::instance();
-    auto configuration = settings.configuration();
+    const auto before = settings.configuration();
+    auto configuration = before;
     bool added = false;
     for ( auto copy = copies.cbegin(); copy != copies.cend(); ++copy ) {
-        const auto route = addCopyRoute( pack, copy.key(), copy.value(), &configuration );
+        const auto route = addCopyRoute( pack, copy.key(), copy.value(), before, &configuration );
         if ( route == CopyRoute::Taken ) {
             return tr( "The decoder routes of the copies cannot be added to your routes: %1." )
                 .arg( routeTaken( copy.value() ) );
@@ -308,7 +311,7 @@ QString PreviewPackRegistry::copyWithRoute( const Contribution& pack, const QStr
     const auto previous = settings.configuration();
     auto configuration = previous;
     QString reason;
-    const auto route = addCopyRoute( pack, name, target, &configuration );
+    const auto route = addCopyRoute( pack, name, target, previous, &configuration );
     if ( route == CopyRoute::Taken
          || ( route == CopyRoute::Added && !settings.setConfiguration( configuration, &reason ) ) ) {
         LOG_WARNING << "Pack preview not copied, its route cannot be added name="

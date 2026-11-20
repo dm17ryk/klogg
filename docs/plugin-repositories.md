@@ -817,8 +817,8 @@ completed and only the journal goes (an update moves `upstream` first and an und
 last, `local` first, so an undo that stopped part-way is done again);
 otherwise CILogg ended part-way (between the branch moves or before the package swap, whatever
 the versions) and the store is put back to those tips, so a later update merges anew. A journal
-is read strictly (a missing or malformed field is never taken as "there was no store", which
-would remove it), and a store that is on disk but does not open now (another program holds a
+is read strictly (a missing or malformed field, the tips included, is never taken as "there was
+no store", which would remove it), and a store that is on disk but does not open now (another program holds a
 file) stops the operation instead of being taken as missing, while the pack keeps loading its
 content folder (never the installed folder, which lacks the edits). A merge's `revision` covers
 the edits and the incoming package (its files and manifest), so choices are not applied to
@@ -835,7 +835,8 @@ route for the copy; the route is saved first (a route under a name no preview ha
 nothing) and taken back if the copy fails, so a copy whose route cannot be added (the user's
 preview routes at their limit of 128, or another route of the user's already under the copy's
 name, which it would decode with) is not made, never left with a wrong route, and Keep Both
-checks the routes of all its copies at Apply. A copied block is renamed also when an enabled
+checks the routes of all its copies at Apply. A copy under another name (Keep Both's
+"<name> (mine)") never takes the name of a pack's preview, which it would replace. A copied block is renamed also when an enabled
 pack's block has its name (a pack block literally named `<other-pack-id>/<name>`), which would
 replace it. A field resolution's path stays within 4,096 characters and 128 segments; a conflict
 on a deeper field is listed as a whole-item conflict. A merge result must also stay within the

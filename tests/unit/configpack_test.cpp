@@ -446,6 +446,21 @@ TEST_CASE( "Pack previews are namespaced, preceded by the user's and never saved
         CHECK( manager.replacedByUser( "Pack frame" ) );
         CHECK( !manager.copyPackPreview( "Pack frame" ).isEmpty() );
     }
+    SECTION( "a copy under another name never replaces an enabled pack's preview" )
+    {
+        const auto a = parsedPack( "a.pack", "Pack A", packPreviews( "A frame" ) );
+        const auto b = parsedPack( "b.pack", "Pack B",
+                                   QString::fromUtf8( packPreviews( "A frame (mine)" ) )
+                                       .replace( "frame_header_block", "b_header_block" )
+                                       .toUtf8() );
+        manager.setPackPreviews( { a, b } );
+        CHECK( manager.copyPackPreview( "A frame", "A frame (mine)" )
+                   .contains( "An enabled pack has a preview named \"A frame (mine)\"" ) );
+        CHECK( !manager.findByName( "A frame (mine)" ) );
+        CHECK( manager.packOrigin( "A frame (mine)" )->packId == "b.pack" );
+        // Under its own name a copy replaces its original, as Copy to My Previews does.
+        CHECK( manager.copyPackPreview( "A frame" ).isEmpty() );
+    }
     SECTION( "a copied block never takes the name of another enabled pack's block" )
     {
         // Pack A has a block literally named "b.pack/frame_header_block", which is also what

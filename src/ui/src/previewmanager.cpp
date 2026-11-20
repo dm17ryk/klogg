@@ -435,6 +435,12 @@ QString PreviewManager::copyPreviewFrom( const PreviewPackSource& pack, const QS
     if ( findByName( target ) ) {
         return tr( "You already have a preview named \"%1\"." ).arg( target );
     }
+    // A copy under another name never takes an enabled pack preview's name: yours win, so it
+    // would replace that preview. (A copy under its own name replaces its original on purpose.)
+    if ( target != name && packOrigins_.contains( target ) ) {
+        return tr( "An enabled pack has a preview named \"%1\", which the copy would replace." )
+            .arg( target );
+    }
     const auto original
         = std::find_if( pack.previews.cbegin(), pack.previews.cend(),
                         [ &name ]( const auto& preview ) { return preview.name == name; } );

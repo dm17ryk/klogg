@@ -867,9 +867,10 @@ QString PackStore::recoverInterruptedUpdate( const PackFiles* installed,
     const PackTips before{ journal.value( "existed" ).toBool(), journal.value( "upstream" ).toString(),
                            journal.value( "local" ).toString() };
     // Read strictly: a journal that says "no store before" removes the store, so anything short
-    // of exactly that (or of two commit IDs) is not acted on.
+    // of exactly that, with both tips written (empty), or of two commit IDs is not acted on.
     static const QRegularExpression commitId( QStringLiteral( "\\A[0-9a-f]{40}\\z" ) );
-    const bool valid = journal.value( "existed" ).isBool()
+    const bool valid = journal.value( "existed" ).isBool() && journal.value( "upstream" ).isString()
+                       && journal.value( "local" ).isString()
                        && ( before.existed ? commitId.match( before.upstream ).hasMatch()
                                                  && commitId.match( before.local ).hasMatch()
                                            : before.upstream.isEmpty() && before.local.isEmpty() );

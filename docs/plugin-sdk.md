@@ -774,9 +774,10 @@ changed differently, or deleted on one side and changed on the other, is a confl
 `take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
 byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview or
 block field (an empty `field` replaces the whole item), and `{path, text}` for a file or the
-preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text is
-resolved with `take` only, and `pack_read` refuses it (editing it as text would change its
-bytes). With conflicts left open the job fails with `needsMerge: true`,
+preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
+any side (the installed version's too) is resolved with `take` only, and `pack_read` refuses it
+(editing it as text would change its bytes). A field resolution needs its item in the merge
+result: an item both sides deleted comes back only by a whole-item resolution. With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting
 item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.

@@ -97,6 +97,16 @@ QString checkKeepBoth( const PreviewPackRegistry::Contribution& pack, const QStr
                        "choose Keep Mine or Take Theirs." )
                 .arg( keepBothName( name ) );
         }
+        // A copy with the name of a pack's preview would replace that preview (yours win).
+        if ( std::any_of( previews.cbegin(), previews.cend(),
+                          [ &name ]( const auto& preview ) {
+                              return preview.name == keepBothName( name );
+                          } )
+             || PreviewManager::instance().packOrigin( keepBothName( name ) ) ) {
+            return tr( "A pack has a preview named \"%1\", which the copy would replace. Choose "
+                       "Keep Mine or Take Theirs." )
+                .arg( keepBothName( name ) );
+        }
     }
     const auto routes = PreviewPackRegistry::instance().checkCopyRoutes( pack, copies );
     if ( !routes.isEmpty() ) {

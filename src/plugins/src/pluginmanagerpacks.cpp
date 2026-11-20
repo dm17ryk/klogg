@@ -114,12 +114,14 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
     for ( const auto& path : order ) {
         const auto& list = byItem.value( path );
         const auto count = list.size();
-        const bool tooDeep = std::any_of( list.cbegin(), list.cend(), []( const PackConflict* conflict ) {
-            return !fieldPathFits( conflict->field );
+        // A conflict of the whole item (one with more conflicting fields than the merge keeps, or
+        // deleted on one side) or on a field too deep to resolve: the item is listed whole.
+        const bool asWhole = std::any_of( list.cbegin(), list.cend(), []( const PackConflict* conflict ) {
+            return conflict->field.isEmpty() || !fieldPathFits( conflict->field );
         } );
         const bool collapse = !textKind( list.first()->kind )
                               && ( count > MaxFieldConflictsPerItem || entries + count > MaxConflictEntries
-                                   || tooDeep );
+                                   || asWhole );
         if ( collapse ) {
             whole.insert( path );
         }
@@ -199,7 +201,7 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
 // edited or new version) in their canonical spelling can be resolved. Returns false when it
 // cannot be applied.
 bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known,
-                      const PackFiles& mine, const PackFiles& theirs )
+                      const PackFiles& base, const PackFiles& mine, const PackFiles& theirs )
 {
     const auto path = resolution.value( "path" ).toString();
     const auto kind = packcanonical::kindOf( path );
@@ -226,9 +228,10 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         if ( remove || !resolution.contains( "text" ) ) {
             return false;
         }
-        // Merged text is UTF-8: a file in another encoding is resolved by `take` only, or its
-        // bytes would change.
-        if ( !utf8Text( mine.value( path ) ) || !utf8Text( theirs.value( path ) ) ) {
+        // Merged text is UTF-8: a file in another encoding on any side (the base too, as the job
+        // says with `utf8`) is resolved by `take` only, or its bytes would change.
+        if ( !utf8Text( mine.value( path ) ) || !utf8Text( theirs.value( path ) )
+             || !utf8Text( base.value( path ) ) ) {
             return false;
         }
         const auto text = resolution.value( "text" ).toString().toUtf8();
@@ -263,8 +266,9 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         }
         return true;
     }
-    // The name is the item's identity: a field resolution never renames it.
-    if ( field == QLatin1String( "name" ) || !fieldPathFits( field ) ) {
+    // The name is the item's identity: a field resolution never renames it, nor brings back an
+    // item the merge result does not have (it would have no name); a whole-item resolution does.
+    if ( field == QLatin1String( "name" ) || !fieldPathFits( field ) || !merged->contains( path ) ) {
         return false;
     }
     const auto changed = packmerge::withField( current, field, value );
@@ -461,7 +465,7 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
         }
     }
     for ( const auto& item : resolutions ) {
-        if ( !applyResolution( &plan.merged, item.toMap(), known, mine, *shipped ) ) {
+        if ( !applyResolution( &plan.merged, item.toMap(), known, base, mine, *shipped ) ) {
             return QStringLiteral( "Invalid merge resolution for %1." )
                 .arg( item.toMap().value( "path" ).toString().left( 128 ) );
         }
