@@ -257,10 +257,16 @@ void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManag
                    // The installed version stays until Apply; Cancel reports the refusal.
                    const bool applied = openPackMerge(
                        parent, name, job,
-                       [ parent, manager, executor, request, name,
-                         done ]( const QVariantList& resolutions, const AfterPackMerge& afterInstall ) {
+                       [ parent, manager, executor, request, name, done,
+                         revision = job.value( "result" ).toMap().value( "revision" ) ](
+                           const QVariantList& resolutions, const AfterPackMerge& afterInstall ) {
                            auto again = request;
                            again.pluginArguments.insert( "resolutions", resolutions );
+                           // The edits the choices were made for: after another edit the update
+                           // asks for the merge again instead of overwriting it.
+                           if ( revision.isValid() ) {
+                               again.pluginArguments.insert( "revision", revision.toString() );
+                           }
                            runPackAwareInstall( parent, manager, executor, again, name,
                                                 [ done, afterInstall ]( const QVariantMap& finished ) {
                                                     done( afterPackMerge( finished, afterInstall ) );

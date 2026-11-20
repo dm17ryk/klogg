@@ -480,6 +480,37 @@ TEST_CASE( "A damaged pack store is rebuilt with the local edits", "[packmerge][
            == 1 );
 }
 
+TEST_CASE( "A content folder that missed a commit is written again", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+    edited[ "regex" ] = "^EDITED$";
+    REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    const auto previews = store.contentDirectory() + "/previews.json";
+    REQUIRE( readFile( previews ).contains( "^EDITED$" ) );
+    const auto overwrite = [ &previews ]( const QByteArray& bytes ) {
+        QFile file( previews );
+        REQUIRE( file.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        file.write( bytes );
+    };
+    // A folder that holds the recorded commit is left alone.
+    overwrite( "{}" );
+    REQUIRE( store.repairContent().isEmpty() );
+    CHECK( readFile( previews ) == "{}" );
+    // One left behind by a replace that failed after a commit (it holds an older commit) is
+    // written again from the store.
+    QFile marker( root.filePath( "org.example.pack/current.revision" ) );
+    REQUIRE( marker.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+    marker.write( "0000000000000000000000000000000000000000" );
+    marker.close();
+    REQUIRE( store.repairContent().isEmpty() );
+    CHECK( readFile( previews ).contains( "^EDITED$" ) );
+}
+
 TEST_CASE( "A damaged pack store whose edits cannot be read is left as it is", "[packmerge][E16]" )
 {
     QTemporaryDir root;
@@ -728,6 +759,87 @@ TEST_CASE( "A merge's job carries each file's texts once, within a budget", "[pa
     const auto content = manager.packContentDirectory( id );
     CHECK( readFile( content + "/lua/a.lua" ).startsWith( "-- theirs\n" ) );
     CHECK( readFile( content + "/lua/b.lua" ).startsWith( "-- mine\n" ) );
+}
+
+TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not applied",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    // "Second" with 40 settings that the user and the new version both change.
+    const auto previewsWith = []( const QString& value ) {
+        auto document = QJsonDocument::fromJson( Previews ).object();
+        auto previews = document[ "previews" ].toArray();
+        auto item = previews[ 0 ].toObject();
+        for ( int index = 0; index < 40; ++index ) {
+            item[ QStringLiteral( "p%1" ).arg( index ) ] = value;
+        }
+        previews[ 0 ] = item;
+        document[ "previews" ] = previews;
+        return QJsonDocument( document ).toJson();
+    };
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", previewsWith( "0" ), "-- a\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto edit = [ &manager, &id, &second ]( const QString& value ) {
+        auto item = QJsonDocument::fromJson(
+                        manager.manage( "pack_read", id, { { "path", second } } ).payload[ "content" ].toString().toUtf8() )
+                        .object();
+        for ( int index = 0; index < 40; ++index ) {
+            item[ QStringLiteral( "p%1" ).arg( index ) ] = value;
+        }
+        REQUIRE( manager.manage( "pack_edit", id,
+                                 { { "path", second },
+                                   { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                     .ok() );
+    };
+    edit( "mine" );
+    const auto v2 = writePackage( root.filePath( "v2" ), "1.1.0", previewsWith( "theirs" ), "-- a\n" );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( job[ "state" ] == "failed" );
+    const auto result = job[ "result" ].toMap();
+    const auto conflicts = result[ "conflicts" ].toList();
+    // 40 conflicting fields of one preview are listed as the preview as a whole.
+    REQUIRE( conflicts.size() == 1 );
+    const auto whole = conflicts.first().toMap();
+    CHECK( whole[ "path" ] == second );
+    CHECK( whole[ "field" ].toString().isEmpty() );
+    CHECK( whole[ "mine" ].toString().contains( "\"mine\"" ) );
+    CHECK( whole[ "theirs" ].toString().contains( "\"theirs\"" ) );
+    const auto revision = result[ "revision" ].toString();
+    REQUIRE( !revision.isEmpty() );
+    const QVariantList takeTheirs{ QVariantMap{
+        { "path", second },
+        { "field", QString{} },
+        { "value", QJsonDocument::fromJson( whole[ "theirs" ].toString().toUtf8() ).object().toVariantMap() } } };
+
+    // Edited again after the merge was shown: the choices are not applied, the merge is asked
+    // for again with the new revision.
+    edit( "newer" );
+    const auto stale = finished( manager, manager.manage( "install", {},
+                                                           { { "path", v2 },
+                                                             { "resolutions", takeTheirs },
+                                                             { "revision", revision } } ) );
+    REQUIRE( stale[ "state" ] == "failed" );
+    CHECK( stale[ "error" ].toString().contains( "edited after the merge was shown" ) );
+    CHECK( stale[ "result" ].toMap()[ "needsMerge" ].toBool() );
+    const auto current = stale[ "result" ].toMap()[ "revision" ].toString();
+    CHECK( current != revision );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
+
+    // With the current revision the whole-item choice settles all 40 fields.
+    const auto applied = finished( manager, manager.manage( "install", {},
+                                                             { { "path", v2 },
+                                                               { "resolutions", takeTheirs },
+                                                               { "revision", current } } ) );
+    INFO( applied[ "error" ].toString().toStdString() );
+    REQUIRE( applied[ "state" ] == "completed" );
+    CHECK( readFile( content + "/previews.json" ).contains( "\"theirs\"" ) );
+    CHECK( !readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
 }
 
 TEST_CASE( "An enabled pack's update and reset are checked as they would load",

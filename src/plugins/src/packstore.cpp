@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QSet>
+#include <QThread>
 #include <algorithm>
 #include <git2.h>
 #include <git2/sys/errors.h>
@@ -38,6 +39,22 @@ bool safePackId( const QString& id )
 {
     return !id.isEmpty() && id != QLatin1String( "." ) && id != QLatin1String( ".." )
            && !id.contains( '/' ) && !id.contains( '\\' ) && !id.contains( ':' );
+}
+
+// A folder just written can be held for a moment by a virus scanner or the search indexer on
+// Windows, which makes renaming it fail: the rename is tried again for about 1.5 s.
+bool renameFolder( const QString& from, const QString& to )
+{
+    if ( QDir().rename( from, to ) ) {
+        return true;
+    }
+    for ( const unsigned long wait : { 25ul, 50ul, 100ul, 200ul, 400ul, 800ul } ) {
+        QThread::msleep( wait );
+        if ( QDir().rename( from, to ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // A path inside the content folder: relative, no "..", no drive or root.
@@ -467,13 +484,20 @@ QString PackStore::writeContent( const PackFiles& files, const QJsonObject& mani
         old = packDir.filePath( QStringLiteral( "current.old-%1" )
                                     .arg( QDateTime::currentMSecsSinceEpoch() ) );
     }
-    if ( ( QFileInfo::exists( current ) && !QDir().rename( current, old ) )
-         || !QDir().rename( staged, current ) ) {
+    if ( ( QFileInfo::exists( current ) && !renameFolder( current, old ) )
+         || !renameFolder( staged, current ) ) {
         if ( !QFileInfo::exists( current ) && QFileInfo::exists( old ) ) {
-            QDir().rename( old, current );
+            renameFolder( old, current );
         }
         QDir( staged ).removeRecursively();
         return QStringLiteral( "Cannot replace the pack's content folder." );
+    }
+    // Which `local` commit the folder holds: repairContent() writes it again when they differ (a
+    // replace that failed after its commit leaves the previous content in place).
+    QSaveFile marker( packDir.filePath( QStringLiteral( "current.revision" ) ) );
+    if ( !marker.open( QIODevice::WriteOnly ) || marker.write( localTip().toLatin1() ) < 0
+         || !marker.commit() ) {
+        LOG_WARNING << "Pack content revision not recorded pack=" << packId_.toStdString();
     }
     // The previous folder, and any set aside earlier that can be removed now.
     const auto leftovers = packDir.entryList( { QStringLiteral( "current.old*" ) },
@@ -538,8 +562,17 @@ QString PackStore::publish( const PackFiles& stored ) const
 
 QString PackStore::repairContent()
 {
+    // The folder is current when it exists and holds the `local` commit (as recorded when it was
+    // written); a folder missing, or left behind by a replace that failed, is written again.
     if ( !contentDirectory().isEmpty() ) {
-        return {};
+        QFile marker( QDir( root_ ).filePath( packId_ + QStringLiteral( "/current.revision" ) ) );
+        const auto recorded = marker.open( QIODevice::ReadOnly )
+                                  ? QString::fromLatin1( marker.read( 64 ) ).trimmed()
+                                  : QString{};
+        const auto tip = localTip();
+        if ( tip.isEmpty() || recorded == tip ) {
+            return {};
+        }
     }
     bool complete = false;
     const auto stored = filesAt( QStringLiteral( "refs/heads/local" ), &complete );

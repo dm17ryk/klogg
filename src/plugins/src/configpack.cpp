@@ -141,6 +141,18 @@ QString checkReservedPaths( const PackContent& content )
                 .arg( path.left( 128 ) );
         }
     }
+    // One file is named one way: spellings that differ only in case are one file on Windows and
+    // macOS but two items in the pack's store, and writing one would overwrite the other.
+    for ( qsizetype first = 0; first < others.size(); ++first ) {
+        for ( qsizetype second = first + 1; second < others.size(); ++second ) {
+            const auto& a = others.at( first );
+            const auto& b = others.at( second );
+            if ( !a.isEmpty() && same( a, b ) && QDir::cleanPath( a ) != QDir::cleanPath( b ) ) {
+                return QStringLiteral( "The content files %1 and %2 differ only in case." )
+                    .arg( a.left( 128 ), b.left( 128 ) );
+            }
+        }
+    }
     return {};
 }
 

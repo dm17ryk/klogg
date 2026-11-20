@@ -1300,8 +1300,12 @@ Result PluginManager::manage( const QString& operation, const QString& id,
     if ( options.contains( "resolutions" ) && !options.value( "resolutions" ).canConvert<QVariantList>() ) {
         return { "resolutions is a list.", {} };
     }
+    // The pack's edits the resolutions were chosen for (the failed job's result `revision`).
+    if ( options.contains( "revision" ) && options.value( "revision" ).typeId() != QMetaType::QString ) {
+        return { "revision is the revision from the failed update's result.", {} };
+    }
     QVariantMap mergeContext;
-    for ( const auto* key : { "strategy", "resolutions" } ) {
+    for ( const auto* key : { "strategy", "resolutions", "revision" } ) {
         if ( options.contains( QLatin1String( key ) ) ) {
             mergeContext.insert( QLatin1String( key ), options.value( QLatin1String( key ) ) );
         }

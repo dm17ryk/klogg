@@ -245,6 +245,10 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         CHECK( manifestError( withContent( valid, "filters", "plugin.json" ) ).contains( reserved ) );
         CHECK( manifestError( withContent( valid, "previews", "Plugin.json" ) ).contains( "plugin.json" ) );
         CHECK( manifestError( withContent( valid, "actions", "actions.json" ) ).isEmpty() );
+        // Spellings that differ only in case are one file on Windows and macOS.
+        const auto aliased = withContent( withContent( valid, "actions", "defs/Rules.json" ),
+                                          "filters", "defs/rules.json" );
+        CHECK( manifestError( aliased ).contains( "differ only in case" ) );
     }
     SECTION( "Python decoders need an id and a .py module" )
     {

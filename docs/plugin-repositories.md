@@ -802,8 +802,15 @@ Pack Files but not edited. A job keeps at most 4 MiB of conflict texts (jobs are
 256): previews and blocks first, each file's sides once; a file past that is listed with
 `omitted` and merged as a whole side, the merge window records the whole side chosen (a file
 that is not UTF-8 may read the same for different bytes), and an automatic update keeps no
-texts. `pack_edit` takes exactly one of `content` and `remove`, and no content file of a pack
-may be its `plugin.json` or previews file, which CILogg writes itself.
+texts. An item with more than 32 conflicting fields, or any item past 1,024 listed conflicts, is
+listed as one whole-item conflict. Resolutions come back with the result's `revision` (the
+`local` commit the merge was shown for); after another edit they are dropped and the merge is
+asked for again, so a stale choice never overwrites a newer edit. `pack_edit` takes exactly one
+of `content` and `remove`, and no content file of a pack may be its `plugin.json` or previews
+file, which CILogg writes itself, or differ from another only in case. The content folder's
+`local` commit is recorded beside it (`current.revision`): a folder left behind by a replace
+that failed (a rename refused while a file is held; it is retried for about 1.5 s) is written
+again by the next pack operation, enable or update.
 Edits change or delete the pack's own previews and blocks and change its listed files and
 preview order; they add no items. Resolutions name only the pack's items in their canonical
 spelling, and the content folder is written only with relative paths inside it. A whole-pack

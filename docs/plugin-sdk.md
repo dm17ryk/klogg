@@ -741,7 +741,8 @@ packs](plugin-repositories.md) section 4). The example is
   until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
   validated as files and loaded by a later slice (E16c).
 - No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
-  writes both itself for the pack's content with your edits.
+  writes both itself for the pack's content with your edits. Two content files may not differ
+  only in case either (one file on Windows and macOS).
 - `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
   pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
   Catalog entries of packs use `os: any` and `arch: any`.
@@ -780,7 +781,11 @@ text; a file's conflict has only `base`, its sides are in `items`) and `items` (
 item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.
 The texts stay within 4 MiB per job, previews and blocks first: an item past that has
 `omitted: true` and no texts (resolve it with `take`), and an automatic update's job keeps none.
-Resolutions
+An item with more than 32 conflicting fields (or any item once 1,024 conflicts are listed) is
+listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
+also has `revision` (the pack's edits the conflicts are for): pass it back with `resolutions`,
+and if the pack was edited since, the resolutions are not applied and the update fails with
+`needsMerge` again. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the

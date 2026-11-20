@@ -6,6 +6,7 @@
 #include "log.h"
 #include "packstore.h"
 #include <QDir>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSet>
@@ -47,32 +48,70 @@ bool textKind( const QString& kind )
     return kind == QLatin1String( "file" ) || kind == QLatin1String( "order" );
 }
 
-// The conflicts and conflicting items of a merge for its job result. Their texts go there for the
-// merge window within `budget` bytes: previews and blocks first (a previews document is at most
-// 1 MiB a side), then files, each file's sides once (in `items`; its conflict keeps the base). An
-// item past the budget is listed with `omitted` and no texts, and is resolved as a whole side
-// (take), like a file that is not UTF-8.
+// How many conflicts a job lists: a preview of 1 MiB can conflict in thousands of fields.
+constexpr qsizetype MaxFieldConflictsPerItem = 32;
+constexpr qsizetype MaxConflictEntries = 1024;
+
+// The conflicts and conflicting items of a merge for its job result, bounded in number and size.
+// An item with more conflicting fields than MaxFieldConflictsPerItem, or once the list holds
+// MaxConflictEntries, is listed as one whole-item conflict (field ""), which a whole-item
+// resolution settles. Texts go there for the merge window within `budget` bytes: previews and
+// blocks first (a previews document is at most 1 MiB a side), then files, each file's sides once
+// (in `items`; its conflict keeps the base). An item past the budget is listed with `omitted` and
+// no texts, and is resolved as a whole side (take), like a file that is not UTF-8.
 void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
                       const PackFiles& mine, const PackFiles& theirs, qsizetype budget,
                       QVariantList* conflicts, QVariantMap* items )
 {
+    QStringList order;
+    QHash<QString, QVector<const PackConflict*>> byItem;
+    for ( const auto& conflict : found ) {
+        if ( !byItem.contains( conflict.path ) ) {
+            order.append( conflict.path );
+        }
+        byItem[ conflict.path ].append( &conflict );
+    }
+    QSet<QString> whole;
+    qsizetype entries = 0;
+    for ( const auto& path : order ) {
+        const auto count = byItem.value( path ).size();
+        const bool collapse = !textKind( byItem.value( path ).first()->kind )
+                              && ( count > MaxFieldConflictsPerItem || entries + count > MaxConflictEntries );
+        if ( collapse ) {
+            whole.insert( path );
+        }
+        entries += collapse ? 1 : count;
+    }
+    // The bytes an item's conflicts and its whole sides add to the job.
+    const auto cost = [ & ]( const QString& path ) {
+        qsizetype bytes = mine.value( path ).size() + theirs.value( path ).size();
+        const auto& list = byItem.value( path );
+        if ( textKind( list.first()->kind ) ) {
+            return bytes + base.value( path ).size();
+        }
+        if ( whole.contains( path ) ) {
+            return 2 * bytes + base.value( path ).size();
+        }
+        for ( const auto* conflict : list ) {
+            bytes += conflict->base.size() + conflict->mine.size() + conflict->theirs.size();
+        }
+        return bytes;
+    };
     QSet<QString> shown;
     for ( const bool text : { false, true } ) {
-        for ( const auto& conflict : found ) {
-            const auto& path = conflict.path;
-            if ( textKind( conflict.kind ) != text || items->contains( path ) ) {
+        for ( const auto& path : order ) {
+            if ( textKind( byItem.value( path ).first()->kind ) != text ) {
                 continue;
             }
             const auto yours = mine.value( path );
             const auto shipped = theirs.value( path );
-            const auto cost = yours.size() + shipped.size() + ( text ? base.value( path ).size() : 0 );
             QVariantMap item{ { "inMine", mine.contains( path ) },
                               { "inTheirs", theirs.contains( path ) },
                               // Not UTF-8: shown, but resolved only with `take`.
                               { "utf8", utf8Text( yours ) && utf8Text( shipped )
                                             && utf8Text( base.value( path ) ) } };
-            if ( cost <= budget ) {
-                budget -= cost;
+            if ( const auto bytes = cost( path ); bytes <= budget ) {
+                budget -= bytes;
                 shown.insert( path );
                 item.insert( "mine", QString::fromUtf8( yours ) );
                 item.insert( "theirs", QString::fromUtf8( shipped ) );
@@ -83,19 +122,35 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
             items->insert( path, item );
         }
     }
-    for ( const auto& conflict : found ) {
-        QVariantMap info{ { "path", conflict.path },
-                          { "kind", conflict.kind },
-                          { "item", conflict.item },
-                          { "field", conflict.field } };
-        if ( shown.contains( conflict.path ) ) {
-            info.insert( "base", QString::fromUtf8( conflict.base ) );
-            if ( !textKind( conflict.kind ) ) {
-                info.insert( "mine", QString::fromUtf8( conflict.mine ) );
-                info.insert( "theirs", QString::fromUtf8( conflict.theirs ) );
+    for ( const auto& path : order ) {
+        const auto& list = byItem.value( path );
+        if ( whole.contains( path ) ) {
+            QVariantMap info{ { "path", path },
+                              { "kind", list.first()->kind },
+                              { "item", list.first()->item },
+                              { "field", QString{} } };
+            if ( shown.contains( path ) ) {
+                info.insert( "base", QString::fromUtf8( base.value( path ) ) );
+                info.insert( "mine", QString::fromUtf8( mine.value( path ) ) );
+                info.insert( "theirs", QString::fromUtf8( theirs.value( path ) ) );
             }
+            conflicts->append( info );
+            continue;
         }
-        conflicts->append( info );
+        for ( const auto* conflict : list ) {
+            QVariantMap info{ { "path", conflict->path },
+                              { "kind", conflict->kind },
+                              { "item", conflict->item },
+                              { "field", conflict->field } };
+            if ( shown.contains( path ) ) {
+                info.insert( "base", QString::fromUtf8( conflict->base ) );
+                if ( !textKind( conflict->kind ) ) {
+                    info.insert( "mine", QString::fromUtf8( conflict->mine ) );
+                    info.insert( "theirs", QString::fromUtf8( conflict->theirs ) );
+                }
+            }
+            conflicts->append( info );
+        }
     }
 }
 
@@ -285,8 +340,14 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                                                      && !listed.contains( conflict.path );
                                           } ),
                           plan.conflicts.end() );
-    // Resolutions from the merge window (or automation) settle conflicts one by one.
-    const auto resolutions = context.value( "resolutions" ).toList();
+    // Resolutions from the merge window (or automation) settle conflicts one by one. They were
+    // chosen for the edits as they were then (`revision`, the `local` commit the merge was shown
+    // for): after another edit they could overwrite it, so they are dropped and the merge is
+    // asked for again.
+    const auto revision = store.localTip();
+    ( *result )[ "revision" ] = revision;
+    const bool stale = context.contains( "revision" ) && context.value( "revision" ).toString() != revision;
+    const auto resolutions = stale ? QVariantList{} : context.value( "resolutions" ).toList();
     QVector<PackConflict> open;
     for ( const auto& conflict : plan.conflicts ) {
         // A resolution without a field settles every conflict of its item (Keep Both).
@@ -346,12 +407,16 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             }
         }
         ( *result )[ "needsMerge" ] = true;
-        return QStringLiteral( "The new version changes %1 that you edited (%2). Merge it in the "
-                               "Plugins window, or update with the strategy keep_mine or "
-                               "take_theirs." )
-            .arg( open.size() == 1 ? QStringLiteral( "an item" )
-                                   : QStringLiteral( "%1 places" ).arg( open.size() ),
-                  names.join( ", " ) );
+        const auto again = stale ? QStringLiteral( "The pack was edited after the merge was shown, so "
+                                                   "its choices were not applied. " )
+                                 : QString{};
+        return again
+               + QStringLiteral( "The new version changes %1 that you edited (%2). Merge it in the "
+                                 "Plugins window, or update with the strategy keep_mine or "
+                                 "take_theirs." )
+                     .arg( open.size() == 1 ? QStringLiteral( "an item" )
+                                            : QStringLiteral( "%1 places" ).arg( open.size() ),
+                           names.join( ", " ) );
     }
     *merged = plan.merged;
     return {};
