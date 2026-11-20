@@ -19,12 +19,16 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QSaveFile>
+#include <QScopedValueRollback>
 #include <QScrollBar>
+#include <QStyle>
+#include <QStyleOption>
 #include <QTimer>
 #include <QTreeView>
 
 #include <algorithm>
 #include <limits>
+#include <unordered_map>
 #include <utility>
 
 namespace pluginview {
@@ -762,6 +766,35 @@ bool PluginTreeModel::replace( const QJsonArray& nodes, const QString& parentId,
 
 bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringList* changed )
 {
+    // An operation that would pass MaxNodes changes nothing: the children it sets are counted
+    // before any node changes. A node below one whose children an earlier entry replaces is gone
+    // by then; a node given twice replaces the children it got the first time.
+    std::unordered_map<const Node*, int> loadedAfter;
+    int projected = nodeCount_;
+    for ( const auto& value : nodes ) {
+        const auto object = value.toObject();
+        const auto* node = find( object.value( "id" ).toString().left( PluginView::MaxTextChars ) );
+        if ( node == nullptr || !object.value( "children" ).isArray() ) {
+            continue;
+        }
+        bool gone = false;
+        for ( const auto* above = node->parent; above != nullptr && !gone; above = above->parent ) {
+            gone = loadedAfter.count( above ) > 0;
+        }
+        if ( gone ) {
+            continue;
+        }
+        const auto found = loadedAfter.find( node );
+        const auto removing = found != loadedAfter.end() ? found->second : countLoaded( *node );
+        const auto adding = countNodes( object.value( "children" ).toArray(),
+                                        depthOf( node->id ) + 1 );
+        projected += adding - removing;
+        loadedAfter[ node ] = adding;
+    }
+    if ( projected > MaxNodes ) {
+        *error = QStringLiteral( "update_nodes rejected: more than %1 nodes" ).arg( MaxNodes );
+        return false;
+    }
     bool ok = true;
     // The parents' check states follow once, after every node changed.
     ++deferChecks_;
@@ -1635,7 +1668,8 @@ void PluginTreeBehaviour::requestCheck( const QString& nodeId, bool checked )
 void PluginTreeBehaviour::activate( const QModelIndex& index )
 {
     const auto nodeId = model_->idOf( index );
-    if ( nodeId.isEmpty() || !hooks_.emitEvent || ( hooks_.canAct && !hooks_.canAct() ) ) {
+    if ( std::exchange( doubleClickOnCheck_, false ) || nodeId.isEmpty() || !hooks_.emitEvent
+         || ( hooks_.canAct && !hooks_.canAct() ) ) {
         return;
     }
     // An editable cell opens its editor instead.
@@ -1649,6 +1683,30 @@ void PluginTreeBehaviour::activate( const QModelIndex& index )
                                                                     : QJsonValue( columnId ) } } );
 }
 
+bool PluginTreeBehaviour::onCheckIndicator( const QModelIndex& index, const QPoint& position ) const
+{
+    if ( !tree_ || !index.isValid() || index.column() != 0
+         || !model_->flags( index ).testFlag( Qt::ItemIsUserCheckable ) ) {
+        return false;
+    }
+    // The check box's place as the item delegate lays it out: first in the cell.
+    QStyleOptionViewItem option;
+    option.initFrom( tree_ );
+    option.rect = tree_->visualRect( index );
+    option.features = QStyleOptionViewItem::HasCheckIndicator | QStyleOptionViewItem::HasDisplay;
+    option.text = index.data( Qt::DisplayRole ).toString();
+    if ( !index.data( Qt::DecorationRole ).isNull() ) {
+        option.features |= QStyleOptionViewItem::HasDecoration;
+        option.decorationSize = tree_->iconSize().isValid()
+                                    ? tree_->iconSize()
+                                    : QSize( tree_->style()->pixelMetric( QStyle::PM_SmallIconSize ),
+                                             tree_->style()->pixelMetric( QStyle::PM_SmallIconSize ) );
+    }
+    return tree_->style()
+        ->subElementRect( QStyle::SE_ItemViewItemCheckIndicator, &option, tree_ )
+        .contains( position );
+}
+
 void PluginTreeBehaviour::expandedChanged( const QModelIndex& index, bool expanded )
 {
     const auto nodeId = model_->idOf( index );
@@ -1658,8 +1716,10 @@ void PluginTreeBehaviour::expandedChanged( const QModelIndex& index, bool expand
     if ( expanded && model_->wantsChildren( index ) ) {
         startLoad( nodeId );
     }
-    // Only the user's expansions: patches and restoring the view run while the user cannot act.
-    if ( options_.expandEvents && hooks_.emitEvent && ( !hooks_.canAct || hooks_.canAct() ) ) {
+    // Only the user's expansions: patches and restoring the view run while the user cannot act,
+    // and the nodes a tree/children answer expands are expanded by the plugin too.
+    if ( options_.expandEvents && hooks_.emitEvent && !applyingAnswer_
+         && ( !hooks_.canAct || hooks_.canAct() ) ) {
         hooks_.emitEvent( expanded ? QStringLiteral( "expanded" ) : QStringLiteral( "collapsed" ),
                           QJsonObject{ { "node_id", nodeId } } );
     }
@@ -1692,6 +1752,7 @@ void PluginTreeBehaviour::childrenAnswered( const QString& nodeId, bool answered
         model_->setLoadFailed( nodeId );
         return;
     }
+    const QScopedValueRollback<bool> applying( applyingAnswer_, true );
     applyExpandRequests();
 }
 
@@ -1886,6 +1947,7 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
             return true;
         }
         if ( key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter ) {
+            doubleClickOnCheck_ = false;
             activate( tree_->currentIndex() );
         }
         return false;
@@ -1894,10 +1956,17 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         return false;
     }
     switch ( event->type() ) {
+    case QEvent::MouseButtonDblClick: {
+        // A double-click on a check box checks it; only one beside it activates the node.
+        const auto position = static_cast<QMouseEvent*>( event )->position().toPoint();
+        doubleClickOnCheck_ = onCheckIndicator( tree_->indexAt( position ), position );
+        return false;
+    }
     case QEvent::MouseButtonPress: {
         const auto* mouse = static_cast<QMouseEvent*>( event );
         const auto position = mouse->position().toPoint();
         const auto index = tree_->indexAt( position );
+        doubleClickOnCheck_ = false;
         releaseSelection( true ); // a release this behaviour never saw
         pressNode_.clear();
         pressSelection_.clear();

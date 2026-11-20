@@ -45,7 +45,7 @@ public:
     QString pathOf( const QModelIndex& index ) const;
     bool isDir( const QModelIndex& index ) const;
     // The item of a path inside a root, attaching a network root; invalid when outside the roots
-    // or missing.
+    // (also through a link that leads out of its root) or missing.
     QModelIndex indexOfPath( const QString& path );
     // Whether a path lies in one of the roots (no file system access).
     bool withinRoots( const QString& path ) const;
@@ -88,12 +88,16 @@ public:
 private:
     struct Root {
         QString path;
+        QString canonical; // the root's resolved path once attached: no link may lead out of it
         QPersistentModelIndex source; // valid once attached
         bool network = false;
         bool missing = false;
     };
     // The root a source index belongs to (its own row or an ancestor's); -1 when outside.
     int rootOf( const QModelIndex& source ) const;
+    // Whether a source item below a root is a symbolic link or junction that leads out of its
+    // root (or nowhere): it shows disabled and is never opened, selected or checked.
+    bool escapes( const QModelIndex& source ) const;
     int rootOfPath( const QString& path ) const;
     bool attachLocal( Root& root );
     void rebuildRootPointers();
@@ -104,6 +108,7 @@ private:
     QPointer<QFileSystemModel> files_;
     QVector<Root> roots_;
     QHash<void*, int> rootPointers_; // source internal pointer of an attached root -> its row
+    mutable QHash<const void*, bool> escapes_; // escapes() per source item, until it changes
     QVector<int> pending_; // begin/end pairs: 0 ignored, 1 forwarded, 2 reset
     QList<QPersistentModelIndex> layoutProxy_;
     QList<QPersistentModelIndex> layoutSource_;

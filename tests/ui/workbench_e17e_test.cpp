@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // E17e: trees and file trees (docs/plugin-sdk-advanced.md section 28).
 #include "mainwindow.h"
+#include "pluginfeatures.h"
 #include "pluginfiletree.h"
 #include "pluginmanager.h"
 #include "pluginmenus.h"
@@ -18,7 +19,10 @@
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QMenu>
+#include <QProcess>
 #include <QSignalSpy>
+#include <QStyle>
+#include <QStyleOption>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTreeView>
@@ -314,6 +318,7 @@ TEST_CASE( "E17e lazy children load, fail, retry and keep to the per-view limit"
     REQUIRE( fixture.model()->rowCount( fixture.index( "n0" ) ) == 1 );
     REQUIRE( fixture.index( "c1" ).isValid() );
     REQUIRE( tree->isExpanded( fixture.index( "c1" ) ) );
+    REQUIRE( fixture.countOf( "expanded" ) == 1 ); // the answer's expansion is no user event
     // A failure shows "Could not load"; expanding again asks again.
     tree->expand( fixture.index( "n1" ) );
     fixture.answer( "n1", false );
@@ -867,13 +872,16 @@ QJsonObject e17eManifest( const QString& executable )
         { "executable", executable },
         { "capabilities", QJsonArray{ "tool" } },
         { "handles", QJsonArray{ "tree/children", "tooltip/resolve", "query/cancel", "ui/command" } },
+        { "actions", QJsonArray{ QJsonObject{ { "id", "where" }, { "capability", "tool" } } } },
         { "views", QJsonArray{ QJsonObject{ { "id", "trees" }, { "title", "Trees" } } } },
         { "menus",
           QJsonArray{ QJsonObject{
               { "id", "nodes_menu" },
               { "location", "element" },
               { "items", QJsonArray{ QJsonObject{ { "id", "reset" }, { "title", "Reset" },
-                                                  { "event", true } } } } } } } };
+                                                  { "event", true } },
+                                     QJsonObject{ { "id", "where" }, { "title", "Where" },
+                                                  { "action", "where" } } } } } } } };
 }
 
 QList<QJsonObject> recorded( const QString& folder, const QString& method )
@@ -898,6 +906,7 @@ struct TreesWindow {
     QString folder;
     std::unique_ptr<PluginManager> manager;
     std::unique_ptr<MainWindow> window;
+    CommanderRequest invoked; // the last plugin action a menu entry ran
 
     TreesWindow()
     {
@@ -917,6 +926,10 @@ struct TreesWindow {
         auto session = std::make_shared<Session>();
         window = std::make_unique<MainWindow>( WindowSession{ session, "PluginSdkE17e", 0 } );
         window->setPluginManager( *manager, [ this ]( const CommanderRequest& request ) {
+            if ( request.action == CommanderAction::InvokePlugin ) {
+                invoked = request; // what the host asks for; the job itself is not run here
+                return commanderSuccess( {}, {} );
+            }
             const auto result = manager->manage( request.pluginOperation, request.pluginId,
                                                  request.pluginArguments );
             return result.ok()
@@ -1022,6 +1035,16 @@ TEST_CASE( "E17e a plugin answers tree/children; element menus and automation ta
     REQUIRE( tooltip.payload.value( "source" ) == "plugin" );
     REQUIRE( tooltip.payload.value( "tooltip" ).toMap().value( "text" ).toString().startsWith(
         "node a1/state" ) );
+    // An `action` entry's job gets the node in its `menu` context, as `event` entries do.
+    trigger.pluginArguments = { { "menuId", "nodes_menu" }, { "itemId", "where" },
+                                { "elementId", "nodes" }, { "nodeId", "b1" } };
+    REQUIRE( fixture.run( trigger ).ok() );
+    REQUIRE( fixture.invoked.pluginAction == "where" );
+    const auto job = fixture.invoked.pluginMenuContext;
+    REQUIRE( job.value( "element_id" ).toString() == "nodes" );
+    REQUIRE( job.value( "node_id" ).toString() == "b1" );
+    REQUIRE( job.value( "item_id" ).toString() == "where" );
+    REQUIRE_FALSE( job.contains( "row_id" ) );
     // A check box change reaches the plugin.
     REQUIRE( model->setData( model->indexOf( "a2" ), Qt::Checked, Qt::CheckStateRole ) );
     REQUIRE( waitFor( [ & ] {
@@ -1031,4 +1054,197 @@ TEST_CASE( "E17e a plugin answers tree/children; element menus and automation ta
                    && event.value( "value" ).toObject().value( "node_id" ) == "a2";
         } );
     } ) );
+}
+
+TEST_CASE( "E17e a double-click on a check box does not activate; update_nodes over the limit "
+           "changes nothing",
+           "[ui][workbench][E17]" )
+{
+    View fixture( QJsonObject{
+        { "type", "tree" },
+        { "id", "tr" },
+        { "checkboxes", true },
+        { "nodes", QJsonArray{ QJsonObject{ { "id", "x" }, { "text", "Node x" } } } } } );
+    auto* tree = fixture.tree();
+    const auto index = fixture.index( "x" );
+    // The check box where the item delegate puts it, and a point on the text beside it.
+    QStyleOptionViewItem option;
+    option.initFrom( tree );
+    option.rect = tree->visualRect( index );
+    option.features = QStyleOptionViewItem::HasCheckIndicator | QStyleOptionViewItem::HasDisplay;
+    option.text = index.data().toString();
+    const auto box
+        = tree->style()->subElementRect( QStyle::SE_ItemViewItemCheckIndicator, &option, tree );
+    REQUIRE( option.rect.contains( box.center() ) );
+    const QPoint text( box.right() + 24, box.center().y() );
+    REQUIRE( option.rect.contains( text ) );
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, box.center() );
+    REQUIRE( fixture.countOf( "checked" ) == 1 );
+    QTest::mouseDClick( tree->viewport(), Qt::LeftButton, {}, box.center() );
+    QTest::qWait( 20 );
+    REQUIRE( fixture.countOf( "activated" ) == 0 );
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, text );
+    QTest::mouseDClick( tree->viewport(), Qt::LeftButton, {}, text );
+    REQUIRE( waitFor( [ & ] { return fixture.countOf( "activated" ) == 1; } ) );
+    // Enter activates the current node (Space checks it).
+    tree->setCurrentIndex( index );
+    tree->setFocus();
+    QTest::keyClick( tree, Qt::Key_Return );
+    REQUIRE( fixture.countOf( "activated" ) == 2 );
+
+    // An update that would pass 50,000 nodes changes nothing, not even the keys before its
+    // `children`; one that reaches 50,000 exactly is taken.
+    QJsonArray many;
+    for ( int at = 0; at < cilogg::plugins::MaxTreeNodes - 1; ++at ) {
+        many.append( QJsonObject{ { "id", QString( "n%1" ).arg( at ) }, { "text", "Node" } } );
+    }
+    View large( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "nodes", many } } );
+    REQUIRE( large.model()->nodeCount() == cilogg::plugins::MaxTreeNodes - 1 );
+    const auto update = [ & ]( const QJsonArray& children ) {
+        large.patch( QJsonObject{
+            { "id", "tr" },
+            { "update_nodes", QJsonArray{ QJsonObject{ { "id", "n0" },
+                                                       { "text", "Changed" },
+                                                       { "children", children } } } } } );
+    };
+    update( QJsonArray{ QJsonObject{ { "id", "c1" } }, QJsonObject{ { "id", "c2" } } } );
+    REQUIRE( large.index( "n0" ).data().toString() == "Node" );
+    REQUIRE_FALSE( large.index( "c1" ).isValid() );
+    REQUIRE( large.model()->nodeCount() == cilogg::plugins::MaxTreeNodes - 1 );
+    update( QJsonArray{ QJsonObject{ { "id", "c1" } } } );
+    REQUIRE( large.index( "n0" ).data().toString() == "Changed" );
+    REQUIRE( large.index( "c1" ).isValid() );
+    REQUIRE( large.model()->nodeCount() == cilogg::plugins::MaxTreeNodes );
+}
+
+namespace {
+// A directory link: a junction on Windows (it needs no rights), a symbolic link elsewhere.
+bool linkDirectory( const QString& target, const QString& link )
+{
+#ifdef Q_OS_WIN
+    QProcess process;
+    process.start( QStringLiteral( "cmd.exe" ),
+                   { QStringLiteral( "/c" ), QStringLiteral( "mklink" ), QStringLiteral( "/J" ),
+                     QDir::toNativeSeparators( link ), QDir::toNativeSeparators( target ) } );
+    return process.waitForFinished( 10000 ) && process.exitCode() == 0
+           && QFileInfo( link ).isJunction();
+#else
+    return QFile::link( target, link );
+#endif
+}
+} // namespace
+
+TEST_CASE( "E17e file trees keep links inside their roots, count selections, check what can be "
+           "checked and retry network roots",
+           "[ui][workbench][E17]" )
+{
+    QTemporaryDir temp;
+    const auto base = QDir::fromNativeSeparators( QDir::cleanPath( temp.path() ) );
+    const auto root = base + "/root";
+    const auto outside = base + "/outside";
+    REQUIRE( QDir().mkpath( root + "/inside" ) );
+    REQUIRE( QDir().mkpath( root + "/many" ) );
+    REQUIRE( QDir().mkpath( outside ) );
+    const auto touch = []( const QString& path ) {
+        QFile file( path );
+        return file.open( QIODevice::WriteOnly ) && file.write( "x" ) == 1;
+    };
+    REQUIRE( touch( root + "/inside/x.bin" ) );
+    REQUIRE( touch( root + "/b.txt" ) );
+    REQUIRE( touch( outside + "/secret.bin" ) );
+    for ( int at = 0; at < 30; ++at ) {
+        REQUIRE( touch( root + QString( "/many/f%1.bin" ).arg( at, 2, 10, QChar( '0' ) ) ) );
+    }
+    const bool linked = linkDirectory( outside, root + "/out" )
+                        && linkDirectory( root + "/inside", root + "/in" );
+    View fixture( QJsonObject{ { "type", "file_tree" },
+                               { "id", "files" },
+                               { "roots", QJsonArray{ root } },
+                               { "selection", "multi" } } );
+    auto* tree = fixture.tree( "files" );
+    auto* behaviour = tree->findChild<PluginFileTreeBehaviour*>();
+    auto* model = behaviour->model();
+    const auto top = model->index( 0, 0 );
+    tree->expand( top );
+    const auto child = [ & ]( const QModelIndex& parent, const QString& name ) {
+        for ( int row = 0; row < model->rowCount( parent ); ++row ) {
+            if ( model->index( row, 0, parent ).data().toString() == name ) {
+                return model->index( row, 0, parent );
+            }
+        }
+        return QModelIndex{};
+    };
+    REQUIRE( waitFor(
+        [ & ] { return child( top, "many" ).isValid() && ( !linked || child( top, "out" ).isValid() ); },
+        FileSystemWait ) );
+    if ( linked ) {
+        // A link that leads out of its root shows disabled and never opens; nothing through it is
+        // found, revealed, opened or selected.
+        const auto out = child( top, "out" );
+        REQUIRE( model->flags( out ) == Qt::NoItemFlags );
+        REQUIRE_FALSE( model->hasChildren( out ) );
+        tree->expand( out );
+        fixture.patch( QJsonObject{ { "id", "files" }, { "expand", QJsonArray{ root + "/out" } } } );
+        QTest::qWait( 200 );
+        REQUIRE( model->rowCount( out ) == 0 );
+        REQUIRE_FALSE( model->indexOfPath( root + "/out" ).isValid() );
+        REQUIRE_FALSE( model->indexOfPath( root + "/out/secret.bin" ).isValid() );
+        fixture.patch( QJsonObject{
+            { "id", "files" },
+            { "set", QJsonObject{ { "value", QJsonArray{ root + "/out/secret.bin" } } } } } );
+        REQUIRE( behaviour->value( 10 ).isEmpty() );
+        // One that stays inside the root opens like its target.
+        REQUIRE( model->hasChildren( child( top, "in" ) ) );
+        REQUIRE( model->indexOfPath( root + "/in/x.bin" ).isValid() );
+    }
+    else {
+        WARN( "No directory links can be made here: the link checks are skipped." );
+    }
+
+    // A selection is counted without a path for every row; only the first ones, in shown order,
+    // get one, and a row selected twice counts once.
+    const auto folder = child( top, "many" );
+    tree->expand( folder );
+    REQUIRE( waitFor( [ & ] { return model->rowCount( folder ) == 30; }, FileSystemWait ) );
+    auto* selection = tree->selectionModel();
+    selection->select( QItemSelection( model->index( 0, 0, folder ), model->index( 29, 0, folder ) ),
+                       QItemSelectionModel::Select | QItemSelectionModel::Rows );
+    selection->select( QItemSelection( model->index( 5, 0, folder ), model->index( 9, 0, folder ) ),
+                       QItemSelectionModel::Select | QItemSelectionModel::Rows );
+    selection->select( top, QItemSelectionModel::Select | QItemSelectionModel::Rows );
+    int count = 0;
+    REQUIRE( behaviour->value( 3, &count )
+             == QStringList{ root, model->pathOf( model->index( 0, 0, folder ) ),
+                             model->pathOf( model->index( 1, 0, folder ) ) } );
+    REQUIRE( count == 31 );
+    REQUIRE( fixture.lastOf( "selected" ).value( "selected_count" ) == 31 );
+
+    // A pick list checks only what shows a check box: not a folder with select "files", a greyed
+    // file or a missing path.
+    View picks( QJsonObject{ { "type", "file_tree" },
+                             { "id", "files" },
+                             { "roots", QJsonArray{ root } },
+                             { "filters", QJsonArray{ "*.bin" } },
+                             { "hide_filtered", false },
+                             { "checkboxes", true },
+                             { "select", "files" } } );
+    auto* picked = picks.tree( "files" )->findChild<PluginFileTreeBehaviour*>();
+    picks.patch( QJsonObject{
+        { "id", "files" },
+        { "set", QJsonObject{ { "value", QJsonArray{ root + "/many", root + "/b.txt",
+                                                     root + "/nope.bin",
+                                                     root + "/many/f00.bin" } } } } } );
+    REQUIRE( picked->value( 10 ) == QStringList{ root + "/many/f00.bin" } );
+
+    // A network root that cannot be reached closes again and keeps its expander for the next try.
+    View network( QJsonObject{ { "type", "file_tree" },
+                               { "id", "files" },
+                               { "roots", QJsonArray{ "//localhost/no-such-share-e17e" } } } );
+    auto* shareTree = network.tree( "files" );
+    auto* shares = shareTree->findChild<PluginFileTreeBehaviour*>()->model();
+    const auto share = shares->index( 0, 0 );
+    shareTree->expand( share );
+    REQUIRE_FALSE( shares->isAttached( 0 ) );
+    REQUIRE( waitFor( [ & ] { return !shareTree->isExpanded( share ); } ) );
+    REQUIRE( shares->hasChildren( share ) );
 }

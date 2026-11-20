@@ -1630,7 +1630,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Selection.** As tables: `single`, `multi` with Shift and Ctrl, and `toggle_selection`.
 - **Events.** `selected` (the selected ids in tree order, at most 1,000, `selected_count`,
   `truncated`, and `current`, the node with the keyboard focus or null), `activated` (`{node_id,
-  column_id}`: a double-click or Enter on a cell that is not editable and not a check box),
+  column_id}`: a double-click or Enter on a cell that is not editable; a double-click on a node's
+  check box checks it and does not activate, and Space checks the current node while Enter
+  activates it),
   `checked` (`{node_id, checked, node_ids}`: `node_ids` are the nodes set to `checked`, the clicked
   one first, with `auto_tristate` its loaded descendants too, at most 1,000; the parents' derived
   states are not listed), `edited` (the value, with `node_id`, `column_id` and `previous`, as table
@@ -1670,7 +1672,10 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Roots.** Each root is a top-level item that shows the root's path. A root that does not exist
   shows greyed, without children. A network root (`//server/share`) is not touched until the user
   expands it or a patch expands or reveals a path in it, so an unreachable server never stalls the
-  window on its own. Once it could not be reached, only the user's expansion tries again.
+  window on its own. Once it could not be reached, it closes again and keeps its expander: only the
+  user's expansion tries again. A symbolic link or junction below a root that leads out of the root
+  (or nowhere) shows disabled: it is never opened, selected or checked, and paths through it are
+  outside the roots. A link that stays inside its root behaves as its target.
 - **The native model.** Folders load lazily in the background and changes on disk appear by
   themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
   file's suffix: the host never reads file contents, not even to find an icon, and never resolves
@@ -1678,7 +1683,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **`value`.** The selected paths (with `checkboxes`, the checked ones) with forward slashes, in
   `inputs` and in `selected` events (at most 1,000, with `selected_count` and `truncated`). A patch
   `set: {value: [...]}` selects (or checks) those paths and reveals the first; paths outside the
-  roots are ignored. A patch entry `expand: [paths]` opens folders.
+  roots, missing ones and those that cannot be selected (or checked) there, such as a folder with
+  `select: "files"` or a greyed file, are ignored. A patch entry `expand: [paths]` opens folders.
 - **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
   a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
   paths and the row highlight only marks the current item.
@@ -1693,7 +1699,8 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - `get_plugin_tooltip`, `get_plugin_menus --location element` and `trigger_plugin_menu` take
   `--node-id` for a node or a path (native MCP and Python: `node_id`); `--node-id` and `--row-id`
   exclude each other. Element menu entries of trees get `node_id` instead of `row_id` and
-  `column_id`. `get_ui` and `set_ui` reach nodes with a multi-level `indexPath`.
+  `column_id`, in `ui/command`, `menu/populate` and in the `menu` context of the action an entry
+  runs. `get_ui` and `set_ui` reach nodes with a multi-level `indexPath`.
 - The Python SDK gains `tree()`, `tree_node()`, `file_tree()`, the patch helpers `replace_nodes()`,
   `update_nodes()`, `insert_nodes()`, `remove_nodes()`, `expand_nodes()`, `collapse_nodes()` and
   `select_nodes()`, `@plugin.tree_children(view, element)` with `TreeChildrenQuery`, `node_id` in

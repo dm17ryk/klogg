@@ -1026,10 +1026,14 @@ CommanderResult PluginMenus::dispatch( const Source& plugin, const QJsonObject& 
             menu.insert( "selection", json.value( "selection" ).toVariant() );
         }
         if ( context.location == QLatin1String( "element" ) ) {
-            // E17d: the job's `menu` context names the view element and its rows.
-            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id",
+            // E17d: the job's `menu` context names the view element and its rows; E17e: in a tree
+            // the clicked node, in a file tree the clicked path (`node_id`), as `event` entries get.
+            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id", "node_id",
                                       "selected_ids", "selected_count" } ) {
-                menu.insert( QLatin1String( key ), json.value( QLatin1String( key ) ).toVariant() );
+                if ( json.contains( QLatin1String( key ) ) ) {
+                    menu.insert( QLatin1String( key ),
+                                 json.value( QLatin1String( key ) ).toVariant() );
+                }
             }
         }
         if ( menuId.isEmpty() ) {

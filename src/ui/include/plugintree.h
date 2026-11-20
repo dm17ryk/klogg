@@ -306,6 +306,8 @@ private:
     void endPress();
     // Sends `selected` now (and a report still waiting for the change to end goes).
     void reportSelection();
+    // Whether `position` (viewport coordinates) is on the check box of `index`.
+    bool onCheckIndicator( const QModelIndex& index, const QPoint& position ) const;
 
     QPointer<QTreeView> tree_;
     pluginview::PluginTreeModel* model_;
@@ -324,4 +326,6 @@ private:
     bool pressWasSelected_ = false; // whether the pressed node was in it
     bool holdSelection_ = false;    // see holdsSelection()
     bool reportPending_ = false;    // cancelPress() reports once the change is done
+    bool applyingAnswer_ = false;   // a tree/children answer expands nodes: no `expanded` events
+    bool doubleClickOnCheck_ = false; // the double-click hit a check box: it does not activate
 };

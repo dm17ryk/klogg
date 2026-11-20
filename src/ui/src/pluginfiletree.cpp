@@ -20,11 +20,18 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QStyle>
+#include <QTimer>
 #include <QTreeView>
 
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <utility>
+#include <vector>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 namespace pluginview {
 namespace {
@@ -46,6 +53,41 @@ bool inside( const QString& root, const QString& path )
     }
     const auto prefix = root.endsWith( QLatin1Char( '/' ) ) ? root : root + QLatin1Char( '/' );
     return path.startsWith( prefix, PathCase );
+}
+
+// The path with every symbolic link and junction resolved, as the file system names it (forward
+// slashes); empty when it leads nowhere. Qt's canonical path does not resolve NTFS junctions, so
+// Windows asks the file system for the final path of an opened handle (no contents are read).
+QString resolvedPath( const QString& path )
+{
+#ifdef Q_OS_WIN
+    const auto native = QDir::toNativeSeparators( path );
+    const auto handle = CreateFileW( reinterpret_cast<const wchar_t*>( native.utf16() ), 0,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr );
+    if ( handle == INVALID_HANDLE_VALUE ) {
+        return {};
+    }
+    std::vector<wchar_t> buffer( 32768 );
+    const auto length
+        = GetFinalPathNameByHandleW( handle, buffer.data(), static_cast<DWORD>( buffer.size() ),
+                                     FILE_NAME_NORMALIZED | VOLUME_NAME_DOS );
+    CloseHandle( handle );
+    if ( length == 0 || length >= buffer.size() ) {
+        return {};
+    }
+    auto result = QString::fromWCharArray( buffer.data(), static_cast<qsizetype>( length ) );
+    if ( result.startsWith( QStringLiteral( "\\\\?\\UNC\\" ) ) ) {
+        result = QStringLiteral( "\\\\" ) + result.mid( 8 ); // \\?\UNC\server\share
+    }
+    else if ( result.startsWith( QStringLiteral( "\\\\?\\" ) ) ) {
+        result = result.mid( 4 ); // \\?\C:\...
+    }
+    return PluginFileRootsModel::normalize( result );
+#else
+    const auto canonical = QFileInfo( path ).canonicalFilePath();
+    return canonical.isEmpty() ? QString{} : PluginFileRootsModel::normalize( canonical );
+#endif
 }
 
 // The style's folder, drive and file icons and a type from the suffix: the host never reads a
@@ -138,6 +180,10 @@ void PluginFileRootsModel::connectSource()
                  if ( !topLeft.isValid() ) {
                      return;
                  }
+                 // A changed item (a link given another target) is looked at again.
+                 for ( int row = topLeft.row(); row <= bottomRight.row(); ++row ) {
+                     escapes_.remove( topLeft.sibling( row, 0 ).internalPointer() );
+                 }
                  // Roots whose own rows changed in their parent folder.
                  for ( int row = 0; row < roots_.size(); ++row ) {
                      const auto& root = roots_.at( row );
@@ -191,6 +237,7 @@ void PluginFileRootsModel::connectSource()
                  pending_.append( mapped ? 1 : 0 );
              } );
     connect( files_, &QAbstractItemModel::rowsRemoved, this, [ this ] {
+        escapes_.clear(); // removed items free their pointers
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
         if ( state == 1 ) {
             endRemoveRows();
@@ -225,6 +272,7 @@ void PluginFileRootsModel::connectSource()
     connect( files_, &QAbstractItemModel::modelAboutToBeReset, this,
              [ this ] { beginResetModel(); } );
     connect( files_, &QAbstractItemModel::modelReset, this, [ this ] {
+        escapes_.clear();
         for ( auto& root : roots_ ) {
             if ( !root.network || root.source.isValid() ) {
                 attachLocal( root );
@@ -239,6 +287,7 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
 {
     beginResetModel();
     roots_.clear();
+    escapes_.clear();
     for ( const auto& raw : paths ) {
         const auto network = isNetworkPath( raw );
         const auto path = normalize( raw );
@@ -285,6 +334,7 @@ QStringList PluginFileRootsModel::roots() const
 bool PluginFileRootsModel::attachLocal( Root& root )
 {
     root.source = QPersistentModelIndex();
+    root.canonical.clear();
     if ( !files_ || !QFileInfo::exists( root.path ) ) {
         root.missing = true;
         return false;
@@ -293,8 +343,40 @@ bool PluginFileRootsModel::attachLocal( Root& root )
     root.missing = !source.isValid();
     if ( source.isValid() ) {
         root.source = QPersistentModelIndex( source.sibling( source.row(), 0 ) );
+        root.canonical = resolvedPath( root.path );
     }
     return source.isValid();
+}
+
+bool PluginFileRootsModel::escapes( const QModelIndex& source ) const
+{
+    if ( !source.isValid() || !files_ ) {
+        return false;
+    }
+    const auto first = source.sibling( source.row(), 0 );
+    auto* pointer = first.internalPointer();
+    if ( rootPointers_.contains( pointer ) ) {
+        return false; // a root is where its items are bounded, wherever it leads
+    }
+    if ( const auto found = escapes_.constFind( pointer ); found != escapes_.cend() ) {
+        return found.value();
+    }
+    // The model's own information when it has it, else one look at the item (never its contents;
+    // shortcuts are files and are never resolved).
+    const auto path = files_->filePath( first );
+    auto info = files_->fileInfo( first );
+    if ( info.filePath().isEmpty() ) {
+        info = QFileInfo( path );
+    }
+    bool leaves = false;
+    if ( info.isSymbolicLink() || info.isJunction() ) {
+        const auto row = rootOf( first );
+        const auto target = resolvedPath( path );
+        leaves = row < 0 || target.isEmpty() || roots_.at( row ).canonical.isEmpty()
+                 || !inside( roots_.at( row ).canonical, target );
+    }
+    escapes_.insert( pointer, leaves );
+    return leaves;
 }
 
 bool PluginFileRootsModel::attach( int row )
@@ -380,8 +462,8 @@ QModelIndex PluginFileRootsModel::sourceParentMapped( const QModelIndex& sourceP
                                                       bool* mapped ) const
 {
     *mapped = false;
-    if ( !sourceParent.isValid() ) {
-        return {};
+    if ( !sourceParent.isValid() || escapes( sourceParent ) ) {
+        return {}; // nothing below a link that leads out of its root is shown
     }
     const auto proxy = mapFromSource( sourceParent.sibling( sourceParent.row(), 0 ) );
     *mapped = proxy.isValid();
@@ -397,8 +479,8 @@ QModelIndex PluginFileRootsModel::mapFromSource( const QModelIndex& sourceIndex 
     if ( const auto root = rootPointers_.constFind( pointer ); root != rootPointers_.cend() ) {
         return createIndex( root.value(), sourceIndex.column() );
     }
-    if ( rootOf( sourceIndex ) < 0 ) {
-        return {}; // outside the roots
+    if ( rootOf( sourceIndex ) < 0 || escapes( sourceIndex.parent() ) ) {
+        return {}; // outside the roots, or below a link that leads out of its root
     }
     // Below the roots the proxy mirrors the native model: same rows, same internal pointers, so
     // nothing is kept per item.
@@ -433,7 +515,7 @@ QModelIndex PluginFileRootsModel::index( int row, int column, const QModelIndex&
         return {};
     }
     const auto sourceParent = mapToSource( parent );
-    if ( !sourceParent.isValid() ) {
+    if ( !sourceParent.isValid() || escapes( sourceParent ) ) {
         return {};
     }
     const auto source = files_->index( row, column, sourceParent );
@@ -465,7 +547,7 @@ int PluginFileRootsModel::rowCount( const QModelIndex& parent ) const
         return 0;
     }
     const auto source = mapToSource( parent );
-    return source.isValid() ? files_->rowCount( source ) : 0;
+    return source.isValid() && !escapes( source ) ? files_->rowCount( source ) : 0;
 }
 
 int PluginFileRootsModel::columnCount( const QModelIndex& parent ) const
@@ -484,24 +566,24 @@ bool PluginFileRootsModel::hasChildren( const QModelIndex& parent ) const
     }
     if ( isRoot( parent ) ) {
         const auto& root = roots_.at( parent.row() );
-        // A network root shows its expander until the user opens it.
-        return root.source.isValid() ? files_->hasChildren( root.source )
-                                     : root.network && !root.missing;
+        // A network root keeps its expander until it is reached, also after it could not be: the
+        // user's next expansion tries again.
+        return root.source.isValid() ? files_->hasChildren( root.source ) : root.network;
     }
     const auto source = mapToSource( parent );
-    return source.isValid() && files_->hasChildren( source );
+    return source.isValid() && !escapes( source ) && files_->hasChildren( source );
 }
 
 bool PluginFileRootsModel::canFetchMore( const QModelIndex& parent ) const
 {
     const auto source = mapToSource( parent );
-    return source.isValid() && files_->canFetchMore( source );
+    return source.isValid() && !escapes( source ) && files_->canFetchMore( source );
 }
 
 void PluginFileRootsModel::fetchMore( const QModelIndex& parent )
 {
     const auto source = mapToSource( parent );
-    if ( source.isValid() ) {
+    if ( source.isValid() && !escapes( source ) ) {
         files_->fetchMore( source );
     }
 }
@@ -546,8 +628,16 @@ QModelIndex PluginFileRootsModel::indexOfPath( const QString& path )
     if ( normalized.compare( roots_.at( row ).path, PathCase ) == 0 ) {
         return createIndex( row, NameColumn );
     }
+    // A path through a symbolic link or junction that leads out of the root is outside it,
+    // however it is spelled: it is never looked up, so nothing out there is listed.
+    const auto target = resolvedPath( normalized );
+    const auto& bound = roots_.at( row ).canonical;
+    if ( target.isEmpty() || bound.isEmpty() || !inside( bound, target ) ) {
+        return {};
+    }
     // A missing path maps to the native model's root, which is no item here.
-    return mapFromSource( files_->index( normalized ) );
+    const auto found = mapFromSource( files_->index( normalized ) );
+    return found.isValid() && !escapes( mapToSource( found ) ) ? found : QModelIndex{};
 }
 
 void PluginFileRootsModel::setSelectable( bool files, bool dirs )
@@ -671,8 +761,8 @@ Qt::ItemFlags PluginFileRootsModel::flags( const QModelIndex& index ) const
         return flags;
     }
     const auto source = mapToSource( index );
-    if ( !source.isValid() ) {
-        return Qt::NoItemFlags;
+    if ( !source.isValid() || escapes( source ) ) {
+        return Qt::NoItemFlags; // a link that leads out of its root shows disabled
     }
     auto flags = files_->flags( source )
                  & ~( Qt::ItemIsEditable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled );
@@ -759,10 +849,16 @@ PluginFileTreeBehaviour::PluginFileTreeBehaviour( QTreeView* tree, Hooks hooks )
     } );
     connect( tree, &QTreeView::doubleClicked, this,
              [ this ]( const QModelIndex& index ) { activate( index ); } );
-    // A network root is reached only when the user opens it.
+    // A network root is reached only when the user opens it. One that cannot be reached closes
+    // again and keeps its expander, so the next expansion tries again.
     connect( tree, &QTreeView::expanded, this, [ this ]( const QModelIndex& index ) {
-        if ( roots_->isRoot( index ) && !roots_->isAttached( index.row() ) ) {
-            roots_->attach( index.row() );
+        if ( roots_->isRoot( index ) && !roots_->isAttached( index.row() )
+             && !roots_->attach( index.row() ) ) {
+            QTimer::singleShot( 0, this, [ this, root = QPersistentModelIndex( index ) ] {
+                if ( tree_ && root.isValid() && !roots_->isAttached( root.row() ) ) {
+                    tree_->collapse( root );
+                }
+            } );
         }
     } );
     connect( tree->selectionModel(), &QItemSelectionModel::selectionChanged, this, [ this ] {
@@ -871,25 +967,84 @@ QString PluginFileTreeBehaviour::pathAt( const QModelIndex& index ) const
 
 QStringList PluginFileTreeBehaviour::value( int maximum, int* count ) const
 {
-    QStringList paths;
     if ( options_.checkboxes ) {
-        paths = roots_->checkedPaths();
-    }
-    else if ( tree_ ) {
-        auto rows = tree_->selectionModel()->selectedRows();
-        std::vector<std::pair<QVector<int>, QString>> ordered;
-        for ( const auto& index : std::as_const( rows ) ) {
-            ordered.emplace_back( pluginview::rowPath( index ), pathAt( index ) );
+        const auto paths = roots_->checkedPaths();
+        if ( count != nullptr ) {
+            *count = static_cast<int>( paths.size() );
         }
-        std::sort( ordered.begin(), ordered.end() );
-        for ( const auto& entry : ordered ) {
-            paths.append( entry.second );
+        return paths.mid( 0, maximum );
+    }
+    if ( count != nullptr ) {
+        *count = 0;
+    }
+    if ( !tree_ ) {
+        return {};
+    }
+    // The selected rows of each folder as merged intervals: all of them are counted, and only the
+    // first `maximum` in shown order get a path (a selection of a whole huge folder is never
+    // walked row by row).
+    std::map<QVector<int>, std::pair<QPersistentModelIndex, std::vector<std::pair<int, int>>>>
+        folders;
+    const auto selection = tree_->selectionModel()->selection();
+    for ( const auto& range : selection ) {
+        if ( !range.isValid() || range.left() > 0 ) {
+            continue; // a selected row covers the first column
+        }
+        auto& folder = folders[ pluginview::rowPath( range.parent() ) ];
+        folder.first = range.parent();
+        folder.second.emplace_back( range.top(), range.bottom() );
+    }
+    // A cursor per interval; the smallest row path comes first, so a folder's rows come between
+    // its parent's row and the next one.
+    struct Cursor {
+        QVector<int> key; // the row path of the cursor's row
+        QModelIndex parent;
+        int row;
+        int last;
+    };
+    const auto later = []( const Cursor& left, const Cursor& right ) { return right.key < left.key; };
+    std::vector<Cursor> heap;
+    int total = 0;
+    for ( auto& entry : folders ) {
+        auto& intervals = entry.second.second;
+        std::sort( intervals.begin(), intervals.end() );
+        std::vector<std::pair<int, int>> merged;
+        for ( const auto& interval : intervals ) {
+            if ( !merged.empty() && interval.first <= merged.back().second + 1 ) {
+                merged.back().second = std::max( merged.back().second, interval.second );
+            }
+            else {
+                merged.push_back( interval );
+            }
+        }
+        for ( const auto& interval : merged ) {
+            total += interval.second - interval.first + 1;
+            auto key = entry.first;
+            key.append( interval.first );
+            heap.push_back( { std::move( key ), entry.second.first, interval.first, interval.second } );
+        }
+    }
+    std::make_heap( heap.begin(), heap.end(), later );
+    QStringList paths;
+    while ( !heap.empty() && paths.size() < maximum ) {
+        std::pop_heap( heap.begin(), heap.end(), later );
+        auto cursor = std::move( heap.back() );
+        heap.pop_back();
+        const auto path = pathAt( roots_->index( cursor.row, 0, cursor.parent ) );
+        if ( !path.isEmpty() ) {
+            paths.append( path );
+        }
+        if ( cursor.row < cursor.last ) {
+            ++cursor.row;
+            cursor.key.last() = cursor.row;
+            heap.push_back( std::move( cursor ) );
+            std::push_heap( heap.begin(), heap.end(), later );
         }
     }
     if ( count != nullptr ) {
-        *count = static_cast<int>( paths.size() );
+        *count = total;
     }
-    return paths.mid( 0, maximum );
+    return paths;
 }
 
 void PluginFileTreeBehaviour::reveal( const QModelIndex& index )
@@ -917,10 +1072,21 @@ void PluginFileTreeBehaviour::setValue( const QStringList& paths )
         }
     }
     if ( options_.checkboxes ) {
-        roots_->setCheckedPaths( kept );
-        if ( !kept.isEmpty() ) {
-            reveal( roots_->indexOfPath( kept.first() ) );
+        // Only items that show a check box can be checked: not a folder with select "files", a
+        // greyed file, a missing path or one through a link that leads out of its root.
+        QStringList checkable;
+        QModelIndex first;
+        for ( const auto& path : std::as_const( kept ) ) {
+            const auto index = roots_->indexOfPath( path );
+            if ( index.isValid() && roots_->flags( index ).testFlag( Qt::ItemIsUserCheckable ) ) {
+                checkable.append( path );
+                if ( !first.isValid() ) {
+                    first = index;
+                }
+            }
         }
+        roots_->setCheckedPaths( checkable );
+        reveal( first );
         return;
     }
     if ( !tree_ || tree_->selectionMode() == QAbstractItemView::NoSelection ) {
