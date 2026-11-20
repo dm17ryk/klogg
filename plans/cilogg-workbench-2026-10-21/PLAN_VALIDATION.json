@@ -804,5 +804,33 @@
     "qualification": "local_gates_passed_hosted_pending",
     "supersededPullRequest": "https://github.com/dm17ryk/klogg/pull/132",
     "codexReview": "6 findings on #132, all fixed with tests"
+  },
+  "e17dChecks": {
+    "date": "2026-11-20",
+    "task": "E17",
+    "slice": "E17d",
+    "decision": "D17",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+    "basedOn": "78417e99fb7b495181a45d1c4d6e8039c9df14e8",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "TASK_INDEX.json"
+    ],
+    "independentReview": "cpp-reviewer: 2 high, 8 medium and 11 low findings; the high and medium ones and the other low ones fixed (tests for most); 3 low ones documented (--row-id trimmed like get_plugin_tooltip ids, TSV copies have no formula guard, CSV has no BOM)",
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except 4 init-captures of pluginuicontroller.cpp and one of pluginview.cpp that are on master",
+    "nativeParity": [
+      "E17 (e17_tooltips, e17_menus, e17_choices, e17_tables)"
+    ],
+    "hostIntegration": "tests/plugins/host_integration.py PASS (isolated portable copy, offscreen) with org.cilogg.example.protocol-pack skipped: on master the script stops at that config pack (Unsupported plugin kind: config-pack) since #128",
+    "gitnexusDetectChanges": "critical by name matching (283 flows share names such as MainWindow and commanderRequestFromVariantMap); the changed symbols are the Python SDK, one MainWindow member, the --view-id/--element-id/--row-id options and the table and menu code",
+    "overlapsPullRequest": "https://github.com/dm17ryk/klogg/pull/135 (one conflict in plugins/sdk/python/cilogg_plugin.py; whichever merges second merges master)",
+    "qualification": "local_gates_passed_hosted_pending"
   }
 }
