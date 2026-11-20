@@ -913,6 +913,22 @@
         "P3 no test of a new root saving several tables: added"
       ],
       "allFixedWithTests": true
+    },
+    "localCodexReview136Round5": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "a9c28445da1b727e6a086cc9777b4c7381494f4c",
+      "reviewedHead": "1fa1be5b04e8f9061747318b82a16e7cc75a3d0a",
+      "findings": [
+        "P1 Copy kept formulas: copied text gets the CSV formula guard",
+        "P1 Copy All had no size limit: Copy and Copy All stop at whole rows before 1 MiB",
+        "P2 the pre-press selection kept 1,000 ids: the whole selection decides what a drag moves",
+        "P2 the fake host bounded ids by count only: bounded_ids() applies the 256 KiB budget",
+        "P2 the fake host sent activated to plugins without handles: only with handles"
+      ],
+      "allFixedWithTests": true
     }
   }
 }
