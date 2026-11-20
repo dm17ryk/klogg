@@ -973,6 +973,19 @@
         "P2 header menu entries captured column indexes: they resolve the column id when picked"
       ],
       "allFixedWithTests": true
+    },
+    "localCodexReview136Round9": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "ea666a62bb1587f3f66c4a7376a22f5fd6eff26a",
+      "reviewedHead": "785a32a5300bc162d53361e232ca7336eb05b1fe",
+      "findings": [
+        "P2 the dynamic submenu cache key held only entry, location and tab outside element menus: it is the entry plus the whole menu/populate context",
+        "P2 a called-off drag always queued selectionSettled, echoing a patch's own selection: compared before the change, dropped by a selection patch or a sent selected event"
+      ],
+      "allFixedWithTests": true
     }
   }
 }
