@@ -12,11 +12,13 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMessageBox>
 #include <QTimer>
 #include <QWidget>
+#include <algorithm>
 #include <memory>
 
 namespace cp = cilogg::plugins;
@@ -328,28 +330,66 @@ void PluginMenuRegistry::forgetPlugin( const QString& pluginId )
         it = it->first.startsWith( prefix ) ? overrides_.erase( it ) : std::next( it );
     }
     for ( auto it = answers_.begin(); it != answers_.end(); ) {
-        it = it->first.startsWith( prefix ) ? answers_.erase( it ) : std::next( it );
+        if ( it->first.startsWith( prefix ) ) {
+            answerBytes_ -= it->second.bytes;
+            it = answers_.erase( it );
+        }
+        else {
+            ++it;
+        }
     }
     Q_EMIT changed( pluginId );
 }
 
-std::optional<QJsonArray> PluginMenuRegistry::answer( const QString& key, bool lastAnswer ) const
+std::optional<QJsonArray> PluginMenuRegistry::answer( const QString& key, bool lastAnswer )
 {
     const auto it = answers_.find( key );
-    if ( it == answers_.end() || ( !lastAnswer && it->second.expires <= nowMs() ) ) {
+    if ( it == answers_.end() ) {
+        return std::nullopt;
+    }
+    if ( !lastAnswer && it->second.expires <= nowMs() ) {
+        // Expired: it goes, unless it is the last answer a native menu bar shows next time.
+        if ( !it->second.keepLast ) {
+            answerBytes_ -= it->second.bytes;
+            answers_.erase( it );
+        }
         return std::nullopt;
     }
     return it->second.items;
 }
 
-void PluginMenuRegistry::storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs )
+void PluginMenuRegistry::storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs,
+                                      bool keepLast )
 {
+    // At most MaxAnswers answers and MaxAnswerBytes of them: answers can be close to 1 MiB each,
+    // and element menus have a key per row and selection.
     constexpr size_t MaxAnswers = 1024;
-    if ( answers_.size() >= MaxAnswers && answers_.count( key ) == 0 ) {
-        answers_.erase( answers_.begin() );
+    constexpr qint64 MaxAnswerBytes = 16 * 1024 * 1024;
+    if ( const auto old = answers_.find( key ); old != answers_.end() ) {
+        answerBytes_ -= old->second.bytes;
+        answers_.erase( old );
     }
-    answers_[ key ] = { items, nowMs() + qBound( qint64( 0 ), cacheMs,
-                                                 qint64( cp::MaxDynamicMenuCacheMs ) ) };
+    const auto ttl = qBound( qint64( 0 ), cacheMs, qint64( cp::MaxDynamicMenuCacheMs ) );
+    if ( ttl == 0 && !keepLast ) {
+        return; // nothing may reuse it
+    }
+    const auto bytes = static_cast<qint64>( QJsonDocument( items ).toJson( QJsonDocument::Compact ).size()
+                                            + key.size() * 2 );
+    if ( bytes > MaxAnswerBytes ) {
+        return;
+    }
+    // The oldest answers go first until the new one fits.
+    while ( !answers_.empty()
+            && ( answers_.size() >= MaxAnswers || answerBytes_ + bytes > MaxAnswerBytes ) ) {
+        const auto oldest = std::min_element( answers_.begin(), answers_.end(),
+                                              []( const auto& left, const auto& right ) {
+                                                  return left.second.stored < right.second.stored;
+                                              } );
+        answerBytes_ -= oldest->second.bytes;
+        answers_.erase( oldest );
+    }
+    answers_[ key ] = { items, nowMs() + ttl, bytes, ++answerSequence_, keepLast };
+    answerBytes_ += bytes;
 }
 
 void PluginMenuRegistry::assignShortcuts( const std::vector<cp::PluginShortcut>& shortcuts,
@@ -846,8 +886,13 @@ void PluginMenus::sendPopulate( QPointer<QMenu> menu, const Source& plugin,
                 const auto answer = outcome.result.toObject();
                 const auto items = answer.value( "items" ).toArray();
                 if ( answered ) {
+                    // Native menu bars show the last answer while the next one comes, whatever
+                    // its cache_ms; other locations keep only answers the plugin lets them cache.
+                    const bool nativeBar = context.location == QLatin1String( "plugins" )
+                                           || context.location == QLatin1String( "menubar" );
                     PluginMenuRegistry::instance().storeAnswer(
-                        key, items, static_cast<qint64>( answer.value( "cache_ms" ).toDouble() ) );
+                        key, items, static_cast<qint64>( answer.value( "cache_ms" ).toDouble() ),
+                        nativeBar );
                 }
                 if ( !self || !current() ) {
                     return;

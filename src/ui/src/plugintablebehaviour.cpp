@@ -91,6 +91,15 @@ PluginTableBehaviour::PluginTableBehaviour( QTableView* table, pluginview::Plugi
     model_->onCheckRequested = [ this ]( const QString& rowId, bool checked ) {
         requestCheck( rowId, checked );
     };
+    // A press that may start a drag keeps the selection as row ranges: when the rows change
+    // before the drag starts (a patch, a sort), the ranges no longer name the same rows, so the
+    // drag is called off.
+    const auto cancel = [ this ] { cancelPress(); };
+    connect( proxy_, &QAbstractItemModel::rowsInserted, this, cancel );
+    connect( proxy_, &QAbstractItemModel::rowsRemoved, this, cancel );
+    connect( proxy_, &QAbstractItemModel::rowsMoved, this, cancel );
+    connect( proxy_, &QAbstractItemModel::modelReset, this, cancel );
+    connect( proxy_, &QAbstractItemModel::layoutChanged, this, cancel );
     table->viewport()->installEventFilter( this );
     table->installEventFilter( this );
     auto* header = table->horizontalHeader();
@@ -510,29 +519,39 @@ QMenu* PluginTableBehaviour::buildHeaderMenu()
         action->setChecked( !header->isSectionHidden( logical ) );
         // The last shown column stays.
         action->setEnabled( !( shown.size() == 1 && shown.first() == logical ) );
-        connect( action, &QAction::toggled, this, [ this, logical ]( bool checked ) {
-            if ( !table_ ) {
-                return;
-            }
-            auto* section = table_->horizontalHeader();
-            if ( !checked ) {
-                // Its width is kept while hidden, so the saved state still holds it.
-                if ( section->sectionSize( logical ) > 0 ) {
-                    hiddenWidths_.insert( logical, section->sectionSize( logical ) );
-                }
-                table_->setColumnHidden( logical, true );
-            }
-            else {
-                const auto kept = hiddenWidths_.take( logical );
-                table_->setColumnHidden( logical, false );
-                if ( kept > 0 ) {
-                    section->resizeSection( logical, kept );
-                }
-                // Showing a section does not always report a resize: the minimum applies now.
-                enforceMinimumWidth( logical, section->sectionSize( logical ) );
-            }
-            scheduleSave();
-        } );
+        // By id, resolved when picked: the plugin may change the columns while the menu is open.
+        connect( action, &QAction::toggled, this,
+                 [ this, id = model_->columnId( logical ) ]( bool checked ) {
+                     if ( !table_ ) {
+                         return;
+                     }
+                     const auto column = model_->columnOf( id );
+                     const auto shownNow = shownColumns();
+                     // A column that is gone, or the last shown one, stays as it is.
+                     if ( column < 0
+                          || ( !checked && shownNow.size() == 1 && shownNow.first() == column ) ) {
+                         return;
+                     }
+                     auto* section = table_->horizontalHeader();
+                     if ( !checked ) {
+                         // Its width is kept while hidden, so the saved state still holds it.
+                         if ( section->sectionSize( column ) > 0 ) {
+                             hiddenWidths_.insert( column, section->sectionSize( column ) );
+                         }
+                         table_->setColumnHidden( column, true );
+                     }
+                     else {
+                         const auto kept = hiddenWidths_.take( column );
+                         table_->setColumnHidden( column, false );
+                         if ( kept > 0 ) {
+                             section->resizeSection( column, kept );
+                         }
+                         // Showing a section does not always report a resize: the minimum
+                         // applies now.
+                         enforceMinimumWidth( column, section->sectionSize( column ) );
+                     }
+                     scheduleSave();
+                 } );
     }
     return menu;
 }
@@ -750,6 +769,29 @@ QStringList PluginTableBehaviour::draggedRows() const
         ids.append( rowIdAt( proxy_->index( row, 0 ) ) );
     }
     return pluginview::boundedIds( ids );
+}
+
+void PluginTableBehaviour::cancelPress()
+{
+    // The rows changed under a press that may start a drag: no drag starts from it, and a held
+    // selection change is reported now.
+    if ( pressRow_.isEmpty() && !holdSelection_ ) {
+        return;
+    }
+    const bool held = holdSelection_;
+    releaseSelection( false );
+    pressRow_.clear();
+    pressSelection_.clear();
+    pressWasSelected_ = false;
+    if ( held && hooks_.selectionSettled ) {
+        // The press may have changed the selection: reported once the change that called the
+        // drag off is done (a patch is still being applied, and sends nothing itself).
+        QTimer::singleShot( 0, this, [ this ] {
+            if ( hooks_.selectionSettled ) {
+                hooks_.selectionSettled();
+            }
+        } );
+    }
 }
 
 void PluginTableBehaviour::releaseSelection( bool report )

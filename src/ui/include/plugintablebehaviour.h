@@ -136,6 +136,8 @@ private:
     // Ends a hold of the selection; with `report`, sends `selected` when the selection is no
     // longer the one before the press.
     void releaseSelection( bool report );
+    // The rows changed under a press that may start a drag: it will not start one.
+    void cancelPress();
 
     QPointer<QTableView> table_;
     pluginview::PluginTableModel* model_;

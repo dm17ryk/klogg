@@ -446,6 +446,79 @@ TEST_CASE( "E17d hidden widths, minimum widths when shown, focus without selecti
     REQUIRE( plain.behaviour()->currentRowId() == "r2" );
 }
 
+TEST_CASE( "E17d menu answers stay within their budget, drags end when rows change, menus resolve "
+           "columns by id",
+           "[ui][workbench][E17]" )
+{
+    // Dynamic answers: one with no cache time is kept only as a native menu bar's last answer,
+    // an expired one goes when looked up, and all of them stay within 16 MiB.
+    auto& registry = PluginMenuRegistry::instance();
+    const QString plugin = QStringLiteral( "org.test.cache" );
+    const auto prefix = QString::number( plugin.size() ) + QLatin1Char( ':' ) + plugin;
+    registry.forgetPlugin( plugin );
+    const auto count = registry.answerCount();
+    const QJsonArray one{ QJsonObject{ { "id", "a" }, { "title", "A" } } };
+    registry.storeAnswer( prefix + "now", one, 0 );
+    REQUIRE( registry.answerCount() == count );
+    registry.storeAnswer( prefix + "bar", one, 0, true );
+    REQUIRE( registry.answerCount() == count + 1 );
+    REQUIRE( registry.answer( prefix + "bar", true ) );
+    registry.storeAnswer( prefix + "soon", one, 1 );
+    QTest::qWait( 5 );
+    REQUIRE_FALSE( registry.answer( prefix + "soon", false ) );
+    REQUIRE( registry.answerCount() == count + 1 ); // dropped on lookup
+    const QJsonArray big{ QJsonObject{ { "id", "big" }, { "title", QString( 1000 * 1000, 'x' ) } } };
+    for ( int index = 0; index < 40; ++index ) {
+        registry.storeAnswer( prefix + QString::number( index ), big, 60000 );
+    }
+    REQUIRE( registry.answerBytes() <= 16 * 1024 * 1024 );
+    REQUIRE( registry.answer( prefix + "39", false ) ); // the newest stays
+    REQUIRE_FALSE( registry.answer( prefix + "0", false ) ); // the oldest went
+    registry.forgetPlugin( plugin );
+    REQUIRE( registry.answerCount() == count );
+
+    // A press that may start a drag is called off when the rows change before the drag: the
+    // held selection is reported once the patch is done, and no drag starts from stale ranges.
+    View toggle( boardsTable( { { "reorderable", true }, { "toggle_selection", true } } ), nullptr );
+    auto* viewport = toggle.table()->viewport();
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r2", 0 ) );
+    const auto clicks = toggle.countOf( "selected" );
+    const auto at = toggle.center( "r1", 0 );
+    QTest::mousePress( viewport, Qt::LeftButton, {}, at );
+    REQUIRE( toggle.behaviour()->draggedRows() == QStringList{ "r1", "r2" } );
+    toggle.view.applyPatch( { QJsonObject{
+        { "id", "t" },
+        { "insert_rows", QJsonArray{ QJsonObject{ { "id", "x" }, { "cells", QJsonArray{ "x" } } } } },
+        { "before", "r2" } } } );
+    REQUIRE( toggle.behaviour()->draggedRows().isEmpty() );
+    REQUIRE( waitFor( [ & ] { return toggle.countOf( "selected" ) == clicks + 1; } ) );
+    REQUIRE( toggle.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ "r2" } );
+    QTest::mouseRelease( viewport, Qt::LeftButton, {}, at );
+    QTest::qWait( 20 );
+    REQUIRE( toggle.countOf( "selected" ) == clicks + 1 ); // nothing more on the release
+
+    // A header menu entry finds its column by id when picked: a column that went does nothing,
+    // and the last shown column stays.
+    View columns( QJsonObject{ { "type", "table" },
+                               { "id", "t" },
+                               { "columns", QJsonArray{ QJsonObject{ { "id", "a" } }, QJsonObject{ { "id", "b" } } } },
+                               { "rows", QJsonArray{ QJsonObject{ { "id", "r" }, { "cells", QJsonArray{ "1", "2" } } } } } },
+                  nullptr );
+    const auto base = PluginView::objectNameFor( PluginId, "main", "t" );
+    std::unique_ptr<QMenu> menu( columns.behaviour()->buildHeaderMenu() );
+    auto* hideA = menu->findChild<QAction*>( base + "_column_a" );
+    auto* hideB = menu->findChild<QAction*>( base + "_column_b" );
+    REQUIRE( hideA );
+    REQUIRE( hideB );
+    columns.view.applyPatch( { QJsonObject{ { "id", "t" },
+                                            { "set", QJsonObject{ { "columns", QJsonArray{ QJsonObject{ { "id", "b" } } } } } } } } );
+    hideA->trigger(); // column a is gone
+    hideB->trigger(); // b is the last shown column
+    REQUIRE( columns.table()->model()->columnCount() == 1 );
+    REQUIRE_FALSE( columns.table()->isColumnHidden( 0 ) );
+}
+
 TEST_CASE( "E17d selection events stay bounded and unechoed, text sorts as text, columns keep sorts",
            "[ui][workbench][E17]" )
 {

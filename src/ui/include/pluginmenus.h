@@ -79,9 +79,22 @@ public:
     void forgetPlugin( const QString& pluginId );
 
     // Dynamic answers by entry and context. A valid cached answer, or with `lastAnswer` the last
-    // one of this session (native menu bars that cannot change while open).
-    std::optional<QJsonArray> answer( const QString& key, bool lastAnswer ) const;
-    void storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs );
+    // one of this session (native menu bars that cannot change while open); an expired answer
+    // that is not such a last answer is dropped when it is looked up.
+    std::optional<QJsonArray> answer( const QString& key, bool lastAnswer );
+    // Kept for `cacheMs` (an answer with no cache time only with `keepLast`), within 1,024
+    // answers and 16 MiB in all; the oldest go first.
+    void storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs,
+                      bool keepLast = false );
+    // The bytes the kept answers take (tests).
+    qint64 answerBytes() const
+    {
+        return answerBytes_;
+    }
+    size_t answerCount() const
+    {
+        return answers_.size();
+    }
 
     // Shortcut assignment (section 7.6) for every enabled plugin; `host` are CILogg's keys with
     // what owns them, `user` the user's choices. Stable: a shortcut stays with the plugin that got
@@ -110,10 +123,15 @@ private:
     struct Answer {
         QJsonArray items;
         qint64 expires = 0; // milliseconds since the epoch
+        qint64 bytes = 0;   // its JSON and key, for the cache budget
+        quint64 stored = 0; // when it was stored (the oldest go first)
+        bool keepLast = false; // a native menu bar's last answer: kept after it expires
     };
     QSet<cilogg::plugins::PluginManager*> attached_;
     std::map<QString, QJsonObject> overrides_; // plugin|menu|item -> changed keys
     std::map<QString, Answer> answers_;
+    qint64 answerBytes_ = 0;
+    quint64 answerSequence_ = 0;
     std::vector<cilogg::plugins::PluginShortcut> shortcuts_;
     std::vector<cilogg::plugins::ShortcutAssignment> assignments_;
     std::map<QString, QString> holders_; // keys -> shortcut key that held them
