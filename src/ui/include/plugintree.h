@@ -5,6 +5,7 @@
 #include "plugintablemodel.h"
 #include <QAbstractItemModel>
 #include <QHash>
+#include <QItemSelection>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -262,8 +263,9 @@ public:
     void childrenAnswered( const QString& nodeId, bool answered, const QJsonArray& nodes );
     // Loading nodes show "Could not load" (the plugin stopped).
     void failLoading();
-    // The nodes a drag that starts now moves: the selection before the press when the pressed
-    // node was in it, else the pressed node alone; empty without a press that may start a drag.
+    // The nodes a drag that starts now moves, as `moved` sends them (at most MaxTableIds and
+    // MaxIdBytes of ids, in tree order): the selection before the press when the pressed node
+    // was in it, else the pressed node alone; empty without a press that may start a drag.
     QStringList draggedNodes() const;
 
 protected:
@@ -292,5 +294,6 @@ private:
     QString selectionAnchor_;
     QPoint pressPosition_;
     QString pressNode_;
-    QStringList pressSelection_; // the selected nodes when the drag's press came
+    QItemSelection pressSelection_; // the selection when the drag's press came (ranges)
+    bool pressWasSelected_ = false; // whether the pressed node was in it
 };

@@ -1696,26 +1696,55 @@ QStringList PluginTreeBehaviour::draggedNodes() const
     if ( pressNode_.isEmpty() ) {
         return {};
     }
-    // The selection as it was before the press: a toggle-selection tree has already deselected
-    // the pressed node, which still moves with the others (as Qt's own drags defer the toggle).
-    return pressSelection_.contains( pressNode_ ) ? pressSelection_ : QStringList{ pressNode_ };
+    if ( !pressWasSelected_ ) {
+        return { pressNode_ };
+    }
+    // The selection as it was before the press (the press may have changed it: a toggle tree
+    // deselects the pressed node), in tree order, and only the ids `moved` sends: the ranges are
+    // turned into row paths, never into every id.
+    const auto pathOf = []( QModelIndex index ) {
+        QVector<int> path;
+        for ( ; index.isValid(); index = index.parent() ) {
+            path.prepend( index.row() );
+        }
+        return path;
+    };
+    std::vector<std::pair<QVector<int>, QModelIndex>> ordered;
+    for ( const auto& range : pressSelection_ ) {
+        for ( int row = range.top(); range.isValid() && row <= range.bottom(); ++row ) {
+            const auto index = model_->index( row, 0, range.parent() );
+            ordered.emplace_back( pathOf( index ), index );
+        }
+    }
+    const auto byPath = []( const auto& left, const auto& right ) { return left.first < right.first; };
+    std::sort( ordered.begin(), ordered.end(), byPath );
+    ordered.erase( std::unique( ordered.begin(), ordered.end(),
+                                []( const auto& left, const auto& right ) {
+                                    return left.first == right.first;
+                                } ),
+                   ordered.end() );
+    QStringList ids;
+    for ( const auto& entry : ordered ) {
+        if ( ids.size() >= pluginview::MaxTableIds ) {
+            break;
+        }
+        if ( const auto id = model_->idOf( entry.second ); !id.isEmpty() ) {
+            ids.append( id );
+        }
+    }
+    return pluginview::boundedIds( ids );
 }
 
 void PluginTreeBehaviour::startDrag()
 {
     const auto ids = draggedNodes();
-    const bool wasSelected = pressSelection_.contains( pressNode_ );
-    const auto dragged = std::exchange( pressNode_, {} );
-    pressSelection_.clear();
-    if ( wasSelected && tree_->selectionMode() == QAbstractItemView::MultiSelection ) {
-        // The press toggled the dragged node off: it is selected again, with the nodes it moves
-        // with.
-        if ( const auto index = model_->indexOf( dragged );
-             index.isValid()
-             && !tree_->selectionModel()->isRowSelected( index.row(), index.parent() ) ) {
-            tree_->selectionModel()->select( index, QItemSelectionModel::Select
-                                                        | QItemSelectionModel::Rows );
-        }
+    const auto before = std::exchange( pressSelection_, {} );
+    const bool wasSelected = std::exchange( pressWasSelected_, false );
+    pressNode_.clear();
+    if ( wasSelected ) {
+        // The press changed the selection (a toggle tree deselected the node, others kept only
+        // it): the selection before the press comes back, as Qt's own drags defer the change.
+        tree_->selectionModel()->select( before, QItemSelectionModel::ClearAndSelect );
     }
     auto* mime = new QMimeData;
     mime->setData( NodesMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) )
@@ -1789,6 +1818,8 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         const auto position = mouse->position().toPoint();
         const auto index = tree_->indexAt( position );
         pressNode_.clear();
+        pressSelection_.clear();
+        pressWasSelected_ = false;
         if ( mouse->button() != Qt::LeftButton ) {
             return false;
         }
@@ -1821,10 +1852,12 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
                  && ( !hooks_.canAct || hooks_.canAct() ) ) {
                 pressPosition_ = position;
                 pressNode_ = nodeId;
-                // Before the view handles the press, which toggles the node in a toggle tree. The
-                // whole selection: whether the pressed node is in it decides what moves; `moved`
-                // bounds the ids it sends.
-                pressSelection_ = selectedNodeIds( std::numeric_limits<int>::max() );
+                // Before the view handles the press, which may change the selection. Ranges, not
+                // ids: cheap for any selection; whether the pressed node was in it decides what
+                // moves.
+                pressSelection_ = tree_->selectionModel()->selection();
+                pressWasSelected_ = tree_->selectionModel()->isRowSelected( index.row(),
+                                                                            index.parent() );
             }
         }
         return false;
@@ -1840,7 +1873,10 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         return false;
     }
     case QEvent::MouseButtonRelease:
+        // No drag started: the snapshot of the selection goes.
         pressNode_.clear();
+        pressSelection_.clear();
+        pressWasSelected_ = false;
         return false;
     case QEvent::DragEnter:
     case QEvent::DragMove: {
