@@ -24,6 +24,8 @@
 #include <QStandardItemModel>
 #include <QTableView>
 #include <QTest>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <catch2/catch.hpp>
 #include <limits>
 #include <memory>
@@ -553,10 +555,37 @@ TEST_CASE( "E17c roots reset dropped looks, empty typed text stays, inputs stay 
                                     { "set", QJsonObject{ { "choices", QJsonArray{ "three", "four" } } } } } } );
     REQUIRE( board->currentText().isEmpty() );
     REQUIRE( view.inputs().value( "board" ) == "" );
+    // Also across an empty choices list: the field has shown choices before, so the empty text
+    // is still the user's and the next choices do not fill it.
+    const auto setChoices = [ & ]( const QJsonArray& choices ) {
+        view.applyPatch( { QJsonObject{ { "id", "board" },
+                                        { "set", QJsonObject{ { "choices", choices } } } } } );
+    };
+    setChoices( {} );
+    setChoices( { "five", "six" } );
+    REQUIRE( board->currentText().isEmpty() );
+    REQUIRE( view.inputs().value( "board" ) == "" );
 
     // A multiline field takes at most MaxFieldValueChars characters, so inputs never cut it.
     notes->setPlainText( QString( PluginView::MaxFieldValueChars + 10, QLatin1Char( 'x' ) ) );
     REQUIRE( notes->toPlainText().size() == PluginView::MaxFieldValueChars );
+    // Text inserted before the end at the limit is cut from the insertion: the text that was
+    // already there stays whole.
+    notes->setPlainText( QStringLiteral( "head" )
+                         + QString( PluginView::MaxFieldValueChars - 8, QLatin1Char( 'x' ) )
+                         + QStringLiteral( "tail" ) );
+    QTextCursor middle( notes->document() );
+    middle.setPosition( 4 );
+    middle.insertText( QStringLiteral( "INSERTED" ) );
+    const auto kept = notes->toPlainText();
+    REQUIRE( kept.size() == PluginView::MaxFieldValueChars );
+    REQUIRE( kept.startsWith( QStringLiteral( "head" ) ) );
+    REQUIRE( kept.endsWith( QStringLiteral( "tail" ) ) ); // before the fix the tail was lost
+    notes->setPlainText( QString( PluginView::MaxFieldValueChars, QLatin1Char( 'x' ) ) );
+    QTextCursor end( notes->document() );
+    end.movePosition( QTextCursor::End );
+    end.insertText( QStringLiteral( "more" ) ); // typing at the limit adds nothing
+    REQUIRE( notes->toPlainText() == QString( PluginView::MaxFieldValueChars, QLatin1Char( 'x' ) ) );
     bool truncated = true;
     REQUIRE( view.inputs( &truncated ).value( "notes" ).toString().size()
              == PluginView::MaxFieldValueChars );

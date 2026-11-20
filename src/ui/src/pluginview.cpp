@@ -946,12 +946,30 @@ QWidget* PluginView::buildFieldWidget( Node& node, const QJsonObject& element, Q
         auto* edit = new QPlainTextEdit( row );
         edit->setTabChangesFocus( true );
         debounced( edit );
-        // The same limit as a line edit, in the editor itself: a longer paste is cut here, so
-        // inputs and events never lose a tail silently.
-        connect( edit, &QPlainTextEdit::textChanged, edit, [ edit ] {
+        // The same limit as a line edit, in the editor itself, so inputs and events never lose a
+        // tail silently. What goes over the limit is cut from the text just inserted (a typed
+        // character, the end of a paste), never from the text that was already there, wherever
+        // the insertion happened. The change is recorded by contentsChange and trimmed in
+        // textChanged, which follows it, outside the document's own edit.
+        auto inserted = std::make_shared<std::pair<int, int>>( 0, 0 ); // position, characters
+        connect( edit->document(), &QTextDocument::contentsChange, edit,
+                 [ inserted ]( int position, int, int added ) { *inserted = { position, added }; } );
+        connect( edit, &QPlainTextEdit::textChanged, edit, [ edit, inserted ] {
             auto* document = edit->document();
-            if ( document->characterCount() - 1 > MaxFieldValueChars ) {
-                QTextCursor cursor( document );
+            const auto length = document->characterCount() - 1;
+            const auto excess = length - MaxFieldValueChars;
+            if ( excess <= 0 ) {
+                return;
+            }
+            const auto end = qMin( inserted->first + inserted->second, length );
+            const auto start = qMax( inserted->first, end - excess );
+            QTextCursor cursor( document );
+            if ( start < end ) {
+                cursor.setPosition( start );
+                cursor.setPosition( end, QTextCursor::KeepAnchor );
+                cursor.removeSelectedText();
+            }
+            if ( document->characterCount() - 1 > MaxFieldValueChars ) { // not from one insertion
                 cursor.setPosition( MaxFieldValueChars );
                 cursor.movePosition( QTextCursor::End, QTextCursor::KeepAnchor );
                 cursor.removeSelectedText();
