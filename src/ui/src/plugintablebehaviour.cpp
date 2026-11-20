@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <limits>
 #include <utility>
+#include <vector>
 
 namespace {
 constexpr int SaveDelayMs = 500;
@@ -699,24 +700,40 @@ QStringList PluginTableBehaviour::draggedRows() const
     if ( pressRow_.isEmpty() ) {
         return {};
     }
-    // The selection as it was before the press: a toggle-selection table has already deselected
-    // the pressed row, which still moves with the others (as Qt's own drags defer the toggle).
-    return pressSelection_.contains( pressRow_ ) ? pressSelection_ : QStringList{ pressRow_ };
+    if ( !pressWasSelected_ ) {
+        return { pressRow_ };
+    }
+    // The selection as it was before the press (the press may have changed it: a toggle table
+    // deselects the pressed row), in shown order, and only the ids `moved` sends: the ranges are
+    // turned into row numbers, never into every id.
+    std::vector<int> rows;
+    for ( const auto& range : pressSelection_ ) {
+        for ( int row = range.top(); range.isValid() && row <= range.bottom(); ++row ) {
+            rows.push_back( row );
+        }
+    }
+    std::sort( rows.begin(), rows.end() );
+    rows.erase( std::unique( rows.begin(), rows.end() ), rows.end() );
+    QStringList ids;
+    for ( const auto row : rows ) {
+        if ( ids.size() >= pluginview::MaxTableIds ) {
+            break;
+        }
+        ids.append( rowIdAt( proxy_->index( row, 0 ) ) );
+    }
+    return pluginview::boundedIds( ids );
 }
 
 void PluginTableBehaviour::startDrag()
 {
     const auto ids = draggedRows();
-    const bool wasSelected = pressSelection_.contains( pressRow_ );
-    const auto dragged = std::exchange( pressRow_, {} );
-    pressSelection_.clear();
-    if ( wasSelected && table_->selectionMode() == QAbstractItemView::MultiSelection ) {
-        // The press toggled the dragged row off: it is selected again, with the rows it moves with.
-        if ( const auto row = indexOfRow( dragged );
-             row.isValid() && !table_->selectionModel()->isRowSelected( row.row(), {} ) ) {
-            table_->selectionModel()->select( row, QItemSelectionModel::Select
-                                                       | QItemSelectionModel::Rows );
-        }
+    const auto before = std::exchange( pressSelection_, {} );
+    const bool wasSelected = std::exchange( pressWasSelected_, false );
+    pressRow_.clear();
+    if ( wasSelected ) {
+        // The press changed the selection (a toggle table deselected the row, others kept only
+        // it): the selection before the press comes back, as Qt's own drags defer the change.
+        table_->selectionModel()->select( before, QItemSelectionModel::ClearAndSelect );
     }
     auto* mime = new QMimeData;
     mime->setData( RowsMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) ).toJson(
@@ -784,6 +801,8 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
         const auto position = mouse->position().toPoint();
         const auto index = table_->indexAt( position );
         pressRow_.clear();
+        pressSelection_.clear();
+        pressWasSelected_ = false;
         if ( mouse->button() != Qt::LeftButton ) {
             return false;
         }
@@ -806,10 +825,12 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
             if ( mouse->modifiers() == Qt::NoModifier && reorderAllowed() ) {
                 pressPosition_ = position;
                 pressRow_ = rowIdAt( index );
-                // Before the view handles the press, which toggles the row in a toggle table. The
-                // whole selection: whether the pressed row is in it decides what moves; `moved`
-                // bounds the ids it sends.
-                pressSelection_ = selectedRowIds( std::numeric_limits<int>::max() );
+                // Before the view handles the press, which may change the selection. Ranges, not
+                // ids: cheap for any selection; whether the pressed row was in it decides what
+                // moves.
+                pressSelection_ = table_->selectionModel()->selection();
+                pressWasSelected_ = table_->selectionModel()->isRowSelected( index.row(),
+                                                                             index.parent() );
             }
         }
         return false;
@@ -825,7 +846,10 @@ bool PluginTableBehaviour::eventFilter( QObject* watched, QEvent* event )
         return false;
     }
     case QEvent::MouseButtonRelease:
+        // No drag started: the snapshot of the selection goes.
         pressRow_.clear();
+        pressSelection_.clear();
+        pressWasSelected_ = false;
         return false;
     case QEvent::DragEnter:
     case QEvent::DragMove: {

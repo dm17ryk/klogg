@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QHash>
+#include <QItemSelection>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QList>
@@ -98,7 +99,8 @@ public:
     // Writes a column change still waiting for its save (the view closes, or new columns come).
     void flushPendingSave();
 
-    // The rows a drag that starts now moves: the selection before the press when the pressed row
+    // The rows a drag that starts now moves, as `moved` sends them (at most MaxTableIds and
+    // MaxIdBytes of ids, in shown order): the selection before the press when the pressed row
     // was in it, else the pressed row alone; empty without a press that may start a drag.
     QStringList draggedRows() const;
 
@@ -130,6 +132,7 @@ private:
     QString selectionAnchor_;  // the row of the last click (toggle selection ranges)
     QPoint pressPosition_;
     QString pressRow_;
-    QStringList pressSelection_; // the selected rows when the drag's press came
+    QItemSelection pressSelection_; // the selection when the drag's press came (ranges)
+    bool pressWasSelected_ = false; // whether the pressed row was in it
     bool restoring_ = false;
 };

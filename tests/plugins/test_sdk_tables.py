@@ -344,6 +344,25 @@ class Downgrades(TableCase):
         self.assertEqual(host.wait_for("view/update")["patch"],
                          [{"id": "t", "set": {"export": True}}, {"id": "t", "select": ["r1"]}])
 
+    def test_the_selection_patch_carries_only_the_ids_cilogg_uses(self):
+        sdk = self.sdk
+        long_ids = [f"{index:04}" + "x" * 4092 for index in range(1000)]  # ~4 MiB of ids
+        entry = sdk.select_rows("t", long_ids)
+        self.assertEqual(entry["select"], sdk.bounded_ids(long_ids))
+        self.assertLess(len(entry["select"]), 100)
+        self.assertLessEqual(len(json.dumps(entry).encode("utf-8")), sdk.MAX_ID_BYTES + 100)
+        self.assertEqual(len(sdk.select_rows("t", [str(n) for n in range(1500)])["select"]),
+                         sdk.MAX_TABLE_IDS)
+        self.assertEqual(sdk.select_rows("t", ["b", "a"])["select"], ["b", "a"])
+        self.assertEqual(self.testing.MAX_ID_BYTES, sdk.MAX_ID_BYTES)
+        # The patch reaches the host whole: the 1 MiB message limit is never hit.
+        plugin = self.plugin(handles=None)
+        host = self.host(plugin)
+        plugin.update("main", self.tree())
+        host.wait_for("view/update")
+        plugin.patch("main", [entry])
+        self.assertEqual(host.wait_for("view/update")["patch"][0]["select"], entry["select"])
+
 
 class Events(TableCase):
     def received(self, handles=HANDLES):

@@ -468,7 +468,7 @@ TEST_CASE( "E17d drags move the selection, bars show on alternate rows, a new ro
         QTest::mouseRelease( viewport, Qt::LeftButton, {}, toggle.center( "r3", 0 ) );
     }
     // The whole selection decides, not only its first 1,000 ids: a press on the 1,051st of
-    // 1,100 selected rows moves them all (`moved` then bounds the ids it sends).
+    // 1,100 selected rows moves the selection, whose first 1,000 ids `moved` sends.
     {
         QJsonArray many;
         for ( int row = 0; row < 1100; ++row ) {
@@ -490,9 +490,11 @@ TEST_CASE( "E17d drags move the selection, bars show on alternate rows, a new ro
         const auto at = table->visualRect( target ).center();
         QTest::mousePress( table->viewport(), Qt::LeftButton, {}, at );
         const auto dragged = lots.behaviour()->draggedRows();
-        REQUIRE( dragged.size() == 1100 );
-        REQUIRE( dragged.contains( "m1050" ) );
+        REQUIRE( dragged.size() == pluginview::MaxTableIds );
+        REQUIRE( dragged.front() == "m0" );
+        REQUIRE( dragged.back() == "m999" );
         QTest::mouseRelease( table->viewport(), Qt::LeftButton, {}, at );
+        REQUIRE( lots.behaviour()->draggedRows().isEmpty() ); // no drag: the snapshot is gone
     }
     // A full bar on an alternate row is not covered by the row's background.
     {

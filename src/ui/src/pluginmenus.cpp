@@ -638,18 +638,24 @@ QAction* PluginMenus::addEntry( QMenu* menu, QAction* before, const Source& plug
         submenu->menuAction()->setToolTip( tooltip );
         submenu->setEnabled( entry.value( "enabled" ).toBool( true ) );
         if ( declared ) {
-            // menu/update while the menu is open changes the submenu in place (design 7.4).
+            // menu/update while the menu is open changes the submenu in place (design 7.4):
+            // every key an entry has, its icon and tooltip included.
             connect( &registry, &PluginMenuRegistry::changed, submenu,
-                     [ guarded = QPointer<QMenu>( submenu ), pluginId = plugin.id, menuId,
-                       item ]( const QString& changedPlugin ) {
-                         if ( !guarded || changedPlugin != pluginId ) {
+                     [ self = QPointer<PluginMenus>( this ), guarded = QPointer<QMenu>( submenu ),
+                       plugin, menuId, item ]( const QString& changedPlugin ) {
+                         if ( !self || !guarded || changedPlugin != plugin.id ) {
                              return;
                          }
                          const auto now
-                             = PluginMenuRegistry::instance().entryState( pluginId, menuId, item );
+                             = PluginMenuRegistry::instance().entryState( plugin.id, menuId, item );
                          guarded->setTitle( menuText( now.value( "title" ).toString() ) );
                          guarded->setEnabled( now.value( "enabled" ).toBool( true ) );
                          guarded->menuAction()->setVisible( now.value( "visible" ).toBool( true ) );
+                         guarded->menuAction()->setToolTip( pluginview::plainToolTip(
+                             now.value( "tooltip" ).toString( now.value( "title" ).toString() ) ) );
+                         if ( now.contains( "icon" ) ) {
+                             guarded->setIcon( self->iconFor( plugin, now.value( "icon" ) ) );
+                         }
                      } );
         }
         menu->insertAction( before, submenu->menuAction() );
