@@ -277,9 +277,10 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
         REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", conflictJob(), apply ) );
         CHECK( markers.contains( "conflict markers" ) );
         REQUIRE( applied.size() == 2 );
-        // The result is your whole file: sent as a side, byte for byte, not as text.
+        // Settled conflict by conflict, the result is a text (a whole side is only what a
+        // whole-side button chose).
         CHECK( applied.at( 0 ).toMap()
-               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "take", "mine" } } );
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) }, { "text", "2\n" } } );
         CHECK( applied.at( 1 ).toMap()
                == QVariantMap{ { "path", SecondPath }, { "field", "regex" }, { "value", "^THEIRS$" } } );
     }
@@ -317,6 +318,41 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
         CHECK( applied.at( 0 ).toMap()
                == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
                                { "take", "mine" } } );
+    }
+    SECTION( "a file with CRLF line endings keeps them" )
+    {
+        auto job = conflictJob();
+        auto result = job[ "result" ].toMap();
+        auto conflicts = result[ "conflicts" ].toList();
+        auto file = conflicts[ 1 ].toMap();
+        file[ "base" ] = "1\r\n";
+        conflicts[ 1 ] = file;
+        result[ "conflicts" ] = conflicts;
+        auto items = result[ "items" ].toMap();
+        auto lua = items[ packcanonical::filePath( "lua/a.lua" ) ].toMap();
+        lua[ "mine" ] = "2\r\n";
+        lua[ "theirs" ] = "3\r\n";
+        items[ packcanonical::filePath( "lua/a.lua" ) ] = lua;
+        result[ "items" ] = items;
+        job[ "result" ] = result;
+        // A whole side is sent as that side (the editor shows it with LF).
+        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+            buttonIn( dialog, "packMergeWholeTheirs" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( applied.at( 0 ).toMap()
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
+                               { "take", "theirs" } } );
+        // A text result gets the file's CRLF back.
+        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+            buttonIn( dialog, "packMergeUseMine" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( applied.at( 0 ).toMap()
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
+                               { "text", "2\r\n" } } );
     }
     SECTION( "a file too large to show is resolved whole" )
     {
@@ -419,6 +455,96 @@ TEST_CASE( "Keep Both copies your preview only once the update is installed", "[
                                            } ) );
     CHECK( stillOpen );
     CHECK( refusal.contains( "already have a preview named \"Second (mine)\"" ) );
+    REQUIRE( PreviewManager::instance().clearAll() );
+    registry.attach( nullptr );
+}
+
+TEST_CASE( "A merge asked for again replaces the earlier choices, Keep Both included",
+           "[packeditors][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    installPack( manager, root.filePath( "package" ) );
+    auto& registry = PreviewPackRegistry::instance();
+    registry.attach( &manager );
+    REQUIRE( PreviewManager::instance().clearAll() );
+    const auto editSecond = [ &manager ]( const QString& regex ) {
+        auto item = QJsonDocument::fromJson( manager.manage( "pack_read", PackId, { { "path", SecondPath } } )
+                                                 .payload[ "content" ]
+                                                 .toString()
+                                                 .toUtf8() )
+                        .object();
+        item[ "regex" ] = regex;
+        REQUIRE( manager.manage( "pack_edit", PackId,
+                                 { { "path", SecondPath },
+                                   { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } )
+                     .ok() );
+    };
+    editSecond( "^MINE$" );
+    // Version 1.1.0 changes the regex you edited.
+    const auto v2 = writePackage( root.filePath( "v2" ) );
+    {
+        auto manifest = packManifest();
+        manifest[ "version" ] = "1.1.0";
+        QFile plugin( v2 + "/plugin.json" );
+        REQUIRE( plugin.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        plugin.write( QJsonDocument( manifest ).toJson() );
+        QFile previews( v2 + "/previews.json" );
+        REQUIRE( previews.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        previews.write( QByteArray( Previews ).replace( "^B$", "^THEIRS$" ) );
+    }
+    CommanderRequest request;
+    request.action = CommanderAction::PluginManage;
+    request.pluginOperation = "install";
+    request.pluginArguments = { { "path", v2 } };
+    request.origin = CommanderOriginGui;
+
+    // First merge: Keep Both, but the pack is edited again before the update runs.
+    bool firstApplied = false;
+    bool secondShown = false;
+    whenOpen( "packMergeDialog", [ &firstApplied, &editSecond ]( QWidget* dialog ) {
+        auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+        REQUIRE( tree );
+        tree->setCurrentItem( tree->topLevelItem( 0 ) );
+        buttonIn( dialog, "packMergeKeepBoth" )->click();
+        editSecond( "^NEWER$" );
+        firstApplied = true;
+        buttonIn( dialog, "packMergeApply" )->click();
+    } );
+    // The merge is asked for again; this time the new version is taken.
+    whenModal(
+        [ &firstApplied ]( QWidget* widget ) {
+            return firstApplied && widget->objectName() == "packMergeDialog" && widget->isVisible();
+        },
+        [ &secondShown ]( QWidget* dialog ) {
+            secondShown = true;
+            buttonIn( dialog, "packMergeAllTheirs" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+    QWidget host;
+    QVariantMap last;
+    bool done = false;
+    pluginsui::runPackAwareInstall( &host, &manager, executorFor( manager ), request, "Example pack",
+                                    [ &last, &done ]( const QVariantMap& job ) {
+                                        last = job;
+                                        done = true;
+                                    } );
+    QElapsedTimer timer;
+    timer.start();
+    while ( !done && timer.elapsed() < 30000 ) {
+        QCoreApplication::processEvents( QEventLoop::AllEvents, 50 );
+    }
+    REQUIRE( done );
+    INFO( last.value( "error" ).toString().toStdString() );
+    CHECK( secondShown );
+    REQUIRE( last.value( "state" ) == "completed" );
+    CHECK( manager.manage( "pack_read", PackId, { { "path", SecondPath } } )
+               .payload[ "content" ]
+               .toString()
+               .contains( "^THEIRS$" ) );
+    // The first merge's Keep Both was not chosen again: no copy of yours.
+    CHECK_FALSE( PreviewManager::instance().findByName( "Second (mine)" ) );
     REQUIRE( PreviewManager::instance().clearAll() );
     registry.attach( nullptr );
 }

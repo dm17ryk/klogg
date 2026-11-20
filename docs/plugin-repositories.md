@@ -804,8 +804,18 @@ Pack Files but not edited. A job keeps at most 4 MiB of conflict texts (jobs are
 that is not UTF-8 may read the same for different bytes), and an automatic update keeps no
 texts. An item with more than 32 conflicting fields, or any item past 1,024 listed conflicts, is
 listed as one whole-item conflict. Resolutions come back with the result's `revision` (the
-`local` commit the merge was shown for); after another edit they are dropped and the merge is
-asked for again, so a stale choice never overwrites a newer edit. `pack_edit` takes exactly one
+`local` commit the merge was shown for; resolutions without it are refused); after another edit
+they are dropped and the merge is asked for again, so a stale choice never overwrites a newer
+edit, and the GUI then drops the earlier merge's Keep Both too (the new merge's choices
+replace it). The merge window sends a whole side as `take` only when a whole-side button chose
+it (the editor shows CRLF as LF), and a text result of a CRLF file keeps CRLF. An update that
+stopped part-way (CILogg ended between moving `upstream` and `local`, which never otherwise
+leaves `local` outside `upstream`'s descendants, or before the package folder was replaced, so
+`upstream`'s version is not the installed one) is put back when the pack is next read: the
+update's merge and its `upstream` commit are undone, and a later update merges anew. Removing a
+pack removes the repository and the content folder each on its own; a store still on disk when
+the pack is installed again (a removal that could not finish) is set aside as
+`<name>.orphaned-<time>`, never merged into the new install. `pack_edit` takes exactly one
 of `content` and `remove`, and no content file of a pack may be its `plugin.json` or previews
 file, which CILogg writes itself, or differ from another only in case. The content folder's
 `local` commit is recorded beside it (`current.revision`): a folder left behind by a replace

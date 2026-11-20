@@ -480,6 +480,85 @@ TEST_CASE( "A damaged pack store is rebuilt with the local edits", "[packmerge][
            == 1 );
 }
 
+TEST_CASE( "An update that stopped part-way is put back to the installed version",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+    edited[ "regex" ] = "^EDITED$";
+    REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    const auto before = store.localTip();
+    // Version 1.1.0 changes another preview; the merge keeps the edit.
+    auto v2Previews = QJsonDocument::fromJson( Previews ).object();
+    auto previews = v2Previews[ "previews" ].toArray();
+    auto frame = previews[ 1 ].toObject();
+    frame[ "regex" ] = "^A2$";
+    previews[ 1 ] = frame;
+    v2Previews[ "previews" ] = previews;
+    const auto v2 = packFiles( QJsonDocument( v2Previews ).toJson() );
+    const auto plan = store.planUpdate( v2, MergeStrategy::Fail );
+    REQUIRE( plan.conflicts.isEmpty() );
+    REQUIRE( store.applyUpdate( v2, plan.merged, packManifest( "1.1.0" ), "1.1.0", "Team packs" ).isEmpty() );
+    const auto after = store.localTip();
+    REQUIRE( after != before );
+    // Nothing to put back when the package folder has the store's version.
+    REQUIRE( store.recoverInterruptedUpdate( "1.1.0" ).isEmpty() );
+    CHECK( store.localTip() == after );
+
+    SECTION( "CILogg ended before the package folder was replaced" )
+    {
+        REQUIRE( store.recoverInterruptedUpdate( "1.0.0" ).isEmpty() );
+    }
+    SECTION( "CILogg ended between moving upstream and local" )
+    {
+        QFile local( root.filePath( "org.example.pack.git/refs/heads/local" ) );
+        REQUIRE( local.open( QIODevice::WriteOnly | QIODevice::Truncate ) );
+        local.write( before.toLatin1() + '\n' );
+        local.close();
+        PackStore reopened( root.path(), "org.example.pack" );
+        REQUIRE( reopened.recoverInterruptedUpdate( "1.0.0" ).isEmpty() );
+    }
+    PackStore recovered( root.path(), "org.example.pack" );
+    CHECK( recovered.localTip() == before );
+    CHECK( recovered.upstreamFiles() == packFiles() );
+    CHECK( recovered.localEdits() == QStringList{ second } );
+    REQUIRE( recovered.repairContent().isEmpty() );
+    CHECK( readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+    CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
+}
+
+TEST_CASE( "A store left by an earlier install does not come back into a new one",
+           "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    {
+        // What a removal that could not finish leaves: a store with an edit, no installed pack.
+        PackStore store( root.filePath( "data/pack-store" ), "org.example.pack" );
+        REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+        auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+        edited[ "regex" ] = "^LEFTOVER$";
+        REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    }
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto v1 = writePackage( root.filePath( "v1" ), "1.0.0", Previews, "-- a\n" );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) );
+    INFO( job[ "error" ].toString().toStdString() );
+    REQUIRE( job[ "state" ] == "completed" );
+    CHECK( manager.manage( "pack_edits", "org.example.pack", {} ).payload[ "files" ].toList().isEmpty() );
+    CHECK( previewRegex( manager.packContentDirectory( "org.example.pack" ), "Second" ) == "^B$" );
+    // Kept aside, never deleted.
+    CHECK( QDir( root.filePath( "data/pack-store" ) )
+               .entryList( { "org.example.pack.git.orphaned-*" }, QDir::Dirs | QDir::NoDotAndDotDot )
+               .size()
+           == 1 );
+}
+
 TEST_CASE( "A content folder that missed a commit is written again", "[packmerge][E16]" )
 {
     QTemporaryDir root;
@@ -662,26 +741,30 @@ TEST_CASE( "Pack checks, encodings, revisions and removal follow the effective c
     const auto conflicted = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
     REQUIRE( conflicted[ "state" ] == "failed" );
     CHECK( !conflicted[ "result" ].toMap()[ "items" ].toMap()[ lua ].toMap()[ "utf8" ].toBool() );
-    const auto asText = finished(
-        manager, manager.manage( "install", {},
-                                 { { "path", v2 },
-                                   { "resolutions",
-                                     QVariantList{ QVariantMap{ { "path", lua }, { "text", "x\n" } } } } } ) );
-    CHECK( asText[ "state" ] == "failed" );
-    // A file the new version's manifest lists cannot be removed by a resolution: refused, not
-    // put back behind the user's back.
-    const auto removed = finished(
-        manager, manager.manage( "install", {},
-                                 { { "path", v2 },
-                                   { "resolutions",
-                                     QVariantList{ QVariantMap{ { "path", lua }, { "remove", true } } } } } ) );
-    CHECK( removed[ "state" ] == "failed" );
-    CHECK( removed[ "error" ].toString().contains( "Invalid merge resolution" ) );
-    const auto whole = finished(
+    const auto shown = conflicted[ "result" ].toMap()[ "revision" ].toString();
+    const auto resolve = [ &manager, &v2, &shown ]( const QVariantMap& resolution ) {
+        return finished( manager, manager.manage( "install", {},
+                                                  { { "path", v2 },
+                                                    { "resolutions", QVariantList{ resolution } },
+                                                    { "revision", shown } } ) );
+    };
+    // Resolutions are applied only to the edits they were chosen for: without the revision of
+    // the failed update they are refused.
+    const auto unbound = finished(
         manager, manager.manage( "install", {},
                                  { { "path", v2 },
                                    { "resolutions",
                                      QVariantList{ QVariantMap{ { "path", lua }, { "take", "theirs" } } } } } ) );
+    CHECK( unbound[ "state" ] == "failed" );
+    CHECK( unbound[ "error" ].toString().contains( "need the revision" ) );
+    const auto asText = resolve( { { "path", lua }, { "text", "x\n" } } );
+    CHECK( asText[ "state" ] == "failed" );
+    // A file the new version's manifest lists cannot be removed by a resolution: refused, not
+    // put back behind the user's back.
+    const auto removed = resolve( { { "path", lua }, { "remove", true } } );
+    CHECK( removed[ "state" ] == "failed" );
+    CHECK( removed[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    const auto whole = resolve( { { "path", lua }, { "take", "theirs" } } );
     REQUIRE( whole[ "state" ] == "completed" );
     CHECK( readFile( manager.packContentDirectory( id ) + "/lua/a.lua" ) == "-- caf\xe9, 2\n" );
 
@@ -754,7 +837,10 @@ TEST_CASE( "A merge's job carries each file's texts once, within a budget", "[pa
     const QVariantList resolutions{ QVariantMap{ { "path", a }, { "take", "theirs" } },
                                     QVariantMap{ { "path", b }, { "take", "mine" } } };
     const auto resolved = finished(
-        manager, manager.manage( "install", {}, { { "path", v2 }, { "resolutions", resolutions } } ) );
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions", resolutions },
+                                   { "revision", result[ "revision" ] } } ) );
     REQUIRE( resolved[ "state" ] == "completed" );
     const auto content = manager.packContentDirectory( id );
     CHECK( readFile( content + "/lua/a.lua" ).startsWith( "-- theirs\n" ) );
@@ -1026,7 +1112,9 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
         const QVariantList resolutions{ QVariantMap{
             { "path", second }, { "field", "regex" }, { "value", "^CHOSEN$" } } };
         REQUIRE( finished( manager, manager.manage( "install", {},
-                                                     { { "path", v3 }, { "resolutions", resolutions } } ) )
+                                                     { { "path", v3 },
+                                                       { "resolutions", resolutions },
+                                                       { "revision", refused[ "result" ].toMap()[ "revision" ] } } ) )
                      [ "state" ]
                  == "completed" );
         CHECK( previewRegex( content, "Second" ) == "^CHOSEN$" );
@@ -1044,7 +1132,9 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
                 QVariantMap{ { "path", second }, { "field", "name" }, { "value", "Other" } } } ) {
             const auto job = finished(
                 manager, manager.manage( "install", {},
-                                         { { "path", v3 }, { "resolutions", QVariantList{ resolution } } } ) );
+                                         { { "path", v3 },
+                                           { "resolutions", QVariantList{ resolution } },
+                                           { "revision", refused[ "result" ].toMap()[ "revision" ] } } ) );
             CHECK( job[ "state" ] == "failed" );
             CHECK( job[ "error" ].toString().startsWith( "Invalid merge resolution" ) );
         }

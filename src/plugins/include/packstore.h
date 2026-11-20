@@ -102,9 +102,17 @@ public:
     // this way, and so is a merge result that is checked before it is installed.
     static QString writeFolder( const QString& folder, const PackFiles& files,
                                 const QJsonObject& manifest );
-    // Writes the effective content again when its folder is missing (a write that failed after
-    // its commit).
+    // Writes the effective content again when its folder is missing or holds another commit (a
+    // write that failed after its commit).
     QString repairContent();
+    // Puts back an update that stopped part-way (CILogg ended between moving `upstream` and
+    // `local`, or before the package folder of `installedVersion` was replaced), so the store
+    // matches the installed package again; a later update merges anew. Empty when nothing was
+    // wrong or it was put back.
+    QString recoverInterruptedUpdate( const QString& installedVersion );
+    // Sets an earlier install's store aside as `<name>.orphaned-<time>` (kept, never deleted):
+    // a pack installed again starts a store of its own.
+    QString setAside();
 
     QString error() const
     {

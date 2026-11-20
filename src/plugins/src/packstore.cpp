@@ -788,9 +788,95 @@ QString PackStore::remove()
     if ( !safePackId( packId_ ) ) {
         return QStringLiteral( "Invalid pack ID for the pack store." );
     }
-    const bool removed = QDir( repositoryPath() ).removeRecursively()
-                         && QDir( QDir( root_ ).filePath( packId_ ) ).removeRecursively();
-    return removed ? QString{} : QStringLiteral( "Cannot remove the pack store." );
+    // Each on its own: a repository that cannot be deleted (a file held open) does not keep the
+    // content folder, and the other way round. What stays is set aside by the next install.
+    const bool content = QDir( QDir( root_ ).filePath( packId_ ) ).removeRecursively();
+    const bool repository = QDir( repositoryPath() ).removeRecursively();
+    return content && repository ? QString{} : QStringLiteral( "Cannot remove the pack store." );
+}
+
+QString PackStore::setAside()
+{
+    if ( repository_ ) {
+        git_repository_free( repository_ );
+        repository_ = nullptr;
+    }
+    if ( !safePackId( packId_ ) ) {
+        return QStringLiteral( "Invalid pack ID for the pack store." );
+    }
+    const auto stamp = QDateTime::currentDateTimeUtc().toString( QStringLiteral( "yyyyMMddTHHmmsszzzZ" ) );
+    for ( const auto& path : { repositoryPath(), QDir( root_ ).filePath( packId_ ) } ) {
+        if ( QFileInfo::exists( path )
+             && !renameFolder( path, QStringLiteral( "%1.orphaned-%2" ).arg( path, stamp ) ) ) {
+            return QStringLiteral( "The store of an earlier install of this pack is still on disk and "
+                                   "cannot be set aside: %1" )
+                .arg( QDir::toNativeSeparators( path ) );
+        }
+    }
+    LOG_WARNING << "Pack store of an earlier install set aside pack=" << packId_.toStdString();
+    return {};
+}
+
+QString PackStore::recoverInterruptedUpdate( const QString& installedVersion )
+{
+    git_oid upstream;
+    git_oid local;
+    if ( !open( false ) || git_reference_name_to_id( &upstream, repository_, "refs/heads/upstream" ) != 0
+         || git_reference_name_to_id( &local, repository_, "refs/heads/local" ) != 0 ) {
+        return {}; // no store, or a damaged one: damaged() and rebuild() handle it
+    }
+    const auto parentOf = [ this ]( const git_oid& id, unsigned int index, git_oid* parent ) {
+        Commit commit;
+        if ( git_commit_lookup( &commit.pointer, repository_, &id ) != 0
+             || git_commit_parentcount( commit.pointer ) <= index ) {
+            return false;
+        }
+        git_oid_cpy( parent, git_commit_parent_id( commit.pointer, index ) );
+        return true;
+    };
+    const auto descends = [ this ]( const git_oid& commit, const git_oid& ancestor ) {
+        return git_oid_equal( &commit, &ancestor )
+               || git_graph_descendant_of( repository_, &commit, &ancestor ) == 1;
+    };
+    const auto versionAt = [ this ]( const git_oid& id ) {
+        return QJsonDocument::fromJson( filesAt( oidText( id ) ).value( ManifestPath ) )
+            .object()
+            .value( "version" )
+            .toString();
+    };
+    const auto move = [ this ]( const char* branch, const git_oid& id ) {
+        Reference reference;
+        return git_reference_create( &reference.pointer, repository_, branch, &id, 1,
+                                     "Put back an update that stopped part-way" )
+               == 0;
+    };
+    // `local` always descends from `upstream` (an update moves `upstream` first): if not, CILogg
+    // ended between the two, and `upstream` goes back to the version `local` was merged with.
+    git_oid previous;
+    if ( !descends( local, upstream ) ) {
+        if ( !parentOf( upstream, 0, &previous ) || !descends( local, previous )
+             || !move( "refs/heads/upstream", previous ) ) {
+            return lastError( QStringLiteral( "The pack's store is inconsistent and cannot be put back" ) );
+        }
+        git_oid_cpy( &upstream, &previous );
+        LOG_WARNING << "Pack store update undone (local not moved) pack=" << packId_.toStdString();
+    }
+    // Both moved but the package folder still has the earlier version: the update's merge (whose
+    // second parent is the new `upstream`) is undone, and `upstream` goes back with it.
+    if ( !installedVersion.isEmpty() && versionAt( upstream ) != installedVersion ) {
+        git_oid merged;
+        git_oid before;
+        if ( parentOf( local, 1, &merged ) && git_oid_equal( &merged, &upstream )
+             && parentOf( local, 0, &before ) && parentOf( upstream, 0, &previous )
+             && versionAt( previous ) == installedVersion ) {
+            if ( !move( "refs/heads/local", before ) || !move( "refs/heads/upstream", previous ) ) {
+                return lastError( QStringLiteral( "The pack's store cannot be put back" ) );
+            }
+            LOG_WARNING << "Pack store update undone (package not replaced) pack="
+                        << packId_.toStdString();
+        }
+    }
+    return {};
 }
 
 PackTips PackStore::tips() const

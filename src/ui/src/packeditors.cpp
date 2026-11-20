@@ -239,9 +239,15 @@ bool needsPackMerge( const QVariantMap& job )
            && job.value( "result" ).toMap().value( "needsMerge" ).toBool();
 }
 
-void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManager> manager,
-                          Executor executor, const CommanderRequest& request, const QString& name,
-                          const std::function<void( const QVariantMap& )>& done )
+namespace {
+// Runs `request` and follows its job; a job that needs a merge opens the merge window, whose Apply
+// runs the request again with that merge's choices. `afterInstall` belongs to the merge that led
+// to this request: it runs once this job is installed, and is dropped when the job needs another
+// merge (the pack was edited meanwhile): that merge's choices, Keep Both included, replace it.
+void runWithMerge( QWidget* parent, QPointer<cilogg::plugins::PluginManager> manager,
+                   Executor executor, const CommanderRequest& request, const QString& name,
+                   const std::function<void( const QVariantMap& )>& done,
+                   const AfterPackMerge& afterInstall )
 {
     const auto started = executor( request );
     if ( !started.ok() ) {
@@ -249,9 +255,9 @@ void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManag
         return;
     }
     followJob( parent, manager, started.payload.value( "jobId" ).toString(),
-               [ parent, manager, executor, request, name, done ]( const QVariantMap& job ) {
+               [ parent, manager, executor, request, name, done, afterInstall ]( const QVariantMap& job ) {
                    if ( !needsPackMerge( job ) ) {
-                       done( job );
+                       done( afterPackMerge( job, afterInstall ) );
                        return;
                    }
                    // The installed version stays until Apply; Cancel reports the refusal.
@@ -259,7 +265,7 @@ void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManag
                        parent, name, job,
                        [ parent, manager, executor, request, name, done,
                          revision = job.value( "result" ).toMap().value( "revision" ) ](
-                           const QVariantList& resolutions, const AfterPackMerge& afterInstall ) {
+                           const QVariantList& resolutions, const AfterPackMerge& chosen ) {
                            auto again = request;
                            again.pluginArguments.insert( "resolutions", resolutions );
                            // The edits the choices were made for: after another edit the update
@@ -267,15 +273,20 @@ void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManag
                            if ( revision.isValid() ) {
                                again.pluginArguments.insert( "revision", revision.toString() );
                            }
-                           runPackAwareInstall( parent, manager, executor, again, name,
-                                                [ done, afterInstall ]( const QVariantMap& finished ) {
-                                                    done( afterPackMerge( finished, afterInstall ) );
-                                                } );
+                           runWithMerge( parent, manager, executor, again, name, done, chosen );
                        } );
                    if ( !applied ) {
                        done( job );
                    }
                } );
+}
+} // namespace
+
+void runPackAwareInstall( QWidget* parent, QPointer<cilogg::plugins::PluginManager> manager,
+                          Executor executor, const CommanderRequest& request, const QString& name,
+                          const std::function<void( const QVariantMap& )>& done )
+{
+    runWithMerge( parent, manager, executor, request, name, done, {} );
 }
 
 QString mergeToolCommand()
@@ -749,9 +760,10 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             QObject::connect( useTheirs, &QPushButton::clicked, page, [ resultEdit ] {
                 resultEdit->setPlainText( takeFirstConflict( resultEdit->toPlainText(), false ) );
             } );
-            // The side a whole-side button chose, recorded: a file that is not UTF-8 shows both
-            // sides only as a lossy reading, which may look the same for different bytes.
-            auto side = std::make_shared<QString>( QStringLiteral( "mine" ) );
+            // The side a whole-side button chose, recorded and sent as `take`, never read back from
+            // the editor: it shows a file that is not UTF-8 only as a lossy reading, and it turns
+            // CRLF line endings into LF. Any other change of the result makes it a text again.
+            auto side = std::make_shared<QString>();
             QObject::connect( wholeMine, &QPushButton::clicked, page, [ resultEdit, mineText, side ] {
                 resultEdit->setPlainText( mineText );
                 *side = QStringLiteral( "mine" );
@@ -789,7 +801,11 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                            page );
                 reason->setObjectName( omitted ? "packMergeOmitted" : "packMergeNotUtf8" );
                 pageLayout->addWidget( reason );
+                *side = QStringLiteral( "mine" ); // what the read-only result shows
             }
+            // Typing, a per-conflict button or the merge tool: the result is a text of its own (a
+            // whole-side button sets its side again right after its setPlainText).
+            QObject::connect( resultEdit, &QPlainTextEdit::textChanged, page, [ side ] { side->clear(); } );
             textConflicts->append( { path, conflict.value( "item" ).toString(), resultEdit, mineText,
                                      theirsText, wholeOnly, side } );
             tabs->addTab( page, conflict.value( "item" ).toString() );
@@ -911,29 +927,26 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         afterInstall = {};
         for ( const auto& text : *textConflicts ) {
             QVariantMap resolution{ { "path", text.path } };
-            if ( text.wholeOnly ) {
-                // The side chosen, never read back from the lossy text shown.
-                resolution.insert( "take", *text.side );
+            if ( text.wholeOnly || !text.side->isEmpty() ) {
+                // A whole side, byte for byte, as chosen: never read back from the editor.
+                resolution.insert( "take", text.side->isEmpty() ? QStringLiteral( "mine" ) : *text.side );
                 resolutions.append( resolution );
                 continue;
             }
-            const auto value = text.result->toPlainText();
+            auto value = text.result->toPlainText();
             if ( hasMarkers( value ) ) {
                 tabs->setCurrentWidget( text.result->parentWidget() );
                 QMessageBox::warning( &dialog, dialog.windowTitle(),
                                       tr( "%1 still has conflict markers." ).arg( text.item ) );
                 return;
             }
-            // A whole side goes byte for byte (UTF-8 text reads back exactly).
-            if ( value == text.mine ) {
-                resolution.insert( "take", "mine" );
+            // The editor shows lines with LF only: a file whose sides use CRLF keeps CRLF.
+            if ( text.mine.contains( QStringLiteral( "\r\n" ) )
+                 || text.theirs.contains( QStringLiteral( "\r\n" ) ) ) {
+                value.replace( QStringLiteral( "\r\n" ), QStringLiteral( "\n" ) );
+                value.replace( QLatin1Char( '\n' ), QStringLiteral( "\r\n" ) );
             }
-            else if ( value == text.theirs ) {
-                resolution.insert( "take", "theirs" );
-            }
-            else {
-                resolution.insert( "text", value );
-            }
+            resolution.insert( "text", value );
             resolutions.append( resolution );
         }
         for ( int top = 0; top < tree->topLevelItemCount(); ++top ) {

@@ -275,7 +275,11 @@ QString PluginManager::ensurePackStore( const QString& id, const Manifest& insta
     const bool damaged
         = store.damaged() || ( !store.hasRepository() && !store.contentDirectory().isEmpty() );
     if ( !damaged && store.exists() ) {
-        // A content folder lost after its commit (a failed swap) is written again.
+        // An update that stopped part-way (CILogg ended in the middle) is put back to the installed
+        // version, and a content folder lost or left behind after its commit is written again.
+        if ( const auto error = store.recoverInterruptedUpdate( installed.version ); !error.isEmpty() ) {
+            return error;
+        }
         return store.repairContent();
     }
     if ( !damaged && !create ) {
@@ -306,15 +310,24 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     }
     // A damaged store is rebuilt first, so the update still merges with the local edits.
     const auto installed = entries_.find( staged.manifest.id );
-    if ( installed != entries_.end() && isConfigPack( installed->second->manifest.json )
-         && installed->second->manifest.valid() ) {
+    const bool packInstalled = installed != entries_.end()
+                               && isConfigPack( installed->second->manifest.json )
+                               && installed->second->manifest.valid();
+    if ( packInstalled ) {
         error = ensurePackStore( staged.manifest.id, installed->second->manifest, false );
         if ( !error.isEmpty() ) {
             return QStringLiteral( "The pack's local store is damaged and could not be rebuilt: %1" )
                 .arg( error );
         }
     }
-    const PackStore store( packStoreRoot(), staged.manifest.id );
+    PackStore store( packStoreRoot(), staged.manifest.id );
+    // A store without its pack is what an earlier removal could not delete: it is set aside, so
+    // its edits do not come back into a new install.
+    if ( !packInstalled && ( store.hasRepository() || !store.contentDirectory().isEmpty() ) ) {
+        if ( const auto aside = store.setAside(); !aside.isEmpty() ) {
+            return aside;
+        }
+    }
     if ( !store.exists() ) {
         return {}; // a first install: nothing to merge
     }
@@ -346,6 +359,10 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     // asked for again.
     const auto revision = store.localTip();
     ( *result )[ "revision" ] = revision;
+    if ( !context.value( "resolutions" ).toList().isEmpty() && !context.contains( "revision" ) ) {
+        return QStringLiteral( "resolutions need the revision of the failed update's result: they "
+                               "are applied only to the edits they were chosen for." );
+    }
     const bool stale = context.contains( "revision" ) && context.value( "revision" ).toString() != revision;
     const auto resolutions = stale ? QVariantList{} : context.value( "resolutions" ).toList();
     QVector<PackConflict> open;
