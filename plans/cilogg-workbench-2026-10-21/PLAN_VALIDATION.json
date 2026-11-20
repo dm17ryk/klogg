@@ -987,5 +987,36 @@
       ],
       "allFixedWithTests": true
     }
+  },
+  "e17eChecks": {
+    "date": "2026-11-20",
+    "task": "E17",
+    "slice": "E17e",
+    "decision": "D17",
+    "pullRequest": null,
+    "stackedOn": "bcc58f701768f0e8aa7fb04834532969a2e14724",
+    "stackedOnPullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "TASK_INDEX.json"
+    ],
+    "gateHead": "a1a2977f94d10762636c5542d243d772bd9132c7",
+    "unitCases": 450,
+    "e17UiCasesEach": 57,
+    "uiSuiteCases": 245,
+    "pythonTests": 402,
+    "pythonSkipped": 48,
+    "mypyStrict": "clean",
+    "mcpTests": 127,
+    "mcpSkipped": 1,
+    "parityE17Cases": 5,
+    "hostIntegration": "passed"
   }
 }

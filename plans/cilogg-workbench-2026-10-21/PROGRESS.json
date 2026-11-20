@@ -2330,18 +2330,19 @@
         "2026-11-20: the local Codex review of #136 head c7b57ac4 (round 6) found 3 P2 issues; they are fixed with tests (commit 5241abed).",
         "2026-11-20: the local Codex review of #136 head a8601f8e (round 7) found 5 P2 issues; they are fixed with tests (commit 199db5ee).",
         "2026-11-20: the local Codex review of #136 head 209922fc (round 8) found 1 P1 and 2 P2 issues; they are fixed with tests (commit 1165d4f6).",
-        "2026-11-20: the local Codex review of #136 head 785a32a5 (round 9) found 2 P2 issues; they are fixed with tests (commit ea666a62)."
+        "2026-11-20: the local Codex review of #136 head 785a32a5 (round 9) found 2 P2 issues; they are fixed with tests (commit ea666a62).",
+        "2026-11-20: the E17e gate on a1a2977f (stacked on #136 head bcc58f70) passed: the MSVC /W4 /WX build of klogg, klogg_portable, cilogg_tests and cilogg_itests; the unit suite (450 cases); every E17 UI case one by one (57); the UI suite (245 cases); the Python SDK and plugin tests (402, 48 skipped); mypy --strict; the MCP tests (127, 1 skipped); the workbench parity harness for E17 (5 cases) and the isolated host integration."
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",
-        "E17a to E17d leave for later slices, as planned: trees with element context menus (E17e), layout and content (E17f), window integration with row drag and toolbar drop-down menus (E17g), and the C++ fake host header, JSON Schemas, validator, protocol log and C++ view example (E17h)."
+        "E17a to E17e leave for later slices, as planned: layout and content (E17f), window integration with dragging rows, nodes and files out, kept tree state and toolbar drop-down menus (E17g), and the C++ fake host header, JSON Schemas, validator, protocol log and C++ view example (E17h)."
       ],
       "slices": [
         "E17a: capability negotiation (handles, features, requires), host queries, icons, plain-text element tooltips, static and advanced tooltips, accessibility names, table model extraction, SDK forward and backward compatibility, typing, fake host, golden-frame and version-skew tests, in progress (https://github.com/dm17ryk/klogg/pull/130)",
         "E17b: plugin menus (Plugins submenu, menu bar), context menus (tab, pane, log), dynamic submenus, ui/command, menu/update, keyboard shortcuts with conflict refusal and Options rebinding, hidden locations, get_plugin_menus and trigger_plugin_menu, in progress (https://github.com/dm17ryk/klogg/pull/131)",
         "E17c: choice entries with icons, tooltips, separators, sections and disabled entries, radio indicator and inline styles, searchable, editable and completing drop-downs (field/complete), checkbox, radio_group and check_group, cell editor choices and icons, multiline, secret, integer, slider, color, date, time and datetime fields, validation with requires_valid, in progress (https://github.com/dm17ryk/klogg/pull/134)",
         "E17d: rich table cells (icon, tooltip, tone, bold, progress, sort), row icons and check boxes, column align, hidden, sortable, sort_as, min_width, check and icon, header, toggle_selection, copy, export, reorderable and keep_columns, the selection patch, activated, checked and moved events, element context menus (element_menus), in progress (https://github.com/dm17ryk/klogg/pull/136)",
-        "E17e: tree and file_tree elements with Shift/Ctrl multiple selection, planned",
+        "E17e: tree (columns, nodes with cells, icons, tones, tooltips, editors and check boxes, auto_tristate, lazy children through tree/children, node patches, selection patch, selected, activated, checked, edited, moved, expanded and collapsed, Copy, Copy All and Export CSV, element menus) and file_tree (roots over the native file model, filters, select, check boxes, value, selected and activated, Copy Path, element menus), --node-id for menus and tooltips, in progress",
         "E17f: layout containers, text_view with Markdown, image, sparkline, chart, button styles, busy overlay, dialog results, planned",
         "E17g: toolbars, status items, notifications, clipboard, drag and drop, view state and restore, theme, settings pages, message box input, file dialogs, host events, planned",
         "E17h: JSON Schemas, validator, protocol log, developer mode, C++ view example, planned",
