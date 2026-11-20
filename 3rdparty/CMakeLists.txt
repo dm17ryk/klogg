@@ -439,6 +439,17 @@ endif()
 # decision 9): history, the merge base and three-way merges of pack items. Built static and local
 # only: no HTTPS or SSH transports, no network authentication, bundled zlib and regex; the DLL C
 # runtime of the rest of CILogg. GPLv2 with the linking exception.
+#
+# libgit2 probes struct stat (FindStatNsec) before it adds -D_GNU_SOURCE to its flags. Built on its
+# own the probe ignores its C90 standard (policy CMP0067 is OLD there), but CMake's check functions
+# were already defined by this project with CMP0067 NEW, so here the probe compiles with -std=c90
+# and no feature macros, misses st_mtim on glibc, and filebuf.c then stops at "GIT_USE_NSEC
+# defined but unknown struct stat nanosecond type". The checks get the -D_GNU_SOURCE that every
+# libgit2 source is compiled with (not with MSVC, like libgit2's DefaultCFlags).
+set(KLOGG_SAVED_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS}")
+if(NOT MSVC)
+  list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+endif()
 cpmaddpackage(
   NAME
   libgit2
@@ -467,6 +478,8 @@ cpmaddpackage(
   "STATIC_CRT OFF"
   "DEPRECATE_HARD ON"
 )
+set(CMAKE_REQUIRED_DEFINITIONS "${KLOGG_SAVED_REQUIRED_DEFINITIONS}")
+unset(KLOGG_SAVED_REQUIRED_DEFINITIONS)
 if(libgit2_ADDED)
   add_library(klogg_libgit2 INTERFACE)
   target_link_libraries(klogg_libgit2 INTERFACE libgit2package)
