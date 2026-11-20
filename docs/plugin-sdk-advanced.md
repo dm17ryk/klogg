@@ -1633,8 +1633,9 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Check boxes.** A click, Space or `set_ui` `checkState` changes the box at once and sends
   `checked`; when the event cannot be delivered, the boxes go back. With `auto_tristate` a parent
   shows checked when all its checkable children are, unchecked when none is and partly otherwise,
-  and checking a parent sets every loaded descendant. Without it every box is independent and a
-  `checked: null` node shows partly checked.
+  and checking a parent sets every loaded descendant; nodes loaded or inserted below a checked or
+  unchecked parent without their own `checked` take its state. Without it every box is independent
+  and a `checked: null` node shows partly checked.
 - **Reordering.** With `reorderable`, nodes can be dragged inside the tree: a drop on the upper
   quarter of a node means before it, on the lower quarter after it, and in between into it as its
   last child. Dropping a node into itself or one of its descendants does nothing. The host does
@@ -1661,7 +1662,7 @@ reordering inside a tree. Where the design left a choice open, E17e decided as f
 - **Roots.** Each root is a top-level item that shows the root's path. A root that does not exist
   shows greyed, without children. A network root (`//server/share`) is not touched until the user
   expands it or a patch expands or reveals a path in it, so an unreachable server never stalls the
-  window on its own.
+  window on its own. Once it could not be reached, only the user's expansion tries again.
 - **The native model.** Folders load lazily in the background and changes on disk appear by
   themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
   file's suffix: the host never reads file contents, not even to find an icon, and never resolves

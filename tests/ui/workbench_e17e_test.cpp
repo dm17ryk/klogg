@@ -36,6 +36,10 @@ bool waitFor( const std::function<bool()>& predicate, int timeout = 5000 )
     return QTest::qWaitFor( predicate, timeout );
 }
 
+// The native file system model lists folders on its own thread, which a busy machine (or a
+// virus scanner on new temporary files) can hold up for seconds.
+constexpr int FileSystemWait = 20000;
+
 QJsonObject treeNode( const QString& id, const QJsonArray& cells, const QJsonObject& extra = {} )
 {
     QJsonObject result{ { "id", id }, { "cells", cells } };
@@ -94,6 +98,8 @@ struct View {
     QStringList cancelled;
     QList<QJsonObject> tooltipQueries;
     bool refuseChildren = false;
+    bool answerAtOnce = false; // tree/children answers `atOnce` during the call
+    QJsonArray atOnce;
     int nextQuery = 0;
 
     explicit View( const QJsonObject& element )
@@ -117,6 +123,10 @@ struct View {
                 return QString{};
             }
             const auto id = QString( "q:%1" ).arg( ++nextQuery );
+            if ( answerAtOnce ) {
+                done( true, atOnce );
+                return id;
+            }
             children[ id ] = { params, std::move( done ) };
             return id;
         };
@@ -340,6 +350,96 @@ TEST_CASE( "E17e lazy children load, fail, retry and keep to the per-view limit"
              == "Could not load" );
 }
 
+TEST_CASE( "E17e many removals, stale and immediate answers, a stopped plugin and inherited checks",
+           "[ui][workbench][E17]" )
+{
+    // remove_nodes with many ids, nodes and their ancestors among them: one reset, and the nodes
+    // that stay keep their expansion and selection.
+    QJsonArray groups;
+    for ( int group = 0; group < 40; ++group ) {
+        QJsonArray leaves;
+        for ( int leaf = 0; leaf < 3; ++leaf ) {
+            const auto id = QString( "g%1l%2" ).arg( group ).arg( leaf );
+            leaves.append( QJsonObject{ { "id", id }, { "text", id } } );
+        }
+        groups.append( QJsonObject{ { "id", QString( "g%1" ).arg( group ) },
+                                    { "text", "Group" },
+                                    { "expanded", true },
+                                    { "children", leaves } } );
+    }
+    View fixture( QJsonObject{
+        { "type", "tree" }, { "id", "tr" }, { "selection", "multi" }, { "nodes", groups } } );
+    auto* tree = fixture.tree();
+    tree->selectionModel()->select( fixture.index( "g39l0" ),
+                                    QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows );
+    QJsonArray ids;
+    for ( int group = 0; group < 35; ++group ) {
+        ids.append( QString( "g%1l1" ).arg( group ) ); // a node first, then its parent
+        ids.append( QString( "g%1" ).arg( group ) );
+    }
+    REQUIRE( ids.size() > pluginview::PluginTreeModel::LargeRemoval );
+    fixture.patch( QJsonObject{ { "id", "tr" }, { "remove_nodes", ids } } );
+    REQUIRE( fixture.model()->rowCount() == 5 );
+    REQUIRE( fixture.model()->nodeCount() == 20 );
+    REQUIRE_FALSE( fixture.index( "g0l0" ).isValid() );
+    REQUIRE( tree->isExpanded( fixture.index( "g39" ) ) );
+    REQUIRE( fixture.behaviour()->selectedNodeIds( 10 ) == QStringList{ "g39l0" } );
+
+    // An answer whose query ended changes nothing; an answer during the call is taken.
+    const QJsonArray lazy{ QJsonObject{ { "id", "a" }, { "text", "A" }, { "has_children", true } },
+                           QJsonObject{ { "id", "b" }, { "text", "B" }, { "has_children", true } } };
+    View loading( QJsonObject{ { "type", "tree" }, { "id", "tr" }, { "lazy", true }, { "nodes", lazy } } );
+    loading.tree()->expand( loading.index( "a" ) );
+    const auto first = loading.queryOf( "a" );
+    REQUIRE_FALSE( first.isEmpty() );
+    const auto stale = loading.children.at( first ).done;
+    loading.patch( QJsonObject{ { "id", "tr" },
+                                { "parent", "a" },
+                                { "replace_nodes", QJsonArray{ QJsonObject{ { "id", "a1" } } } } } );
+    REQUIRE( loading.cancelled == QStringList{ first } );
+    stale( true, QJsonArray{ QJsonObject{ { "id", "late" } } } );
+    REQUIRE_FALSE( loading.index( "late" ).isValid() );
+    REQUIRE( loading.index( "a1" ).isValid() );
+    loading.answerAtOnce = true;
+    loading.atOnce = QJsonArray{ QJsonObject{ { "id", "b1" }, { "text", "B1" } } };
+    loading.tree()->expand( loading.index( "b" ) );
+    REQUIRE( loading.index( "b1" ).isValid() );
+    REQUIRE( loading.model()->rowCount( loading.index( "b" ) ) == 1 );
+    REQUIRE_FALSE( loading.model()->isLoading( "b" ) );
+    // A stopped plugin never answers: its loading nodes show "Could not load".
+    loading.answerAtOnce = false;
+    loading.patch( QJsonObject{
+        { "id", "tr" },
+        { "insert_nodes",
+          QJsonArray{ QJsonObject{ { "id", "c" }, { "text", "C" }, { "has_children", true } } } } } );
+    loading.tree()->expand( loading.index( "c" ) );
+    REQUIRE_FALSE( loading.queryOf( "c" ).isEmpty() );
+    loading.view.failTreeLoads();
+    REQUIRE( loading.model()->index( 0, 0, loading.index( "c" ) ).data().toString()
+             == "Could not load" );
+    REQUIRE( loading.queryOf( "c" ).isEmpty() );
+
+    // auto_tristate: inserted nodes without their own state follow a checked parent, and the
+    // plugin unchecking a parent unchecks its loaded descendants.
+    View checks( boardsTree() );
+    REQUIRE( checks.model()->setData( checks.index( "bench" ), Qt::Checked, Qt::CheckStateRole ) );
+    checks.patch( QJsonObject{
+        { "id", "tr" },
+        { "parent", "bench" },
+        { "insert_nodes",
+          QJsonArray{ QJsonObject{ { "id", "b3" }, { "text", "Board 3" } },
+                      QJsonObject{ { "id", "b4" }, { "text", "Board 4" }, { "checked", false } } } } } );
+    REQUIRE( checks.index( "b3" ).data( Qt::CheckStateRole ) == Qt::Checked );
+    REQUIRE( checks.index( "b4" ).data( Qt::CheckStateRole ) == Qt::Unchecked );
+    REQUIRE( checks.index( "bench" ).data( Qt::CheckStateRole ) == Qt::PartiallyChecked );
+    checks.patch( QJsonObject{
+        { "id", "tr" },
+        { "update_nodes", QJsonArray{ QJsonObject{ { "id", "bench" }, { "checked", false } } } } } );
+    for ( const auto* id : { "bench", "b1", "b2", "b3", "b4" } ) {
+        REQUIRE( checks.index( id ).data( Qt::CheckStateRole ) == Qt::Unchecked );
+    }
+}
+
 TEST_CASE( "E17e tree patches keep expansion and selection by id", "[ui][workbench][E17]" )
 {
     View fixture( boardsTree() );
@@ -421,7 +521,9 @@ TEST_CASE( "E17e tree selection, toggle selection, activated, edited and moved",
     REQUIRE( selected.value( "value" ).toArray() == QJsonArray{ "bench", "b2" } );
     REQUIRE( selected.value( "selected_count" ) == 2 );
     REQUIRE( selected.value( "current" ) == "b1" );
-    // activated: a double-click on a cell that is not editable, or Enter.
+    // activated: a double-click on a cell that is not editable, or Enter. A real double-click
+    // starts with a press, which QTest::mouseDClick leaves out for widgets.
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, fixture.center( "b2", 1 ) );
     QTest::mouseDClick( tree->viewport(), Qt::LeftButton, {}, fixture.center( "b2", 1 ) );
     REQUIRE( waitFor( [ & ] { return fixture.countOf( "activated" ) == 1; } ) );
     REQUIRE( fixture.lastOf( "activated" ).value( "value" ).toObject()
@@ -568,7 +670,8 @@ TEST_CASE( "E17e file trees: roots, filters, selection, value and events", "[ui]
         result.sort();
         return result;
     };
-    REQUIRE( waitFor( [ & ] { return names( model->index( 0, 0 ) ) == QStringList{ "a.bin", "sub" }; } ) );
+    REQUIRE( waitFor( [ & ] { return names( model->index( 0, 0 ) ) == QStringList{ "a.bin", "sub" }; },
+                      FileSystemWait ) );
     // Selecting a file reports the paths (forward slashes) and puts them in the inputs.
     const auto file = model->indexOfPath( rootPath + "/a.bin" );
     REQUIRE( file.isValid() );
@@ -577,7 +680,9 @@ TEST_CASE( "E17e file trees: roots, filters, selection, value and events", "[ui]
     REQUIRE( selected.value( "value" ).toArray() == QJsonArray{ rootPath + "/a.bin" } );
     REQUIRE( selected.value( "selected_count" ) == 1 );
     REQUIRE( fixture.view.inputs().value( "files" ).toArray() == QJsonArray{ rootPath + "/a.bin" } );
-    // activated: a double-click on a file, never on a folder.
+    // activated: a double-click on a file, never on a folder (with the press a real one starts
+    // with).
+    QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, tree->visualRect( file ).center() );
     QTest::mouseDClick( tree->viewport(), Qt::LeftButton, {}, tree->visualRect( file ).center() );
     REQUIRE( waitFor( [ & ] { return fixture.countOf( "activated" ) == 1; } ) );
     REQUIRE( fixture.lastOf( "activated" ).value( "value" ).toObject()
@@ -640,7 +745,7 @@ TEST_CASE( "E17e file tree check boxes, greyed files and network roots", "[ui][w
     REQUIRE_FALSE( model->isAttached( 1 ) );
     REQUIRE( model->hasChildren( model->index( 1, 0 ) ) );
     tree->expand( model->index( 0, 0 ) );
-    REQUIRE( waitFor( [ & ] { return model->rowCount( model->index( 0, 0 ) ) == 2; } ) );
+    REQUIRE( waitFor( [ & ] { return model->rowCount( model->index( 0, 0 ) ) == 2; }, FileSystemWait ) );
     // A file that does not match is greyed out and cannot be checked.
     const auto text = model->indexOfPath( root + "/b.txt" );
     REQUIRE_FALSE( model->flags( text ).testFlag( Qt::ItemIsEnabled ) );

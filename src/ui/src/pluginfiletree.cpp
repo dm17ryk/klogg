@@ -172,13 +172,15 @@ void PluginFileRootsModel::connectSource()
     } );
     connect( files_, &QAbstractItemModel::rowsAboutToBeRemoved, this,
              [ this ]( const QModelIndex& parent, int first, int last ) {
-                 // A root itself goes away: the roots are looked at again after the removal.
+                 // A root or a folder above it goes away: the roots are looked at again after the
+                 // removal.
                  for ( const auto& root : std::as_const( roots_ ) ) {
-                     if ( root.source.isValid() && root.source.parent() == parent
-                          && root.source.row() >= first && root.source.row() <= last ) {
-                         beginResetModel();
-                         pending_.append( 2 );
-                         return;
+                     for ( QModelIndex at = root.source; at.isValid(); at = at.parent() ) {
+                         if ( at.parent() == parent && at.row() >= first && at.row() <= last ) {
+                             beginResetModel();
+                             pending_.append( 2 );
+                             return;
+                         }
                      }
                  }
                  bool mapped = false;
@@ -192,13 +194,11 @@ void PluginFileRootsModel::connectSource()
         const auto state = pending_.isEmpty() ? 0 : pending_.takeLast();
         if ( state == 1 ) {
             endRemoveRows();
-            forget();
         }
         else if ( state == 2 ) {
             for ( auto& root : roots_ ) {
                 root.missing = root.missing || ( !root.source.isValid() && !root.network );
             }
-            known_.clear();
             rebuildRootPointers();
             endResetModel();
         }
@@ -213,6 +213,8 @@ void PluginFileRootsModel::connectSource()
         }
     } );
     connect( files_, &QAbstractItemModel::layoutChanged, this, [ this ] {
+        // The roots' source indexes may have moved: their pointers are looked up again.
+        rebuildRootPointers();
         for ( qsizetype at = 0; at < layoutProxy_.size(); ++at ) {
             changePersistentIndex( layoutProxy_.at( at ), mapFromSource( layoutSource_.at( at ) ) );
         }
@@ -223,7 +225,6 @@ void PluginFileRootsModel::connectSource()
     connect( files_, &QAbstractItemModel::modelAboutToBeReset, this,
              [ this ] { beginResetModel(); } );
     connect( files_, &QAbstractItemModel::modelReset, this, [ this ] {
-        known_.clear();
         for ( auto& root : roots_ ) {
             if ( !root.network || root.source.isValid() ) {
                 attachLocal( root );
@@ -238,7 +239,6 @@ void PluginFileRootsModel::setRoots( const QStringList& paths, QStringList* skip
 {
     beginResetModel();
     roots_.clear();
-    known_.clear();
     for ( const auto& raw : paths ) {
         const auto network = isNetworkPath( raw );
         const auto path = normalize( raw );
@@ -336,7 +336,8 @@ bool PluginFileRootsModel::isAttached( int row ) const
 
 bool PluginFileRootsModel::isRoot( const QModelIndex& index ) const
 {
-    return index.isValid() && index.internalPointer() == nullptr;
+    // A stale root index past the roots is no root (and maps to nothing).
+    return index.isValid() && index.internalPointer() == nullptr && index.row() < roots_.size();
 }
 
 void PluginFileRootsModel::rebuildRootPointers()
@@ -347,13 +348,6 @@ void PluginFileRootsModel::rebuildRootPointers()
             rootPointers_.insert( roots_.at( row ).source.internalPointer(), row );
         }
     }
-}
-
-void PluginFileRootsModel::forget()
-{
-    known_.removeIf( []( const QHash<void*, QPersistentModelIndex>::iterator& it ) {
-        return !it.value().isValid();
-    } );
 }
 
 int PluginFileRootsModel::rootOf( const QModelIndex& source ) const
@@ -406,11 +400,8 @@ QModelIndex PluginFileRootsModel::mapFromSource( const QModelIndex& sourceIndex 
     if ( rootOf( sourceIndex ) < 0 ) {
         return {}; // outside the roots
     }
-    if ( const auto found = known_.constFind( pointer );
-         found == known_.cend() || !found.value().isValid() ) {
-        known_.insert( pointer,
-                       QPersistentModelIndex( sourceIndex.sibling( sourceIndex.row(), 0 ) ) );
-    }
+    // Below the roots the proxy mirrors the native model: same rows, same internal pointers, so
+    // nothing is kept per item.
     return createIndex( sourceIndex.row(), sourceIndex.column(), pointer );
 }
 
@@ -427,8 +418,7 @@ QModelIndex PluginFileRootsModel::mapToSource( const QModelIndex& proxyIndex ) c
         return source.isValid() ? source.sibling( source.row(), proxyIndex.column() )
                                 : QModelIndex{};
     }
-    const auto found = known_.value( proxyIndex.internalPointer() );
-    return found.isValid() ? found.sibling( found.row(), proxyIndex.column() ) : QModelIndex{};
+    return createSourceIndex( proxyIndex.row(), proxyIndex.column(), proxyIndex.internalPointer() );
 }
 
 QModelIndex PluginFileRootsModel::index( int row, int column, const QModelIndex& parent ) const
@@ -447,15 +437,7 @@ QModelIndex PluginFileRootsModel::index( int row, int column, const QModelIndex&
         return {};
     }
     const auto source = files_->index( row, column, sourceParent );
-    if ( !source.isValid() ) {
-        return {};
-    }
-    auto* pointer = source.internalPointer();
-    if ( const auto found = known_.constFind( pointer );
-         found == known_.cend() || !found.value().isValid() ) {
-        known_.insert( pointer, QPersistentModelIndex( source.sibling( row, 0 ) ) );
-    }
-    return createIndex( row, column, pointer );
+    return source.isValid() ? createIndex( row, column, source.internalPointer() ) : QModelIndex{};
 }
 
 QModelIndex PluginFileRootsModel::parent( const QModelIndex& child ) const
@@ -532,7 +514,9 @@ QString PluginFileRootsModel::pathOf( const QModelIndex& index ) const
     if ( isRoot( index ) ) {
         return roots_.value( index.row() ).path;
     }
-    return files_->filePath( mapToSource( index ) );
+    // Never the native model's root ("") for an index that maps to nothing.
+    const auto source = mapToSource( index );
+    return source.isValid() ? files_->filePath( source ) : QString{};
 }
 
 bool PluginFileRootsModel::isDir( const QModelIndex& index ) const
@@ -551,16 +535,18 @@ QModelIndex PluginFileRootsModel::indexOfPath( const QString& path )
     if ( row < 0 || !files_ ) {
         return {};
     }
-    // Revealing a path in a network root is an explicit request: it may attach it.
-    if ( !roots_.at( row ).source.isValid() && !attach( row ) ) {
+    // Revealing a path in a network root is an explicit request: it may attach it. A root that
+    // could not be reached is not tried again here (one path after another would stall the window
+    // on a dead server): only the user's expansion tries again.
+    const bool attached = roots_.at( row ).source.isValid();
+    const bool unreachable = roots_.at( row ).network && roots_.at( row ).missing;
+    if ( !attached && ( unreachable || !attach( row ) ) ) {
         return {};
     }
     if ( normalized.compare( roots_.at( row ).path, PathCase ) == 0 ) {
         return createIndex( row, NameColumn );
     }
-    if ( !QFileInfo::exists( normalized ) ) {
-        return {};
-    }
+    // A missing path maps to the native model's root, which is no item here.
     return mapFromSource( files_->index( normalized ) );
 }
 
@@ -654,6 +640,9 @@ QVariant PluginFileRootsModel::data( const QModelIndex& index, int role ) const
                    : QVariant{};
     }
     const auto source = mapToSource( index );
+    if ( !source.isValid() ) {
+        return {};
+    }
     if ( role == Qt::ToolTipRole && index.column() == NameColumn ) {
         return QDir::toNativeSeparators( files_->filePath( source ) );
     }
@@ -682,6 +671,9 @@ Qt::ItemFlags PluginFileRootsModel::flags( const QModelIndex& index ) const
         return flags;
     }
     const auto source = mapToSource( index );
+    if ( !source.isValid() ) {
+        return Qt::NoItemFlags;
+    }
     auto flags = files_->flags( source )
                  & ~( Qt::ItemIsEditable | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled );
     if ( !flags.testFlag( Qt::ItemIsEnabled ) ) {
@@ -959,6 +951,9 @@ void PluginFileTreeBehaviour::setValue( const QStringList& paths )
 
 void PluginFileTreeBehaviour::expandPaths( const QStringList& paths )
 {
+    if ( !tree_ ) {
+        return;
+    }
     for ( const auto& path : paths ) {
         const auto index = roots_->indexOfPath( path );
         if ( index.isValid() && roots_->isDir( index ) ) {

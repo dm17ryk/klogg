@@ -97,7 +97,6 @@ private:
     int rootOfPath( const QString& path ) const;
     bool attachLocal( Root& root );
     void rebuildRootPointers();
-    void forget(); // drops source pointers that are no longer valid
     QModelIndex sourceParentMapped( const QModelIndex& sourceParent, bool* mapped ) const;
     void connectSource();
     QString key( const QString& path ) const;
@@ -105,8 +104,6 @@ private:
     QPointer<QFileSystemModel> files_;
     QVector<Root> roots_;
     QHash<void*, int> rootPointers_; // source internal pointer of an attached root -> its row
-    // Source internal pointer -> its index (column 0), for every item the proxy handed out.
-    mutable QHash<void*, QPersistentModelIndex> known_;
     QVector<int> pending_; // begin/end pairs: 0 ignored, 1 forwarded, 2 reset
     QList<QPersistentModelIndex> layoutProxy_;
     QList<QPersistentModelIndex> layoutSource_;
