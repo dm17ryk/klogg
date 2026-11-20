@@ -203,6 +203,26 @@ class Builders(ChoiceCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 sdk.button("go", "Go", requires_valid=value)
 
+    def test_choice_values_are_json_numbers_or_strings(self):
+        sdk = self.sdk
+        self.assertEqual(sdk.choice(2.5, "Two and a half"), {"value": 2.5, "label": "Two and a half"})
+        for value in (float("nan"), float("inf"), float("-inf"), True, None, [1]):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                sdk.choice(value)
+
+    def test_cell_editors_take_searchable_and_indicator(self):
+        sdk = self.sdk
+        self.assertEqual(sdk.editor("choice", ["a", "b"], searchable=True, indicator="radio"),
+                         {"kind": "choice", "choices": ["a", "b"], "searchable": True,
+                          "indicator": "radio"})
+        self.assertEqual(sdk.editor("multichoice", ["a"], searchable=True),
+                         {"kind": "multichoice", "choices": ["a"], "searchable": True})
+        self.assertNotIn("searchable", sdk.editor("choice", ["a"], searchable=False))
+        for kind, keywords in (("text", dict(searchable=True)), ("multichoice", dict(indicator="radio")),
+                               ("choice", dict(indicator="check"))):
+            with self.subTest(kind=kind, keywords=keywords), self.assertRaises(ValueError):
+                sdk.editor(kind, **keywords)
+
     def test_completion_item(self):
         sdk = self.sdk
         self.assertEqual(sdk.completion_item("Board 1"), {"value": "Board 1"})
@@ -251,7 +271,8 @@ class Downgrades(ChoiceCase):
             sdk.table("t", [sdk.table_column("v", "V", editable=True)],
                       [sdk.table_row("r1", ["a"], editors={"v": sdk.editor(
                           "choice", choices=[sdk.choice("a", "A", icon="status:ok"),
-                                             sdk.choice_separator(), "b"])})]),
+                                             sdk.choice_separator(), "b"],
+                          searchable=True, indicator="radio")})]),
             id="body")
 
     def sent_root(self, **initialize):
@@ -297,8 +318,8 @@ class Downgrades(ChoiceCase):
         self.assertEqual(elements["verbose"]["type"], "checkbox")
         self.assertEqual(elements["notes"]["rows"], 3)
         self.assertEqual(elements["label"]["pattern"], "[A-Za-z0-9_-]+")
-        self.assertEqual(elements["t"]["rows"][0]["editors"]["v"]["choices"],
-                         [{"value": "a", "label": "A"}, "b"])
+        self.assertEqual(elements["t"]["rows"][0]["editors"]["v"],
+                         {"kind": "choice", "choices": [{"value": "a", "label": "A"}, "b"]})
         self.assertEqual(elements["t"]["columns"], [{"id": "v", "title": "V", "editable": True}])
 
     def test_host_without_toggles(self):
