@@ -4,8 +4,8 @@
 [docs/workbench/decisions.md](workbench/decisions.md), task
 [E17](../plans/cilogg-workbench-2026-10-21/tasks/E17.md)). The user accepted every recommended
 answer of section 23, including a separate yes to question 13 (E17i, built last), and asked for the
-slices in order, one branch and pull request each (section 21). **E17a to E17d are
-implemented** (sections 24 to 27); E17e to E17i are planned.
+slices in order, one branch and pull request each (section 21). **E17a to E17e are
+implemented** (sections 24 to 28); E17f to E17i are planned.
 
 **Request (Dmitry, 2026-11-19), verbatim:**
 
@@ -1316,7 +1316,7 @@ E17a decided as follows.
   element, row, column and latency, never the answer.
 - **`get_plugin_tooltip`** returns `source` (`static`, `cache` or `plugin`), `tooltip` (the checked
   answer, or null), `html` (the rendered, escaped answer), `staticTooltip` and `latencyMs`.
-  `--node-id` is refused until E17e adds trees.
+  `--node-id` was refused until E17e added trees (section 28.3).
 - **Frames.** `PluginProcess` emits every frame it sends and reads (`PluginManager::protocolFrame`);
   the golden-frame test uses it now and the protocol log of E17h will.
 - **Left for later slices.** The C++ fake host (`cilogg_plugin_testing.h`) and the C++ view example
@@ -1563,3 +1563,124 @@ E17d decided as follows.
   TypedDicts for the events and the element context, and `FakeHost` helpers (`select_rows`,
   `activate_cell`, `check_rows`, `move_rows`, `send_element_command`); its builders downgrade a
   view for a host without `rich_tables` or `element_menus`. The SDK version stays 2.0.0.
+
+## 28. E17e as built
+
+E17e implements section 11 (`tree` and `file_tree`), node tooltips, element menus on both, and
+reordering inside a tree. Where the design left a choice open, E17e decided as follows.
+
+- **Feature versions.** `tree` and `file_tree` are version 1. An older host skips an element type
+  it does not know (with a warning), so a plugin that needs one checks `supports("tree")` or
+  requires the feature (section 4.3); the SDK does not turn a tree into another element.
+- **Where the code is.** `src/ui/src/plugintree.cpp` (the node model and the tree behaviour:
+  selection, check boxes, lazy children, events, reordering, menus, Copy and Export, the
+  selection patch), `src/ui/src/pluginfiletree.cpp` (the roots proxy over the native file model
+  and the file tree behaviour), `src/ui/src/pluginviewtrees.cpp` (the view's part: building,
+  properties, patches, tooltips) and `sanitizeTreeChildren` in `src/plugins/src/pluginfeatures.cpp`.
+
+### 28.1 `tree`
+
+- **Element keys.** `columns` (as table columns: a string id or `{id, title, width, align, hidden,
+  min_width, editable, tooltip, tooltip_provider, tooltip_key, icon}`; without columns the tree has
+  one column and no header), `nodes`, `selection` (`none` by default, `single`, `multi`),
+  `toggle_selection` (with `multi`), `checkboxes`, `auto_tristate`, `lazy`, `expand_events`,
+  `header` (default true when columns are given), `context_menu`, `copy` (default true), `export`
+  (default false) and `reorderable` (default false), besides the common keys.
+- **Node keys.** `id` (unique in the tree), `text` (the first column; ignored when `cells` is
+  given), `cells` (strings or cell objects `{text, icon, tooltip, tooltip_key, tone, bold}`),
+  `icon` (in the first column), `tooltip`, `tooltip_key`, `tone`, `children`, `has_children`
+  (with `lazy`), `expanded`, `checkable` (default true in a tree with `checkboxes`), `checked`
+  (`true`, `false` or `null` for partly), `editors` (`{column_id: editor}`, as table rows; the
+  column must be `editable`) and `drag` (accepted and ignored until E17g). A node without an id,
+  or with the id of an earlier node, is skipped with a warning.
+- **Limits.** 50,000 nodes per tree and depth 64: an operation that would pass 50,000 nodes changes
+  nothing and logs a warning; nodes below depth 64 are dropped with a warning. Ids and texts are at
+  most 4,096 characters, as in tables.
+- **Lazy children.** In a tree with `lazy`, expanding a node with `has_children` and no children
+  shows a "Loading…" child and sends `tree/children` `{view_id, window_id, element_id, node_id,
+  context, timeout_ms}` (default 10 seconds, at most 30). The answer `{"nodes": [...]}` (a list
+  alone is accepted; `null` or no nodes means no children) fills the node; it may hold nested
+  `children`, 1,000 nodes in all, else it is invalid. A failed, invalid or timed-out query shows
+  "Could not load" and the next expand asks again. At most 4 `tree/children` queries per view are
+  outstanding and 16 wait; a node beyond that shows "Could not load" at once. Collapsing keeps the
+  loaded children; a patch that sets the node's children (`replace_nodes` with that `parent`, or
+  `update_nodes` with `children`) ends its query. A stopped plugin never answers: its view is
+  disabled and its loading nodes show "Could not load".
+- **Patches.** One entry may hold, applied in this order: `replace_nodes` (the top-level nodes, or
+  the children of `parent`), `update_nodes` (`[{id, ...}]`: only the keys given change; `children`
+  replaces the node's children), `insert_nodes` (under `parent`, before `before`; at the end
+  without `before`), `remove_nodes` (ids; descendants go too), `expand` and `collapse` (ids;
+  expanding a lazy node loads it), and the selection patch `select`, `current`, `scroll_to`, which
+  expands the ancestors of `current` and `scroll_to` and never sends `selected`. `parent` applies to
+  `replace_nodes` and `insert_nodes` of the entry. A root (`view/update`) with the same shape
+  replaces the nodes only when they differ from the ones it last set; expanded nodes and the
+  selection are kept by id across a replacement.
+- **Selection.** As tables: `single`, `multi` with Shift and Ctrl, and `toggle_selection`.
+- **Events.** `selected` (the selected ids in tree order, at most 1,000, `selected_count`,
+  `truncated`, and `current`, the node with the keyboard focus or null), `activated` (`{node_id,
+  column_id}`: a double-click or Enter on a cell that is not editable and not a check box),
+  `checked` (`{node_id, checked, node_ids}`: `node_ids` are the nodes set to `checked`, the clicked
+  one first, with `auto_tristate` its loaded descendants too, at most 1,000; the parents' derived
+  states are not listed), `edited` (the value, with `node_id`, `column_id` and `previous`, as table
+  edits), `moved` (`{node_ids, parent, before}`, with null for the top level and for the end) and,
+  with `expand_events`, `expanded` and `collapsed` (`{node_id}`). Every key is sent to every plugin:
+  principle 11 is about elements that existed before E17.
+- **Check boxes.** A click, Space or `set_ui` `checkState` changes the box at once and sends
+  `checked`; when the event cannot be delivered, the boxes go back. With `auto_tristate` a parent
+  shows checked when all its checkable children are, unchecked when none is and partly otherwise,
+  and checking a parent sets every loaded descendant. Without it every box is independent and a
+  `checked: null` node shows partly checked.
+- **Reordering.** With `reorderable`, nodes can be dragged inside the tree: a drop on the upper
+  quarter of a node means before it, on the lower quarter after it, and in between into it as its
+  last child. Dropping a node into itself or one of its descendants does nothing. The host does
+  not move the nodes; the plugin confirms with a patch.
+- **Context menus.** Copy (the selected nodes, or the current one, as tab-separated text of the
+  shown columns), Copy All (a header line and every loaded node in tree order, the first column
+  indented by two spaces per level) and, with `export`, Export CSV… (RFC 4180 as for tables, with a
+  leading `level` column), then the plugin's `element` entries. Object names: `<element>_menu`,
+  `_copy`, `_copy_all`, `_export`.
+- **Tooltips.** A node's `tooltip` (else its text) is the static tooltip of its cells; a cell
+  object's tooltip wins. With `tooltip_provider` on the tree, `tooltip/resolve` carries `node_id`,
+  `column_id` and the most specific `tooltip_key` (the cell's, the node's, the column's, the
+  tree's); patches that change or remove a node drop its cached answers.
+
+### 28.2 `file_tree`
+
+- **Element keys.** `roots` (absolute paths, at most 16; relative, repeated and nested roots are
+  skipped with a warning), `filters` (name globs such as `*.bin`), `hide_filtered` (default true;
+  false greys out files that do not match), `show_files` (default true), `show_hidden` (default
+  false), `columns` (`name`, `size`, `type`, `modified` in the order given; `name` always comes
+  first; default `name`, `size`, `modified`), `selection` (`single` by default, `none`, `multi`),
+  `toggle_selection`, `select` (`files`, `dirs` or `both`, the default: what can be selected),
+  `checkboxes` (a pick list), `value`, `context_menu` and `copy` (default true).
+- **Roots.** Each root is a top-level item that shows the root's path. A root that does not exist
+  shows greyed, without children. A network root (`//server/share`) is not touched until the user
+  expands it or a patch expands or reveals a path in it, so an unreachable server never stalls the
+  window on its own.
+- **The native model.** Folders load lazily in the background and changes on disk appear by
+  themselves. Icons are the style's folder and file icons and the type column is "Folder" or the
+  file's suffix: the host never reads file contents, not even to find an icon, and never resolves
+  shortcuts.
+- **`value`.** The selected paths (with `checkboxes`, the checked ones) with forward slashes, in
+  `inputs` and in `selected` events (at most 1,000, with `selected_count` and `truncated`). A patch
+  `set: {value: [...]}` selects (or checks) those paths and reveals the first; paths outside the
+  roots are ignored. A patch entry `expand: [paths]` opens folders.
+- **Events.** `selected` (value: the paths) and `activated` (`{path}`: a double-click or Enter on
+  a file; on a folder it expands). With `checkboxes`, checking sends `selected` with the checked
+  paths and the row highlight only marks the current item.
+- **Context menus and tooltips.** Copy Path (the selected paths, one per line) then the plugin's
+  `element` entries, whose context has `node_id` (the clicked path) and `selected_ids` (the selected
+  paths). An item's static tooltip is its path; with `tooltip_provider`, `tooltip/resolve`
+  carries the path as `node_id`.
+
+### 28.3 Automation and SDKs
+
+- `get_plugin_tooltip`, `get_plugin_menus --location element` and `trigger_plugin_menu` take
+  `--node-id` for a node or a path (native MCP and Python: `node_id`); `--node-id` and `--row-id`
+  exclude each other. Element menu entries of trees get `node_id` instead of `row_id` and
+  `column_id`. `get_ui` and `set_ui` reach nodes with a multi-level `indexPath`.
+- The Python SDK gains `tree()`, `tree_node()`, `file_tree()`, the patch helpers `replace_nodes()`,
+  `update_nodes()`, `insert_nodes()`, `remove_nodes()`, `expand_nodes()`, `collapse_nodes()` and
+  `select_nodes()`, `@plugin.tree_children(view, element)` with `TreeChildrenQuery`, `node_id` in
+  menu and command contexts, TypedDicts for the elements, events and answers, and `FakeHost`
+  helpers. The C++ SDK needs nothing new: `onQuery("tree/children", ...)` answers the query.

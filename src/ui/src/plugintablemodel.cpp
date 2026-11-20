@@ -530,30 +530,54 @@ bool PluginTableModel::fits( qsizetype rows ) const
     return cellCount( rows ) <= PluginView::MaxTableCells;
 }
 
+PluginTableModel::Column PluginTableModel::parseColumn( const QJsonValue& value )
+{
+    const auto column = value.toObject();
+    Column parsedColumn;
+    parsedColumn.id = ( value.isString() ? value.toString() : column.value( "id" ).toString() )
+                          .left( PluginView::MaxTextChars );
+    parsedColumn.title = column.contains( "title" ) ? text( column, "title" ) : parsedColumn.id;
+    parsedColumn.editable = column.value( "editable" ).toBool();
+    parsedColumn.tooltip = text( column, "tooltip" );
+    parsedColumn.tooltipProvider = column.value( "tooltip_provider" ).toBool();
+    parsedColumn.tooltipKey = tooltipKeyOf( column );
+    // E17d (section 10.1).
+    parsedColumn.align = alignmentOf( column.value( "align" ).toString() );
+    parsedColumn.hidden = column.value( "hidden" ).toBool();
+    parsedColumn.sortable = column.value( "sortable" ).toBool( true );
+    const auto sortAs = column.value( "sort_as" ).toString();
+    parsedColumn.sortAs
+        = QStringList{ "text", "number", "natural" }.contains( sortAs ) ? sortAs : QString{};
+    parsedColumn.minWidth = qBound( 0, column.value( "min_width" ).toInt(), 2000 );
+    parsedColumn.check = column.value( "check" ).toBool();
+    parsedColumn.icon = column.value( "icon" );
+    return parsedColumn;
+}
+
+void PluginTableModel::parseCells( const QJsonArray& cells, int limit, QStringList* texts,
+                                   QVector<CellStyle>* styles )
+{
+    for ( const auto& cell : cells ) {
+        if ( texts->size() >= limit ) {
+            break; // never more cells than columns
+        }
+        if ( !cell.isObject() ) {
+            texts->append( cellText( cell ) );
+            continue;
+        }
+        // E17d: a cell object; the styles stay aligned with the cells.
+        const auto rich = cell.toObject();
+        styles->resize( texts->size() );
+        texts->append( text( rich, "text" ) );
+        styles->append( styleOf( rich ) );
+    }
+}
+
 bool PluginTableModel::setColumns( const QJsonArray& columns )
 {
     QVector<Column> parsed;
     for ( const auto& value : columns ) {
-        const auto column = value.toObject();
-        Column parsedColumn;
-        parsedColumn.id = ( value.isString() ? value.toString() : column.value( "id" ).toString() )
-                              .left( PluginView::MaxTextChars );
-        parsedColumn.title = column.contains( "title" ) ? text( column, "title" ) : parsedColumn.id;
-        parsedColumn.editable = column.value( "editable" ).toBool();
-        parsedColumn.tooltip = text( column, "tooltip" );
-        parsedColumn.tooltipProvider = column.value( "tooltip_provider" ).toBool();
-        parsedColumn.tooltipKey = tooltipKeyOf( column );
-        // E17d (section 10.1).
-        parsedColumn.align = alignmentOf( column.value( "align" ).toString() );
-        parsedColumn.hidden = column.value( "hidden" ).toBool();
-        parsedColumn.sortable = column.value( "sortable" ).toBool( true );
-        const auto sortAs = column.value( "sort_as" ).toString();
-        parsedColumn.sortAs = QStringList{ "text", "number", "natural" }.contains( sortAs ) ? sortAs
-                                                                                          : QString{};
-        parsedColumn.minWidth = qBound( 0, column.value( "min_width" ).toInt(), 2000 );
-        parsedColumn.check = column.value( "check" ).toBool();
-        parsedColumn.icon = column.value( "icon" );
-        parsed.append( parsedColumn );
+        parsed.append( parseColumn( value ) );
     }
     if ( qMax<qsizetype>( 1, parsed.size() ) * rows_.size() > PluginView::MaxTableCells ) {
         return false;
@@ -582,20 +606,7 @@ PluginTableModel::Row PluginTableModel::parse( const QJsonObject& object ) const
     row.tooltipKey = tooltipKeyOf( object );
     row.icon = object.value( "icon" );         // E17d
     row.checked = object.value( "checked" ).toBool();
-    for ( const auto& cell : object.value( "cells" ).toArray() ) {
-        if ( row.cells.size() >= cellLimit() ) {
-            break; // never more cells than columns
-        }
-        if ( !cell.isObject() ) {
-            row.cells.append( cellText( cell ) );
-            continue;
-        }
-        // E17d: a cell object; the styles stay aligned with the cells.
-        const auto rich = cell.toObject();
-        row.styles.resize( row.cells.size() );
-        row.cells.append( text( rich, "text" ) );
-        row.styles.append( styleOf( rich ) );
-    }
+    parseCells( object.value( "cells" ).toArray(), cellLimit(), &row.cells, &row.styles );
     return row;
 }
 

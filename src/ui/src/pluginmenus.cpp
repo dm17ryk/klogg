@@ -178,8 +178,13 @@ QJsonObject PluginMenuContext::toJson( bool withText ) const
         };
         json.insert( "view_id", viewId );
         json.insert( "element_id", elementId );
-        json.insert( "row_id", orNull( rowId ) );
-        json.insert( "column_id", orNull( columnId ) );
+        if ( tree ) {
+            json.insert( "node_id", orNull( nodeId ) ); // E17e (section 28.3)
+        }
+        else {
+            json.insert( "row_id", orNull( rowId ) );
+            json.insert( "column_id", orNull( columnId ) );
+        }
         json.insert( "selected_ids", QJsonArray::fromStringList( selectedIds ) );
         json.insert( "selected_count", selectedLines );
     }

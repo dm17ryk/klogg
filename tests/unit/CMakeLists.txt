@@ -18,6 +18,7 @@ add_executable(cilogg_tests
     plugin_menus_test.cpp
     plugin_choices_test.cpp
     plugin_tables_test.cpp
+    plugin_trees_test.cpp
     plugin_repositories_test.cpp
     plugin_credentials_test.cpp
     plugin_signin_test.cpp

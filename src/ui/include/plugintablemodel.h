@@ -46,6 +46,10 @@ QJsonArray editorChoices( const QJsonObject& editor );
 bool sameValue( const QJsonValue& left, const QJsonValue& right );
 // Tooltips are plain text: Qt would render text that looks like HTML as rich text.
 QString plainToolTip( const QString& tip );
+// E17d Copy and Export: a cell in tab-separated text (tabs and line breaks become spaces), and in
+// CSV (RFC 4180, with a leading apostrophe before text a spreadsheet would run as a formula).
+QString tsvField( QString text );
+QString csvField( QString text );
 
 // What an advanced tooltip on a table cell asks for (docs/plugin-sdk-advanced.md section 9.2).
 struct CellTooltipTarget {
@@ -142,6 +146,12 @@ public:
     // Whether a table of `rows` rows stays within PluginView::MaxTableCells.
     bool fits( qsizetype rows ) const;
     bool setColumns( const QJsonArray& columns );
+    // E17e: shared with trees. A column (a string id or a column object), and the cells of a
+    // row or node: strings and cell objects, at most `limit`; `styles` stays empty unless a
+    // cell is an object.
+    static Column parseColumn( const QJsonValue& value );
+    static void parseCells( const QJsonArray& cells, int limit, QStringList* texts,
+                            QVector<CellStyle>* styles );
     Row parse( const QJsonObject& object ) const;
     bool replace( const QJsonArray& rows );
     void update( const QJsonArray& rows );

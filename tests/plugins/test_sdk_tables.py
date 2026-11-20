@@ -475,13 +475,16 @@ class ElementMenus(TableCase):
 class FakeHostHelpers(TableCase):
     def test_feature_sets(self):
         testing = self.testing
-        self.assertEqual(testing.HOST_FEATURES[-2:], E17D_FEATURES)
-        self.assertEqual(testing.E17C_HOST_FEATURES, testing.HOST_FEATURES[:-2])
+        self.assertEqual(testing.E17D_HOST_FEATURES[-2:], E17D_FEATURES)
+        self.assertEqual(testing.E17C_HOST_FEATURES, testing.E17D_HOST_FEATURES[:-2])
+        self.assertEqual(testing.E17D_HOST_FEATURES,
+                         testing.HOST_FEATURES[:len(testing.E17D_HOST_FEATURES)])
         self.assertEqual(dict(testing.E17C_HOST_FEATURE_VERSIONS),
-                         {name: version for name, version in testing.HOST_FEATURE_VERSIONS.items()
+                         {name: version for name, version in testing.E17D_HOST_FEATURE_VERSIONS.items()
                           if name not in E17D_FEATURES})
         for feature in E17D_FEATURES:
             self.assertEqual(testing.HOST_FEATURE_VERSIONS[feature], 1)
+            self.assertEqual(testing.E17D_HOST_FEATURE_VERSIONS[feature], 1)
             self.assertNotIn(feature, testing.E17C_HOST_FEATURES)
         self.assertEqual(testing.MAX_TABLE_IDS, self.sdk.MAX_TABLE_IDS)
 

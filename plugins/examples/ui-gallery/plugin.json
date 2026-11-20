@@ -6,10 +6,13 @@
   "capabilities": ["tool"],
   "executable": "python",
   "arguments": ["main.py"],
-  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation, completion and a rich table with check boxes, row dragging, Export CSV and its own context menu.",
-  "handles": ["tooltip/resolve", "menu/populate", "field/complete", "ui/command", "query/cancel"],
+  "description": "A gallery of plugin SDK features: static and advanced tooltips, registered icons, accessible names, menus, context menus, a dynamic submenu, a shortcut, choices, check boxes, radio buttons, field kinds, validation, completion, a rich table with check boxes, row dragging, Export CSV and its own context menu, and an explorer view with a lazy tree (check boxes, dragging, node tooltips, a context menu) and a file tree.",
+  "handles": ["tooltip/resolve", "menu/populate", "field/complete", "tree/children", "ui/command",
+              "query/cancel"],
   "views": [
-    {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520}
+    {"id": "gallery", "title": "UI Gallery", "kind": "dock", "area": "right", "width": 520},
+    {"id": "explorer", "title": "UI Gallery Explorer", "kind": "dock", "area": "left",
+     "width": 420}
   ],
   "menus": [
     {
@@ -20,6 +23,9 @@
       "items": [
         {"id": "open_gallery", "title": "Open gallery", "view": "gallery", "icon": "builtin:open",
          "shortcut": "Ctrl+Alt+Shift+G", "tooltip": "Opens the UI Gallery view."},
+        {"id": "open_explorer", "title": "Open explorer", "view": "explorer",
+         "icon": "builtin:folder",
+         "tooltip": "Opens the UI Gallery Explorer view: a tree of benches and a file tree."},
         {"type": "separator"},
         {"id": "highlight_offline", "title": "Highlight offline boards", "event": true,
          "checkable": true, "checked": false,
@@ -62,6 +68,25 @@
         {"type": "separator"},
         {"id": "restore", "title": "Restore Removed Boards", "event": true,
          "tooltip": "Puts the removed boards back into the table."}
+      ]
+    },
+    {
+      "id": "node_actions",
+      "location": "element",
+      "items": [
+        {"id": "reset_node", "title": "Reset Node", "icon": "builtin:refresh", "event": true,
+         "tooltip": "Connects the boards of the clicked or selected nodes again."},
+        {"type": "separator"},
+        {"id": "collapse_all", "title": "Collapse All", "event": true,
+         "tooltip": "Collapses every bench and board."}
+      ]
+    },
+    {
+      "id": "file_actions",
+      "location": "element",
+      "items": [
+        {"id": "show_path", "title": "Show Path", "icon": "builtin:info", "event": true,
+         "tooltip": "Shows the clicked path in the explorer's status label."}
       ]
     }
   ]

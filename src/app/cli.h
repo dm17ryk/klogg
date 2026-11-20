@@ -1584,9 +1584,10 @@ private:
         const QCommandLineOption columnIdOption( QStringLiteral( "column-id" ),
                                                  QStringLiteral( "Plugin table column id." ),
                                                  QStringLiteral( "id" ) );
-        const QCommandLineOption nodeIdOption( QStringLiteral( "node-id" ),
-                                               QStringLiteral( "Plugin tree node id." ),
-                                               QStringLiteral( "id" ) );
+        const QCommandLineOption nodeIdOption(
+            QStringLiteral( "node-id" ),
+            QStringLiteral( "Plugin tree node id, or a path of a plugin file tree." ),
+            QStringLiteral( "id" ) );
         const QCommandLineOption noCacheOption(
             QStringLiteral( "no-cache" ),
             QStringLiteral( "get_plugin_tooltip: ask the plugin even when a cached answer exists." ) );
@@ -1896,9 +1897,10 @@ private:
         }
         for ( const auto* option :
               { &elementIdOption, &rowIdOption, &columnIdOption, &nodeIdOption, &noCacheOption } ) {
-            // E17d: element menus take --element-id and --row-id too.
+            // E17d: element menus take --element-id and --row-id too; E17e: --node-id.
             const bool menuOption = menuOperation
-                                    && ( option == &elementIdOption || option == &rowIdOption );
+                                    && ( option == &elementIdOption || option == &rowIdOption
+                                         || option == &nodeIdOption );
             if ( parser.isSet( *option ) && request.action != CommanderAction::GetPluginTooltip
                  && !menuOption ) {
                 result.output_message = formatParserError(
@@ -2364,7 +2366,14 @@ private:
             if ( !validateTabSelector( commanderActionToString( *action ), false, true ) ) {
                 return result;
             }
-            if ( parser.isSet( rowIdOption ) != parser.isSet( columnIdOption ) ) {
+            // E17e: --node-id names a tree node (with an optional --column-id) or a file tree path.
+            if ( parser.isSet( nodeIdOption ) && parser.isSet( rowIdOption ) ) {
+                result.output_message = formatParserError(
+                    parser, QStringLiteral( "--node-id and --row-id exclude each other." ) );
+                return result;
+            }
+            if ( !parser.isSet( nodeIdOption )
+                 && parser.isSet( rowIdOption ) != parser.isSet( columnIdOption ) ) {
                 result.output_message = formatParserError(
                     parser,
                     QStringLiteral( "--row-id and --column-id name a table cell together." ) );
@@ -2392,6 +2401,14 @@ private:
             }
             if ( parser.isSet( rowIdOption ) ) {
                 request.pluginArguments.insert( "rowId", parser.value( rowIdOption ).trimmed() );
+            }
+            if ( parser.isSet( nodeIdOption ) ) {
+                if ( parser.isSet( rowIdOption ) ) {
+                    result.output_message = formatParserError(
+                        parser, QStringLiteral( "--node-id and --row-id exclude each other." ) );
+                    return result;
+                }
+                request.pluginArguments.insert( "nodeId", parser.value( nodeIdOption ).trimmed() );
             }
             if ( parser.isSet( checkedOption ) ) {
                 const auto state = parser.value( checkedOption ).trimmed().toLower();

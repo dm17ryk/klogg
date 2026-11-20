@@ -69,6 +69,11 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginchoicewidgets.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintablebehaviour.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintablebehaviour.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/plugintree.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugintree.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginfiletree.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginfiletree.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginviewtrees.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenuhost.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/pluginmenus.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmenus.cpp

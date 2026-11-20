@@ -1,6 +1,7 @@
 """The ui-gallery example under the fake host (plugins/examples/ui-gallery/README.md)."""
 import importlib.util
 import json
+import os
 import pathlib
 import shutil
 import tempfile
@@ -42,6 +43,7 @@ class UiGallery(unittest.TestCase):
         package = pathlib.Path(temporary.name) / "ui-gallery"
         shutil.copytree(EXAMPLE, package, ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy2(SDK / "cilogg_plugin.py", package)
+        self.package = package
         self.host = self.testing.FakeHost.start_package(package, timeout=10)
         self.addCleanup(self.host.close)
 
@@ -56,17 +58,27 @@ class UiGallery(unittest.TestCase):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
         self.assertFalse(manifest.get("enabled_by_default", False))
         self.assertEqual(manifest["handles"],
-                         ["tooltip/resolve", "menu/populate", "field/complete", "ui/command",
-                          "query/cancel"])
+                         ["tooltip/resolve", "menu/populate", "field/complete", "tree/children",
+                          "ui/command", "query/cancel"])
         self.assertEqual(manifest["version"], "1.0.0")
-        self.assertEqual([(view["id"], view["kind"]) for view in manifest["views"]], [("gallery", "dock")])
+        self.assertEqual([(view["id"], view["kind"]) for view in manifest["views"]],
+                         [("gallery", "dock"), ("explorer", "dock")])
 
     def test_manifest_declares_its_menus(self):
         manifest = json.loads((EXAMPLE / "plugin.json").read_text(encoding="utf-8"))
         menus = {menu["id"]: menu for menu in manifest["menus"]}
         self.assertEqual({menu_id: menu["location"] for menu_id, menu in menus.items()},
                          {"main": "plugins", "lines": "log", "tabs": "tab",
-                          "board_actions": "element"})
+                          "board_actions": "element", "node_actions": "element",
+                          "file_actions": "element"})
+        # E17e: the context menus of the explorer's tree and file tree.
+        self.assertEqual([(entry.get("id", entry.get("type")), entry.get("title"), entry.get("event"))
+                          for entry in menus["node_actions"]["items"]],
+                         [("reset_node", "Reset Node", True), ("separator", None, None),
+                          ("collapse_all", "Collapse All", True)])
+        self.assertEqual([(entry["id"], entry["title"], entry["event"])
+                          for entry in menus["file_actions"]["items"]],
+                         [("show_path", "Show Path", True)])
         # E17d: the context menu of the boards table.
         board_items = menus["board_actions"]["items"]
         self.assertEqual([entry.get("id", entry.get("type")) for entry in board_items],
@@ -79,9 +91,11 @@ class UiGallery(unittest.TestCase):
         self.assertEqual(menus["main"]["title"], "UI Gallery")
         entries = {entry["id"]: entry for entry in menus["main"]["items"] if "id" in entry}
         self.assertEqual([entry.get("type", "item") for entry in menus["main"]["items"]],
-                         ["item", "separator", "item", "section", "item", "item", "separator", "item"])
+                         ["item", "item", "separator", "item", "section", "item", "item",
+                          "separator", "item"])
         self.assertEqual((entries["open_gallery"]["view"], entries["open_gallery"]["shortcut"]),
                          ("gallery", "Ctrl+Alt+Shift+G"))
+        self.assertEqual(entries["open_explorer"]["view"], "explorer")
         self.assertTrue(entries["highlight_offline"]["event"] and entries["highlight_offline"]["checkable"])
         self.assertNotIn("group", entries["highlight_offline"])
         self.assertEqual([(entries[item]["group"], entries[item]["checkable"], entries[item].get("checked", False))
@@ -192,7 +206,7 @@ class UiGallery(unittest.TestCase):
         result = host.initialize()
         self.assertEqual(result["features"],
                          ["field/complete", "menu/populate", "query/cancel", "tooltip/resolve",
-                          "ui/command"])
+                          "tree/children", "ui/command"])
         self.assertEqual(result["sdk"]["version"], "2.0.0")
         tree = self.open_gallery()
         icons = host.wait_for("ui/icons")  # registered when the view first opens
@@ -551,6 +565,210 @@ class UiGallery(unittest.TestCase):
     def test_rich_table_on_an_e14_host(self):
         self.host.initialize_older_host()
         self.check_plain_table()
+
+    # The explorer view (E17e).
+    def open_explorer(self, window_id="w1"):
+        self.host.open_view("explorer", window_id=window_id)
+        return elements(self.host.wait_for("view/update", lambda params: "root" in params
+                                           and params["view_id"] == "explorer")["root"])
+
+    def explorer_status(self, patch):
+        """The text a patch sets on the explorer's status label (always its last entry)."""
+        self.assertEqual(patch[-1]["id"], "explorer_status")
+        return patch[-1]["set"]["text"]
+
+    def test_explorer_tree_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        tree = self.open_explorer()
+        self.assertEqual(tree["explorer_note"]["text"],
+                         "Boards load when their bench expands; drag nodes to reorder them.")
+        self.assertEqual(tree["explorer_status"]["text"], "Expand a bench, check, drag or "
+                         "right-click a node, or pick a file: it shows here.")
+        benches = tree["benches"]
+        self.assertEqual({key: value for key, value in benches.items() if key != "nodes"}, {
+            "type": "tree", "id": "benches",
+            "columns": [{"id": "name", "title": "Name", "width": 200,
+                         "tooltip": "Benches, boards and modules"},
+                        {"id": "state", "title": "State", "width": 110}],
+            "selection": "multi", "checkboxes": True, "auto_tristate": True, "lazy": True,
+            "expand_events": True, "context_menu": "node_actions", "reorderable": True,
+            "tooltip_provider": True, "accessible_name": "Benches"})
+        self.assertEqual(benches["nodes"], [
+            {"id": "bench1", "cells": ["Bench 1", "2 boards"], "icon": "builtin:folder",
+             "tooltip_key": "bench1-2", "has_children": True, "checked": False},
+            {"id": "bench2", "cells": ["Bench 2", "1 board"], "icon": "builtin:folder",
+             "tooltip_key": "bench2-1", "has_children": True, "checked": False}])
+
+        # Lazy children: a bench's boards, each with its modules inline.
+        boards = host.request_children("explorer", "benches", "bench1")["nodes"]
+        self.assertEqual(boards[0], {
+            "id": "board1", "cells": ["Board 1", {"text": "connected", "icon": "status:ok"}],
+            "icon": "builtin:device", "tooltip_key": "board1-connected", "checked": False,
+            "children": [
+                {"id": "board1.modem", "cells": ["Modem", "on"], "icon": "builtin:chip",
+                 "tooltip_key": "board1.modem-on", "checked": False},
+                {"id": "board1.radio", "cells": ["Radio", "on"], "icon": "builtin:chip",
+                 "tooltip_key": "board1.radio-on", "checked": False}]})
+        self.assertEqual([board["id"] for board in boards], ["board1", "board2"])
+        offline = host.request_children("explorer", "benches", "bench2")["nodes"][0]
+        self.assertEqual(offline["children"][1], {
+            "id": "board3.radio", "cells": ["Radio", "off"], "icon": "builtin:chip",
+            "tone": "muted", "tooltip_key": "board3.radio-off", "checked": False})
+        self.assertEqual(host.request_children("explorer", "benches", "board3.radio"),
+                         {"nodes": []})
+        self.assertEqual(host.request_children("explorer", "benches", "nope"), {"nodes": []})
+
+        # Node tooltips: the query carries node_id.
+        self.assertEqual(host.resolve_tooltip("explorer", "benches", node_id="board2"), {
+            "title": "Board 2", "text": "Board 2 is idle.",
+            "rows": [["Firmware", "3.2.0"], ["Bench", "Bench 1"]], "tone": "warn",
+            "icon": "status:warn"})
+        self.assertEqual(host.resolve_tooltip("explorer", "benches", node_id="bench2"), {
+            "title": "Bench 2", "text": "1 board on this bench.", "rows": [["Boards", "Board 3"]],
+            "icon": "builtin:folder"})
+        self.assertEqual(host.resolve_tooltip("explorer", "benches", node_id="board3.radio"),
+                         {"text": "The radio of Board 3.", "tone": "muted"})
+        self.assertIsNone(host.resolve_tooltip("explorer", "benches", node_id="nope"))
+        self.assertIsNone(host.resolve_tooltip("explorer", "benches"))
+
+        # Events show in the status label.
+        for send, text in (
+                (lambda: host.select_nodes("explorer", "benches", ["board1", "board2"],
+                                           current="board2"),
+                 "selected board1,board2 current board2"),
+                (lambda: host.select_nodes("explorer", "benches", []), "selected none current none"),
+                (lambda: host.activate_node("explorer", "benches", "board1", "state"),
+                 "activated board1 state"),
+                (lambda: host.expand_node("explorer", "benches", "bench1"), "expanded bench1"),
+                (lambda: host.collapse_node("explorer", "benches", "bench1"), "collapsed bench1"),
+                (lambda: host.check_nodes("explorer", "benches", [
+                    "bench1", "board1", "board1.modem", "board1.radio", "board2", "board2.modem",
+                    "board2.radio"]),
+                 "checked bench1,board1,board1.modem,board1.radio,board2,board2.modem,"
+                 "board2.radio true"),
+                (lambda: host.check_nodes("explorer", "benches", ["board2", "board2.modem",
+                                                                  "board2.radio"], False),
+                 "checked board2,board2.modem,board2.radio false")):
+            send()
+            self.assertEqual(self.next_patch(), [{"id": "explorer_status", "set": {"text": text}}])
+
+        # moved: the plugin keeps its own order and patches both benches.
+        host.move_nodes("explorer", "benches", ["board2"], parent="bench2", before="board3")
+        patch = self.next_patch()
+        updated = patch[0]["update_nodes"]
+        self.assertEqual([(node["id"], node["cells"][1], node["checked"],
+                           [child["id"] for child in node["children"]]) for node in updated],
+                         [("bench1", "1 board", True, ["board1"]),
+                          ("bench2", "2 boards", False, ["board2", "board3"])])
+        self.assertEqual(patch[1:], [
+            {"id": "benches", "select": ["board2"], "current": "board2", "scroll_to": "board2"},
+            {"id": "explorer_status", "set": {"text": "moved board2 into bench2 before board3"}}])
+        self.assertEqual(host.resolve_tooltip("explorer", "benches", node_id="board2")["rows"][1],
+                         ["Bench", "Bench 2"])
+        host.move_nodes("explorer", "benches", ["board1.modem"], parent="bench1")
+        self.assertEqual(self.next_patch(), [{"id": "explorer_status", "set": {
+            "text": "moved board1.modem into bench1 before end refused"}}])
+        host.move_nodes("explorer", "benches", ["board1.radio"], parent="board1",
+                        before="board1.modem")
+        patch = self.next_patch()
+        self.assertEqual([child["id"] for child in patch[0]["update_nodes"][0]["children"]],
+                         ["board1.radio", "board1.modem"])
+        host.move_nodes("explorer", "benches", ["bench2"], before="bench1")
+        patch = self.next_patch()
+        self.assertEqual([(node["id"], "children" in node, "has_children" in node)
+                          for node in patch[0]["replace_nodes"]],
+                         [("bench2", True, False), ("bench1", True, False)])
+        self.assertEqual(self.explorer_status(patch), "moved bench2 into top before bench1")
+
+        # The context menu: the command carries node_id.
+        host.send_node_command("node_actions", "reset_node", "explorer", "benches",
+                               node_id="board3", selected_ids=["board3"])
+        patch = self.next_patch()
+        self.assertEqual([(node["id"], node["cells"][1], [child["cells"][1] for child in node["children"]])
+                          for node in patch[0]["update_nodes"]],
+                         [("board3", {"text": "connected", "icon": "status:ok"}, ["on", "on"])])
+        self.assertEqual(self.explorer_status(patch), "menu reset_node board3 1")
+        self.assertEqual(host.resolve_tooltip("explorer", "benches", node_id="board3")["tone"], "ok")
+        host.send_node_command("node_actions", "reset_node", "explorer", "benches", node_id="bench2")
+        patch = self.next_patch()
+        self.assertEqual([node["id"] for node in patch[0]["update_nodes"]], ["board2"])
+        self.assertEqual(self.explorer_status(patch), "menu reset_node bench2 0")
+        host.send_node_command("node_actions", "reset_node", "explorer", "benches", node_id="bench2")
+        self.assertEqual(self.next_patch(), [{"id": "explorer_status",
+                                              "set": {"text": "menu reset_node bench2 0"}}])
+        host.send_node_command("node_actions", "collapse_all", "explorer", "benches")
+        self.assertEqual(self.next_patch(), [
+            {"id": "benches", "collapse": ["bench2", "bench1", "board2", "board3", "board1"]},
+            {"id": "explorer_status", "set": {"text": "menu collapse_all none 0"}}])
+
+        # A new window shows the plugin's order, the check boxes and the last event.
+        tree = self.open_explorer("w2")
+        nodes = tree["benches"]["nodes"]
+        self.assertEqual([(node["id"], node["checked"], [child["id"] for child in node["children"]])
+                          for node in nodes],
+                         [("bench2", False, ["board2", "board3"]), ("bench1", True, ["board1"])])
+        self.assertEqual(tree["explorer_status"]["text"], "menu collapse_all none 0")
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def test_explorer_file_tree_on_a_current_host(self):
+        host = self.host
+        host.initialize()
+        tree = self.open_explorer()
+        files = tree["files"]
+        root = files["roots"][0]
+        self.assertEqual({key: value for key, value in files.items() if key != "roots"}, {
+            "type": "file_tree", "id": "files", "filters": ["*.py", "*.json", "*.md"],
+            "selection": "multi", "context_menu": "file_actions",
+            "accessible_name": "Gallery files"})
+        self.assertEqual(len(files["roots"]), 1)
+        self.assertNotIn("\\", root)  # forward slashes
+        self.assertTrue(os.path.samefile(root, self.package))
+
+        host.select_files("explorer", "files", [f"{root}/main.py", f"{root}/README.md"])
+        self.assertEqual(self.next_patch(), [{"id": "explorer_status", "set": {
+            "text": "selected files main.py,README.md"}}])
+        host.activate_file("explorer", "files", f"{root}/plugin.json")
+        self.assertEqual(self.explorer_status(self.next_patch()), "activated file plugin.json")
+        host.send_node_command("file_actions", "show_path", "explorer", "files",
+                               node_id=f"{root}/main.py",
+                               selected_ids=[f"{root}/main.py", f"{root}/README.md"])
+        self.assertEqual(self.explorer_status(self.next_patch()), f"path {root}/main.py (2 selected)")
+
+        # A closed explorer gets no patches; it shows the selection and last event when it opens.
+        host.close_view("explorer")
+        host.send_node_command("file_actions", "show_path", "explorer", "files")
+        with self.assertRaises(TimeoutError):
+            host.wait_for("view/update", lambda params: "patch" in params, timeout=0.3)
+        tree = self.open_explorer("w2")
+        self.assertEqual(tree["files"]["value"], [f"{root}/main.py", f"{root}/README.md"])
+        self.assertEqual(tree["explorer_status"]["text"], "path none (0 selected)")
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+        self.assertEqual(host.stderr, "")
+
+    def check_explorer_on_an_older_host(self):
+        """A host without trees skips tree elements: the explorer says so and leaves them out."""
+        host = self.host
+        tree = self.open_explorer()
+        self.assertEqual(set(tree), {"explorer_body", "explorer_note", "explorer_status"})
+        self.assertIn("needs a newer CILogg", tree["explorer_note"]["text"])
+        host.send_node_command("node_actions", "collapse_all", "explorer", "benches")
+        self.assertEqual(self.next_patch(), [{"id": "explorer_status",
+                                              "set": {"text": "menu collapse_all none 0"}}])
+        self.assertEqual(host.shutdown(), 0)
+        self.assertEqual(host.errors, [])
+
+    def test_explorer_on_an_e17d_host(self):
+        self.host.initialize(host_features=self.testing.E17D_HOST_FEATURES,
+                             host_feature_versions=self.testing.E17D_HOST_FEATURE_VERSIONS)
+        self.check_explorer_on_an_older_host()
+
+    def test_explorer_on_an_e14_host(self):
+        self.host.initialize_older_host()
+        self.check_explorer_on_an_older_host()
 
 
 if __name__ == "__main__":

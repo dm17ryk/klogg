@@ -48,6 +48,9 @@ struct PluginMenuContext {
     QString rowId;         // the clicked row; empty when the click was not on a row
     QString columnId;
     QStringList selectedIds; // at most pluginview::MaxTableIds
+    // E17e: a tree's or file tree's menu: the clicked node or path instead of a row and column.
+    bool tree = false;
+    QString nodeId;
 
     cilogg::plugins::MenuConditionContext conditions() const;
     // The `context` of menu/populate and ui/command. The selected text is added only with

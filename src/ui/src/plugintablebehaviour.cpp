@@ -27,7 +27,9 @@
 
 namespace {
 constexpr int SaveDelayMs = 500;
+} // namespace
 
+namespace pluginview {
 // A cell in tab-separated text: tabs and line breaks become spaces.
 QString tsvField( QString text )
 {
@@ -57,7 +59,10 @@ QString csvField( QString text )
     }
     return text;
 }
-} // namespace
+} // namespace pluginview
+
+using pluginview::csvField;
+using pluginview::tsvField;
 
 PluginTableBehaviour::PluginTableBehaviour( QTableView* table, pluginview::PluginTableModel* model,
                                             pluginview::PluginTableProxy* proxy, Hooks hooks )

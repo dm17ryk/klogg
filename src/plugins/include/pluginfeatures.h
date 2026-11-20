@@ -74,4 +74,15 @@ QJsonObject sanitizeTooltip( const QJsonValue& answer, QString* error );
 // accepted), at most MaxCompletionItems; null gives an empty object ("nothing").
 constexpr int MaxCompletionItems = 100;
 QJsonObject sanitizeCompletion( const QJsonValue& answer, QString* error );
+
+// Trees (section 11, E17e): nodes per tree, depth, and node objects in one `tree/children`
+// answer, nested children included.
+constexpr int MaxTreeNodes = 50000;
+constexpr int MaxTreeDepth = 64;
+constexpr int MaxTreeChildrenNodes = 1000;
+constexpr int MaxFileTreeRoots = 16;
+// A `tree/children` answer: `{nodes: [...]}` (a list alone is accepted) of node objects, at most
+// MaxTreeChildrenNodes in all and MaxTreeDepth deep; null or no nodes give an empty object
+// ("nothing": the node has no children). The nodes themselves are checked when the tree uses them.
+QJsonObject sanitizeTreeChildren( const QJsonValue& answer, QString* error );
 } // namespace cilogg::plugins

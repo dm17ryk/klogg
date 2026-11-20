@@ -51,6 +51,13 @@ struct PluginViewQueries {
     // written after the user changed them (docs/plugin-sdk-advanced.md section 10.5).
     std::function<QJsonObject( const QString& elementId )> loadState;
     std::function<void( const QString& elementId, const QJsonObject& state )> saveState;
+    // E17e: sends `tree/children` with `params` (element_id, node_id; the host adds the view,
+    // window and context); `done` gets whether the plugin answered (null and no nodes count as an
+    // answer: no children) and the nodes. Returns the query id; empty when nothing was sent (done
+    // never runs then). Cancelled with `cancel`.
+    std::function<QString( const QJsonObject& params,
+                           std::function<void( bool answered, const QJsonArray& nodes )> done )>
+        treeChildren;
 };
 
 // Static and advanced tooltips of one plugin view (section 9): watches widgets for tooltip
