@@ -139,8 +139,21 @@ objects (`value`, `label`, `icon`, `tooltip`, `enabled`) with `{"type": "separat
 `slider`, `color`, `date`, `time` and `datetime`, and the validation keys `required`, `pattern`,
 `min`, `max`, `min_length`, `max_length` and `error`; the elements `checkbox`, `radio_group` and
 `check_group` are new, and buttons take `requires_valid`. A `changed` event of a field with a
-validation key carries `valid`. Hosts without these features announce no `choices`, `toggles`,
-`field_kinds` or `validation`, and the Python SDK sends such a host the fields it knows.
+rule carries `valid` when the plugin declares `handles`. Hosts without these features announce no
+`choices`, `toggles`, `field_kinds` or `validation`, and the Python SDK sends such a host the
+fields it knows.
+
+Rich tables and element menus (E17d, docs/plugin-sdk-advanced.md sections 10 and 27): table cells
+may be objects (`text`, `icon`, `tooltip`, `tooltip_key`, `tone`, `bold`, `progress`, `sort`);
+rows take `icon` and `checked`; columns take `align`, `hidden`, `sortable`, `sort_as`,
+`min_width`, `check` and `icon`; tables take `header`, `toggle_selection`, `context_menu`,
+`copy`, `export`, `reorderable` and `keep_columns`. A patch entry `{id, select, current,
+scroll_to}` sets the selection. Tables send `checked` (`{row_id, row_ids, checked}`) and `moved`
+(`{row_ids, before}`), and for plugins that declare `handles` also `activated`
+(`{row_id, column_id}`) and `current` in `selected`. `context_menu` names a manifest menu with
+`location: "element"`; its entries get `view_id`, `element_id`, `row_id`, `column_id`,
+`selected_ids` and `selected_count` in their context. Hosts without these features announce no
+`rich_tables` or `element_menus`.
 
 Plugin notifications:
 
@@ -351,8 +364,9 @@ checked with `mypy --strict` in CI. Every name of the earlier SDK keeps working.
 label, a button, a field, table headers and every table cell, a registered icon,
 `invalidate_tooltips` and accessible names, a Plugins submenu with a check box, radio entries, a
 dynamic submenu and a shortcut, log and tab context menu entries, every choice style, check
-boxes, radio buttons, the new field kinds, validation and completion, and degrades on an older
-CILogg.
+boxes, radio buttons, the new field kinds, validation and completion, a table with cell
+objects, a check column, row dragging, Export CSV and its own context menu, and degrades on an
+older CILogg.
 
 ### Menus and commands (E17b)
 
@@ -454,9 +468,9 @@ host and answers field completion:
   and they send `changed` with the new value (a list for a check group).
 - **Events.** On a host with validation, the `changed` event of a field that declares a
   validation key (`required`, `pattern`, `min`, `max`, `min_length`, `max_length` or a
-  non-empty `error`), and of every `color` field (blank or `#rrggbb`), carries `valid`; other
-  `changed` events keep their earlier shape, so read `params.get("valid", True)`
-  (`ViewEventParams`).
+  non-empty `error`), and of every `color` field (blank or `#rrggbb`), carries `valid` when the
+  plugin declares `handles`; other `changed` events keep their earlier shape, so read
+  `params.get("valid", True)` (`ViewEventParams`).
 - **Completion.** `@plugin.complete(view_id, element_id=None)` registers
   `handler(CompleteQuery)` for a field with `completion`, or for every such field of the view
   (an element's own handler wins; a `@plugin.query("field/complete")` handler is the last
@@ -514,6 +528,106 @@ def boards(query: CompleteQuery) -> List[CompletionItem]:
     return [completion_item(name) for name in BOARDS if name.casefold().startswith(typed)]
 ```
 
+### Rich tables and element menus (E17d)
+
+A host that announces `rich_tables` and `element_menus` (version 1 each) shows richer tables
+and a plugin context menu on them (design sections 7.2 and 10). The SDK builds them, converts
+them for an older host and reads the new events and menu contexts:
+
+- **Cells.** A cell is a string or `cell(text, *, icon=None, tooltip=None, tooltip_key=None,
+  tone=None, bold=None, progress=None, sort=None)` (`TableCell`). `tooltip` is the cell's plain
+  tooltip and wins over the row's; `tone` (`CELL_TONES`) wins over the row's tone; `progress`
+  (0 to 1) draws a bar behind the text; `sort` is the value a sortable table sorts by instead
+  of the text. `table_row` keeps cell objects (mappings with at least one of `CELL_KEYS`, as
+  `cell()` makes) and turns other values, other mappings included, into text, as before.
+- **Rows, columns and tables.** New keyword-only keys:
+  - `table_row(..., icon=None, checked=None, drag=None)` (`TableRow`): an icon in the first
+    column, the state of the check columns (a row without `checked` is unchecked), and `drag`
+    (accepted, used from E17g);
+  - `table_column(..., align=None, hidden=None, sortable=None, sort_as=None, min_width=None,
+    check=None, icon=None)` (`TableColumn`): `align` (`COLUMN_ALIGNMENTS`), a column hidden at
+    first (the header menu shows it), `sortable=False` for one column of a sortable table,
+    `sort_as` (`SORT_AS`: `text`, `number`, `natural`), a minimum width, a check box column
+    bound to the rows' `checked`, and a header icon;
+  - `table(..., header=None, toggle_selection=None, context_menu=None, copy=None, export=None,
+    reorderable=None, keep_columns=None)` (`TableElement`): `header=False` hides the header,
+    `toggle_selection` (with `selection="multi"`) makes every click add or remove a row, `copy`
+    (default on) gives Copy and Copy All, `export` adds Export CSV..., `reorderable` lets the
+    user drag rows, `keep_columns` (default on) keeps the column widths, order, hidden columns
+    and sort, and `context_menu` names a menu of `plugin.json` with `location: "element"`.
+
+  The builders raise ValueError for a value CILogg refuses: an unknown tone, alignment or
+  `sort_as`, `progress` outside 0 to 1, a negative `min_width`, `toggle_selection` without
+  `selection="multi"`, or a `context_menu` that is not a menu id.
+- **Selection.** `select_rows(table_id, row_ids=None, *, current=None, scroll_to=None)` is a
+  patch entry (`SelectionPatch`): `row_ids` replace the selection, `current` sets the row with
+  the keyboard focus and `scroll_to` scrolls a row into view. CILogg sends no `selected` event
+  for it. CILogg uses at most `MAX_TABLE_IDS` (1000) ids, so the entry carries only
+  `bounded_ids(row_ids)`: at most 1000, and only as many as fit in `MAX_ID_BYTES` (256 KiB) of
+  JSON, so the patch stays below the 1 MiB message limit.
+- **Events** (`view/event` of the table, `ViewEventParams`). `selected` also carries
+  `selected_count` and `current` (the focused row, or None). `activated` (a double-click or
+  Enter on a cell that is not editable) has the value `TableActivatedValue` `{row_id,
+  column_id}`. `checked` has `TableCheckedValue` `{row_id, row_ids, checked}`: `row_ids` lists
+  every row that changed (a Shift+click range); CILogg shows the new state at once. `moved`
+  has `TableMovedValue` `{row_ids, before}` (`before` None: the end); CILogg does not move the
+  rows, so the plugin confirms with a patch (for example `replace_rows` in the new order).
+  CILogg sends `current` and `activated` only to a plugin whose `plugin.json` declares
+  `handles`.
+- **Element menus.** A `menus` entry with `location: "element"` is the context menu of every
+  table that names it in `context_menu`. Its `event` entries reach `@plugin.on_command(menu_id,
+  item_id)`; `UiCommand` (and `MenuQuery` for a dynamic entry) adds `view_id`, `element_id`,
+  `row_id` and `column_id` (the clicked cell, None off a cell), `selected_ids` (at most 1000)
+  and `selected_count` (`ElementMenuContext`). In `when`, `selection` (`none`, `any`, `lines`)
+  and `min_lines`/`max_lines` count selected rows.
+- **Older hosts.** `update()` and `patch()` convert what the host does not know, without
+  changing the caller's dictionaries: without `rich_tables`, cell objects become their text,
+  the new row, column and table keys go, and a `select_rows` entry is left out (a patch with
+  nothing else is not sent); without `element_menus`, `context_menu` goes.
+
+```python
+from typing import List
+
+from cilogg_plugin import (
+    JsonObject, Plugin, UiCommand, cell, replace_rows, select_rows, status_ref, table,
+    table_column, table_row,
+)
+
+plugin = Plugin()
+order = ["b1", "b2"]
+checked = {"b1": False, "b2": True}
+
+
+def rows() -> List[JsonObject]:
+    return [table_row(board, [f"Board {board[1:]}", cell("ok", icon=status_ref("ok")),
+                              cell("40 %", progress=0.4)], checked=checked[board])
+            for board in order]
+
+
+def boards() -> JsonObject:
+    return table("boards", [table_column("name", "Board", check=True),
+                            table_column("state", "State"),
+                            table_column("progress", "Progress", align="right")],
+                 rows(), selection="multi", reorderable=True, export=True,
+                 context_menu="board_actions")
+
+
+@plugin.on_view_event
+def event(params: JsonObject) -> None:
+    value = params.get("value")
+    if params.get("element_id") == "boards" and params.get("type") == "moved":
+        moved = [board for board in value["row_ids"] if board in order]
+        rest = [board for board in order if board not in moved]
+        position = rest.index(value["before"]) if value["before"] in rest else len(rest)
+        order[:] = rest[:position] + moved + rest[position:]
+        plugin.patch("main", [replace_rows("boards", rows()), select_rows("boards", moved)])
+
+
+@plugin.on_command("board_actions", "restart")  # {"location": "element", ...} in plugin.json
+def restart(command: UiCommand) -> None:
+    print(command.row_id, command.selected_ids, command.selected_count)
+```
+
 ### Testing plugins without CILogg
 
 `plugins/sdk/python/cilogg_plugin_testing.py` (standard library only) has a `FakeHost` that
@@ -534,9 +648,11 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   a `Plugin` object in the test process, `FakeHost.in_process(plugin)`.
 - `initialize(configuration, host_features=…, host_feature_versions=…, host_version=…,
   host_limits=…)` sends the current host's keys by default (`HOST_FEATURES`, with `menus`,
-  `shortcuts`, `choices`, `toggles`, `field_kinds` and `validation`); pass None to leave one
-  out, `E17B_HOST_FEATURES` and `E17B_HOST_FEATURE_VERSIONS` to play a CILogg without the E17c
-  form controls, or `E17A_HOST_FEATURES` and `E17A_HOST_FEATURE_VERSIONS` to play one without
+  `shortcuts`, `choices`, `toggles`, `field_kinds`, `validation`, `rich_tables` and
+  `element_menus`); pass None to leave one out, `E17C_HOST_FEATURES` and
+  `E17C_HOST_FEATURE_VERSIONS` to play a CILogg without rich tables and element menus,
+  `E17B_HOST_FEATURES` and `E17B_HOST_FEATURE_VERSIONS` to play one without the E17c form
+  controls, or `E17A_HOST_FEATURES` and `E17A_HOST_FEATURE_VERSIONS` to play one without
   menus.
 - `invoke`, `start_invoke`, `cancel`, `configure`, `open_view`, `close_view`, `view_event`,
   `message_result`, `request`, `notify` and `send_frame` (any frame, also raw bytes) send;
@@ -558,6 +674,18 @@ with FakeHost.start_package("path/to/my-plugin") as host:   # its plugin.json, e
   `change_field(view_id, element_id, value, valid=None, window_id="w1", inputs=None)` sends a
   `changed` view event with the new value in `inputs` and, when given, `valid` (pass it only
   for a field with validation keys, as CILogg does).
+- Table events: `select_rows(view_id, element_id, row_ids, current=None, selected_count=None)`
+  sends `selected` (with `current` only when the plugin's manifest declares `handles`, and
+  `truncated` beyond the ids that go out), `activate_cell(view_id, element_id, row_id,
+  column_id)` sends `activated` (only to a plugin whose manifest declares `handles`; it returns
+  False otherwise), `check_rows(view_id, element_id, row_ids, checked=True, row_id=None)` sends
+  `checked` and `move_rows(view_id, element_id, row_ids, before=None)` sends `moved`. Like
+  CILogg, these helpers and `element_context()` send at most 1000 ids and only as many as fit in
+  `MAX_ID_BYTES` (256 KiB) of JSON: `bounded_ids(ids)` gives the ids that go out.
+  `send_element_command(menu_id, item_id, view_id, element_id, row_id=None, column_id=None,
+  selected_ids=(), selected_count=None)` picks an `event` entry of an element menu;
+  `element_context(...)` builds the same `context` for `populate_menu(..., "element",
+  context=...)`.
 - `frames` (`Frame`: `direction`, `message`, `raw`, `time`) holds the whole session; `errors`
   lists frames that CILogg would refuse (malformed envelopes, requests from the plugin);
   `stderr` holds a subprocess plugin's diagnostics; `shutdown()` returns its exit code.

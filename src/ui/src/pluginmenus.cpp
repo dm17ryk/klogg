@@ -12,11 +12,13 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMessageBox>
 #include <QTimer>
 #include <QWidget>
+#include <algorithm>
 #include <memory>
 
 namespace cp = cilogg::plugins;
@@ -171,6 +173,18 @@ QJsonObject PluginMenuContext::toJson( bool withText ) const
         }
         json.insert( "selection", selection );
     }
+    if ( location == QLatin1String( "element" ) ) {
+        // E17d (section 10.4): the view, the element, the clicked row and the selected rows.
+        const auto orNull = []( const QString& value ) {
+            return value.isEmpty() ? QJsonValue() : QJsonValue( value );
+        };
+        json.insert( "view_id", viewId );
+        json.insert( "element_id", elementId );
+        json.insert( "row_id", orNull( rowId ) );
+        json.insert( "column_id", orNull( columnId ) );
+        json.insert( "selected_ids", QJsonArray::fromStringList( selectedIds ) );
+        json.insert( "selected_count", selectedLines );
+    }
     return json;
 }
 
@@ -291,28 +305,66 @@ void PluginMenuRegistry::forgetPlugin( const QString& pluginId )
         it = it->first.startsWith( prefix ) ? overrides_.erase( it ) : std::next( it );
     }
     for ( auto it = answers_.begin(); it != answers_.end(); ) {
-        it = it->first.startsWith( prefix ) ? answers_.erase( it ) : std::next( it );
+        if ( it->first.startsWith( prefix ) ) {
+            answerBytes_ -= it->second.bytes;
+            it = answers_.erase( it );
+        }
+        else {
+            ++it;
+        }
     }
     Q_EMIT changed( pluginId );
 }
 
-std::optional<QJsonArray> PluginMenuRegistry::answer( const QString& key, bool lastAnswer ) const
+std::optional<QJsonArray> PluginMenuRegistry::answer( const QString& key, bool lastAnswer )
 {
     const auto it = answers_.find( key );
-    if ( it == answers_.end() || ( !lastAnswer && it->second.expires <= nowMs() ) ) {
+    if ( it == answers_.end() ) {
+        return std::nullopt;
+    }
+    if ( !lastAnswer && it->second.expires <= nowMs() ) {
+        // Expired: it goes, unless it is the last answer a native menu bar shows next time.
+        if ( !it->second.keepLast ) {
+            answerBytes_ -= it->second.bytes;
+            answers_.erase( it );
+        }
         return std::nullopt;
     }
     return it->second.items;
 }
 
-void PluginMenuRegistry::storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs )
+void PluginMenuRegistry::storeAnswer( const QString& key, const QJsonArray& items, qint64 cacheMs,
+                                      bool keepLast )
 {
+    // At most MaxAnswers answers and MaxAnswerBytes of them: answers can be close to 1 MiB each,
+    // and element menus have a key per row and selection.
     constexpr size_t MaxAnswers = 1024;
-    if ( answers_.size() >= MaxAnswers && answers_.count( key ) == 0 ) {
-        answers_.erase( answers_.begin() );
+    constexpr qint64 MaxAnswerBytes = 16 * 1024 * 1024;
+    if ( const auto old = answers_.find( key ); old != answers_.end() ) {
+        answerBytes_ -= old->second.bytes;
+        answers_.erase( old );
     }
-    answers_[ key ] = { items, nowMs() + qBound( qint64( 0 ), cacheMs,
-                                                 qint64( cp::MaxDynamicMenuCacheMs ) ) };
+    const auto ttl = qBound( qint64( 0 ), cacheMs, qint64( cp::MaxDynamicMenuCacheMs ) );
+    if ( ttl == 0 && !keepLast ) {
+        return; // nothing may reuse it
+    }
+    const auto bytes = static_cast<qint64>( QJsonDocument( items ).toJson( QJsonDocument::Compact ).size()
+                                            + key.size() * 2 );
+    if ( bytes > MaxAnswerBytes ) {
+        return;
+    }
+    // The oldest answers go first until the new one fits.
+    while ( !answers_.empty()
+            && ( answers_.size() >= MaxAnswers || answerBytes_ + bytes > MaxAnswerBytes ) ) {
+        const auto oldest = std::min_element( answers_.begin(), answers_.end(),
+                                              []( const auto& left, const auto& right ) {
+                                                  return left.second.stored < right.second.stored;
+                                              } );
+        answerBytes_ -= oldest->second.bytes;
+        answers_.erase( oldest );
+    }
+    answers_[ key ] = { items, nowMs() + ttl, bytes, ++answerSequence_, keepLast };
+    answerBytes_ += bytes;
 }
 
 void PluginMenuRegistry::assignShortcuts( const std::vector<cp::PluginShortcut>& shortcuts,
@@ -393,6 +445,17 @@ QString PluginMenus::menuObjectName( const QString& pluginId, const QString& men
 {
     return itemId.isEmpty() ? QStringLiteral( "pluginMenu_%1_%2" ).arg( pluginId, menuId )
                             : QStringLiteral( "pluginMenu_%1_%2_%3" ).arg( pluginId, menuId, itemId );
+}
+
+QString PluginMenus::populateKey( const QString& pluginId, const QString& menuId,
+                                  const QString& itemId, const PluginMenuContext& context )
+{
+    // Everything menu/populate tells the plugin about where the menu opened (window, tab, pane,
+    // log view, line, selected ranges and their count, element, row, column, selected ids) as
+    // compact JSON, whose object keys are sorted: equal only for the same request.
+    const auto request = QString::fromUtf8(
+        QJsonDocument( context.toJson( false ) ).toJson( QJsonDocument::Compact ) );
+    return menuKey( { pluginId, menuId, itemId, request } );
 }
 
 std::optional<PluginMenus::Source> PluginMenus::source( const QString& pluginId ) const
@@ -526,6 +589,34 @@ void PluginMenus::fillOwnMenu( QMenu* menu, const Source& plugin, const QJsonObj
     }
 }
 
+void PluginMenus::addElementMenu( QMenu* menu, const QString& pluginId, const QString& menuId,
+                                  const PluginMenuContext& context )
+{
+    const auto plugin = source( pluginId );
+    if ( menu == nullptr || !plugin || hidden( *plugin, QStringLiteral( "element" ) ) ) {
+        return;
+    }
+    const auto definition = cp::findMenu( plugin->manifest, menuId );
+    if ( definition.value( "location" ) != QLatin1String( "element" ) ) {
+        // Once per plugin and menu: the menu opens on every right-click. Bounded: a plugin that
+        // keeps renaming its `context_menu` stops adding warnings after the first hundreds.
+        static QSet<QString> warned;
+        if ( warned.size() < 256 && !warned.contains( pluginId + '|' + menuId ) ) {
+            warned.insert( pluginId + '|' + menuId );
+            LOG_WARNING << "Plugin element menu not found or not an element menu plugin="
+                        << pluginId.toStdString() << " menu=" << menuId.toStdString();
+        }
+        return;
+    }
+    // QMenu::clear() leaves submenus behind: an element menu is built anew each time.
+    if ( !menu->isEmpty() ) {
+        menu->addSeparator();
+    }
+    menu->setToolTipsVisible( true );
+    addEntries( menu, *plugin, definition, definition.value( "items" ).toArray(), context, true,
+                {} );
+}
+
 void PluginMenus::addEntries( QMenu* menu, const Source& plugin, const QJsonObject& definition,
                               const QJsonArray& items, const PluginMenuContext& context,
                               bool declared, const QString& idPrefix )
@@ -573,18 +664,24 @@ QAction* PluginMenus::addEntry( QMenu* menu, QAction* before, const Source& plug
         submenu->menuAction()->setToolTip( tooltip );
         submenu->setEnabled( entry.value( "enabled" ).toBool( true ) );
         if ( declared ) {
-            // menu/update while the menu is open changes the submenu in place (design 7.4).
+            // menu/update while the menu is open changes the submenu in place (design 7.4):
+            // every key an entry has, its icon and tooltip included.
             connect( &registry, &PluginMenuRegistry::changed, submenu,
-                     [ guarded = QPointer<QMenu>( submenu ), pluginId = plugin.id, menuId,
-                       item ]( const QString& changedPlugin ) {
-                         if ( !guarded || changedPlugin != pluginId ) {
+                     [ self = QPointer<PluginMenus>( this ), guarded = QPointer<QMenu>( submenu ),
+                       plugin, menuId, item ]( const QString& changedPlugin ) {
+                         if ( !self || !guarded || changedPlugin != plugin.id ) {
                              return;
                          }
                          const auto now
-                             = PluginMenuRegistry::instance().entryState( pluginId, menuId, item );
+                             = PluginMenuRegistry::instance().entryState( plugin.id, menuId, item );
                          guarded->setTitle( menuText( now.value( "title" ).toString() ) );
                          guarded->setEnabled( now.value( "enabled" ).toBool( true ) );
                          guarded->menuAction()->setVisible( now.value( "visible" ).toBool( true ) );
+                         guarded->menuAction()->setToolTip( pluginview::plainToolTip(
+                             now.value( "tooltip" ).toString( now.value( "title" ).toString() ) ) );
+                         if ( now.contains( "icon" ) ) {
+                             guarded->setIcon( self->iconFor( plugin, now.value( "icon" ) ) );
+                         }
                      } );
         }
         menu->insertAction( before, submenu->menuAction() );
@@ -701,7 +798,7 @@ void PluginMenus::populate( QPointer<QMenu> menu, const Source& plugin,
     }
     clearMenu( menu );
     const auto menuId = definition.value( "id" ).toString();
-    const auto key = menuKey( { plugin.id, menuId, itemId, context.location, context.tabId } );
+    const auto key = populateKey( plugin.id, menuId, itemId, context );
     auto& registry = PluginMenuRegistry::instance();
     const auto generation = ++populateGeneration_;
     menu->setProperty( "pluginPopulateGeneration", generation );
@@ -744,7 +841,7 @@ void PluginMenus::sendPopulate( QPointer<QMenu> menu, const Source& plugin,
         return;
     }
     const auto menuId = definition.value( "id" ).toString();
-    const auto key = menuKey( { plugin.id, menuId, itemId, context.location, context.tabId } );
+    const auto key = populateKey( plugin.id, menuId, itemId, context );
     const QPointer<PluginMenus> self( this );
     const auto current = [ menu, generation ] {
         return menu && menu->property( "pluginPopulateGeneration" ).toULongLong() == generation;
@@ -775,8 +872,13 @@ void PluginMenus::sendPopulate( QPointer<QMenu> menu, const Source& plugin,
                 const auto answer = outcome.result.toObject();
                 const auto items = answer.value( "items" ).toArray();
                 if ( answered ) {
+                    // Native menu bars show the last answer while the next one comes, whatever
+                    // its cache_ms; other locations keep only answers the plugin lets them cache.
+                    const bool nativeBar = context.location == QLatin1String( "plugins" )
+                                           || context.location == QLatin1String( "menubar" );
                     PluginMenuRegistry::instance().storeAnswer(
-                        key, items, static_cast<qint64>( answer.value( "cache_ms" ).toDouble() ) );
+                        key, items, static_cast<qint64>( answer.value( "cache_ms" ).toDouble() ),
+                        nativeBar );
                 }
                 if ( !self || !current() ) {
                     return;
@@ -918,6 +1020,13 @@ CommanderResult PluginMenus::dispatch( const Source& plugin, const QJsonObject& 
         if ( json.contains( "selection" ) ) {
             menu.insert( "selection", json.value( "selection" ).toVariant() );
         }
+        if ( context.location == QLatin1String( "element" ) ) {
+            // E17d: the job's `menu` context names the view element and its rows.
+            for ( const auto* key : { "view_id", "element_id", "row_id", "column_id",
+                                      "selected_ids", "selected_count" } ) {
+                menu.insert( QLatin1String( key ), json.value( QLatin1String( key ) ).toVariant() );
+            }
+        }
         if ( menuId.isEmpty() ) {
             menu.clear(); // an action's own shortcut: no menu entry
         }
@@ -986,6 +1095,10 @@ QVariantList PluginMenus::resolve( const QString& location, const PluginMenuCont
                 continue;
             }
             const auto menuId = definition.value( "id" ).toString();
+            // E17d: an element shows only the menu its `context_menu` names.
+            if ( !context.elementMenuId.isEmpty() && menuId != context.elementMenuId ) {
+                continue;
+            }
             const bool hiddenHere = hidden( plugin, location );
             // Depth-first, with the titles of the submenus above each entry.
             std::function<void( const QJsonArray&, const QStringList&, bool )> walk;
@@ -1072,6 +1185,14 @@ std::optional<PluginMenus::Picked> PluginMenus::pick( const QString& pluginId,
     if ( !context.location.isEmpty() && context.location != location ) {
         return refuse( CommanderResultCode::InvalidRequest,
                        tr( "The entry belongs to the %1 menus." ).arg( location ) );
+    }
+    if ( !context.elementMenuId.isEmpty() && menuId != context.elementMenuId ) {
+        return refuse( CommanderResultCode::InvalidRequest,
+                       tr( "The element's context menu is %1." ).arg( context.elementMenuId ) );
+    }
+    if ( location == QLatin1String( "element" ) && context.elementId.isEmpty() ) {
+        return refuse( CommanderResultCode::InvalidRequest,
+                       tr( "An element menu entry needs --view-id and --element-id." ) );
     }
     context.location = location;
     const auto entry = PluginMenuRegistry::instance().entryState( pluginId, menuId, declared );

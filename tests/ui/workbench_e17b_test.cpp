@@ -507,6 +507,18 @@ TEST_CASE( "E17b menu/update reaches open entries, keeps radio groups exclusive 
     const auto listed = fixture.menusOf( "plugins" );
     REQUIRE( entryOf( listed, "safe" ).value( "checked" ).toBool() );
     REQUIRE_FALSE( entryOf( listed, "fast" ).value( "checked" ).toBool() );
+    // An open submenu changes in place too: its title, tooltip and icon.
+    auto* mode = own->findChild<QMenu*>( "pluginMenu_" + PluginId + "_main_mode" );
+    REQUIRE( mode );
+    REQUIRE( mode->icon().isNull() );
+    registry.applyUpdate( PluginId, "main",
+                          { QJsonObject{ { "id", "mode" },
+                                         { "set", QJsonObject{ { "title", "Modes" },
+                                                               { "tooltip", "Pick a mode" },
+                                                               { "icon", "builtin:info" } } } } } );
+    REQUIRE( mode->title() == "Modes" );
+    REQUIRE( mode->menuAction()->toolTip() == "Pick a mode" );
+    REQUIRE_FALSE( mode->icon().isNull() );
     // An entry under a disabled or hidden submenu cannot be triggered.
     registry.applyUpdate( PluginId, "main",
                           { QJsonObject{ { "id", "mode" }, { "set", QJsonObject{ { "enabled", false } } } } } );

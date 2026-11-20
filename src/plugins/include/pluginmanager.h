@@ -147,6 +147,9 @@ public:
     static QString viewScope( const QString& windowId, const QString& viewId );
     // Whether plugin.json lists `method` in `handles` (known before the plugin starts).
     bool declaresHandler( const QString& pluginId, const QString& method ) const;
+    // Whether plugin.json declares `handles` at all: E17 keys on existing events go only to
+    // such plugins (docs/plugin-sdk-advanced.md principle 11).
+    bool declaresHandles( const QString& pluginId ) const;
     // Whether the running plugin handles `method`: `handles` and its initialize `features`.
     bool handles( const QString& pluginId, const QString& method ) const;
     PluginQueries& queries()
@@ -172,6 +175,14 @@ public:
     Result sendCommand( const QString& pluginId, const QJsonObject& params );
     // The menu locations whose entries of this plugin the user hides (plugin_manage `menus`).
     QStringList hiddenMenuLocations( const QString& pluginId ) const;
+    // E17d: what the host keeps per plugin view across sessions (kept table columns; E17g adds
+    // more), at most MaxViewStateBytes of compact JSON (docs/plugin-sdk-advanced.md 10.5, 13.6).
+    // (viewState() is the placement the host keeps since E13.)
+    static constexpr int MaxViewStateBytes = 64 * 1024;
+    QJsonObject keptViewState( const QString& pluginId, const QString& viewId ) const;
+    // False when the state is over the limit (nothing is stored then).
+    bool setKeptViewState( const QString& pluginId, const QString& viewId,
+                           const QJsonObject& state );
     // The shortcuts the windows assigned to each plugin, for get_plugins and the Plugins and
     // Packs window: `key`, `title`, `declared`, `keys`, `state`, `reason`, `userSet`.
     void setShortcutReport( const std::map<QString, QVariantList>& report );

@@ -551,9 +551,13 @@ TEST_CASE( "E17b plugin_manage menus hides locations", "[plugins][E17]" )
                  .ok() );
     REQUIRE( fixture.manager->hiddenMenuLocations( id ) == QStringList{ "log", "tab" } );
     REQUIRE( fixture.manager->menuSources().front().hidden == QStringList{ "log", "tab" } );
+    // Only locations this host renders: `element` since E17d, `toolbar` not before E17g.
     REQUIRE_FALSE(
-        fixture.manager->manage( "menus", id, { { "hidden_locations", QVariantList{ "element" } } } )
+        fixture.manager->manage( "menus", id, { { "hidden_locations", QVariantList{ "toolbar" } } } )
             .ok() );
+    REQUIRE( fixture.manager->manage( "menus", id, { { "hidden_locations", QVariantList{ "element" } } } )
+                 .ok() );
+    REQUIRE( fixture.manager->hiddenMenuLocations( id ) == QStringList{ "element" } );
     REQUIRE( fixture.manager->manage( "menus", id, {} ).ok() );
     REQUIRE( fixture.manager->hiddenMenuLocations( id ).isEmpty() );
     // Plugin stream captures live in the data folder.

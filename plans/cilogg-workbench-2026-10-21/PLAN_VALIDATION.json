@@ -844,6 +844,170 @@
       "threadsResolved": true,
       "productCodeChanged": true,
       "productBuildRun": true
+    },
+    "codexReview135": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/135",
+      "fixedIn": "https://github.com/dm17ryk/klogg/pull/136",
+      "commit": "916db3e2",
+      "findings": [
+        "an emptied editable choice took the first choice after an empty choices list: 'has shown choices' is kept on the field",
+        "multiline text inserted before the end at the limit cut the existing tail: the insertion is trimmed instead"
+      ],
+      "allFixedWithTests": true,
+      "threadsResolved": true
+    }
+  },
+  "e17dChecks": {
+    "date": "2026-11-20",
+    "task": "E17",
+    "slice": "E17d",
+    "decision": "D17",
+    "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+    "basedOn": "0856e39ab8203dab60cb22bc97ae508dd86badc1",
+    "taskStatus": "in_progress",
+    "hardDagAndRequirementsUnchanged": true,
+    "otherTaskRecordsPreserved": true,
+    "productCodeChanged": true,
+    "productBuildRun": true,
+    "newThirdPartyDependency": null,
+    "hashesRefreshed": [
+      "PLAN_VALIDATION.json",
+      "PROGRESS.json",
+      "TASK_INDEX.json"
+    ],
+    "independentReview": "cpp-reviewer: 2 high, 8 medium and 11 low findings; the high and medium ones and the other low ones fixed (tests for most); 3 low ones documented (--row-id trimmed like get_plugin_tooltip ids, TSV copies have no formula guard, CSV has no BOM)",
+    "localClangCheck": "clang-cl -fsyntax-only with the Unix warning set, -Wshadow-all and -Werror on every changed C++ file: clean except 4 init-captures of pluginuicontroller.cpp and one of pluginview.cpp that are on master",
+    "nativeParity": [
+      "E17 (e17_tooltips, e17_menus, e17_choices, e17_tables)"
+    ],
+    "hostIntegration": "tests/plugins/host_integration.py PASS (isolated portable copy, offscreen) with org.cilogg.example.protocol-pack skipped: on master the script stops at that config pack (Unsupported plugin kind: config-pack) since #128",
+    "gitnexusDetectChanges": "critical by name matching (283 flows share names such as MainWindow and commanderRequestFromVariantMap); the changed symbols are the Python SDK, one MainWindow member, the --view-id/--element-id/--row-id options and the table and menu code",
+    "qualification": "local_gates_passed_hosted_pending",
+    "linuxCiFix": "-ffast-math folds std::isfinite on GCC and Clang: plugintablemodel.cpp and pluginview.cpp build with set_exact_floating_point",
+    "codexReview136": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "commit": "5ae99b3e",
+      "findings": [
+        "P1 element menu context ids bounded only by count: bounded to 256 KiB of JSON too (also checked and moved), selected_count complete",
+        "dynamic element submenu answers cached per tab only: the key holds the window, view, element, row, column and selection",
+        "number sort put text first in descending order: text that is no number stays last in both orders",
+        "a checked event that was not delivered never rolled the boxes back: the host reports every undelivered event",
+        "the icon cache cleared itself at 512 entries: least recently used entries go first"
+      ],
+      "allFixedWithTests": true,
+      "threadsResolved": true
+    },
+    "windowsTestFix": {
+      "date": "2026-11-20",
+      "commit": "7c97d3fe5c195fa326a47fd727bd1af8595212af",
+      "cause": "remaining() in the same monotonic tick as 'received' gave 1.2 plus a rounding error"
+    },
+    "codexReview136Second": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "commit": "1e1255351264238313aa8df5419f69db5a1b3a3b",
+      "findings": [
+        "element-menu populate keys left out the selected count: the full count is in the key",
+        "the progress bar was painted under the item background: background, bar, then the item without background",
+        "current-row patches needed a selectable table: only 'select' needs one",
+        "a column shown from the header menu waited for a resize to get min_width: enforced at once",
+        "hidden columns lost their width: the width is kept, saved and restored",
+        "a column change in the last 500 ms before close was lost: pending saves are flushed on close and on a new root"
+      ],
+      "allFixedWithTests": true,
+      "threadsResolved": true
+    },
+    "localCodexReview136": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "b978152fadba1243af19b86363725b90cdf1822c",
+      "findings": [
+        "P2 element-menu cache keys joined selected ids with U+001F: every id is length-prefixed",
+        "P2 a drag in a toggle-selection table lost the pressed row: the selection before the press moves",
+        "P2 table_row() made every mapping a cell object: only mappings with a cell key are",
+        "P2 cell tooltip keys were split on U+001F: the most specific key is its own field, the cache key is length-prefixed",
+        "P3 no test of selections that differ by their count: added",
+        "P3 no test of a progress bar on an alternate row: added",
+        "P3 no test of a new root saving several tables: added"
+      ],
+      "allFixedWithTests": true
+    },
+    "localCodexReview136Round5": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "a9c28445da1b727e6a086cc9777b4c7381494f4c",
+      "reviewedHead": "1fa1be5b04e8f9061747318b82a16e7cc75a3d0a",
+      "findings": [
+        "P1 Copy kept formulas: copied text gets the CSV formula guard",
+        "P1 Copy All had no size limit: Copy and Copy All stop at whole rows before 1 MiB",
+        "P2 the pre-press selection kept 1,000 ids: the whole selection decides what a drag moves",
+        "P2 the fake host bounded ids by count only: bounded_ids() applies the 256 KiB budget",
+        "P2 the fake host sent activated to plugins without handles: only with handles"
+      ],
+      "allFixedWithTests": true
+    },
+    "localCodexReview136Round6": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "5241abed993a6bbd65ac11a65322a4167fc41d5e",
+      "reviewedHead": "c7b57ac4d387bb08f1d8ea188b830fe0614306ba",
+      "findings": [
+        "P2 a drag snapshotted every selected id and serialized them all: ranges, and only the bounded ids",
+        "P2 select_rows() sent every id over the 1 MiB limit: bounded_ids() of them",
+        "P2 menu/update left an open submenu's icon and tooltip: both change in place"
+      ],
+      "allFixedWithTests": true
+    },
+    "localCodexReview136Round7": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "199db5ee2517821c4d9fca3d8c68834371f67658",
+      "reviewedHead": "a8601f8e3042648afbe6b30a7da29e3143d29fa5",
+      "findings": [
+        "P2 selected counted characters, not encoded JSON: boundedIds() bounds the ids",
+        "P2 a patch that replaced rows and selected echoed an intermediate selection: not sent",
+        "P2 sort_as text compared numbers: SortTextRole compares the text",
+        "P2 new columns saved and kept a stale sort index: saved before the reset, sorted by id",
+        "P2 a press on a selected row sent a transient deselection: held until release or drag"
+      ],
+      "allFixedWithTests": true
+    },
+    "localCodexReview136Round8": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "1165d4f66688f4c747ec850743ba95b909f70dd3",
+      "reviewedHead": "209922fcc7341f3ca69c52bc48d23203c176e2c0",
+      "findings": [
+        "P1 dynamic menu answers kept without cache_ms, never expired, bounded by count only: kept only as a native bar's last answer, dropped on lookup when expired, 16 MiB budget",
+        "P2 a drag used selection ranges that rows changed under: row changes call the press off",
+        "P2 header menu entries captured column indexes: they resolve the column id when picked"
+      ],
+      "allFixedWithTests": true
+    },
+    "localCodexReview136Round9": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "ea666a62bb1587f3f66c4a7376a22f5fd6eff26a",
+      "reviewedHead": "785a32a5300bc162d53361e232ca7336eb05b1fe",
+      "findings": [
+        "P2 the dynamic submenu cache key held only entry, location and tab outside element menus: it is the entry plus the whole menu/populate context",
+        "P2 a called-off drag always queued selectionSettled, echoing a patch's own selection: compared before the change, dropped by a selection patch or a sent selected event"
+      ],
+      "allFixedWithTests": true
     }
   }
 }

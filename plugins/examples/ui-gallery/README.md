@@ -1,6 +1,6 @@
 # UI Gallery
 
-A small tour of the plugin view, menu and form features of the advanced plugin SDK (see
+A small tour of the plugin view, menu, form and table features of the advanced plugin SDK (see
 `docs/plugin-sdk.md` and `docs/plugin-sdk-advanced.md`). It grows with each E17 slice. It is
 disabled by default; enable it in **Plugins → Manage Plugins…**, then open **Plugins → UI
 Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**).
@@ -30,7 +30,7 @@ Gallery → Open gallery** (or press **Ctrl+Alt+Shift+G**).
 
 ### Menus, context menus, commands and a shortcut (E17b)
 
-`plugin.json` declares three `menus`:
+`plugin.json` declares three `menus` for these (and the table's context menu, see E17d):
 
 - **Plugins → UI Gallery** (`location: "plugins"`, which replaces the plugin's flat entries in
   the Plugins menu):
@@ -88,6 +88,32 @@ valid=<true|false>` (text as typed, other values as JSON; an event without `vali
 check box's, counts as valid) or the click as `clicked apply board_label=<value>
 retries=<value>`.
 
+### Rich table and its context menu (E17d)
+
+The **Boards** table of the "Advanced tooltips" group uses the rich table keys:
+
+- **Cell objects** (`cell(...)`): the state cell has a status icon, the uptime cell a bar that
+  compares the uptime with the longest one (`progress`), a static cell tooltip and, at 0
+  minutes, the `muted` tone, which wins over the row's tone. With **Highlight offline boards**
+  the names of offline boards are bold.
+- **A check column:** the Board column has `check=True`, so each name has a check box bound to
+  the row's `checked`. The column also has a header icon and a minimum width; the Uptime
+  column is right-aligned.
+- **Table keys:** `selection="multi"`, `export=True` (Export CSV... next to Copy and Copy All
+  in the context menu), `reorderable=True` (drag rows) and `context_menu="board_actions"`.
+- **Events:** the plugin shows each table event in the label under the table
+  (`table_status`):
+  - `activated <row> <column>` after a double-click or Enter on a cell;
+  - `checked <rows> <true|false>` after a check box changed (the rows joined by `,`); the
+    plugin keeps the state, so a new window shows it;
+  - `moved <rows> before <row|end>` after rows were dragged: CILogg does not move them, so the
+    plugin replaces the rows in the new order and selects the moved rows again
+    (`select_rows`). The dragged order stays until **Sort by name** or **Sort by state**.
+- **Context menu** (`plugin.json` menu `board_actions`, `location: "element"`): **Restart
+  Board** and **Remove from List** (shown with a selection, `when: {"selection": "any"}`) act
+  on the selected rows, and **Restore Removed Boards** puts removed boards back in their place.
+  The label shows each command as `menu <entry> <clicked row|none> <selected count>`.
+
 `plugin.json` lists the host-to-plugin methods the plugin handles in `handles`
 (`tooltip/resolve`, `menu/populate`, `field/complete`, `ui/command`, `query/cancel`); without
 them CILogg never sends them (an `event` entry is then disabled), and the SDK warns on stderr
@@ -110,6 +136,11 @@ unchecked), the radio group a choice field and the check group a multichoice fie
 `validation`, `required`, `pattern`, the bounds and `requires_valid` are left out. The group's
 first label then says that these controls need a newer CILogg.
 
+Without `rich_tables`, the table's cells are plain text and the check column, icons,
+alignment, row dragging, Export CSV and the selection patch are left out; without
+`element_menus`, the table has no plugin context menu. The label under the table then says
+that these need a newer CILogg.
+
 ## Testing without CILogg
 
 ```python
@@ -126,7 +157,11 @@ with FakeHost.start_package("plugins/examples/ui-gallery") as host:  # with cilo
     print(host.complete_field("gallery", "target_board", "Bo"))      # completion
     host.change_field("gallery", "board_label", "bad name", valid=False)
     print(host.wait_for("view/update", lambda params: "patch" in params))  # "changed board_label=..."
+    host.move_rows("gallery", "boards", ["b3"], before="b1")         # a dragged row
+    print(host.wait_for("view/update", lambda params: "patch" in params))  # rows, selection, "moved b3 before b1"
+    host.send_element_command("board_actions", "restart", "gallery", "boards", row_id="b3",
+                              selected_ids=["b3"])                   # the table's context menu
 ```
 
-`tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry, command, control
-and completion, on a current, an E17b, an E17a and an older host.
+`tests/plugins/test_ui_gallery.py` does this for every tooltip, menu entry, command, control,
+completion and table event, on a current, an E17c, an E17b, an E17a and an older host.

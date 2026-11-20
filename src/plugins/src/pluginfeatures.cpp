@@ -83,7 +83,8 @@ const std::vector<std::pair<QString, int>>& hostFeatures()
         { QStringLiteral( "icons" ), 1 },   { QStringLiteral( "menus" ), 1 },
         { QStringLiteral( "shortcuts" ), 1 }, { QStringLiteral( "choices" ), 1 },
         { QStringLiteral( "toggles" ), 1 }, { QStringLiteral( "field_kinds" ), 1 },
-        { QStringLiteral( "validation" ), 1 },
+        { QStringLiteral( "validation" ), 1 }, { QStringLiteral( "rich_tables" ), 1 },
+        { QStringLiteral( "element_menus" ), 1 },
     };
     return features;
 }

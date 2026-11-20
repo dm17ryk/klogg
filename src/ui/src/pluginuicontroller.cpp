@@ -363,6 +363,14 @@ PluginUiController::PluginUiController( MainWindow* window, cilogg::plugins::Plu
         [ owner = QPointer<MainWindow>( window ) ]( const QString& location ) {
             return owner ? owner->pluginMenuContext( location ) : PluginMenuContext{};
         } );
+    // E17d: element context menus of this window's plugin views.
+    viewHost_->setElementMenuFiller( [ menus = QPointer<PluginMenus>( menus_ ) ](
+                                         QMenu* menu, const QString& pluginId,
+                                         const QString& menuId, const PluginMenuContext& context ) {
+        if ( menus ) {
+            menus->addElementMenu( menu, pluginId, menuId, context );
+        }
+    } );
     refreshActions();
     connect( window, &MainWindow::windowClosed, this, [ this ] {
         if ( viewHost_ ) {

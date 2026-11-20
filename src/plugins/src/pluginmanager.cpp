@@ -2201,6 +2201,13 @@ bool PluginManager::declaresHandler( const QString& pluginId, const QString& met
            && handledMethods( it->second->manifest.json.value( "handles" ) ).contains( method );
 }
 
+bool PluginManager::declaresHandles( const QString& pluginId ) const
+{
+    const auto it = entries_.find( pluginId );
+    return it != entries_.end() && it->second->manifest.valid()
+           && !handledMethods( it->second->manifest.json.value( "handles" ) ).isEmpty();
+}
+
 bool PluginManager::handles( const QString& pluginId, const QString& method ) const
 {
     const auto it = entries_.find( pluginId );
@@ -2438,6 +2445,32 @@ void PluginManager::handleMenuUpdate( const QString& pluginId, const QJsonObject
 QStringList PluginManager::hiddenMenuLocations( const QString& pluginId ) const
 {
     return settings_.value( configurationKey( pluginId ) + "menus/hidden" ).toStringList();
+}
+
+namespace {
+// A view id as a settings key part: hex, so no id can reach another key.
+QString viewStateKey( const QString& viewId )
+{
+    return QStringLiteral( "views/%1/state" ).arg( QString::fromLatin1( viewId.toUtf8().toHex() ) );
+}
+} // namespace
+
+QJsonObject PluginManager::keptViewState( const QString& pluginId, const QString& viewId ) const
+{
+    const auto bytes
+        = settings_.value( configurationKey( pluginId ) + viewStateKey( viewId ) ).toByteArray();
+    return bytes.isEmpty() ? QJsonObject{} : QJsonDocument::fromJson( bytes ).object();
+}
+
+bool PluginManager::setKeptViewState( const QString& pluginId, const QString& viewId,
+                                      const QJsonObject& state )
+{
+    const auto bytes = QJsonDocument( state ).toJson( QJsonDocument::Compact );
+    if ( bytes.size() > MaxViewStateBytes ) {
+        return false;
+    }
+    settings_.setValue( configurationKey( pluginId ) + viewStateKey( viewId ), bytes );
+    return true;
 }
 
 void PluginManager::setShortcutReport( const std::map<QString, QVariantList>& report )

@@ -5,19 +5,25 @@
 #include "checkcombobox.h"
 #include "pluginchoicewidgets.h"
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleValidator>
 #include <QEvent>
 #include <QFont>
 #include <QGuiApplication>
+#include <QJsonDocument>
 #include <QLineEdit>
 #include <QLocale>
+#include <QPainter>
 #include <QPointer>
 #include <QSet>
+#include <QStyle>
 #include <QTextDocument>
 #include <QTimer>
+#include <QStringView>
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace pluginview {
@@ -35,6 +41,85 @@ constexpr char CellListProperty[] = "pluginCellList";
 QString tooltipKeyOf( const QJsonObject& object )
 {
     return object.value( "tooltip_key" ).toString().left( 128 );
+}
+
+// E17d `align` of a column (section 10.1).
+Qt::Alignment alignmentOf( const QString& align )
+{
+    const Qt::Alignment horizontal = align == QLatin1String( "center" ) ? Qt::AlignHCenter
+                                     : align == QLatin1String( "right" ) ? Qt::AlignRight
+                                                                         : Qt::AlignLeft;
+    return horizontal | Qt::AlignVCenter;
+}
+
+// E17d: a cell object's keys besides `text` (section 10.1).
+PluginTableModel::CellStyle styleOf( const QJsonObject& cell )
+{
+    PluginTableModel::CellStyle style;
+    style.icon = cell.value( "icon" );
+    style.tooltip = text( cell, "tooltip" );
+    style.tooltipKey = tooltipKeyOf( cell );
+    style.tone = cell.value( "tone" ).toString().left( 16 );
+    style.bold = cell.value( "bold" ).toBool();
+    if ( cell.value( "progress" ).isDouble() ) {
+        style.progress = qBound( 0.0, cell.value( "progress" ).toDouble(), 1.0 );
+    }
+    const auto sort = cell.value( "sort" );
+    if ( sort.isDouble() ) {
+        style.sort = sort.toDouble();
+    }
+    else if ( sort.isString() ) {
+        style.sort = sort.toString().left( PluginView::MaxTextChars );
+    }
+    return style;
+}
+
+// Numbers inside text compared as numbers ("item 9" before "item 10").
+int naturalCompare( const QString& left, const QString& right )
+{
+    qsizetype i = 0;
+    qsizetype j = 0;
+    while ( i < left.size() && j < right.size() ) {
+        if ( left.at( i ).isDigit() && right.at( j ).isDigit() ) {
+            qsizetype endLeft = i;
+            qsizetype endRight = j;
+            while ( endLeft < left.size() && left.at( endLeft ).isDigit() ) {
+                ++endLeft;
+            }
+            while ( endRight < right.size() && right.at( endRight ).isDigit() ) {
+                ++endRight;
+            }
+            // Without leading zeros, the longer run is the larger number. Indexes skip the zeros:
+            // no copy, so one comparison stays linear in the text (sorting runs it many times).
+            auto startLeft = i;
+            auto startRight = j;
+            while ( endLeft - startLeft > 1 && left.at( startLeft ) == QLatin1Char( '0' ) ) {
+                ++startLeft;
+            }
+            while ( endRight - startRight > 1 && right.at( startRight ) == QLatin1Char( '0' ) ) {
+                ++startRight;
+            }
+            const auto a = QStringView( left ).mid( startLeft, endLeft - startLeft );
+            const auto b = QStringView( right ).mid( startRight, endRight - startRight );
+            if ( a.size() != b.size() ) {
+                return a.size() < b.size() ? -1 : 1;
+            }
+            if ( const auto order = a.compare( b ); order != 0 ) {
+                return order < 0 ? -1 : 1;
+            }
+            i = endLeft;
+            j = endRight;
+            continue;
+        }
+        const auto a = left.at( i ).toCaseFolded();
+        const auto b = right.at( j ).toCaseFolded();
+        if ( a != b ) {
+            return a < b ? -1 : 1;
+        }
+        ++i;
+        ++j;
+    }
+    return left.size() - i < right.size() - j ? -1 : ( left.size() - i > right.size() - j ? 1 : 0 );
 }
 
 // Runs `done` (queued, with the parent as its context) once no mouse button is held, then deletes
@@ -156,9 +241,32 @@ bool sameValue( const QJsonValue& left, const QJsonValue& right )
            } );
 }
 
+QStringList boundedIds( const QStringList& ids, qsizetype budget )
+{
+    QStringList kept;
+    for ( const auto& id : ids ) {
+        // The id as a JSON string with its separator (escapes included).
+        budget -= QJsonDocument( QJsonArray{ id } ).toJson( QJsonDocument::Compact ).size() - 1;
+        if ( budget < 0 ) {
+            break;
+        }
+        kept.append( id );
+    }
+    return kept;
+}
+
 QString plainToolTip( const QString& tip )
 {
     return Qt::mightBeRichText( tip ) ? Qt::convertFromPlainText( tip, Qt::WhiteSpaceNormal ) : tip;
+}
+
+QString joinedKey( std::initializer_list<QString> parts )
+{
+    QString key;
+    for ( const auto& part : parts ) {
+        key += QString::number( part.size() ) + QLatin1Char( ':' ) + part;
+    }
+    return key;
 }
 
 // PluginTableModel
@@ -186,16 +294,39 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
     const auto& row = rows_.at( index.row() );
     const auto value
         = index.column() < row.cells.size() ? row.cells.at( index.column() ) : QString{};
+    // E17d: a cell object's style, if this cell is one.
+    const CellStyle* style
+        = index.column() < row.styles.size() ? &row.styles.at( index.column() ) : nullptr;
+    const auto& columnInfo = column( index.column() );
     if ( role == Qt::DisplayRole || role == Qt::EditRole ) {
         return value;
     }
     if ( role == Qt::ToolTipRole ) {
-        return plainToolTip( row.tooltip.isEmpty() ? value : row.tooltip );
+        // The cell's own tooltip, else the row's, else the text.
+        const auto tip = style && !style->tooltip.isEmpty() ? style->tooltip
+                         : row.tooltip.isEmpty()            ? value
+                                                            : row.tooltip;
+        return plainToolTip( tip );
     }
-    if ( role == Qt::FontRole && row.pending.contains( index.column() ) ) {
+    if ( role == Qt::FontRole ) {
+        const bool italic = row.pending.contains( index.column() );
+        const bool bold = style && style->bold;
+        if ( !italic && !bold ) {
+            return {};
+        }
         QFont font;
-        font.setItalic( true );
+        font.setItalic( italic );
+        font.setBold( bold );
         return font;
+    }
+    if ( role == Qt::TextAlignmentRole ) {
+        return QVariant::fromValue( columnInfo.align );
+    }
+    if ( role == Qt::CheckStateRole ) {
+        return columnInfo.check ? QVariant( row.checked ? Qt::Checked : Qt::Unchecked ) : QVariant{};
+    }
+    if ( role == ProgressRole ) {
+        return style && style->progress >= 0 ? QVariant( style->progress ) : QVariant{};
     }
     if ( role == EditorRole ) {
         return QVariant::fromValue( editorFor( index ) );
@@ -204,18 +335,33 @@ QVariant PluginTableModel::data( const QModelIndex& index, int role ) const
         const auto pending = row.pending.constFind( index.column() );
         return pending != row.pending.cend() ? QVariant::fromValue( pending->value ) : QVariant{};
     }
-    if ( role == SortRole ) { // sort key: numbers sort numerically
+    if ( role == SortRole ) { // sort key: a cell's `sort`, else numbers sort numerically
+        if ( style && style->sort.isValid() ) {
+            return style->sort;
+        }
         bool numeric = false;
         const auto number = value.toDouble( &numeric );
         return numeric ? QVariant( number ) : QVariant( value );
     }
+    if ( role == SortTextRole ) { // sort_as text and natural: never turned into a number
+        return style && style->sort.isValid() ? style->sort.toString() : value;
+    }
     if ( role == RowIdRole ) {
         return row.id;
     }
-    if ( role == Qt::ForegroundRole && toneColor( row.tone ).isValid() ) {
-        return toneColor( row.tone );
+    if ( role == Qt::ForegroundRole ) {
+        // The cell's tone wins over the row's.
+        const auto tone = style && !style->tone.isEmpty() ? style->tone : row.tone;
+        return toneColor( tone ).isValid() ? QVariant( toneColor( tone ) ) : QVariant{};
     }
     if ( role == Qt::DecorationRole && iconFor ) {
+        // E17d: the cell's icon, else the row's icon in the first column.
+        if ( style && !style->icon.isUndefined() && !style->icon.isNull() ) {
+            return iconFor( style->icon );
+        }
+        if ( index.column() == 0 && !row.icon.isUndefined() && !row.icon.isNull() ) {
+            return iconFor( row.icon );
+        }
         // E17c: a committed choice with an icon shows it in the cell (section 8.4).
         const auto editor = editorFor( index );
         // Labels can repeat: the choice of the edit not confirmed yet, else of the editor's
@@ -263,6 +409,14 @@ QVariant PluginTableModel::headerData( int section, Qt::Orientation orientation,
         if ( role == Qt::ToolTipRole && !columns_.at( section ).tooltip.isEmpty() ) {
             return plainToolTip( columns_.at( section ).tooltip );
         }
+        // E17d: the column's icon and alignment in the header.
+        if ( role == Qt::DecorationRole && iconFor && !columns_.at( section ).icon.isUndefined()
+             && !columns_.at( section ).icon.isNull() ) {
+            return iconFor( columns_.at( section ).icon );
+        }
+        if ( role == Qt::TextAlignmentRole ) {
+            return QVariant::fromValue( columns_.at( section ).align );
+        }
     }
     return QAbstractTableModel::headerData( section, orientation, role );
 }
@@ -278,12 +432,32 @@ QJsonObject PluginTableModel::editorFor( const QModelIndex& index ) const
 
 Qt::ItemFlags PluginTableModel::flags( const QModelIndex& index ) const
 {
-    const auto base = QAbstractTableModel::flags( index );
+    auto base = QAbstractTableModel::flags( index );
+    if ( index.isValid() && column( index.column() ).check ) {
+        base |= Qt::ItemIsUserCheckable; // E17d: a check box bound to the row's `checked`
+    }
     return editorFor( index ).isEmpty() ? base : base | Qt::ItemIsEditable;
 }
 
 bool PluginTableModel::setData( const QModelIndex& index, const QVariant& value, int role )
 {
+    if ( role == Qt::CheckStateRole ) {
+        // E17d: the user changed a check box; the view decides the rows and reports them.
+        if ( !index.isValid() || index.row() >= rows_.size() || !column( index.column() ).check
+             || !canEdit || !canEdit() ) {
+            return false;
+        }
+        const bool checked = value.toInt() == Qt::Checked;
+        const auto id = rows_.at( index.row() ).id;
+        if ( rows_.at( index.row() ).checked == checked ) {
+            return false;
+        }
+        if ( onCheckRequested ) {
+            onCheckRequested( id, checked );
+            return true;
+        }
+        return !setChecked( { id }, checked ).isEmpty();
+    }
     const auto editor = editorFor( index );
     if ( role != Qt::EditRole || editor.isEmpty() || !canEdit || !canEdit() ) {
         return false;
@@ -416,6 +590,16 @@ bool PluginTableModel::setColumns( const QJsonArray& columns )
         parsedColumn.tooltip = text( column, "tooltip" );
         parsedColumn.tooltipProvider = column.value( "tooltip_provider" ).toBool();
         parsedColumn.tooltipKey = tooltipKeyOf( column );
+        // E17d (section 10.1).
+        parsedColumn.align = alignmentOf( column.value( "align" ).toString() );
+        parsedColumn.hidden = column.value( "hidden" ).toBool();
+        parsedColumn.sortable = column.value( "sortable" ).toBool( true );
+        const auto sortAs = column.value( "sort_as" ).toString();
+        parsedColumn.sortAs = QStringList{ "text", "number", "natural" }.contains( sortAs ) ? sortAs
+                                                                                          : QString{};
+        parsedColumn.minWidth = qBound( 0, column.value( "min_width" ).toInt(), 2000 );
+        parsedColumn.check = column.value( "check" ).toBool();
+        parsedColumn.icon = column.value( "icon" );
         parsed.append( parsedColumn );
     }
     if ( qMax<qsizetype>( 1, parsed.size() ) * rows_.size() > PluginView::MaxTableCells ) {
@@ -425,6 +609,7 @@ bool PluginTableModel::setColumns( const QJsonArray& columns )
     columns_ = parsed;
     for ( auto& row : rows_ ) {
         row.cells = row.cells.mid( 0, cellLimit() );
+        row.styles = row.styles.mid( 0, cellLimit() );
         row.pending.removeIf( [ &row ]( QHash<int, Pending>::iterator it ) {
             return it.key() >= row.cells.size();
         } );
@@ -442,11 +627,21 @@ PluginTableModel::Row PluginTableModel::parse( const QJsonObject& object ) const
     row.editors = object.value( "editors" ).toObject();
     row.tooltipProvider = object.value( "tooltip_provider" ).toBool();
     row.tooltipKey = tooltipKeyOf( object );
+    row.icon = object.value( "icon" );         // E17d
+    row.checked = object.value( "checked" ).toBool();
     for ( const auto& cell : object.value( "cells" ).toArray() ) {
         if ( row.cells.size() >= cellLimit() ) {
             break; // never more cells than columns
         }
-        row.cells.append( cellText( cell ) );
+        if ( !cell.isObject() ) {
+            row.cells.append( cellText( cell ) );
+            continue;
+        }
+        // E17d: a cell object; the styles stay aligned with the cells.
+        const auto rich = cell.toObject();
+        row.styles.resize( row.cells.size() );
+        row.cells.append( text( rich, "text" ) );
+        row.styles.append( styleOf( rich ) );
     }
     return row;
 }
@@ -482,7 +677,15 @@ void PluginTableModel::update( const QJsonArray& rows )
         }
         auto& row = rows_[ *found ];
         if ( object.contains( "cells" ) ) {
-            row.cells = parse( object ).cells;
+            auto parsed = parse( object );
+            row.cells = std::move( parsed.cells );
+            row.styles = std::move( parsed.styles );
+        }
+        if ( object.contains( "icon" ) ) {
+            row.icon = object.value( "icon" );
+        }
+        if ( object.contains( "checked" ) ) {
+            row.checked = object.value( "checked" ).toBool();
         }
         if ( object.contains( "tone" ) ) {
             row.tone = object.value( "tone" ).toString().left( 16 );
@@ -602,8 +805,110 @@ CellTooltipTarget PluginTableModel::tooltipTarget( const QModelIndex& index, boo
     target.rowId = row.id;
     target.columnId = column.id;
     target.provider = tableProvider || column.tooltipProvider || row.tooltipProvider;
-    target.key = tableKey + '\x1f' + row.tooltipKey + '\x1f' + column.tooltipKey;
+    // E17d: a cell object's tooltip_key is the most specific part.
+    const auto cellKey
+        = index.column() < row.styles.size() ? row.styles.at( index.column() ).tooltipKey : QString{};
+    target.key = joinedKey( { tableKey, row.tooltipKey, column.tooltipKey, cellKey } );
+    // The query gets the cell's, else the row's, else the column's, else the table's.
+    for ( const auto* candidate : { &cellKey, &row.tooltipKey, &column.tooltipKey, &tableKey } ) {
+        if ( !candidate->isEmpty() ) {
+            target.tooltipKey = *candidate;
+            break;
+        }
+    }
     return target;
+}
+
+int PluginTableModel::columnOf( const QString& id ) const
+{
+    for ( int index = 0; index < columns_.size(); ++index ) {
+        if ( columns_.at( index ).id == id ) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+const PluginTableModel::Column& PluginTableModel::column( int index ) const
+{
+    static const Column defaults;
+    return index >= 0 && index < columns_.size() ? columns_.at( index ) : defaults;
+}
+
+QString PluginTableModel::rowId( int row ) const
+{
+    return row >= 0 && row < rows_.size() ? rows_.at( row ).id : QString{};
+}
+
+bool PluginTableModel::hasCheckColumn() const
+{
+    return std::any_of( columns_.begin(), columns_.end(),
+                        []( const Column& column ) { return column.check; } );
+}
+
+bool PluginTableModel::isChecked( const QString& rowId ) const
+{
+    const auto row = rowOf( rowId );
+    return row >= 0 && rows_.at( row ).checked;
+}
+
+QStringList PluginTableModel::setChecked( const QStringList& rowIds, bool checked )
+{
+    QStringList changed;
+    for ( const auto& id : rowIds ) {
+        const auto row = rowOf( id );
+        if ( row < 0 || rows_.at( row ).checked == checked ) {
+            continue;
+        }
+        rows_[ row ].checked = checked;
+        changed.append( id );
+        Q_EMIT dataChanged( index( row, 0 ), index( row, qMax( 0, columnCount() - 1 ) ),
+                            { Qt::CheckStateRole } );
+    }
+    return changed;
+}
+
+void PluginTableProxy::sort( int column, Qt::SortOrder order )
+{
+    const auto* model = dynamic_cast<const PluginTableModel*>( sourceModel() );
+    if ( column >= 0 && model != nullptr && !model->column( column ).sortable ) {
+        return;
+    }
+    QSortFilterProxyModel::sort( column, order );
+}
+
+bool PluginTableProxy::lessThan( const QModelIndex& left, const QModelIndex& right ) const
+{
+    const auto* model = dynamic_cast<const PluginTableModel*>( sourceModel() );
+    const auto sortAs = model ? model->column( left.column() ).sortAs : QString{};
+    if ( sortAs.isEmpty() ) {
+        return QSortFilterProxyModel::lessThan( left, right ); // as before E17d
+    }
+    const auto a = left.data( SortRole );
+    const auto b = right.data( SortRole );
+    if ( sortAs == QLatin1String( "number" ) ) {
+        // Text that is no finite number ("nan" and "inf" included) sorts after every number, in
+        // both orders: the proxy reverses lessThan for a descending sort, so the answer for a
+        // number against text follows the order. Within one order this stays a strict weak
+        // ordering. (This file is built without fast-math: std::isfinite must see NaN.)
+        bool leftNumeric = false;
+        bool rightNumeric = false;
+        const auto x = a.toString().toDouble( &leftNumeric );
+        const auto y = b.toString().toDouble( &rightNumeric );
+        leftNumeric = leftNumeric && std::isfinite( x );
+        rightNumeric = rightNumeric && std::isfinite( y );
+        if ( leftNumeric != rightNumeric ) {
+            return sortOrder() == Qt::AscendingOrder ? leftNumeric : rightNumeric;
+        }
+        return leftNumeric ? x < y : a.toString().compare( b.toString(), Qt::CaseInsensitive ) < 0;
+    }
+    // Text and natural order compare the text itself: "02" stays "02", not the number 2.
+    const auto leftText = left.data( SortTextRole ).toString();
+    const auto rightText = right.data( SortTextRole ).toString();
+    if ( sortAs == QLatin1String( "natural" ) ) {
+        return naturalCompare( leftText, rightText ) < 0;
+    }
+    return leftText.compare( rightText, Qt::CaseInsensitive ) < 0;
 }
 
 void PluginTableModel::undoEdit( const QString& rowId, int column, const QString& display,
@@ -659,6 +964,32 @@ void PluginTableModel::reindex()
 }
 
 // PluginCellDelegate
+
+void PluginCellDelegate::paint( QPainter* painter, const QStyleOptionViewItem& option,
+                                const QModelIndex& index ) const
+{
+    // E17d: a cell's progress, a bar behind its text (section 10.1). The item's background comes
+    // first (some styles paint alternate rows there), then the bar, then the item without its
+    // background, so the bar shows on every row.
+    const auto progress = index.data( ProgressRole );
+    if ( !progress.isValid() || ( option.state & QStyle::State_Selected ) ) {
+        QStyledItemDelegate::paint( painter, option, index );
+        return;
+    }
+    QStyleOptionViewItem item = option;
+    initStyleOption( &item, index );
+    const auto* widget = item.widget;
+    auto* style = widget ? widget->style() : QApplication::style();
+    style->drawPrimitive( QStyle::PE_PanelItemViewItem, &item, painter, widget );
+    auto bar = item.rect.adjusted( 1, 2, -1, -2 );
+    bar.setWidth( static_cast<int>( bar.width() * qBound( 0.0, progress.toDouble(), 1.0 ) ) );
+    auto color = item.palette.color( QPalette::Highlight );
+    color.setAlpha( 70 );
+    painter->fillRect( bar, color );
+    item.backgroundBrush = Qt::NoBrush;
+    item.features &= ~QStyleOptionViewItem::Alternate;
+    style->drawControl( QStyle::CE_ItemViewItem, &item, painter, widget );
+}
 
 QWidget* PluginCellDelegate::createEditor( QWidget* parent, const QStyleOptionViewItem& option,
                                            const QModelIndex& index ) const

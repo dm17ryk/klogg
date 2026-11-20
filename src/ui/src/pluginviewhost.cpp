@@ -6,7 +6,9 @@
 #include "log.h"
 #include "pluginicons.h"
 #include "pluginmanager.h"
+#include "pluginmenus.h"
 #include <QAbstractButton>
+#include <QDateTime>
 #include <QDialog>
 #include <QDockWidget>
 #include <QElapsedTimer>
@@ -207,6 +209,27 @@ PluginView* PluginViewHost::view( const QString& pluginId, const QString& viewId
     return it == open_.end() ? nullptr : it->second->view.data();
 }
 
+PluginMenuContext PluginViewHost::elementMenuContext( const QString& viewId,
+                                                      const QString& elementId,
+                                                      const QString& menuId,
+                                                      const QJsonObject& target ) const
+{
+    PluginMenuContext context;
+    context.location = QStringLiteral( "element" );
+    context.windowId = windowId_;
+    context.viewId = viewId;
+    context.elementId = elementId;
+    context.elementMenuId = menuId;
+    context.rowId = target.value( "row_id" ).toString();
+    context.columnId = target.value( "column_id" ).toString();
+    for ( const auto& id : target.value( "selected_ids" ).toArray() ) {
+        context.selectedIds.append( id.toString() );
+    }
+    // Rows count as whole "lines" for the `when` selection conditions.
+    context.selectedLines = target.value( "selected_count" ).toInt();
+    return context;
+}
+
 QMessageBox* PluginViewHost::messageBox( const QString& pluginId, const QString& messageId ) const
 {
     const auto it = messages_.find( keyOf( pluginId, messageId ) );
@@ -356,6 +379,8 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
             directory = plugin.toMap().value( "directory" ).toString();
         }
     }
+    // Design principle 11: E17 keys on existing events only for plugins that declare `handles`.
+    view->setExtendedEvents( manager_->declaresHandles( pluginId ) );
     PluginViewQueries queries;
     queries.resolveTooltip
         = [ host = QPointer<PluginViewHost>( this ), pluginId, viewId,
@@ -442,6 +467,57 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
                               : QJsonArray{} );
             } );
     };
+    // E17d element context menus (section 10.4): the window's PluginMenus adds the entries.
+    queries.elementMenu = [ host = QPointer<PluginViewHost>( this ), pluginId,
+                            viewId ]( QMenu* menu, const QString& elementId,
+                                      const QString& menuId, const QJsonObject& target ) {
+        if ( host && host->elementMenuFiller_ ) {
+            host->elementMenuFiller_( menu, pluginId, menuId,
+                                      host->elementMenuContext( viewId, elementId, menuId, target ) );
+        }
+    };
+    // E17d kept columns (section 10.5): per plugin, view and element, in the manager's settings.
+    queries.loadState = [ manager = manager_, pluginId, viewId ]( const QString& elementId ) {
+        return manager ? manager->keptViewState( pluginId, viewId )
+                             .value( "elements" )
+                             .toObject()
+                             .value( elementId )
+                             .toObject()
+                       : QJsonObject{};
+    };
+    queries.saveState = [ manager = manager_, pluginId, viewId ]( const QString& elementId,
+                                                                   const QJsonObject& state ) {
+        if ( !manager ) {
+            return;
+        }
+        auto stored = manager->keptViewState( pluginId, viewId );
+        auto elements = stored.value( "elements" ).toObject();
+        // Each entry remembers when it was saved: when the view's state would pass the limit,
+        // the entries saved longest ago go first (tables of ids the plugin no longer uses), and
+        // the one being saved always stays.
+        auto entry = state;
+        entry.insert( "saved", static_cast<double>( QDateTime::currentMSecsSinceEpoch() ) );
+        elements.insert( elementId, entry );
+        stored.insert( "elements", elements );
+        while ( !manager->setKeptViewState( pluginId, viewId, stored ) ) {
+            QString oldest;
+            double oldestSaved = 0;
+            for ( auto it = elements.begin(); it != elements.end(); ++it ) {
+                const auto saved = it.value().toObject().value( "saved" ).toDouble();
+                if ( it.key() != elementId && ( oldest.isEmpty() || saved < oldestSaved ) ) {
+                    oldest = it.key();
+                    oldestSaved = saved;
+                }
+            }
+            if ( oldest.isEmpty() ) {
+                LOG_WARNING << "Plugin view state not kept (over the limit) plugin="
+                            << pluginId.toStdString() << " view=" << viewId.toStdString();
+                return;
+            }
+            elements.remove( oldest );
+            stored.insert( "elements", elements );
+        }
+    };
     view->setQueries( std::move( queries ) );
     view->setEnabled( false ); // until the plugin sends its root
     layout->addWidget( view, 1 );
@@ -481,16 +557,19 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
 
     connect( view, &PluginView::eventRaised, this,
              [ this, pluginId, viewId, key, view ]( const QJsonObject& event ) {
-                 if ( !manager_ || manager_->sendViewEvent( pluginId, viewId, windowId_, event )
-                      || event.value( "type" ) != "edited" ) {
+                 if ( manager_ && manager_->sendViewEvent( pluginId, viewId, windowId_, event ) ) {
                      return;
                  }
                  // Not delivered (the plugin is stopping, not reading its input, or the event is
-                 // too large): the plugin will never answer, so the cell must not stay pending.
+                 // too large): the plugin will never answer, so an edited cell must not stay
+                 // pending and changed check boxes go back (E17d). Every event reports it.
                  view->markEventDropped();
+                 const auto type = event.value( "type" ).toString();
                  const auto it = open_.find( key );
-                 if ( it != open_.end() && !std::exchange( it->second->editDropLogged, true ) ) {
-                     LOG_WARNING << "Plugin view edit not delivered, cell set back plugin="
+                 if ( ( type == QLatin1String( "edited" ) || type == QLatin1String( "checked" ) )
+                      && it != open_.end() && !std::exchange( it->second->editDropLogged, true ) ) {
+                     LOG_WARNING << "Plugin view " << type.toStdString()
+                                 << " event not delivered, set back plugin="
                                  << pluginId.toStdString() << " view=" << viewId.toStdString();
                  }
              } );

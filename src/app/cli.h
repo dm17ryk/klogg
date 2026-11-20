@@ -367,14 +367,18 @@ private:
             "    The tooltip of an element or a table cell of an open plugin view, through the "
             "same path as a hover: its source (static, cache or plugin), the tooltip and the "
             "latency.\n"
-            "  get_plugin_menus --location <plugins|menubar|tab|pane|log> [--plugin-id <id>] "
-            "[--lines <ranges>] [tab selector]\n"
+            "  get_plugin_menus --location <plugins|menubar|tab|pane|log|element> [--plugin-id <id>] "
+            "[--lines <ranges>] [--view-id <view> --element-id <element> [--row-id <row>]] "
+            "[tab selector]\n"
             "    The plugin menu entries of a location with their state, conditions and "
-            "shortcuts, for the focused tab or the tab selector.\n"
+            "shortcuts, for the focused tab or the tab selector; element entries for a table of "
+            "an open plugin view.\n"
             "  trigger_plugin_menu --plugin-id <id> --menu-id <menu> --item-id <entry> "
-            "[--lines <ranges>] [--checked <true|false>] [tab selector]\n"
+            "[--lines <ranges>] [--checked <true|false>] [--view-id <view> --element-id "
+            "<element> [--row-id <row>]] [tab selector]\n"
             "    Runs a plugin menu entry like a click (an action runs without its form); "
-            "--lines selects file lines for log entries, e.g. 10-20,30.\n"
+            "--lines selects file lines for log entries, e.g. 10-20,30; --row-id is the clicked "
+            "row of an element entry.\n"
             "  get_plugin_job --plugin-job-id <id>\n"
             "  cancel_plugin_job --plugin-job-id <id>\n"
             "  list_reports [--pretty]  (diagnostic report bundles, newest first)\n"
@@ -1890,24 +1894,28 @@ private:
             }
             request.source = source->toString();
         }
+        const bool menuOperation = request.action == CommanderAction::GetPluginMenus
+                                   || request.action == CommanderAction::TriggerPluginMenu;
         if ( parser.isSet( viewIdOption ) && request.action != CommanderAction::OpenPluginView
-             && request.action != CommanderAction::GetPluginTooltip ) {
+             && request.action != CommanderAction::GetPluginTooltip && !menuOperation ) {
             result.output_message = formatParserError(
-                parser, QStringLiteral( "--view-id is only supported by open_plugin_view and "
-                                        "get_plugin_tooltip." ) );
+                parser, QStringLiteral( "--view-id is only supported by open_plugin_view, "
+                                        "get_plugin_tooltip and the plugin menu operations." ) );
             return result;
         }
         for ( const auto* option :
               { &elementIdOption, &rowIdOption, &columnIdOption, &nodeIdOption, &noCacheOption } ) {
-            if ( parser.isSet( *option ) && request.action != CommanderAction::GetPluginTooltip ) {
+            // E17d: element menus take --element-id and --row-id too.
+            const bool menuOption = menuOperation
+                                    && ( option == &elementIdOption || option == &rowIdOption );
+            if ( parser.isSet( *option ) && request.action != CommanderAction::GetPluginTooltip
+                 && !menuOption ) {
                 result.output_message = formatParserError(
                     parser, QStringLiteral( "--%1 is only supported by get_plugin_tooltip." )
                                 .arg( option->names().constFirst() ) );
                 return result;
             }
         }
-        const bool menuOperation = request.action == CommanderAction::GetPluginMenus
-                                   || request.action == CommanderAction::TriggerPluginMenu;
         for ( const auto* option :
               { &menuLocationOption, &menuIdOption, &itemIdOption, &linesOption, &checkedOption } ) {
             if ( parser.isSet( *option ) && !menuOperation ) {
@@ -2385,6 +2393,14 @@ private:
             }
             if ( parser.isSet( linesOption ) ) {
                 request.pluginArguments.insert( "lines", parser.value( linesOption ).trimmed() );
+            }
+            // E17d: an `element` menu names the view, the element and optionally the row.
+            request.viewId = parser.value( viewIdOption ).trimmed();
+            if ( parser.isSet( elementIdOption ) ) {
+                request.pluginArguments.insert( "elementId", parser.value( elementIdOption ).trimmed() );
+            }
+            if ( parser.isSet( rowIdOption ) ) {
+                request.pluginArguments.insert( "rowId", parser.value( rowIdOption ).trimmed() );
             }
             if ( parser.isSet( checkedOption ) ) {
                 const auto state = parser.value( checkedOption ).trimmed().toLower();

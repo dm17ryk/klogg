@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <functional>
 
+class QMenu;
 class QWidget;
 
 // Host queries a plugin view may send (docs/plugin-sdk-advanced.md section 5). PluginViewHost
@@ -41,6 +42,15 @@ struct PluginViewQueries {
         complete;
     // An icon reference as an icon (choices); null when unusable.
     std::function<QIcon( const QJsonValue& reference )> icon;
+    // E17d: adds the plugin's entries of `menuId` (a menu with location `element`) to a table's
+    // context menu; `target` is {row_id, column_id, selected_ids, selected_count}.
+    std::function<void( QMenu* menu, const QString& elementId, const QString& menuId,
+                        const QJsonObject& target )>
+        elementMenu;
+    // E17d: the kept state of an element (table columns), read when its columns are set and
+    // written after the user changed them (docs/plugin-sdk-advanced.md section 10.5).
+    std::function<QJsonObject( const QString& elementId )> loadState;
+    std::function<void( const QString& elementId, const QJsonObject& state )> saveState;
 };
 
 // Static and advanced tooltips of one plugin view (section 9): watches widgets for tooltip

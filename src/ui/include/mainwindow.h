@@ -392,6 +392,9 @@ class MainWindow : public QMainWindow, public PaneMenuHost, public PluginMenuHos
     CommanderResult commanderGetPluginTooltip( const CommanderRequest& request );
     CommanderResult commanderGetPluginMenus( const CommanderRequest& request );
     CommanderResult commanderTriggerPluginMenu( const CommanderRequest& request );
+    // E17d: the context of an `element` menu named by --view-id, --element-id and --row-id.
+    bool pluginElementMenuContext( const CommanderRequest& request, PluginMenuContext* context,
+                                   QString* error ) const;
     // Adds the plugin section of `location` for `tabId` (and its pane) to a context menu.
     void addPluginMenuSection( QMenu& menu, const QString& location, const QString& tabId,
                                LogPane* pane );
