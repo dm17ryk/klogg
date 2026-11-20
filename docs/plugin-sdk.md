@@ -581,7 +581,9 @@ them for an older host and reads the new events and menu contexts:
 - **Selection.** `select_rows(table_id, row_ids=None, *, current=None, scroll_to=None)` is a
   patch entry (`SelectionPatch`): `row_ids` replace the selection, `current` sets the row with
   the keyboard focus and `scroll_to` scrolls a row into view. CILogg sends no `selected` event
-  for it.
+  for it. CILogg uses at most `MAX_TABLE_IDS` (1000) ids, so the entry carries only
+  `bounded_ids(row_ids)`: at most 1000, and only as many as fit in `MAX_ID_BYTES` (256 KiB) of
+  JSON, so the patch stays below the 1 MiB message limit.
 - **Events** (`view/event` of the table, `ViewEventParams`). `selected` also carries
   `selected_count` and `current` (the focused row, or None). `activated` (a double-click or
   Enter on a cell that is not editable) has the value `TableActivatedValue` `{row_id,

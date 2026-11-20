@@ -134,6 +134,7 @@ COLUMN_ALIGNMENTS = ("left", "center", "right")
 SORT_AS = ("text", "number", "natural")
 TABLE_EVENTS = ("activated", "checked", "moved")  # besides selected and edited
 MAX_TABLE_IDS = 1000  # ids the host uses in select, selected_ids, checked and moved
+MAX_ID_BYTES = 256 * 1024  # ... and the JSON of those ids, so one message stays below 1 MiB
 # Keys of the rich_tables feature (update() and patch() remove them on a host without it).
 _RICH_COLUMN_KEYS = frozenset({"align", "hidden", "sortable", "sort_as", "min_width", "check",
                                "icon"})
@@ -1456,19 +1457,35 @@ def remove_rows(table_id: str, row_ids: Sequence[str]) -> JsonObject:
     return {"id": table_id, "remove_rows": list(row_ids)}
 
 
+def bounded_ids(ids: Sequence[str]) -> List[str]:
+    """The leading ids as CILogg uses and sends them in a selection: at most MAX_TABLE_IDS, and
+    only as many as fit in MAX_ID_BYTES of JSON (ids may be 4,096 characters each), so the
+    message that carries them stays below the 1 MiB limit."""
+    kept: List[str] = []
+    budget = MAX_ID_BYTES
+    for identifier in ids[:MAX_TABLE_IDS]:
+        # The id as a JSON string with its separator, as the host counts it.
+        budget -= len(json.dumps(identifier, ensure_ascii=False).encode("utf-8")) + 1
+        if budget < 0:
+            break
+        kept.append(identifier)
+    return kept
+
+
 def select_rows(table_id: str, row_ids: Optional[Sequence[str]] = None, *,
                 current: Optional[str] = None, scroll_to: Optional[str] = None) -> JsonObject:
     """A selection patch entry (SelectionPatch, host feature rich_tables): `row_ids` replace
-    the selection (an empty list clears it; unknown ids are ignored, at most 1000 used),
-    `current` sets the row with the keyboard focus and `scroll_to` scrolls a row into view.
-    The host sends no `selected` event for it. On an older host patch() leaves it out."""
+    the selection (an empty list clears it; unknown ids are ignored; the host uses at most 1000,
+    so only bounded_ids() of them are sent), `current` sets the row with the keyboard focus and
+    `scroll_to` scrolls a row into view. The host sends no `selected` event for it. On an older
+    host patch() leaves it out."""
     if isinstance(row_ids, str):
         raise ValueError("row_ids is a list of row ids")
     if row_ids is None and current is None and scroll_to is None:
         raise ValueError("A selection patch needs row_ids, current or scroll_to")
     entry: JsonObject = {"id": table_id}
     if row_ids is not None:
-        entry["select"] = [str(row_id) for row_id in row_ids]
+        entry["select"] = bounded_ids([str(row_id) for row_id in row_ids])
     if current is not None:
         entry["current"] = current
     if scroll_to is not None:
