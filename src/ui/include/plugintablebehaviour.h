@@ -87,8 +87,14 @@ public:
     {
         return holdSelection_;
     }
-    // The selection patch (section 10.2); the view applies it without a `selected` event.
+    // The selection patch (section 10.2); the view applies it without a `selected` event. A
+    // selection it sets ends a press that may start a drag: the press's change is not reported.
     void select( const QJsonValue& ids, const QJsonValue& current, const QJsonValue& scrollTo );
+    // The view sent `selected` for this table: a report still waiting (cancelPress()) goes.
+    void selectionReported()
+    {
+        reportPending_ = false;
+    }
     QString currentRowId() const;
     // The shown rows that are selected, in shown order (at most `maximum` ids) and their count.
     QStringList selectedRowIds( int maximum, int* count = nullptr ) const;
@@ -136,8 +142,15 @@ private:
     // Ends a hold of the selection; with `report`, sends `selected` when the selection is no
     // longer the one before the press.
     void releaseSelection( bool report );
-    // The rows changed under a press that may start a drag: it will not start one.
+    // Whether the selection is no longer the one before the press (while the ranges are valid).
+    bool pressChangedSelection() const;
+    // The rows are about to change under a press that may start a drag: it will not start one,
+    // and a selection change the press made is reported once the change is done.
     void cancelPress();
+    // Forgets the press: no drag starts from it and nothing of it is held.
+    void endPress();
+    // Sends `selected` now (and a report still waiting goes).
+    void reportSelection();
 
     QPointer<QTableView> table_;
     pluginview::PluginTableModel* model_;
@@ -154,6 +167,7 @@ private:
     QItemSelection pressSelection_; // the selection when the drag's press came (ranges)
     bool pressWasSelected_ = false; // whether the pressed row was in it
     bool holdSelection_ = false;    // see holdsSelection()
+    bool reportPending_ = false;    // cancelPress() reports once the change is done
     bool restoring_ = false;
     QString sortedColumn_; // the sorted column's id while new columns come (beginColumnsChange)
     Qt::SortOrder sortedOrder_ = Qt::AscendingOrder;

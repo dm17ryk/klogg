@@ -519,6 +519,88 @@ TEST_CASE( "E17d menu answers stay within their budget, drags end when rows chan
     REQUIRE_FALSE( columns.table()->isColumnHidden( 0 ) );
 }
 
+TEST_CASE( "E17d a patch's own selection is never echoed after a press, menu answers belong to "
+           "the whole context",
+           "[ui][workbench][E17]" )
+{
+    // A toggle table: the press deselects its row, then a patch replaces the rows and sets the
+    // selection. The drag is called off and the plugin hears nothing: neither its own selection
+    // nor the press's change that the patch replaced.
+    View toggle( boardsTable( { { "reorderable", true }, { "toggle_selection", true } } ), nullptr );
+    auto* viewport = toggle.table()->viewport();
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r1", 0 ) );
+    QTest::mouseClick( viewport, Qt::LeftButton, {}, toggle.center( "r2", 0 ) );
+    const auto clicks = toggle.countOf( "selected" );
+    const auto at = toggle.center( "r1", 0 );
+    QTest::mousePress( viewport, Qt::LeftButton, {}, at );
+    REQUIRE( toggle.behaviour()->holdsSelection() );
+    toggle.view.applyPatch( { QJsonObject{
+        { "id", "t" },
+        { "replace_rows", QJsonArray{ QJsonObject{ { "id", "r1" }, { "cells", QJsonArray{ "1" } } },
+                                      QJsonObject{ { "id", "r2" }, { "cells", QJsonArray{ "2" } } },
+                                      QJsonObject{ { "id", "r3" }, { "cells", QJsonArray{ "3" } } } } },
+        { "select", QJsonArray{ "r3" } } } } );
+    REQUIRE_FALSE( toggle.behaviour()->holdsSelection() );
+    REQUIRE( toggle.behaviour()->draggedRows().isEmpty() );
+    QTest::qWait( 20 );
+    REQUIRE( toggle.countOf( "selected" ) == clicks );
+    REQUIRE( toggle.behaviour()->selectedRowIds( 10 ) == QStringList{ "r3" } );
+    QTest::mouseRelease( viewport, Qt::LeftButton, {}, at );
+    QTest::qWait( 20 );
+    REQUIRE( toggle.countOf( "selected" ) == clicks );
+
+    // A press that changed nothing (an extended table keeps the selection): rows changing under
+    // it send nothing either.
+    View extended( boardsTable( { { "reorderable", true } } ), nullptr );
+    auto* plain = extended.table()->viewport();
+    QTest::mouseClick( plain, Qt::LeftButton, {}, extended.center( "r1", 0 ) );
+    const auto before = extended.countOf( "selected" );
+    QTest::mousePress( plain, Qt::LeftButton, {}, extended.center( "r1", 0 ) );
+    REQUIRE( extended.behaviour()->holdsSelection() );
+    extended.view.applyPatch( { QJsonObject{
+        { "id", "t" },
+        { "insert_rows", QJsonArray{ QJsonObject{ { "id", "x" }, { "cells", QJsonArray{ "x" } } } } },
+        { "before", "r1" } } } );
+    REQUIRE_FALSE( extended.behaviour()->holdsSelection() );
+    QTest::mouseRelease( plain, Qt::LeftButton, {}, extended.center( "r1", 0 ) );
+    QTest::qWait( 20 );
+    REQUIRE( extended.countOf( "selected" ) == before );
+    REQUIRE( extended.behaviour()->selectedRowIds( 10 ) == QStringList{ "r1" } );
+
+    // A dynamic submenu's cached answer belongs to the whole context menu/populate sends: a log
+    // menu opened on another line, selection, view, pane or window asks the plugin again.
+    PluginMenuContext context;
+    context.location = "log";
+    context.windowId = "w1";
+    context.tabId = "tab";
+    context.view = "main";
+    context.line = 10;
+    context.ranges = { { 10, 12 } };
+    context.selectedLines = 3;
+    const auto key = []( const PluginMenuContext& menuContext ) {
+        return PluginMenus::populateKey( PluginId, "log_menu", "dynamic", menuContext );
+    };
+    const std::vector<std::function<void( PluginMenuContext& )>> changes{
+        []( PluginMenuContext& other ) { other.line = 11; },
+        []( PluginMenuContext& other ) { other.ranges = { { 20, 22 } }; },
+        []( PluginMenuContext& other ) { other.selectedLines = 4; },
+        []( PluginMenuContext& other ) { other.view = "filtered"; },
+        []( PluginMenuContext& other ) { other.paneIndex = 1; },
+        []( PluginMenuContext& other ) { other.windowId = "w2"; },
+        []( PluginMenuContext& other ) { other.currentTabId = "other"; },
+    };
+    for ( const auto& change : changes ) {
+        auto other = context;
+        change( other );
+        REQUIRE( key( other ) != key( context ) );
+    }
+    // The selected text is only sent when an entry is picked: it does not split the cache.
+    auto picked = context;
+    picked.pickedText = "text";
+    picked.textRead = true;
+    REQUIRE( key( picked ) == key( context ) );
+}
+
 TEST_CASE( "E17d selection events stay bounded and unechoed, text sorts as text, columns keep sorts",
            "[ui][workbench][E17]" )
 {

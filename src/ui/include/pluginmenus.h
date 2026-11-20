@@ -195,6 +195,10 @@ public:
                                     const QString& itemId );
     static QString menuObjectName( const QString& pluginId, const QString& menuId,
                                    const QString& itemId = {} );
+    // The cache key of a dynamic submenu's answer (cache_ms): the entry and the whole `context`
+    // menu/populate sends, so an answer is reused only where the plugin would get the same request.
+    static QString populateKey( const QString& pluginId, const QString& menuId,
+                                const QString& itemId, const PluginMenuContext& context );
 
     // Removes a section addSection() added and deletes it (submenus included).
     static void removeSection( QMenu* menu, const QList<QAction*>& actions );
