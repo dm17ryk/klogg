@@ -236,6 +236,16 @@ TEST_CASE( "Configuration pack manifests follow the pack rules", "[plugins][E16]
         CHECK( manifestError( packManifest( PackId, 2, encoding ) ).isEmpty() );
         CHECK( !manifestError( withContent( valid, "previews", QJsonValue::Undefined ) ).isEmpty() );
     }
+    SECTION( "no content file is the previews file or plugin.json" )
+    {
+        // CILogg writes those two itself for a pack's effective content (design 4.6).
+        const auto reserved = QStringLiteral( "plugin.json or previews file" );
+        CHECK( manifestError( withContent( valid, "actions", "previews.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "highlights", "PREVIEWS.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "filters", "plugin.json" ) ).contains( reserved ) );
+        CHECK( manifestError( withContent( valid, "previews", "Plugin.json" ) ).contains( "plugin.json" ) );
+        CHECK( manifestError( withContent( valid, "actions", "actions.json" ) ).isEmpty() );
+    }
     SECTION( "Python decoders need an id and a .py module" )
     {
         const auto decoders = []( const QString& id, const QString& module ) {

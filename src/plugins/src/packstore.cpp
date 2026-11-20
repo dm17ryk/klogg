@@ -213,6 +213,8 @@ QString PackStore::rebuild( const PackFiles& installed, const QJsonObject& manif
                             const QString& version )
 {
     // The edits the old store had applied: its content folder, read in that folder's own layout.
+    // A content folder that cannot be read whole stops the rebuild with nothing moved: replacing
+    // it with the installed version would drop the edits it holds.
     PackFiles applied;
     const auto content = contentDirectory();
     if ( !content.isEmpty() ) {
@@ -220,12 +222,16 @@ QString PackStore::rebuild( const PackFiles& installed, const QJsonObject& manif
         const auto current = file.open( QIODevice::ReadOnly )
                                  ? QJsonDocument::fromJson( file.read( 1024 * 1024 ) ).object()
                                  : QJsonObject{};
-        QString error;
-        applied = current.isEmpty() ? PackFiles{}
-                                    : packcanonical::fromPackFolder( current, content, &error );
+        QString error = current.isEmpty() ? QStringLiteral( "no readable plugin.json" ) : QString{};
+        if ( error.isEmpty() ) {
+            applied = packcanonical::fromPackFolder( current, content, &error );
+        }
         if ( !error.isEmpty() ) {
             LOG_WARNING << "Pack store rebuild cannot read the edits pack=" << packId_.toStdString();
-            applied.clear();
+            return QStringLiteral( "The pack's store is damaged and its local edits cannot be read "
+                                   "(%1), so it is not rebuilt: %2 and the repository are kept as "
+                                   "they are. Repair or remove that folder, or remove the pack." )
+                .arg( error.left( 256 ), QDir::toNativeSeparators( content ) );
         }
     }
     if ( repository_ ) {

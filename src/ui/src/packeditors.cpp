@@ -618,6 +618,19 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     const auto result = job.value( "result" ).toMap();
     const auto conflicts = result.value( "conflicts" ).toList();
     const auto items = result.value( "items" ).toMap();
+    // An interactive update's job always carries the texts of previews and blocks (a previews
+    // document is at most 1 MiB a side); without them a field could only be chosen blind.
+    for ( const auto& value : conflicts ) {
+        const auto conflict = value.toMap();
+        const auto kind = conflict.value( "kind" ).toString();
+        if ( kind != "file" && kind != "order"
+             && items.value( conflict.value( "path" ).toString() ).toMap().value( "omitted" ).toBool() ) {
+            QMessageBox::warning( parent, tr( "Merge Pack Update - %1" ).arg( packName ),
+                                  tr( "The items this update changes are too large to merge here. "
+                                      "Update the pack with the strategy keep_mine or take_theirs." ) );
+            return false;
+        }
+    }
     QDialog dialog( parent );
     dialog.setObjectName( "packMergeDialog" );
     dialog.setWindowTitle( tr( "Merge Pack Update - %1" ).arg( packName ) );
@@ -669,7 +682,8 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         QPlainTextEdit* result;
         QString mine;
         QString theirs;
-        bool utf8 = true;
+        bool wholeOnly = false;           // not UTF-8, or too large to show
+        std::shared_ptr<QString> side;    // "mine" or "theirs": the whole side last chosen
     };
     auto textConflicts = std::make_shared<QVector<TextConflict>>();
     for ( const auto& value : conflicts ) {
@@ -729,10 +743,17 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             QObject::connect( useTheirs, &QPushButton::clicked, page, [ resultEdit ] {
                 resultEdit->setPlainText( takeFirstConflict( resultEdit->toPlainText(), false ) );
             } );
-            QObject::connect( wholeMine, &QPushButton::clicked, page,
-                              [ resultEdit, mineText ] { resultEdit->setPlainText( mineText ); } );
-            QObject::connect( wholeTheirs, &QPushButton::clicked, page,
-                              [ resultEdit, theirsText ] { resultEdit->setPlainText( theirsText ); } );
+            // The side a whole-side button chose, recorded: a file that is not UTF-8 shows both
+            // sides only as a lossy reading, which may look the same for different bytes.
+            auto side = std::make_shared<QString>( QStringLiteral( "mine" ) );
+            QObject::connect( wholeMine, &QPushButton::clicked, page, [ resultEdit, mineText, side ] {
+                resultEdit->setPlainText( mineText );
+                *side = QStringLiteral( "mine" );
+            } );
+            QObject::connect( wholeTheirs, &QPushButton::clicked, page, [ resultEdit, theirsText, side ] {
+                resultEdit->setPlainText( theirsText );
+                *side = QStringLiteral( "theirs" );
+            } );
             QObject::connect( tool, &QPushButton::clicked, page,
                               [ page, resultEdit, baseText, mineText, theirsText, path ] {
                                   QString error;
@@ -745,22 +766,26 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                       QMessageBox::warning( page, tr( "External Merge Tool" ), error );
                                   }
                               } );
-            const bool utf8 = whole.value( "utf8", true ).toBool();
-            if ( !utf8 ) {
-                // Not UTF-8 text: only a whole side, kept byte for byte; the panes show a reading.
+            // Not UTF-8 text, or too large to carry in the job (`omitted`): only a whole side, kept
+            // byte for byte; the panes show a reading (or nothing).
+            const bool omitted = whole.value( "omitted" ).toBool();
+            const bool wholeOnly = omitted || !whole.value( "utf8", true ).toBool();
+            if ( wholeOnly ) {
                 resultEdit->setReadOnly( true );
                 resultEdit->setPlainText( mineText );
                 for ( auto* textOnly : { useMine, useTheirs, tool } ) {
                     textOnly->setEnabled( false );
                 }
-                auto* encoding = new QLabel( tr( "This file is not UTF-8 text: keep yours or take "
-                                                 "the new version as a whole." ),
-                                             page );
-                encoding->setObjectName( "packMergeNotUtf8" );
-                pageLayout->addWidget( encoding );
+                auto* reason = new QLabel( omitted ? tr( "This file is too large to show here: keep "
+                                                         "yours or take the new version as a whole." )
+                                                   : tr( "This file is not UTF-8 text: keep yours or "
+                                                         "take the new version as a whole." ),
+                                           page );
+                reason->setObjectName( omitted ? "packMergeOmitted" : "packMergeNotUtf8" );
+                pageLayout->addWidget( reason );
             }
-            textConflicts->append(
-                { path, conflict.value( "item" ).toString(), resultEdit, mineText, theirsText, utf8 } );
+            textConflicts->append( { path, conflict.value( "item" ).toString(), resultEdit, mineText,
+                                     theirsText, wholeOnly, side } );
             tabs->addTab( page, conflict.value( "item" ).toString() );
             continue;
         }
@@ -879,6 +904,13 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
         keepBothPreviews.clear();
         afterInstall = {};
         for ( const auto& text : *textConflicts ) {
+            QVariantMap resolution{ { "path", text.path } };
+            if ( text.wholeOnly ) {
+                // The side chosen, never read back from the lossy text shown.
+                resolution.insert( "take", *text.side );
+                resolutions.append( resolution );
+                continue;
+            }
             const auto value = text.result->toPlainText();
             if ( hasMarkers( value ) ) {
                 tabs->setCurrentWidget( text.result->parentWidget() );
@@ -886,8 +918,7 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                                       tr( "%1 still has conflict markers." ).arg( text.item ) );
                 return;
             }
-            QVariantMap resolution{ { "path", text.path } };
-            // A whole side goes byte for byte: what the panes show is only its UTF-8 reading.
+            // A whole side goes byte for byte (UTF-8 text reads back exactly).
             if ( value == text.mine ) {
                 resolution.insert( "take", "mine" );
             }

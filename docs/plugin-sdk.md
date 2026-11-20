@@ -740,6 +740,8 @@ packs](plugin-repositories.md) section 4). The example is
 - `python_decoders` are installed and updated with the pack and shown as needing a newer CILogg
   until the decoder contract of task MD03 runs them. `actions`, `highlights` and `filters` are
   validated as files and loaded by a later slice (E16c).
+- No content file may be `plugin.json` or the previews file (compared ignoring case): CILogg
+  writes both itself for the pack's content with your edits.
 - `get_plugins` adds `contents` and the counts `previews`, `luaFiles` and `pythonDecoders` for a
   pack, `localEdits` (the edited items) and `needsMerge` (the version an update could not merge).
   Catalog entries of packs use `os: any` and `arch: any`.
@@ -762,7 +764,7 @@ changed differently, or deleted on one side and changed on the other, is a confl
 |---|---|---|
 | `pack_files` / `pack_edits` | none | `files`: `path`, `kind`, `item`, `state` (`pack`, `edited`, `added`, `deleted`); `pack_edits` lists the changed ones |
 | `pack_read` | `path` | `content`, `edited` |
-| `pack_edit` | `path`, `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
+| `pack_edit` | `path`, exactly one of `content` or `remove: true` (previews and blocks only), optional `message` | a commit on `local`; only the pack's own items, and preview and block JSON keeps its `name` |
 | `pack_history` | optional `path` | `commits`: `commit`, `message`, `time`, `packVersion` |
 | `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
@@ -774,7 +776,11 @@ which are never removed (the new manifest lists the files). A file that is not U
 resolved with `take` only, and `pack_read` refuses it (editing it as text would change its
 bytes). With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
-text) and `items` (each conflicting item whole), and the installed version stays. Resolutions
+text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting
+item whole: `mine`, `theirs`, `inMine`, `inTheirs`, `utf8`), and the installed version stays.
+The texts stay within 4 MiB per job, previews and blocks first: an item past that has
+`omitted: true` and no texts (resolve it with `take`), and an automatic update's job keeps none.
+Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the

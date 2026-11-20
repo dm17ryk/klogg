@@ -798,7 +798,12 @@ file or the preview order, and the merge window offers no removal for them. For 
 the pack check runs on what would load: the merge result, written to the store's check folder,
 when there are edits (an item an edit deleted stays deleted, so another pack may use its name),
 otherwise the new version as shipped. The previews settings (`previews/meta.json`) are listed in
-Pack Files but not edited.
+Pack Files but not edited. A job keeps at most 4 MiB of conflict texts (jobs are kept, up to
+256): previews and blocks first, each file's sides once; a file past that is listed with
+`omitted` and merged as a whole side, the merge window records the whole side chosen (a file
+that is not UTF-8 may read the same for different bytes), and an automatic update keeps no
+texts. `pack_edit` takes exactly one of `content` and `remove`, and no content file of a pack
+may be its `plugin.json` or previews file, which CILogg writes itself.
 Edits change or delete the pack's own previews and blocks and change its listed files and
 preview order; they add no items. Resolutions name only the pack's items in their canonical
 spelling, and the content folder is written only with relative paths inside it. A whole-pack
@@ -816,7 +821,9 @@ a warning; the version stays in the pack's history). An automatic update
 that needs a merge is reported by its own notice and retried at the next check. A damaged store
 (a repository libgit2 cannot read, a missing branch or object; a file the system refuses to open
 is not damage) is rebuilt when CILogg reads the pack, before a pack operation and before an
-update merges: the damaged repository is kept aside as `<pack-id>.git.damaged-<time>` (instead of
+update merges, unless its content folder cannot be read whole (then nothing is moved, the error
+names the folder, and the pack's operations and updates fail until it is repaired or the pack
+removed, so no edit is dropped): the damaged repository is kept aside as `<pack-id>.git.damaged-<time>` (instead of
 exporting a patch, which arrives with E16d), and the content folder's files come back as one
 `local` commit; the content folder is replaced only after both commits. A content folder whose
 repository is gone is rebuilt the same way, never reset to the installed version. libgit2 keeps

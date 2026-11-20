@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -289,6 +290,9 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
         auto items = result[ "items" ].toMap();
         auto lua = items[ packcanonical::filePath( "lua/a.lua" ) ].toMap();
         lua[ "utf8" ] = false;
+        // Different bytes whose readings are the same: the button chosen decides, not the text.
+        lua[ "mine" ] = QStringLiteral( "�\n" );
+        lua[ "theirs" ] = QStringLiteral( "�\n" );
         items[ packcanonical::filePath( "lua/a.lua" ) ] = lua;
         result[ "items" ] = items;
         job[ "result" ] = result;
@@ -302,6 +306,39 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
             buttonIn( dialog, "packMergeApply" )->click();
         } );
         REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( applied.at( 0 ).toMap()
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
+                               { "take", "theirs" } } );
+        // Untouched, the whole file stays yours.
+        whenOpen( "packMergeDialog", []( QWidget* dialog ) {
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( applied.at( 0 ).toMap()
+               == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
+                               { "take", "mine" } } );
+    }
+    SECTION( "a file too large to show is resolved whole" )
+    {
+        auto job = conflictJob();
+        auto result = job[ "result" ].toMap();
+        auto items = result[ "items" ].toMap();
+        auto lua = items[ packcanonical::filePath( "lua/a.lua" ) ].toMap();
+        lua.remove( "mine" );
+        lua.remove( "theirs" );
+        lua[ "omitted" ] = true;
+        items[ packcanonical::filePath( "lua/a.lua" ) ] = lua;
+        result[ "items" ] = items;
+        job[ "result" ] = result;
+        bool explained = false;
+        whenOpen( "packMergeDialog", [ &explained ]( QWidget* dialog ) {
+            explained = dialog->findChild<QLabel*>( "packMergeOmitted" ) != nullptr;
+            CHECK( dialog->findChild<QPlainTextEdit*>( "packMergeResult" )->isReadOnly() );
+            buttonIn( dialog, "packMergeWholeTheirs" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( explained );
         CHECK( applied.at( 0 ).toMap()
                == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
                                { "take", "theirs" } } );

@@ -37,15 +37,66 @@ bool utf8Text( const QByteArray& bytes )
     return QString::fromUtf8( bytes ).toUtf8() == bytes;
 }
 
-QVariantMap conflictInfo( const PackConflict& conflict )
+// The texts of one job's conflicts for the merge window. Jobs are kept (up to 256), so a pack
+// with many large conflicting files must not keep hundreds of MiB in them.
+constexpr qsizetype MaxConflictTextBytes = 4 * 1024 * 1024;
+
+// A Lua or Python file the manifest lists, or the preview order: merged as text.
+bool textKind( const QString& kind )
 {
-    return { { "path", conflict.path },
-             { "kind", conflict.kind },
-             { "item", conflict.item },
-             { "field", conflict.field },
-             { "base", QString::fromUtf8( conflict.base ) },
-             { "mine", QString::fromUtf8( conflict.mine ) },
-             { "theirs", QString::fromUtf8( conflict.theirs ) } };
+    return kind == QLatin1String( "file" ) || kind == QLatin1String( "order" );
+}
+
+// The conflicts and conflicting items of a merge for its job result. Their texts go there for the
+// merge window within `budget` bytes: previews and blocks first (a previews document is at most
+// 1 MiB a side), then files, each file's sides once (in `items`; its conflict keeps the base). An
+// item past the budget is listed with `omitted` and no texts, and is resolved as a whole side
+// (take), like a file that is not UTF-8.
+void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
+                      const PackFiles& mine, const PackFiles& theirs, qsizetype budget,
+                      QVariantList* conflicts, QVariantMap* items )
+{
+    QSet<QString> shown;
+    for ( const bool text : { false, true } ) {
+        for ( const auto& conflict : found ) {
+            const auto& path = conflict.path;
+            if ( textKind( conflict.kind ) != text || items->contains( path ) ) {
+                continue;
+            }
+            const auto yours = mine.value( path );
+            const auto shipped = theirs.value( path );
+            const auto cost = yours.size() + shipped.size() + ( text ? base.value( path ).size() : 0 );
+            QVariantMap item{ { "inMine", mine.contains( path ) },
+                              { "inTheirs", theirs.contains( path ) },
+                              // Not UTF-8: shown, but resolved only with `take`.
+                              { "utf8", utf8Text( yours ) && utf8Text( shipped )
+                                            && utf8Text( base.value( path ) ) } };
+            if ( cost <= budget ) {
+                budget -= cost;
+                shown.insert( path );
+                item.insert( "mine", QString::fromUtf8( yours ) );
+                item.insert( "theirs", QString::fromUtf8( shipped ) );
+            }
+            else {
+                item.insert( "omitted", true );
+            }
+            items->insert( path, item );
+        }
+    }
+    for ( const auto& conflict : found ) {
+        QVariantMap info{ { "path", conflict.path },
+                          { "kind", conflict.kind },
+                          { "item", conflict.item },
+                          { "field", conflict.field } };
+        if ( shown.contains( conflict.path ) ) {
+            info.insert( "base", QString::fromUtf8( conflict.base ) );
+            if ( !textKind( conflict.kind ) ) {
+                info.insert( "mine", QString::fromUtf8( conflict.mine ) );
+                info.insert( "theirs", QString::fromUtf8( conflict.theirs ) );
+            }
+        }
+        conflicts->append( info );
+    }
 }
 
 // A resolution chosen in the merge window, or given by automation: {path, field, value} or
@@ -278,21 +329,13 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                 .arg( packcanonical::itemOf( it.key() ).left( 128 ) );
         }
     }
+    // Each conflicting item whole too, for the merge window (Keep Both, the text merge). No window
+    // opens for an automatic update (its notice runs the update again), so it keeps no texts.
     QVariantList conflicts;
     QVariantMap items;
-    for ( const auto& conflict : plan.conflicts ) {
-        conflicts.append( conflictInfo( conflict ) );
-        // Each conflicting item whole, for the merge window (Keep Both, the text merge).
-        items.insert( conflict.path,
-                      QVariantMap{ { "mine", QString::fromUtf8( mine.value( conflict.path ) ) },
-                                   { "theirs", QString::fromUtf8( shipped->value( conflict.path ) ) },
-                                   { "inMine", mine.contains( conflict.path ) },
-                                   { "inTheirs", shipped->contains( conflict.path ) },
-                                   // Not UTF-8: shown, but resolved only with `take`.
-                                   { "utf8", utf8Text( mine.value( conflict.path ) )
-                                                 && utf8Text( shipped->value( conflict.path ) )
-                                                 && utf8Text( base.value( conflict.path ) ) } } );
-    }
+    conflictPayload( plan.conflicts, base, mine, *shipped,
+                     context.value( "automatic" ).toBool() ? 0 : MaxConflictTextBytes, &conflicts,
+                     &items );
     ( *result )[ "conflicts" ] = conflicts;
     ( *result )[ "items" ] = items;
     if ( strategy == MergeStrategy::Fail && !open.isEmpty() ) {
@@ -480,6 +523,10 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
         const auto files = store.files();
         if ( kind.isEmpty() || kind == QLatin1String( "meta" ) || !packcanonical::isCanonical( path ) ) {
             return { "Not an item of the pack.", {} };
+        }
+        // Exactly one action: a missing content is never taken as an empty file.
+        if ( remove == options.contains( "content" ) ) {
+            return { "pack_edit takes either content or remove: true.", {} };
         }
         // Items of the pack are edited in place: they can change or go, not appear (your own
         // items come from Copy to My Previews).

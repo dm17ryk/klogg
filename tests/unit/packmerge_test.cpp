@@ -480,6 +480,35 @@ TEST_CASE( "A damaged pack store is rebuilt with the local edits", "[packmerge][
            == 1 );
 }
 
+TEST_CASE( "A damaged pack store whose edits cannot be read is left as it is", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    {
+        PackStore store( root.path(), "org.example.pack" );
+        REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+        auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+        edited[ "regex" ] = "^EDITED$";
+        REQUIRE( store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" ).isEmpty() );
+    }
+    const auto repository = root.filePath( "org.example.pack.git" );
+    REQUIRE( QFile::remove( repository + "/refs/heads/local" ) );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.damaged() );
+    const auto content = store.contentDirectory();
+    // A file the manifest lists is gone from the content folder: its edits cannot be read whole.
+    REQUIRE( QFile::remove( content + "/lua/a.lua" ) );
+    const auto refused = store.rebuild( packFiles(), packManifest(), "1.0.0" );
+    CHECK( refused.contains( "cannot be read" ) );
+    // Nothing moved: the edits stay on disk, the repository is not set aside.
+    CHECK( readFile( content + "/previews.json" ).contains( "^EDITED$" ) );
+    CHECK( QFileInfo::exists( repository ) );
+    CHECK( QDir( root.path() )
+               .entryList( { "org.example.pack.git.damaged-*" }, QDir::Dirs | QDir::NoDotAndDotDot )
+               .isEmpty() );
+}
+
 TEST_CASE( "A pack store works under a data folder too deep for libgit2", "[packmerge][E16]" )
 {
     QTemporaryDir root;
@@ -633,6 +662,74 @@ TEST_CASE( "Pack checks, encodings, revisions and removal follow the effective c
     CHECK( !QFileInfo::exists( contentFolder ) );
 }
 
+TEST_CASE( "A merge's job carries each file's texts once, within a budget", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    PluginManager manager( root.filePath( "data" ), root.filePath( "none" ) );
+    const auto id = QStringLiteral( "org.example.pack" );
+    // Two large Lua files whose first line both the user and the new version change.
+    auto manifest = packManifest();
+    auto body = manifest[ "content" ].toObject();
+    body[ "lua" ] = QJsonObject{ { "folder", "lua" }, { "load", QJsonArray{ "a.lua", "b.lua" } } };
+    manifest[ "content" ] = body;
+    const QByteArray filler = QByteArray( 900 * 1024, 'x' ) + '\n';
+    const auto package = [ &manifest, &filler ]( const QString& folder, const QString& version,
+                                                 const QByteArray& head ) {
+        auto json = manifest;
+        json[ "version" ] = version;
+        REQUIRE( QDir().mkpath( folder + "/lua" ) );
+        for ( const auto& [ name, bytes ] :
+              { std::pair{ QStringLiteral( "plugin.json" ), QJsonDocument( json ).toJson() },
+                std::pair{ QStringLiteral( "previews.json" ), QByteArray( Previews ) },
+                std::pair{ QStringLiteral( "lua/a.lua" ), head + filler },
+                std::pair{ QStringLiteral( "lua/b.lua" ), head + filler } } ) {
+            QFile file( folder + '/' + name );
+            REQUIRE( file.open( QIODevice::WriteOnly ) );
+            file.write( bytes );
+        }
+        return folder;
+    };
+    const auto v1 = package( root.filePath( "v1" ), "1.0.0", "-- base\n" );
+    REQUIRE( finished( manager, manager.manage( "install", {}, { { "path", v1 } } ) )[ "state" ]
+             == "completed" );
+    const auto a = packcanonical::filePath( "lua/a.lua" );
+    const auto b = packcanonical::filePath( "lua/b.lua" );
+    for ( const auto& path : { a, b } ) {
+        REQUIRE( manager.manage( "pack_edit", id,
+                                 { { "path", path }, { "content", QString::fromUtf8( "-- mine\n" + filler ) } } )
+                     .ok() );
+    }
+    const auto v2 = package( root.filePath( "v2" ), "1.1.0", "-- theirs\n" );
+    const auto job = finished( manager, manager.manage( "install", {}, { { "path", v2 } } ) );
+    REQUIRE( job[ "state" ] == "failed" );
+    const auto result = job[ "result" ].toMap();
+    REQUIRE( result[ "needsMerge" ].toBool() );
+    const auto items = result[ "items" ].toMap();
+    // The first file fits the budget with its base (about 2.7 MiB); the second is only listed.
+    CHECK( items[ a ].toMap()[ "mine" ].toString().startsWith( "-- mine\n" ) );
+    CHECK_FALSE( items[ a ].toMap().contains( "omitted" ) );
+    CHECK( items[ b ].toMap()[ "omitted" ].toBool() );
+    CHECK_FALSE( items[ b ].toMap().contains( "mine" ) );
+    const auto conflicts = result[ "conflicts" ].toList();
+    REQUIRE( conflicts.size() == 2 );
+    for ( const auto& value : conflicts ) {
+        // A file's sides are kept once, in `items`; its conflict has the base when shown.
+        const auto conflict = value.toMap();
+        CHECK_FALSE( conflict.contains( "mine" ) );
+        CHECK( conflict.contains( "base" ) == ( conflict[ "path" ] == a ) );
+    }
+    // A file too large to show is still resolved, as a whole side.
+    const QVariantList resolutions{ QVariantMap{ { "path", a }, { "take", "theirs" } },
+                                    QVariantMap{ { "path", b }, { "take", "mine" } } };
+    const auto resolved = finished(
+        manager, manager.manage( "install", {}, { { "path", v2 }, { "resolutions", resolutions } } ) );
+    REQUIRE( resolved[ "state" ] == "completed" );
+    const auto content = manager.packContentDirectory( id );
+    CHECK( readFile( content + "/lua/a.lua" ).startsWith( "-- theirs\n" ) );
+    CHECK( readFile( content + "/lua/b.lua" ).startsWith( "-- mine\n" ) );
+}
+
 TEST_CASE( "An enabled pack's update and reset are checked as they would load",
            "[packmerge][E16]" )
 {
@@ -731,6 +828,12 @@ TEST_CASE( "Packs install, edit and update through their local store", "[packmer
     CHECK( !manager.manage( "pack_edit", id,
                             { { "path", packcanonical::filePath( "lua/a.lua" ) }, { "remove", true } } )
                 .ok() );
+    // An edit says what it does: a missing content is never an empty file.
+    CHECK( manager.manage( "pack_edit", id, { { "path", packcanonical::filePath( "lua/a.lua" ) } } ).error
+           == "pack_edit takes either content or remove: true." );
+    CHECK( !manager.manage( "pack_edit", id, { { "path", second }, { "content", "{}" }, { "remove", true } } )
+                .ok() );
+    CHECK( readFile( content + "/lua/a.lua" ) == "-- a\n" );
     CHECK( manager.manage( "pack_edit", id, { { "path", "previews/Second.json" }, { "content", "{}" } } )
                .error
            == "Not an item of the pack." );
