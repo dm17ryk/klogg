@@ -58,6 +58,22 @@ bool renameFolder( const QString& from, const QString& to )
     return false;
 }
 
+// Removes a folder (true when it is gone, also when there was none), retried like renameFolder:
+// another program can hold one of its files for a moment.
+bool clearFolder( const QString& path )
+{
+    if ( QDir( path ).removeRecursively() ) {
+        return true;
+    }
+    for ( const unsigned long wait : { 25ul, 50ul, 100ul, 200ul, 400ul, 800ul } ) {
+        QThread::msleep( wait );
+        if ( QDir( path ).removeRecursively() ) {
+            return true;
+        }
+    }
+    return !QFileInfo::exists( path );
+}
+
 // A path inside the content folder: relative, no "..", no drive or root.
 bool safeContentPath( const QString& path )
 {
@@ -435,7 +451,12 @@ QString PackStore::writeFolder( const QString& folder, const PackFiles& files,
     if ( !invalid.isEmpty() ) {
         return invalid;
     }
-    QDir( folder ).removeRecursively();
+    // Written into an empty folder only: a file left there (one held open while it was cleared)
+    // would be published with the pack's content.
+    if ( !clearFolder( folder ) ) {
+        return QStringLiteral( "Cannot clear the folder the pack's files are written to: %1" )
+            .arg( QDir::toNativeSeparators( folder ) );
+    }
     const auto write = [ &folder ]( const QString& relative, const QByteArray& bytes ) {
         // Never outside the folder, whatever a store path says.
         if ( !safeContentPath( relative ) ) {

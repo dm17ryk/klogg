@@ -851,7 +851,9 @@ the pack is installed again (a removal that could not finish) is set aside as
 `<name>.orphaned-<time>`, never merged into the new install. `pack_edit` takes exactly one
 of `content` and `remove`, and no content file of a pack may be its `plugin.json` or previews
 file, which CILogg writes itself, or differ from another only in case. The content folder's
-`local` commit is recorded beside it (`current.revision`): a folder left behind by a replace
+`local` commit is recorded beside it (`current.revision`). The folder is written into a staging
+folder that is cleared first (retried like a rename): one that cannot be cleared stops the write,
+so a stale file is never published. A folder left behind by a replace
 that failed (a rename refused while a file is held; it is retried for about 1.5 s) is written
 again by the next pack operation, enable or update.
 Edits change or delete the pack's own previews and blocks and change its listed files and

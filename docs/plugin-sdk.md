@@ -905,8 +905,9 @@ block field (an empty `field` replaces the whole item), and `{path, text}` for a
 preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text on
 any side (the installed version's too) is resolved with `take` only, and `pack_read` refuses it
 (editing it as text would change its bytes). A field resolution needs its item in the merge
-result (an item both sides deleted comes back only by a whole-item resolution) and never names
-`name` or a field under it. `resolutions` and `revision` belong to a merge: a first install
+result (an item both sides deleted comes back only by a whole-item resolution), never names
+`name` or a field under it, and must fit the item's structure: the field reads back as its
+value afterwards (`@x` on the item itself, or under a text field, is refused). `resolutions` and `revision` belong to a merge: a first install
 of a pack, or an install or update of a plugin that is not a pack, refuses them. With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
 text; a file's conflict has only `base`, its sides are in `items`) and `items` (each conflicting

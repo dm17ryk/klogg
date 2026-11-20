@@ -275,6 +275,14 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         return false;
     }
     const auto changed = packmerge::withField( current, field, value );
+    // The item stays an object with its name, and the field reads back as the value chosen (or
+    // is gone): a path that does not fit the item's structure (an element of an object, the item
+    // itself as an array) would rewrite more than that field.
+    const auto readBack = changed.isObject() ? packmerge::field( changed, field ) : std::nullopt;
+    if ( !changed.isObject() || changed.toObject().value( "name" ) != current.value( "name" )
+         || readBack.has_value() != value.has_value() || ( value && *readBack != *value ) ) {
+        return false;
+    }
     merged->insert( path, packcanonical::itemBytes( changed.toObject() ) );
     return true;
 }

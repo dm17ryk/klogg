@@ -546,6 +546,36 @@ TEST_CASE( "An update that stopped part-way is put back by its journal", "[packm
     CHECK( !readFile( recovered.contentDirectory() + "/previews.json" ).contains( "^A2$" ) );
 }
 
+TEST_CASE( "A file left in the staging folder is never published", "[packmerge][E16]" )
+{
+    QTemporaryDir root;
+    REQUIRE( root.isValid() );
+    const auto second = QStringLiteral( "previews/%53econd.json" );
+    PackStore store( root.path(), "org.example.pack" );
+    REQUIRE( store.install( packFiles(), packManifest(), "1.0.0", "Team packs" ).isEmpty() );
+    // An earlier write left a file in the staging folder, and something still holds it open
+    // (on Windows it then cannot be removed; elsewhere it can).
+    const auto stale = root.filePath( "org.example.pack/current.new/lua/stale.lua" );
+    REQUIRE( QDir().mkpath( QFileInfo( stale ).absolutePath() ) );
+    QFile held( stale );
+    REQUIRE( held.open( QIODevice::WriteOnly ) );
+    held.write( "-- stale\n" );
+    held.flush();
+    auto edited = QJsonDocument::fromJson( store.files().value( second ) ).object();
+    edited[ "regex" ] = "^EDITED$";
+    const auto error = store.commitEdit( second, packcanonical::itemBytes( edited ), "Edit" );
+    INFO( error.toStdString() );
+    // Refused while it cannot be cleared, or written into a cleared folder: never published.
+    CHECK( !QFileInfo::exists( store.contentDirectory() + "/lua/stale.lua" ) );
+    if ( error.isEmpty() ) {
+        CHECK( readFile( store.contentDirectory() + "/previews.json" ).contains( "^EDITED$" ) );
+    }
+    else {
+        CHECK( error.contains( "Cannot clear" ) );
+    }
+    held.close();
+}
+
 TEST_CASE( "A journal is acted on only when it is sure", "[packmerge][E16]" )
 {
     QTemporaryDir root;
@@ -1208,6 +1238,16 @@ TEST_CASE( "Resolutions keep an item's name and its bytes", "[packmerge][E16]" )
                                     QVariantMap{ { "path", second }, { "field", "name/x" }, { "value", "bad" } } } );
     CHECK( renamed[ "state" ] == "failed" );
     CHECK( renamed[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    // A path that does not fit the item's structure (the item itself as a named array, an
+    // element of a text field) would rewrite more than one field.
+    for ( const auto* field : { "@x", "regex/@x" } ) {
+        INFO( field );
+        const auto misfit = attempt( { secondChoice,
+                                       QVariantMap{ { "path", lua }, { "take", "theirs" } },
+                                       QVariantMap{ { "path", second }, { "field", field }, { "value", 1 } } } );
+        CHECK( misfit[ "state" ] == "failed" );
+        CHECK( misfit[ "error" ].toString().contains( "Invalid merge resolution" ) );
+    }
     CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
     // Whole sides and fields of present items go ahead.
     const auto applied = attempt( { secondChoice, QVariantMap{ { "path", lua }, { "take", "theirs" } } } );
