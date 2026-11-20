@@ -19,6 +19,8 @@
 #include <QScopedValueRollback>
 #include <QTreeView>
 
+#include <algorithm>
+
 using namespace pluginview;
 
 namespace {
@@ -350,7 +352,20 @@ void PluginView::applyTreeOperation( Node& node, const QJsonObject& entry )
     const bool structural = entry.contains( "replace_nodes" ) || entry.contains( "update_nodes" )
                             || entry.contains( "insert_nodes" ) || entry.contains( "remove_nodes" );
     if ( structural ) {
-        node.tree->rememberView();
+        // Expansion and scroll are kept by id only when rows are reset or children replaced;
+        // the view keeps them itself across row insertions and removals.
+        const auto updatesChildren = [ & ] {
+            for ( const auto& value : entry.value( "update_nodes" ).toArray() ) {
+                if ( value.toObject().value( "children" ).isArray() ) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        node.tree->rememberView(
+            entry.contains( "replace_nodes" ) || updatesChildren()
+            || entry.value( "remove_nodes" ).toArray().size()
+                   > pluginview::PluginTreeModel::LargeRemoval );
     }
     const auto parent = entry.value( "parent" ).toString();
     QStringList changed; // their cached tooltips are stale
@@ -507,19 +522,43 @@ void PluginView::watchTreeTooltips( Node& node )
 // tree/children: at most MaxChildrenQueries outstanding per view and MaxWaitingChildrenQueries
 // waiting (docs/plugin-sdk-advanced.md section 28.1).
 
-bool PluginView::startChildrenQuery( ChildrenQuery& query )
+namespace {
+// The id of a query that is being sent: it counts as sent and is never started twice.
+const QString SendingQuery = QStringLiteral( "\x01sending" );
+} // namespace
+
+bool PluginView::startChildrenQuery( quint64 token )
 {
+    const auto find = [ this, token ] {
+        return std::find_if( childrenQueries_.begin(), childrenQueries_.end(),
+                             [ token ]( const ChildrenQuery& query ) { return query.token == token; } );
+    };
+    auto found = find();
+    if ( found == childrenQueries_.end() ) {
+        return false;
+    }
+    found->queryId = SendingQuery;
+    const auto elementId = found->elementId;
+    const auto nodeId = found->nodeId;
     const QPointer<PluginView> guard( this );
-    const auto elementId = query.elementId;
-    const auto nodeId = query.nodeId;
-    query.queryId = queries_.treeChildren(
+    const auto id = queries_.treeChildren(
         { { "element_id", elementId }, { "node_id", nodeId } },
-        [ guard, elementId, nodeId ]( bool answered, const QJsonArray& nodes ) {
+        [ guard, token ]( bool answered, const QJsonArray& nodes ) {
             if ( guard ) {
-                guard->childrenFinished( elementId, nodeId, answered, nodes );
+                guard->childrenFinished( token, answered, nodes );
             }
         } );
-    return !query.queryId.isEmpty();
+    // The call may have answered the query, or changed the list: look again.
+    found = find();
+    if ( found == childrenQueries_.end() ) {
+        return true; // answered meanwhile
+    }
+    if ( id.isEmpty() ) {
+        childrenQueries_.erase( found );
+        return false;
+    }
+    found->queryId = id;
+    return true;
 }
 
 bool PluginView::requestChildren( const QString& elementId, const QString& nodeId )
@@ -532,33 +571,41 @@ bool PluginView::requestChildren( const QString& elementId, const QString& nodeI
     for ( const auto& query : std::as_const( childrenQueries_ ) ) {
         ++( query.queryId.isEmpty() ? waiting : sent );
     }
-    if ( sent < MaxChildrenQueries ) {
-        childrenQueries_.append( { elementId, nodeId, {} } );
-        if ( !startChildrenQuery( childrenQueries_.last() ) ) {
-            childrenQueries_.removeLast();
-            return false; // not sent: the node shows "Could not load"
-        }
-        return true;
-    }
-    if ( waiting >= MaxWaitingChildrenQueries ) {
+    if ( sent >= MaxChildrenQueries && waiting >= MaxWaitingChildrenQueries ) {
         LOG_DEBUG << "Plugin tree children refused: too many waiting element="
                   << elementId.toStdString();
         return false;
     }
-    childrenQueries_.append( { elementId, nodeId, {} } );
-    return true;
+    const auto token = ++nextChildrenToken_;
+    childrenQueries_.append( { elementId, nodeId, {}, token } );
+    // Not sent (the plugin stopped): the node shows "Could not load".
+    return sent >= MaxChildrenQueries || startChildrenQuery( token );
 }
 
-void PluginView::childrenFinished( const QString& elementId, const QString& nodeId, bool answered,
-                                   const QJsonArray& nodes )
+void PluginView::childrenFinished( quint64 token, bool answered, const QJsonArray& nodes )
 {
-    childrenQueries_.removeIf( [ & ]( const ChildrenQuery& query ) {
-        return !query.queryId.isEmpty() && query.elementId == elementId && query.nodeId == nodeId;
-    } );
-    if ( const auto node = nodes_.value( elementId ); node && node->tree ) {
-        node->tree->childrenAnswered( nodeId, answered, nodes );
+    const auto found
+        = std::find_if( childrenQueries_.begin(), childrenQueries_.end(),
+                        [ token ]( const ChildrenQuery& query ) { return query.token == token; } );
+    if ( found == childrenQueries_.end() ) {
+        return; // cancelled: the node no longer waits for this answer
+    }
+    const auto query = *found;
+    childrenQueries_.erase( found );
+    if ( const auto node = nodes_.value( query.elementId ); node && node->tree ) {
+        node->tree->childrenAnswered( query.nodeId, answered, nodes );
     }
     sendChildrenQueries();
+}
+
+void PluginView::failTreeLoads()
+{
+    cancelAllChildren();
+    for ( const auto& node : std::as_const( nodes_ ) ) {
+        if ( node && node->tree ) {
+            node->tree->failLoading();
+        }
+    }
 }
 
 void PluginView::cancelChildren( const QString& elementId, const QString& nodeId )
@@ -599,13 +646,17 @@ void PluginView::sendChildrenQueries()
         if ( !childrenQueries_.at( at ).queryId.isEmpty() ) {
             continue;
         }
-        if ( startChildrenQuery( childrenQueries_[ at ] ) ) {
+        const auto waiting = childrenQueries_.at( at );
+        if ( startChildrenQuery( waiting.token ) ) {
+            // The list may have changed during the call: start again from the top.
+            at = -1;
             continue;
         }
-        // Not sent (the plugin stopped meanwhile): the node shows "Could not load".
-        const auto failed = childrenQueries_.takeAt( at-- );
-        if ( const auto node = nodes_.value( failed.elementId ); node && node->tree ) {
-            node->tree->childrenAnswered( failed.nodeId, false, {} );
+        // Not sent (the plugin stopped meanwhile): the node shows "Could not load". The query
+        // is gone from the list already.
+        if ( const auto node = nodes_.value( waiting.elementId ); node && node->tree ) {
+            node->tree->childrenAnswered( waiting.nodeId, false, {} );
         }
+        at = -1;
     }
 }

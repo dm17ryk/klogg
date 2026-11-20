@@ -138,6 +138,14 @@ struct View {
                                    { "children", QJsonArray{ element } } } );
         view.show();
     }
+    // The hooks reach members declared after the view, which go first: the view closes without
+    // them.
+    ~View()
+    {
+        view.setQueries( {} );
+    }
+    View( const View& ) = delete;
+    View& operator=( const View& ) = delete;
     PluginViewDialogs dialogs()
     {
         PluginViewDialogs result;

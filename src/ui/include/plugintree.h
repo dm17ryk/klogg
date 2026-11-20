@@ -34,6 +34,8 @@ public:
     using CellStyle = PluginTableModel::CellStyle;
     using Pending = PluginTableModel::Pending;
     enum class Load { None, Loading, Failed };
+    // Above this many ids remove() resets the model once instead of removing row by row.
+    static constexpr int LargeRemoval = 64;
     struct Node {
         QString id;
         QStringList cells;
@@ -185,6 +187,7 @@ private:
     QHash<QString, Node*> index_;
     QHash<QString, bool> expandRequests_;
     int nodeCount_ = 0;
+    int deferChecks_ = 0; // > 0: an operation in progress derives the parents' states at its end
     bool checkboxes_ = false;
     bool autoTristate_ = false;
     bool lazy_ = false;
@@ -282,6 +285,7 @@ private:
     QStringList keptSelected_;
     QString keptCurrent_;
     int keptScroll_ = 0;
+    bool keptExpansion_ = false;
     QString selectionAnchor_;
     QPoint pressPosition_;
     QString pressNode_;

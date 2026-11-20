@@ -782,9 +782,14 @@ PluginFileTreeBehaviour::PluginFileTreeBehaviour( QTreeView* tree, Hooks hooks )
 
 PluginFileTreeBehaviour::~PluginFileTreeBehaviour()
 {
-    // The model's gatherer thread uses the icon provider: the model goes first.
-    if ( tree_ ) {
-        tree_->setModel( nullptr );
+    // The model's gatherer thread uses the icon provider: the models go first. When the tree
+    // deletes this behaviour (its child) it is a QWidget only by now: it is never called, only cut
+    // off from the models' signals.
+    if ( auto* tree = qobject_cast<QTreeView*>( static_cast<QObject*>( tree_.data() ) ) ) {
+        tree->setModel( nullptr );
+    }
+    else if ( tree_ ) {
+        QObject::disconnect( roots_, nullptr, static_cast<QObject*>( tree_.data() ), nullptr );
     }
     delete roots_;
     delete files_;
@@ -1004,7 +1009,7 @@ void PluginFileTreeBehaviour::requestCheck( const QString& path, bool checked )
         return;
     }
     int count = 0;
-    const auto shown = value( pluginview::MaxTableIds, &count );
+    const auto shown = pluginview::boundedIds( value( pluginview::MaxTableIds, &count ) );
     QJsonObject extra{ { "selected_count", count } };
     if ( shown.size() < count ) {
         extra.insert( "truncated", true );
@@ -1032,7 +1037,7 @@ void PluginFileTreeBehaviour::activate( const QModelIndex& index )
 QJsonObject PluginFileTreeBehaviour::menuTarget( const QString& path ) const
 {
     int count = 0;
-    const auto paths = value( pluginview::MaxTableIds, &count );
+    const auto paths = pluginview::boundedIds( value( pluginview::MaxTableIds, &count ) );
     return { { "node_id", path.isEmpty() ? QJsonValue() : QJsonValue( path ) },
              { "selected_ids", QJsonArray::fromStringList( paths ) },
              { "selected_count", count } };

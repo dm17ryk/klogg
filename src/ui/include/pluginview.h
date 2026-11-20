@@ -140,6 +140,8 @@ public:
     // E17e: tree/children queries per view (docs/plugin-sdk-advanced.md section 28.1).
     static constexpr int MaxChildrenQueries = 4;
     static constexpr int MaxWaitingChildrenQueries = 16;
+    // The plugin stopped: its tree/children queries end and loading nodes show "Could not load".
+    void failTreeLoads();
     // E17d: the context menu a right-click at `position` (the table's viewport) would show;
     // the caller owns it (tests and automation).
     QMenu* buildElementMenu( const QString& elementId, const QPoint& position );
@@ -216,10 +218,9 @@ private:
     bool requestChildren( const QString& elementId, const QString& nodeId );
     void cancelChildren( const QString& elementId, const QString& nodeId );
     void cancelAllChildren();
-    struct ChildrenQuery;
-    bool startChildrenQuery( ChildrenQuery& query );
-    void childrenFinished( const QString& elementId, const QString& nodeId, bool answered,
-                           const QJsonArray& nodes );
+    // By token, not by reference: the host may answer, and so change the list, during the call.
+    bool startChildrenQuery( quint64 token );
+    void childrenFinished( quint64 token, bool answered, const QJsonArray& nodes );
     void sendChildrenQueries();
     // The host save dialog of an element's Export (tables and trees); empty when cancelled. Static:
     // the dialog's event loop may delete the view.
@@ -229,9 +230,11 @@ private:
     struct ChildrenQuery {
         QString elementId;
         QString nodeId;
-        QString queryId; // empty while it waits
+        QString queryId;   // empty while it waits
+        quint64 token = 0; // the answer finds its own query by it, never a newer one
     };
     QList<ChildrenQuery> childrenQueries_;
+    quint64 nextChildrenToken_ = 0;
     PluginTooltips* tooltips_ = nullptr;
     PluginViewQueries queries_;
 

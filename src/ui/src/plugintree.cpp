@@ -31,7 +31,6 @@ namespace pluginview {
 namespace {
 constexpr int MaxNodes = cilogg::plugins::MaxTreeNodes;
 constexpr int MaxDepth = cilogg::plugins::MaxTreeDepth;
-
 using Node = PluginTreeModel::Node;
 
 Node* childAt( const Node& node, int row )
@@ -792,9 +791,8 @@ bool PluginTreeModel::update( const QJsonArray& nodes, QString* error, QStringLi
         // With auto_tristate the plugin checking a parent checks its loaded descendants, as a
         // click does.
         if ( autoTristate_ && object.value( "checked" ).isBool() && node->checked != before ) {
-            QStringList descendants;
-            collectIds( *node, &descendants );
-            applyChecked( descendants, node->checked == Qt::Checked, nullptr, false );
+            // The node has its state already; its loaded descendants follow.
+            applyChecked( { id }, node->checked == Qt::Checked, nullptr, false );
         }
     }
     --deferChecks_;
@@ -821,7 +819,9 @@ bool PluginTreeModel::insert( const QJsonArray& nodes, const QString& parentId,
         parent->hasChildren = false;
     }
     QSet<QString> fresh;
-    auto parsed = parseNodes( nodes, parent, depthOf( parentId ) + 1, nullptr, &fresh, false );
+    // As loaded children: below a checked or unchecked parent new nodes follow it.
+    auto parsed
+        = parseNodes( nodes, parent, depthOf( parentId ) + 1, nullptr, &fresh, autoTristate_ );
     if ( parsed.empty() ) {
         return true;
     }
@@ -852,10 +852,21 @@ QStringList PluginTreeModel::remove( const QJsonArray& ids )
     if ( ids.size() > LargeRemoval ) {
         // Many nodes: one reset and one pass per parent instead of a shift per node (the
         // behaviour keeps expansion and selection by id).
-        QHash<Node*, QSet<Node*>> byParent;
+        QSet<Node*> requested;
         for ( const auto& value : ids ) {
-            auto* node = find( value.toString() );
-            if ( node != nullptr ) {
+            if ( auto* node = find( value.toString() ) ) {
+                requested.insert( node );
+            }
+        }
+        // Only the topmost requested nodes: their descendants go with them, and a parent that
+        // is removed itself is never touched again.
+        QHash<Node*, QSet<Node*>> byParent;
+        for ( auto* node : std::as_const( requested ) ) {
+            bool covered = false;
+            for ( auto* up = node->parent; up && up != &root_ && !covered; up = up->parent ) {
+                covered = requested.contains( up );
+            }
+            if ( !covered ) {
                 byParent[ node->parent ].insert( node );
             }
         }
@@ -866,9 +877,6 @@ QStringList PluginTreeModel::remove( const QJsonArray& ids )
         for ( auto it = byParent.begin(); it != byParent.end(); ++it ) {
             auto& children = it.key()->children;
             for ( auto* node : std::as_const( it.value() ) ) {
-                if ( !index_.contains( node->id ) ) {
-                    continue; // already gone with an ancestor
-                }
                 removed.append( node->id );
                 collectIds( *node, &removed );
                 index_.remove( node->id );
@@ -976,8 +984,12 @@ bool PluginTreeModel::fillChildren( const QString& id, const QJsonArray& nodes, 
         *error = QStringLiteral( "tree/children answer rejected: more than %1 nodes" ).arg( MaxNodes );
         return false;
     }
-    auto taken = QSet<QString>( index_.keyBegin(), index_.keyEnd() );
-    auto parsed = parseNodes( nodes, node, depth, &taken, autoTristate_ );
+    // The node's current children (normally only the placeholder) make way for the answer.
+    QStringList old;
+    collectIds( *node, &old );
+    const QSet<QString> replaced( old.cbegin(), old.cend() );
+    QSet<QString> fresh;
+    auto parsed = parseNodes( nodes, node, depth, &replaced, &fresh, autoTristate_ );
     node->load = Load::None;
     node->hasChildren = false; // the children are known now (possibly none)
     setChildren( node, std::move( parsed ) );
@@ -1010,14 +1022,22 @@ void PluginTreeModel::forEach( const std::function<void( const Node& node, int d
 QStringList PluginTreeModel::setChecked( const QStringList& ids, bool checked,
                                          QHash<QString, Qt::CheckState>* previous )
 {
+    return applyChecked( ids, checked, previous, true );
+}
+
+QStringList PluginTreeModel::applyChecked( const QStringList& ids, bool checked,
+                                           QHash<QString, Qt::CheckState>* previous,
+                                           bool recompute )
+{
     const auto target = checked ? Qt::Checked : Qt::Unchecked;
     QStringList set;
-    QSet<QString> done;
+    QList<Node*> changed;
+    QSet<const Node*> done;
     const auto apply = [ & ]( Node& node ) {
-        if ( !isCheckable( node ) || done.contains( node.id ) ) {
+        if ( !isCheckable( node ) || done.contains( &node ) ) {
             return;
         }
-        done.insert( node.id );
+        done.insert( &node );
         if ( node.checked == target ) {
             return;
         }
@@ -1026,8 +1046,16 @@ QStringList PluginTreeModel::setChecked( const QStringList& ids, bool checked,
         }
         node.checked = target;
         set.append( node.id );
-        const auto changed = indexOfNode( &node );
-        Q_EMIT dataChanged( changed, changed, { Qt::CheckStateRole } );
+        changed.append( &node );
+    };
+    // Descendants without an id lookup each: walk the loaded subtree directly.
+    const std::function<void( Node& )> applyBelow = [ & ]( Node& node ) {
+        for ( auto& child : node.children ) {
+            if ( !child->placeholder ) {
+                apply( *child );
+                applyBelow( *child );
+            }
+        }
     };
     for ( const auto& id : ids ) {
         auto* node = find( id );
@@ -1036,48 +1064,33 @@ QStringList PluginTreeModel::setChecked( const QStringList& ids, bool checked,
         }
         apply( *node );
         if ( autoTristate_ ) {
-            QStringList descendants;
-            collectIds( *node, &descendants );
-            for ( const auto& descendant : std::as_const( descendants ) ) {
-                if ( auto* child = find( descendant ) ) {
-                    apply( *child );
-                }
-            }
+            applyBelow( *node );
         }
     }
-    if ( autoTristate_ ) {
+    emitCheckChanges( changed );
+    if ( recompute ) {
         // The parents follow; their previous states are kept so a dropped event restores them.
-        QHash<QString, Qt::CheckState> before;
-        for ( auto* node : std::as_const( index_ ) ) {
-            before.insert( node->id, node->checked );
-        }
-        recomputeChecks();
-        if ( previous ) {
-            for ( auto it = before.cbegin(); it != before.cend(); ++it ) {
-                const auto* node = find( it.key() );
-                if ( node && node->checked != it.value() && !previous->contains( it.key() ) ) {
-                    previous->insert( it.key(), it.value() );
-                }
-            }
-        }
+        recomputeChecks( previous );
     }
     return set;
 }
 
 void PluginTreeModel::restoreChecks( const QHash<QString, Qt::CheckState>& states )
 {
+    QList<Node*> changed;
     for ( auto it = states.cbegin(); it != states.cend(); ++it ) {
         auto* node = find( it.key() );
         if ( node == nullptr || node->checked == it.value() ) {
             continue;
         }
         node->checked = it.value();
-        const auto changed = indexOfNode( node );
-        Q_EMIT dataChanged( changed, changed, { Qt::CheckStateRole } );
+        changed.append( node );
     }
+    emitCheckChanges( changed );
 }
 
-Qt::CheckState PluginTreeModel::derive( Node& node, QList<Node*>* changed )
+Qt::CheckState PluginTreeModel::derive( Node& node, QList<Node*>* changed,
+                                        QHash<QString, Qt::CheckState>* previous )
 {
     bool any = false;
     bool allChecked = true;
@@ -1086,7 +1099,7 @@ Qt::CheckState PluginTreeModel::derive( Node& node, QList<Node*>* changed )
         if ( child->placeholder ) {
             continue;
         }
-        const auto state = derive( *child, changed );
+        const auto state = derive( *child, changed, previous );
         if ( !isCheckable( *child ) ) {
             continue;
         }
@@ -1101,23 +1114,23 @@ Qt::CheckState PluginTreeModel::derive( Node& node, QList<Node*>* changed )
                          : allUnchecked ? Qt::Unchecked
                                         : Qt::PartiallyChecked;
     if ( derived != node.checked ) {
+        if ( previous && !previous->contains( node.id ) ) {
+            previous->insert( node.id, node.checked );
+        }
         node.checked = derived;
         changed->append( &node );
     }
     return derived;
 }
 
-void PluginTreeModel::recomputeChecks()
+void PluginTreeModel::recomputeChecks( QHash<QString, Qt::CheckState>* previous )
 {
-    if ( !autoTristate_ ) {
+    if ( !autoTristate_ || deferChecks_ > 0 ) {
         return;
     }
     QList<Node*> changed;
-    derive( root_, &changed );
-    for ( auto* node : std::as_const( changed ) ) {
-        const auto index = indexOfNode( node );
-        Q_EMIT dataChanged( index, index, { Qt::CheckStateRole } );
-    }
+    derive( root_, &changed, previous );
+    emitCheckChanges( changed );
 }
 } // namespace pluginview
 
@@ -1182,20 +1195,24 @@ QList<int> PluginTreeBehaviour::shownColumns() const
     return shown;
 }
 
-void PluginTreeBehaviour::rememberView()
+void PluginTreeBehaviour::rememberView( bool expansion )
 {
     if ( !tree_ ) {
         return;
     }
     keptExpanded_.clear();
-    model_->forEach( [ this ]( const PluginTreeModel::Node& node, int ) {
-        if ( !node.children.empty() && tree_->isExpanded( model_->indexOf( node.id ) ) ) {
-            keptExpanded_.append( node.id );
-        }
-    } );
+    keptExpansion_ = expansion;
+    if ( expansion ) {
+        // Only operations that reset the model or replace children walk every node.
+        model_->forEach( [ this ]( const PluginTreeModel::Node& node, int ) {
+            if ( !node.children.empty() && tree_->isExpanded( model_->indexOf( node.id ) ) ) {
+                keptExpanded_.append( node.id );
+            }
+        } );
+        keptScroll_ = tree_->verticalScrollBar()->value();
+    }
     keptSelected_ = selectedNodeIds( std::numeric_limits<int>::max() );
     keptCurrent_ = currentNodeId();
-    keptScroll_ = tree_->verticalScrollBar()->value();
 }
 
 void PluginTreeBehaviour::restoreView()
@@ -1226,13 +1243,15 @@ void PluginTreeBehaviour::restoreView()
          current.isValid() && currentNodeId() != keptCurrent_ ) {
         selection->setCurrentIndex( current, QItemSelectionModel::NoUpdate );
     }
-    // The scroll range is only updated after layout: restore now and once more when queued.
-    tree_->verticalScrollBar()->setValue( keptScroll_ );
-    QTimer::singleShot( 0, tree_.data(), [ tree = tree_, scroll = keptScroll_ ] {
-        if ( tree ) {
-            tree->verticalScrollBar()->setValue( scroll );
-        }
-    } );
+    if ( keptExpansion_ ) {
+        // The scroll range is only updated after layout: restore now and once more when queued.
+        tree_->verticalScrollBar()->setValue( keptScroll_ );
+        QTimer::singleShot( 0, tree_.data(), [ tree = tree_, scroll = keptScroll_ ] {
+            if ( tree ) {
+                tree->verticalScrollBar()->setValue( scroll );
+            }
+        } );
+    }
     if ( restored < keptSelected_.size() && hooks_.selectionChanged ) {
         hooks_.selectionChanged(); // the plugin removed selected nodes
     }
@@ -1374,7 +1393,7 @@ QStringList PluginTreeBehaviour::selectedNodeIds( int maximum, int* count ) cons
 QJsonObject PluginTreeBehaviour::menuTarget( const QString& nodeId ) const
 {
     int count = 0;
-    const auto ids = selectedNodeIds( pluginview::MaxTableIds, &count );
+    const auto ids = pluginview::boundedIds( selectedNodeIds( pluginview::MaxTableIds, &count ) );
     return { { "node_id", nodeId.isEmpty() ? QJsonValue() : QJsonValue( nodeId ) },
              { "selected_ids", QJsonArray::fromStringList( ids ) },
              { "selected_count", count } };
@@ -1539,9 +1558,9 @@ bool PluginTreeBehaviour::moveNodes( const QStringList& nodeIds, const QString& 
     if ( !parent.isEmpty() && !model_->contains( parent ) ) {
         return false;
     }
-    QJsonArray ids;
+    QStringList known;
     for ( const auto& id : nodeIds ) {
-        if ( ids.size() >= pluginview::MaxTableIds ) {
+        if ( known.size() >= pluginview::MaxTableIds ) {
             break;
         }
         // A node never moves into itself or one of its descendants.
@@ -1549,9 +1568,11 @@ bool PluginTreeBehaviour::moveNodes( const QStringList& nodeIds, const QString& 
             return false;
         }
         if ( model_->contains( id ) ) {
-            ids.append( id );
+            known.append( id );
         }
     }
+    // Bounded like element-menu targets: by count and by the size of their JSON.
+    const auto ids = QJsonArray::fromStringList( pluginview::boundedIds( known ) );
     if ( ids.isEmpty() ) {
         return false;
     }
@@ -1577,7 +1598,8 @@ void PluginTreeBehaviour::requestCheck( const QString& nodeId, bool checked )
     }
     const QJsonObject value{ { "node_id", nodeId },
                              { "checked", checked },
-                             { "node_ids", QJsonArray::fromStringList( changed ) } };
+                             { "node_ids",
+                               QJsonArray::fromStringList( pluginview::boundedIds( changed ) ) } };
     if ( !hooks_.emitEvent( QStringLiteral( "checked" ), value ) ) {
         model_->restoreChecks( previous ); // the plugin did not get it
     }

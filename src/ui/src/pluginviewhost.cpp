@@ -497,20 +497,23 @@ bool PluginViewHost::openView( const QString& pluginId, const QString& viewId,
             [ answered = std::move( done ), pluginId, viewId,
               params ]( const cilogg::plugins::PluginQueries::Outcome& outcome ) {
                 using Status = cilogg::plugins::PluginQueries::Status;
-                if ( outcome.status != Status::Cancelled ) {
-                    // Ids and latency only, never the nodes (design 5.3).
-                    cilogg::diagnostics::ActivityJournal::record(
-                        QStringLiteral( "plugin" ),
-                        QStringLiteral( "Plugin tree children query %1" )
-                            .arg( outcome.status == Status::Answered    ? "answered"
-                                  : outcome.status == Status::Nothing   ? "nothing"
-                                  : outcome.status == Status::TimedOut  ? "timed out"
-                                                                        : "failed" ),
-                        { { "plugin", pluginId },
-                          { "view", viewId },
-                          { "element", params.value( "element_id" ).toString() },
-                          { "latencyMs", outcome.latencyMs } } );
+                if ( outcome.status == Status::Cancelled ) {
+                    // A newer query of the node replaced it, the view closed or the plugin
+                    // stopped (the host fails the loading nodes then): no answer to give.
+                    return;
                 }
+                // Ids and latency only, never the nodes (design 5.3).
+                cilogg::diagnostics::ActivityJournal::record(
+                    QStringLiteral( "plugin" ),
+                    QStringLiteral( "Plugin tree children query %1" )
+                        .arg( outcome.status == Status::Answered    ? "answered"
+                              : outcome.status == Status::Nothing   ? "nothing"
+                              : outcome.status == Status::TimedOut  ? "timed out"
+                                                                    : "failed" ),
+                    { { "plugin", pluginId },
+                      { "view", viewId },
+                      { "element", params.value( "element_id" ).toString() },
+                      { "latencyMs", outcome.latencyMs } } );
                 const bool ok
                     = outcome.status == Status::Answered || outcome.status == Status::Nothing;
                 answered( ok, outcome.result.toObject().value( "nodes" ).toArray() );
@@ -953,8 +956,10 @@ void PluginViewHost::setStopped( const QString& pluginId, bool stopped )
         // Pending tooltip queries end; cached answers go with the stop and the restart.
         open->view->resetTooltips();
         if ( stopped ) {
-            // An edit the plugin never confirmed must not look saved.
+            // An edit the plugin never confirmed must not look saved, and a stopped plugin
+            // never answers tree/children (its queries end as cancelled).
             open->view->revertPendingEdits();
+            open->view->failTreeLoads();
         }
         open->view->setEnabled( false );
         open->pendingRoot.reset();
