@@ -121,7 +121,9 @@ QWidget* PluginView::buildTree( Node& node, QWidget* parent )
                                    { "previous", previous } } );
     };
     connect( tree->selectionModel(), &QItemSelectionModel::selectionChanged, this, [ this, id ] {
-        if ( !applying_ ) {
+        // Not while a press that may start a drag holds the selection (the behaviour reports it).
+        const auto found = nodes_.value( id );
+        if ( !applying_ && !( found && found->tree && found->tree->holdsSelection() ) ) {
             emitTreeSelection( id );
         }
     } );
@@ -403,7 +405,9 @@ void PluginView::applyTreeOperation( Node& node, const QJsonObject& entry )
         tooltips_->invalidateNodes( node.id, changed );
     }
     if ( structural ) {
-        node.tree->restoreView();
+        // An entry that sets the selection itself hears nothing about removed selected nodes
+        // (a selection patch is never echoed, nor anything in between).
+        node.tree->restoreView( !entry.contains( "select" ) );
     }
     node.tree->applyExpandRequests();
     if ( entry.value( "expand" ).isArray() ) {
@@ -425,18 +429,11 @@ void PluginView::emitTreeSelection( const QString& id )
     if ( !node || !node->tree ) {
         return;
     }
-    // Bounded like table selections: at most MaxSelectedIds ids and MaxInputsBytes of them.
+    // Bounded like table selections: at most MaxSelectedIds ids, and MaxIdBytes of them as
+    // encoded JSON (a control character takes six bytes there).
     int count = 0;
-    const auto selected = node->tree->selectedNodeIds( MaxSelectedIds, &count );
-    QJsonArray ids;
-    qsizetype bytes = 0;
-    for ( const auto& nodeId : selected ) {
-        bytes += nodeId.size() + 4;
-        if ( bytes > MaxInputsBytes ) {
-            break;
-        }
-        ids.append( nodeId );
-    }
+    const auto ids = QJsonArray::fromStringList(
+        boundedIds( node->tree->selectedNodeIds( MaxSelectedIds, &count ) ) );
     QJsonObject extra{ { "selected_count", count },
                        { "current", orNull( node->tree->currentNodeId() ) } };
     if ( ids.size() < count ) {

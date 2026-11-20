@@ -229,7 +229,8 @@ public:
         std::function<bool( const QString& nodeId )> loadChildren;
         // The node no longer waits (its children were set or it was removed).
         std::function<void( const QString& nodeId )> cancelChildren;
-        // The selection changed for a reason other than the user (a replacement dropped nodes).
+        // The selection changed for a reason other than the user (a replacement dropped nodes), or
+        // while it was held (see holdsSelection()): send `selected` now.
         std::function<void()> selectionChanged;
     };
 
@@ -242,9 +243,16 @@ public:
     }
     // Around a model operation: selection and current node, and with `expansion` (an operation
     // that resets the model or replaces children) the expanded nodes and the scroll position, are
-    // kept by id. Without it the view keeps them itself; only removed selected nodes are reported.
+    // kept by id. Without it the view keeps them itself; only removed selected nodes are reported
+    // (not with `reportRemoved` false: the same patch entry sets the selection itself).
     void rememberView( bool expansion = true );
-    void restoreView();
+    void restoreView( bool reportRemoved = true );
+    // While a press on a selected node may start a drag, selection changes send no `selected`:
+    // a drag restores the selection before the press, a release without a drag reports once.
+    bool holdsSelection() const
+    {
+        return holdSelection_;
+    }
     // After a model operation: `expanded` keys of the nodes, and loading for expanded lazy nodes.
     void applyExpandRequests();
     // The selection patch: never sends `selected`; ancestors of current and scrollTo expand.
@@ -280,6 +288,9 @@ private:
     bool drop( const QPoint& position, const QByteArray& payload );
     QList<int> shownColumns() const;
     void ensureVisible( const QString& nodeId );
+    // Ends a hold of the selection; with `report`, sends `selected` when the selection is no
+    // longer the one before the press.
+    void releaseSelection( bool report );
 
     QPointer<QTreeView> tree_;
     pluginview::PluginTreeModel* model_;
@@ -296,4 +307,5 @@ private:
     QString pressNode_;
     QItemSelection pressSelection_; // the selection when the drag's press came (ranges)
     bool pressWasSelected_ = false; // whether the pressed node was in it
+    bool holdSelection_ = false;    // see holdsSelection()
 };

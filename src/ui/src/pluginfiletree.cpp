@@ -968,18 +968,10 @@ void PluginFileTreeBehaviour::emitSelected()
     if ( !hooks_.emitEvent ) {
         return;
     }
-    // At most 1,000 paths and 256 KiB of them; the count is complete.
+    // At most 1,000 paths and 256 KiB of them as encoded JSON; the count is complete.
     int count = 0;
-    const auto all = value( pluginview::MaxTableIds, &count );
-    QJsonArray paths;
-    qsizetype bytes = 0;
-    for ( const auto& path : all ) {
-        bytes += path.size() + 4;
-        if ( bytes > PluginView::MaxInputsBytes ) {
-            break;
-        }
-        paths.append( path );
-    }
+    const auto paths = QJsonArray::fromStringList(
+        pluginview::boundedIds( value( pluginview::MaxTableIds, &count ) ) );
     QJsonObject extra{ { "selected_count", count } };
     if ( paths.size() < count ) {
         extra.insert( "truncated", true );

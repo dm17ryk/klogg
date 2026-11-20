@@ -1215,7 +1215,7 @@ void PluginTreeBehaviour::rememberView( bool expansion )
     keptCurrent_ = currentNodeId();
 }
 
-void PluginTreeBehaviour::restoreView()
+void PluginTreeBehaviour::restoreView( bool reportRemoved )
 {
     if ( !tree_ ) {
         return;
@@ -1252,7 +1252,7 @@ void PluginTreeBehaviour::restoreView()
             }
         } );
     }
-    if ( restored < keptSelected_.size() && hooks_.selectionChanged ) {
+    if ( reportRemoved && restored < keptSelected_.size() && hooks_.selectionChanged ) {
         hooks_.selectionChanged(); // the plugin removed selected nodes
     }
     keptExpanded_.clear();
@@ -1735,17 +1735,43 @@ QStringList PluginTreeBehaviour::draggedNodes() const
     return pluginview::boundedIds( ids );
 }
 
+void PluginTreeBehaviour::releaseSelection( bool report )
+{
+    if ( !std::exchange( holdSelection_, false ) || !report || !tree_ ) {
+        return;
+    }
+    // The nodes of a selection (by their model pointers), in order: the press changed the
+    // selection when they differ.
+    const auto nodesOf = [ this ]( const QItemSelection& selection ) {
+        std::vector<void*> nodes;
+        for ( const auto& range : selection ) {
+            for ( int row = range.top(); range.isValid() && row <= range.bottom(); ++row ) {
+                nodes.push_back( model_->index( row, 0, range.parent() ).internalPointer() );
+            }
+        }
+        std::sort( nodes.begin(), nodes.end() );
+        nodes.erase( std::unique( nodes.begin(), nodes.end() ), nodes.end() );
+        return nodes;
+    };
+    if ( nodesOf( tree_->selectionModel()->selection() ) != nodesOf( pressSelection_ )
+         && hooks_.selectionChanged ) {
+        hooks_.selectionChanged();
+    }
+}
+
 void PluginTreeBehaviour::startDrag()
 {
     const auto ids = draggedNodes();
-    const auto before = std::exchange( pressSelection_, {} );
     const bool wasSelected = std::exchange( pressWasSelected_, false );
     pressNode_.clear();
     if ( wasSelected ) {
-        // The press changed the selection (a toggle tree deselected the node, others kept only
-        // it): the selection before the press comes back, as Qt's own drags defer the change.
-        tree_->selectionModel()->select( before, QItemSelectionModel::ClearAndSelect );
+        // The press changed the selection (a toggle tree deselected the node): the selection
+        // before the press comes back, as Qt's own drags defer the change. It is still held, so
+        // the plugin hears neither change.
+        tree_->selectionModel()->select( pressSelection_, QItemSelectionModel::ClearAndSelect );
     }
+    releaseSelection( true ); // the selection is the one before the press: nothing to report
+    pressSelection_.clear();
     auto* mime = new QMimeData;
     mime->setData( NodesMimeType, QJsonDocument( QJsonArray::fromStringList( ids ) )
                                       .toJson( QJsonDocument::Compact ) );
@@ -1817,6 +1843,7 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         const auto* mouse = static_cast<QMouseEvent*>( event );
         const auto position = mouse->position().toPoint();
         const auto index = tree_->indexAt( position );
+        releaseSelection( true ); // a release this behaviour never saw
         pressNode_.clear();
         pressSelection_.clear();
         pressWasSelected_ = false;
@@ -1858,6 +1885,9 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
                 pressSelection_ = tree_->selectionModel()->selection();
                 pressWasSelected_ = tree_->selectionModel()->isRowSelected( index.row(),
                                                                             index.parent() );
+                // The press may toggle this node off for a moment: the plugin hears nothing until
+                // the release, and nothing at all when a drag puts the selection back.
+                holdSelection_ = pressWasSelected_;
             }
         }
         return false;
@@ -1873,7 +1903,9 @@ bool PluginTreeBehaviour::eventFilter( QObject* watched, QEvent* event )
         return false;
     }
     case QEvent::MouseButtonRelease:
-        // No drag started: the snapshot of the selection goes.
+        // No drag started: a held selection change is reported once, and the snapshot goes. (A
+        // change the view still makes on the release itself is no longer held.)
+        releaseSelection( true );
         pressNode_.clear();
         pressSelection_.clear();
         pressWasSelected_ = false;

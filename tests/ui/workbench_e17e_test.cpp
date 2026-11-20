@@ -523,11 +523,15 @@ TEST_CASE( "E17e tree selection, toggle selection, activated, edited and moved",
     REQUIRE( selected.value( "current" ) == "b1" );
     // A press deselects its node at once; a drag it starts still moves the nodes selected before
     // the press.
+    const auto beforePress = fixture.countOf( "selected" );
     QTest::mousePress( tree->viewport(), Qt::LeftButton, {}, fixture.center( "b2", 1 ) );
     REQUIRE( fixture.behaviour()->selectedNodeIds( 10 ) == QStringList{ "bench" } );
     REQUIRE( fixture.behaviour()->draggedNodes() == QStringList{ "bench", "b2" } );
+    REQUIRE( fixture.countOf( "selected" ) == beforePress ); // held while a drag may start
     QTest::mouseRelease( tree->viewport(), Qt::LeftButton, {}, fixture.center( "b2", 1 ) );
     REQUIRE( fixture.behaviour()->draggedNodes().isEmpty() );
+    REQUIRE( fixture.countOf( "selected" ) == beforePress + 1 ); // no drag: one event
+    REQUIRE( fixture.lastOf( "selected" ).value( "value" ).toArray() == QJsonArray{ "bench" } );
     // activated: a double-click on a cell that is not editable, or Enter. A real double-click
     // starts with a press, which QTest::mouseDClick leaves out for widgets.
     QTest::mouseClick( tree->viewport(), Qt::LeftButton, {}, fixture.center( "b2", 1 ) );
