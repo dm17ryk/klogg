@@ -1,0 +1,333 @@
+{
+    "incoming": [
+        {
+            "id": "initialize",
+            "jsonrpc": "2.0",
+            "result": {
+                "actions": [
+                    {
+                        "capability": "tool",
+                        "id": "summary"
+                    },
+                    {
+                        "capability": "tool",
+                        "id": "wait"
+                    }
+                ],
+                "capabilities": [
+                    "datasource",
+                    "converter",
+                    "tool"
+                ],
+                "configuration": [
+                ],
+                "plugin_id": "org.test.fixture",
+                "protocol_version": 1
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "progress",
+            "params": {
+                "job_id": "<id-1>",
+                "value": 0.5
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "panel/update",
+            "params": {
+                "job_id": "<id-1>",
+                "panel": {
+                    "elements": [
+                        {
+                            "text": "Fixture summary",
+                            "type": "text"
+                        }
+                    ],
+                    "id": "summary",
+                    "title": "Summary"
+                }
+            }
+        },
+        {
+            "id": "<id-1>",
+            "jsonrpc": "2.0",
+            "result": {
+                "ok": true
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/update",
+            "params": {
+                "root": {
+                    "children": [
+                        {
+                            "id": "status",
+                            "text": "ready main",
+                            "type": "label"
+                        },
+                        {
+                            "id": "name",
+                            "kind": "text",
+                            "label": "Name",
+                            "type": "field",
+                            "value": ""
+                        },
+                        {
+                            "choices": [
+                                "a",
+                                "b"
+                            ],
+                            "id": "mode",
+                            "kind": "choice",
+                            "type": "field",
+                            "value": "a"
+                        },
+                        {
+                            "action": "summary",
+                            "id": "run",
+                            "label": "Run",
+                            "type": "button"
+                        },
+                        {
+                            "event": true,
+                            "id": "ping",
+                            "label": "Ping",
+                            "type": "button"
+                        },
+                        {
+                            "columns": [
+                                {
+                                    "editable": true,
+                                    "id": "c",
+                                    "title": "C"
+                                }
+                            ],
+                            "id": "rows",
+                            "rows": [
+                                {
+                                    "cells": [
+                                        "1"
+                                    ],
+                                    "editors": {
+                                        "c": {
+                                            "kind": "text"
+                                        }
+                                    },
+                                    "id": "r1"
+                                },
+                                {
+                                    "cells": [
+                                        "2"
+                                    ],
+                                    "id": "r2"
+                                }
+                            ],
+                            "type": "table"
+                        }
+                    ],
+                    "id": "body",
+                    "type": "column"
+                },
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/update",
+            "params": {
+                "patch": [
+                    {
+                        "id": "status",
+                        "set": {
+                            "text": "pong:abc"
+                        }
+                    }
+                ],
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "ui/message",
+            "params": {
+                "buttons": [
+                    "yes",
+                    "no"
+                ],
+                "default": "no",
+                "icon": "question",
+                "message_id": "ask",
+                "text": "Proceed?",
+                "title": "Fixture"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/update",
+            "params": {
+                "patch": [
+                    {
+                        "id": "status",
+                        "set": {
+                            "text": "answer:ask:yes:user"
+                        }
+                    }
+                ],
+                "view_id": "main"
+            }
+        },
+        {
+            "error": {
+                "code": -32000,
+                "message": "Job cancelled"
+            },
+            "id": "<id-2>",
+            "jsonrpc": "2.0"
+        }
+    ],
+    "outgoing": [
+        {
+            "id": "initialize",
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "config_directory": "<temp>/data/config/org.test.fixture",
+                "configuration": {
+                },
+                "host_features": [
+                    "views",
+                    "view_edit"
+                ],
+                "max_message_bytes": 1048576,
+                "max_pending_bytes": 8388608,
+                "plugin_id": "org.test.fixture",
+                "protocol_version": 1
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "configure",
+            "params": {
+                "configuration": {
+                }
+            }
+        },
+        {
+            "id": "<id-1>",
+            "jsonrpc": "2.0",
+            "method": "invoke",
+            "params": {
+                "action": "summary",
+                "arguments": {
+                },
+                "context": {
+                    "windowId": "w1"
+                },
+                "job_id": "<id-1>"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/opened",
+            "params": {
+                "context": {
+                    "windowId": "w1"
+                },
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/event",
+            "params": {
+                "element_id": "ping",
+                "inputs": {
+                    "name": "abc"
+                },
+                "type": "clicked",
+                "value": null,
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/event",
+            "params": {
+                "column_id": "c",
+                "element_id": "rows",
+                "inputs": {
+                },
+                "previous": "1",
+                "row_id": "r1",
+                "type": "edited",
+                "value": "5",
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/event",
+            "params": {
+                "element_id": "ask",
+                "inputs": {
+                },
+                "type": "clicked",
+                "value": null,
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "ui/message_result",
+            "params": {
+                "button": "yes",
+                "message_id": "ask",
+                "timed_out": false
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "view/closed",
+            "params": {
+                "view_id": "main",
+                "window_id": "w1"
+            }
+        },
+        {
+            "id": "<id-2>",
+            "jsonrpc": "2.0",
+            "method": "invoke",
+            "params": {
+                "action": "wait",
+                "arguments": {
+                },
+                "context": {
+                    "windowId": "w1"
+                },
+                "job_id": "<id-2>"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "cancel",
+            "params": {
+                "job_id": "<id-2>"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "method": "shutdown",
+            "params": {
+            }
+        }
+    ]
+}

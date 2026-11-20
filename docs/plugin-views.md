@@ -142,6 +142,15 @@ Common properties: `id` (unique within the view), `enabled`, `visible`, `tooltip
 - Row `tone` is one of `normal`, `ok`, `warn`, `error`, `muted` or `accent` (blue, `#1565c0`).
 - Text is always plain text, never HTML. This includes tooltips.
 
+Since E17c ([advanced plugin SDK](plugin-sdk-advanced.md), sections 8 and 26), choices may be
+objects with icons, tooltips and disabled entries, with separators and section titles between
+them. Fields gain `indicator`, `style` (inline radio buttons or check boxes), `searchable`,
+`editable` and `completion` (the `field/complete` query), the kinds `multiline`, `secret`,
+`integer`, `slider`, `color`, `date`, `time` and `datetime`, and the validation keys `required`,
+`pattern`, `min`, `max`, `min_length`, `max_length` and `error`. The elements `checkbox`,
+`radio_group` and `check_group` are new, and a button with `requires_valid` waits for valid fields.
+The host announces these as `choices`, `toggles`, `field_kinds` and `validation`.
+
 #### `multichoice` fields
 
 A `multichoice` field is a check-dropdown built from the same `choices` as a `choice` field. Its
@@ -256,6 +265,37 @@ Each view and element gets an object name, `pluginView_<plugin>_<view>` and
 `pluginView_<plugin>_<view>_<element>`. Message boxes get `pluginMessage_<plugin>_<message>`.
 The existing UI automation (`get_ui`, `set_ui`, `activate_ui`, also through MCP) can therefore
 fill fields, press buttons and answer message boxes, as in native windows.
+
+Since E17a, every element also takes `tooltip_provider`, `tooltip_key`, `tooltip_timeout_ms`,
+`accessible_name` and `accessible_description`, table columns take `tooltip`, `tooltip_provider`
+and `tooltip_key`, and rows take `tooltip_provider` and `tooltip_key`
+([advanced plugin SDK](plugin-sdk-advanced.md), sections 9 and 12.4; host side in
+[plugin-sdk.md](plugin-sdk.md)). The tooltip of an element or a table cell is readable through the
+same path as a hover:
+`command --action get_plugin_tooltip --plugin-id <id> --view-id <view> --element-id <element>
+[--row-id <row> --column-id <column>] [--no-cache] [--window-index <n>]` (native MCP:
+`get_plugin_tooltip` with `plugin_id`, `view_id`, `element_id`, `row_id`, `column_id`,
+`no_cache`). It returns `source` (`static`, `cache` or `plugin`), `tooltip`, `html`,
+`staticTooltip` and `latencyMs`.
+
+Since E17b, plugin menus are readable and usable the same way
+([advanced plugin SDK](plugin-sdk-advanced.md), sections 7 and 25):
+`command --action get_plugin_menus --location <plugins|menubar|tab|pane|log> [--plugin-id <id>]
+[--lines 10-20,30] [tab selector]` lists the entries of a location with their state, conditions
+and shortcuts, and `command --action trigger_plugin_menu --plugin-id <id> --menu-id <menu>
+--item-id <entry> [--lines <ranges>] [--checked <true|false>] [tab selector]` picks one as a
+click does (an action runs without its form). Native MCP and Python use the same names
+(`location`, `plugin_id`, `menu_id`, `item_id`, `lines`, `checked`). Menus and their entries
+have the object names `pluginMenu_<plugin>_<menu>[_<item>]` and
+`pluginMenuItem_<plugin>_<menu>_<item>`.
+
+Since E17c, the new controls are standard Qt widgets reached the same way. Inside an element they
+are named `<element>_choice_<n>` (radio buttons and check boxes), `<element>_all` and
+`<element>_none` (the links of a check group), `<element>_search` (the filter line of an inline
+list), `<element>_value` (a slider's value), `<element>_pick` (a color's **Pick…** button) and
+`<element>_error` (the validation message). `set_ui` sets `value` on spin boxes and sliders,
+`date`, `time` and `dateTime` on the date fields and `checked` on check boxes and radio buttons.
+`get_ui` shows a secret field's text as `<redacted>`.
 
 ## 6. Related small host changes
 

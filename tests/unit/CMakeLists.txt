@@ -14,6 +14,9 @@ add_executable(cilogg_tests
     datasetcontracts_test.cpp
     valuecounts_commands_test.cpp
     plugins_test.cpp
+    plugin_sdk_advanced_test.cpp
+    plugin_menus_test.cpp
+    plugin_choices_test.cpp
     plugin_repositories_test.cpp
     plugin_credentials_test.cpp
     plugin_signin_test.cpp
@@ -54,6 +57,7 @@ set_exact_floating_point("${CMAKE_CURRENT_SOURCE_DIR}/datasetcontracts_test.cpp"
 target_link_libraries(cilogg_tests klogg_ui klogg_utils klogg_logging klogg_mcp Catch2 Qt${QT_VERSION_MAJOR}::Test)
 target_include_directories(cilogg_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/app)
 target_compile_definitions(cilogg_tests PRIVATE PLUGIN_FIXTURE_PATH="$<TARGET_FILE:plugin_fixture>"
+    PLUGIN_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden"
     FAKE_GIT_PATH="$<TARGET_FILE:fake_git>")
 target_compile_definitions(cilogg_tests PRIVATE
     PREVIEW_APP_PATH="$<TARGET_FILE:klogg>"

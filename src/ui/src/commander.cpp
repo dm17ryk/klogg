@@ -176,6 +176,12 @@ QString commanderActionToString( CommanderAction action )
         return QStringLiteral( "cancel_plugin_job" );
     case CommanderAction::OpenPluginView:
         return QStringLiteral( "open_plugin_view" );
+    case CommanderAction::GetPluginTooltip:
+        return QStringLiteral( "get_plugin_tooltip" );
+    case CommanderAction::GetPluginMenus:
+        return QStringLiteral( "get_plugin_menus" );
+    case CommanderAction::TriggerPluginMenu:
+        return QStringLiteral( "trigger_plugin_menu" );
     case CommanderAction::SetActionsEnabled:
         return QStringLiteral( "set_actions_enabled" );
     case CommanderAction::SetAutoResponsesEnabled:
@@ -253,6 +259,15 @@ std::optional<CommanderAction> commanderActionFromString( const QString& action 
     if ( normalized == "cancel_plugin_job" ) { return CommanderAction::CancelPluginJob; }
     if ( normalized == "open_plugin_view" ) {
         return CommanderAction::OpenPluginView;
+    }
+    if ( normalized == "get_plugin_tooltip" ) {
+        return CommanderAction::GetPluginTooltip;
+    }
+    if ( normalized == "get_plugin_menus" ) {
+        return CommanderAction::GetPluginMenus;
+    }
+    if ( normalized == "trigger_plugin_menu" ) {
+        return CommanderAction::TriggerPluginMenu;
     }
     if ( normalized == "list_reports" ) { return CommanderAction::ListReports; }
     if ( normalized == "create_report" ) { return CommanderAction::CreateReport; }
@@ -797,6 +812,34 @@ std::optional<CommanderRequest> commanderRequestFromVariantMap( const QVariantMa
     request.pluginJobId = map.value( QStringLiteral( "pluginJobId" ) ).toString();
     request.pluginArguments = map.value( QStringLiteral( "pluginArguments" ) ).toMap();
     request.viewId = map.value( QStringLiteral( "viewId" ) ).toString();
+    if ( request.action == CommanderAction::GetPluginTooltip ) {
+        // Python scripts and scenarios name the tooltip target as request fields (element_id
+        // becomes elementId); the CLI puts it into pluginArguments.
+        for ( const auto* key : { "elementId", "rowId", "columnId", "nodeId", "noCache" } ) {
+            const QString name = QLatin1String( key );
+            if ( map.contains( name ) && !request.pluginArguments.contains( name ) ) {
+                request.pluginArguments.insert( name, map.value( name ) );
+            }
+        }
+    }
+    if ( request.action == CommanderAction::GetPluginMenus
+         || request.action == CommanderAction::TriggerPluginMenu ) {
+        // E17b: the same folding for the menu operations; `lines` may also be a list.
+        for ( const auto* key : { "location", "menuId", "itemId", "lines", "checked" } ) {
+            const QString name = QLatin1String( key );
+            if ( map.contains( name ) && !request.pluginArguments.contains( name ) ) {
+                request.pluginArguments.insert( name, map.value( name ) );
+            }
+        }
+        const auto lines = request.pluginArguments.value( QStringLiteral( "lines" ) );
+        if ( lines.userType() == QMetaType::QVariantList ) {
+            QStringList parts;
+            for ( const auto& part : lines.toList() ) {
+                parts.append( part.toString() );
+            }
+            request.pluginArguments.insert( QStringLiteral( "lines" ), parts.join( ',' ) );
+        }
+    }
     if ( map.contains( QStringLiteral( "source" ) )
          && map.value( QStringLiteral( "source" ) ).userType() != QMetaType::QString ) {
         setError( errorMessage, QStringLiteral( "The commander source must be a string." ) );

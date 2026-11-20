@@ -11,6 +11,8 @@
 
 class AnalysisSourcePicker;
 class MainWindow;
+class PluginMenus;
+struct PluginMenuContext;
 class PluginViewHost;
 class PluginUiController final : public QObject {
     Q_OBJECT
@@ -26,8 +28,25 @@ public:
     }
     // The source the Plugins menu's actions run on (U15b): focused, all, tab:<id> or file:<path>.
     QString actionSource() const;
+    // E17b: this window's plugin menus, context menu sections and shortcuts.
+    PluginMenus* menus() const
+    {
+        return menus_;
+    }
+    cilogg::plugins::PluginManager* manager() const
+    {
+        return manager_;
+    }
 
 private:
+    // Runs an action from a menu entry or a shortcut on the context's tab, with its form when
+    // `interactive` and the action has fields (docs/plugin-sdk-advanced.md 7.5).
+    CommanderResult runMenuAction( const QString& pluginId, const QJsonObject& action,
+                                   const PluginMenuContext& context, const QVariantMap& menu,
+                                   const QJsonObject& arguments, bool interactive );
+    // Adds a plugin's own menus: its submenus under Plugins, or (`menubar`) its menu after
+    // Plugins in the menu bar. Returns whether it added any.
+    bool addOwnMenus( const QVariantMap& plugin, bool menubar );
     // The tabs of the Plugins and Packs window (docs/plugin-repositories.md 3.3).
     enum class PluginsTab { Installed = 0, Available = 1, Repositories = 2 };
     void refreshActions();
@@ -61,4 +80,6 @@ private:
     PluginViewHost* viewHost_ = nullptr;
     AnalysisSourcePicker* sourcePicker_ = nullptr;
     QPointer<QDialog> pluginsWindow_;
+    PluginMenus* menus_ = nullptr;
+    QList<QPointer<QMenu>> ownMenus_; // plugin submenus of Plugins and menu bar menus
 };

@@ -52,6 +52,7 @@
 #include "highlighteredit.h"
 #include "log.h"
 #include "mainwindow.h"
+#include "pluginmenus.h"
 #include "recentfiles.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
@@ -61,6 +62,10 @@
 
 static constexpr int PollIntervalMin = 10;
 static constexpr int PollIntervalMax = 3600000;
+// E17b: plugin rows of the shortcut table, the keys they showed and whether the user set them.
+static constexpr int PluginShortcutRole = Qt::UserRole + 1;
+static constexpr int PluginShortcutShownRole = Qt::UserRole + 2;
+static constexpr int PluginShortcutUserSetRole = Qt::UserRole + 3;
 
 // Constructor
 OptionsDialog::OptionsDialog( QWidget* parent )
@@ -701,8 +706,26 @@ void OptionsDialog::updateConfigFromDialog()
                   ->keySequence();
         actionKeys << primaryKeySequence << secondaryKeySequence;
 
-        auto action
-            = shortcutsTable->item( shortcutRow, 0 )->data( Qt::UserRole ).toString().toStdString();
+        auto* nameItem = shortcutsTable->item( shortcutRow, 0 );
+        auto action = nameItem->data( Qt::UserRole ).toString().toStdString();
+        if ( nameItem->data( PluginShortcutRole ).toBool() ) {
+            // E17b: a plugin shortcut is stored only as the user's own choice, so a plugin update
+            // can change its default (docs/plugin-sdk-advanced.md 7.6).
+            QStringList chosen;
+            for ( const auto& keys : actionKeys ) {
+                if ( !keys.isEmpty() ) {
+                    chosen.append( keys );
+                }
+            }
+            const auto shown = nameItem->data( PluginShortcutShownRole ).toStringList();
+            if ( chosen != shown ) {
+                shortcuts[ action ] = actionKeys;
+            }
+            else if ( !nameItem->data( PluginShortcutUserSetRole ).toBool() ) {
+                shortcuts.erase( action );
+            }
+            continue;
+        }
         shortcuts[ action ] = actionKeys;
     }
     config.setShortcuts( shortcuts );
@@ -807,10 +830,71 @@ void OptionsDialog::buildShortcutsTable( bool useDefaultsOnly )
 
     const auto& config = Configuration::get();
     auto shortcutList = ShortcutAction::defaultShortcutList();
+    const auto configured = config.shortcuts();
     if ( !useDefaultsOnly ) {
-        for ( const auto& [ action, keys ] : config.shortcuts() ) {
+        for ( const auto& [ action, keys ] : configured ) {
+            if ( QString::fromStdString( action ).startsWith( QLatin1String( "plugin/" ) ) ) {
+                continue; // plugin rows below
+            }
             shortcutList[ action ].keySequence = keys;
         }
+    }
+    // E17b: the shortcuts of enabled plugins (docs/plugin-sdk-advanced.md 7.6). A default key that
+    // CILogg uses is not offered (it was refused), so it never blocks the dialog.
+    QSet<QString> hostKeys;
+    for ( const auto& [ action, shortCut ] : shortcutList ) {
+        for ( const auto& keys : shortCut.keySequence ) {
+            hostKeys.insert( QKeySequence( keys ).toString( QKeySequence::PortableText ) );
+        }
+    }
+    struct PluginRow {
+        QString reason;
+        QStringList shown;
+        bool userSet = false;
+    };
+    std::map<std::string, PluginRow> pluginRows;
+    const auto& registry = PluginMenuRegistry::instance();
+    // The user's own choices first; then defaults, each key offered once (as assigned, or with
+    // Restore Defaults in plugin order), never one that CILogg or an earlier row shows.
+    auto taken = hostKeys;
+    for ( size_t index = 0; index < registry.shortcuts().size(); ++index ) {
+        const auto& shortcut = registry.shortcuts()[ index ];
+        const auto chosen = configured.find( shortcut.key.toStdString() );
+        if ( useDefaultsOnly || chosen == configured.end() ) {
+            continue;
+        }
+        PluginRow row;
+        row.userSet = true;
+        for ( const auto& keys : chosen->second ) {
+            if ( !keys.isEmpty() ) {
+                row.shown.append( keys );
+                taken.insert( QKeySequence( keys ).toString( QKeySequence::PortableText ) );
+            }
+        }
+        pluginRows[ shortcut.key.toStdString() ] = row;
+    }
+    for ( size_t index = 0; index < registry.shortcuts().size(); ++index ) {
+        const auto& shortcut = registry.shortcuts()[ index ];
+        const auto action = shortcut.key.toStdString();
+        const bool assigned = index < registry.assignments().size();
+        auto& row = pluginRows[ action ];
+        if ( !row.userSet ) {
+            const auto candidates = !useDefaultsOnly && assigned
+                                        ? registry.assignments()[ index ].keys
+                                        : shortcut.declared;
+            for ( const auto& keys : candidates ) {
+                if ( !taken.contains( keys )
+                     && !cilogg::plugins::reservedShortcuts().contains( keys ) ) {
+                    row.shown.append( keys );
+                    taken.insert( keys );
+                }
+            }
+        }
+        if ( assigned ) {
+            row.reason = registry.assignments()[ index ].reason;
+        }
+        shortcutList[ action ] = { tr( "Plugins: %1: %2" ).arg( shortcut.pluginName, shortcut.title ),
+                                   row.shown };
     }
 
     for ( const auto& [ action, shortCut ] : shortcutList ) {
@@ -820,6 +904,14 @@ void OptionsDialog::buildShortcutsTable( bool useDefaultsOnly )
         auto keyItem = new QTableWidgetItem( shortCut.name );
         keyItem->setFlags( Qt::ItemIsEnabled | Qt::ItemIsSelectable );
         keyItem->setData( Qt::UserRole, QString::fromStdString( action ) );
+        if ( const auto plugin = pluginRows.find( action ); plugin != pluginRows.end() ) {
+            keyItem->setData( PluginShortcutRole, true );
+            keyItem->setData( PluginShortcutShownRole, plugin->second.shown );
+            keyItem->setData( PluginShortcutUserSetRole, plugin->second.userSet );
+            if ( !plugin->second.reason.isEmpty() ) {
+                keyItem->setToolTip( tr( "Refused: %1" ).arg( plugin->second.reason ) );
+            }
+        }
         shortcutsTable->setItem( currentRow, 0, keyItem );
 
         auto primaryKeySequence = new KeySequencePresenter(

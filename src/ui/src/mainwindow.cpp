@@ -939,6 +939,12 @@ CommanderResult MainWindow::executeCommanderRequest( const CommanderRequest& req
         return commanderSearch( request );
     case CommanderAction::OpenPluginView:
         return commanderOpenPluginView( request );
+    case CommanderAction::GetPluginTooltip:
+        return commanderGetPluginTooltip( request );
+    case CommanderAction::GetPluginMenus:
+        return commanderGetPluginMenus( request );
+    case CommanderAction::TriggerPluginMenu:
+        return commanderTriggerPluginMenu( request );
     case CommanderAction::SetFollowMode:
         return commanderSetFollowMode( request );
     case CommanderAction::InvokeAction:
@@ -2040,6 +2046,8 @@ void MainWindow::updateShortcuts()
     setShortcuts( selectOpenFileAction, ShortcutAction::MainWindowSelectOpenFile );
     setShortcuts( goToLineAction, ShortcutAction::LogViewJumpToLine );
     setShortcuts( optionsAction, ShortcutAction::MainWindowPreference );
+    // E17b: plugin shortcuts are checked against the shortcuts just set.
+    updatePluginShortcuts();
 }
 
 void MainWindow::loadIcons()
