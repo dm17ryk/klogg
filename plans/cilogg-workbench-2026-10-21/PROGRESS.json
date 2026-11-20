@@ -2328,7 +2328,8 @@
         "2026-11-20: the Codex review bot of #136 is over its usage limit, so a local Codex CLI review (gpt-5.6-sol, high) stands in, as Dmitry decided; its 4 P2 and 3 P3 findings are fixed with tests (commit b978152f).",
         "2026-11-20: the local Codex review of #136 head 1fa1be5b (round 5) found 2 P1 and 3 P2 issues; they are fixed with tests (commit a9c28445).",
         "2026-11-20: the local Codex review of #136 head c7b57ac4 (round 6) found 3 P2 issues; they are fixed with tests (commit 5241abed).",
-        "2026-11-20: the local Codex review of #136 head a8601f8e (round 7) found 5 P2 issues; they are fixed with tests (commit 199db5ee)."
+        "2026-11-20: the local Codex review of #136 head a8601f8e (round 7) found 5 P2 issues; they are fixed with tests (commit 199db5ee).",
+        "2026-11-20: the local Codex review of #136 head 209922fc (round 8) found 1 P1 and 2 P2 issues; they are fixed with tests (commit 1165d4f6)."
       ],
       "limitations": [
         "Decision D17 accepted on 2026-11-19 with every recommended answer of the design's section 23 and a separate yes to question 13: E17i (host commands from plugins) is built as the last slice. Until it lands, plugins never send requests to the host (D11, D14).",

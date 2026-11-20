@@ -959,6 +959,20 @@
         "P2 a press on a selected row sent a transient deselection: held until release or drag"
       ],
       "allFixedWithTests": true
+    },
+    "localCodexReview136Round8": {
+      "date": "2026-11-20",
+      "pullRequest": "https://github.com/dm17ryk/klogg/pull/136",
+      "reason": "the Codex review bot is over its usage limit; Dmitry: run a local Codex review",
+      "reviewer": "codex exec -m gpt-5.6-sol, high reasoning, read-only",
+      "commit": "1165d4f66688f4c747ec850743ba95b909f70dd3",
+      "reviewedHead": "209922fcc7341f3ca69c52bc48d23203c176e2c0",
+      "findings": [
+        "P1 dynamic menu answers kept without cache_ms, never expired, bounded by count only: kept only as a native bar's last answer, dropped on lookup when expired, 16 MiB budget",
+        "P2 a drag used selection ranges that rows changed under: row changes call the press off",
+        "P2 header menu entries captured column indexes: they resolve the column id when picked"
+      ],
+      "allFixedWithTests": true
     }
   }
 }
