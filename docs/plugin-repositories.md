@@ -820,7 +820,12 @@ would remove it), and a store that is on disk but does not open now (another pro
 file) stops the operation instead of being taken as missing, while the pack keeps loading its
 content folder (never the installed folder, which lacks the edits). A merge's `revision` covers
 the edits and the incoming package (its files and manifest), so choices are not applied to
-another package either. A copy into the user's previews (Copy to My Previews, Keep Both after an
+another package either, and a stale revision installs nothing, also when that package would
+merge cleanly. A whole-item conflict carries only the base (its sides are in `items` once), a
+`take` resolution works for any item, and the merge window resolves a preview or block too
+large to show as a whole side instead of refusing it. The previews document as written (one
+member per line) must stay within 1 MiB: a package, merge result or edit that would pass it is
+refused, as a minified document just under the limit grows when it is written again. A copy into the user's previews (Copy to My Previews, Keep Both after an
 update) that would take them and the enabled packs past the preview limits is refused before it
 is saved, as the service would otherwise drop the packs' previews. A previews document over the
 preview limits (128 previews, 4,096 blocks), which could never be enabled, is refused at

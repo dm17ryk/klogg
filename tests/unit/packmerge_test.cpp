@@ -964,14 +964,18 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
     const auto whole = conflicts.first().toMap();
     CHECK( whole[ "path" ] == second );
     CHECK( whole[ "field" ].toString().isEmpty() );
-    CHECK( whole[ "mine" ].toString().contains( "\"mine\"" ) );
-    CHECK( whole[ "theirs" ].toString().contains( "\"theirs\"" ) );
+    // The item's sides are carried once, in `items`; the conflict has the base.
+    CHECK_FALSE( whole.contains( "mine" ) );
+    CHECK( whole.contains( "base" ) );
+    const auto sides = result[ "items" ].toMap()[ second ].toMap();
+    CHECK( sides[ "mine" ].toString().contains( "\"mine\"" ) );
+    CHECK( sides[ "theirs" ].toString().contains( "\"theirs\"" ) );
     const auto revision = result[ "revision" ].toString();
     REQUIRE( !revision.isEmpty() );
     const QVariantList takeTheirs{ QVariantMap{
         { "path", second },
         { "field", QString{} },
-        { "value", QJsonDocument::fromJson( whole[ "theirs" ].toString().toUtf8() ).object().toVariantMap() } } };
+        { "value", QJsonDocument::fromJson( sides[ "theirs" ].toString().toUtf8() ).object().toVariantMap() } } };
 
     // Edited again after the merge was shown: the choices are not applied, the merge is asked
     // for again with the new revision.
@@ -997,16 +1001,46 @@ TEST_CASE( "Many conflicting fields are one conflict, and stale choices are not 
     REQUIRE( otherPackage[ "state" ] == "failed" );
     CHECK( otherPackage[ "error" ].toString().contains( "changed after the merge was shown" ) );
     CHECK( readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
+    // Also when the other package would merge without a conflict (it has your "newer" too):
+    // nothing is installed on choices made for another package.
+    const auto v4 = writePackage( root.filePath( "v4" ), "1.2.0", previewsWith( "newer" ), "-- a\n" );
+    const auto clean = finished( manager, manager.manage( "install", {},
+                                                           { { "path", v4 },
+                                                             { "resolutions", takeTheirs },
+                                                             { "revision", current } } ) );
+    REQUIRE( clean[ "state" ] == "failed" );
+    CHECK( clean[ "error" ].toString().contains( "nothing was installed" ) );
+    CHECK_FALSE( clean[ "result" ].toMap()[ "needsMerge" ].toBool() );
+    CHECK( manager.plugins().first().toMap()[ "version" ] == "1.0.0" );
 
-    // With the current revision the whole-item choice settles all 40 fields.
-    const auto applied = finished( manager, manager.manage( "install", {},
-                                                             { { "path", v2 },
-                                                               { "resolutions", takeTheirs },
-                                                               { "revision", current } } ) );
+    // With the current revision a whole side settles all 40 fields too (`take`, as for an item
+    // too large to show).
+    const auto applied = finished(
+        manager, manager.manage( "install", {},
+                                 { { "path", v2 },
+                                   { "resolutions",
+                                     QVariantList{ QVariantMap{ { "path", second }, { "take", "theirs" } } } },
+                                   { "revision", current } } ) );
     INFO( applied[ "error" ].toString().toStdString() );
     REQUIRE( applied[ "state" ] == "completed" );
     CHECK( readFile( content + "/previews.json" ).contains( "\"theirs\"" ) );
     CHECK( !readFile( content + "/previews.json" ).contains( "\"newer\"" ) );
+
+    // The previews document as written (one member per line) stays within 1 MiB: two items of
+    // 600 KB and 500 KB each fit alone, together they are refused.
+    const auto padded = [ &manager, &id ]( const QString& path, int size ) {
+        auto item = QJsonDocument::fromJson( manager.manage( "pack_read", id, { { "path", path } } )
+                                                 .payload[ "content" ]
+                                                 .toString()
+                                                 .toUtf8() )
+                        .object();
+        item[ "padding" ] = QString( size, 'x' );
+        return manager.manage( "pack_edit", id,
+                               { { "path", path },
+                                 { "content", QString::fromUtf8( QJsonDocument( item ).toJson() ) } } );
+    };
+    REQUIRE( padded( "previews/%46irst%20%46rame.json", 600 * 1000 ).ok() );
+    CHECK( padded( second, 500 * 1000 ).error.contains( "larger than 1 MiB" ) );
 }
 
 TEST_CASE( "An enabled pack's update and reset are checked as they would load",

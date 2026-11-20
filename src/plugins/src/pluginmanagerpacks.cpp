@@ -43,6 +43,17 @@ bool utf8Text( const QByteArray& bytes )
 // with many large conflicting files must not keep hundreds of MiB in them.
 constexpr qsizetype MaxConflictTextBytes = 4 * 1024 * 1024;
 
+// The previews document as the store writes it (one member per line) must stay within the 1 MiB
+// of a pack file, or the content folder would not load: a minified document just under the limit
+// grows when it is written again. Empty when it fits.
+QString previewsTooLarge( const PackFiles& files )
+{
+    return packcanonical::toPreviews( files ).size() > MaxPackFileBytes
+               ? QStringLiteral( "The pack's previews are larger than 1 MiB as CILogg writes them "
+                                 "(one member per line)." )
+               : QString{};
+}
+
 // A Lua or Python file the manifest lists, or the preview order: merged as text.
 bool textKind( const QString& kind )
 {
@@ -87,11 +98,9 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
     const auto cost = [ & ]( const QString& path ) {
         qsizetype bytes = mine.value( path ).size() + theirs.value( path ).size();
         const auto& list = byItem.value( path );
-        if ( textKind( list.first()->kind ) ) {
+        // A file, or an item listed whole: its sides are in `items` once, its conflict has the base.
+        if ( textKind( list.first()->kind ) || whole.contains( path ) ) {
             return bytes + base.value( path ).size();
-        }
-        if ( whole.contains( path ) ) {
-            return 2 * bytes + base.value( path ).size();
         }
         for ( const auto* conflict : list ) {
             bytes += conflict->base.size() + conflict->mine.size() + conflict->theirs.size();
@@ -131,9 +140,7 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
                               { "item", list.first()->item },
                               { "field", QString{} } };
             if ( shown.contains( path ) ) {
-                info.insert( "base", QString::fromUtf8( base.value( path ) ) );
-                info.insert( "mine", QString::fromUtf8( mine.value( path ) ) );
-                info.insert( "theirs", QString::fromUtf8( theirs.value( path ) ) );
+                info.insert( "base", QString::fromUtf8( base.value( path ) ) ); // sides: `items`
             }
             conflicts->append( info );
             continue;
@@ -155,10 +162,11 @@ void conflictPayload( const QVector<PackConflict>& found, const PackFiles& base,
     }
 }
 
-// A resolution chosen in the merge window, or given by automation: {path, field, value} or
-// {path, field, remove: true} for a structured item, {path, text} or {path, take} for a file or
-// the preview order. Only items of the pack (`known`: installed, edited or new version) in their
-// canonical spelling can be resolved. Returns false when it cannot be applied.
+// A resolution chosen in the merge window, or given by automation: {path, take} (a whole side)
+// for any item, {path, field, value} or {path, field, remove: true} for a structured item, and
+// {path, text} for a file or the preview order. Only items of the pack (`known`: installed,
+// edited or new version) in their canonical spelling can be resolved. Returns false when it
+// cannot be applied.
 bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QSet<QString>& known,
                       const PackFiles& mine, const PackFiles& theirs )
 {
@@ -168,19 +176,20 @@ bool applyResolution( PackFiles* merged, const QVariantMap& resolution, const QS
         return false;
     }
     const bool remove = resolution.value( "remove" ).toBool();
-    if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" ) ) {
-        // A whole side, byte for byte (any encoding).
-        const auto take = resolution.value( "take" ).toString();
-        if ( take == QLatin1String( "mine" ) || take == QLatin1String( "theirs" ) ) {
-            const auto& side = take == QLatin1String( "mine" ) ? mine : theirs;
-            if ( side.contains( path ) ) {
-                merged->insert( path, side.value( path ) );
-            }
-            else {
-                merged->remove( path );
-            }
-            return true;
+    // A whole side, byte for byte (any encoding): a file, the preview order, or a preview or
+    // block as a whole (one too large to show its fields in the merge window).
+    const auto take = resolution.value( "take" ).toString();
+    if ( take == QLatin1String( "mine" ) || take == QLatin1String( "theirs" ) ) {
+        const auto& side = take == QLatin1String( "mine" ) ? mine : theirs;
+        if ( side.contains( path ) ) {
+            merged->insert( path, side.value( path ) );
         }
+        else {
+            merged->remove( path );
+        }
+        return true;
+    }
+    if ( kind == QLatin1String( "file" ) || kind == QLatin1String( "order" ) ) {
         // The new version's manifest lists the files it has (followManifest puts a listed one
         // back) and the preview order is edited, never deleted: a removal could not be honoured.
         if ( remove || !resolution.contains( "text" ) ) {
@@ -326,6 +335,9 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
     QString error;
     *shipped = packcanonical::fromPackFolder( staged.manifest.json, staged.manifest.directory,
                                               &error );
+    if ( error.isEmpty() ) {
+        error = previewsTooLarge( *shipped );
+    }
     if ( !error.isEmpty() ) {
         return error;
     }
@@ -445,6 +457,9 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                 .arg( packcanonical::itemOf( it.key() ).left( 128 ) );
         }
     }
+    if ( const auto tooLarge = previewsTooLarge( plan.merged ); !tooLarge.isEmpty() ) {
+        return tooLarge;
+    }
     // Each conflicting item whole too, for the merge window (Keep Both, the text merge). No window
     // opens for an automatic update (its notice runs the update again), so it keeps no texts.
     QVariantList conflicts;
@@ -454,6 +469,15 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
                      &items );
     ( *result )[ "conflicts" ] = conflicts;
     ( *result )[ "items" ] = items;
+    // Choices made for other edits or another package are not applied, and that update does not
+    // go ahead on its own either, even when it would merge without them (nor would the merge's
+    // Keep Both): it is asked for again, with the merge when there are conflicts.
+    if ( stale ) {
+        ( *result )[ "needsMerge" ] = !plan.conflicts.isEmpty();
+        return QStringLiteral( "The pack's edits or the new version changed after the merge was "
+                               "shown, so its choices were not applied and nothing was installed. "
+                               "Run the update again." );
+    }
     if ( strategy == MergeStrategy::Fail && !open.isEmpty() ) {
         QStringList names;
         for ( const auto& conflict : open ) {
@@ -462,17 +486,12 @@ QString PluginManager::preparePackInstall( const StagedPlugin& staged, const QVa
             }
         }
         ( *result )[ "needsMerge" ] = true;
-        const auto again = stale ? QStringLiteral( "The pack's edits or the new version changed after "
-                                                   "the merge was shown, so its choices were not "
-                                                   "applied. " )
-                                 : QString{};
-        return again
-               + QStringLiteral( "The new version changes %1 that you edited (%2). Merge it in the "
-                                 "Plugins window, or update with the strategy keep_mine or "
-                                 "take_theirs." )
-                     .arg( open.size() == 1 ? QStringLiteral( "an item" )
-                                            : QStringLiteral( "%1 places" ).arg( open.size() ),
-                           names.join( ", " ) );
+        return QStringLiteral( "The new version changes %1 that you edited (%2). Merge it in the "
+                               "Plugins window, or update with the strategy keep_mine or "
+                               "take_theirs." )
+            .arg( open.size() == 1 ? QStringLiteral( "an item" )
+                                   : QStringLiteral( "%1 places" ).arg( open.size() ),
+                  names.join( ", " ) );
     }
     *merged = plan.merged;
     return {};
@@ -679,15 +698,20 @@ Result PluginManager::managePack( const QString& operation, const QString& id,
                 bytes = packcanonical::itemBytes( document.object() );
             }
         }
+        auto candidate = files;
+        if ( bytes ) {
+            candidate.insert( path, *bytes );
+        }
+        else {
+            candidate.remove( path );
+        }
+        // The content folder must load afterwards: the previews document as written stays within
+        // 1 MiB.
+        if ( const auto tooLarge = previewsTooLarge( candidate ); !tooLarge.isEmpty() ) {
+            return { tooLarge, {} };
+        }
         // An enabled pack loads the edit at once: it must pass the same check as enabling it.
         if ( enabled ) {
-            auto candidate = files;
-            if ( bytes ) {
-                candidate.insert( path, *bytes );
-            }
-            else {
-                candidate.remove( path );
-            }
             if ( const auto refusal = checkPackFiles( id, candidate, manifest.json );
                  !refusal.isEmpty() ) {
                 return { refusal, {} };

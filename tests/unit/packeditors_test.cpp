@@ -319,6 +319,42 @@ TEST_CASE( "The merge window resolves fields and files before anything changes",
                == QVariantMap{ { "path", packcanonical::filePath( "lua/a.lua" ) },
                                { "take", "mine" } } );
     }
+    SECTION( "a preview too large to show is kept or taken whole" )
+    {
+        auto job = conflictJob();
+        auto result = job[ "result" ].toMap();
+        auto items = result[ "items" ].toMap();
+        auto preview = items[ SecondPath ].toMap();
+        preview.remove( "mine" );
+        preview.remove( "theirs" );
+        preview[ "omitted" ] = true;
+        items[ SecondPath ] = preview;
+        result[ "items" ] = items;
+        auto conflicts = result[ "conflicts" ].toList();
+        auto field = conflicts[ 0 ].toMap();
+        for ( const auto* text : { "base", "mine", "theirs" } ) {
+            field.remove( text );
+        }
+        conflicts[ 0 ] = field;
+        result[ "conflicts" ] = conflicts;
+        job[ "result" ] = result;
+        QString shown;
+        whenOpen( "packMergeDialog", [ &shown ]( QWidget* dialog ) {
+            auto* tree = dialog->findChild<QTreeWidget*>( "packMergeTree" );
+            REQUIRE( tree );
+            auto* row = tree->topLevelItem( 0 )->child( 0 );
+            shown = row->text( 2 );
+            tree->setCurrentItem( row );
+            buttonIn( dialog, "packMergeTakeTheirs" )->click();
+            CHECK( row->text( 4 ) == "Take Theirs" );
+            buttonIn( dialog, "packMergeWholeMine" )->click();
+            buttonIn( dialog, "packMergeApply" )->click();
+        } );
+        REQUIRE( pluginsui::openPackMerge( nullptr, "Example pack", job, apply ) );
+        CHECK( shown == "(too large to show)" );
+        REQUIRE( applied.size() == 2 );
+        CHECK( applied.at( 1 ).toMap() == QVariantMap{ { "path", SecondPath }, { "take", "theirs" } } );
+    }
     SECTION( "a field choice takes a preview out of Keep Both" )
     {
         auto job = conflictJob();

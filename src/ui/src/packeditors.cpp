@@ -635,19 +635,6 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     const auto result = job.value( "result" ).toMap();
     const auto conflicts = result.value( "conflicts" ).toList();
     const auto items = result.value( "items" ).toMap();
-    // An interactive update's job always carries the texts of previews and blocks (a previews
-    // document is at most 1 MiB a side); without them a field could only be chosen blind.
-    for ( const auto& value : conflicts ) {
-        const auto conflict = value.toMap();
-        const auto kind = conflict.value( "kind" ).toString();
-        if ( kind != "file" && kind != "order"
-             && items.value( conflict.value( "path" ).toString() ).toMap().value( "omitted" ).toBool() ) {
-            QMessageBox::warning( parent, tr( "Merge Pack Update - %1" ).arg( packName ),
-                                  tr( "The items this update changes are too large to merge here. "
-                                      "Update the pack with the strategy keep_mine or take_theirs." ) );
-            return false;
-        }
-    }
     QDialog dialog( parent );
     dialog.setObjectName( "packMergeDialog" );
     dialog.setWindowTitle( tr( "Merge Pack Update - %1" ).arg( packName ) );
@@ -688,7 +675,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     const auto setChoice = [ & ]( QTreeWidgetItem* row, const QString& choice, const QString& value ) {
         row->setData( 0, ChoiceRole, choice );
         row->setData( 0, ValueRole, value );
-        row->setText( 4, choice == "both" ? tr( "Keep Both" ) : display( value ) );
+        // An item too large to show is kept or taken as a whole: the choice is the result.
+        const bool omitted = row->data( 0, ConflictRole ).toMap().value( "omitted" ).toBool();
+        row->setText( 4, choice == "both"     ? tr( "Keep Both" )
+                         : !omitted           ? display( value )
+                         : choice == "theirs" ? tr( "Take Theirs" )
+                                              : tr( "Keep Mine" ) );
     };
     QMap<QString, QTreeWidgetItem*> parents;
     // A Lua or Python file the manifest lists, or the preview order: resolved to a text, never
@@ -811,7 +803,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             tabs->addTab( page, conflict.value( "item" ).toString() );
             continue;
         }
+        const auto whole = items.value( path ).toMap();
+        const bool omitted = whole.value( "omitted" ).toBool();
         auto*& parentRow = parents[ path ];
+        if ( omitted && parentRow ) {
+            continue; // one row for an item too large to show
+        }
         if ( !parentRow ) {
             parentRow = new QTreeWidgetItem( tree, { QStringLiteral( "%1 %2" ).arg(
                                                          kind == "preview" ? tr( "Preview" ) : tr( "Block" ),
@@ -819,14 +816,29 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
             parentRow->setData( 0, ConflictRole, QVariantMap{ { "path", path }, { "kind", kind } } );
             parentRow->setExpanded( true );
         }
+        auto rowConflict = conflict;
+        if ( omitted ) {
+            // Too large to carry in the job: kept or taken as a whole (`take`).
+            rowConflict = QVariantMap{ { "path", path },
+                                       { "kind", kind },
+                                       { "item", conflict.value( "item" ) },
+                                       { "field", QString{} },
+                                       { "omitted", true } };
+        }
+        else if ( conflict.value( "field" ).toString().isEmpty() && !conflict.contains( "mine" ) ) {
+            // An item listed whole: its sides are in the job's items, once.
+            rowConflict[ "mine" ] = whole.value( "mine" );
+            rowConflict[ "theirs" ] = whole.value( "theirs" );
+        }
         auto* row = new QTreeWidgetItem( parentRow );
-        const auto field = conflict.value( "field" ).toString();
+        const auto field = rowConflict.value( "field" ).toString();
+        const auto hidden = tr( "(too large to show)" );
         row->setText( 0, field.isEmpty() ? tr( "(whole item)" ) : field );
-        row->setText( 1, display( conflict.value( "base" ).toString() ) );
-        row->setText( 2, display( conflict.value( "mine" ).toString() ) );
-        row->setText( 3, display( conflict.value( "theirs" ).toString() ) );
-        row->setData( 0, ConflictRole, conflict );
-        setChoice( row, "mine", conflict.value( "mine" ).toString() );
+        row->setText( 1, omitted ? hidden : display( rowConflict.value( "base" ).toString() ) );
+        row->setText( 2, omitted ? hidden : display( rowConflict.value( "mine" ).toString() ) );
+        row->setText( 3, omitted ? hidden : display( rowConflict.value( "theirs" ).toString() ) );
+        row->setData( 0, ConflictRole, rowConflict );
+        setChoice( row, "mine", rowConflict.value( "mine" ).toString() );
     }
     if ( tree->topLevelItemCount() > 0 ) {
         tabs->insertTab( 0, itemsPage, tr( "Items" ) );
@@ -886,6 +898,12 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
     QObject::connect( editValue, &QPushButton::clicked, &dialog, [ & ] {
         auto* row = tree->currentItem();
         if ( !row || !row->parent() ) {
+            return;
+        }
+        if ( row->data( 0, ConflictRole ).toMap().value( "omitted" ).toBool() ) {
+            QMessageBox::information( &dialog, tr( "Edit Result" ),
+                                      tr( "This item is too large to edit here: keep yours or take "
+                                          "the new version as a whole." ) );
             return;
         }
         bool ok = false;
@@ -972,26 +990,27 @@ bool openPackMerge( QWidget* parent, const QString& packName, const QVariantMap&
                 both = parentRow->child( child )->data( 0, ChoiceRole ).toString() == QLatin1String( "both" );
             }
             if ( both ) {
-                // The pack item becomes the new version as a whole; yours is copied first.
-                const auto whole = items.value( path ).toMap();
+                // The pack item becomes the new version as a whole, byte for byte (also one too
+                // large to show); yours is copied once the update is installed.
                 keepBothPreviews.append( parentRow->child( 0 )
                                              ->data( 0, ConflictRole )
                                              .toMap()
                                              .value( "item" )
                                              .toString() );
-                resolutions.append(
-                    whole.value( "inTheirs" ).toBool()
-                        ? QVariantMap{ { "path", path },
-                                       { "field", QString{} },
-                                       { "value", QJsonDocument::fromJson(
-                                                      whole.value( "theirs" ).toString().toUtf8() )
-                                                      .object()
-                                                      .toVariantMap() } }
-                        : QVariantMap{ { "path", path }, { "field", QString{} }, { "remove", true } } );
+                resolutions.append( QVariantMap{ { "path", path }, { "take", "theirs" } } );
                 continue;
             }
             for ( int child = 0; child < parentRow->childCount(); ++child ) {
                 auto* row = parentRow->child( child );
+                if ( row->data( 0, ConflictRole ).toMap().value( "omitted" ).toBool() ) {
+                    // Too large to show: a whole side, as chosen.
+                    resolutions.append( QVariantMap{
+                        { "path", path },
+                        { "take", row->data( 0, ChoiceRole ).toString() == QLatin1String( "theirs" )
+                                      ? QStringLiteral( "theirs" )
+                                      : QStringLiteral( "mine" ) } } );
+                    continue;
+                }
                 const auto value = row->data( 0, ValueRole ).toString();
                 QVariantMap resolution{ { "path", path },
                                         { "field", row->data( 0, ConflictRole ).toMap().value( "field" ) } };

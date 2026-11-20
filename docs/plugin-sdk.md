@@ -771,10 +771,10 @@ changed differently, or deleted on one side and changed on the other, is a confl
 | `pack_reset` | optional `path`, optional `commit` (from `pack_history`) | restores the item (or, within the installed version, the whole pack) as in `commit`, or as shipped, as a new commit; for an enabled pack only content that passes the pack check (like `pack_edit`) |
 
 `install` and `update` of a pack take `strategy` (`fail`, the default; `keep_mine`;
-`take_theirs`) and `resolutions`: `{path, field, value}` or `{path, field, remove: true}` for a
-preview or block field (an empty `field` replaces the whole item), and `{path, text}` or
-`{path, take: "mine"|"theirs"}` (a whole side, byte for byte) for a file or the preview order,
-which are never removed (the new manifest lists the files). A file that is not UTF-8 text is
+`take_theirs`) and `resolutions`: `{path, take: "mine"|"theirs"}` (a whole side, byte for
+byte) for any item, `{path, field, value}` or `{path, field, remove: true}` for a preview or
+block field (an empty `field` replaces the whole item), and `{path, text}` for a file or the
+preview order, which are never removed (the new manifest lists the files). A file that is not UTF-8 text is
 resolved with `take` only, and `pack_read` refuses it (editing it as text would change its
 bytes). With conflicts left open the job fails with `needsMerge: true`,
 `conflicts` (`path`, `kind`, `item`, `field`, `base`, `mine`, `theirs`; field values as JSON
@@ -786,8 +786,10 @@ An item with more than 32 conflicting fields (or any item once 1,024 conflicts a
 listed as one whole-item conflict (`field` ""), settled by a whole-item resolution. The result
 also has `revision` (the pack's edits and the new version the conflicts are for):
 `resolutions` need it back (they are refused without it), and if the pack was edited since, or
-the package is another one (a local folder changed meanwhile), they are not applied and the
-update fails with `needsMerge` again. Resolutions
+the package is another one (a local folder changed meanwhile), they are not applied and nothing
+is installed (with `needsMerge` again when there are conflicts). The previews document as CILogg
+writes it (one member per line) must stay within 1 MiB: a package, merge or edit that would pass
+it is refused. Resolutions
 name only items of the pack in the spelling `pack_files` lists, keep each item's `name`, and stay
 within 1 MiB. The files of a merge result are exactly those the new manifest lists (edited files
 it dropped are named in the job result's `droppedEdits` and `warning`; their edits stay in the
