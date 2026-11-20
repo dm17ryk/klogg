@@ -1382,6 +1382,9 @@ void PluginView::emitSelection( const QString& id )
         const auto current = node->behaviour->currentRowId();
         extra.insert( "current", current.isEmpty() ? QJsonValue() : QJsonValue( current ) );
     }
+    if ( node->behaviour ) {
+        node->behaviour->selectionReported(); // a report waiting for a patch to end would repeat it
+    }
     emitEvent( id, "selected", ids, extra );
 }
 
@@ -1814,9 +1817,9 @@ void PluginView::applyTableOperation( Node& node, const QJsonObject& entry )
     }
     // The scroll range is only updated after layout: restore now and once more when queued.
     table->verticalScrollBar()->setValue( scroll );
-    QTimer::singleShot( 0, table, [ table = QPointer<QTableView>( table ), scroll ] {
-        if ( table ) {
-            table->verticalScrollBar()->setValue( scroll );
+    QTimer::singleShot( 0, table, [ view = QPointer<QTableView>( table ), scroll ] {
+        if ( view ) {
+            view->verticalScrollBar()->setValue( scroll );
         }
     } );
     // The plugin removed selected rows: tell it what is still selected, unless the same entry sets

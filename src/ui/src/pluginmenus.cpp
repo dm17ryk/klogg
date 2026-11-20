@@ -34,34 +34,9 @@ QString menuKey( std::initializer_list<QString> parts )
     return key;
 }
 
-// A list of ids, each length-prefixed as well: no separator can make two lists equal.
-QString listKey( const QStringList& ids )
-{
-    QString key = QString::number( ids.size() ) + QLatin1Char( ';' );
-    for ( const auto& id : ids ) {
-        key += QString::number( id.size() ) + QLatin1Char( ':' ) + id;
-    }
-    return key;
-}
-
 qint64 nowMs()
 {
     return QDateTime::currentMSecsSinceEpoch();
-}
-
-// The cache key of a dynamic submenu's answer (cache_ms). An element menu's answer is about its
-// target: another window, view, element, row, column or selection asks the plugin again.
-QString populateKey( const QString& pluginId, const QString& menuId, const QString& itemId,
-                     const PluginMenuContext& context )
-{
-    auto key = menuKey( { pluginId, menuId, itemId, context.location, context.tabId } );
-    if ( context.location == QLatin1String( "element" ) ) {
-        // The count too: ids are bounded, so two selections can share them but not their size.
-        key += menuKey( { context.windowId, context.viewId, context.elementId, context.rowId,
-                          context.columnId, listKey( context.selectedIds ),
-                          QString::number( context.selectedLines ) } );
-    }
-    return key;
 }
 
 void collectEntries( const QJsonArray& items, QList<QJsonObject>* entries )
@@ -470,6 +445,17 @@ QString PluginMenus::menuObjectName( const QString& pluginId, const QString& men
 {
     return itemId.isEmpty() ? QStringLiteral( "pluginMenu_%1_%2" ).arg( pluginId, menuId )
                             : QStringLiteral( "pluginMenu_%1_%2_%3" ).arg( pluginId, menuId, itemId );
+}
+
+QString PluginMenus::populateKey( const QString& pluginId, const QString& menuId,
+                                  const QString& itemId, const PluginMenuContext& context )
+{
+    // Everything menu/populate tells the plugin about where the menu opened (window, tab, pane,
+    // log view, line, selected ranges and their count, element, row, column, selected ids) as
+    // compact JSON, whose object keys are sorted: equal only for the same request.
+    const auto request = QString::fromUtf8(
+        QJsonDocument( context.toJson( false ) ).toJson( QJsonDocument::Compact ) );
+    return menuKey( { pluginId, menuId, itemId, request } );
 }
 
 std::optional<PluginMenus::Source> PluginMenus::source( const QString& pluginId ) const

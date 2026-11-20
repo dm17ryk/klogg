@@ -511,7 +511,9 @@ the entry, so an older host never shows an entry out of place.
   `{menu_id, item_id, location, window_id, context}` and replaces the entry with the answer while
   the menu is still open. On a timeout or an error it shows a disabled "Not available". The answer
   `{"items": [...], "cache_ms": 0}` uses the entry schema without shortcuts; `cache_ms` (at most 60
-  seconds) lets the host reuse it.
+  seconds) lets the host reuse it where the plugin would get the same request: the same entry and
+  the same `context` (window, tab, pane, log view, line, selected ranges and their count, element,
+  row, column and selected ids).
 - Opening a dynamic submenu of a stopped plugin starts it, as clicking one of its actions does
   (question 22): the entry shows "Loading…" until the plugin is ready and the answer arrives, at
   most the populate timeout after the plugin is ready and 10 seconds in all. A plugin whose
@@ -1357,8 +1359,11 @@ choice open, E17b decided as follows.
   by the user or by `menu/update`, last for the session. A picked check box or radio entry changes
   its mark only when the command was sent or the action started (not after a refusal or a
   cancelled form). Disabling or removing a plugin forgets its menu state.
-- **Dynamic submenus.** An answer is cached per entry, location and tab for its `cache_ms`. A
-  `null` answer is an empty list and shows "No entries"; an error, a timeout or an invalid answer
+- **Dynamic submenus.** An answer is cached for its `cache_ms` per entry and menu/populate
+  `context` (section 7.4), so a menu opened on another line, selection, row or window asks again.
+  An answer without `cache_ms` is kept only as the last answer of the `plugins` and `menubar`
+  locations; expired answers go, and all answers stay within 16 MiB, the oldest first. A `null`
+  answer is an empty list and shows "No entries"; an error, a timeout or an invalid answer
   shows "Not available". There is one `menu/populate` at a time per window (the exclusive key of
   section 5.2). An entry of an answer sends its own id as `item_id`; its object name appends that
   id to the dynamic entry's.

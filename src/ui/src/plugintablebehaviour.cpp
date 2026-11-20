@@ -92,14 +92,14 @@ PluginTableBehaviour::PluginTableBehaviour( QTableView* table, pluginview::Plugi
         requestCheck( rowId, checked );
     };
     // A press that may start a drag keeps the selection as row ranges: when the rows change
-    // before the drag starts (a patch, a sort), the ranges no longer name the same rows, so the
-    // drag is called off.
+    // before the drag starts (a patch, a sort), the ranges would no longer name the same rows, so
+    // the drag is called off before the change, while they still do.
     const auto cancel = [ this ] { cancelPress(); };
-    connect( proxy_, &QAbstractItemModel::rowsInserted, this, cancel );
-    connect( proxy_, &QAbstractItemModel::rowsRemoved, this, cancel );
-    connect( proxy_, &QAbstractItemModel::rowsMoved, this, cancel );
-    connect( proxy_, &QAbstractItemModel::modelReset, this, cancel );
-    connect( proxy_, &QAbstractItemModel::layoutChanged, this, cancel );
+    connect( proxy_, &QAbstractItemModel::rowsAboutToBeInserted, this, cancel );
+    connect( proxy_, &QAbstractItemModel::rowsAboutToBeRemoved, this, cancel );
+    connect( proxy_, &QAbstractItemModel::rowsAboutToBeMoved, this, cancel );
+    connect( proxy_, &QAbstractItemModel::modelAboutToBeReset, this, cancel );
+    connect( proxy_, &QAbstractItemModel::layoutAboutToBeChanged, this, cancel );
     table->viewport()->installEventFilter( this );
     table->installEventFilter( this );
     auto* header = table->horizontalHeader();
@@ -362,6 +362,10 @@ void PluginTableBehaviour::select( const QJsonValue& ids, const QJsonValue& curr
     auto* selection = table_->selectionModel();
     const bool selectable = table_->selectionMode() != QAbstractItemView::NoSelection;
     if ( ids.isArray() && selectable ) {
+        // The plugin sets the selection: a press before it starts no drag, and its change (held,
+        // or waiting for the patch to end) is not reported: the plugin's selection is never echoed.
+        endPress();
+        reportPending_ = false;
         QItemSelection chosen;
         int used = 0;
         for ( const auto& id : ids.toArray() ) {
@@ -773,24 +777,37 @@ QStringList PluginTableBehaviour::draggedRows() const
 
 void PluginTableBehaviour::cancelPress()
 {
-    // The rows changed under a press that may start a drag: no drag starts from it, and a held
-    // selection change is reported now.
     if ( pressRow_.isEmpty() && !holdSelection_ ) {
         return;
     }
-    const bool held = holdSelection_;
-    releaseSelection( false );
+    // Compared before the change, while the press's ranges still name the rows they did: only a
+    // change the user's press made is reported, never the one before the press.
+    const bool changed = holdSelection_ && pressChangedSelection();
+    endPress();
+    if ( changed && !std::exchange( reportPending_, true ) ) {
+        // A patch is still being applied: reported once it is done, unless it sets the selection
+        // itself (select() drops the report) or the view sends `selected` anyway.
+        QTimer::singleShot( 0, this, [ this ] {
+            if ( reportPending_ ) {
+                reportSelection();
+            }
+        } );
+    }
+}
+
+void PluginTableBehaviour::endPress()
+{
+    holdSelection_ = false;
     pressRow_.clear();
     pressSelection_.clear();
     pressWasSelected_ = false;
-    if ( held && hooks_.selectionSettled ) {
-        // The press may have changed the selection: reported once the change that called the
-        // drag off is done (a patch is still being applied, and sends nothing itself).
-        QTimer::singleShot( 0, this, [ this ] {
-            if ( hooks_.selectionSettled ) {
-                hooks_.selectionSettled();
-            }
-        } );
+}
+
+void PluginTableBehaviour::reportSelection()
+{
+    reportPending_ = false;
+    if ( hooks_.selectionSettled ) {
+        hooks_.selectionSettled();
     }
 }
 
@@ -798,6 +815,16 @@ void PluginTableBehaviour::releaseSelection( bool report )
 {
     if ( !std::exchange( holdSelection_, false ) || !report || !table_ ) {
         return;
+    }
+    if ( pressChangedSelection() ) {
+        reportSelection();
+    }
+}
+
+bool PluginTableBehaviour::pressChangedSelection() const
+{
+    if ( !table_ ) {
+        return false;
     }
     // The rows of a selection, in order: the press changed the selection when they differ.
     const auto rowsOf = []( const QItemSelection& selection ) {
@@ -811,10 +838,7 @@ void PluginTableBehaviour::releaseSelection( bool report )
         rows.erase( std::unique( rows.begin(), rows.end() ), rows.end() );
         return rows;
     };
-    if ( rowsOf( table_->selectionModel()->selection() ) != rowsOf( pressSelection_ )
-         && hooks_.selectionSettled ) {
-        hooks_.selectionSettled();
-    }
+    return rowsOf( table_->selectionModel()->selection() ) != rowsOf( pressSelection_ );
 }
 
 void PluginTableBehaviour::startDrag()
