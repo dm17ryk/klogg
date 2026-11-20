@@ -1315,6 +1315,10 @@ void PluginTreeBehaviour::select( const QJsonValue& ids, const QJsonValue& curre
     auto* selection = tree_->selectionModel();
     const bool selectable = tree_->selectionMode() != QAbstractItemView::NoSelection;
     if ( ids.isArray() && selectable ) {
+        // The plugin sets the selection: a press before it starts no drag, and its change (held,
+        // or waiting for the patch to end) is not reported: the plugin's selection is never echoed.
+        endPress();
+        reportPending_ = false;
         QItemSelection chosen;
         int used = 0;
         for ( const auto& id : ids.toArray() ) {
@@ -1758,21 +1762,27 @@ void PluginTreeBehaviour::cancelPress()
     if ( pressNode_.isEmpty() && !holdSelection_ ) {
         return;
     }
-    // Compared before the change, while the press's ranges still name the nodes they did.
-    const bool changed = holdSelection_ && tree_ && pressChangedSelection();
-    holdSelection_ = false;
-    pressNode_.clear();
-    pressSelection_.clear();
-    pressWasSelected_ = false;
+    // Compared before the change, while the press's ranges still name the nodes they did: only a
+    // change the user's press made is reported, never the one before the press.
+    const bool changed = holdSelection_ && pressChangedSelection();
+    endPress();
     if ( changed && !std::exchange( reportPending_, true ) ) {
-        // A patch is still being applied: the plugin hears the selection once it is done (and
-        // only once when the patch reports it itself).
+        // A patch is still being applied: reported once it is done, unless it sets the selection
+        // itself (select() drops the report) or the view sends `selected` anyway.
         QTimer::singleShot( 0, this, [ this ] {
             if ( reportPending_ ) {
                 reportSelection();
             }
         } );
     }
+}
+
+void PluginTreeBehaviour::endPress()
+{
+    holdSelection_ = false;
+    pressNode_.clear();
+    pressSelection_.clear();
+    pressWasSelected_ = false;
 }
 
 void PluginTreeBehaviour::reportSelection()

@@ -548,6 +548,29 @@ TEST_CASE( "E17e drags end when nodes change under the press", "[ui][workbench][
     QTest::qWait( 20 );
     REQUIRE( extended.countOf( "selected" ) == before );
     REQUIRE( extended.behaviour()->selectedNodeIds( 10 ) == QStringList{ "b1" } );
+
+    // A patch that changes the nodes and sets the selection under a press that deselected its
+    // node: the plugin hears nothing, neither its own selection nor the press's change.
+    View patched( boardsTree( { { "toggle_selection", true }, { "reorderable", true } } ) );
+    auto* area = patched.tree()->viewport();
+    QTest::mouseClick( area, Qt::LeftButton, {}, patched.center( "bench", 1 ) );
+    QTest::mouseClick( area, Qt::LeftButton, {}, patched.center( "b2", 1 ) );
+    const auto selections = patched.countOf( "selected" );
+    const auto pressed = patched.center( "b2", 1 );
+    QTest::mousePress( area, Qt::LeftButton, {}, pressed );
+    REQUIRE( patched.behaviour()->holdsSelection() );
+    patched.patch( QJsonObject{
+        { "id", "tr" },
+        { "parent", "bench" },
+        { "insert_nodes", QJsonArray{ QJsonObject{ { "id", "by" }, { "text", "Board y" } } } },
+        { "before", "b2" },
+        { "select", QJsonArray{ "spare" } } } );
+    REQUIRE_FALSE( patched.behaviour()->holdsSelection() );
+    REQUIRE( patched.behaviour()->draggedNodes().isEmpty() );
+    QTest::mouseRelease( area, Qt::LeftButton, {}, pressed );
+    QTest::qWait( 20 );
+    REQUIRE( patched.countOf( "selected" ) == selections );
+    REQUIRE( patched.behaviour()->selectedNodeIds( 10 ) == QStringList{ "spare" } );
 }
 
 TEST_CASE( "E17e tree selection, toggle selection, activated, edited and moved",

@@ -439,6 +439,7 @@ void PluginView::emitTreeSelection( const QString& id )
     if ( ids.size() < count ) {
         extra.insert( "truncated", true );
     }
+    node->tree->selectionReported(); // a report waiting for a patch to end would repeat it
     emitEvent( id, "selected", ids, extra );
 }
 

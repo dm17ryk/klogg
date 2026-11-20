@@ -255,8 +255,14 @@ public:
     }
     // After a model operation: `expanded` keys of the nodes, and loading for expanded lazy nodes.
     void applyExpandRequests();
-    // The selection patch: never sends `selected`; ancestors of current and scrollTo expand.
+    // The selection patch: never sends `selected`; ancestors of current and scrollTo expand. A
+    // selection it sets ends a press that may start a drag: the press's change is not reported.
     void select( const QJsonValue& ids, const QJsonValue& current, const QJsonValue& scrollTo );
+    // The view sent `selected` for this tree: a report still waiting (cancelPress()) goes.
+    void selectionReported()
+    {
+        reportPending_ = false;
+    }
     void expandNodes( const QJsonArray& ids, bool expand );
     QString currentNodeId() const;
     // The selected nodes in tree order (at most `maximum` ids) and their count.
@@ -296,6 +302,8 @@ private:
     // The nodes are about to change under a press that may start a drag: it will not start one,
     // and a selection change the press made is reported once the change is done.
     void cancelPress();
+    // Forgets the press: no drag starts from it and nothing of it is held.
+    void endPress();
     // Sends `selected` now (and a report still waiting for the change to end goes).
     void reportSelection();
 
