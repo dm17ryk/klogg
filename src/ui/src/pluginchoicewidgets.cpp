@@ -185,15 +185,16 @@ void makeSearchable( QComboBox* combo )
 PopupFilter::PopupFilter( QComboBox* combo, IsChoice isChoice, bool spaceToggles )
     : QObject( combo )
     , combo_( combo )
+    , view_( combo->view() )
     , isChoice_( std::move( isChoice ) )
     , spaceToggles_( spaceToggles )
 {
-    auto* view = combo->view();
-    view->installEventFilter( this );
-    auto* container = view->parentWidget();
+    view_->installEventFilter( this );
+    auto* container = view_->parentWidget();
     if ( container == nullptr ) {
         return;
     }
+    container_ = container;
     container->installEventFilter( this );
     // Qt lays the open list out in a box; the filter goes above it.
     if ( auto* box = qobject_cast<QBoxLayout*>( container->layout() ) ) {
@@ -213,10 +214,12 @@ void PopupFilter::setText( const QString& text )
 
 bool PopupFilter::eventFilter( QObject* watched, QEvent* event )
 {
-    if ( !combo_ ) {
+    // Only the kept pointers are compared: this runs for every event of the list and its
+    // container, also while the combo box is being destroyed.
+    if ( !combo_ || watched == nullptr || ( watched != view_ && watched != container_ ) ) {
         return false;
     }
-    if ( watched == combo_->view() && event->type() == QEvent::KeyPress ) {
+    if ( watched == view_ && event->type() == QEvent::KeyPress ) {
         const auto* key = static_cast<QKeyEvent*>( event );
         if ( key->key() == Qt::Key_Backspace && !filter_.isEmpty() ) {
             filter_.chop( 1 );
@@ -233,17 +236,26 @@ bool PopupFilter::eventFilter( QObject* watched, QEvent* event )
             return true;
         }
     }
-    else if ( watched == combo_->view()->parentWidget() && event->type() == QEvent::Hide
-              && !filter_.isEmpty() ) {
-        setText( {} );
+    else if ( watched == container_ && event->type() == QEvent::Hide && !filter_.isEmpty() ) {
+        // The list closed (or is being destroyed with its combo box): clear the filter through
+        // the list's own widgets only, never the combo box.
+        filter_.clear();
+        if ( auto* list = qobject_cast<QListView*>( view_.data() ); list && list->model() ) {
+            for ( int row = 0; row < list->model()->rowCount(); ++row ) {
+                list->setRowHidden( row, false );
+            }
+        }
+        if ( label_ ) {
+            label_->hide();
+        }
     }
     return false;
 }
 
 void PopupFilter::apply()
 {
-    auto* list = qobject_cast<QListView*>( combo_->view() );
-    const auto* model = combo_->model();
+    auto* list = qobject_cast<QListView*>( view_.data() );
+    const auto* model = list != nullptr && combo_ ? combo_->model() : nullptr;
     if ( list == nullptr || model == nullptr ) {
         return;
     }

@@ -13,6 +13,7 @@
 #include <functional>
 
 class QAbstractButton;
+class QAbstractItemView;
 class QButtonGroup;
 class QComboBox;
 class QCompleter;
@@ -76,6 +77,11 @@ protected:
 private:
     void apply();
     QPointer<QComboBox> combo_;
+    // The open list and its container, kept from the start: the filter never asks the combo box
+    // for them, since Qt 6.12 deletes the container while ~QComboBox runs (and its events then
+    // reach this filter with the combo box half destroyed).
+    QPointer<QAbstractItemView> view_;
+    QPointer<QWidget> container_;
     IsChoice isChoice_;
     bool spaceToggles_;
     QString filter_;

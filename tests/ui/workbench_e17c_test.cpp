@@ -26,6 +26,7 @@
 #include <QTest>
 #include <catch2/catch.hpp>
 #include <limits>
+#include <memory>
 
 namespace {
 const QString PluginId = QStringLiteral( "org.test.e17c" );
@@ -529,6 +530,32 @@ TEST_CASE( "E17c an edit drops the completion answer still in flight", "[ui][wor
     REQUIRE( asked == QStringList{ "a", "al" } );
     pending.back()( QJsonArray{ QJsonObject{ { "value", "alpha" } } } );
     REQUIRE( completer->offered() == QStringList{ "alpha" } );
+}
+
+TEST_CASE( "E17c a searchable drop-down can be destroyed with its list open and filtered",
+           "[ui][workbench][E17]" )
+{
+    // Qt 6.12 deletes the list's container inside ~QComboBox; its events still reach the filter,
+    // which must not ask the half-destroyed combo box for anything (a crash on macOS).
+    for ( const bool open : { true, false } ) {
+        auto combo = std::make_unique<QComboBox>();
+        pluginchoices::fillCombo( combo.get(),
+                                  pluginchoices::parse( QJsonArray{ "alpha", "beta" }, 10 ), {},
+                                  false );
+        pluginchoices::makeSearchable( combo.get() );
+        combo->show();
+        combo->showPopup();
+        auto* filter = combo->findChild<pluginchoices::PopupFilter*>();
+        REQUIRE( filter );
+        filter->setText( "al" );
+        if ( !open ) {
+            combo->hidePopup();
+            REQUIRE( filter->text().isEmpty() );
+            filter->setText( "be" ); // a filter left set while the list is closed
+        }
+        combo.reset();
+    }
+    SUCCEED();
 }
 
 TEST_CASE( "E17c cell editors show choice icons; patches cannot restyle fields",

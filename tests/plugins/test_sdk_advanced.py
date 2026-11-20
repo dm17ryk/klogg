@@ -179,7 +179,8 @@ class HostQueries(SdkCase):
             seen.update(view=query.view_id, element=query.element_id, window=query.window_id,
                         row=query.row_id, column=query.column_id, node=query.node_id,
                         key=query.tooltip_key, context=query.context, timeout=query.timeout_ms,
-                        remaining=query.remaining(), method=query.method, id=query.id,
+                        remaining=query.remaining(), deadline=query.deadline,
+                        received=query.received, method=query.method, id=query.id,
                         thread=threading.current_thread().name)
             return None
 
@@ -192,7 +193,9 @@ class HostQueries(SdkCase):
         self.assertIsNone(seen["column"])
         self.assertEqual(seen["context"], {"tabId": "t3"})
         self.assertEqual(seen["timeout"], 1200)
-        self.assertTrue(0 < seen["remaining"] <= 1.2)
+        # The deadline itself, not the time left: a slow runner may start the handler after it.
+        self.assertAlmostEqual(seen["deadline"] - seen["received"], 1.2, places=6)
+        self.assertTrue(0 <= seen["remaining"] <= 1.2)
         self.assertEqual(seen["method"], "tooltip/resolve")
         self.assertTrue(seen["id"].startswith("q:"))
         self.assertTrue(seen["thread"].startswith("plugin-query-tooltip/resolve"))
