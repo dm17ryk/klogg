@@ -146,6 +146,13 @@ TEST_CASE( "E17c validation rules and choice parsing", "[plugins][E17]" )
     REQUIRE_FALSE( pluginfields::validates( { { "max_length", -1 } } ) );
     REQUIRE( validationError( { { "max_length", -1 } }, "anything" ).isEmpty() );
     REQUIRE( validationError( { { "max", 1234567.0 } }, 2e6 ) == "At most 1234567" );
+    // Lengths count characters: an emoji (two UTF-16 units) is one, as Python's len() says.
+    const auto emoji = QString::fromUtf8( "\xF0\x9F\x98\x80" );
+    REQUIRE( pluginfields::characterCount( emoji ) == 1 );
+    REQUIRE( pluginfields::characterCount( emoji + "ab" + emoji ) == 4 );
+    REQUIRE( pluginfields::characterCount( QString( QChar( 0xD83D ) ) ) == 1 ); // a lone surrogate
+    REQUIRE( validationError( { { "max_length", 1 } }, emoji ).isEmpty() );
+    REQUIRE( validationError( { { "min_length", 2 } }, emoji ).startsWith( "At least 2" ) );
     // Patterns run on the GUI thread: a long value is left to the plugin, and a pattern that
     // backtracks without end stops at PCRE2's match limit.
     REQUIRE( validationError( { { "pattern", "[0-9]+" } },

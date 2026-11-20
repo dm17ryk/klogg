@@ -8,6 +8,7 @@
 #include <QJsonValue>
 #include <QList>
 #include <QPointer>
+#include <QStringView>
 #include <QStyledItemDelegate>
 #include <QWidget>
 #include <functional>
@@ -178,4 +179,7 @@ constexpr int MaxPatternText = 1024;
 QString validationError( const QJsonObject& props, const QJsonValue& value );
 // Whether a field has a rule (by value: `required: false` or an empty `pattern` is none).
 bool validates( const QJsonObject& props );
+// Characters (Unicode code points; a surrogate pair is one), as the protocol counts them in
+// length rules and the completion cursor, and as Python's len() does.
+qsizetype characterCount( QStringView text );
 } // namespace pluginfields
